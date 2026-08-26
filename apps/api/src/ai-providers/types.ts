@@ -68,7 +68,7 @@ export interface ProviderAdapter {
   getCreditsBalance?(
     studioJwt: string,
     organizationId: string,
-  ): Promise<{ balanceCents: number }>;
+  ): Promise<{ balanceCents: number; creditFunded?: boolean }>;
 
   /**
    * Server-to-server key provisioning (e.g. on org creation).

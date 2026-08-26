@@ -26,6 +26,11 @@ export const AI_PROVIDER_CREDITS = defineTool({
     balanceCents: z
       .number()
       .describe("Remaining balance in cents (e.g. 1000 = $10.00)"),
+    creditFunded: z
+      .boolean()
+      .describe(
+        "False when the org is not on prepaid credits (contract spend ceiling). Its balance is not purchased money, so surfaces should hide it rather than render it as a credit figure.",
+      ),
   }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -57,6 +62,6 @@ export const AI_PROVIDER_CREDITS = defineTool({
       );
     }
 
-    return result;
+    return { creditFunded: true, ...result };
   },
 });

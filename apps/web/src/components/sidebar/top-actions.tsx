@@ -39,8 +39,13 @@ function creditColor(balanceDollars: number): string {
 function CreditChip() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const { hasDecoKey, balanceDollars } = useDecoCredits();
+  const { hasDecoKey, balanceDollars, creditFunded } = useDecoCredits();
   if (!hasDecoKey) return null;
+  // Contract orgs (spend ceiling, no prepaid credits) have no credit balance to
+  // show. Hiding the chip is the honest option: any number here reads as
+  // "credits you hold", and for these orgs the figure went negative as they
+  // spent — which is exactly the contract working as agreed.
+  if (!creditFunded) return null;
   return (
     <SidebarMenu>
       <SidebarMenuItem>

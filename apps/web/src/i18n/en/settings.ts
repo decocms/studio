@@ -305,6 +305,8 @@ export const settings = {
   "settings.decoCreditsHero.availableBalance": "Available credit balance",
   "settings.decoCreditsHero.cancel": "Cancel",
   "settings.decoCreditsHero.cancelButton": "Cancel",
+  "settings.decoCreditsHero.contractBilling":
+    "This workspace is billed by contract, not by prepaid credits. Usage is metered and capped by your agreed ceiling.",
   "settings.decoCreditsHero.custom": "Custom",
   "settings.decoCreditsHero.decoAiGatewayAlt": "Deco AI Gateway",
   "settings.decoCreditsHero.disconnect": "Disconnect",

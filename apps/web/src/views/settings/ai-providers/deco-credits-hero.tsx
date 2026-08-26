@@ -266,6 +266,15 @@ export function DecoCreditsHero() {
             </AlertDialogContent>
           </AlertDialog>
 
+          {/* Contract orgs are not funded by prepaid credits: there is no
+              balance to show, and a top-up would take money the key limit
+              ignores. Say what governs their spend instead. */}
+          {data?.creditFunded === false ? (
+            <p className="text-xs text-muted-foreground pt-2">
+              {t("settings.decoCreditsHero.contractBilling")}
+            </p>
+          ) : (
+            <>
           {/* Balance */}
           <div className="flex flex-col gap-2 pt-2">
             <div className="flex items-baseline gap-2">
@@ -306,6 +315,8 @@ export function DecoCreditsHero() {
             </p>
             <QuickTopUp />
           </div>
+            </>
+          )}
         </div>
       </SettingsCard>
     </SettingsSection>

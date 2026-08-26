@@ -39,6 +39,11 @@ export function useDecoCredits() {
     },
   });
 
+  // False only when the gateway explicitly says so: an org on a contract spend
+  // ceiling is not funded by prepaid credits, so its balance is not money it
+  // bought. Rendering it as a credit figure is how a contract customer's normal
+  // spend showed up in the sidebar as a negative balance.
+  const creditFunded = data?.creditFunded !== false;
   const balanceCents = data?.balanceCents ?? null;
   const balanceDollars = balanceCents != null ? balanceCents / 100 : null;
 
@@ -49,7 +54,7 @@ export function useDecoCredits() {
   // the common case. Ignores the very first read (undefined → value is not
   // a "top-up", just the initial load).
   const firstSeenRef = useRef<Map<string, boolean>>(new Map());
-  if (balanceCents != null) {
+  if (balanceCents != null && creditFunded) {
     const previous = lastSeenBalance.get(org.id);
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     const hasSeenBefore = firstSeenRef.current.get(org.id);
@@ -66,15 +71,21 @@ export function useDecoCredits() {
     firstSeenRef.current.set(org.id, true);
   }
   const hasDecoKey = !!decoKey;
-  const hasCredits = balanceCents != null && balanceCents > 0;
-  const isZeroBalance = balanceCents != null && balanceCents === 0;
-  const isInitialFreeCredit = balanceCents != null && balanceCents === 200;
+  // Every credit-shaped signal is gated on creditFunded: a contract org has no
+  // credits to have, to run out of, or to be given for free, and firing
+  // "credits exhausted" at one is worse than showing it a wrong number.
+  const hasCredits = creditFunded && balanceCents != null && balanceCents > 0;
+  const isZeroBalance =
+    creditFunded && balanceCents != null && balanceCents === 0;
+  const isInitialFreeCredit =
+    creditFunded && balanceCents != null && balanceCents === 200;
   const hasOnlyDecoProvider =
     keys.length > 0 && keys.every((k) => k.providerId === "deco");
 
   return {
     hasDecoKey,
     decoKeyId: decoKey?.id ?? null,
+    creditFunded,
     balanceCents,
     balanceDollars,
     hasCredits,

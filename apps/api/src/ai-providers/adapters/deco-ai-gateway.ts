@@ -49,8 +49,17 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     if (!res.ok) {
       throw new Error(`Failed to fetch credits balance: ${res.status}`);
     }
-    const data = (await res.json()) as { balance_cents: number };
-    return { balanceCents: data.balance_cents };
+    const data = (await res.json()) as {
+      balance_cents: number;
+      credit_funded?: boolean;
+    };
+    // credit_funded:false means the org is not on prepaid credits at all — it
+    // has a contract spend ceiling, so its "balance" is not money it bought and
+    // showing it as one reads as debt. Absent (older gateway) = assume credits.
+    return {
+      balanceCents: data.balance_cents,
+      creditFunded: data.credit_funded ?? true,
+    };
   },
 
   async provisionKey(studioJwt: string, organizationId: string) {

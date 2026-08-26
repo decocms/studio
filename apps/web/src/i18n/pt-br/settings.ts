@@ -318,6 +318,8 @@ export const settings = {
     "Saldo de cr\u00e9dito dispon\u00edvel",
   "settings.decoCreditsHero.cancel": "Cancelar",
   "settings.decoCreditsHero.cancelButton": "Cancelar",
+  "settings.decoCreditsHero.contractBilling":
+    "Este workspace \u00e9 cobrado por contrato, n\u00e3o por cr\u00e9ditos pr\u00e9-pagos. O uso \u00e9 medido e limitado pelo teto acordado.",
   "settings.decoCreditsHero.custom": "Personalizado",
   "settings.decoCreditsHero.decoAiGatewayAlt": "Deco AI Gateway",
   "settings.decoCreditsHero.disconnect": "Desconectar",

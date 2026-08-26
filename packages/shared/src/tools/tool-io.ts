@@ -4588,7 +4588,7 @@ export interface StudioToolIO {
         | "llmapi"
         | "openai-compatible";
     };
-    output: { balanceCents: number };
+    output: { balanceCents: number; creditFunded: boolean };
   };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };
