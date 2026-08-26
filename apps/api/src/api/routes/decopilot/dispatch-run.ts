@@ -1399,6 +1399,15 @@ async function prepareRun(
           ? new SandboxDispatchClient({
               ctx,
               virtualMcpId: effectiveVirtualMcp.id,
+              // A repo on the AGENT means a Code Agent chat, with a person
+              // watching its preview; a task run's repo is on the thread.
+              interactive: Boolean(
+                (
+                  effectiveVirtualMcp.metadata as {
+                    githubRepo?: GithubRepo | null;
+                  } | null
+                )?.githubRepo?.url,
+              ),
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
               ...(resumeFromSeq > 0

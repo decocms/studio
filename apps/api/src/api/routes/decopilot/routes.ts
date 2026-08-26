@@ -12,7 +12,10 @@ import {
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
-import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import {
+  orgFlagEnabled,
+  type SimpleModeTier,
+} from "@decocms/shared/organization/schema";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
@@ -295,6 +298,58 @@ export function applyThreadLock(args: {
     branch: thread.branch ?? null,
     locked: true,
   };
+}
+
+/**
+ * The harness a thread's FIRST message pins, for an agent that has never run.
+ *
+ * A Code Agent — an agent imported from a GitHub repo (`metadata.githubRepo`) —
+ * is a coding agent whose whole point is the checkout, so it runs `claude-code`
+ * inside its sandbox rather than hosted Decopilot. Everything else stays on
+ * Decopilot. Behind a default-off org flag: this swaps the runtime of every
+ * chat on those agents, and claude-code flushes whole turns instead of
+ * streaming tokens (see `isBatchHarness` on the web).
+ *
+ * Pure so the decision is testable without a DB; the I/O lives in
+ * `resolveDefaultHarness`.
+ */
+export function defaultHarnessForAgent(args: {
+  flagEnabled: boolean;
+  agentMetadata: unknown;
+}): HostedHarnessId {
+  if (!args.flagEnabled) return "decopilot";
+  const meta = args.agentMetadata as
+    | { githubRepo?: { url?: unknown } | null }
+    | null
+    | undefined;
+  const url = meta?.githubRepo?.url;
+  return typeof url === "string" && url.length > 0
+    ? "claude-code"
+    : "decopilot";
+}
+
+/** {@link defaultHarnessForAgent} with its two reads. Never throws: an agent or
+ *  settings row we can't read falls back to Decopilot, which is what every
+ *  thread got before this existed. */
+async function resolveDefaultHarness(
+  ctx: StudioContext,
+  organizationId: string,
+  agentId: string,
+): Promise<HostedHarnessId> {
+  try {
+    const settings = await ctx.storage.organizationSettings.get(organizationId);
+    if (!orgFlagEnabled(settings?.flags, "code_agents_claude_code")) {
+      return "decopilot";
+    }
+    const agent = await ctx.storage.virtualMcps.findById(agentId);
+    return defaultHarnessForAgent({
+      flagEnabled: true,
+      agentMetadata: agent?.metadata,
+    });
+  } catch (err) {
+    console.warn("[decopilot:messages] harness resolution failed", err);
+    return "decopilot";
+  }
 }
 
 /**
@@ -603,8 +658,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // A non-null harness is the runtime lock. An unlocked thread is claimed
       // by the hosted dispatcher.
       if (pinnedHarness === null) {
-        pinnedHarness = pinnedHarness ?? input.harnessId ?? "decopilot";
-        assertHostedRuntime(pinnedHarness);
+        // First message: the agent decides the runtime. `input.harnessId` is
+        // `validate()`'s fixed "decopilot", so it cannot carry this.
+        pinnedHarness = await resolveDefaultHarness(
+          ctx,
+          input.organizationId,
+          input.agent.id,
+        );
+        assertHostedHarness(pinnedHarness);
 
         if (existingThread) {
           // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin

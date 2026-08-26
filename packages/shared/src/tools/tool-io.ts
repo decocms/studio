@@ -127,6 +127,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            code_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | null
@@ -200,6 +201,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            code_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | undefined;
@@ -272,6 +274,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            code_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | null
@@ -292,6 +295,7 @@ export interface StudioToolIO {
         type:
           | "created"
           | "commented"
+          | "mentioned"
           | "status_changed"
           | "assignee_changed"
           | "review_requested"
