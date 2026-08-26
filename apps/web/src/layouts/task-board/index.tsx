@@ -118,6 +118,7 @@ import {
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
+  TASK_TYPES,
   type TaskBoardItem,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
@@ -176,18 +177,10 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   return { label: DATE_FMT.format(d), overdue };
 }
 
-/**
- * Shared meta chip: outlined (border, no fill), lightly rounded (not a full
- * pill), with room for a larger leading icon.
- */
+/** Shared meta chip: an outlined pill, neutral border by default. */
 const PILL =
-  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground";
+  "inline-flex items-center gap-1 rounded-full border-[length:var(--border-hairline)] border-border px-2 py-0.5 text-xs font-medium text-muted-foreground";
 
-/**
- * The card's chip: an outline at card scale. Smaller and lighter than {@link
- * PILL} (which the list view uses), but still bounded — the labels read as
- * discrete things rather than a run-on line of words.
- */
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
  * 12 is exactly half, so strokes land on whole device pixels. At 14 the scale
@@ -197,8 +190,8 @@ const PILL =
  */
 const FOOTER_GLYPH = 12;
 
-const CHIP =
-  "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground";
+/** A footer property glyph. 14, not 16: the footer's text is 12, and a glyph that outweighs its own label reads as the subject rather than the annotation. */
+const PROPERTY_GLYPH_CLASS = "size-3.5";
 
 /** Tags a card shows before collapsing the rest into `+N`. Matches the list
  *  view's existing cap; the full set is in the task dialog. */
@@ -209,10 +202,10 @@ function BlockedBadge() {
   const t = useT();
   return (
     <span
-      className={cn(PILL, "border-warning/30 text-warning")}
+      className={cn(PILL, "border-warning/50 text-warning")}
       title={t("taskBoard.taskBoard.blockedBadgeTitle")}
     >
-      <HelpCircle size={14} />
+      <HelpCircle size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.needsInput")}
     </span>
   );
@@ -222,32 +215,94 @@ function HandedToHumanBadge() {
   const t = useT();
   return (
     <span
-      className={cn(PILL, "border-warning/30 text-warning")}
+      className={cn(PILL, "border-warning/50 text-warning")}
       title={t("taskBoard.taskBoard.handedToHumanBadgeTitle")}
     >
-      <HelpCircle size={14} />
+      <HelpCircle size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.needsYou")}
     </span>
   );
 }
 
-/**
- * Priority as a single glyph, the way Jira ranks it — the name is in the
- * tooltip. A card carries one priority and it is never news; spelling it out
- * cost a chip's worth of width on every row to say "Medium".
- */
-function PriorityIcon({ priority }: { priority: TaskBoardItemPriority }) {
+/** Priority as a single glyph: a tooltip when read-only, a picker when `onChange` is given. */
+function PriorityIcon({
+  priority,
+  onChange,
+}: {
+  priority: TaskBoardItemPriority;
+  onChange?: (priority: TaskBoardItemPriority) => void;
+}) {
   const t = useT();
   const config = PRIORITY_CONFIG[priority];
   const label = t(config.labelKey);
+  // Sized by class, not by `size`: inside a Button, `[&_svg]:size-4` beats the attribute.
+  const glyph = (
+    <config.icon
+      className={cn(PROPERTY_GLYPH_CLASS, "shrink-0", config.iconClassName)}
+      aria-label={label}
+    />
+  );
+  if (!onChange) return <GlyphTooltip label={label}>{glyph}</GlyphTooltip>;
   return (
-    <GlyphTooltip label={label}>
-      <config.icon
-        size={FOOTER_GLYPH}
-        className={cn("shrink-0", config.iconClassName)}
-        aria-label={label}
-      />
-    </GlyphTooltip>
+    <FooterGlyphMenu label={label} glyph={glyph}>
+      {PRIORITIES.map((p) => {
+        const Icon = PRIORITY_CONFIG[p].icon;
+        return (
+          <DropdownMenuItem
+            key={p}
+            onSelect={() => onChange(p)}
+            className={cn("gap-2", p === priority && "bg-accent")}
+          >
+            <Icon
+              size={FOOTER_GLYPH}
+              className={cn("shrink-0", PRIORITY_CONFIG[p].iconClassName)}
+            />
+            {t(PRIORITY_CONFIG[p].labelKey)}
+          </DropdownMenuItem>
+        );
+      })}
+    </FooterGlyphMenu>
+  );
+}
+
+/**
+ * Turns a footer glyph into a Jira-style property picker: click the glyph,
+ * pick a new value from the dropdown, stopping the click from also opening
+ * the card (it's already a button) or starting a drag.
+ */
+function FooterGlyphMenu({
+  label,
+  glyph,
+  children,
+}: {
+  label: string;
+  glyph: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={label}
+          aria-label={label}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          // Cancels the button's 6px padding in the layout so it takes only its glyph's width: the row spaces itself off the glyph, and the leftover 6px is what the hover surface bleeds into.
+          className="-m-1.5"
+        >
+          {glyph}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-36"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -277,18 +332,42 @@ function GlyphTooltip({
 }
 
 /** The card's kind, as one glyph. Shape carries it; the name is on hover. */
-function TaskTypeIcon({ type }: { type: TaskBoardItemType }) {
+function TaskTypeIcon({
+  type,
+  onChange,
+}: {
+  type: TaskBoardItemType;
+  onChange?: (type: TaskBoardItemType) => void;
+}) {
   const t = useT();
   const config = TASK_TYPE_CONFIG[type];
   const label = t(config.labelKey);
+  const glyph = (
+    <config.icon
+      className={cn(PROPERTY_GLYPH_CLASS, "shrink-0", config.iconClassName)}
+      aria-label={label}
+    />
+  );
+  if (!onChange) return <GlyphTooltip label={label}>{glyph}</GlyphTooltip>;
   return (
-    <GlyphTooltip label={label}>
-      <config.icon
-        size={FOOTER_GLYPH}
-        className={cn("shrink-0", config.iconClassName)}
-        aria-label={label}
-      />
-    </GlyphTooltip>
+    <FooterGlyphMenu label={label} glyph={glyph}>
+      {TASK_TYPES.map((tp) => {
+        const Icon = TASK_TYPE_CONFIG[tp].icon;
+        return (
+          <DropdownMenuItem
+            key={tp}
+            onSelect={() => onChange(tp)}
+            className={cn("gap-2", tp === type && "bg-accent")}
+          >
+            <Icon
+              size={FOOTER_GLYPH}
+              className={cn("shrink-0", TASK_TYPE_CONFIG[tp].iconClassName)}
+            />
+            {t(TASK_TYPE_CONFIG[tp].labelKey)}
+          </DropdownMenuItem>
+        );
+      })}
+    </FooterGlyphMenu>
   );
 }
 
@@ -298,21 +377,79 @@ function TaskTypeIcon({ type }: { type: TaskBoardItemType }) {
  * to act on, so a date months out sits quiet instead of competing with the
  * overdue ones.
  */
-function FooterDueDate({ iso }: { iso: string }) {
+function FooterDueDate({
+  iso,
+  onChange,
+}: {
+  iso: string;
+  onChange?: (iso: string) => void;
+}) {
   const urgency = dueDateUrgency(iso);
   const { label } = formatDueDate(iso);
-  return (
-    <span
-      className={cn(
-        CHIP,
-        "tabular-nums",
-        urgency === "overdue" && "border-destructive/30 text-destructive",
-        urgency === "soon" && "border-warning/30 text-warning",
-      )}
-    >
-      <Calendar size={11} />
+  const content = (
+    <>
+      <Calendar className={PROPERTY_GLYPH_CLASS} />
       {label}
-    </span>
+    </>
+  );
+  const tone = cn(
+    "shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums text-muted-foreground/70",
+    urgency === "overdue" && "text-destructive",
+    urgency === "soon" && "text-warning",
+  );
+  if (!onChange) return <span className={cn("flex", tone)}>{content}</span>;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          // Matches the glyph buttons: the padding is hover surface only, so the row still spaces itself off the content.
+          className={cn("-mx-1.5 h-auto px-1.5 py-1 font-medium", tone)}
+        >
+          {content}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-auto p-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DayPickerCalendar
+          mode="single"
+          selected={new Date(iso)}
+          defaultMonth={new Date(iso)}
+          onSelect={(date) => date && onChange(toEndOfDayIso(date))}
+          initialFocus
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The card's one run action, as a footer glyph. Its slot is always reserved, so revealing it on hover shifts nothing and covers nothing. */
+function CardActionGlyph({
+  action,
+}: {
+  action: { icon: typeof RefreshCw01; label: string; onClick: () => void };
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      title={action.label}
+      aria-label={action.label}
+      onClick={(e) => {
+        e.stopPropagation();
+        action.onClick();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="-m-1.5 pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+    >
+      <action.icon className={PROPERTY_GLYPH_CLASS} />
+    </Button>
   );
 }
 
@@ -328,32 +465,44 @@ function CardFooter({
   assignedBy,
   members,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
+  action,
 }: {
   item: TaskBoardItem;
   checks: { summary: ChecksSummary; enabled: ReviewerKind[] } | null;
+  action?: { icon: typeof RefreshCw01; label: string; onClick: () => void };
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
   onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
 }) {
   const { org } = useProjectContext();
   const key = taskKey(org.slug, item.keySeq);
   return (
-    // `-mx-3 -mb-2.5` cancels the card's padding so the bar spans corner to
-    // corner, then it re-pads at its own, tighter inset: 8px on each of its
-    // three open sides, against the body's 12. The extra pixel on `pb` offsets
-    // `border-t`, which eats one off the top — otherwise the row lands half a
-    // pixel low.
-    <div className="-mx-3 -mb-2.5 mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border px-2 pt-1.75 pb-2">
+    // No inset of its own: the footer shares the card's padding, so the type glyph starts on the same left edge as the title and the labels.
+    <div className="mt-auto flex shrink-0 items-center justify-between gap-2 pt-1">
+      {/* Each glyph binds to its own label at `gap-1.5`, and the pairs stand apart at `gap-3` — an icon spaced the same as its neighbours belongs to neither. */}
       <span className="flex min-w-0 items-center gap-3">
-        <TaskTypeIcon type={item.type} />
-        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/70">
-          {key}
+        <span className="flex shrink-0 items-center gap-1.5">
+          <TaskTypeIcon type={item.type} onChange={onTypeChange} />
+          <span className="text-xs font-medium tabular-nums text-muted-foreground/70">
+            {key}
+          </span>
         </span>
-        {item.dueDate && <FooterDueDate iso={item.dueDate} />}
+        {item.dueDate && (
+          <FooterDueDate iso={item.dueDate} onChange={onDueDateChange} />
+        )}
       </span>
       <span className="flex shrink-0 items-center gap-2">
-        {item.priority !== "none" && <PriorityIcon priority={item.priority} />}
+        {action && <CardActionGlyph action={action} />}
+        {(item.priority !== "none" || onPriorityChange) && (
+          <PriorityIcon priority={item.priority} onChange={onPriorityChange} />
+        )}
         {checks && (
           <ChecksChip
             summary={checks.summary}
@@ -394,9 +543,9 @@ function DueDatePill({ iso }: { iso: string }) {
   const { label, overdue } = formatDueDate(iso);
   return (
     <span
-      className={cn(PILL, overdue && "border-destructive/30 text-destructive")}
+      className={cn(PILL, overdue && "border-destructive/50 text-destructive")}
     >
-      <Calendar size={14} />
+      <Calendar size={FOOTER_GLYPH} />
       {label}
     </span>
   );
@@ -415,19 +564,19 @@ function SprintPill({ sprint }: { sprint: number }) {
   const t = useT();
   return (
     <span className={PILL}>
-      <Repeat04 size={14} />
+      <Repeat04 size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
   );
 }
 
+/** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
 function TagPill({ tag }: { tag: TaskBoardItemTag }) {
   return (
-    <span className={PILL}>
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: tagDotColor(tag.color) }}
-      />
+    <span
+      className={cn(PILL, "text-foreground")}
+      style={{ borderColor: tagDotColor(tag.color) }}
+    >
       {tag.name}
     </span>
   );
@@ -491,7 +640,8 @@ function ChecksChip({
     <GlyphTooltip label={detail}>
       <span
         className={cn(
-          "flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums",
+          // Not a button, but it carries a property like one — so it wears the same glyph and the same 6px inset.
+          "flex shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums",
           summary.tone === "ok" && "text-success",
           summary.tone === "pending" && "text-warning",
           summary.tone === "danger" && "text-destructive",
@@ -501,7 +651,7 @@ function ChecksChip({
           total: String(summary.total),
         })}
       >
-        <CheckCircle size={12} />
+        <CheckCircle className={PROPERTY_GLYPH_CLASS} />
         {summary.passed}/{summary.total}
       </span>
     </GlyphTooltip>
@@ -1068,6 +1218,13 @@ export function TaskBoardPage() {
               { onError: onDelegateError },
             );
           }}
+          onPriorityChange={(id, priority) =>
+            actions.update.mutate({ id, priority })
+          }
+          onTypeChange={(id, type) => actions.update.mutate({ id, type })}
+          onDueDateChange={(id, dueDate) =>
+            actions.update.mutate({ id, dueDate })
+          }
           onAutoFix={(item) => {
             if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
             actions.update.mutate(
@@ -1631,6 +1788,9 @@ function Lanes({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
 }: {
   items: TaskBoardItem[];
   members: Member[];
@@ -1648,6 +1808,9 @@ function Lanes({
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
+  onPriorityChange?: (id: string, priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (id: string, type: TaskBoardItemType) => void;
+  onDueDateChange?: (id: string, iso: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
@@ -1913,6 +2076,9 @@ function Lanes({
               onAutoFix={onAutoFix}
               onRerun={onRerun}
               onAssign={onAssign}
+              onPriorityChange={onPriorityChange}
+              onTypeChange={onTypeChange}
+              onDueDateChange={onDueDateChange}
               onHide={
                 HIDDEN_STATUSES.includes(status)
                   ? () => setLaneShown(status, false)
@@ -2057,6 +2223,9 @@ function Lane({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
   onHide,
 }: {
   status: TaskBoardItemStatus;
@@ -2076,6 +2245,9 @@ function Lane({
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
+  onPriorityChange?: (id: string, priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (id: string, type: TaskBoardItemType) => void;
+  onDueDateChange?: (id: string, iso: string) => void;
   /** Present only for a hidden-by-default lane, which can be put back away. */
   onHide?: () => void;
 }) {
@@ -2169,7 +2341,7 @@ function Lane({
       <div
         ref={setNodeRef}
         data-lane-scroll={status}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
       >
         <SortableContext
           items={items.map((item) => item.id)}
@@ -2200,6 +2372,19 @@ function Lane({
               onAssign={
                 onAssign ? (userId) => onAssign(item.id, userId) : undefined
               }
+              onPriorityChange={
+                onPriorityChange
+                  ? (priority) => onPriorityChange(item.id, priority)
+                  : undefined
+              }
+              onTypeChange={
+                onTypeChange ? (type) => onTypeChange(item.id, type) : undefined
+              }
+              onDueDateChange={
+                onDueDateChange
+                  ? (iso) => onDueDateChange(item.id, iso)
+                  : undefined
+              }
             />
           ))}
         </SortableContext>
@@ -2228,6 +2413,9 @@ function SortableTaskCard({
   onAutoFix?: () => void;
   onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
 }) {
   const {
     attributes,
@@ -2278,6 +2466,9 @@ function TaskCard({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
@@ -2294,6 +2485,9 @@ function TaskCard({
   onAutoFix?: () => void;
   onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
 }) {
   const t = useT();
   const sprint = visibleSprint(item.sprint, useSprintsEnabled());
@@ -2336,29 +2530,29 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-3 py-2.5 text-left card-shadow active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
         attentionLabel
-          ? "bg-destructive/10 hover:bg-destructive/15"
+          ? "bg-warning/10 hover:bg-warning/15"
           : "bg-card hover:bg-accent/60",
+        // A dead run outranks a question: both want a person, but only one is already broken.
+        runState === "failed"
+          ? "card-ring-destructive"
+          : attentionLabel && "card-ring-warning",
         selected && "bg-accent",
         className,
       )}
-      title={attentionLabel ? `${item.title} — ${attentionLabel}` : item.title}
     >
       <div className="flex items-start gap-2">
-        <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground line-clamp-2">
+        {/* 14px: one step over the design system's `text-sm`, which is 13 here, not Tailwind's 14. */}
+        <span className="min-w-0 flex-1 text-[14px] font-[450] leading-snug text-foreground line-clamp-2">
           {item.title}
         </span>
         {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
         {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {/* The card's body: everything between the title and the footer bar. The
-          Auto-fix button shares this row rather than claiming one of its own —
-          alone on a line it read as a section of the card instead of an action
-          on it. `ml-auto` keeps it trailing even when the labels wrap. */}
-      {(sprint != null || item.tags.length > 0 || showAutoFix) && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {(sprint != null || item.tags.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           {sprint != null && <SprintPill sprint={sprint} />}
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
@@ -2366,38 +2560,7 @@ function TaskCard({
           {item.tags.length > CARD_TAG_LIMIT && (
             <span className={PILL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
           )}
-          {showAutoFix && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAutoFix();
-              }}
-              className="ml-auto flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-            >
-              <Lightning01 size={12} />
-              {t("taskBoard.taskBoard.autoFix")}
-            </button>
-          )}
         </div>
-      )}
-
-      {showRerun && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRerun();
-          }}
-          // Absolutely positioned so it never reserves layout space: every
-          // Super-Agent card qualifies, so a flow-positioned hover button
-          // left a permanent empty gap on every card, and showing it
-          // unconditionally would put a button on nearly the whole board.
-          className="pointer-events-none absolute bottom-10 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
-        >
-          <RefreshCw01 size={12} />
-          {t("taskBoard.taskBoard.rerun")}
-        </button>
       )}
 
       <CardFooter
@@ -2407,6 +2570,24 @@ function TaskCard({
         assignedBy={assignedBy}
         members={members}
         onAssign={onAssign}
+        onPriorityChange={onPriorityChange}
+        onTypeChange={onTypeChange}
+        onDueDateChange={onDueDateChange}
+        action={
+          showAutoFix
+            ? {
+                icon: Lightning01,
+                label: t("taskBoard.taskBoard.autoFix"),
+                onClick: onAutoFix,
+              }
+            : showRerun
+              ? {
+                  icon: RefreshCw01,
+                  label: t("taskBoard.taskBoard.rerun"),
+                  onClick: onRerun,
+                }
+              : undefined
+        }
       />
     </button>
   );

@@ -8,9 +8,13 @@ import {
   Circle,
   Equal,
   Eye,
+  Lightbulb02,
   Loading02,
+  PlusCircle,
+  Settings01,
+  Shield01,
 } from "@untitledui/icons";
-import { Bug, CirclePlus, Lightbulb, Shield, Wrench } from "lucide-react";
+import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -253,17 +257,7 @@ type TaskTypeIconComponent = ComponentType<{
   "aria-label"?: string;
 }>;
 
-/**
- * A card's kind, as one glyph in the footer.
- *
- * Five distinct silhouettes — insect, plus-badge, wrench, bulb, shield — each
- * in its own hue, except chore. The name is in the tooltip.
- *
- * These come from `lucide-react` rather than the board's usual
- * `@untitledui/icons` for one reason: untitled has no bug, and a type set whose
- * Bug isn't a bug fails at the only job these glyphs have. Both draw 24px
- * line icons at the same weight, so they sit together without seaming.
- */
+/** A card's kind, as one glyph in the footer. The name is in the tooltip. */
 export const TASK_TYPE_CONFIG: Record<
   TaskBoardItemType,
   {
@@ -279,7 +273,7 @@ export const TASK_TYPE_CONFIG: Record<
   },
   feature: {
     labelKey: "taskBoard.config.typeFeature",
-    icon: CirclePlus,
+    icon: PlusCircle,
     iconClassName: "text-success",
   },
   // Grey on purpose: `chore` is the DEFAULT type, so it lands on every card
@@ -287,19 +281,19 @@ export const TASK_TYPE_CONFIG: Record<
   // nothing — the one type worth NOT painting is the one you get for free.
   chore: {
     labelKey: "taskBoard.config.typeChore",
-    icon: Wrench,
+    icon: Settings01,
     iconClassName: "text-muted-foreground",
   },
   spike: {
     labelKey: "taskBoard.config.typeSpike",
-    icon: Lightbulb,
+    icon: Lightbulb02,
     iconClassName: "text-yellow-500",
   },
   // Purple, vacated by spike: security can't take amber without reading as the
   // High priority arrow two glyphs to its right, and red is the bug's.
   security: {
     labelKey: "taskBoard.config.typeSecurity",
-    icon: Shield,
+    icon: Shield01,
     iconClassName: "text-purple-500",
   },
 };
@@ -382,8 +376,8 @@ export function dueDateUrgency(
 /** How far ahead a due date still counts as worth a card's ink. */
 const DUE_SOON_DAYS = 3;
 
-/** A tag's dot color — arbitrary hex off `organization_tags.color`, hence an
- *  inline style rather than a Tailwind token. */
+/** A tag's colour: arbitrary hex off `organization_tags.color`, damped by the theme's `--user-color-strength` so a vivid hex doesn't shout on a dark surface. */
 export function tagDotColor(color: string | null | undefined): string {
-  return color ?? DEFAULT_TAG_COLOR;
+  const hex = color ?? DEFAULT_TAG_COLOR;
+  return `color-mix(in oklab, ${hex} var(--user-color-strength), transparent)`;
 }
