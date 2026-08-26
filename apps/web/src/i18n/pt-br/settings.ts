@@ -63,7 +63,9 @@ export const settings = {
   "settings.jira.syncNow": "Sincronizar agora",
   "settings.jira.syncing": "Sincronizando…",
   "settings.jira.syncDone":
-    "Sincronizado: {created} criados, {updated} atualizados",
+    "Sincronizado: {created} criados, {updated} atualizados, {archived} arquivados",
+  "settings.jira.unmappedWarning":
+    "Ainda sem mapeamento: {columns}. Issue que entra numa dessas colunas \u00e9 ignorada, e o card fica parado na lane que tinha antes \u2014 escolha uma lane, ou \u201cN\u00e3o sincronizar\u201d pra dizer que \u00e9 de prop\u00f3sito.",
   "settings.jira.syncFailed": "Falha na sincronização",
   "settings.jira.saveFailed":
     "Não foi possível salvar as configurações do Jira",

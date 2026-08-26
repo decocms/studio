@@ -277,8 +277,21 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
     );
   }
 
+  /** An unmapped column is not "Don't sync" — nobody chose it. Work moving
+   *  into one freezes its card in whatever lane it last had, silently. */
+  const unmapped = (columns.data ?? []).filter(
+    (column) => !laneOfColumn(mapping, column),
+  );
+
   return (
     <div className="flex flex-col mt-3">
+      {unmapped.length > 0 && (
+        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+          {t("settings.jira.unmappedWarning", {
+            columns: unmapped.map((column) => column.name).join(", "),
+          })}
+        </p>
+      )}
       {(columns.data ?? []).map((column) => (
         <div
           key={column.name}
@@ -525,6 +538,7 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
                       t("settings.jira.syncDone", {
                         created: String(result.created),
                         updated: String(result.updated),
+                        archived: String(result.archived),
                       }),
                     );
                   }

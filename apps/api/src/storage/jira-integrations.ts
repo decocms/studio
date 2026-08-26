@@ -199,6 +199,33 @@ export class JiraIntegrationStorage {
       .execute();
   }
 
+  /**
+   * Every linked issue in the org, for the reconciliation pass — the cards
+   * whose issue is no longer in the board's scope.
+   *
+   * Only cards still on the board: an already-archived one is the resting
+   * state this reconciliation moves cards TO, so re-reading it every tick
+   * would re-archive it forever.
+   */
+  async listLinkedIssuesOnBoard(
+    organizationId: string,
+  ): Promise<
+    Array<{ itemId: string; jiraIssueId: string; jiraIssueKey: string }>
+  > {
+    const rows = await this.db
+      .selectFrom("task_board_item_jira_links as l")
+      .innerJoin("task_board_items as t", "t.id", "l.item_id")
+      .select(["l.item_id", "l.jira_issue_id", "l.jira_issue_key"])
+      .where("l.organization_id", "=", organizationId)
+      .where("t.status", "!=", "archived")
+      .execute();
+    return rows.map((row) => ({
+      itemId: row.item_id,
+      jiraIssueId: row.jira_issue_id,
+      jiraIssueKey: row.jira_issue_key,
+    }));
+  }
+
   async getLinksByIssueIds(
     organizationId: string,
     jiraIssueIds: string[],

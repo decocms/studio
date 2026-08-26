@@ -76,6 +76,17 @@ export interface JiraSyncCounts {
   updated: number;
   unchanged: number;
   skipped: number;
+  /** Cards taken off the board because their issue left the board's scope. */
+  archived: number;
+  /**
+   * Jira statuses the run skipped for having no lane, deduped.
+   *
+   * The skip itself is by design — a tenant maps the columns they care about —
+   * but silently. A board with ten columns and six mapped statuses drifts
+   * card by card as work moves into an unmapped one, and nothing said so; this
+   * is what the settings UI turns into "these columns aren't mapped".
+   */
+  unmappedStatuses: string[];
 }
 
 export type JiraSyncResult = JiraSyncCounts | { error: string };
@@ -324,6 +335,87 @@ function toUpsert(ref: JiraSprintRef) {
   };
 }
 
+/**
+ * Archive cards whose Jira issue is no longer in the board's scope.
+ *
+ * The pull is incremental, so absence is the one thing it can never notice: an
+ * issue deleted, archived, moved to another project or re-typed out of scope
+ * simply stops being mentioned, and its card sat on the board forever showing
+ * whatever it last said. On one real board that was six cards, four of them
+ * deleted in Jira days earlier.
+ *
+ * Archived, never deleted: the card carries comments, agent runs and a
+ * timeline that the Jira issue's fate says nothing about. `archived` is
+ * already the board's hidden lane, so this takes the card off the board while
+ * leaving every way back.
+ *
+ * Two guards, because this writes to a customer's board off the ABSENCE of
+ * data: the scope read must be complete (`searchIssueIds` throws rather than
+ * truncate) and it must be non-empty — a filter that legitimately matches
+ * nothing is indistinguishable from one that broke, so nothing is archived
+ * either way.
+ */
+/**
+ * Which linked cards to take off the board, given the scope Jira just reported.
+ *
+ * Separate and pure because it is the one place that acts on the ABSENCE of
+ * data: an empty scope yields nothing rather than the whole board, since a
+ * filter that legitimately matches nothing is indistinguishable from a filter
+ * that broke, a permission that was revoked, or a project that was renamed.
+ */
+export function vanishedLinks<T extends { jiraIssueId: string }>(
+  liveIssueIds: ReadonlySet<string>,
+  linked: readonly T[],
+): T[] {
+  if (liveIssueIds.size === 0) return [];
+  return linked.filter((link) => !liveIssueIds.has(link.jiraIssueId));
+}
+
+async function reconcileVanishedIssues(
+  ctx: StudioContext,
+  integration: OrgJiraIntegration,
+  client: JiraClient,
+  scopeJql: string,
+): Promise<number> {
+  const orgId = integration.organizationId;
+  const live = await client.searchIssueIds(
+    `(${scopeJql}) AND issuetype IN standardIssueTypes()`,
+  );
+  if (live.size === 0) {
+    console.warn(
+      `[jira] scope for org ${orgId} came back empty — skipping reconciliation rather than archiving the whole board`,
+    );
+    return 0;
+  }
+  const vanished = vanishedLinks(
+    live,
+    await ctx.storage.jiraIntegrations.listLinkedIssuesOnBoard(orgId),
+  );
+  if (vanished.length === 0) return 0;
+
+  for (const link of vanished) {
+    const before = await ctx.storage.taskBoard.getById(link.itemId, orgId);
+    if (!before || before.status === "archived") continue;
+    const item = await ctx.storage.taskBoard.update(
+      link.itemId,
+      orgId,
+      { status: "archived" },
+      JIRA_SYNC_ACTOR,
+    );
+    await ctx.storage.taskBoard.recordActivity({
+      taskBoardItemId: link.itemId,
+      action: "status_changed",
+      actorId: null,
+      data: { from: before.status, to: "archived" },
+    });
+    emitTaskBoardUpdated(orgId, item);
+    console.log(
+      `[jira] ${link.jiraIssueKey} is no longer in board ${integration.boardId}'s scope — archived its card`,
+    );
+  }
+  return vanished.length;
+}
+
 async function runSync(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
@@ -350,11 +442,8 @@ async function runSync(
   const { accountId: integrationAccountId } = await client.myself();
   const users = new JiraUserDirectory(client);
   const runStartedAt = new Date();
-  const jql = buildJql(
-    integration,
-    await client.getBoardScopeJql(boardId),
-    runStartedAt,
-  );
+  const scopeJql = await client.getBoardScopeJql(boardId);
+  const jql = buildJql(integration, scopeJql, runStartedAt);
   const sprints = new JiraSprintMirror(ctx, orgId);
   await sprints.seed(await client.listBoardSprints(boardId));
   const counts: JiraSyncCounts = {
@@ -362,7 +451,10 @@ async function runSync(
     updated: 0,
     unchanged: 0,
     skipped: 0,
+    archived: 0,
+    unmappedStatuses: [],
   };
+  const unmapped = new Set<string>();
   let watermark: Date | undefined;
   let nextPageToken: string | undefined;
   let processed = 0;
@@ -405,6 +497,9 @@ async function runSync(
         | TaskBoardItemStatus
         | undefined;
       if (!status || !isCardIssue(issue)) {
+        if (!status && isCardIssue(issue)) {
+          unmapped.add(issue.fields.status.name);
+        }
         counts.skipped++;
         watermark = issueUpdated;
         continue;
@@ -519,6 +614,19 @@ async function runSync(
     }
 
     if (!nextPageToken) break;
+  }
+
+  counts.unmappedStatuses = [...unmapped].sort();
+  // Reconciliation reads the WHOLE scope, so it waits for a run that finished
+  // the incremental pass — mid-backfill, most of the board is legitimately
+  // not linked yet.
+  if (processed < MAX_ISSUES_PER_RUN) {
+    counts.archived = await reconcileVanishedIssues(
+      ctx,
+      integration,
+      client,
+      scopeJql,
+    );
   }
 
   // A run that legitimately saw nothing still has to set the watermark, or

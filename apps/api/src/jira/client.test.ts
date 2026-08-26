@@ -941,6 +941,72 @@ describe("JiraClient issue reads", () => {
     );
   });
 
+  it("collects every id in scope, walking pages by token", async () => {
+    let served = 0;
+    await withRoutes(
+      [
+        [
+          /search\/jql/,
+          () =>
+            new Response(
+              JSON.stringify(
+                served++ === 0
+                  ? { issues: [{ id: "1" }, { id: "2" }], nextPageToken: "t2" }
+                  : { issues: [{ id: "3" }] },
+              ),
+              { status: 200 },
+            ),
+        ],
+      ],
+      async (calls) => {
+        expect(await client().searchIssueIds("project = OS")).toEqual(
+          new Set(["1", "2", "3"]),
+        );
+        expect(calls).toHaveLength(2);
+        expect(calls[1]).toContain("nextPageToken=t2");
+      },
+    );
+  });
+
+  it("costs no Sprint-field lookup — this sweep asks for ids only", async () => {
+    await withRoutes(
+      [[/search\/jql/, { issues: [{ id: "1" }] }]],
+      async (calls) => {
+        await client().searchIssueIds("project = OS");
+        expect(calls.some((url) => /rest\/api\/3\/field/.test(url))).toBe(
+          false,
+        );
+        expect(calls[0]).toContain("fields=id");
+      },
+    );
+  });
+
+  it("refuses to answer rather than hand back a truncated scope", async () => {
+    // A partial set read as "everything in scope" would archive live cards.
+    await withRoutes(
+      [
+        [
+          /search\/jql/,
+          () =>
+            new Response(
+              JSON.stringify({
+                issues: Array.from({ length: 1000 }, (_, i) => ({
+                  id: `i${i}`,
+                })),
+                nextPageToken: "always-more",
+              }),
+              { status: 200 },
+            ),
+        ],
+      ],
+      async () => {
+        await expect(client().searchIssueIds("project = OS")).rejects.toThrow(
+          "refusing to reconcile",
+        );
+      },
+    );
+  });
+
   it("mirrors the board's own sprints, so a closed one stops reading as current", async () => {
     await withRoutes(
       [

@@ -59,7 +59,10 @@ export const settings = {
   "settings.jira.waitingFirstSync": "Waiting for the first sync",
   "settings.jira.syncNow": "Sync now",
   "settings.jira.syncing": "Syncing…",
-  "settings.jira.syncDone": "Synced: {created} created, {updated} updated",
+  "settings.jira.syncDone":
+    "Synced: {created} created, {updated} updated, {archived} archived",
+  "settings.jira.unmappedWarning":
+    "Not mapped yet: {columns}. An issue moving into one of these columns is skipped, and its card stays in whatever lane it last had — pick a lane, or \u201cDon't sync\u201d to say so on purpose.",
   "settings.jira.syncFailed": "Sync failed",
   "settings.jira.saveFailed": "Could not save the Jira settings",
   "settings.jira.createTokenLink": "Create an API token",

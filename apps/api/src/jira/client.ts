@@ -106,6 +106,14 @@ const MAX_SPRINT_FIELDS = 20;
 /** Sprints read off one board — bounds a decade of history on a busy board. */
 const MAX_BOARD_SPRINTS = 500;
 
+/** Ids per page of the reconciliation sweep. Jira allows far more for an
+ *  id-only search than for one carrying fields. */
+const ID_PAGE_SIZE = 1000;
+
+/** Pages the reconciliation sweep will walk. Past this it refuses to answer
+ *  rather than hand back a partial set that reads as "these cards are gone". */
+const MAX_RECONCILE_PAGES = 20;
+
 /** A non-2xx answer from Jira, carrying the status so a caller can react to a
  *  specific one (a 400 means the request body was refused, not the request). */
 class JiraRequestError extends Error {
@@ -412,6 +420,44 @@ export class JiraClient {
       return ids.slice(0, MAX_SPRINT_FIELDS);
     });
     return this.sprintFieldsPromise;
+  }
+
+  /**
+   * Every issue id currently in scope, for the reconciliation pass.
+   *
+   * Ids only, which is why it can ask for far bigger pages than
+   * {@link searchIssues}: this is a set-membership question ("is this card's
+   * issue still on the board?"), and getting it in two requests instead of
+   * thirty is what makes it affordable on every tick.
+   *
+   * An issue Jira has deleted or archived is absent here while
+   * `GET /issue/{key}` still answers 200 for the archived case — so absence
+   * from THIS set, not a 404 probe per card, is the signal.
+   */
+  async searchIssueIds(jql: string): Promise<Set<string>> {
+    const ids = new Set<string>();
+    let nextPageToken: string | undefined;
+    // Pages, not `ids.size`: a page that repeats ids it already sent grows the
+    // set by nothing and would spin here forever.
+    for (let page = 0; page < MAX_RECONCILE_PAGES; page++) {
+      const query = new URLSearchParams({
+        jql,
+        maxResults: String(ID_PAGE_SIZE),
+        fields: "id",
+      });
+      if (nextPageToken) query.set("nextPageToken", nextPageToken);
+      const result = await this.request<{
+        issues?: Array<{ id: string }>;
+        nextPageToken?: string | null;
+      }>(`/rest/api/3/search/jql?${query}`);
+      for (const issue of result.issues ?? []) ids.add(issue.id);
+      nextPageToken = result.nextPageToken ?? undefined;
+      if (!nextPageToken) return ids;
+    }
+    // Truncated: the caller must not read absence as "deleted" off a partial set.
+    throw new Error(
+      `Jira scope exceeds ${MAX_RECONCILE_PAGES * ID_PAGE_SIZE} issues — refusing to reconcile against a partial list`,
+    );
   }
 
   /**

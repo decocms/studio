@@ -58,6 +58,8 @@ const syncResultSchema = z.union([
     updated: z.number(),
     unchanged: z.number(),
     skipped: z.number(),
+    archived: z.number(),
+    unmappedStatuses: z.array(z.string()),
   }),
   z.object({ error: z.string() }),
 ]);
@@ -292,9 +294,11 @@ export const JIRA_SYNC_RUN = defineTool({
   name: "JIRA_SYNC_RUN",
   description:
     "Pull from Jira into the task board right now (the 'I just changed " +
-    "something in Jira' button). Returns created/updated/unchanged/skipped " +
-    "counts (skipped = an issue whose Jira status maps to no lane, or an epic), " +
-    "or the error that was recorded on the integration.",
+    "something in Jira' button). Returns created/updated/unchanged/skipped/" +
+    "archived counts (skipped = an issue whose Jira status maps to no lane, or " +
+    "an epic; archived = a card whose issue left the board's scope), plus the " +
+    "Jira statuses it had to skip for lack of a mapping — or the error that " +
+    "was recorded on the integration.",
   inputSchema: z.object({}),
   outputSchema: z.object({ result: syncResultSchema }),
   handler: async (_input, ctx) => {

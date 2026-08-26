@@ -4978,6 +4978,8 @@ export interface StudioToolIO {
             updated: number;
             unchanged: number;
             skipped: number;
+            archived: number;
+            unmappedStatuses: string[];
           }
         | { error: string };
     };

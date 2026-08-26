@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { buildJql } from "./sync";
+import { buildJql, vanishedLinks } from "./sync";
 
 /**
  * The pull's query. Worth pinning because it is the whole definition of which
@@ -92,5 +92,40 @@ describe("buildJql", () => {
         NOW,
       ),
     ).toContain("updated >= -5m");
+  });
+});
+
+/**
+ * The reconciliation's decision, which is the only place the sync acts on the
+ * ABSENCE of data — on one real board, six cards pointed at issues that had
+ * been deleted or archived in Jira days earlier and would have sat there
+ * forever.
+ */
+describe("vanishedLinks", () => {
+  const link = (jiraIssueId: string) => ({
+    jiraIssueId,
+    itemId: `i${jiraIssueId}`,
+  });
+
+  it("picks exactly the cards whose issue is no longer in scope", () => {
+    expect(
+      vanishedLinks(new Set(["1", "3"]), [link("1"), link("2"), link("3")]),
+    ).toEqual([link("2")]);
+  });
+
+  it("takes nothing when every card is still in scope", () => {
+    expect(vanishedLinks(new Set(["1", "2"]), [link("1"), link("2")])).toEqual(
+      [],
+    );
+  });
+
+  /** A filter matching nothing is indistinguishable from one that broke, a
+   *  revoked permission, or a renamed project — so it archives nothing. */
+  it("refuses to archive the whole board off an empty scope", () => {
+    expect(vanishedLinks(new Set(), [link("1"), link("2")])).toEqual([]);
+  });
+
+  it("has nothing to do on a board with no linked cards", () => {
+    expect(vanishedLinks(new Set(["1"]), [])).toEqual([]);
   });
 });
