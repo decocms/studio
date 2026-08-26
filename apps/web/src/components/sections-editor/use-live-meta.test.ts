@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { metaSourceOrder } from "./use-live-meta";
+import { KEYS } from "@/lib/query-keys";
+import { liveMetaQueryKey, metaSourceOrder } from "./use-live-meta";
 
 const PREVIEW = "https://sandbox.example.deco.host";
 const PROD = "https://www.example.com";
@@ -96,5 +97,49 @@ describe("metaSourceOrder", () => {
         fastPreviewActive: true,
       }),
     ).toEqual([{ kind: "committed" }]);
+  });
+});
+
+describe("liveMetaQueryKey", () => {
+  const params = {
+    orgSlug: "acme",
+    virtualMcpId: "vmid-1",
+    branch: "feature-branch",
+  };
+
+  // The sandbox lifecycle invalidates live meta with the (org, vmid, branch)
+  // prefix when the dev server comes up. If the head of this key ever stops
+  // matching that prefix, the invalidation silently no-ops and the CMS keeps
+  // rendering forms from the committed/production schema for the whole
+  // session — on a Deno site (no committed meta.gen.json) that means the
+  // form shows main's fields, not the branch's.
+  it("keeps KEYS.liveMeta(org, vmid, branch) as a prefix", () => {
+    const key = liveMetaQueryKey({
+      ...params,
+      previewUrl: PREVIEW,
+      productionUrl: PROD,
+    });
+    const scope = KEYS.liveMeta(
+      params.orgSlug,
+      params.virtualMcpId,
+      params.branch,
+    );
+    expect(key.slice(0, scope.length)).toEqual([...scope]);
+  });
+
+  it("keeps the prefix when no URLs are known yet", () => {
+    const key = liveMetaQueryKey(params);
+    const scope = KEYS.liveMeta(
+      params.orgSlug,
+      params.virtualMcpId,
+      params.branch,
+    );
+    expect(key.slice(0, scope.length)).toEqual([...scope]);
+  });
+
+  it("varies by URL tail so a settings edit re-fetches", () => {
+    expect(liveMetaQueryKey({ ...params, productionUrl: PROD })).not.toEqual(
+      liveMetaQueryKey({ ...params, productionUrl: "https://other.example" }),
+    );
   });
 });
