@@ -604,13 +604,13 @@ function resolveActiveFieldKeyInScope(
     }
   }
 
-  // Structural block-ref fast-path: an item carries its section container's key in `ownerPath` (see recordContainerOwner), so the owning block-ref resolves by exact key — the invisible replacement for the old standalone ancestor crumb. One sibling per level can be in the chain, so a match is unambiguous; older crumbs without it fall through to the heuristics below.
+  // Structural block-ref fast-path: an item carries its section container's key in `ownerPath` (see recordContainerOwner), so the owning block-ref resolves by exact key — the invisible replacement for the old standalone ancestor crumb. Only ONE of this scope's block-refs can legitimately be an owner (an item lives in one container); if a deeper container's key collides with a sibling's here, resolution is ambiguous, so fall through to the heuristics rather than guess by key order. Older crumbs without ownerPath fall through too.
   const owners = breadcrumbPath.flatMap((crumb) => crumbOwnerPath(crumb) ?? []);
   if (owners.length > 0) {
-    for (const key of keys) {
-      if (properties[key]?.type !== "block-ref") continue;
-      if (owners.includes(key)) return key;
-    }
+    const ownedHere = keys.filter(
+      (key) => properties[key]?.type === "block-ref" && owners.includes(key),
+    );
+    if (ownedHere.length === 1) return ownedHere[0]!;
   }
 
   for (const key of keys) {

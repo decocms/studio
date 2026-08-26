@@ -859,6 +859,32 @@ describe("resolveActiveFieldKey", () => {
         { label: couponUrl, itemIndex: 0, ownerPath: ["children"] },
       ]),
     ).toBe("children");
+    // Collision guard: a deeper container key that also names a sibling here makes ownership ambiguous. `fallback` is FIRST in key order, so a naive first-match fast-path would wrongly pick it; the guard must fall through so the schema owner still pins `children` via meta.
+    const collidingProps = {
+      fallback: properties.fallback,
+      children: properties.children,
+    };
+    const collidingValue = {
+      fallback: objValue.fallback,
+      children: objValue.children,
+    };
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(collidingProps),
+        collidingProps,
+        collidingValue,
+        [
+          {
+            label: couponUrl,
+            itemIndex: 0,
+            arrayLabel: "Cupons da PDP",
+            ownerPath: ["children", "fallback"],
+          },
+        ],
+        undefined,
+        meta,
+      ),
+    ).toBe("children");
   });
 
   test("narrows to a PLP loader whose selectedFacets[] item is labelled by key", () => {
