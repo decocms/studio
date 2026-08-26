@@ -57,14 +57,23 @@ func stripDerived(c *config.Enriched) *config.TenantConfig {
 // Copies rather than mutates: the input aliases the live store's config, so
 // clearing the field in place would disarm the clone step itself.
 func stripSubmoduleTokens(c *config.TenantConfig) *config.TenantConfig {
-	if c == nil || c.Git == nil || c.Git.Repository == nil ||
-		c.Git.Repository.SubmoduleCredentials == nil {
+	if c == nil || c.Git == nil {
 		return c
 	}
-	repo := *c.Git.Repository
-	repo.SubmoduleCredentials = nil
 	git := *c.Git
-	git.Repository = &repo
+	if git.Repository != nil {
+		repo := *git.Repository
+		repo.SubmoduleCredentials = nil
+		git.Repository = &repo
+	}
+	if len(git.Repositories) > 0 {
+		repos := make([]config.GitRepository, len(git.Repositories))
+		for i, repo := range git.Repositories {
+			repos[i] = repo
+			repos[i].SubmoduleCredentials = nil
+		}
+		git.Repositories = repos
+	}
 	out := *c
 	out.Git = &git
 	return &out

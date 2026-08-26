@@ -113,61 +113,6 @@ export type DefaultHomeAgentsConfig = z.infer<
 >;
 
 /**
- * UTC midnight of a `YYYY-MM-DD` calendar day, or null when that day is not
- * real. The single reader of a `startDate` — `@decocms/shared/sprints` uses
- * this too, so a stored cadence and an incoming one are judged by one rule.
- *
- * Matching the shape is not enough: `Date.parse` rolls an out-of-range day
- * over rather than failing, so `2026-02-31` reads back as March 3 and every
- * sprint boundary slides three days with nothing to show for it. Round-tripping
- * the parse rejects the day instead of silently relabelling the calendar.
- */
-export function parseCalendarDay(day: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
-  const ms = Date.parse(`${day}T00:00:00.000Z`);
-  if (Number.isNaN(ms)) return null;
-  return new Date(ms).toISOString().slice(0, 10) === day ? ms : null;
-}
-
-/**
- * Sprint cadence for the task board. Its own column rather than an entry in
- * the `flags` bag: `weeks` and `startDate` are not booleans, and `enabled`
- * belongs with them so turning sprints on and setting their cadence is one
- * write.
- *
- * Sprints are DERIVED from this cadence, not rows: sprint N is the Nth
- * `weeks`-long window starting at `startDate` (see `@decocms/shared/sprints`).
- * A task carries only its sprint number, so changing the cadence rewrites no
- * cards — but it re-dates EVERY window, closed ones included, so a team that
- * changes `weeks` mid-flight silently moves the dates its past sprints ran on.
- */
-export const SprintConfigSchema = z.object({
-  enabled: z
-    .boolean()
-    .describe(
-      "Whether the board shows the sprint property and its filter. Off hides both; tasks keep any sprint already assigned.",
-    ),
-  weeks: z
-    .number()
-    .int()
-    .min(1)
-    .max(12)
-    .describe("How many weeks one sprint lasts."),
-  startDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    // Rejected at the write: a rolled-over day silently shifts every window.
-    .refine((day) => parseCalendarDay(day) !== null, {
-      message: "startDate must be a real calendar day",
-    })
-    .describe(
-      "Calendar day sprint 1 starts on (YYYY-MM-DD, read as UTC). Every later sprint is counted from here.",
-    ),
-});
-
-export type SprintConfig = z.infer<typeof SprintConfigSchema>;
-
-/**
  * Org-level boolean toggles, stored in the `organization_settings.flags`
  * jsonb bag. THE single source of truth: adding a flag is one line here —
  * storage, the settings tools, and the web hook all derive from this schema.

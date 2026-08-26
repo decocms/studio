@@ -180,6 +180,9 @@ import * as migration178jirastatusmappingarray from "./178-jira-status-mapping-a
 import * as migration179notificationmentioned from "./179-notification-mentioned.ts";
 import * as migration180taskboarditemtype from "./180-task-board-item-type.ts";
 import * as migration181taskboarditemtyperequired from "./181-task-board-item-type-required.ts";
+import * as migration182taskboardsprintsentities from "./182-task-board-sprints-entities.ts";
+import * as migration183dropjirajqlfilter from "./183-drop-jira-jql-filter.ts";
+import * as migration184jirarescanafterscopechange from "./184-jira-rescan-after-scope-change.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -391,6 +394,9 @@ const migrations: Record<string, Migration> = {
   "179-notification-mentioned": migration179notificationmentioned,
   "180-task-board-item-type": migration180taskboarditemtype,
   "181-task-board-item-type-required": migration181taskboarditemtyperequired,
+  "182-task-board-sprints-entities": migration182taskboardsprintsentities,
+  "183-drop-jira-jql-filter": migration183dropjirajqlfilter,
+  "184-jira-rescan-after-scope-change": migration184jirarescanafterscopechange,
 };
 
 export default migrations;

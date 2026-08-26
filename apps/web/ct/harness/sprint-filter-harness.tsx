@@ -1,9 +1,5 @@
 import { useState } from "react";
-import {
-  mondayOfWeek,
-  sprintOptions,
-  type SprintConfig,
-} from "@decocms/shared/sprints";
+import type { Sprint } from "@decocms/shared/sprints";
 import {
   EMPTY_FILTERS,
   TaskFiltersBar,
@@ -11,19 +7,41 @@ import {
 } from "@/layouts/task-board/task-filters";
 
 /**
- * Anchored to this week's Monday so "today" is always sprint 1 — the picker
- * reads the real clock, and a fixed start date would make which sprint is
- * current depend on the day the suite runs.
+ * Fixed sprints, in the order the board is expected to offer them: what's
+ * running, then what's next, then history. Fixed dates rather than a clock
+ * anchor — a sprint's state is now its own field, so nothing here depends on
+ * the day the suite runs.
  */
-const CONFIG: SprintConfig = {
-  enabled: true,
-  weeks: 2,
-  startDate: mondayOfWeek(new Date()),
-};
-
-/** Whatever the board would offer for this cadence — hardcoding a count here
- *  would leave the horizon test asserting its own constant. */
-const SPRINTS = sprintOptions(CONFIG, new Date());
+const SPRINTS: Sprint[] = [
+  {
+    id: "sprint_active",
+    name: "Sprint 12",
+    state: "active",
+    startsAt: "2026-03-02T00:00:00.000Z",
+    endsAt: "2026-03-15T00:00:00.000Z",
+  },
+  {
+    id: "sprint_next",
+    name: "Sprint 13",
+    state: "future",
+    startsAt: "2026-03-16T00:00:00.000Z",
+    endsAt: "2026-03-29T00:00:00.000Z",
+  },
+  {
+    id: "sprint_undated",
+    name: "Sprint 14",
+    state: "future",
+    startsAt: null,
+    endsAt: null,
+  },
+  {
+    id: "sprint_past",
+    name: "Sprint 11",
+    state: "closed",
+    startsAt: "2026-02-16T00:00:00.000Z",
+    endsAt: "2026-03-01T00:00:00.000Z",
+  },
+];
 
 /**
  * CT surface for the board's sprint filter: the real `TaskFiltersBar` with only
@@ -41,7 +59,6 @@ export function SprintFilterHarness() {
         tags={[]}
         repos={[]}
         sprints={SPRINTS}
-        sprintConfig={CONFIG}
         onChange={setFilters}
       />
       <pre data-testid="sprint">{JSON.stringify(filters.sprint)}</pre>

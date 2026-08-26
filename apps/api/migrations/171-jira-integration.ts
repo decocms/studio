@@ -11,14 +11,14 @@ import { type Kysely, sql } from "kysely";
  * per tenant, so the mapping is config, not code. Issues whose Jira status is
  * not mapped are skipped by the sync.
  *
- * The tenant picks a BOARD, not a project, because a JQL pull over a project
- * can never mirror what people call "the board": board-backlog membership (the
- * separate Backlog tab) is not a status or a filter, it only exists in the
- * Agile API (`/board/{id}/issue` minus `/board/{id}/backlog`). Boards also
- * carry the column names tenants actually know, which is what the mapping UI
- * shows. `jql_filter` is the escape hatch for the rest of a board's saved
- * filter (labels, sprints, components); non-standard issue types are already
- * excluded in code.
+ * The tenant picks a BOARD, not a project: a board carries the column names
+ * tenants actually know (what the mapping UI shows) and a saved filter that
+ * defines its scope. Migration 182 made that filter the pull's scope; this
+ * migration's original rationale — mirroring board-CARD membership via
+ * `/board/{id}/issue` minus `/board/{id}/backlog` — was wrong, because it made
+ * an issue left in the board's Backlog tab invisible to the sync entirely.
+ * `jql_filter` narrows the pull further (labels, components); non-standard
+ * issue types are already excluded in code.
  *
  * `auto_delegate`: when an issue lands in a column mapped to the board's To Do
  * lane and the card has no assignee, the pull assigns the Super Agent (as the

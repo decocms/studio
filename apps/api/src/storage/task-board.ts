@@ -268,8 +268,8 @@ export class TaskBoardStorage {
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
     dueDate?: string | null;
-    /** Sprint to plan this card into (1-based); null/absent = backlog. */
-    sprint?: number | null;
+    /** Sprint the card belongs to (`TaskBoardSprint.id`); null/absent = backlog. */
+    sprintId?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
     by: string;
@@ -300,7 +300,7 @@ export class TaskBoardStorage {
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
           due_date: params.dueDate ?? null,
-          sprint: params.sprint ?? null,
+          sprint_id: params.sprintId ?? null,
           external_key: params.externalKey ?? null,
           sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
@@ -347,7 +347,7 @@ export class TaskBoardStorage {
       assignedBy?: string | null;
       repo?: string | null;
       dueDate?: string | null;
-      sprint?: number | null;
+      sprintId?: string | null;
       sortOrder?: number;
     },
     by: string,
@@ -370,7 +370,7 @@ export class TaskBoardStorage {
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
-        ...(data.sprint !== undefined ? { sprint: data.sprint } : {}),
+        ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
@@ -2161,7 +2161,7 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     repo: string | null;
     due_date: string | Date | null;
-    sprint?: number | null;
+    sprint_id?: string | null;
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
@@ -2185,7 +2185,7 @@ export class TaskBoardStorage {
         row.due_date instanceof Date
           ? row.due_date.toISOString()
           : row.due_date,
-      sprint: row.sprint ?? null,
+      sprintId: row.sprint_id ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
