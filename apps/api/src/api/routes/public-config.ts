@@ -52,6 +52,9 @@ app.get("/", (c) => {
     ...(isLocalMode() && { internalUrl: getInternalUrl() }),
     ...(getSettings().enableDecoImport && { enableDecoImport: true }),
     brandExtractEnabled: !!getSettings().firecrawlApiKey,
+    hostingEnabled:
+      !!getSettings().controlplaneRestUrl &&
+      !!getSettings().controlplaneServiceToken,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY?.trim() || null,

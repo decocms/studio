@@ -18,6 +18,7 @@ import { PreviewTab } from "./preview-tab";
 import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AssetsTab } from "./assets-tab";
+import { HostingTab } from "./hosting-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
@@ -108,6 +109,9 @@ function TabBody({
   }
   if (activeTab === "assets") {
     return <AssetsTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "hosting") {
+    return <HostingTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {
     return <LibraryTab />;

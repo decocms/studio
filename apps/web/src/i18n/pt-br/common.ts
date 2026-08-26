@@ -304,6 +304,7 @@ export const common = {
   "common.mainPanelTabs.automations": "Automações",
   "common.mainPanelTabs.settings": "Configurações",
   "common.mainPanelTabs.report": "Relatório",
+  "common.mainPanelTabs.hosting": "Hospedagem",
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
   "common.openExternalFailed": "Não foi possível abrir este link no navegador.",

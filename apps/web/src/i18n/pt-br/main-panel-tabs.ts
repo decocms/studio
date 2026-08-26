@@ -31,6 +31,33 @@ export const mainPanelTabs = {
   "mainPanelTabs.fileTab.fileNotAvailable":
     "Este arquivo não está mais disponível.",
   "mainPanelTabs.fileTab.openInNewTab": "Abrir em nova aba",
+  "mainPanelTabs.hostingTab.title": "Hospedagem",
+  "mainPanelTabs.hostingTab.subtitle": "Infraestrutura de {site}",
+  "mainPanelTabs.hostingTab.deployments": "Implantações",
+  "mainPanelTabs.hostingTab.env": "Variáveis de ambiente",
+  "mainPanelTabs.hostingTab.redirects": "Redirecionamentos",
+  "mainPanelTabs.hostingTab.loading": "Carregando…",
+  "mainPanelTabs.hostingTab.noDeployments": "Nenhuma implantação ainda.",
+  "mainPanelTabs.hostingTab.noEnv": "Nenhuma variável de ambiente definida.",
+  "mainPanelTabs.hostingTab.noRedirects":
+    "Nenhum redirecionamento configurado.",
+  "mainPanelTabs.hostingTab.noSiteTitle": "Nenhum site vinculado",
+  "mainPanelTabs.hostingTab.noSiteDescription":
+    "Este projeto ainda não está vinculado a um site hospedado.",
+  "mainPanelTabs.hostingTab.deploymentsError":
+    "Falha ao carregar as implantações",
+  "mainPanelTabs.hostingTab.envError":
+    "Falha ao carregar as variáveis de ambiente",
+  "mainPanelTabs.hostingTab.redirectsError":
+    "Falha ao carregar os redirecionamentos",
+  "mainPanelTabs.hostingTab.colId": "ID",
+  "mainPanelTabs.hostingTab.colStatus": "Status",
+  "mainPanelTabs.hostingTab.colUrl": "URL",
+  "mainPanelTabs.hostingTab.colCreated": "Criado em",
+  "mainPanelTabs.hostingTab.colKey": "Chave",
+  "mainPanelTabs.hostingTab.colValue": "Valor",
+  "mainPanelTabs.hostingTab.colFrom": "De",
+  "mainPanelTabs.hostingTab.colTo": "Para",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Biblioteca",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Visualização principal",

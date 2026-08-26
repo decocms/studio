@@ -191,6 +191,13 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+  /** Deco control-plane REST base URL (e.g.
+   *  https://control-plane.infra.deco.cx/api/v1). Read by the per-site Hosting
+   *  tab's BFF proxy. Unset ⇒ the Hosting tab is hidden and the proxy 503s. */
+  controlplaneRestUrl: string | undefined;
+  /** Bearer service token for the control-plane REST API. Never leaves the
+   *  server — the BFF proxy attaches it and returns only the proxied JSON. */
+  controlplaneServiceToken: string | undefined;
   /** Legacy deco.cx analytics warehouse (CDN + shared-infra usage facts) read
    *  by the Infra Billing settings page. A DIFFERENT ClickHouse from
    *  `clickhouseUrl`, which is Studio's own monitoring store. Unset = the

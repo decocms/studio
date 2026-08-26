@@ -374,6 +374,8 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+    controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
+    controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
     clickhouseAnalyticsUrl: envVars.CLICKHOUSE_ANALYTICS_ADDRESS,
     clickhouseAnalyticsUsername:
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",

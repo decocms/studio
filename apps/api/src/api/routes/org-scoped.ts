@@ -13,6 +13,7 @@ import type { Env } from "../hono-env";
 
 import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
+import { createHostingRoutes } from "./hosting";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createCredentialVaultRoutes } from "./credential-vault";
 import { createDownstreamTokenRoutes } from "./downstream-token";
@@ -104,6 +105,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
   app.route("/", createHomeNextActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
+  app.route("/hosting", createHostingRoutes()); // /api/:org/hosting/:site/...
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(
     "/",

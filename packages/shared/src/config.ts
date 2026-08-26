@@ -54,6 +54,8 @@ export interface PublicConfig {
   internalUrl?: string;
   enableDecoImport?: boolean;
   brandExtractEnabled?: boolean;
+  /** Whether the per-site Hosting tab (control-plane BFF proxy) is available. */
+  hostingEnabled?: boolean;
   auth: AuthConfig;
   posthog: { key: string; host: string } | null;
   googleMapsApiKey: string | null;

@@ -646,6 +646,15 @@ export const KEYS = {
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
   decoApps: () => ["deco-apps"] as const,
 
+  // Hosting tab — per-site control-plane reads (scoped by org + site slug),
+  // proxied through the BFF at /api/:org/hosting/:site/*.
+  hostingDeployments: (org: string, site: string) =>
+    ["hosting", org, site, "deployments"] as const,
+  hostingEnv: (org: string, site: string) =>
+    ["hosting", org, site, "env"] as const,
+  hostingRedirects: (org: string, site: string) =>
+    ["hosting", org, site, "redirects"] as const,
+
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,
 

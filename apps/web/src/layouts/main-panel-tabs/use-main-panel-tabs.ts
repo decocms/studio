@@ -66,6 +66,7 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT } from "@/i18n/use-t.ts";
 
 export type AgentTabDef = {
@@ -171,6 +172,9 @@ export function useMainPanelTabs(ctx: {
   const { granted: canManageAgents } = useCapability("agents:manage");
   const reportsOnly = useReportsOnly();
   const navV2 = useNavV2();
+  // Per-site Hosting tab: only surfaces when the deployment wired the
+  // control-plane BFF proxy (public config `hostingEnabled`).
+  const hostingEnabled = usePublicConfig().hostingEnabled === true;
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -384,6 +388,12 @@ export function useMainPanelTabs(ctx: {
     systemTabs.push({
       id: "assets",
       title: t("common.mainPanelTabs.assets"),
+    });
+  }
+  if (hostingEnabled) {
+    systemTabs.push({
+      id: "hosting",
+      title: t("common.mainPanelTabs.hosting"),
     });
   }
   if (gitTabVisible) {
