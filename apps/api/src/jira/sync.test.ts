@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { buildJql, isUnchanged, vanishedLinks } from "./sync";
+import { buildJql, isUnchanged, rescanContinues, vanishedLinks } from "./sync";
 
 /**
  * The pull's query. Worth pinning because it is the whole definition of which
@@ -27,6 +27,7 @@ function integration(
     enabled: true,
     lastSyncedAt: null,
     lastSyncError: null,
+    rescanPending: false,
     createdBy: "user-1",
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
@@ -158,5 +159,30 @@ describe("isUnchanged", () => {
     expect(isUnchanged(seen, new Date("2020-01-01T00:00:00.000Z"), true)).toBe(
       false,
     );
+  });
+});
+
+/**
+ * A rescan run only advances as far as its per-run caps allow. If the flag
+ * that forces the rescan doesn't survive a truncated run, the NEXT run reads
+ * a non-null watermark, stops treating itself as a rescan, and silently skips
+ * every issue past the cap as "unchanged" — the exact bug 185 fixed, just
+ * past 500 issues instead of at the watermark.
+ */
+describe("rescanContinues", () => {
+  it("keeps forcing a rescan when a run hit the issue cap", () => {
+    expect(rescanContinues(true, 500, 3)).toBe(true);
+  });
+
+  it("keeps forcing a rescan when a run hit the page cap", () => {
+    expect(rescanContinues(true, 10, 25)).toBe(true);
+  });
+
+  it("clears once a rescan run finishes the scope under both caps", () => {
+    expect(rescanContinues(true, 42, 1)).toBe(false);
+  });
+
+  it("never claims a rescan for a plain incremental run", () => {
+    expect(rescanContinues(false, 500, 25)).toBe(false);
   });
 });
