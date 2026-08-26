@@ -73,6 +73,7 @@ export const REVIEWER_DISALLOWED_TOOLS: Record<ReviewerKind, string[]> = {
 /** The review instructions unique to each reviewer. Shared scaffolding (load
  *  the PR, don't push code, end with a decision) lives in the prompt builder. */
 const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
+  // prompt-region:start qa-agent
   qa:
     "You are the QA Agent. Your job is to confirm the task ACTUALLY SOLVED THE " +
     "PROBLEM — not to review code style. Exercise the feature/behavior the task " +
@@ -95,6 +96,8 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "criteria / scenarios you checked with a pass/fail on each, a before→after " +
     "pointer to the screenshots, the exact URL(s) and viewport you exercised, and " +
     "anything you could not verify and why.",
+  // prompt-region:end qa-agent
+  // prompt-region:start code-reviewer
   code_review:
     "You are the Code Reviewer. Review the code changes for correctness, " +
     "security, and quality. FIRST look for a review skill/command appropriate " +
@@ -102,6 +105,7 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) and " +
     "use it. Read the diff critically and flag concrete issues with file/line " +
     "references.",
+  // prompt-region:end code-reviewer
 };
 
 /**

@@ -134,10 +134,17 @@ const adminOrgsRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/admin/orgs.tsx")),
 });
 
+const adminPromptsRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/prompts",
+  component: lazyRouteComponent(() => import("./routes/admin/prompts.tsx")),
+});
+
 const adminLayoutWithChildren = adminLayout.addChildren([
   adminIndexRoute,
   adminUsersRoute,
   adminOrgsRoute,
+  adminPromptsRoute,
 ]);
 
 // ============================================
