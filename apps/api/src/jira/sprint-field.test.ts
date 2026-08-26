@@ -103,39 +103,82 @@ describe("parseSprintRefs", () => {
 });
 
 describe("pickIssueSprint", () => {
-  const ref = (id: string, state: "active" | "future" | "closed") => ({
+  const ref = (
+    id: string,
+    state: "active" | "future" | "closed",
+    startsAt: string | null = null,
+  ) => ({
     id,
-    name: id,
+    name: `Sprint ${id}`,
     state,
-    startsAt: null,
+    startsAt: startsAt ? new Date(startsAt) : null,
     endsAt: null,
   });
 
   it("prefers the running sprint over a closed one it was carried out of", () => {
-    // A carried-over issue lists BOTH, the closed one first.
+    // A carried-over issue lists BOTH, and Jira sends the running one FIRST.
     expect(
-      pickIssueSprint([ref("11", "closed"), ref("12", "active")])?.id,
-    ).toBe("12");
+      pickIssueSprint([
+        ref("2674", "active", "2026-08-25T00:00:00.000Z"),
+        ref("2673", "closed", "2026-08-10T00:00:00.000Z"),
+      ])?.id,
+    ).toBe("2674");
     expect(
-      pickIssueSprint([ref("12", "active"), ref("11", "closed")])?.id,
-    ).toBe("12");
+      pickIssueSprint([
+        ref("2673", "closed", "2026-08-10T00:00:00.000Z"),
+        ref("2674", "active", "2026-08-25T00:00:00.000Z"),
+      ])?.id,
+    ).toBe("2674");
   });
 
-  it("takes the newest of several sprints in the same state", () => {
+  /** Real shape from a board that had carried one issue through four sprints:
+   *  `[Sprint 2, Sprint 3, Sprint 1, Sprint 2]`. Reading the LAST entry would
+   *  have labelled the card with the second-oldest sprint of the four. */
+  it("picks the latest closed sprint by date, not by array position", () => {
+    expect(
+      pickIssueSprint([
+        ref("2607", "closed", "2026-07-24T00:00:00.000Z"),
+        ref("2673", "closed", "2026-08-10T00:00:00.000Z"),
+        ref("2508", "closed", "2026-07-08T00:00:00.000Z"),
+        ref("2640", "closed", "2026-07-24T00:00:00.000Z"),
+      ])?.id,
+    ).toBe("2673");
+  });
+
+  it("falls back to the sprint id when Jira sends no dates", () => {
+    // Ids are handed out in creation order, so the larger one is the later.
     expect(
       pickIssueSprint([ref("12", "active"), ref("13", "active")])?.id,
+    ).toBe("13");
+    expect(
+      pickIssueSprint([ref("13", "active"), ref("12", "active")])?.id,
+    ).toBe("13");
+  });
+
+  it("prefers a dated sprint to one Jira never scheduled", () => {
+    expect(
+      pickIssueSprint([
+        ref("99", "future"),
+        ref("13", "future", "2026-09-07T00:00:00.000Z"),
+      ])?.id,
     ).toBe("13");
   });
 
   it("prefers a running sprint to a planned one", () => {
     expect(
-      pickIssueSprint([ref("13", "future"), ref("12", "active")])?.id,
+      pickIssueSprint([
+        ref("13", "future", "2026-09-07T00:00:00.000Z"),
+        ref("12", "active", "2026-08-25T00:00:00.000Z"),
+      ])?.id,
     ).toBe("12");
   });
 
   it("keeps a card whose only sprint has closed in that sprint", () => {
     expect(
-      pickIssueSprint([ref("10", "closed"), ref("11", "closed")])?.id,
+      pickIssueSprint([
+        ref("10", "closed", "2026-06-01T00:00:00.000Z"),
+        ref("11", "closed", "2026-06-15T00:00:00.000Z"),
+      ])?.id,
     ).toBe("11");
   });
 

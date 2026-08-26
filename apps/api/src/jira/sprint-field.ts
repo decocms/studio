@@ -51,7 +51,12 @@ function parseDate(value: unknown): Date | null {
 }
 
 /**
- * The sprints an issue's Sprint field names, oldest first (Jira's order).
+ * The sprints an issue's Sprint field names.
+ *
+ * The order Jira sends is NOT chronological — a real issue carried into the
+ * running sprint answers `[Sprint 4 (active), Sprint 3 (closed)]`, and another
+ * answers `[Sprint 2, Sprint 3, Sprint 1, Sprint 2]`. Nothing here or in
+ * {@link pickIssueSprint} may lean on position.
  *
  * Anything unrecognizable is dropped rather than guessed: Jira Server used to
  * send these as `...Sprint@1a2b[id=7,state=ACTIVE,name=…]` strings, and
@@ -91,18 +96,43 @@ export function parseSprintRefs(value: unknown): JiraSprintRef[] {
 /**
  * Which of an issue's sprints the card belongs to.
  *
- * A carried-over issue lists every sprint it has ever been in, so "the last
- * one" is not enough: after a sprint closes with the issue moved forward, the
- * open sprint is the one the team means. Newest running sprint, else newest
- * planned, else the most recent closed one (a card whose only sprint is
- * finished still belongs to that history, not to the backlog).
+ * A carried-over issue lists every sprint it has ever been in, so one of them
+ * has to be chosen: the running sprint if there is one, else the planned one,
+ * else the most recent closed sprint (a card whose only sprint has finished
+ * still belongs to that history, not to the backlog).
+ *
+ * "Most recent" is decided by start date and then by sprint id, never by
+ * position — Jira's array is unordered (see {@link parseSprintRefs}), and its
+ * sprint ids are handed out in creation order, which is the only tiebreak
+ * available for the sprints Jira sends with no dates at all.
  */
 export function pickIssueSprint(
   refs: readonly JiraSprintRef[],
 ): JiraSprintRef | null {
-  const newestWith = (state: SprintState) =>
-    refs.findLast((ref) => ref.state === state);
-  return newestWith("active") ?? newestWith("future") ?? refs.at(-1) ?? null;
+  return (
+    newestOf(refs, "active") ??
+    newestOf(refs, "future") ??
+    newestOf(refs, "closed")
+  );
+}
+
+function newestOf(
+  refs: readonly JiraSprintRef[],
+  state: SprintState,
+): JiraSprintRef | null {
+  let best: JiraSprintRef | null = null;
+  for (const ref of refs) {
+    if (ref.state === state && (best === null || startsLater(ref, best))) {
+      best = ref;
+    }
+  }
+  return best;
+}
+
+function startsLater(a: JiraSprintRef, b: JiraSprintRef): boolean {
+  if (a.startsAt && b.startsAt) return a.startsAt > b.startsAt;
+  if (a.startsAt !== b.startsAt) return a.startsAt !== null;
+  return Number(a.id) > Number(b.id);
 }
 
 /**
