@@ -885,7 +885,6 @@ async function prepareRun(
     if (publishRunStatus) {
       await publishRunStatusStage({
         streamBuffer,
-        organizationId: input.organizationId,
         harnessId,
         taskId: input.taskId,
         stage: PREPARE_RUN_STATUS_STAGES[0],
@@ -949,7 +948,6 @@ async function prepareRun(
     if (publishRunStatus) {
       await publishRunStatusStage({
         streamBuffer,
-        organizationId: input.organizationId,
         harnessId,
         taskId: input.taskId,
         stage: PREPARE_RUN_STATUS_STAGES[1],
@@ -1359,7 +1357,6 @@ async function prepareRun(
     if (publishRunStatus) {
       await publishRunStatusStage({
         streamBuffer,
-        organizationId: input.organizationId,
         harnessId,
         taskId: input.taskId,
         stage: PREPARE_RUN_STATUS_STAGES[2],
@@ -1397,7 +1394,6 @@ async function prepareRun(
         if (publishRunStatus) {
           await publishRunStatusStage({
             streamBuffer,
-            organizationId: input.organizationId,
             harnessId,
             taskId: mem.thread.id,
             stage: PREPARE_RUN_STATUS_STAGES[3],
@@ -1407,6 +1403,9 @@ async function prepareRun(
           ? new SandboxDispatchClient({
               ctx,
               virtualMcpId: effectiveVirtualMcp.id,
+              // Where its `starting-sandbox` stage goes — the same stream the
+              // rest of the run's status chunks ride.
+              streamBuffer,
               // A repo on the AGENT means a Code Agent chat, with a person
               // watching its preview; a task run's repo is on the thread.
               interactive: Boolean(

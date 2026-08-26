@@ -1,6 +1,4 @@
 import type { UIMessageChunk } from "ai";
-import { createDecopilotRunStatusEvent } from "@decocms/shared/sdk";
-import { sseHub } from "@/event-bus";
 import type { StreamBuffer } from "./stream-buffer";
 
 const RUN_STATUS_STAGES = [
@@ -78,34 +76,25 @@ export function isRunStatusControlChunk(chunk: unknown): boolean {
   return (chunk as { type?: unknown }).type === "data-run-status";
 }
 
+/** The publish surface a stage needs: one raw chunk on the run's own stream. */
+export type RunStatusStreamBuffer = Pick<StreamBuffer, "publishRawChunk">;
+
 /**
- * Report one pre-content stage to whoever is watching the run.
+ * Report one pre-content stage on the run's chunk stream, where the chat is
+ * already listening. Raw (out-of-band) so the stage never becomes a message
+ * part — `isRunStatusControlChunk` is what keeps it out of the projector.
  *
- * Two channels, because the two harnesses are watched differently. Decopilot
- * streams, so its stage rides the thread's own chunk stream. A sandbox-hosted
- * run is batch: the chat never opens that stream (`isBatchHarness`), so its
- * stage goes out as a `decopilot.run.status` event on the org-level `/watch`,
- * which a batch thread is already subscribed to.
- *
- * Best-effort on both paths: a status hint must never fail a dispatch.
+ * Best-effort: a status hint must never fail a dispatch.
  */
 export async function publishRunStatusStage(args: {
-  streamBuffer: Pick<StreamBuffer, "publishRawChunk"> | undefined;
-  /** Required to reach the org `/watch` hub; a sandbox-hosted run without one
-   *  publishes nothing rather than guessing an audience. */
-  organizationId?: string;
+  streamBuffer: RunStatusStreamBuffer | undefined;
   harnessId: string | null | undefined;
   taskId: string;
   stage: BackendRunStatusStage;
 }): Promise<void> {
-  const { streamBuffer, organizationId, harnessId, taskId, stage } = args;
+  const { streamBuffer, harnessId, taskId, stage } = args;
+  if (!streamBuffer || !shouldPublishRunStatus(harnessId)) return;
   try {
-    if (harnessId === "claude-code") {
-      if (!organizationId) return;
-      sseHub.emit(organizationId, createDecopilotRunStatusEvent(taskId, stage));
-      return;
-    }
-    if (!streamBuffer) return;
     await streamBuffer.publishRawChunk(taskId, buildRunStatusChunk(stage));
   } catch {
     // Best-effort UI status. Never fail dispatch because a status hint failed.

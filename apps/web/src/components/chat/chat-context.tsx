@@ -51,10 +51,7 @@ import {
 } from "./pills/agent-options";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
-import {
-  isBatchHarness,
-  shouldBlockHostedRuntime,
-} from "./hosted-runtime-guard";
+import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
@@ -821,10 +818,7 @@ export function ActiveTaskProvider({
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const conn = getOrOpenStream(org.slug, taskId, {
-    client,
-    batch: isBatchHarness(activeTask?.harness_id),
-  });
+  const conn = getOrOpenStream(org.slug, taskId, { client });
   // Suspend until the initial-page MCP fetch settles. The Suspense boundary
   // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
   // catches this and shows the skeleton instead of an empty message list.

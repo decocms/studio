@@ -21,7 +21,6 @@ import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { harnessRunsInSandbox } from "@/harnesses/sandbox-dispatch-client";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 import { splitRequestMessages } from "./conversation";
 import {
@@ -307,8 +306,8 @@ export function applyThreadLock(args: {
  * is a coding agent whose whole point is the checkout, so it runs `claude-code`
  * inside its sandbox rather than hosted Decopilot. Everything else stays on
  * Decopilot. Behind a default-off org flag: this swaps the runtime of every
- * chat on those agents, and claude-code flushes whole turns instead of
- * streaming tokens (see `isBatchHarness` on the web).
+ * chat on those agents, and claude-code emits a block at a time rather than
+ * token deltas.
  *
  * Pure so the decision is testable without a DB; the I/O lives in
  * `resolveDefaultHarness`.
@@ -376,10 +375,9 @@ function assertHostedRuntime(harnessId: string | null | undefined): void {
  * messages) its dispatch is ours to accept too. Gating either like a native
  * desktop runtime 409'd them both.
  *
- * `/stream` is a special case rather than an exception: the route asserts with
- * this, then answers 204 for a batch harness. A sandbox-hosted turn writes whole
- * turns from the pod, so there is no live tail to hold open — the web follows it
- * through the org-level `/watch` instead (see `isBatchHarness`).
+ * `/stream` uses it unmodified: a sandbox-hosted turn's chunks reach the
+ * thread's JetStream subject through the same ingest path as Decopilot's, so
+ * there is one live tail for both.
  *
  * Also the body of `assertPersistedHostedRuntime` (cancel/flip/queue-cancel),
  * which adds the "has this thread started a run at all" check on top: a
@@ -798,7 +796,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       ) {
         await publishRunStatusStage({
           streamBuffer,
-          organizationId: input.organizationId,
           harnessId: pinnedHarness,
           taskId,
           stage: "waiting-runner",
@@ -1103,17 +1100,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
       assertHostedHarness(thread.harness_id);
-      // A batch harness has no live tail: it runs in the pod and writes whole
-      // turns. Answer 204 — the same "nothing to tail" reply this route already
-      // gives below — instead of holding an SSE open or 409ing. The decision
-      // has to be made HERE to be race-free: the client cannot always know the
-      // harness before it opens this, because the thread row may still be
-      // loading. `isBatchHarness` in the web store skips the request whenever
-      // the row IS known; this is the backstop for when it isn't.
-      if (harnessRunsInSandbox(thread.harness_id)) {
-        return c.body(null, 204);
-      }
-
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
       // and after a DBOS replay rehome) needs `"all"` to catch chunks the

@@ -6,7 +6,6 @@ import type {
   ThreadUpdateData,
 } from "@decocms/shared/thread/schema";
 import { getOrOpenStream, type ThreadConnection } from "./thread-connection";
-import { isBatchHarness } from "../hosted-runtime-guard";
 import { extractToolErrorMessage } from "./mcp-utils";
 import { decopilotSSE } from "@/hooks/decopilot-sse-pool";
 import type { SSESubscription } from "@/hooks/create-sse-subscription";
@@ -158,14 +157,8 @@ export class ThreadManagerStore {
   }
 
   setActive(threadId: string): ThreadConnection {
-    // Decide `batch` here too, not just in chat-context: `getOrOpenStream` is
-    // idempotent by key, so whichever call lands first fixes the mode for the
-    // thread. Reading the row we already hold keeps both callers in agreement.
     const conn = getOrOpenStream(this.orgSlug, threadId, {
       client: this.client,
-      batch: isBatchHarness(
-        this.threads.get().find((t) => t.id === threadId)?.harness_id,
-      ),
     });
     if (this.active.get() !== conn) this.active.set(conn);
     return conn;
@@ -605,10 +598,9 @@ export class ThreadManagerStore {
       ...(parsed.data.branch !== undefined && {
         branch: parsed.data.branch,
       }),
-      // Carries the batch-vs-streaming decision for the chat connection (see
-      // `ThreadConnection.enableBatch`) — a row this store only ever learns
-      // about through these events would otherwise stay harness-less until a
-      // reload, and its chat would never go live.
+      // Gates the hosted-runtime check (`shouldBlockHostedRuntime`) — a row
+      // this store only ever learns about through these events would otherwise
+      // stay harness-less until a reload.
       ...(parsed.data.harness_id !== undefined && {
         harness_id: parsed.data.harness_id,
       }),
