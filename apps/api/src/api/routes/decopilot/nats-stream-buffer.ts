@@ -535,14 +535,23 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     let sub;
     try {
-      // v3 ordered (ephemeral, no-ack) consumer over this run's subject. The
-      // replacement for v2's removed `js.subscribe(..., {ordered:true})` push
-      // consumer: same delivery semantics, but driven via the consumer API.
-      const consumer = await js.consumers.get(DECOPILOT_STREAM_NAME, {
-        filter_subjects: subj,
-        deliver_policy: deliverPolicy,
-      });
-      sub = await consumer.consume();
+      // v3 ordered consumer, retried across a transient leader-election window.
+      sub = await retry(
+        async () => {
+          const consumer = await js.consumers.get(DECOPILOT_STREAM_NAME, {
+            filter_subjects: subj,
+            deliver_policy: deliverPolicy,
+          });
+          return consumer.consume();
+        },
+        {
+          maxAttempts: 6,
+          minTimeout: 250,
+          maxTimeout: 5000,
+          jitter: 0.5,
+          isRetriable: isTransientJsApiError,
+        },
+      );
     } catch (err) {
       console.warn(
         "[Decopilot] JetStream tail unavailable (non-critical):",
