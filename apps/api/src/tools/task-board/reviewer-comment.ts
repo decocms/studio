@@ -84,7 +84,7 @@ export function reviewerCommentGap(
 
 /** Does this one comment carry the visual evidence QA owes? `![` opens a
  *  markdown image either side of `embedOrgOutputImages`. Pure — unit-tested. */
-export function hasVisualEvidence(body: string): boolean {
+function hasVisualEvidence(body: string): boolean {
   return body.includes("![") || body.includes(NO_VISUAL_SURFACE);
 }
 
