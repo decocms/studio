@@ -9,6 +9,10 @@ export const MAX_TASK_DESCRIPTION_LENGTH = 50_000;
  *  a title is a one-line label, not a place for the description's content. */
 export const MAX_TASK_TITLE_LENGTH = 500;
 
+/** `owner/name` — GitHub caps a login at 39 chars and a repo name at 100,
+ *  so nothing legitimate approaches this; same reasoning as the caps above. */
+export const MAX_TASK_REPO_LENGTH = 200;
+
 export const TaskBoardItemStatusSchema = z.enum([
   "triage",
   "todo",
