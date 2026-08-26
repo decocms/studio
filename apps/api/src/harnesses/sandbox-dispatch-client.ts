@@ -306,12 +306,13 @@ export class SandboxDispatchClient {
 
   /**
    * The MCP surfaces one run gets: its own narrow Studio endpoint (`mcp`), plus
-   * — when the org opted in — every MCP connection in the org as its own server
-   * (`orgMcps`).
+   * the connections it mounts as servers of their own (`orgMcps`) — the agent's
+   * own aggregations always, the rest of the org's behind a flag. See
+   * {@link orgMcpConnections}.
    *
-   * Behind a flag because it is unbounded: each connection is one more server
-   * the harness connects to, and nothing here knows whether an org has three
-   * connections or thirty.
+   * The org-wide half is flagged because it is unbounded: each connection is one
+   * more server the harness connects to, and nothing here knows whether an org
+   * has three connections or thirty.
    *
    * The connections are resolved BEFORE the key is minted, because they are
    * part of its scope: every proxied tool call is authorized as
@@ -415,27 +416,46 @@ export class SandboxDispatchClient {
   }
 
   /**
-   * The org connections this run mounts, or none when the org has not opted in
-   * (or has no slug, without which the per-connection URL cannot be built).
+   * The connections this run mounts: the ones aggregated ON THE AGENT always,
+   * plus every other MCP connection in the org when it opted in
+   * (`coding_agent_org_mcps`). None without a slug, without which the
+   * per-connection URL cannot be built.
+   *
+   * The agent's own half is not flag-gated because it is not a fan-out: those
+   * connections are exactly what someone attached to this agent, and they are
+   * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
+   * virtual MCP). This harness points at the narrow `task-run` surface instead,
+   * so without them a Code Agent chat lost every tool the agent was configured
+   * with — its GitHub MCP included.
    */
   private async orgMcpConnections(organization: {
     id: string;
     slug?: string;
   }): Promise<ConnectionEntity[]> {
     if (!organization.slug) return [];
-    const settings = await this.ctx.storage.organizationSettings.get(
-      organization.id,
+    const [settings, agent] = await Promise.all([
+      this.ctx.storage.organizationSettings.get(organization.id),
+      // Never throws the run: the synthetic super-agent has no row, and an
+      // unreadable one only costs this run its agent-attached tools.
+      this.ctx.storage.virtualMcps
+        .findById(this.virtualMcpId)
+        .catch(() => null),
+    ]);
+    const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
+    const ownIds = new Set(
+      (agent?.connections ?? []).map(
+        (aggregation) => aggregation.connection_id,
+      ),
     );
-    if (!orgFlagEnabled(settings?.flags, "coding_agent_org_mcps")) return [];
+    if (!orgWide && ownIds.size === 0) return [];
     // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
     const { items } = await this.ctx.storage.connections.list(organization.id);
-    return items.filter(
-      (connection) =>
-        // A connection Studio already knows is erroring only costs the session
-        // a failed connect at startup.
-        connection.status === "active" &&
-        !isStudioOwnedConnection(organization.id, connection.id),
-    );
+    return selectRunConnections({
+      organizationId: organization.id,
+      orgWide,
+      ownIds,
+      connections: items,
+    });
   }
 
   private async *stream(
@@ -1070,6 +1090,30 @@ export async function* ndjsonLines(
  * not something a coding agent should be handed. What the user actually
  * connected is everything else.
  */
+/**
+ * Which of the org's connections a run mounts. Pure — the flag/aggregation
+ * branch is the whole behaviour, so it is what the unit test pins.
+ */
+export function selectRunConnections<
+  T extends { id: string; status?: string | null },
+>(args: {
+  organizationId: string;
+  /** The org opted into every connection (`coding_agent_org_mcps`). */
+  orgWide: boolean;
+  /** Connections aggregated on the agent itself; always mounted. */
+  ownIds: ReadonlySet<string>;
+  connections: readonly T[];
+}): T[] {
+  return args.connections.filter(
+    (connection) =>
+      (args.orgWide || args.ownIds.has(connection.id)) &&
+      // A connection Studio already knows is erroring only costs the session
+      // a failed connect at startup.
+      connection.status === "active" &&
+      !isStudioOwnedConnection(args.organizationId, connection.id),
+  );
+}
+
 export function isStudioOwnedConnection(
   organizationId: string,
   connectionId: string,
