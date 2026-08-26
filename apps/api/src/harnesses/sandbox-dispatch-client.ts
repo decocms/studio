@@ -216,6 +216,7 @@ export class SandboxDispatchClient {
   private readonly branch: string;
   private readonly credential: ClaudeCodeCredential | null;
   private readonly resume: { reason: string } | null;
+  private readonly interactive: boolean;
 
   constructor(args: {
     ctx: StudioContext;
@@ -230,12 +231,23 @@ export class SandboxDispatchClient {
      * supplies its own reason.
      */
     resume?: { reason: string };
+    /**
+     * This run shares a sandbox with a person: a chat on a Code Agent, where
+     * the preview panel and the dev server are the point. Such a pod is
+     * provisioned `interactive` (install + dev server, not checkout-only) and
+     * is NOT released when the turn ends — the user is still looking at it.
+     *
+     * A task run is the other case: one headless loop, nobody watching, so it
+     * stays checkout-only and its pod is dropped as soon as the run settles.
+     */
+    interactive?: boolean;
   }) {
     this.ctx = args.ctx;
     this.virtualMcpId = args.virtualMcpId;
     this.branch = args.branch;
     this.credential = args.credential;
     this.resume = args.resume ?? null;
+    this.interactive = args.interactive ?? false;
   }
 
   dispatch(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
@@ -479,7 +491,7 @@ export class SandboxDispatchClient {
     // rather than a second agent in the same checkout (see the daemon's
     // `Registry.claim`).
     const runId = input.threadId;
-    const { ctx, virtualMcpId, branch } = this;
+    const { ctx, virtualMcpId, branch, interactive } = this;
     const credentialProviderId = this.credential.providerId;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
@@ -500,8 +512,8 @@ export class SandboxDispatchClient {
           {
             virtualMcpId,
             branch,
-            // One agent loop, no preview, and a memory ceiling of its own.
-            purpose: "harness-run",
+            // Headless loop, no preview — unless someone is watching it.
+            purpose: interactive ? "interactive" : "harness-run",
           },
           ctx,
         );
@@ -545,7 +557,11 @@ export class SandboxDispatchClient {
       // useless as a successful one's. `releaseAfter` only ever moves shutdown
       // earlier and swallows its own errors, so this cannot fail a run or cut
       // short a sandbox another turn just extended.
-      if (lastHandle && getSettings().sandboxReleaseOnRunEndEnabled) {
+      if (
+        lastHandle &&
+        !this.interactive &&
+        getSettings().sandboxReleaseOnRunEndEnabled
+      ) {
         await provider
           .releaseAfter(lastHandle, getSettings().sandboxReleaseGraceMs)
           .catch(() => {});

@@ -6,6 +6,7 @@ import {
   FileSearch02,
   GitMerge,
   ShieldTick,
+  Terminal,
   UserSquare,
 } from "@untitledui/icons";
 import {
@@ -84,6 +85,12 @@ export function AgentToolsSettings() {
           icon={<Cube01 size={16} />}
           titleKey="settings.agentTools.orgMcpsTitle"
           descriptionKey="settings.agentTools.orgMcpsDescription"
+        />
+        <FlagToggle
+          flag="coding_agents_claude_code"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
+          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
         />
       </SettingsCard>
     </SettingsSection>
