@@ -594,13 +594,13 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
     "Se este agente oferece um CMS e onde o preview abre quando oferece.",
-  "sandbox.cmsSettings.contentEditing.manual": "Sob demanda",
+  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
   "sandbox.cmsSettings.contentEditing.manualDescription":
     "Quem edita abre o CMS pelo preview quando precisa.",
-  "sandbox.cmsSettings.contentEditing.auto": "Sempre aberto",
+  "sandbox.cmsSettings.contentEditing.auto": "Abrir automaticamente",
   "sandbox.cmsSettings.contentEditing.autoDescription":
     "O preview abre o CMS assim que for possível editar o conteúdo.",
-  "sandbox.cmsSettings.contentEditing.off": "Desligado",
+  "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
     "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
   "sandbox.cmsUnavailable.title":
