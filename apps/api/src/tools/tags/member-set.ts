@@ -56,9 +56,11 @@ export const MEMBER_TAGS_SET = defineTool({
       );
     }
 
-    // Verify all tags belong to this organization
+    // Verify all tags belong to this organization, in one query.
+    const foundTags = await ctx.storage.tags.getTagsByIds(input.tagIds);
+    const tagsById = new Map(foundTags.map((tag) => [tag.id, tag]));
     for (const tagId of input.tagIds) {
-      const tag = await ctx.storage.tags.getTag(tagId);
+      const tag = tagsById.get(tagId);
       if (!tag) {
         throw new Error(`Tag not found: ${tagId}`);
       }
