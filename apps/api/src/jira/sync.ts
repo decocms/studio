@@ -146,6 +146,29 @@ export function buildJql(
   return `${conditions} ORDER BY updated ASC`;
 }
 
+/**
+ * Whether a linked issue can be skipped without re-reading its fields.
+ *
+ * Normally yes: the link records the `updated` we last processed, so an issue
+ * no newer than that has nothing to tell us, and this shortcut is what keeps a
+ * tick cheap.
+ *
+ * NEVER on a rescan. A rescan happens because the shape of what we mirror
+ * changed, which makes every existing card stale by definition — and the
+ * shortcut fires BEFORE any field is written, so the rescan would create the
+ * cards it was missing and leave every card it already had untouched. That is
+ * exactly what happened when sprints shipped: 50 cards arrived, 274 kept a null
+ * sprint, and the board showed 253 issues that Jira had in a sprint as backlog.
+ */
+export function isUnchanged(
+  linkUpdatedAt: string,
+  issueUpdated: Date,
+  isRescan: boolean,
+): boolean {
+  if (isRescan) return false;
+  return new Date(linkUpdatedAt) >= issueUpdated;
+}
+
 /** Epics (hierarchyLevel 1) and anything above are containers, not cards. */
 function isCardIssue(issue: JiraIssue): boolean {
   const level = issue.fields.issuetype?.hierarchyLevel;
@@ -431,8 +454,12 @@ async function runSync(
     throw new Error("No status mapping configured");
   }
 
-  // The first import is a backfill, not activity — never its auto-delegate trigger (it would dispatch one run per pre-existing To Do issue).
-  const isInitialImport = integration.lastSyncedAt === null;
+  // A null watermark means "mirror everything from scratch" — a first connect,
+  // or a scope change that cleared it (see migration 184). Both are a backfill
+  // rather than activity, so neither triggers auto-delegation (it would
+  // dispatch one paid run per pre-existing To Do issue), and both must re-read
+  // every card rather than trust what the links already say.
+  const isRescan = integration.lastSyncedAt === null;
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
@@ -506,7 +533,7 @@ async function runSync(
       }
 
       const link = links.get(issue.id);
-      if (link && new Date(link.jiraUpdatedAt) >= issueUpdated) {
+      if (link && isUnchanged(link.jiraUpdatedAt, issueUpdated, isRescan)) {
         counts.unchanged++;
         watermark = issueUpdated;
         continue;
@@ -541,7 +568,7 @@ async function runSync(
             data: { from: before.status, to: status },
           });
         }
-        if (statusChangedOnJira && !isInitialImport) {
+        if (statusChangedOnJira && !isRescan) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
@@ -592,7 +619,7 @@ async function runSync(
           }
           throw err;
         }
-        if (!isInitialImport) {
+        if (!isRescan) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
