@@ -26,6 +26,7 @@ import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
 import { createHtmlArtifactWatcher } from "./built-in-tools/vm-tools/html-artifact-watcher";
+import { createToolOutputMap } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import type { PendingImage } from "./built-in-tools";
 import type {
   DecopilotToolRuntime,
@@ -125,7 +126,7 @@ export function buildClusterEnvironmentTools(args: {
   const toolRuntime: DecopilotToolRuntime = {
     buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
       const runContext = requireDecopilotRunContext(streamInput);
-      const toolOutputMap = new Map<string, string>();
+      const toolOutputMap = createToolOutputMap();
       const pendingImages: PendingImage[] = [];
       const { resolveArgs, onToolCalled, onPrOpened } =
         buildClusterMcpToolHooks(ctx, streamInput.threadId);
