@@ -179,6 +179,7 @@ export function buildClaudeCodeTaskPrompt(
   repo: TaskRepo | null,
   opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): string {
+  // prompt-region:start super-agent-sandbox
   const lines: string[] = [
     "You've been assigned this task. Complete it and finish with a pull request if it makes sense (like a coding task) or is explicitly requested.",
     "",
@@ -207,8 +208,11 @@ export function buildClaudeCodeTaskPrompt(
             (c) => `- ${c.repo} (connectionId: ${c.connectionId})`,
           ),
           opts?.repoChoices?.length
-            ? "Pick the one the task is about. If the task doesn't say and the names don't " +
-              "settle it, take the first."
+            ? "Start with the one the task is about. If it turns out to need a change in " +
+              "another of them too, call `mcp__studio__TASK_ADD_REPO` again — repositories " +
+              "accumulate, so a second call adds a checkout beside the first rather than " +
+              "replacing it. Each lands in its own directory and keeps its own git remote, " +
+              "so open one pull request per repository you changed."
             : "Call `mcp__studio__TASK_ADD_REPO` with no arguments to list them.",
         ].join("\n"),
     "",
@@ -275,4 +279,5 @@ export function buildClaudeCodeTaskPrompt(
     `(task id: ${task.id})`,
   );
   return lines.join("\n");
+  // prompt-region:end super-agent-sandbox
 }

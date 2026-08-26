@@ -99,9 +99,9 @@ export interface AssembleDecopilotToolsExtras {
   writer: UIMessageStreamWriter;
   toolOutputMap: Map<string, string>;
   pendingImages: PendingImage[];
-  /** From the loaded memory; used by `vmContext.threadId` to scope
-   *  artifacts under `model-outputs/<threadId>/`. Equivalent to
-   *  `mem.thread.id` in today's inline code. */
+  /** From the loaded memory; used to scope sandbox filesystem calls and
+   *  thread-owned artifacts. Equivalent to `mem.thread.id` in today's
+   *  inline code. */
   threadId: string;
   /** Provider used to instantiate built-in tools that need a model
    *  (subtask, generate_image, web_search). The decopilot harness
@@ -132,8 +132,8 @@ export interface AssembleDecopilotToolsExtras {
    *  background jobs instead of holding the turn open. Omitted on desktop. */
   backgroundDispatcher?: BackgroundDispatcher | null;
   /**
-   * Portable MCP-client seam (HarnessDeps `mcpForAgent`). Generalizes the
-   * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx, superUser,
+   * Portable MCP-client seam. Generalizes the cluster's in-process
+   * `createVirtualClientFrom(virtualMcp, ctx, superUser,
    * { listTimeoutMs })` so the daemon/desktop can swap in an HTTP `Client` at
    * the agent's `mcp.url`. The cluster impl
    * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live
@@ -319,9 +319,9 @@ export async function assembleDecopilotTools(
             pinnedRef,
           }),
           userId: input.user.id,
-          // Used by share_with_user to scope artifacts under
-          // model-outputs/<threadId>/. Cannot be derived from the
-          // sandbox row since one ephemeral sandbox serves many threads.
+          // Scopes org/output and thread-owned artifacts. Cannot be derived
+          // from the sandbox row since one ephemeral sandbox serves many
+          // threads.
           threadId: extras.threadId,
           // Lets the fs layer mint an endpoint and materialize the tool
           // catalog into the sandbox once it's provisioned (hosted runs

@@ -883,11 +883,12 @@ async function prepareRun(
       throw new Error("dispatchRunAndWait: taskId is required");
     }
     if (publishRunStatus) {
-      await publishRunStatusStage(
+      await publishRunStatusStage({
         streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[0],
-      );
+        harnessId,
+        taskId: input.taskId,
+        stage: PREPARE_RUN_STATUS_STAGES[0],
+      });
     }
 
     // 2. Load entities, create/load memory, and resolve Decopilot model
@@ -945,11 +946,12 @@ async function prepareRun(
       ),
     ]);
     if (publishRunStatus) {
-      await publishRunStatusStage(
+      await publishRunStatusStage({
         streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[1],
-      );
+        harnessId,
+        taskId: input.taskId,
+        stage: PREPARE_RUN_STATUS_STAGES[1],
+      });
     }
 
     const modelSources: DecopilotSecretModelSources | undefined = thinkingSource
@@ -1353,11 +1355,12 @@ async function prepareRun(
     // Decopilot runs its loop here. Hosted coding-agent harnesses take the
     // sandbox dispatch path below instead.
     if (publishRunStatus) {
-      await publishRunStatusStage(
+      await publishRunStatusStage({
         streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[2],
-      );
+        harnessId,
+        taskId: input.taskId,
+        stage: PREPARE_RUN_STATUS_STAGES[2],
+      });
     }
     // The dispatching user's own Claude subscription, when they linked one and
     // it has not expired. It outranks the org's thinking-slot key for a
@@ -1389,16 +1392,29 @@ async function prepareRun(
         // consumeHarnessStream consumes verbatim: Decopilot's comes from an
         // in-process call, claude-code's from the sandbox daemon over HTTP.
         if (publishRunStatus) {
-          await publishRunStatusStage(
+          await publishRunStatusStage({
             streamBuffer,
-            mem.thread.id,
-            PREPARE_RUN_STATUS_STAGES[3],
-          );
+            harnessId,
+            taskId: mem.thread.id,
+            stage: PREPARE_RUN_STATUS_STAGES[3],
+          });
         }
         const rawHarnessChunks = sandboxHosted
           ? new SandboxDispatchClient({
               ctx,
               virtualMcpId: effectiveVirtualMcp.id,
+              // Where its `starting-sandbox` stage goes — the same stream the
+              // rest of the run's status chunks ride.
+              streamBuffer,
+              // A repo on the AGENT means a Code Agent chat, with a person
+              // watching its preview; a task run's repo is on the thread.
+              interactive: Boolean(
+                (
+                  effectiveVirtualMcp.metadata as {
+                    githubRepo?: GithubRepo | null;
+                  } | null
+                )?.githubRepo?.url,
+              ),
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
               ...(resumeFromSeq > 0

@@ -3,14 +3,8 @@
  *
  * Isolates the `@decocms/sandbox` builder + hosted sandbox-provisioning
  * `@/` imports that the portable built-in tools must NOT carry. The harness VM
- * tools consume the flat `SandboxFsHooks` returned here and never depend on
+ * tools consume the narrow `SandboxFsHooks` returned here and never depend on
  * the hosted provider implementation (spec §4.3).
- *
- * ASSEMBLER-GLUE: this module stays `@/`- and `@decocms/sandbox`-coupled and is
- * slated to relocate into the hosted assembler (`harness-deps.ts`) in the
- * package-move phase (spec Phase 5). The portable consumer
- * (`built-in-tools/index.ts`) imports only this relative module — no
- * `@decocms/sandbox`.
  */
 
 import { createSandboxFsHooks } from "@decocms/sandbox/provider";

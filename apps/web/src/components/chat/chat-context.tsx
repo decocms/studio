@@ -51,10 +51,7 @@ import {
 } from "./pills/agent-options";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
-import {
-  isBatchHarness,
-  shouldBlockHostedRuntime,
-} from "./hosted-runtime-guard";
+import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
@@ -821,10 +818,7 @@ export function ActiveTaskProvider({
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const conn = getOrOpenStream(org.slug, taskId, {
-    client,
-    batch: isBatchHarness(activeTask?.harness_id),
-  });
+  const conn = getOrOpenStream(org.slug, taskId, { client });
   // Suspend until the initial-page MCP fetch settles. The Suspense boundary
   // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
   // catches this and shows the skeleton instead of an empty message list.
@@ -1009,26 +1003,22 @@ export function ActiveTaskProvider({
             updated_at: new Date().toISOString(),
           });
         }
-        // Refresh download chips only when this turn could have produced a
-        // file: an explicit share, or sandbox file work (bash/write can drop
-        // results into `org/output/`). AI SDK v5 surfaces tool invocations as
+        // Refresh download chips only when sandbox file work could have written
+        // into `org/output/`. AI SDK v5 surfaces tool invocations as
         // `tool-<name>` parts; `output-available` skips denied/cancelled calls.
-        const sharedFile = message.parts?.some((p) => {
+        const fileWork = message.parts?.some((p) => {
           const part = p as { type: string; state?: string };
           return (
-            (part.type === "tool-share_with_user" ||
-              part.type === "tool-bash" ||
-              part.type === "tool-write") &&
+            (part.type === "tool-bash" || part.type === "tool-write") &&
             part.state === "output-available"
           );
         });
-        if (cb.taskId && sharedFile) {
+        if (cb.taskId && fileWork) {
           const key = KEYS.threadOutputs(cb.taskId);
           // org/output files reach the manifest ~5s after the sandbox closes
           // them (rclone write-back), so a file written in the turn's last
           // seconds misses an immediate refresh. Sweep a few times across a
-          // generous flush window — each sweep is one indexed query, and
-          // share_with_user uploads (synchronous) are covered by the first.
+          // generous flush window; each sweep is one indexed query.
           for (const delayMs of [0, 1_500, 3_000, 6_000, 12_000, 25_000]) {
             setTimeout(() => {
               cb.queryClient.invalidateQueries({ queryKey: key });

@@ -2,15 +2,15 @@
  * web_search Built-in Tool (portable)
  *
  * Server-side tool that performs web research. The tool itself is now pure: it
- * drives the injected `deps.researchJob` async-generator hook, streams each
+ * drives an injected `researchJob` async-generator, streams each
  * progress event to the UI, and shapes the terminal `ResearchResult` into the
  * tool result. All provider/DB coupling (streaming Perplexity path, durable
  * Gemini Deep Research lifecycle over `async_research_jobs`) lives in the
  * cluster's `researchJob` hook impl (studio-owned; see
  * `createClusterResearchJob` in `cluster-research-job.ts`).
  *
- * Capability gating = hook absence: when `deps.researchJob` is undefined
- * (desktop), `web_search` is simply not in the tool set (spec §5.1).
+ * Capability gating = hook absence: without a research job, `web_search` is
+ * simply not in the tool set.
  *
  * Small results stay inline in the tool result; large results are offloaded to
  * blob storage by the hook, which returns a `resultUri` + `preview` instead of
@@ -19,7 +19,29 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { HarnessDeps } from "../../harness-deps";
+
+export interface ResearchParams {
+  query: string;
+  /** Thread id used to scope the persisted research job. */
+  taskId: string;
+  /** AI SDK tool-call id used as the durable idempotency key. */
+  toolCallId: string;
+  abortSignal?: AbortSignal;
+}
+
+export interface ResearchResult {
+  text: string;
+  citations: Array<{ url: string; title?: string }>;
+  usage: { inputTokens: number; outputTokens: number };
+  /** Set when the durable hook already offloaded the result to blob storage. */
+  resultUri?: string | null;
+  /** Preview returned alongside `resultUri` for offloaded results. */
+  preview?: string;
+}
+
+export type ResearchJob = (
+  params: ResearchParams,
+) => AsyncGenerator<{ progress: string }, ResearchResult>;
 
 const WebSearchInputSchema = z.object({
   query: z
@@ -43,8 +65,8 @@ const DEFAULT_WEB_SEARCH_DESCRIPTION =
 export function createWebSearchTool(
   writer: UIMessageStreamWriter,
   params: {
-    /** Cluster-built durable research hook (spec §6). */
-    researchJob: NonNullable<HarnessDeps["researchJob"]>;
+    /** Cluster-built durable research hook. */
+    researchJob: ResearchJob;
     toolOutputMap: Map<string, string>;
     /** Current thread/task id — used to scope persisted research jobs. */
     taskId: string;

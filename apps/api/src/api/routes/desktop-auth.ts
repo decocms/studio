@@ -5,7 +5,7 @@
  *
  * - `GET /api/auth/desktop/me` validates the native app's current OAuth
  *   bearer (or session cookie) without coupling authentication to an
- *   organization or to the retired presence protocol.
+ *   organization.
  * - `POST /api/auth/desktop/session-from-oauth` is the one Studio-side change
  * the native authentication contract needed to fix
  * the Google/GitHub/SAML system-browser desktop login path: an MCP OAuth

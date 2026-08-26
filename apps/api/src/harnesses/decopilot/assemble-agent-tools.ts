@@ -22,6 +22,7 @@ import {
   type ToolCallAnalytics,
 } from "@/harnesses/lib/decopilot/mcp-tools";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
+import { createToolOutputMap } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import {
   buildBuiltInTools,
   getBuiltInTools,
@@ -81,7 +82,7 @@ export interface AssembleAgentToolsResult {
 export async function assembleAgentTools(
   opts: AssembleAgentToolsOptions,
 ): Promise<AssembleAgentToolsResult> {
-  const toolOutputMap = opts.toolOutputMap ?? new Map<string, string>();
+  const toolOutputMap = opts.toolOutputMap ?? createToolOutputMap();
 
   // 1. MCP tools — truncation always on.
   const { tools: mcpTools, nameMap } = await toolsFromMCP(

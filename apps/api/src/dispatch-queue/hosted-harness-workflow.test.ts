@@ -394,6 +394,9 @@ describe("heartbeatWhileQueued", () => {
       organizationId: "org-1",
       userId: "user-1",
       runFenceToken: "fence-queued",
+      // Run status is published only for the hosted harnesses
+      // (`shouldPublishRunStatus`).
+      harnessId: "claude-code",
     } as ClaimedSerializableDispatchRunInput,
   };
 

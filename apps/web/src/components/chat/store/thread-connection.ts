@@ -47,13 +47,6 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/hooks/use-preferences";
 import type { SimpleModeTier } from "@decocms/shared/organization/schema";
-import { DECOPILOT_EVENTS } from "@decocms/shared/sdk";
-/** Thread statuses that mean the run is over. Mirrors the API's
- *  `TERMINAL_THREAD_STATUSES` — inlined rather than imported, since
- *  `apps/web` must not reach into `apps/api/src` (same as `rerun-dialog.tsx`). */
-const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
-import { decopilotSSE } from "@/hooks/decopilot-sse-pool";
-import type { SSESubscription } from "@/hooks/create-sse-subscription";
 import { Store } from "./store-primitive";
 import { extractToolErrorMessage } from "./mcp-utils";
 import { guardToolInvariant } from "./tool-invariant-guard";
@@ -267,23 +260,6 @@ function describe(action: SubmitAction): string {
 
 interface ThreadConnectionOptions {
   client?: MCPClient | null;
-  /**
-   * Skip the per-thread SSE and render from persisted parts only.
-   *
-   * A sandbox-hosted harness (`claude-code`) is a batch job: it runs its loop in
-   * the pod and flushes whole turns on the SDK's `result`, so there is no
-   * token-by-token stream to follow. Holding an SSE open per thread to watch for
-   * one terminal write buys nothing — the org-level `/watch` already reports the
-   * thread's status change, and the transcript comes from
-   * COLLECTION_THREAD_MESSAGES_LIST like any other page load.
-   *
-   * The org-level `/watch` is also how a batch thread stays live: each step the
-   * harness finishes emits `decopilot.step` (run-reactor), so the connection
-   * refetches the latest page on it instead of leaving the user to reload.
-   */
-  batch?: boolean;
-  /** Org-level `/watch` pool. Injectable for tests; defaults to the shared one. */
-  sse?: SSESubscription;
 }
 
 export class ThreadConnection {
@@ -321,13 +297,6 @@ export class ThreadConnection {
   /** `start` chunk opened a new assistant turn — don't seed the prior one. */
   private freshRunSubstream = false;
   private client: MCPClient | null;
-  /** See `ThreadConnectionOptions.batch` — no SSE, persisted parts only.
-   *  Not readonly: `enableBatch` flips it when the harness is pinned after
-   *  this connection was already opened. */
-  private batch = false;
-  private readonly sse: SSESubscription;
-  /** Batch mode only: org-`/watch` unsubscribe, dropped on dispose. */
-  private watchUnsubscribe: (() => void) | null = null;
   private serverFetchedCount = 0;
   private readonly pageSize = 5;
   /**
@@ -356,111 +325,14 @@ export class ThreadConnection {
   ) {
     this.key = `${orgSlug}::${threadId}`;
     this.client = opts.client ?? null;
-    this.sse = opts.sse ?? decopilotSSE;
-    if (opts.batch) this.enableBatch();
     this.ready = new Promise<void>((res) => {
       this.resolveReady = res;
     });
     void this.bootstrap();
   }
 
-  /**
-   * Switch a live connection into batch mode.
-   *
-   * A thread's `harness_id` is NULL until its first run pins it, so a chat
-   * opened before that — a new thread, or one whose first run is still
-   * dispatching — builds its connection in streaming mode and only learns it
-   * is batch afterwards. Since `getOrOpenStream` is idempotent by key, the
-   * corrected `batch: true` from the next render would otherwise be dropped
-   * and the transcript would sit frozen (a sandbox harness writes nothing to
-   * the per-thread `/stream`) until the user reloads the page.
-   *
-   * Idempotent — a second subscribe would double every refetch. The already
-   * running `/stream` loop is left alone: it costs one idle SSE and closes on
-   * dispose, which is cheaper than plumbing a cancel through the loop.
-   */
-  /**
-   * Set at submit, cleared by the first non-terminal status event that follows.
-   * A batch thread learns its turn is over from the org-level `/watch`, and that
-   * stream also carries the PREVIOUS turn's terminal status — which, arriving
-   * after a new submit, would end the new turn on screen while it runs.
-   */
-  private awaitingRunStart = false;
-
-  enableBatch(): void {
-    if (this.batch) return;
-    this.batch = true;
-    this.watchUnsubscribe = this.sse.subscribe(this.orgSlug, (e) =>
-      this.handleWatchEvent(e),
-    );
-  }
-
   dispose(): void {
-    this.watchUnsubscribe?.();
-    this.watchUnsubscribe = null;
     this.abort.abort();
-  }
-
-  /**
-   * Batch mode's only live signal: a step this thread's harness just persisted
-   * (`decopilot.step`), or its terminal status flip. Both mean "there are more
-   * parts in the DB than on screen" — refetch, don't reload the page.
-   *
-   * `refetchLatestPage` merges upsert-by-id, so an event that arrives while a
-   * fetch is in flight (or twice for the same step) costs a request, not a
-   * duplicated turn.
-   */
-  private handleWatchEvent(e: MessageEvent): void {
-    if (
-      e.type !== DECOPILOT_EVENTS.STEP &&
-      e.type !== DECOPILOT_EVENTS.THREAD_STATUS
-    ) {
-      return;
-    }
-    let parsed: { subject?: unknown; data?: { status?: unknown } };
-    try {
-      parsed = JSON.parse(e.data);
-    } catch {
-      return;
-    }
-    if (parsed.subject !== this.threadId) return;
-    const refetched = this.refetchLatestPage();
-
-    if (
-      !this.batch ||
-      e.type !== DECOPILOT_EVENTS.THREAD_STATUS ||
-      typeof parsed.data?.status !== "string"
-    ) {
-      return;
-    }
-    // Our own turn has started, so any terminal status from here on is ours.
-    // Ordered on one SSE connection, which is what makes this a causal check
-    // rather than a clock comparison between this browser and the server.
-    if (!TERMINAL_THREAD_STATUSES.has(parsed.data.status)) {
-      this.awaitingRunStart = false;
-      return;
-    }
-    // A batch thread's turn ends here or nowhere. There is no per-thread stream
-    // to deliver a `finish` chunk, so without this the composer stays in
-    // "submitted" forever after a follow-up and the user cannot send another
-    // message — the run finished, the reply rendered, and the box stayed locked.
-    // A streaming connection must NOT take this path: its own finish chunk owns
-    // the transition, and a status event racing it would end the turn early.
-    //
-    // Not the PREVIOUS turn's terminal status, though: a late or redelivered
-    // `completed` for the run before ours would unlock the composer mid-run and
-    // invite a second message the user believes is their first.
-    if (this.awaitingRunStart) return;
-    // After the content, not before it. `refetchLatestPage` is what puts the
-    // reply on screen; unlocking first shows a ready composer above a thread
-    // that still ends with the user's own message.
-    void refetched.finally(() => {
-      this.clearRunStatusStage();
-      const s = this.status.get();
-      if (s.kind === "submitted" || s.kind === "streaming") {
-        this.status.set({ kind: "ready" });
-      }
-    });
   }
 
   // ── Public mutator (single entry point) ─────────────────────────────────
@@ -501,7 +373,6 @@ export class ThreadConnection {
 
     this.runStatusStage.set("sending");
     this.status.set({ kind: "submitted" });
-    this.awaitingRunStart = true;
 
     const abort = new AbortController();
     this.inflightPost = abort;
@@ -594,13 +465,6 @@ export class ThreadConnection {
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
-    // Batch threads have no stream to follow: load the transcript and stop.
-    // `loadInitialPage` resolves `ready` on every terminal path, so the chat
-    // unsuspends exactly as it does for a streaming thread.
-    if (this.batch) {
-      await this.loadInitialPage();
-      return;
-    }
     // Initial-page fetch and SSE loop run concurrently. Chunks arriving
     // before the page resolves are queued via `chunkBuffer` and drained
     // through `handleChunk` after the page lands.
@@ -1680,10 +1544,6 @@ export function getOrOpenStream(
 ): ThreadConnection {
   const key = `${orgSlug}::${threadId}`;
   if (current?.key === key) {
-    // The only option worth re-reading: `batch` is derived from the thread
-    // row's `harness_id`, which lands after the connection is opened (see
-    // `enableBatch`). Re-opening instead would throw away the transcript.
-    if (opts.batch) current.enableBatch();
     return current;
   }
   current?.dispose();

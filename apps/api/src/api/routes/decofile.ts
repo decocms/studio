@@ -70,8 +70,8 @@ function isValidBranch(branch: string): boolean {
 // Bounds the tree write GitHub does for one commit.
 const MAX_PATCH_KEYS = 500;
 
-// Bounds one block's own size — a block count cap alone still lets one oversized value through.
-const MAX_BLOCK_BYTES = 256 * 1024;
+// Bounds one block's own size — fits real multivariate page blocks that inline a section tree per variant.
+const MAX_BLOCK_BYTES = 1024 * 1024;
 
 // Bounds one block key's length — a key becomes a GitHub tree path.
 const MAX_BLOCK_KEY_LENGTH = 1024;

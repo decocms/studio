@@ -22,7 +22,7 @@ describe("decofile patchBodySchema", () => {
   test("rejects a single block over the size cap", () => {
     // Before the fix: the key-count cap let one oversized value through.
     const result = patchBodySchema.safeParse({
-      set: { "pages/home": { html: "x".repeat(300 * 1024) } },
+      set: { "pages/home": { html: "x".repeat(2 * 1024 * 1024) } },
     });
     expect(result.success).toBe(false);
   });

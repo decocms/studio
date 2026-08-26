@@ -91,7 +91,7 @@ Both paths are hosted and use Studio's fixed **AgentSandbox** provider when they
 - **Decopilot** runs its model loop in-process on the worker and reaches the managed sandbox for repository, filesystem, Git, and shell operations.
 - **Claude Code** runs its harness loop inside the managed sandbox; the worker proxies its stream into the same NATS and projector pipeline.
 
-Native coding-agent chats are a separate surface, not a third cloud transport. The desktop app runs Claude Code, Codex, or OpenCode locally and synchronizes the thread through its embedded `local-api`; no NATS pull queue or caller-selected sandbox provider is involved.
+Native coding-agent chats are a separate surface. The desktop app runs Claude Code, Codex, or OpenCode locally and synchronizes the thread through its embedded `local-api`.
 
 ## MCP: in-process vs. the proxy routes
 

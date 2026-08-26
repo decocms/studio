@@ -10,6 +10,10 @@ export const RUN_STATUS_STAGE_ORDER = [
   "preparing-tools",
   "starting-assistant",
   "analyzing-scope",
+  // Sandbox-hosted runs only, and last of the pre-content stages: the pod boots
+  // after the run is prepared, and the ranking here is what keeps the display
+  // monotonic.
+  "starting-sandbox",
   "choosing-next-steps",
 ] as const;
 
@@ -59,6 +63,10 @@ const RUN_STATUS_I18N_KEYS: Record<
   "analyzing-scope": {
     label: "chat.runStatus.analyzingScopeLabel",
     detail: "chat.runStatus.analyzingScopeDetail",
+  },
+  "starting-sandbox": {
+    label: "chat.runStatus.startingSandboxLabel",
+    detail: "chat.runStatus.startingSandboxDetail",
   },
   "choosing-next-steps": {
     label: "chat.runStatus.choosingNextStepsLabel",

@@ -4,7 +4,7 @@
  * Provisions one SandboxClaim per (user, projectRef) against the
  * kubernetes-sigs/agent-sandbox operator. Studio runs outside the cluster
  * (Stage 1 / local-dev via kind), so traffic reaches the pod via a single
- * lazily-opened 127.0.0.1 TCP listener that tunnels each inbound connection
+ * lazily-opened 127.0.0.1 TCP listener that forwards each inbound connection
  * to the daemon container port through the apiserver as a fresh WebSocket.
  *
  * The daemon owns the public surface: it serves `/_sandbox/*` + `/health`
@@ -1546,6 +1546,7 @@ export class AgentSandboxProvider {
           }
         : null,
       repo: opts?.repo ?? null,
+      extraRepos: opts?.extraRepos ?? [],
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts?.tenant ?? undefined,
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
@@ -2563,7 +2564,7 @@ export class AgentSandboxProvider {
   // ---- Port-forwarding ------------------------------------------------------
 
   /**
-   * Opens a 127.0.0.1 TCP listener whose connections tunnel to
+   * Opens a 127.0.0.1 TCP listener whose connections are forwarded to
    * `podName:containerPort` via the apiserver. Each TCP connection spawns a
    * fresh WebSocket — matches `kubectl port-forward`'s semantics. Lifecycle
    * is mutual: client socket close → close the k8s WS; WS close → destroy

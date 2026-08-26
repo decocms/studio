@@ -32,7 +32,17 @@ type GitIdentity struct {
 
 type GitConfig struct {
 	Repository *GitRepository `json:"repository,omitempty"`
-	Identity   *GitIdentity   `json:"identity,omitempty"`
+	// Extra checkouts placed alongside the primary, one directory each, for an
+	// org whose work spans repositories (a storefront and its checkout, say).
+	// The primary stays the only one the dev server, the package-manager probe
+	// and the preview are derived from — these are read-and-push checkouts, so
+	// adding one cannot change what the sandbox serves.
+	//
+	// Replaced wholesale by a patch that carries the key, unlike Repository's
+	// field-by-field merge: the set is the unit a caller means, and a
+	// field-wise merge of a list has no sane answer for "which entry".
+	Repositories []GitRepository `json:"repositories,omitempty"`
+	Identity     *GitIdentity    `json:"identity,omitempty"`
 }
 
 type Operator struct {
@@ -168,6 +178,22 @@ func (c *TenantConfig) SubmoduleCredentials() []SubmoduleCredential {
 		return nil
 	}
 	return c.Git.Repository.SubmoduleCredentials
+}
+
+// AdditionalRepositories are the secondary checkouts, skipping any entry with
+// no clone URL — a half-written patch must not stall the whole clone stage.
+func (c *TenantConfig) AdditionalRepositories() []GitRepository {
+	if c == nil || c.Git == nil {
+		return nil
+	}
+	out := make([]GitRepository, 0, len(c.Git.Repositories))
+	for _, repo := range c.Git.Repositories {
+		if repo.CloneUrl == nil || *repo.CloneUrl == "" {
+			continue
+		}
+		out = append(out, repo)
+	}
+	return out
 }
 
 func (c *TenantConfig) HasBranch() bool {

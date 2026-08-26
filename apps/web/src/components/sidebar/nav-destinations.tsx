@@ -9,6 +9,7 @@
  *
  * The org's coding agents (GitHub-backed virtual MCPs) trail the list, one row
  * per repo — those DO switch agents, since each owns its own codebase.
+ * Agent rows also carry a `showProjectSettingsGear`-gated gear onto settings.
  *
  * Inbox is in the design but has no backing surface yet, so it is deliberately
  * not listed.
@@ -16,13 +17,21 @@
 
 import type { ReactNode } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { BarChartSquare02, Columns03, Folder, Home02 } from "@untitledui/icons";
+import {
+  BarChartSquare02,
+  Columns03,
+  Folder,
+  Home02,
+  Settings02,
+} from "@untitledui/icons";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@decocms/ui/components/sidebar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getWellKnownDecopilotVirtualMCP,
@@ -45,6 +54,7 @@ import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { authClient } from "@/lib/auth-client";
 import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
+import { usePreferences } from "@/hooks/use-preferences.ts";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -54,6 +64,10 @@ interface NavDestination {
   icon: ReactNode;
   isActive: boolean;
   onSelect: () => void;
+  /** When set, the row grows a hover-revealed gear opening this destination's
+   *  settings. Only the agent rows have one — the fixed destinations are
+   *  views, not configurable entities. */
+  onOpenSettings?: () => void;
 }
 
 /** The well-known Decopilot (Super Agent) id for the current org. */
@@ -188,12 +202,34 @@ function useAgentNavRows(
   const devAgentIds = getDevAgentIds(agents);
   const { threads } = useThreads();
   const { data: session } = authClient.useSession();
-  const { setTaskId, createNewTask } = usePanelActions();
+  const { setTaskId, createNewTask, openTab } = usePanelActions();
+
+  /**
+   * Open the agent's chat, optionally landing on a specific main view. Reuses
+   * the agent's existing empty "New chat" so repeat clicks don't pile up
+   * threads; `opts.main` beats that thread's remembered layout (see
+   * resolveTaskSwitchSearch), so the gear always lands on Settings.
+   */
+  const openAgent = (
+    agent: VirtualMCPEntity,
+    opts?: { main?: string },
+  ): void => {
+    onNavigate?.();
+    const existing = findReusableNewChat(
+      threads,
+      agent.id,
+      session?.user?.id,
+      defaultThreadRuntime(agent.metadata),
+    );
+    if (existing) setTaskId(existing.id, agent.id, opts);
+    else void createNewTask(agent.id, undefined, opts);
+  };
 
   return agents
     .filter((agent) => predicate(agent, devAgentIds))
     .map((agent) => {
       const repo = getActiveGithubRepo(agent);
+      const isActive = search.virtualmcpid === agent.id;
       return {
         key: agent.id,
         label: agent.title || repo?.name || "",
@@ -205,18 +241,23 @@ function useAgentNavRows(
             className="shrink-0"
           />
         ),
-        isActive: search.virtualmcpid === agent.id,
+        isActive,
         onSelect: () => {
           track("nav_destination_clicked", { destination: "coding_agent" });
-          onNavigate?.();
-          const existing = findReusableNewChat(
-            threads,
-            agent.id,
-            session?.user?.id,
-            defaultThreadRuntime(agent.metadata),
-          );
-          if (existing) setTaskId(existing.id, agent.id);
-          else void createNewTask(agent.id);
+          openAgent(agent);
+        },
+        onOpenSettings: () => {
+          track("nav_destination_clicked", {
+            destination: "coding_agent_settings",
+          });
+          // `?main=settings` — the target the agents list's row menu opens too.
+          if (isActive) {
+            // Already on this agent: swap the view, keep the open thread.
+            onNavigate?.();
+            openTab("settings");
+          } else {
+            openAgent(agent, { main: "settings" });
+          }
         },
       };
     });
@@ -233,6 +274,7 @@ export function NavDestinationsContent({
 }: {
   onNavigate?: () => void;
 }) {
+  const t = useT();
   const destinations = useNavDestinations({ onNavigate });
   const codingAgents = useAgentNavRows(
     (agent) => agentHasClonableSource(agent.metadata),
@@ -244,23 +286,53 @@ export function NavDestinationsContent({
     { onNavigate },
   );
   const agentRows = [...codingAgents, ...pinnedAgents];
+  const [{ showProjectSettingsGear }] = usePreferences();
   // Expanded, the label is right there — a tooltip repeating it is noise.
   const { state, isMobile } = useSidebar();
-  const showTooltip = state === "collapsed" && !isMobile;
+  const isCollapsed = state === "collapsed" && !isMobile;
 
-  const row = (item: NavDestination) => (
-    <SidebarMenuItem key={item.key}>
-      <SidebarMenuButton
-        onClick={item.onSelect}
-        isActive={item.isActive}
-        aria-current={item.isActive ? "page" : undefined}
-        tooltip={showTooltip ? item.label : undefined}
-      >
-        {item.icon}
-        <span className="truncate">{item.label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
+  const row = (item: NavDestination) => {
+    // Opt-in per person; the icon rail has no room for a second control.
+    const gear = item.onOpenSettings && showProjectSettingsGear && !isCollapsed;
+    return (
+      <SidebarMenuItem key={item.key}>
+        <SidebarMenuButton
+          onClick={item.onSelect}
+          isActive={item.isActive}
+          aria-current={item.isActive ? "page" : undefined}
+          tooltip={isCollapsed ? item.label : undefined}
+          className={cn(
+            gear &&
+              "group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground",
+          )}
+        >
+          {item.icon}
+          {/* Reserve the overlaid gear's width so the ellipsis clears it. */}
+          <span className={cn("truncate", gear && "pr-7")}>{item.label}</span>
+        </SidebarMenuButton>
+        {gear && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("sidebar.navDestinations.projectSettings", {
+              name: item.label,
+            })}
+            onClick={item.onOpenSettings}
+            className={cn(
+              // One tint throughout — only ghost's background reacts to hover.
+              "absolute right-1 top-1/2 -translate-y-1/2 text-sidebar-foreground/60 hover:text-sidebar-foreground/60",
+              // Hover-to-reveal has no touch equivalent.
+              isMobile
+                ? "opacity-100"
+                : "opacity-0 group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100",
+            )}
+          >
+            <Settings02 />
+          </Button>
+        )}
+      </SidebarMenuItem>
+    );
+  };
 
   return (
     <SidebarMenu className="gap-1">

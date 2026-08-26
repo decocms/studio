@@ -58,13 +58,12 @@ describe("isRunStatusControlChunk", () => {
 describe("publishRunStatusStage", () => {
   test("publishes through StreamBuffer when available", async () => {
     const publishRawChunk = mock(() => Promise.resolve(true));
-    await publishRunStatusStage(
-      {
-        publishRawChunk,
-      },
-      "thread-1",
-      "gathering-context",
-    );
+    await publishRunStatusStage({
+      streamBuffer: { publishRawChunk },
+      harnessId: "decopilot",
+      taskId: "thread-1",
+      stage: "gathering-context",
+    });
     expect(publishRawChunk).toHaveBeenCalledWith("thread-1", {
       type: "data-run-status",
       id: "run-status",
@@ -75,14 +74,50 @@ describe("publishRunStatusStage", () => {
   test("swallows publish failures", async () => {
     const publishRawChunk = mock(() => Promise.reject(new Error("nats down")));
     await expect(
-      publishRunStatusStage({ publishRawChunk }, "thread-1", "starting-run"),
+      publishRunStatusStage({
+        streamBuffer: { publishRawChunk },
+        harnessId: "decopilot",
+        taskId: "thread-1",
+        stage: "starting-run",
+      }),
     ).resolves.toBeUndefined();
   });
 
   test("is a no-op without a stream buffer", async () => {
     await expect(
-      publishRunStatusStage(undefined, "thread-1", "starting-run"),
+      publishRunStatusStage({
+        streamBuffer: undefined,
+        harnessId: "decopilot",
+        taskId: "thread-1",
+        stage: "starting-run",
+      }),
     ).resolves.toBeUndefined();
+  });
+
+  test("publishes for a sandbox-hosted run too", async () => {
+    const publishRawChunk = mock(() => Promise.resolve(true));
+    await publishRunStatusStage({
+      streamBuffer: { publishRawChunk },
+      harnessId: "claude-code",
+      taskId: "thread-1",
+      stage: "starting-sandbox",
+    });
+    expect(publishRawChunk).toHaveBeenCalledWith("thread-1", {
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "starting-sandbox" },
+    });
+  });
+
+  test("publishes nothing for a harness that reports no status", async () => {
+    const publishRawChunk = mock(() => Promise.resolve(true));
+    await publishRunStatusStage({
+      streamBuffer: { publishRawChunk },
+      harnessId: "codex",
+      taskId: "thread-1",
+      stage: "starting-run",
+    });
+    expect(publishRawChunk).not.toHaveBeenCalled();
   });
 });
 
@@ -98,9 +133,9 @@ describe("PREPARE_RUN_STATUS_STAGES", () => {
 });
 
 describe("shouldPublishRunStatus", () => {
-  test("publishes only for Decopilot", () => {
+  test("publishes for both hosted harnesses, nothing else", () => {
     expect(shouldPublishRunStatus("decopilot")).toBe(true);
-    expect(shouldPublishRunStatus("claude-code")).toBe(false);
+    expect(shouldPublishRunStatus("claude-code")).toBe(true);
     expect(shouldPublishRunStatus("codex")).toBe(false);
     expect(shouldPublishRunStatus(null)).toBe(false);
     expect(shouldPublishRunStatus(undefined)).toBe(false);

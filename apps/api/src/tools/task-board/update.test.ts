@@ -24,7 +24,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     status: "todo",
     priority: "medium",
     type: "chore",
-    sprint: null,
+    sprintId: null,
     assigneeId: null,
     assignedBy: null,
     repo: null,
@@ -140,7 +140,6 @@ describe("updatesAnyField", () => {
       { assigneeId: "user_1" },
       { repo: "owner/name" },
       { dueDate: "2026-01-01T00:00:00.000Z" },
-      { sprint: 1 },
       { sortOrder: 5 },
       { tagIds: [] },
     ];

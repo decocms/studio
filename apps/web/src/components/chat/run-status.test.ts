@@ -95,3 +95,11 @@ describe("advanceRunStatusStage", () => {
     );
   });
 });
+
+describe("starting-sandbox", () => {
+  test("ranks after the prepare stages so a booting pod is not hidden", () => {
+    expect(advanceRunStatusStage("analyzing-scope", "starting-sandbox")).toBe(
+      "starting-sandbox",
+    );
+  });
+});

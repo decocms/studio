@@ -1,19 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  isBatchHarness,
-  shouldBlockHostedRuntime,
-} from "./hosted-runtime-guard";
-
-describe("isBatchHarness", () => {
-  test("treats claude-code as a batch job and Decopilot as a stream", () => {
-    expect(isBatchHarness("claude-code")).toBeTrue();
-    // Decopilot streams token-by-token; batching it would freeze the chat
-    // until the turn finished.
-    expect(isBatchHarness("decopilot")).toBeFalse();
-    expect(isBatchHarness(null)).toBeFalse();
-    expect(isBatchHarness(undefined)).toBeFalse();
-  });
-});
+import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 
 describe("hosted terminal-only runtime guard", () => {
   test("blocks non-hosted harnesses on hosted web", () => {

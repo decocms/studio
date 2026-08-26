@@ -70,6 +70,10 @@ import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import {
+  publishRunStatusStage,
+  type RunStatusStreamBuffer,
+} from "@/api/routes/decopilot/run-status-stage";
+import {
   getThreadGithubRepo,
   syntheticBranchToGitRef,
   threadBranch,
@@ -216,6 +220,8 @@ export class SandboxDispatchClient {
   private readonly branch: string;
   private readonly credential: ClaudeCodeCredential | null;
   private readonly resume: { reason: string } | null;
+  private readonly interactive: boolean;
+  private readonly streamBuffer: RunStatusStreamBuffer | undefined;
 
   constructor(args: {
     ctx: StudioContext;
@@ -223,6 +229,9 @@ export class SandboxDispatchClient {
     branch: string;
     /** Resolved thinking-slot credential; becomes the sandbox's model env. */
     credential: ClaudeCodeCredential | null;
+    /** The run's chunk stream, for out-of-band status chunks (see
+     *  `publishRunStatusStage`). Absent on paths that have none. */
+    streamBuffer?: RunStatusStreamBuffer;
     /**
      * Set when the caller knows this dispatch continues a turn a previous
      * Studio process started (see `dispatch-run.ts`'s `resumeFromSeq`). A
@@ -230,12 +239,24 @@ export class SandboxDispatchClient {
      * supplies its own reason.
      */
     resume?: { reason: string };
+    /**
+     * This run shares a sandbox with a person: a chat on a Code Agent, where
+     * the preview panel and the dev server are the point. Such a pod is
+     * provisioned `interactive` (install + dev server, not checkout-only) and
+     * is NOT released when the turn ends — the user is still looking at it.
+     *
+     * A task run is the other case: one headless loop, nobody watching, so it
+     * stays checkout-only and its pod is dropped as soon as the run settles.
+     */
+    interactive?: boolean;
   }) {
     this.ctx = args.ctx;
     this.virtualMcpId = args.virtualMcpId;
     this.branch = args.branch;
     this.credential = args.credential;
     this.resume = args.resume ?? null;
+    this.interactive = args.interactive ?? false;
+    this.streamBuffer = args.streamBuffer;
   }
 
   dispatch(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
@@ -285,12 +306,13 @@ export class SandboxDispatchClient {
 
   /**
    * The MCP surfaces one run gets: its own narrow Studio endpoint (`mcp`), plus
-   * — when the org opted in — every MCP connection in the org as its own server
-   * (`orgMcps`).
+   * the connections it mounts as servers of their own (`orgMcps`) — the agent's
+   * own aggregations always, the rest of the org's behind a flag. See
+   * {@link orgMcpConnections}.
    *
-   * Behind a flag because it is unbounded: each connection is one more server
-   * the harness connects to, and nothing here knows whether an org has three
-   * connections or thirty.
+   * The org-wide half is flagged because it is unbounded: each connection is one
+   * more server the harness connects to, and nothing here knows whether an org
+   * has three connections or thirty.
    *
    * The connections are resolved BEFORE the key is minted, because they are
    * part of its scope: every proxied tool call is authorized as
@@ -394,27 +416,46 @@ export class SandboxDispatchClient {
   }
 
   /**
-   * The org connections this run mounts, or none when the org has not opted in
-   * (or has no slug, without which the per-connection URL cannot be built).
+   * The connections this run mounts: the ones aggregated ON THE AGENT always,
+   * plus every other MCP connection in the org when it opted in
+   * (`coding_agent_org_mcps`). None without a slug, without which the
+   * per-connection URL cannot be built.
+   *
+   * The agent's own half is not flag-gated because it is not a fan-out: those
+   * connections are exactly what someone attached to this agent, and they are
+   * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
+   * virtual MCP). This harness points at the narrow `task-run` surface instead,
+   * so without them a Code Agent chat lost every tool the agent was configured
+   * with — its GitHub MCP included.
    */
   private async orgMcpConnections(organization: {
     id: string;
     slug?: string;
   }): Promise<ConnectionEntity[]> {
     if (!organization.slug) return [];
-    const settings = await this.ctx.storage.organizationSettings.get(
-      organization.id,
+    const [settings, agent] = await Promise.all([
+      this.ctx.storage.organizationSettings.get(organization.id),
+      // Never throws the run: the synthetic super-agent has no row, and an
+      // unreadable one only costs this run its agent-attached tools.
+      this.ctx.storage.virtualMcps
+        .findById(this.virtualMcpId)
+        .catch(() => null),
+    ]);
+    const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
+    const ownIds = new Set(
+      (agent?.connections ?? []).map(
+        (aggregation) => aggregation.connection_id,
+      ),
     );
-    if (!orgFlagEnabled(settings?.flags, "coding_agent_org_mcps")) return [];
+    if (!orgWide && ownIds.size === 0) return [];
     // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
     const { items } = await this.ctx.storage.connections.list(organization.id);
-    return items.filter(
-      (connection) =>
-        // A connection Studio already knows is erroring only costs the session
-        // a failed connect at startup.
-        connection.status === "active" &&
-        !isStudioOwnedConnection(organization.id, connection.id),
-    );
+    return selectRunConnections({
+      organizationId: organization.id,
+      orgWide,
+      ownIds,
+      connections: items,
+    });
   }
 
   private async *stream(
@@ -479,7 +520,7 @@ export class SandboxDispatchClient {
     // rather than a second agent in the same checkout (see the daemon's
     // `Registry.claim`).
     const runId = input.threadId;
-    const { ctx, virtualMcpId, branch } = this;
+    const { ctx, virtualMcpId, branch, interactive, streamBuffer } = this;
     const credentialProviderId = this.credential.providerId;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
@@ -496,12 +537,21 @@ export class SandboxDispatchClient {
       resume: { reason: string } | null,
     ): AsyncIterable<UIMessageChunk> =>
       (async function* () {
+        // The longest silence in the run: pod boot, clone, and (interactive)
+        // install. The chat has no per-thread stream here, so this rides
+        // the org `/watch`.
+        await publishRunStatusStage({
+          streamBuffer,
+          harnessId: SANDBOX_HOSTED_HARNESS,
+          taskId: runId,
+          stage: "starting-sandbox",
+        });
         const sandbox = await ensureSandbox(
           {
             virtualMcpId,
             branch,
-            // One agent loop, no preview, and a memory ceiling of its own.
-            purpose: "harness-run",
+            // Headless loop, no preview — unless someone is watching it.
+            purpose: interactive ? "interactive" : "harness-run",
           },
           ctx,
         );
@@ -545,7 +595,11 @@ export class SandboxDispatchClient {
       // useless as a successful one's. `releaseAfter` only ever moves shutdown
       // earlier and swallows its own errors, so this cannot fail a run or cut
       // short a sandbox another turn just extended.
-      if (lastHandle && getSettings().sandboxReleaseOnRunEndEnabled) {
+      if (
+        lastHandle &&
+        !this.interactive &&
+        getSettings().sandboxReleaseOnRunEndEnabled
+      ) {
         await provider
           .releaseAfter(lastHandle, getSettings().sandboxReleaseGraceMs)
           .catch(() => {});
@@ -1036,6 +1090,30 @@ export async function* ndjsonLines(
  * not something a coding agent should be handed. What the user actually
  * connected is everything else.
  */
+/**
+ * Which of the org's connections a run mounts. Pure — the flag/aggregation
+ * branch is the whole behaviour, so it is what the unit test pins.
+ */
+export function selectRunConnections<
+  T extends { id: string; status?: string | null },
+>(args: {
+  organizationId: string;
+  /** The org opted into every connection (`coding_agent_org_mcps`). */
+  orgWide: boolean;
+  /** Connections aggregated on the agent itself; always mounted. */
+  ownIds: ReadonlySet<string>;
+  connections: readonly T[];
+}): T[] {
+  return args.connections.filter(
+    (connection) =>
+      (args.orgWide || args.ownIds.has(connection.id)) &&
+      // A connection Studio already knows is erroring only costs the session
+      // a failed connect at startup.
+      connection.status === "active" &&
+      !isStudioOwnedConnection(args.organizationId, connection.id),
+  );
+}
+
 export function isStudioOwnedConnection(
   organizationId: string,
   connectionId: string,

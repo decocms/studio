@@ -1,16 +1,5 @@
 import type { SandboxFsHooks } from "./sandbox-fs-hooks-types";
 
-export interface VmToolObjectStorage {
-  presignedGetUrl(key: string): Promise<string>;
-  presignedPutUrl(key: string): Promise<string>;
-}
-
-export interface VmToolContext {
-  objectStorage?: VmToolObjectStorage | null;
-  organization?: { slug?: string | null } | null;
-  baseUrl: string;
-}
-
 export interface PendingImage {
   url: string;
   mediaType: string;
@@ -33,11 +22,9 @@ export interface HtmlArtifactBuffer {
 
 export interface VmToolsParams {
   /**
-   * Flat sandbox filesystem hooks (read/write/edit/bash/glob/grep + the
-   * `onProxy` escape hatch). Handle resolution, daemon-reachability detection,
-   * and auto-restart retry all live inside these closures (built by
-   * `createSandboxFsHooks`), so the tools stay independent of sandbox
-   * lifecycle and transport details.
+   * Narrow daemon hooks. Handle resolution, daemon-reachability detection, and
+   * auto-restart retry live inside these closures, so the tools stay
+   * independent of sandbox lifecycle and transport details.
    */
   readonly fs: SandboxFsHooks;
   /** Optional HTML-artifact fast-path mirror (hosted-only; see `HtmlArtifactBuffer`). */
@@ -50,15 +37,4 @@ export interface VmToolsParams {
    * queue is flushed by `prepareStep` in dispatch-run.ts.
    */
   readonly pendingImages: PendingImage[];
-  /**
-   * Studio context for tools that resolve the org id / object storage for
-   * stable file URLs (and the deck fast-path mirror).
-   */
-  readonly ctx: VmToolContext;
-  /** Current chat thread id (accepted for parity across callers). */
-  readonly threadId: string;
-  /**
-   * Virtual MCP ID (accepted for parity across callers).
-   */
-  readonly virtualMcpId: string;
 }
