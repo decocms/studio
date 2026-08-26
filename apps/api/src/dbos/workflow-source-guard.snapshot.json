@@ -1,8 +1,8 @@
 {
   "auth/install-studio-pack-workflow.ts": "6f6c4fe37f2163dcf6a521164185fd364a22b1e5617653d14d1d5de40110a7ab",
   "automations/dbos-workflow.ts": "dd8535f7577bbd3c0270c60f14f480d4fb42e366666245c3efa77f0ce73a9da2",
-  "dispatch-queue/hosted-harness-workflow.ts": "794e34bf8bd0bde52851522a69d3b364f0b756eec7913e15c28d6a362d46dd98",
-  "dispatch-queue/thread-gate-workflow.ts": "72ad0eb58f1dd4ab04810e6c5905a76eeb5bc1b1332995f763f774b5f5d3b72a",
+  "dispatch-queue/hosted-harness-workflow.ts": "76b1eaad5eeef0d00a4e3ece6413d9bbde662f1a8793a466292723d7bb73bd9d",
+  "dispatch-queue/thread-gate-workflow.ts": "86728557a444719d6761c26632e94ed28bcadce72abbd826b7d38a473054a604",
   "file-storage/dbos-org-repo-sync.ts": "32c606976916fde2be7abe3084f7388744bdb610c178e9c2a07a8080f764904e",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
   "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",

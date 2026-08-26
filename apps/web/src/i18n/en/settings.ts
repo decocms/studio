@@ -488,6 +488,21 @@ export const settings = {
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
+  "settings.sprints.title": "Sprints",
+  "settings.sprints.description":
+    "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
+  "settings.sprints.enabledTitle": "Enable sprints",
+  "settings.sprints.enabledDescription":
+    "Adds a sprint property to every task and a sprint filter to the board.",
+  "settings.sprints.cadenceTitle": "Cadence",
+  "settings.sprints.cadenceDescription":
+    "How long a sprint lasts, and the day sprint 1 started.",
+  "settings.sprints.cadenceCurrent":
+    "Sprint {number} is running now ({start} to {end}).",
+  "settings.sprints.weeksValue": "{count} weeks",
+  "settings.sprints.weeksValueOne": "1 week",
+  "settings.sprints.startDateLabel": "Sprint 1 start day",
+  "settings.sprints.updateError": "Couldn't update the sprint settings",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

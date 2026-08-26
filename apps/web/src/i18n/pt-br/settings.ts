@@ -506,6 +506,22 @@ export const settings = {
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats em um agente importado de um reposit\u00f3rio do GitHub rodam dentro do sandbox desse agente, ao lado do checkout, em vez de rodarem no Decopilot. As respostas chegam de turno inteiro, e n\u00e3o palavra por palavra. S\u00f3 vale para chats novos \u2014 um chat existente mant\u00e9m o runtime em que come\u00e7ou.",
+  "settings.sprints.title": "Sprints",
+  "settings.sprints.description":
+    "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",
+  "settings.sprints.enabledTitle": "Ativar sprints",
+  "settings.sprints.enabledDescription":
+    "Adiciona uma propriedade de sprint em cada tarefa e um filtro de sprint no board.",
+  "settings.sprints.cadenceTitle": "Cad\u00eancia",
+  "settings.sprints.cadenceDescription":
+    "Quanto tempo dura uma sprint e o dia em que a sprint 1 come\u00e7ou.",
+  "settings.sprints.cadenceCurrent":
+    "A sprint {number} est\u00e1 em andamento ({start} a {end}).",
+  "settings.sprints.weeksValue": "{count} semanas",
+  "settings.sprints.weeksValueOne": "1 semana",
+  "settings.sprints.startDateLabel": "Dia inicial da sprint 1",
+  "settings.sprints.updateError":
+    "N\u00e3o foi poss\u00edvel atualizar as configura\u00e7\u00f5es de sprint",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",

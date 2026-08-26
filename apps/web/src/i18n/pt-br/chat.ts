@@ -363,6 +363,9 @@ export const chat = {
   "chat.runStatus.analyzingScopeLabel": "Pensando",
   "chat.runStatus.choosingNextStepsDetail": "Decidindo o que fazer a seguir",
   "chat.runStatus.choosingNextStepsLabel": "Pensando",
+  "chat.runStatus.startingSandboxDetail":
+    "Ligando a m\u00e1quina e fazendo checkout do reposit\u00f3rio",
+  "chat.runStatus.startingSandboxLabel": "Iniciando o sandbox",
   "chat.runStatus.gatheringContextDetail":
     "Analisando o histórico, arquivos e notas",
   "chat.runStatus.gatheringContextLabel": "Lendo o chat",

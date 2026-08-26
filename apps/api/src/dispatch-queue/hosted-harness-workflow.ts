@@ -279,7 +279,12 @@ const publishWaitingCapacity = (
   rt: HostedHarnessRuntime,
   input: HostedHarnessInput,
 ): Promise<void> =>
-  publishRunStatusStage(rt.deps.streamBuffer, input.runId, "waiting-capacity");
+  publishRunStatusStage({
+    streamBuffer: rt.deps.streamBuffer,
+    harnessId: input.request.harnessId,
+    taskId: input.runId,
+    stage: "waiting-capacity",
+  });
 
 /**
  * Keep publishing `waiting-capacity` for as long as the child sits ENQUEUED.

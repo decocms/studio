@@ -14,10 +14,11 @@
  *  - text/reasoning ids are per-block, not per-message: two text blocks in one
  *    assistant turn are two parts.
  *
- * Deliberately NOT streaming (v1): the caller buffers a whole turn and flushes
- * on `result`, so every text block arrives as start+delta+end back to back.
- * The chunk vocabulary is identical either way, so switching to incremental
- * emission later is a change of *when* these are yielded, not *what*.
+ * Block-granular, not token-granular: the caller emits a frame per SDK message
+ * (see `claude-code.ts`), so a text block arrives as start+delta+end back to
+ * back rather than as deltas. The chunk vocabulary is identical either way, so
+ * moving to token deltas later is a change of *when* these are yielded, not
+ * *what*.
  */
 
 import type { UIMessageChunk } from "ai";
