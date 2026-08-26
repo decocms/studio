@@ -93,6 +93,7 @@ export function buildSuperAgentTaskPrompt(
   // repo does the commit/push/PR flow apply. Then keep it direct: don't hunt for
   // the dev-server port, don't chase incidental symbols. Keep it tight — a
   // bloated prompt costs tokens every step.
+  // prompt-region:start super-agent
   return [
     "You've been assigned this task. Complete it.",
     "",
@@ -154,6 +155,7 @@ export function buildSuperAgentTaskPrompt(
     "",
     `(task id: ${task.id})`,
   ].join("\n");
+  // prompt-region:end super-agent
 }
 
 /**

@@ -2,9 +2,13 @@
  * JIRA_* — per-org Jira Cloud integration (pull sync into the task board).
  *
  * One integration per org: site + Basic-auth credentials (API token, vault-
- * encrypted), one project, and a per-tenant status mapping (Jira status name
- * → board status). The jira-sync cron (dbos-jira-sync.ts) pulls mapped issues
- * every ~10 minutes; `_SYNC_RUN` pulls on demand. Nothing is written to Jira.
+ * encrypted), one board, and a per-tenant status mapping (board lane → its
+ * Jira status names). The jira-sync cron (dbos-jira-sync.ts) pulls every ~10
+ * minutes; `_SYNC_RUN` pulls on demand.
+ *
+ * The pull's scope is the board's own saved filter, so an issue sitting in the
+ * board's Backlog tab is a card here too — which sprint it belongs to is
+ * mirrored onto the card instead of deciding whether the card exists.
  */
 
 import { z } from "zod";
@@ -20,10 +24,14 @@ import { syncJiraIntegrationSafe } from "@/jira/sync";
 import type { OrgJiraIntegration } from "@/storage/types";
 import { TaskBoardItemStatusSchema } from "../task-board/schema";
 
+// `partialRecord`, not `record`: a `z.record` over an enum demands EVERY lane
+// be present, so an org mapping three of its columns would fail validation.
 const statusMappingSchema = z
-  .record(z.string(), TaskBoardItemStatusSchema)
+  .partialRecord(TaskBoardItemStatusSchema, z.array(z.string()))
   .describe(
-    "Jira status name → board status. Issues in unmapped Jira statuses are not synced.",
+    "Board status → its Jira status names, in board order. Several Jira " +
+      "statuses may share a lane; the first is where a card entering that lane " +
+      "is pushed. Issues whose Jira status names no lane are not synced.",
   );
 
 /** The API token never leaves the server — outputs carry the rest.
@@ -36,7 +44,6 @@ const integrationSchema = z.object({
   boardId: z.string().nullable(),
   boardName: z.string().nullable(),
   statusMapping: statusMappingSchema,
-  jqlFilter: z.string().nullable(),
   autoDelegate: z.boolean(),
   webhookSecret: z.string(),
   enabled: z.boolean(),
@@ -51,6 +58,8 @@ const syncResultSchema = z.union([
     updated: z.number(),
     unchanged: z.number(),
     skipped: z.number(),
+    archived: z.number(),
+    unmappedStatuses: z.array(z.string()),
   }),
   z.object({ error: z.string() }),
 ]);
@@ -65,7 +74,6 @@ function toOutput(
     boardId: integration.boardId,
     boardName: integration.boardName,
     statusMapping: integration.statusMapping,
-    jqlFilter: integration.jqlFilter,
     autoDelegate: integration.autoDelegate,
     webhookSecret: integration.webhookSecret,
     enabled: integration.enabled,
@@ -133,13 +141,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
       .optional()
       .describe("Display name of that board"),
     statusMapping: statusMappingSchema.optional(),
-    jqlFilter: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "Extra JQL ANDed into the pull, e.g. to match the Jira board's saved filter (null clears it)",
-      ),
     autoDelegate: z
       .boolean()
       .optional()
@@ -209,10 +210,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
           ? input.boardName
           : (existing?.boardName ?? null),
       statusMapping,
-      jqlFilter:
-        input.jqlFilter !== undefined
-          ? input.jqlFilter
-          : (existing?.jqlFilter ?? null),
       autoDelegate: input.autoDelegate ?? existing?.autoDelegate ?? false,
       enabled,
       createdBy: existing?.createdBy ?? userId,
@@ -297,8 +294,11 @@ export const JIRA_SYNC_RUN = defineTool({
   name: "JIRA_SYNC_RUN",
   description:
     "Pull from Jira into the task board right now (the 'I just changed " +
-    "something in Jira' button). Returns created/updated/unchanged/skipped " +
-    "counts, or the error that was recorded on the integration.",
+    "something in Jira' button). Returns created/updated/unchanged/skipped/" +
+    "archived counts (skipped = an issue whose Jira status maps to no lane, or " +
+    "an epic; archived = a card whose issue left the board's scope), plus the " +
+    "Jira statuses it had to skip for lack of a mapping — or the error that " +
+    "was recorded on the integration.",
   inputSchema: z.object({}),
   outputSchema: z.object({ result: syncResultSchema }),
   handler: async (_input, ctx) => {

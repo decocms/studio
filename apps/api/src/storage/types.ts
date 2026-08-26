@@ -16,13 +16,16 @@ import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
+import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
   OrgFlags,
-  SprintConfig,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
+import type { SprintState } from "@decocms/shared/sprints";
 import type { ThreadMetadata } from "@decocms/shared/entities";
+import type { ReviewerKind } from "@decocms/shared/task-board";
 import type { PrivateRegistryDatabase } from "./registry/types";
+import type { JiraStatusMapping } from "@decocms/shared/jira-status-mapping";
 
 export type {
   OrgSsoConfigPublic,
@@ -187,8 +190,6 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   main_agent_id: string | null;
-  // Task board sprint cadence — see SprintConfigSchema. Null = never configured.
-  sprint_config: JsonObject<SprintConfig> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -202,7 +203,6 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
-  sprint_config: SprintConfig | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -952,7 +952,7 @@ export interface ThreadTable {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
+  /** Dormant legacy column retained in the physical schema; runtime code ignores it. */
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
@@ -970,15 +970,6 @@ export interface ThreadTable {
   >;
   /** Single-writer fence for the active run; null when none minted (Phase A). */
   run_fence_token: ColumnType<string | null, string | null, string | null>;
-  /**
-   * @deprecated Per-thread transport selector. No longer read for routing —
-   * the thread gate uses the active link publisher whenever NATS and the link
-   * dispatch runtime are available (see thread-gate-workflow.ts). The writer
-   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup.
-   * Column retained (nullable) for backward compatibility; no drop migration.
-   * New code MUST NOT read or write it.
-   */
-  link_transport: ColumnType<string | null, string | null, string | null>;
   /**
    * Durable cancel flag (Phase C). Set by the cancel endpoint; the ingest
    * backstop rejects with 409 when non-null, regardless of fence state.
@@ -1039,8 +1030,6 @@ export interface Thread {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
-  sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
   metadata: ThreadMetadata;
@@ -1051,12 +1040,6 @@ export interface Thread {
    * Pinned on the thread row; read path forks on this value.
    */
   message_storage_version: number;
-  /**
-   * @deprecated No longer used for routing (see the `threads` table column
-   * doc). Surfaced on the read path for backward compatibility only; nothing
-   * writes it. New code MUST NOT depend on it.
-   */
-  link_transport: string | null;
 }
 
 /**
@@ -1627,6 +1610,14 @@ export type TaskBoardItemPriority =
   | "high"
   | "urgent";
 
+/** What KIND of work a card is — its shape, not its area (that's tags). */
+export type TaskBoardItemType =
+  | "bug"
+  | "feature"
+  | "chore"
+  | "spike"
+  | "security";
+
 export interface TaskBoardItemTable {
   id: string;
   organization_id: string;
@@ -1642,6 +1633,7 @@ export interface TaskBoardItemTable {
     TaskBoardItemPriority | undefined,
     string
   >;
+  type: ColumnType<TaskBoardItemType, TaskBoardItemType | undefined, string>;
   assignee_id: string | null;
   assigned_by: string | null;
   repo: string | null;
@@ -1667,10 +1659,14 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
-  /** Which sprint this card is planned into (1-based, counted from the org's
-   *  `sprint_config` cadence). Null = backlog, i.e. not planned into one — and
-   *  the state of every card on a board that never turned sprints on. */
-  sprint: ColumnType<number | null, number | null | undefined, number | null>;
+  /** The sprint this card belongs to (`task_board_sprints.id`). Null =
+   *  backlog, which is every card on a board that mirrors no Jira sprints.
+   *  Pull-owned: the Jira sync writes it, nothing else does. */
+  sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
   /** Per-org sequence behind the card's human key (`DECO-01`), assigned once at
@@ -1703,6 +1699,40 @@ export interface TaskBoardItemTable {
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/**
+ * A sprint a card can belong to — an entity, not a window over a cadence (see
+ * `migrations/182-task-board-sprints-entities.ts`).
+ *
+ * `jira_sprint_id` is the mirror's identity: UNIQUE per org, so the pull
+ * upserts on it and a renamed Jira sprint updates in place instead of
+ * splitting in two. Null means a sprint this board owns — nothing writes those
+ * yet.
+ */
+export interface TaskBoardSprintTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  /** Jira's own vocabulary; the board renders `active` differently. */
+  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
+  starts_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  ends_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  jira_sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
@@ -1792,6 +1822,24 @@ export interface TaskBoardItemPrRef {
   createdAt: string;
 }
 
+/**
+ * One reviewer's standing verdict, within the task's CURRENT review cycle.
+ * Verdicts from before it last entered In Review are stale and not reported;
+ * absent from the array = that reviewer has not decided yet.
+ *
+ * A reviewer thread that reads `completed` may well have asked for changes, so
+ * thread status cannot stand in for this.
+ */
+export interface TaskBoardItemReviewVerdict {
+  reviewer: ReviewerKind;
+  verdict: "approved" | "changes_requested";
+  /** Whether the approval was token-verified. An unverified approval still
+   *  counts as an approval, but it can never satisfy the auto-merge gate — see
+   *  `approvedButUnverified`, which is why the flag travels with the verdict
+   *  rather than being collapsed into it. Always false for a change-request. */
+  verified: boolean;
+}
+
 /** A thread linked to a task, with the run state the board needs to render it. */
 export interface TaskBoardItemThreadRef {
   threadId: string;
@@ -1840,14 +1888,16 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is. Required; defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
    *  created org-wide (no site context) carry none. */
   repo: string | null;
   dueDate: string | null;
-  /** Sprint this card is planned into (1-based); null = backlog. */
-  sprint: number | null;
+  /** Sprint this card belongs to (`TaskBoardSprint.id`); null = backlog. */
+  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
@@ -1859,6 +1909,9 @@ export interface TaskBoardItem {
   threads: TaskBoardItemThreadRef[];
   /** Org tags attached to this task, name ascending. */
   tags: TaskBoardItemTagRef[];
+  /** Each reviewer's standing verdict in the current review cycle, in
+   *  `REVIEWER_KINDS` order. Reviewers that have not decided are absent. */
+  reviewVerdicts: TaskBoardItemReviewVerdict[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1961,23 +2014,15 @@ export interface OrgJiraIntegrationTable {
   email: string;
   /** Vault-encrypted Jira API token (Basic auth pairs it with `email`). */
   api_token: string;
-  /** Agile board the sync mirrors (its columns minus its Backlog tab). */
+  /** Agile board the sync mirrors: its saved filter is the pull's scope (the
+   *  board's Backlog tab included) and its columns are the mapping UI's names. */
   board_id: string | null;
   board_name: string | null;
-  /** { "<jira status name>": "<board status>" } — the per-tenant mapping.
-   *  Issues whose Jira status is not a key here are skipped by the sync. */
-  status_mapping: ColumnType<
-    Record<string, TaskBoardItemStatus>,
-    string | undefined,
-    string
-  >;
-  /** Optional extra JQL ANDed into the pull (labels, sprints, …) — the
-   *  tenant's way to match their board's saved filter. */
-  jql_filter: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
+  /** { "<board status>": ["<jira status name>", …] } — the per-tenant mapping,
+   *  each lane's Jira statuses in board order. Issues whose Jira status names
+   *  no lane are skipped by the sync. Read through `normalizeStatusMapping`,
+   *  which also accepts the pre-array shape (migration 205). */
+  status_mapping: ColumnType<JiraStatusMapping, string | undefined, string>;
   /** Issue lands in a To Do-mapped column → assign the Super Agent. */
   auto_delegate: ColumnType<boolean, boolean | undefined, boolean>;
   /** Capability URL segment for `/api/_jira/webhook/<secret>` — DB-generated,
@@ -1989,6 +2034,11 @@ export interface OrgJiraIntegrationTable {
    *  as it got, so the next run resumes instead of skipping. */
   last_synced_at: ColumnType<Date | null, never, Date | string | null>;
   last_sync_error: ColumnType<string | null, never, string | null>;
+  /** Set while a rescan (scope change, existing-card fix, or first import)
+   *  hasn't yet finished re-reading the whole scope — survives across the
+   *  multiple runs a large board needs, independent of `last_synced_at`
+   *  (see migration 186). */
+  rescan_pending: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
@@ -2003,13 +2053,13 @@ export interface OrgJiraIntegration {
   apiToken: string;
   boardId: string | null;
   boardName: string | null;
-  statusMapping: Record<string, TaskBoardItemStatus>;
-  jqlFilter: string | null;
+  statusMapping: JiraStatusMapping;
   autoDelegate: boolean;
   webhookSecret: string;
   enabled: boolean;
   lastSyncedAt: string | null;
   lastSyncError: string | null;
+  rescanPending: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -2052,6 +2102,43 @@ export interface TaskBoardCommentJiraLinkTable {
  * NOTE: This uses *Table types with ColumnType for proper Kysely type mapping
  * NOTE: Organizations, teams, members, and roles are managed by Better Auth organization plugin
  */
+/** Who follows a task. No row = never involved; `subscribed = false` = muted on
+ *  purpose, which auto-subscribe must never overwrite. */
+export interface NotificationSubscriptionTable {
+  id: string;
+  user_id: string;
+  task_board_item_id: string;
+  subscribed: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One row per recipient per event. Immutable except for the two timestamps,
+ *  each of which is the record of its own event. */
+export interface NotificationTable {
+  id: string;
+  user_id: string;
+  /** Its own column, never a join: tenancy must stay one indexable equality. */
+  organization_id: string;
+  task_board_item_id: string;
+  type: NotificationType;
+  /** Null = the agent/system did it, or the actor's account was deleted. */
+  actor_id: string | null;
+  /** Everything the inbox row renders — see `NotificationDataSchema`. */
+  data: ColumnType<Record<string, unknown>, string, string>;
+  read_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  emailed_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
@@ -2142,6 +2229,7 @@ export interface Database extends PrivateRegistryDatabase {
   org_sites: OrgSiteTable;
   org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
+  task_board_sprints: TaskBoardSprintTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
@@ -2154,6 +2242,10 @@ export interface Database extends PrivateRegistryDatabase {
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
   task_board_comment_jira_links: TaskBoardCommentJiraLinkTable;
+
+  // Follow/inbox for the task board
+  notification_subscriptions: NotificationSubscriptionTable;
+  notifications: NotificationTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

@@ -46,6 +46,16 @@
   box-shadow: var(--card-shadow);
 }
 
+/* Recolour a card's ring, keeping the drop shadow under it — the ring IS the card's border, drawn as a shadow. */
+@utility card-ring-destructive {
+  --card-shadow:
+    0 0 0 var(--border-hairline) var(--destructive), var(--card-drop);
+}
+
+@utility card-ring-warning {
+  --card-shadow: 0 0 0 var(--border-hairline) var(--warning), var(--card-drop);
+}
+
 :root {
   --background: oklch(0.99 0.003 73);
   --foreground: oklch(0.145 0.01 60);
@@ -75,6 +85,9 @@
   --warning-foreground: oklch(0.99 0.02 95);
   --special: oklch(0.55 0.18 290);
   --special-foreground: oklch(0.98 0.02 295);
+
+  /* How much of a user-picked colour (org tags) survives against the surface. */
+  --user-color-strength: 100%;
 
   --sidebar: oklch(0.975 0.006 80);
   --sidebar-foreground: oklch(0.2 0.01 60);
@@ -107,9 +120,8 @@
     oklch(0 0 0 / 0.06) 0px 4px 12px, oklch(0 0 0 / 0.04) 0px 2px 4px;
   --shadow-lg:
     oklch(0 0 0 / 0.08) 0px 8px 32px, oklch(0 0 0 / 0.06) 0px 4px 12px;
-  --card-shadow:
-    0px 0px 0px 1px #1d1b1814, 0px 1px 2px -1px #1d1b1812, 0px 2px 4px 0px
-    #1d1b180d;
+  --card-drop: 0px 1px 2px -1px #1d1b1812, 0px 2px 4px 0px #1d1b180d;
+  --card-shadow: 0px 0px 0px 1px #1d1b1814, var(--card-drop);
 }
 
 .dark {
@@ -142,6 +154,9 @@
   --special: oklch(0.6 0.16 290);
   --special-foreground: oklch(0.97 0.02 295);
 
+  /* Saturated hex reads far louder on a dark surface than a light one. */
+  --user-color-strength: 55%;
+
   --sidebar: oklch(0.155 0.005 60);
   --sidebar-foreground: oklch(0.96 0.005 60);
   --sidebar-accent: oklch(0.23 0.005 60);
@@ -156,9 +171,11 @@
   --chart-3: oklch(0.61 0.2 6.81);
   --chart-4: oklch(0.84 0.17 84.5);
   --chart-5: oklch(0.74 0.17 159);
+  --card-drop:
+    0 2px 2px 0 #0000001a, 0 4px 4px 0 #0000001a, 0 8px 8px 0 #0000001a;
   --card-shadow:
     inset 0 1px 0 0 #ffffff08, inset 0 0 0 1px #ffffff08, 0 0 0 1px #0000001a,
-    0 2px 2px 0 #0000001a, 0 4px 4px 0 #0000001a, 0 8px 8px 0 #0000001a;
+    var(--card-drop);
 }
 
 @theme inline {
@@ -567,5 +584,16 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /*
+   * Spinners keep turning. The rule above is for decoration, and a spinner is
+   * not decoration — it is the only thing distinguishing "still working" from
+   * "stuck", so freezing it removes information rather than motion. WCAG 2.3.3
+   * exempts motion that is essential to the content. Slowed, not stopped.
+   */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
   }
 }

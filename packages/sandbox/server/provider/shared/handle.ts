@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { hash } from "node:crypto";
 import { refSlugSource } from "../sandbox-ref";
 import { sandboxIdKey, type SandboxId } from "../types";
 
@@ -6,10 +6,7 @@ const SLUG_MAX = 24;
 
 /** Stable short hash of a SandboxId. Length in hex chars (default 16). */
 export function hashSandboxId(id: SandboxId, length = 16): string {
-  return createHash("sha256")
-    .update(sandboxIdKey(id))
-    .digest("hex")
-    .slice(0, length);
+  return hash("sha256", sandboxIdKey(id), "hex").slice(0, length);
 }
 
 /**
@@ -41,10 +38,26 @@ export function computeHandle(id: SandboxId): string {
 function slugifyBranch(branch: string | null | undefined): string {
   if (!branch) return "";
   const lastSegment = branch.split("/").pop() ?? "";
-  return lastSegment
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, SLUG_MAX)
-    .replace(/-+$/g, "");
+  let slug = "";
+  let separatorPending = false;
+
+  for (const char of lastSegment.toLowerCase()) {
+    const code = char.charCodeAt(0);
+    const isAsciiLetter = code >= 97 && code <= 122;
+    const isDigit = code >= 48 && code <= 57;
+    if (!isAsciiLetter && !isDigit) {
+      separatorPending ||= slug.length > 0;
+      continue;
+    }
+
+    if (separatorPending) {
+      if (slug.length + 1 >= SLUG_MAX) break;
+      slug += "-";
+      separatorPending = false;
+    }
+    slug += char;
+    if (slug.length === SLUG_MAX) break;
+  }
+
+  return slug;
 }

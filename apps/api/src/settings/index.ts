@@ -37,7 +37,7 @@ export function getSettings(): Settings {
  */
 export function agentSandboxEnabled(): boolean {
   const s = getSettings();
-  return !s.localMode && s.sandboxProviderKind === "agent-sandbox";
+  return !s.localMode && s.agentSandboxEnabled;
 }
 
 /**

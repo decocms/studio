@@ -62,6 +62,29 @@ export function metaSourceOrder(input: {
   return sources;
 }
 
+/**
+ * Cache key for one meta read. The `(orgSlug, virtualMcpId, branch)` head is
+ * the invalidation scope — `KEYS.liveMeta(org, vmid, branch)` must stay a
+ * prefix of it, since that is how the sandbox lifecycle swaps the CMS off the
+ * committed/production schema once the dev server is up. The URL tail is what
+ * makes a settings edit re-fetch.
+ */
+export function liveMetaQueryKey(params: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  previewUrl?: string | null;
+  productionUrl?: string | null;
+}) {
+  return KEYS.liveMeta(
+    params.orgSlug,
+    params.virtualMcpId,
+    params.branch,
+    params.previewUrl ?? "",
+    params.productionUrl ?? "",
+  );
+}
+
 export function useLiveMeta(
   params: UseLiveMetaParams | null,
   options?: {
@@ -83,16 +106,8 @@ export function useLiveMeta(
   );
   const fastPreviewActive = runtime === "cms";
   return useQuery({
-    // productionUrl is appended so a settings edit re-fetches; invalidators key
-    // on the (org, vm, branch) prefix, which still matches (variadic key).
     queryKey: params
-      ? KEYS.liveMeta(
-          params.orgSlug,
-          params.virtualMcpId,
-          params.branch,
-          previewUrl ?? "",
-          productionUrl ?? "",
-        )
+      ? liveMetaQueryKey({ ...params, previewUrl, productionUrl })
       : KEYS.liveMeta(""),
     queryFn: async () => {
       const fetchMeta = async (baseUrl: string): Promise<LiveMeta | null> => {

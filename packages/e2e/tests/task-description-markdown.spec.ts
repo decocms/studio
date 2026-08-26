@@ -32,8 +32,11 @@ const PNG = Buffer.from(
  * placeholder and so only exists while the description is empty — this test
  * asserts on it both empty and filled.
  */
+/** The description editor specifically. The dialog holds a second ProseMirror
+ *  — the comment composer, which also takes `@`-mentions — so `.ProseMirror`
+ *  alone is ambiguous. */
 function editorOf(page: Page) {
-  return page.getByRole("dialog").locator(".ProseMirror");
+  return page.getByTestId("task-description").locator(".ProseMirror");
 }
 
 // Black-box wire-contract shape (owned by this test, per e2e isolation rules).

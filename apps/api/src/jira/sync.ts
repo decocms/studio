@@ -1,5 +1,15 @@
 /**
- * Jira → task board pull sync (one integration = one org, one project).
+ * Jira → task board pull sync (one integration = one org, one board).
+ *
+ * Scope is the board's saved filter — everything the board is about, INCLUDING
+ * its Backlog tab. It used to be `/board/{id}/issue` minus
+ * `/board/{id}/backlog`, i.e. only the cards visible in the board's columns,
+ * which meant an issue filed and left in the backlog never reached the task
+ * board at all (and, because a skipped issue still advances the watermark,
+ * never would until someone touched it again). Which sprint an issue is in is
+ * now data on the card — {@link TaskBoardItem.sprintId}, mirrored into
+ * `task_board_sprints` — so the board can be read one sprint at a time the way
+ * Jira's is, without membership deciding whether a card exists.
  *
  * Incremental by watermark: each run pulls issues `updated` since
  * `last_synced_at` (with overlap), ordered ascending, capped per run — a
@@ -8,7 +18,10 @@
  * in the tenant's `status_mapping` are skipped entirely; mapped issues are
  * created as board cards or updated in place via `task_board_item_jira_links`.
  *
- * Issue fields are pull-only (writes are the future push phase); comments are 2-way — comments.ts pushes, `pullComments` here imports. A card deleted on the board reappears only when its issue is next updated in Jira.
+ * Issue fields are pull-only (creation is pushed the other way — see
+ * `jiraIssueCreateWorkflow`); comments are 2-way — comments.ts pushes,
+ * `pullComments` here imports. A card deleted on the board reappears only when
+ * its issue is next updated in Jira.
  */
 
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
@@ -21,6 +34,7 @@ import type {
 } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
+import { laneIndex } from "@decocms/shared/jira-status-mapping";
 import {
   collectMentionAccountIds,
   jiraBodyToText,
@@ -28,6 +42,7 @@ import {
   JiraUserDirectory,
   type JiraIssue,
 } from "./client";
+import { type JiraSprintRef, pickIssueSprint } from "./sprint-field";
 
 /** `created_by`/`updated_by` on synced cards. Deliberately NOT "system" —
  *  that marks reports-owned cards and locks their title/description. */
@@ -40,6 +55,10 @@ const MAX_ISSUES_PER_RUN = 500;
 /** Re-covers clock skew and same-minute writes around the watermark;
  *  re-fetched issues no-op via the link's `jira_updated_at`. */
 const WATERMARK_OVERLAP_MINUTES = 5;
+
+/** Search pages one run will walk. `MAX_ISSUES_PER_RUN` alone cannot bound the
+ *  loop: an empty page carrying a token consumes no issue budget. */
+const MAX_PAGES_PER_RUN = 25;
 
 const MAX_DESCRIPTION_CHARS = 10_000;
 
@@ -57,6 +76,17 @@ export interface JiraSyncCounts {
   updated: number;
   unchanged: number;
   skipped: number;
+  /** Cards taken off the board because their issue left the board's scope. */
+  archived: number;
+  /**
+   * Jira statuses the run skipped for having no lane, deduped.
+   *
+   * The skip itself is by design — a tenant maps the columns they care about —
+   * but silently. A board with ten columns and six mapped statuses drifts
+   * card by card as work moves into an unmapped one, and nothing said so; this
+   * is what the settings UI turns into "these columns aren't mapped".
+   */
+  unmappedStatuses: string[];
 }
 
 export type JiraSyncResult = JiraSyncCounts | { error: string };
@@ -68,10 +98,14 @@ export async function syncJiraIntegrationSafe(
   integration: OrgJiraIntegration,
 ): Promise<JiraSyncResult> {
   try {
-    const { counts, watermark } = await runSync(ctx, integration);
+    const { counts, watermark, rescanPending } = await runSync(
+      ctx,
+      integration,
+    );
     await ctx.storage.jiraIntegrations.recordSyncResult(integration.id, {
       error: null,
       watermark,
+      rescanPending,
     });
     return counts;
   } catch (err) {
@@ -83,22 +117,82 @@ export async function syncJiraIntegrationSafe(
   }
 }
 
-function buildJql(integration: OrgJiraIntegration): string {
+/**
+ * The pull's query: the board's scope, narrowed by the tenant's extra filter
+ * and by the watermark, ordered so a truncated run resumes cleanly.
+ *
+ * Exported for tests — this string decides which of a customer's issues exist
+ * on their board, and the ordering is what makes the watermark meaningful.
+ *
+ * The elapsed window is clamped at 0: the watermark is Jira's `updated`, on
+ * Jira's clock, so it can sit ahead of ours, and a negative window emits
+ * `updated >= --25m` — a JQL 400 on every tick until the clocks converge.
+ */
+export function buildJql(
+  integration: OrgJiraIntegration,
+  scopeJql: string,
+  now: Date,
+): string {
   // Relative-minutes JQL sidesteps JQL's the-user's-timezone date parsing.
-  const since = integration.lastSyncedAt
+  const elapsed = integration.lastSyncedAt
     ? Math.ceil(
-        (Date.now() - new Date(integration.lastSyncedAt).getTime()) / 60_000,
-      ) + WATERMARK_OVERLAP_MINUTES
+        (now.getTime() - new Date(integration.lastSyncedAt).getTime()) / 60_000,
+      )
     : null;
+  const since =
+    elapsed === null ? null : Math.max(0, elapsed) + WATERMARK_OVERLAP_MINUTES;
   const conditions = [
-    // Scope comes from the board itself; this only kills subtasks server-side.
+    `(${scopeJql})`,
+    // Subtasks are rows on their parent's card, not cards.
     "issuetype IN standardIssueTypes()",
-    ...(integration.jqlFilter?.trim()
-      ? [`(${integration.jqlFilter.trim()})`]
-      : []),
     ...(since !== null ? [`updated >= -${since}m`] : []),
   ].join(" AND ");
   return `${conditions} ORDER BY updated ASC`;
+}
+
+/**
+ * Whether a linked issue can be skipped without re-reading its fields.
+ *
+ * Normally yes: the link records the `updated` we last processed, so an issue
+ * no newer than that has nothing to tell us, and this shortcut is what keeps a
+ * tick cheap.
+ *
+ * NEVER on a rescan. A rescan happens because the shape of what we mirror
+ * changed, which makes every existing card stale by definition — and the
+ * shortcut fires BEFORE any field is written, so the rescan would create the
+ * cards it was missing and leave every card it already had untouched. That is
+ * exactly what happened when sprints shipped: 50 cards arrived, 274 kept a null
+ * sprint, and the board showed 253 issues that Jira had in a sprint as backlog.
+ */
+export function isUnchanged(
+  linkUpdatedAt: string,
+  issueUpdated: Date,
+  isRescan: boolean,
+): boolean {
+  if (isRescan) return false;
+  return new Date(linkUpdatedAt) >= issueUpdated;
+}
+
+/**
+ * Whether the rescan must keep forcing a full re-read on the NEXT run.
+ *
+ * A run only advances as far as `MAX_ISSUES_PER_RUN`/`MAX_PAGES_PER_RUN` let
+ * it (deliberate pacing, see below) — so a rescan on a board with more mapped
+ * issues than one run's cap sets a non-null `last_synced_at` before the scope
+ * is fully re-read. Without this, the next run would read `lastSyncedAt !==
+ * null`, stop treating itself as a rescan, and silently go back to
+ * `isUnchanged`'s shortcut for every issue the first run never reached — the
+ * same bug migration 185 fixed, just past the 500-issue mark instead of at
+ * `updated === lastSyncedAt`.
+ */
+export function rescanContinues(
+  isRescan: boolean,
+  processed: number,
+  pages: number,
+): boolean {
+  const truncated =
+    processed >= MAX_ISSUES_PER_RUN || pages >= MAX_PAGES_PER_RUN;
+  return isRescan && truncated;
 }
 
 /** Epics (hierarchyLevel 1) and anything above are containers, not cards. */
@@ -237,22 +331,162 @@ async function pullComments(
   }
 }
 
+/**
+ * Jira sprint id → local sprint id.
+ *
+ * Seeded from the BOARD's sprints, in one write, before any issue is read —
+ * that is what keeps a sprint's name and state current when no issue in it
+ * changed, and it means the sprint filter offers the board's sprints even on a
+ * tick that imports nothing. Deriving the mirror from issues alone left a
+ * sprint that finished in Jira reading as the running one indefinitely.
+ *
+ * `localIdFor` still upserts on a miss: an issue can carry a sprint from
+ * another board (a shared project, a moved issue), and a card must not lose
+ * its sprint just because this board never heard of it.
+ */
+class JiraSprintMirror {
+  private readonly ids = new Map<string, string>();
+
+  constructor(
+    private readonly ctx: StudioContext,
+    private readonly organizationId: string,
+  ) {}
+
+  async seed(refs: readonly JiraSprintRef[]): Promise<void> {
+    if (refs.length === 0) return;
+    const mirrored = await this.ctx.storage.sprints.upsertManyFromJira(
+      this.organizationId,
+      refs.map(toUpsert),
+    );
+    for (const [jiraId, localId] of mirrored) this.ids.set(jiraId, localId);
+  }
+
+  async localIdFor(ref: JiraSprintRef | null): Promise<string | null> {
+    if (!ref) return null;
+    const known = this.ids.get(ref.id);
+    if (known) return known;
+    const id = await this.ctx.storage.sprints.upsertFromJira(
+      this.organizationId,
+      toUpsert(ref),
+    );
+    this.ids.set(ref.id, id);
+    return id;
+  }
+}
+
+function toUpsert(ref: JiraSprintRef) {
+  return {
+    jiraSprintId: ref.id,
+    name: ref.name,
+    state: ref.state,
+    startsAt: ref.startsAt,
+    endsAt: ref.endsAt,
+  };
+}
+
+/**
+ * Archive cards whose Jira issue is no longer in the board's scope.
+ *
+ * The pull is incremental, so absence is the one thing it can never notice: an
+ * issue deleted, archived, moved to another project or re-typed out of scope
+ * simply stops being mentioned, and its card sat on the board forever showing
+ * whatever it last said. On one real board that was six cards, four of them
+ * deleted in Jira days earlier.
+ *
+ * Archived, never deleted: the card carries comments, agent runs and a
+ * timeline that the Jira issue's fate says nothing about. `archived` is
+ * already the board's hidden lane, so this takes the card off the board while
+ * leaving every way back.
+ *
+ * Two guards, because this writes to a customer's board off the ABSENCE of
+ * data: the scope read must be complete (`searchIssueIds` throws rather than
+ * truncate) and it must be non-empty — a filter that legitimately matches
+ * nothing is indistinguishable from one that broke, so nothing is archived
+ * either way.
+ */
+/**
+ * Which linked cards to take off the board, given the scope Jira just reported.
+ *
+ * Separate and pure because it is the one place that acts on the ABSENCE of
+ * data: an empty scope yields nothing rather than the whole board, since a
+ * filter that legitimately matches nothing is indistinguishable from a filter
+ * that broke, a permission that was revoked, or a project that was renamed.
+ */
+export function vanishedLinks<T extends { jiraIssueId: string }>(
+  liveIssueIds: ReadonlySet<string>,
+  linked: readonly T[],
+): T[] {
+  if (liveIssueIds.size === 0) return [];
+  return linked.filter((link) => !liveIssueIds.has(link.jiraIssueId));
+}
+
+async function reconcileVanishedIssues(
+  ctx: StudioContext,
+  integration: OrgJiraIntegration,
+  client: JiraClient,
+  scopeJql: string,
+): Promise<number> {
+  const orgId = integration.organizationId;
+  const live = await client.searchIssueIds(
+    `(${scopeJql}) AND issuetype IN standardIssueTypes()`,
+  );
+  if (live.size === 0) {
+    console.warn(
+      `[jira] scope for org ${orgId} came back empty — skipping reconciliation rather than archiving the whole board`,
+    );
+    return 0;
+  }
+  const vanished = vanishedLinks(
+    live,
+    await ctx.storage.jiraIntegrations.listLinkedIssuesOnBoard(orgId),
+  );
+  if (vanished.length === 0) return 0;
+
+  for (const link of vanished) {
+    const before = await ctx.storage.taskBoard.getById(link.itemId, orgId);
+    if (!before || before.status === "archived") continue;
+    const item = await ctx.storage.taskBoard.update(
+      link.itemId,
+      orgId,
+      { status: "archived" },
+      JIRA_SYNC_ACTOR,
+    );
+    await ctx.storage.taskBoard.recordActivity({
+      taskBoardItemId: link.itemId,
+      action: "status_changed",
+      actorId: null,
+      data: { from: before.status, to: "archived" },
+    });
+    emitTaskBoardUpdated(orgId, item);
+    console.log(
+      `[jira] ${link.jiraIssueKey} is no longer in board ${integration.boardId}'s scope — archived its card`,
+    );
+  }
+  return vanished.length;
+}
+
 async function runSync(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
-): Promise<{ counts: JiraSyncCounts; watermark?: Date }> {
+): Promise<{
+  counts: JiraSyncCounts;
+  watermark?: Date;
+  rescanPending?: boolean;
+}> {
   const orgId = integration.organizationId;
   const boardId = integration.boardId;
   if (!boardId) {
     throw new Error("No Jira board selected");
   }
-  const mapping = integration.statusMapping;
-  if (Object.keys(mapping).length === 0) {
+  // One reverse index for the whole sync rather than a scan per issue.
+  const laneOf = laneIndex(integration.statusMapping);
+  if (laneOf.size === 0) {
     throw new Error("No status mapping configured");
   }
 
-  // The first import is a backfill, not activity — never its auto-delegate trigger (it would dispatch one run per pre-existing To Do issue).
-  const isInitialImport = integration.lastSyncedAt === null;
+  // First connect / scope change (migration 184) or an unfinished rescan (migration 186).
+  const isRescan =
+    integration.lastSyncedAt === null || integration.rescanPending;
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
@@ -261,24 +495,34 @@ async function runSync(
   // The integration account's own comments are echoes of our pushes.
   const { accountId: integrationAccountId } = await client.myself();
   const users = new JiraUserDirectory(client);
-  // Backlog-tab issues have normal statuses but are not visible board cards.
-  const backlogIds = await client.listBacklogIssueIds(boardId);
-  const jql = buildJql(integration);
+  const runStartedAt = new Date();
+  const scopeJql = await client.getBoardScopeJql(boardId);
+  const jql = buildJql(integration, scopeJql, runStartedAt);
+  const sprints = new JiraSprintMirror(ctx, orgId);
+  await sprints.seed(await client.listBoardSprints(boardId));
   const counts: JiraSyncCounts = {
     created: 0,
     updated: 0,
     unchanged: 0,
     skipped: 0,
+    archived: 0,
+    unmappedStatuses: [],
   };
+  const unmapped = new Set<string>();
   let watermark: Date | undefined;
-  let startAt = 0;
+  let nextPageToken: string | undefined;
   let processed = 0;
-  const runStartedAt = new Date();
+  let pages = 0;
 
-  while (processed < MAX_ISSUES_PER_RUN) {
-    const page = await client.listBoardIssues({ boardId, jql, startAt });
-    if (page.issues.length === 0) break;
-    startAt += page.issues.length;
+  while (processed < MAX_ISSUES_PER_RUN && pages < MAX_PAGES_PER_RUN) {
+    pages++;
+    const page = await client.searchIssues({ jql, nextPageToken });
+    // Read before the empty check — an empty page can still carry a token.
+    nextPageToken = page.nextPageToken ?? undefined;
+    if (page.issues.length === 0) {
+      if (!nextPageToken) break;
+      continue;
+    }
 
     const links = await ctx.storage.jiraIntegrations.getLinksByIssueIds(
       orgId,
@@ -303,16 +547,20 @@ async function runSync(
         throw new Error(`Unparseable updated on ${issue.key}`);
       }
 
-      const status: TaskBoardItemStatus | undefined =
-        mapping[issue.fields.status.name];
-      if (!status || !isCardIssue(issue) || backlogIds.has(issue.id)) {
+      const status = laneOf.get(issue.fields.status.name) as
+        | TaskBoardItemStatus
+        | undefined;
+      if (!status || !isCardIssue(issue)) {
+        if (!status && isCardIssue(issue)) {
+          unmapped.add(issue.fields.status.name);
+        }
         counts.skipped++;
         watermark = issueUpdated;
         continue;
       }
 
       const link = links.get(issue.id);
-      if (link && new Date(link.jiraUpdatedAt) >= issueUpdated) {
+      if (link && isUnchanged(link.jiraUpdatedAt, issueUpdated, isRescan)) {
         counts.unchanged++;
         watermark = issueUpdated;
         continue;
@@ -323,6 +571,7 @@ async function runSync(
         title: issue.fields.summary,
         description: await cardDescription(integration.siteUrl, issue, users),
         priority: mapPriority(issue),
+        sprintId: await sprints.localIdFor(pickIssueSprint(issue.sprints)),
       };
 
       if (link) {
@@ -346,7 +595,7 @@ async function runSync(
             data: { from: before.status, to: status },
           });
         }
-        if (statusChangedOnJira && !isInitialImport) {
+        if (statusChangedOnJira && !isRescan) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
@@ -397,7 +646,7 @@ async function runSync(
           }
           throw err;
         }
-        if (!isInitialImport) {
+        if (!isRescan) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
@@ -418,16 +667,30 @@ async function runSync(
       watermark = issueUpdated;
     }
 
-    if (startAt >= page.total) break;
+    if (!nextPageToken) break;
+  }
+
+  counts.unmappedStatuses = [...unmapped].sort();
+  // Reconciliation reads the WHOLE scope, so it waits for a run that finished
+  // the incremental pass — mid-backfill, most of the board is legitimately
+  // not linked yet.
+  if (processed < MAX_ISSUES_PER_RUN) {
+    counts.archived = await reconcileVanishedIssues(
+      ctx,
+      integration,
+      client,
+      scopeJql,
+    );
   }
 
   // A run that legitimately saw nothing still has to set the watermark, or
   // `last_synced_at` stays NULL: the UI would sit on "waiting for the first
   // sync" forever and every later run would count as the initial import, which
   // is exactly the state that suppresses auto-delegation.
+  const rescanPending = rescanContinues(isRescan, processed, pages);
   if (watermark === undefined && processed === 0) {
-    return { counts, watermark: runStartedAt };
+    return { counts, watermark: runStartedAt, rescanPending };
   }
 
-  return { counts, watermark };
+  return { counts, watermark, rescanPending };
 }

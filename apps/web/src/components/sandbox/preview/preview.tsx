@@ -212,17 +212,20 @@ export function withDeviceHint(url: string, device: PreviewDeviceSize): string {
 }
 
 /**
- * Force `__decoFBT=0` on the preview URL — disables deco's loader/block-tree
- * cache so edits render immediately in the iframe (same param the "Open result
- * in new tab" invoke path sets, see `buildInvokeRunUrl`). Passes `null` through
- * so it can wrap the whole `iframeSrc` computation regardless of mode, and
- * falls back to the unmodified `url` on a malformed input instead of throwing.
+ * Force `__decoFBT=0` and `__deco_ssr=1` on the preview URL — `__decoFBT=0`
+ * disables deco's loader/block-tree cache so edits render immediately in the
+ * iframe (same param the "Open result in new tab" invoke path sets, see
+ * `buildInvokeRunUrl`); `__deco_ssr=1` forces server-side rendering for the
+ * iframe. Passes `null` through so it can wrap the whole `iframeSrc`
+ * computation regardless of mode, and falls back to the unmodified `url` on a
+ * malformed input instead of throwing.
  */
 export function withDecoFBT(url: string | null): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url, window.location.href);
     parsed.searchParams.set("__decoFBT", "0");
+    parsed.searchParams.set("__deco_ssr", "1");
     return parsed.href;
   } catch {
     return url;
@@ -420,7 +423,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const lifecyclePhase = vmEvents.lifecycle.phase;
   const devServerReady = lifecyclePhase === "running";
 
-  const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
+  const isDesktopSandbox = isDesktopApp && !!vmEntry;
   const rawRepoDir = useSandboxRepoDir({
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
@@ -429,8 +432,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
   });
   // Guard the value, not just the query: React Query's staleTime=Infinity cache
-  // can retain a stale repoDir after the provider kind changes from desktop to
-  // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
+  // can retain a native repoDir when this shared UI is rendered on hosted web,
+  // whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
   // Live production URL of the linked site, persisted on the agent's

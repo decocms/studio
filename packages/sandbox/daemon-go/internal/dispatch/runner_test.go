@@ -58,8 +58,7 @@ func runFakeHarness(mode string) {
 	}
 	raw, _ := io.ReadAll(os.Stdin)
 	var body struct {
-		HarnessId string         `json:"harnessId"`
-		Input     map[string]any `json:"input"`
+		Input map[string]any `json:"input"`
 	}
 	json.Unmarshal(raw, &body)
 	if mode == fakeRunnerNoisy {
@@ -74,8 +73,7 @@ func runFakeHarness(mode string) {
 	}
 	result, _ := json.Marshal(map[string]any{
 		"chunks": []any{map[string]any{
-			"harnessId": body.HarnessId,
-			"threadId":  body.Input["threadId"],
+			"threadId": body.Input["threadId"],
 			// Echoed so a test can prove the run env crossed the wire. A real
 			// harness never emits it — this one carries no real credential.
 			"apiKey": os.Getenv("ANTHROPIC_API_KEY"),
@@ -105,7 +103,7 @@ func runFakeTimed(
 	t.Setenv(fakeRunnerEnv, mode)
 	var frames [][]byte
 	var at []time.Time
-	_, err := RunHarness(ctx, fakeHarnessArgv(), "claude-code",
+	_, err := RunHarness(ctx, fakeHarnessArgv(),
 		json.RawMessage(`{"threadId":"t-1"}`), env, func(frame []byte) bool {
 			frames = append(frames, append([]byte(nil), frame...))
 			at = append(at, time.Now())
@@ -192,7 +190,7 @@ func TestRunHarnessEmitsEachFrameAsItArrives(t *testing.T) {
 func TestRunHarnessStopsWhenTheClientIsGone(t *testing.T) {
 	t.Setenv(fakeRunnerEnv, fakeRunnerMulti)
 	seen := 0
-	frames, err := RunHarness(context.Background(), fakeHarnessArgv(), "claude-code",
+	frames, err := RunHarness(context.Background(), fakeHarnessArgv(),
 		json.RawMessage(`{"threadId":"t-1"}`), nil, func([]byte) bool {
 			seen++
 			return false
@@ -230,7 +228,7 @@ func TestRunHarnessCancellationKillsTheChild(t *testing.T) {
 func TestRunHarnessRejectsAMissingBinary(t *testing.T) {
 	_, err := RunHarness(context.Background(),
 		[]string{"/nonexistent/harness-runner-" + strconv.Itoa(os.Getpid())},
-		"claude-code", json.RawMessage(`{"threadId":"t-1"}`), nil,
+		json.RawMessage(`{"threadId":"t-1"}`), nil,
 		func([]byte) bool { return true })
 	if err == nil {
 		t.Fatal("spawning a missing harness binary reported success")

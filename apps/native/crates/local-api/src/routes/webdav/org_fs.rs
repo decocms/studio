@@ -3,9 +3,9 @@
 //! (`/api/:org/fs/:volume/*`, `apps/api/src/api/routes/org-fs.ts`).
 //!
 //! Port of `packages/sandbox/orgfs/api.ts` + `client.ts`, minus the
-//! entire token-provisioning path. The daemon needed a short-lived fs-scoped
-//! API key relayed through `ORGFS_CONFIG` because a cluster pod has no
-//! identity of its own; local-api already holds the signed-in user's session,
+//! entire token-provisioning path. The hosted daemon needs a short-lived
+//! fs-scoped API key because a cluster pod has no identity of its own;
+//! local-api already holds the signed-in user's session,
 //! so every call goes out through [`crate::routes::upstream::send_org_request`]
 //! with the Keychain-backed access token attached server-side. There is no key
 //! to mint, store, rotate, or leak.

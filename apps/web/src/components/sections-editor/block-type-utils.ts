@@ -80,6 +80,7 @@ export function isManifestMatcherResolveType(
 
 /** Block id reference (no module path) — e.g. `Header`, not `site/sections/Header.tsx`. */
 export function isSavedBlockResolveType(resolveType: string): boolean {
+  if (!resolveType) return false;
   // Module paths end with a file extension (e.g. site/sections/Header.tsx)
   if (/\.\w+$/.test(resolveType)) return false;
   if (resolveType === "__proto__" || resolveType === "constructor") {

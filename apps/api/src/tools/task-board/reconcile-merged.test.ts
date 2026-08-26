@@ -4,14 +4,27 @@
  * consulted. Storage is a fake — the contract under test is the gate, the
  * status write and the timeline entry, none of which need Postgres.
  *
- * The merged flags arrive from the sweeper's own throttled PR read, so there is
- * no GitHub reader to stub here (see `advanceToDoneIfMerged`'s doc comment).
+ * The live PR states arrive from the sweeper's own throttled PR read, so there
+ * is no GitHub reader to stub here (see `advanceToDoneIfMerged`'s doc comment).
  */
 
 import { describe, expect, it } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
+import type { PrLanding } from "./archive-merged";
 import { advanceToDoneIfMerged } from "./reconcile-merged";
+
+const REPO = { repoOwner: "acme", repoName: "storefront" };
+const merged: PrLanding = { ...REPO, state: "closed", merged: true };
+const openPr: PrLanding = { ...REPO, state: "open", merged: false };
+const abandoned: PrLanding = { ...REPO, state: "closed", merged: false };
+const unreadable: PrLanding = { ...REPO, state: null, merged: null };
+const otherRepoOpen: PrLanding = {
+  repoOwner: "acme",
+  repoName: "storefront-us",
+  state: "open",
+  merged: false,
+};
 
 const item = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
   ({
@@ -49,7 +62,7 @@ function fakeCtx(over: { humanRejectedDone?: boolean } = {}) {
 describe("advanceToDoneIfMerged", () => {
   it("moves a card whose PR landed outside Studio, and says why", async () => {
     const { ctx, updates, activity } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [true])).toBe(true);
+    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
     expect(updates).toEqual([{ status: "done" }]);
     expect(activity).toEqual([
       {
@@ -63,7 +76,7 @@ describe("advanceToDoneIfMerged", () => {
 
   it("leaves an unmerged card alone", async () => {
     const { ctx, updates } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [false])).toBe(false);
+    expect(await advanceToDoneIfMerged(ctx, item(), [openPr])).toBe(false);
     expect(updates).toEqual([]);
   });
 
@@ -71,12 +84,23 @@ describe("advanceToDoneIfMerged", () => {
   // shipped. This is also what an unregistered/timed-out throttled read yields.
   it("defers to the next sweep when GitHub does not answer", async () => {
     const { ctx } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [null])).toBe(false);
+    expect(await advanceToDoneIfMerged(ctx, item(), [unreadable])).toBe(false);
   });
 
-  it("needs every linked PR merged, not just one", async () => {
+  it("needs every repo the card touches to have landed", async () => {
     const { ctx } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [true, false])).toBe(false);
+    expect(
+      await advanceToDoneIfMerged(ctx, item(), [merged, otherRepoOpen]),
+    ).toBe(false);
+  });
+
+  // Inverts the old every-PR rule, which stranded a bounced card in review.
+  it("moves past a PR the bounce abandoned in the same repo", async () => {
+    const { ctx, updates } = fakeCtx();
+    expect(await advanceToDoneIfMerged(ctx, item(), [abandoned, merged])).toBe(
+      true,
+    );
+    expect(updates).toEqual([{ status: "done" }]);
   });
 
   it("does nothing for a card with no linked PR", async () => {
@@ -87,14 +111,16 @@ describe("advanceToDoneIfMerged", () => {
   it("only ever moves a card that is still In Review", async () => {
     const { ctx } = fakeCtx();
     expect(
-      await advanceToDoneIfMerged(ctx, item({ status: "in_progress" }), [true]),
+      await advanceToDoneIfMerged(ctx, item({ status: "in_progress" }), [
+        merged,
+      ]),
     ).toBe(false);
   });
 
   // A person who pulled the card back out of Done outranks a merged PR.
   it("honors a human's rejection of Done", async () => {
     const { ctx, updates } = fakeCtx({ humanRejectedDone: true });
-    expect(await advanceToDoneIfMerged(ctx, item(), [true])).toBe(false);
+    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(false);
     expect(updates).toEqual([]);
   });
 });

@@ -24,7 +24,7 @@ import {
   type CodingWorkspacePromptInput,
 } from "@/harnesses/lib/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
-import { sandboxIsDecoSite } from "./built-in-tools/cluster-sandbox-fs";
+import { sandboxIsDecoSite } from "./built-in-tools/agent-sandbox-fs";
 import type { GithubRepo } from "@decocms/shared/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {

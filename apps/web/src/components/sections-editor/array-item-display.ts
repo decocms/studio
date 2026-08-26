@@ -4,8 +4,14 @@ import { extractUrl } from "./fields/extract-url";
 import { formatMatcher } from "./format-matcher";
 import { inferInlineUnionIndex } from "./fields/inline-union-value";
 import type { SchemaProperty } from "./resolve-schema";
-import { labelFromResolveType } from "./section-types";
+import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
+  labelFromResolveType,
+} from "./section-types";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
+
+// Legacy $live path for the same "always" matcher (see format-matcher.ts's alwaysTypes).
+const LEGACY_ALWAYS_MATCHER_RESOLVE_TYPE = "$live/matchers/MatchAlways.ts";
 
 function resolveResolvable(obj: Record<string, unknown>): unknown {
   if (Array.isArray(obj.variants)) {
@@ -13,8 +19,10 @@ function resolveResolvable(obj: Record<string, unknown>): unknown {
       rule?: { __resolveType?: string };
       value?: unknown;
     }>;
-    const always = variants.find((v) =>
-      v.rule?.__resolveType?.includes("always"),
+    const always = variants.find(
+      (v) =>
+        v.rule?.__resolveType === ALWAYS_MATCHER_RESOLVE_TYPE ||
+        v.rule?.__resolveType === LEGACY_ALWAYS_MATCHER_RESOLVE_TYPE,
     );
     // Unwrap object-valued variants too (e.g. `{ desktop, mobile }`), not only strings.
     const chosen = always ?? variants.find((v) => v.value != null);

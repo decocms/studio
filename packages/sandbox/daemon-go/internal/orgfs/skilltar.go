@@ -34,7 +34,7 @@ import (
 const skillTarTimeout = 60 * time.Second
 
 // APIConfig is what the daemon needs to call org-fs over HTTP: the studio it was
-// provisioned against, plus the fs-scoped token from ORGFS_CONFIG.
+// provisioned against, plus the fs-scoped token from the relayed org-fs config.
 type APIConfig struct {
 	BaseUrl string
 	OrgSlug string

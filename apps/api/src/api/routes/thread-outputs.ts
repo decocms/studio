@@ -1,10 +1,9 @@
 /**
  * Thread Outputs Route
  *
- * Lists files the model has shared back to the user via the
- * `share_with_user` tool. Files live under `model-outputs/<thread_id>/`
- * and the chat UI polls this endpoint on assistant-turn completion to
- * render download chips on the producing turn.
+ * Lists files the model wrote to the thread's `org/output/` subtree. The chat
+ * UI polls this endpoint on assistant-turn completion to render download chips
+ * on the producing turn.
  *
  * Route: GET /api/threads/:threadId/outputs
  *
@@ -48,17 +47,8 @@ export const createThreadOutputsRoutes = () => {
       throw new HTTPException(404, { message: "Thread not found" });
     }
 
-    const storage = ctx.objectStorage;
-    const result = storage
-      ? await storage.list({
-          prefix: `model-outputs/${threadId}/`,
-          maxKeys: 200,
-        })
-      : { objects: [] };
-
-    // Files the agent wrote to `org/output/` land in the org-fs `outputs`
-    // volume under `<threadId>/...` — surface them as chips alongside the
-    // share_with_user uploads (one indexed manifest query).
+    // Files written to `org/output/` land in the org-fs `outputs` volume under
+    // `<threadId>/...` (one indexed manifest query).
     const orgId = ctx.organization?.id;
     const fsOutputs = orgId
       ? await ctx.storage.orgFsEntries
@@ -67,35 +57,17 @@ export const createThreadOutputsRoutes = () => {
       : [];
 
     // Use ctx.baseUrl (canonical, set during context creation from
-    // forwarded-host headers / env) rather than `new URL(c.req.url).origin`
-    // — behind a TLS-terminating proxy the latter resolves to the
-    // internal listen address, causing a freshly-shared file's
-    // share_with_user URL (which already uses ctx.baseUrl) to disagree
-    // with subsequent listings.
+    // forwarded-host headers / env) rather than `new URL(c.req.url).origin`;
+    // behind a TLS-terminating proxy the latter resolves to the internal
+    // listen address.
     return c.json({
-      objects: [
-        ...result.objects.map((o) => {
-          const filename = o.key.split("/").pop() ?? o.key;
-          // Encode each path segment — keys may carry URL-special chars
-          // (?, #, &, space) and `c.req.path` in the files route truncates
-          // at the first unescaped `?`.
-          const encodedKey = o.key.split("/").map(encodeURIComponent).join("/");
-          return {
-            key: o.key,
-            filename,
-            size: o.size,
-            uploadedAt: o.lastModified?.toISOString(),
-            downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgSlug)}/files/${encodedKey}`,
-          };
-        }),
-        ...fsOutputs.map((e) => ({
-          key: `org-fs:outputs/${e.path}`,
-          filename: e.path.split("/").pop() ?? e.path,
-          size: e.size,
-          uploadedAt: e.updatedAt,
-          downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgSlug)}/fs/outputs/read?path=${encodeURIComponent(e.path)}`,
-        })),
-      ],
+      objects: fsOutputs.map((e) => ({
+        key: `org-fs:outputs/${e.path}`,
+        filename: e.path.split("/").pop() ?? e.path,
+        size: e.size,
+        uploadedAt: e.updatedAt,
+        downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgSlug)}/fs/outputs/read?path=${encodeURIComponent(e.path)}`,
+      })),
     });
   });
 

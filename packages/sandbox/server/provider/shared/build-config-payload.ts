@@ -15,6 +15,8 @@ export function buildConfigPayload(args: {
   packageManager: PackageManagerConfig | null;
   port?: number;
   repo: NonNullable<EnsureOptions["repo"]> | null;
+  /** Extra checkouts beside `repo`; dropped when there is no primary. */
+  extraRepos?: EnsureOptions["extraRepos"];
   tenant?: EnsureOptions["tenant"];
   /** Checkout only — the daemon skips install + dev server. */
   cloneOnly?: boolean;
@@ -34,6 +36,19 @@ export function buildConfigPayload(args: {
           // Same reasoning as `cloneOnly` below.
           submoduleCredentials: repo.submoduleCredentials ?? [],
         },
+        // Empty included: absent means keep-current to the daemon's merge.
+        // `directoryName` comes from the caller: it is shared with
+        // `TASK_ADD_REPO`, which names the same repo mid-run, and deriving it
+        // twice would move a checkout across a pod restart. An entry without
+        // one is dropped rather than guessed at.
+        repositories: (args.extraRepos ?? [])
+          .filter((extra) => !!extra.directoryName)
+          .map((extra) => ({
+            cloneUrl: extra.cloneUrl,
+            repoName: extra.directoryName!,
+            ...(extra.branch ? { branch: extra.branch } : {}),
+            submoduleCredentials: extra.submoduleCredentials ?? [],
+          })),
         // Omitted when there is no user: a tenant warm pool bootstraps its pods
         // with a repo and no author, and the daemon rejects a blank identity
         // outright (and treats an absent one as "not claimed by a user yet").

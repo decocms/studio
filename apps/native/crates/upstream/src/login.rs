@@ -214,7 +214,7 @@ pub async fn perform_interactive_login(
 
 /// Exchanges a freshly-minted MCP OAuth access token for a real Better Auth
 /// session, via the mesh-side bridge endpoint
-/// (`apps/api/src/api/routes/desktop-session-bridge.ts`,
+/// (`apps/api/src/api/routes/desktop-auth.ts`,
 /// `POST /api/auth/desktop/session-from-oauth`). This is the piece that
 /// makes the system-browser Google/GitHub/SAML login path land in the same
 /// place as the embedded email/password/OTP path: a Better Auth session
@@ -237,8 +237,8 @@ pub async fn perform_interactive_login(
 /// Failure here is FATAL to the whole login attempt (propagated via `?`,
 /// never swallowed into a bearer-only fallback): a bearer-only session
 /// would report `signed_in: true` from this crate's own point of view (see
-/// `session.rs`'s `probe_upstream`, which only checks a bearer-friendly
-/// org-scoped route) while the real shell's `RequiredAuthLayout` gate would
+/// `session.rs`'s `probe_desktop_auth`, which validates only the desktop
+/// OAuth bearer) while the real shell's `RequiredAuthLayout` gate would
 /// still bounce the user straight back to `/login` — i.e. a silently
 /// half-signed-in state, exactly the bug this bridge exists to close. A
 /// clear, surfaced login error is strictly better than reintroducing it

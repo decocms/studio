@@ -28,6 +28,7 @@ import {
   type Daemon,
   HOOK_TIMEOUT_MS,
   bootstrapRepo,
+  jsonAuthHeaders,
   setupBareRepo,
   startDaemon,
   stopDaemon,
@@ -39,6 +40,13 @@ const SETUP_TIMEOUT_MS = 60_000;
 // A tool call that finds no live mount pays the daemon's one-shot, fail-open
 // first-mount grace wait (~10s) before proceeding without links.
 const NO_MOUNT_TIMEOUT_MS = 60_000;
+
+const VALID_CONFIG = JSON.stringify({
+  baseUrl: "https://cluster.example",
+  orgSlug: "acme",
+  token: "fs-scoped-token",
+  mounts: [{ volume: "skills", path: "skills", readonly: true }],
+});
 
 let d: Daemon | null = null;
 let repo: BareRepo | null = null;
@@ -90,6 +98,52 @@ async function toolCall(daemon: Daemon, threadId?: string): Promise<Response> {
     body: JSON.stringify({ pattern: "*.md" }),
   });
 }
+
+describe("hosted daemon e2e: orgfs-config", () => {
+  it("returns { written: false } without a sidecar", async () => {
+    d = await startDaemon();
+    const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: VALID_CONFIG,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { written: boolean }).written).toBe(false);
+  });
+
+  it("rejects an invalid org-fs config", async () => {
+    d = await startDaemon();
+    const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: JSON.stringify({ not: "a valid org-fs config" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("writes the config to the sidecar control path", async () => {
+    d = await startWithSidecar();
+    const configPath = join(ctlDir!, "config.json");
+    const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: VALID_CONFIG,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { written: boolean }).written).toBe(true);
+    expect(readFileSync(configPath, "utf8").length).toBeGreaterThan(0);
+  });
+
+  it("requires daemon authentication", async () => {
+    d = await startWithSidecar();
+    const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: VALID_CONFIG,
+    });
+    expect(res.status).toBe(401);
+  });
+});
 
 describe("daemon e2e: org-fs links", () => {
   it(

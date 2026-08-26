@@ -1,7 +1,6 @@
 /**
  * useThreadOutputs — shared query for the files a thread has produced
- * (share_with_user uploads under `model-outputs/<threadId>/` merged with
- * org-fs `outputs/<threadId>/` writes), served by
+ * through org-fs `outputs/<threadId>/`, served by
  * `GET /api/:org/threads/:threadId/outputs`.
  *
  * Consumed by the per-turn rows (MessageProducedFiles), the
@@ -48,8 +47,7 @@ async function fetchThreadOutputs(
 
 /**
  * True when any message has a tool part that could have produced a file:
- * an explicit share_with_user, or sandbox file work (bash/write can drop
- * results into `org/output/`).
+ * sandbox bash/write work can place results in `org/output/`.
  */
 export function useThreadHasFileWork(): boolean {
   const messages = useOptionalChatStream()?.messages ?? [];
@@ -57,9 +55,7 @@ export function useThreadHasFileWork(): boolean {
     m.parts?.some((p) => {
       const part = p as { type: string; state?: string };
       return (
-        (part.type === "tool-share_with_user" ||
-          part.type === "tool-bash" ||
-          part.type === "tool-write") &&
+        (part.type === "tool-bash" || part.type === "tool-write") &&
         part.state === "output-available"
       );
     }),

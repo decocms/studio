@@ -26,29 +26,29 @@ describe("agentSandboxEnabled", () => {
   const originalSettings = getSettings();
   afterEach(() => setGlobalSettings(originalSettings));
 
-  it("is true with the hosted provider outside local mode", () => {
+  it("is true when the hosted sandbox is enabled outside local mode", () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: false,
-      sandboxProviderKind: "agent-sandbox",
+      agentSandboxEnabled: true,
     });
     expect(agentSandboxEnabled()).toBe(true);
   });
 
-  it("is false with the user-desktop provider (the default)", () => {
+  it("is false when the hosted sandbox is disabled (the default)", () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: false,
-      sandboxProviderKind: "user-desktop",
+      agentSandboxEnabled: false,
     });
     expect(agentSandboxEnabled()).toBe(false);
   });
 
-  it("is false in local mode even with the hosted provider", () => {
+  it("is false in local mode even when the hosted sandbox is enabled", () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: true,
-      sandboxProviderKind: "agent-sandbox",
+      agentSandboxEnabled: true,
     });
     expect(agentSandboxEnabled()).toBe(false);
   });

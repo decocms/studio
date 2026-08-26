@@ -239,7 +239,21 @@ describe("buildClaudeCodeTaskPrompt repo choices", () => {
     });
     expect(prompt).toContain("acme/web (connectionId: conn_1)");
     expect(prompt).toContain("acme/api (connectionId: conn_2)");
-    expect(prompt).toContain("Pick the one the task is about");
+    expect(prompt).toContain("Start with the one the task is about");
+  });
+
+  // Inverts "take the first": repositories accumulate now, so a task spanning
+  // two of them adds a second checkout rather than swapping the first out.
+  test("says a second add accumulates instead of replacing", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, null, {
+      repoChoices: [
+        { connectionId: "conn_1", repo: "acme/web" },
+        { connectionId: "conn_2", repo: "acme/api" },
+      ],
+    });
+    expect(prompt).not.toContain("take the first");
+    expect(prompt).toContain("repositories accumulate");
+    expect(prompt).toContain("one pull request per repository");
   });
 
   test("falls back to the listing call when no candidates were resolved", () => {

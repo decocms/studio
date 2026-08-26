@@ -1,10 +1,31 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import type { ObjectStorageHooks } from "../../harness-deps";
 import { toStudioStorageUri } from "../studio-storage-uri";
+import type { PortableMediaObjectStorage } from "./portable-media-tools";
 
 export interface ReadToolOutputParams {
   readonly toolOutputMap: Map<string, string>;
+}
+
+/** Every tool call whose output exceeds MAX_RESULT_TOKENS gets stashed here for
+ *  the life of the run — a long-running loop with many oversized outputs (bash,
+ *  grep, MCP calls) would otherwise grow this map without bound. Cap the entry
+ *  count, evicting the oldest (Map preserves insertion order) once a new entry
+ *  would exceed it; losing read_tool_output access to a very old, already-seen
+ *  output is a fair trade for a bounded memory footprint. */
+export const MAX_TOOL_OUTPUTS = 200;
+
+export function createToolOutputMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  const set = map.set.bind(map);
+  map.set = (key, value) => {
+    if (!map.has(key) && map.size >= MAX_TOOL_OUTPUTS) {
+      const oldest = map.keys().next().value;
+      if (oldest !== undefined) map.delete(oldest);
+    }
+    return set(key, value);
+  };
+  return map;
 }
 
 export function createReadToolOutputTool(params: ReadToolOutputParams) {
@@ -164,7 +185,7 @@ export function estimateJsonTokens(value: unknown): number {
  * log ("scrape-url", "inspect-page").
  */
 export async function offloadLargeResult(
-  objectStorage: ObjectStorageHooks,
+  objectStorage: Pick<PortableMediaObjectStorage, "put">,
   key: string,
   text: string,
   contentType: string,

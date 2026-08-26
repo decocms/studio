@@ -22,6 +22,34 @@ describe("StreamRequestSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects sandbox provider selectors", () => {
+    for (const sandboxProviderKind of [
+      "agent-sandbox",
+      "cluster",
+      "local-api",
+      "future-sandbox",
+      null,
+    ]) {
+      expect(
+        StreamRequestSchema.safeParse({
+          ...baseRequest,
+          sandboxProviderKind,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects harness selectors, including Decopilot", () => {
+    for (const harnessId of ["decopilot", "claude-code", "future"]) {
+      expect(
+        StreamRequestSchema.safeParse({
+          ...baseRequest,
+          harnessId,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("rejects an out-of-range memory.windowSize", () => {
     // windowSize flows straight into a DB query LIMIT (Memory.loadHistory) —
     // an unbounded or negative value must be rejected at the boundary rather

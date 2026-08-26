@@ -99,13 +99,6 @@ export const ThreadEntitySchema = z.object({
     .nullable()
     .optional()
     .describe("Git branch this thread is pinned to (GitHub-linked vms only)"),
-  sandbox_provider_kind: z
-    .string()
-    .nullable()
-    .optional()
-    .describe(
-      "Pinned on first message; identifies which sandbox provider to dispatch to (e.g. 'agent-sandbox', 'user-desktop').",
-    ),
   harness_id: z
     .string()
     .nullable()
@@ -166,9 +159,17 @@ export const ThreadUpdateDataSchema = z.object({
     .describe(
       "New thread status (user-set override). 'expired' is a computed virtual status and cannot be set directly.",
     ),
-  metadata: ThreadMetadataSchema.optional().describe(
-    "Full replacement of the thread's metadata object",
-  ),
+  metadata: ThreadMetadataSchema.superRefine((metadata, ctx) => {
+    if ("sandboxMap" in metadata) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["sandboxMap"],
+        message: "sandboxMap is managed by the sandbox lifecycle",
+      });
+    }
+  })
+    .optional()
+    .describe("Full replacement of the thread's user-managed metadata"),
   branch: z
     .string()
     .min(1)

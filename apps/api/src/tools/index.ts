@@ -20,6 +20,7 @@ import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
+import * as NotificationTools from "./notifications";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
@@ -53,6 +54,10 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_DELETE,
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
+  NotificationTools.NOTIFICATION_LIST,
+  NotificationTools.NOTIFICATION_MARK_READ,
+  NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
+  NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,

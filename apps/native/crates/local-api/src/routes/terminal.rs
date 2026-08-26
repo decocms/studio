@@ -38,7 +38,6 @@ const TERMINAL_INPUT_BYTES: usize = 64 * 1024;
 const BRACKETED_PASTE_OVERHEAD_BYTES: usize = 13;
 const MAX_PROMPT_BYTES: usize = TERMINAL_INPUT_BYTES - BRACKETED_PASTE_OVERHEAD_BYTES;
 const MAX_REQUEST_ID_BYTES: usize = 512;
-const DESKTOP_SANDBOX_PROVIDER: &str = "user-desktop";
 const MIN_ROWS: u16 = 2;
 const MAX_ROWS: u16 = 500;
 const MIN_COLS: u16 = 2;
@@ -1144,12 +1143,7 @@ impl SessionSpawnOwner {
                 });
             let pin_error = account_error.or_else(|| {
                 match db
-                    .rt_pin_harness_if_unset_fenced(
-                        &fence,
-                        options.harness.wire_id(),
-                        Some(DESKTOP_SANDBOX_PROVIDER),
-                        None,
-                    )
+                    .rt_pin_harness_if_unset_fenced(&fence, options.harness.wire_id(), None)
                     .and_then(|updated| {
                         if updated {
                             db.rt_harness_id_fenced(&fence)

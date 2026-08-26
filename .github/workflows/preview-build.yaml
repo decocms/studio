@@ -291,9 +291,8 @@ jobs:
             <details><summary>What does <b>not</b> work in a preview</summary>
 
             - **Agent tool execution against a hosted sandbox** — previews run
-              `STUDIO_SANDBOX_PROVIDER=user-desktop` with no daemon attached, so
-              dispatch returns `409 link_offline`. Sandbox previews and the
-              sandbox lifecycle UI are equally out.
+              with `STUDIO_AGENT_SANDBOX_ENABLED=false`. Sandbox previews and
+              the sandbox lifecycle UI are out of scope.
             - **AI features** until you add your own provider key in org settings.
               Previews ship no key, so preview LLM spend is zero by construction.
             - **Google / GitHub sign-in** — OAuth callbacks cannot be registered

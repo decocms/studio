@@ -3,13 +3,12 @@
  * PRODUCED them (replacing the old thread-aggregate "files shared in this
  * chat" block that always sat under the last message).
  *
- * Attribution is client-side: the message's own tool parts name the files
- * it produced — `share_with_user` returns `{ filename }`, and `write`
- * calls targeting the org-output mount carry the path in their input.
- * Those names are matched against the thread-outputs listing (shared
- * `useThreadOutputs` query) to get key/size/downloadUrl. Files produced
- * invisibly (e.g. `bash` cp into org/output) can't be attributed to a
- * turn and surface only in ThreadFilesPanel.
+ * Attribution is client-side: `write` calls targeting the org-output mount
+ * carry the path in their input. Those names are matched against the
+ * thread-outputs listing (shared `useThreadOutputs` query) to get
+ * key/size/downloadUrl. Files produced invisibly (e.g. `bash` cp into
+ * org/output) can't be attributed to a turn and surface only in
+ * ThreadFilesPanel.
  *
  * Caveat: the match is by filename, so a file re-written in a later turn
  * shows on every producing turn (it IS the same output). Encoding the
@@ -37,17 +36,10 @@ function collectProducedFilenames(message: MessageLike): Set<string> {
     const part = raw as {
       type?: string;
       state?: string;
-      input?: { path?: string; source?: string; name?: string };
-      output?: { filename?: string };
+      input?: { path?: string };
     };
     if (part.state !== "output-available") continue;
-    if (part.type === "tool-share_with_user") {
-      const name =
-        part.output?.filename ??
-        part.input?.name ??
-        (part.input?.source ? basename(part.input.source) : null);
-      if (name) names.add(name);
-    } else if (part.type === "tool-write") {
+    if (part.type === "tool-write") {
       const path = part.input?.path;
       if (path && OUTPUT_PATH_RE.test(path)) names.add(basename(path));
     }

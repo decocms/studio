@@ -30,6 +30,21 @@ const PermissionSchema = z.record(z.string(), z.array(z.string()));
 
 export type Permission = z.infer<typeof PermissionSchema>;
 
+/** `checkApiKeyPermission` rebuilds a `Set` from the stored allowlist on every
+ *  tool call the key makes — bound it here so an unbounded grant at create/
+ *  update time can't become a per-request cost multiplier. */
+const MAX_PERMISSION_RESOURCES = 1000;
+const MAX_ACTIONS_PER_RESOURCE = 500;
+
+/** Same shape as {@link PermissionSchema}, bounded — only for CREATE/UPDATE
+ *  input. Output schemas stay on the unbounded `PermissionSchema` so an
+ *  already-stored key (from before this cap existed) still reads back fine. */
+const PermissionInputSchema = z
+  .record(z.string(), z.array(z.string()).max(MAX_ACTIONS_PER_RESOURCE))
+  .refine((p) => Object.keys(p).length <= MAX_PERMISSION_RESOURCES, {
+    message: `Permissions cannot grant more than ${MAX_PERMISSION_RESOURCES} resources`,
+  });
+
 // ============================================================================
 // API Key Entity Schema (for list operations - no key value)
 // ============================================================================
@@ -73,7 +88,7 @@ export const ApiKeyCreateInputSchema = z.object({
     .min(1)
     .max(64)
     .describe("Human-readable name for the API key"),
-  permissions: PermissionSchema.describe(
+  permissions: PermissionInputSchema.describe(
     'Permissions to grant (REQUIRED — there is no implicit default). Format: { resource: [actions] }. Resource is "self" for management tools or "conn_<UUID>" for connection-specific tools. Actions are tool names (e.g., ["ORGANIZATION_GET"]) or ["*"] for all. Example: { "self": ["ORGANIZATION_GET", "COLLECTION_CONNECTIONS_LIST"] }. The key is authorized solely by this allowlist; the creator\'s role does not widen it.',
   ),
   expiresIn: z
@@ -159,7 +174,7 @@ export const ApiKeyUpdateInputSchema = z.object({
     .max(64)
     .optional()
     .describe("New name for the API key"),
-  permissions: PermissionSchema.optional().describe(
+  permissions: PermissionInputSchema.optional().describe(
     'New permissions. Format: { resource: [actions] } where resource is "self" for management tools or "conn_<UUID>" for connection-specific tools. Actions are tool names or "*" for all. Example: { "self": ["API_KEY_CREATE"] }. Replaces existing permissions.',
   ),
   metadata: z

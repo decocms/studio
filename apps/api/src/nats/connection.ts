@@ -3,7 +3,7 @@
  *
  * Manages a single NATS connection shared by all NATS implementations:
  * - NatsCancelBroadcast (decopilot cancel)
- * - NatsStreamBuffer (decopilot JetStream relay)
+ * - NatsStreamBuffer (Decopilot run streaming)
  * - NatsNotifyStrategy (event bus wake-up)
  * - NatsSSEBroadcast (cross-pod SSE fan-out)
  *
@@ -26,12 +26,9 @@ const CONNECT_TIMEOUT_MS = 3_000;
 
 export interface NatsInitOptions {
   /**
-   * NATS creds file body (JWT + seed) for the cluster's own connection. When
-   * present the provider authenticates with it; when absent it connects
-   * anonymously (production: the cluster connects anonymously to the internal
-   * listener). Local dev runs NATS in operator mode where anonymous connect is
-   * impossible (`no_auth_user` is incompatible with Trusted Operator mode), so
-   * dev passes the persisted cluster creds here.
+   * NATS creds file body (JWT + seed) for Studio's connection. Externally
+   * configured deployments may require it; managed local development binds an
+   * anonymous listener to loopback and leaves this absent.
    */
   creds?: string;
 }

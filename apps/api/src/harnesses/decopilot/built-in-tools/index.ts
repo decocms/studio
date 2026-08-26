@@ -47,7 +47,7 @@ import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-too
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
-import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
+import { buildAgentSandboxFs } from "./agent-sandbox-fs";
 import { createSwappableFs } from "./swappable-fs";
 import { createLoadRepoTool } from "./load-repo";
 import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
@@ -86,10 +86,9 @@ export type VmContext = {
   branch: string;
   userId: string;
   /**
-   * Current chat thread id. Used by `share_with_user` to scope artifacts
-   * under `model-outputs/<threadId>/`. Required because one ephemeral
-   * sandbox serves multiple threads of the same (user, agent), so the
-   * thread isn't deducible from the sandbox identity alone.
+   * Current thread id. Sent with sandbox filesystem calls so the daemon can
+   * point `org/output/` at this thread's subtree. Required because one
+   * ephemeral sandbox can serve multiple threads of the same (user, agent).
    */
   threadId: string;
   /**
@@ -205,9 +204,8 @@ async function buildAllTools(
     objectStorage: ctx.objectStorage,
   });
   if (userId) {
-    // Cluster `interests.write` hook: closes over ctx/storage and forwards the
-    // org/agent/user carried in the InterestsWrite payload. The tool itself no
-    // longer touches StudioContext (HarnessDeps conversion).
+    // Keep the portable tool independent of StudioContext by injecting its
+    // one storage operation here.
     tools.update_interests = createUpdateInterestsTool({
       write: async (input) => {
         await ctx.storage.interests.setForAgent(
@@ -232,8 +230,8 @@ async function buildAllTools(
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
-  // the existing sandboxMap entry (fast path) or provisions a new sandbox via
-  // the env-selected runner. The promise is memoized on the closure so
+  // the existing sandboxMap entry (fast path) or provisions a new hosted
+  // sandbox. The promise is memoized on the closure so
   // parallel first calls (e.g. the model emitting bash + read in one step)
   // share a single provisioning round-trip.
   const vmNeedsApproval =
@@ -243,10 +241,10 @@ async function buildAllTools(
   let vmTools: ToolSet | undefined;
   if (vmContext) {
     // The flat fs hooks (provider resolution + lazy handle + auto-restart retry
-    // layer) are built by the cluster glue so the portable tools never import
+    // layer) are built by the AgentSandbox glue so the portable tools never import
     // `@decocms/sandbox` (spec §4.3). Provisioning stays lazy inside the hooks —
     // `ensureSandbox` runs on the first VM-tool call, not here.
-    const initialFs = await buildClusterSandboxFs(ctx, {
+    const initialFs = await buildAgentSandboxFs(ctx, {
       virtualMcpId: vmContext.virtualMcpId,
       branch: vmContext.branch,
       userId: vmContext.userId,
@@ -264,9 +262,6 @@ async function buildAllTools(
       toolOutputMap,
       needsApproval: vmNeedsApproval,
       pendingImages,
-      ctx,
-      threadId: vmContext.threadId,
-      virtualMcpId: vmContext.virtualMcpId,
     }) as ToolSet;
     Object.assign(tools, vmTools);
     // Repo switcher — dynamic description lists the org's imported repos; calling
@@ -285,7 +280,7 @@ async function buildAllTools(
       // tool catalog. Provisioning stays lazy — the next VM-tool call ensures it.
       rebindFs: async (branch) => {
         swappableFs.swap(
-          await buildClusterSandboxFs(ctx, {
+          await buildAgentSandboxFs(ctx, {
             virtualMcpId: vmContext.virtualMcpId,
             branch,
             userId: vmContext.userId,
@@ -343,9 +338,8 @@ async function buildAllTools(
   // image tier with a different credential than the chat tier (caller
   // aliases it to `provider` when they share a credential).
   if (imageProvider && models.image && ctx.objectStorage) {
-    // Cluster builds the `objectStorage` + `allowHttpExternalUrls` hooks from
-    // StudioContext + settings; the tool itself no longer reads either
-    // (HarnessDeps conversion).
+    // Resolve storage and URL policy here so the portable tool reads neither
+    // StudioContext nor settings.
     // generate_image is slow (tens of seconds). When a background dispatcher
     // is wired (cluster, hosted runs) it's made backgroundable: the call
     // enqueues a durable job and returns immediately so the turn finishes and
@@ -365,8 +359,8 @@ async function buildAllTools(
     ) as ReturnType<typeof createGenerateImageTool>;
   }
   // web_search (quick) and deep_research (deep) both consume the cluster-built
-  // `researchJob` async-gen hook (HarnessDeps conversion, spec §6). The
-  // provider/DB lifecycle lives in `createClusterResearchJob`; the tools only
+  // research job. The provider/DB lifecycle lives in
+  // `createClusterResearchJob`; the tools only
   // drive the generator. Each tier resolves its own provider so it can use a
   // different model/credential than the chat model (e.g. Gemini deep research
   // via Google while chat is on LiteLLM). Hook presence is the gate — desktop
@@ -414,10 +408,8 @@ async function buildAllTools(
   }
   // take_screenshot, scrape_url, inspect_page require Browserless API token.
   if (process.env.BROWSERLESS_TOKEN) {
-    // Cluster builds the `browserless` + `objectStorage` hooks; the tools
-    // themselves no longer read ctx or process.env (HarnessDeps conversion).
-    // The Browserless gate stays env-based — `deps.browserless` presence
-    // equals `!!process.env.BROWSERLESS_TOKEN` as set by the cluster hook.
+    // Resolve Browserless and storage here so the portable tools do not read
+    // StudioContext or environment variables.
     const browserless = {
       baseUrl: BROWSERLESS_BASE_URL,
       token: process.env.BROWSERLESS_TOKEN,

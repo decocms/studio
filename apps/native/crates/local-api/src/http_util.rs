@@ -256,7 +256,7 @@ mod tests {
         );
         assert_eq!(query_param("nope=1", "path"), None);
         assert_eq!(query_param("", "path"), None);
-        // The `branch` shapes agent-sandbox-sessions depends on.
+        // The `branch` shapes sandbox lifecycle routes depend on.
         assert_eq!(
             query_param("branch=main", "branch").as_deref(),
             Some("main")

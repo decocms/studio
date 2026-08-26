@@ -63,6 +63,7 @@ import { useCapability } from "@/hooks/use-capability";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -114,6 +115,7 @@ export function useMainPanelTabs(ctx: {
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
   const { currentBranch, activeTask } = useChatTask();
+  const isDesktopApp = useIsDesktopApp();
 
   const githubRepo = getActiveGithubRepo(entity);
   const prQuery = usePrByBranch({
@@ -189,14 +191,14 @@ export function useMainPanelTabs(ctx: {
   });
   const devServerReady = vmEvents.lifecycle.phase === "running";
 
-  // A user-desktop sandbox serves its dev server on a loopback previewUrl
+  // A local-api sandbox serves its dev server on a loopback previewUrl
   // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
   // `dev_<id>` route resolves to a connection the pod can't fetch. The browser
   // IS co-located with the daemon, so point the dev MCP client straight at the
   // previewUrl (CORS on the deco dev server is `*`). For agent-sandbox the
   // previewUrl is public, so leave mcpUrl undefined and keep the cloud route.
   const devMcpUrl =
-    vmEntry?.sandboxProviderKind === "user-desktop" && previewUrl
+    isDesktopApp && vmEntry && previewUrl
       ? `${previewUrl.replace(/\/+$/, "")}/api/mcp`
       : undefined;
 

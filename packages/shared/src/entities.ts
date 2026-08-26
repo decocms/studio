@@ -78,11 +78,9 @@ export interface StudioThread {
   last_progress_at: string | null;
   virtual_mcp_id: string;
   branch: string | null;
-  sandbox_provider_kind: string | null;
   harness_id: string | null;
   metadata: ThreadMetadata;
   message_storage_version: number;
-  link_transport: string | null;
 }
 
 export interface StudioThreadMessage {
@@ -101,6 +99,14 @@ export type TaskBoardItemStatus =
   | "in_progress"
   | "in_review"
   | "done";
+
+/** What KIND of work a card is — its shape, not its area (that's tags). */
+export type TaskBoardItemType =
+  | "bug"
+  | "feature"
+  | "chore"
+  | "spike"
+  | "security";
 
 export type TaskBoardItemPriority =
   | "none"
@@ -152,13 +158,15 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is. Required; defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
   dueDate: string | null;
-  /** Sprint this card is planned into (1-based); null = backlog. */
-  sprint: number | null;
+  /** Sprint this card belongs to (`Sprint.id`); null = backlog. */
+  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`). */
@@ -168,6 +176,14 @@ export interface TaskBoardItem {
   retryAttempts: number;
   threads: TaskBoardItemThreadRef[];
   tags: TaskBoardItemTagRef[];
+  /** Each reviewer's standing verdict in the current review cycle; reviewers
+   *  that have not decided are absent. Mirrors `TaskBoardItemReviewVerdict` in
+   *  `apps/api/src/storage/types.ts`. */
+  reviewVerdicts: {
+    reviewer: "qa" | "code_review";
+    verdict: "approved" | "changes_requested";
+    verified: boolean;
+  }[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;

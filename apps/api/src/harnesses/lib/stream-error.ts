@@ -35,8 +35,7 @@ function stripProviderSpecificDetails(message: string): string {
  * Classify a stream error into a small, stable taxonomy for analytics.
  * Consumers (dashboards) can rely on these values being consistent across
  * providers — the raw error message stays in the separate `error_message`
- * prop for debugging. Shared by dispatch-run (hosted runs) and the link
- * ingest chunk relay (pull runs).
+ * prop for debugging. Shared by hosted dispatch and ingest paths.
  */
 export function classifyStreamError(
   error: unknown,

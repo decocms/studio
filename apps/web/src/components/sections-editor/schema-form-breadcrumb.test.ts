@@ -12,6 +12,7 @@ import {
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
   prependCrumbIfAbsent,
+  recordContainerOwner,
   siblingsNeedingAncestorCrumb,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
@@ -130,6 +131,61 @@ describe("prependCrumbIfAbsent", () => {
     const trail = ["café", "Free shipping"];
     // Same crumb in composed form must be recognized as already present.
     expect(prependCrumbIfAbsent("café", trail)).toBe(trail);
+  });
+});
+
+describe("recordContainerOwner", () => {
+  test("prepends the container key to an item crumb's ownerPath, no visible crumb", () => {
+    const trail: Crumb[] = [{ label: "CASA5", itemIndex: 0 }];
+    expect(recordContainerOwner("children", trail)).toEqual([
+      { label: "CASA5", itemIndex: 0, ownerPath: ["children"] },
+    ]);
+  });
+
+  test("preserves the item crumb's other fields", () => {
+    const trail: Crumb[] = [
+      {
+        label: "CASA5",
+        itemIndex: 2,
+        arrayLabel: "Cupons da PDP",
+        fieldKey: "pdpCupons",
+      },
+    ];
+    expect(recordContainerOwner("children", trail)).toEqual([
+      {
+        label: "CASA5",
+        itemIndex: 2,
+        arrayLabel: "Cupons da PDP",
+        fieldKey: "pdpCupons",
+        ownerPath: ["children"],
+      },
+    ]);
+  });
+
+  test("leaves plain string crumbs untouched", () => {
+    const trail: Crumb[] = ["Some Object", { label: "CASA5", itemIndex: 0 }];
+    expect(recordContainerOwner("children", trail)).toEqual([
+      "Some Object",
+      { label: "CASA5", itemIndex: 0, ownerPath: ["children"] },
+    ]);
+  });
+
+  test("is idempotent — re-stamping the same head container is a no-op", () => {
+    const trail: Crumb[] = [
+      { label: "CASA5", itemIndex: 0, ownerPath: ["children"] },
+    ];
+    const once = recordContainerOwner("children", trail);
+    expect(once[0]).toEqual(trail[0]!);
+  });
+
+  test("nests outermost-first as the trail bubbles up through containers", () => {
+    const inner = recordContainerOwner("inner", [
+      { label: "CASA5", itemIndex: 0 },
+    ]);
+    const outer = recordContainerOwner("outer", inner);
+    expect(outer).toEqual([
+      { label: "CASA5", itemIndex: 0, ownerPath: ["outer", "inner"] },
+    ]);
   });
 });
 
@@ -797,6 +853,38 @@ describe("resolveActiveFieldKey", () => {
         crumb,
       ]),
     ).not.toBe("fallback");
+    // Structural ownership (what the editor now stamps): resolves to `children` by KEY alone — no visible "Children" crumb, no meta, no title heuristic.
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        { label: couponUrl, itemIndex: 0, ownerPath: ["children"] },
+      ]),
+    ).toBe("children");
+    // Collision guard: a deeper container key that also names a sibling here makes ownership ambiguous. `fallback` is FIRST in key order, so a naive first-match fast-path would wrongly pick it; the guard must fall through so the schema owner still pins `children` via meta.
+    const collidingProps = {
+      fallback: properties.fallback,
+      children: properties.children,
+    };
+    const collidingValue = {
+      fallback: objValue.fallback,
+      children: objValue.children,
+    };
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(collidingProps),
+        collidingProps,
+        collidingValue,
+        [
+          {
+            label: couponUrl,
+            itemIndex: 0,
+            arrayLabel: "Cupons da PDP",
+            ownerPath: ["children", "fallback"],
+          },
+        ],
+        undefined,
+        meta,
+      ),
+    ).toBe("children");
   });
 
   test("narrows to a PLP loader whose selectedFacets[] item is labelled by key", () => {
@@ -920,7 +1008,18 @@ describe("resolveActiveFieldKey", () => {
         { label: "category-1", itemIndex: 0 },
       ]),
     ).toBeNull();
-    // The ancestor crumb (stamped by siblingsNeedingAncestorCrumb) pins the owner.
+    // Structural `ownerPath` (recordContainerOwner) pins the owner by KEY, invisibly.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        { label: "category-1", itemIndex: 0, ownerPath: ["page"] },
+      ]),
+    ).toBe("page");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        { label: "category-1", itemIndex: 0, ownerPath: ["RangePriceProps"] },
+      ]),
+    ).toBe("RangePriceProps");
+    // A legacy VISIBLE ancestor crumb still resolves (back-compat for persisted trails).
     expect(
       resolveActiveFieldKey(keys, properties, objValue, [
         "Page",
@@ -1403,6 +1502,49 @@ describe("structural fieldKey resolution", () => {
         trail,
       ),
     ).toBe("b");
+  });
+
+  test("a nested array crumb sharing a key name with a top-level array does not hijack it", () => {
+    // The outermost crumb (`tabs`) owns the root scope; the inner `cards` crumb belongs to the tab item, not the same-named top-level `cards`.
+    const cardItem = {
+      type: "object",
+      properties: { title: { type: "string" } },
+    } as SchemaProperty;
+    const nestedProps = {
+      cards: { title: "Cards", type: "array", items: cardItem },
+      tabs: {
+        title: "Tabs",
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            cards: { title: "Cards da tab", type: "array", items: cardItem },
+          },
+        },
+      },
+    } as Record<string, SchemaProperty>;
+    const nestedValue = {
+      cards: [{ title: "Coleção 1" }, { title: "Coleção 2" }],
+      tabs: [{ title: "Ouro", cards: [{}, {}] }],
+    };
+    const trail: Crumb[] = [
+      { label: "Ouro", itemIndex: 0, fieldKey: "tabs" },
+      {
+        label: "Item 1",
+        itemIndex: 0,
+        fieldKey: "cards",
+        arrayLabel: "Cards da tab",
+      },
+    ];
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(nestedProps),
+        nestedProps,
+        nestedValue,
+        trail,
+      ),
+    ).toBe("tabs");
   });
 
   test("a legacy crumb without fieldKey can't disambiguate and picks the first sibling", () => {

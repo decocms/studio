@@ -8,8 +8,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
@@ -79,6 +77,10 @@ import {
   nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
+  TASK_TYPE_CONFIG,
+  TASK_TYPES,
+  type TaskBoardItemType,
+  DEFAULT_TASK_TYPE,
   STATUS_CONFIG,
   STATUSES,
   statusIconClassName,
@@ -95,6 +97,7 @@ import { summarizeTaskCost } from "./task-cost";
 import { prCardActions } from "./pr-card-actions";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
+import { useBoardSprintIndex } from "@/hooks/use-task-board-items";
 import {
   useTaskBoardActivity,
   type TaskBoardActivity,
@@ -113,8 +116,6 @@ import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
-import { useSprintConfig } from "@/hooks/use-organization-settings";
-import { sprintNumberAt, sprintOptions } from "@decocms/shared/sprints";
 import { extractDescriptionLinks } from "./description-links";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
@@ -125,6 +126,7 @@ import {
   type TaskComment,
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
+import { SubscribeToggle } from "./subscribe-button";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -151,11 +153,11 @@ type TaskForm = {
   description: string;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is. Always set — defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   repo: string | null;
   dueDate: Date | null;
-  /** Sprint the task is planned into; null = backlog. */
-  sprint: number | null;
   tagIds: string[];
 };
 
@@ -173,9 +175,6 @@ const DESCRIPTION_MAX_HEIGHT = 560;
 /** How long typing stays quiet before it autosaves. Long enough that a
  *  sentence is one write, short enough that a distracted tab keeps the text. */
 const AUTOSAVE_DELAY_MS = 2000;
-
-/** Radix `RadioGroup` needs a string value — this stands in for the backlog. */
-const NO_SPRINT_VALUE = "__backlog__";
 
 const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -324,20 +323,26 @@ function ReviewsGroup({ item }: { item: TaskBoardItem }) {
  */
 function RecordSection({
   label,
+  action,
   children,
 }: {
   label: string;
+  /** Rendered opposite the label, outside the trigger so it can't collapse. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Collapsible defaultOpen className="flex flex-col gap-2">
-      <CollapsibleTrigger className="group flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
-        {label}
-        <ChevronDown
-          size={14}
-          className="shrink-0 transition-transform group-data-[state=closed]:-rotate-90"
-        />
-      </CollapsibleTrigger>
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <CollapsibleTrigger className="group flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          {label}
+          <ChevronDown
+            size={14}
+            className="shrink-0 transition-transform group-data-[state=closed]:-rotate-90"
+          />
+        </CollapsibleTrigger>
+        {action}
+      </div>
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
   );
@@ -370,10 +375,10 @@ export function TaskBoardItemDialog({
     description: string | null;
     status: TaskBoardItemStatus;
     priority: TaskBoardItemPriority;
+    type: TaskBoardItemType;
     assigneeId: string | null;
     repo: string | null;
     dueDate: string | null;
-    sprint: number | null;
     tagIds: string[];
   }) => void;
   onDelete?: () => void;
@@ -408,21 +413,19 @@ export function TaskBoardItemDialog({
     description: item?.description ?? "",
     status: item?.status ?? defaultStatus ?? "triage",
     priority: item?.priority ?? "medium",
+    type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
     repo: item?.repo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
-    sprint: item?.sprint ?? null,
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
-  const sprint = form.sprint;
-  const sprintConfig = useSprintConfig();
-  const sprintsEnabled = sprintConfig?.enabled === true;
-  const currentSprint =
-    sprintConfig && sprintsEnabled
-      ? sprintNumberAt(sprintConfig, new Date())
-      : null;
+  const taskType = form.type;
+  const sprintIndex = useBoardSprintIndex();
+  const cardSprint = item?.sprintId
+    ? (sprintIndex.get(item.sprintId) ?? null)
+    : null;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
@@ -457,10 +460,10 @@ export function TaskBoardItemDialog({
       description: v.description.trim() || null,
       status: v.status,
       priority: v.priority,
+      type: v.type,
       assigneeId: v.assigneeId,
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
-      sprint: v.sprint,
       tagIds: v.tagIds,
     });
   };
@@ -742,7 +745,7 @@ export function TaskBoardItemDialog({
                   onFocusCapture={() => setDescriptionExpanded(true)}
                   onBlurCapture={flush}
                 >
-                  <div ref={measureDescription}>
+                  <div ref={measureDescription} data-testid="task-description">
                     {/* Markdown in, markdown out — the value also becomes
                         prompt context for the agent, and plain-text
                         descriptions written before this editor existed still
@@ -847,6 +850,44 @@ export function TaskBoardItemDialog({
                           className={STATUS_CONFIG[s].iconClassName}
                         />
                         {t(STATUS_CONFIG[s].labelKey)}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={contentLocked}
+                    title={
+                      contentLocked
+                        ? t("taskBoard.taskDialog.reportsContentLocked")
+                        : undefined
+                    }
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      contentLocked && "cursor-default opacity-60",
+                    )}
+                  >
+                    {(() => {
+                      const Icon = TASK_TYPE_CONFIG[taskType].icon;
+                      return <Icon size={16} />;
+                    })()}
+                    {t(TASK_TYPE_CONFIG[taskType].labelKey)}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  {TASK_TYPES.map((tp) => {
+                    const Icon = TASK_TYPE_CONFIG[tp].icon;
+                    return (
+                      <DropdownMenuItem
+                        key={tp}
+                        onSelect={() => patch({ type: tp })}
+                      >
+                        <Icon size={16} />
+                        {t(TASK_TYPE_CONFIG[tp].labelKey)}
                       </DropdownMenuItem>
                     );
                   })}
@@ -1058,62 +1099,18 @@ export function TaskBoardItemDialog({
                 </PopoverContent>
               </Popover>
 
-              {sprintsEnabled && sprintConfig && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(
-                        PROPERTY_BUTTON,
-                        sprint === null && EMPTY_PROPERTY,
-                      )}
-                    >
-                      <Repeat04 size={16} className="text-muted-foreground" />
-                      {sprint === null
-                        ? t("taskBoard.taskDialog.sprintLabel")
-                        : t("taskBoard.taskDialog.sprintNumber", {
-                            number: String(sprint),
-                          })}
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    className="max-h-80 w-72 overflow-y-auto"
-                  >
-                    <DropdownMenuRadioGroup
-                      value={sprint === null ? NO_SPRINT_VALUE : String(sprint)}
-                      onValueChange={(next) =>
-                        patch({
-                          sprint:
-                            next === NO_SPRINT_VALUE ? null : Number(next),
-                        })
-                      }
-                    >
-                      <DropdownMenuRadioItem value={NO_SPRINT_VALUE}>
-                        {t("taskBoard.taskDialog.sprintBacklog")}
-                      </DropdownMenuRadioItem>
-                      {sprintOptions(sprintConfig, new Date(), [sprint]).map(
-                        (n) => (
-                          <DropdownMenuRadioItem key={n} value={String(n)}>
-                            <span className="truncate">
-                              {formatSprintDates(sprintConfig, n)}
-                            </span>
-                            <span className="ml-auto shrink-0 text-muted-foreground">
-                              {n === currentSprint
-                                ? t(
-                                    "taskBoard.taskDialog.sprintNumberCurrent",
-                                    { number: String(n) },
-                                  )
-                                : t("taskBoard.taskDialog.sprintNumber", {
-                                    number: String(n),
-                                  })}
-                            </span>
-                          </DropdownMenuRadioItem>
-                        ),
-                      )}
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+              {/* Read-only: sprint membership is owned by the tracker the
+                  board mirrors (see apps/api/src/jira/sync.ts). */}
+              {cardSprint && (
+                <span className={cn(PROPERTY_BUTTON, "cursor-default")}>
+                  <Repeat04 size={16} className="text-muted-foreground" />
+                  <span className="truncate">{cardSprint.name}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {cardSprint.state === "active"
+                      ? t("taskBoard.taskDialog.sprintCurrent")
+                      : formatSprintDates(cardSprint)}
+                  </span>
+                </span>
               )}
 
               <TaskCost threads={item?.threads} />
@@ -1273,7 +1270,7 @@ export function TaskBoardItemDialog({
  * is not an error the user can act on, and painting it red is what made a card
  * the reviewers approved look broken.
  */
-export function threadStatusStyle(
+function threadStatusStyle(
   thread: {
     status: NonNullable<TaskBoardItemThread["status"]>;
     failureKind?: string | null;
@@ -1968,7 +1965,10 @@ function ActivitySection({
   }
 
   return (
-    <RecordSection label={t("taskBoard.taskDialog.activityLabel")}>
+    <RecordSection
+      label={t("taskBoard.taskDialog.activityLabel")}
+      action={<SubscribeToggle itemId={item.id} members={members} />}
+    >
       <div className="flex flex-col gap-5">
         {/* At the top: the feed reads newest-first, so this is where a new
             comment lands. */}
@@ -2218,6 +2218,12 @@ function describeActivity(
         ),
         { name: assigneeChip(d.to) },
       );
+    // Type is mandatory, so this is always a move between two types. Entries
+    // written before it became mandatory can still carry a null `from`.
+    case "type_changed":
+      return d.from
+        ? t("taskBoard.taskDialog.activityTypeFromTo", { from, to })
+        : t("taskBoard.taskDialog.activityTypeSet", { to });
     // "none" is priority's unset value, so it reads as a set/clear, not a move.
     case "priority_changed":
       if (d.to === "none")

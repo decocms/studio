@@ -16,9 +16,9 @@ import {
   hostedChildWorkflowId,
   type HostedHarnessInput,
   type HostedHarnessRuntime,
+  type ClaimedSerializableDispatchRunInput,
   publishHostedHarnessFailure,
   runHostedHarness,
-  type SerializableDispatchRunInput,
   setHostedHarnessRuntime,
   terminalErrorStartSeq,
 } from "./hosted-harness-workflow";
@@ -162,7 +162,8 @@ describe("hostedHarnessWorkflowFn's try/catch contract (Finding 1)", () => {
   const request = {
     organizationId: "org-1",
     userId: "user-1",
-  } as SerializableDispatchRunInput;
+    runFenceToken: "fence-1",
+  } as ClaimedSerializableDispatchRunInput;
 
   const input: HostedHarnessInput = {
     runId: "run-1",
@@ -278,7 +279,8 @@ describe("half-terminal invariant (T9 proof obligation 1): done is never publish
   const request = {
     organizationId: "org-1",
     userId: "user-1",
-  } as SerializableDispatchRunInput;
+    runFenceToken: "fence-half-terminal",
+  } as ClaimedSerializableDispatchRunInput;
 
   const input: HostedHarnessInput = {
     runId: "run-half-terminal",
@@ -391,7 +393,11 @@ describe("heartbeatWhileQueued", () => {
     request: {
       organizationId: "org-1",
       userId: "user-1",
-    } as SerializableDispatchRunInput,
+      runFenceToken: "fence-queued",
+      // Run status is published only for the hosted harnesses
+      // (`shouldPublishRunStatus`).
+      harnessId: "claude-code",
+    } as ClaimedSerializableDispatchRunInput,
   };
 
   const withStreamBuffer = () => {

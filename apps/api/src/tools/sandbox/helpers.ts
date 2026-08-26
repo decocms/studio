@@ -12,7 +12,6 @@ import {
   type SandboxRecord,
   type SubmoduleCredential,
 } from "@decocms/shared/sdk";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 import {
   requireAuth,
@@ -109,7 +108,7 @@ export function readValidatedSubmoduleCredentials(
  * Extracts common auth + lookup boilerplate shared by all VM tools.
  * Validates auth, checks access, fetches and validates the Virtual MCP,
  * and returns the metadata and sandboxMap entry for the sandbox's OWNER on the
- * specified branch + kind. `entry` is null when no vm is registered for that triple.
+ * specified branch. `entry` is null when no hosted sandbox is registered.
  *
  * `userId` is the caller (audit); `sandboxUserId` is who the sandbox is keyed by
  * — the same resolution SANDBOX_START uses, so a teammate's thread resolves that
@@ -119,7 +118,6 @@ export async function requireVmEntry(
   input: {
     virtualMcpId: string;
     branch: string;
-    sandboxProviderKind: SandboxProviderKind;
   },
   ctx: StudioContext,
 ) {
@@ -139,7 +137,6 @@ export async function requireVmEntry(
     sandboxMap,
     sandboxUserId,
     input.branch,
-    input.sandboxProviderKind,
   );
   return { virtualMcp, metadata, userId, sandboxUserId, entry, organization };
 }

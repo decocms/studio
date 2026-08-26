@@ -247,9 +247,9 @@ describe("runProjectorWorkflowBody", () => {
     );
   });
 
-  test("clean outcome with ABSENT finishReason (desktop/relay {done}, no finish chunk) → completed, NOT failed", async () => {
-    // Regression: the desktop/relay path ends on a `{done}` marker with no
-    // AI-SDK finish chunk, so finishReason is undefined. resolveThreadStatus
+  test("clean outcome with ABSENT finishReason ({done}, no finish chunk) → completed, NOT failed", async () => {
+    // A harness may end on a `{done}` marker with no AI-SDK finish chunk, so
+    // finishReason is undefined. resolveThreadStatus
     // maps undefined → "failed"; the mapping must short-circuit absent
     // finishReason to "completed" (matching the pre-unification projector).
     const { rt, calls } = makeRuntime();

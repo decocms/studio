@@ -512,6 +512,11 @@ fn arm_readiness_probe(
             task_id,
             port,
             crate::setup::dev::BOOT_PROBE_ATTEMPTS,
+            // `Ignore` is what keeps the "only possible write is `running`"
+            // contract above true: this path adopts a process it did not
+            // start, so its budget elapsing says nothing about whether that
+            // process is healthy.
+            crate::setup::dev::OnExhausted::Ignore,
         )
         .await;
     });

@@ -13,6 +13,7 @@ function makeCtx() {
   return {
     auth: { user: { id: "user-1" } },
     access: { check: mock(async () => {}) },
+    organization: { id: "org-1", slug: "acme", name: "Acme" },
     boundAuth: { organization: { update } },
     update,
   } as unknown as Parameters<typeof ORGANIZATION_UPDATE.handler>[1] & {
@@ -44,5 +45,16 @@ describe("ORGANIZATION_UPDATE", () => {
       organizationId: "org-1",
       data: { metadata: { description: "hello" } },
     });
+  });
+
+  it("rejects updating an organization other than the authenticated one", async () => {
+    const ctx = makeCtx();
+
+    await expect(
+      ORGANIZATION_UPDATE.handler({ id: "org-2", name: "Evil" }, ctx),
+    ).rejects.toThrow(
+      "Organization ID does not match authenticated organization",
+    );
+    expect(ctx.update.mock.calls.length).toBe(0);
   });
 });

@@ -5,7 +5,7 @@
  * Unlike Preview it needs no live dev-server iframe: it talks
  * to the sandbox daemon's FS endpoints directly, so it keeps working even when
  * the dev script has crashed. Renders the IDE (VSCode/Cursor) affordances when
- * a user-desktop sandbox exposes a local repo directory.
+ * a local-api sandbox exposes a local repo directory.
  */
 
 import { Suspense, lazy } from "react";
@@ -24,6 +24,7 @@ import { useSandboxRepoDir } from "@/components/sandbox/hooks/use-sandbox-repo-d
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { ideDeepLink } from "@/components/sandbox/ide-deep-link";
 import { useT } from "@/i18n/use-t.ts";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 
 const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
@@ -42,13 +43,14 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
   const { org } = useProjectContext();
   const { currentBranch: branch, taskId } = useChatTask();
   const virtualMcpId = inset?.entity?.id ?? null;
+  const isDesktopApp = useIsDesktopApp();
 
   const lifecycle = useSandboxLifecycle();
   const vmEvents = useSandboxEvents();
   const vmEntry = lifecycle.vmEntry;
   const devServerReady = vmEvents.lifecycle.phase === "running";
 
-  const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
+  const isDesktopSandbox = isDesktopApp && !!vmEntry;
   const rawRepoDir = useSandboxRepoDir({
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",

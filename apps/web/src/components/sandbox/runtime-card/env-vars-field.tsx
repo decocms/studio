@@ -69,6 +69,8 @@ export interface EnvVarsFieldProps<T extends FieldValues> {
   virtualMcpId: string;
   /** Used to build the /vm/.../setup/start URL for the restart action. */
   orgSlug: string;
+  /** Server-owned lifecycle state; displayed here but never stored in the form. */
+  sandboxMap?: Record<string, Record<string, unknown>>;
 }
 
 /**
@@ -84,6 +86,7 @@ export function EnvVarsField<T extends FieldValues>({
   form,
   virtualMcpId,
   orgSlug,
+  sandboxMap,
 }: EnvVarsFieldProps<T>) {
   const t = useT();
   return (
@@ -101,6 +104,7 @@ export function EnvVarsField<T extends FieldValues>({
         form={form}
         virtualMcpId={virtualMcpId}
         orgSlug={orgSlug}
+        sandboxMap={sandboxMap}
       />
       <ErrorBoundary
         fallback={({ error }) => (
@@ -122,6 +126,7 @@ interface RunningSandboxNoticeProps<T extends FieldValues> {
   form: UseFormReturn<T>;
   virtualMcpId: string;
   orgSlug: string;
+  sandboxMap?: Record<string, Record<string, unknown>>;
 }
 
 /**
@@ -145,14 +150,13 @@ function RunningSandboxNotice<T extends FieldValues>({
   form,
   virtualMcpId,
   orgSlug,
+  sandboxMap,
 }: RunningSandboxNoticeProps<T>) {
   const t = useT();
   const session = authClient.useSession();
   const userId = session.data?.user?.id;
 
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
-  const sandboxMapPath = "metadata.sandboxMap" as FieldPath<T>;
-
   const [baseline, setBaseline] = useState(() =>
     JSON.stringify(normalizeEnvForCompare(form.getValues(fieldPath))),
   );
@@ -160,9 +164,6 @@ function RunningSandboxNotice<T extends FieldValues>({
   const currentStr = JSON.stringify(normalizeEnvForCompare(current));
   const envChanged = currentStr !== baseline;
 
-  const sandboxMap = form.getValues(sandboxMapPath) as
-    | Record<string, Record<string, unknown>>
-    | undefined;
   const userBranches = userId ? Object.keys(sandboxMap?.[userId] ?? {}) : [];
   const hasActiveSandbox = userBranches.length > 0;
 

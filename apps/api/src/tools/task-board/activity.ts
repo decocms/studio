@@ -21,6 +21,8 @@ export async function recordTaskActivity(
     action: TaskBoardActivityAction;
     actorId: string | null;
     data?: Record<string, unknown>;
+    /** Users this event enrolls as followers of the task. */
+    alsoSubscribe?: (string | null | undefined)[];
   },
 ): Promise<void> {
   try {
@@ -40,6 +42,8 @@ export async function recordTaskActivities(
     action: TaskBoardActivityAction;
     actorId: string | null;
     data?: Record<string, unknown>;
+    /** Users this event enrolls as followers of the task. */
+    alsoSubscribe?: (string | null | undefined)[];
   }[],
 ): Promise<void> {
   if (entries.length === 0) return;

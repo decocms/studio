@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { Selection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
@@ -8,6 +8,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
+import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
 import { isImageFile, useEditorFileUpload } from "./use-file-upload";
 
@@ -93,6 +94,8 @@ export function MarkdownEditor({
 }) {
   const t = useT();
   const { uploadFile, pending } = useEditorFileUpload();
+  // One store per editor: created here so it dies with the editor it drives.
+  const [mentionStore] = useState(() => new MentionMenuStore());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The editor is created once, so its handlers would close over the first
@@ -126,12 +129,17 @@ export function MarkdownEditor({
   };
 
   const editor = useEditor({
-    extensions: markdownEditorExtensions(placeholder),
+    extensions: markdownEditorExtensions(placeholder, mentionStore),
     content: unwrapListContinuations(defaultValue),
     contentType: "markdown",
     editable,
     editorProps: {
       attributes: {
+        // A contenteditable has no role and no accessible name of its own, so
+        // without these nothing can address it by the label the user sees.
+        role: "textbox",
+        "aria-label": placeholder ?? "",
+        "aria-multiline": "true",
         class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
       },
       handlePaste: (view, event) => {
@@ -173,6 +181,7 @@ export function MarkdownEditor({
   return (
     <div className="flex flex-col">
       <BubbleToolbar editor={editor} />
+      <MentionMenu store={mentionStore} />
       <EditorContent
         editor={editor}
         className="text-[15px] text-muted-foreground"

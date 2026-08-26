@@ -5,8 +5,7 @@ import {
   isRunStatusControlChunk,
   isRunStatusChunk,
   publishRunStatusStage,
-  shouldPublishClusterRunStatus,
-  shouldPublishThreadGateRunStatus,
+  shouldPublishRunStatus,
 } from "./run-status-stage";
 
 describe("buildRunStatusChunk", () => {
@@ -59,13 +58,12 @@ describe("isRunStatusControlChunk", () => {
 describe("publishRunStatusStage", () => {
   test("publishes through StreamBuffer when available", async () => {
     const publishRawChunk = mock(() => Promise.resolve(true));
-    await publishRunStatusStage(
-      {
-        publishRawChunk,
-      },
-      "thread-1",
-      "gathering-context",
-    );
+    await publishRunStatusStage({
+      streamBuffer: { publishRawChunk },
+      harnessId: "decopilot",
+      taskId: "thread-1",
+      stage: "gathering-context",
+    });
     expect(publishRawChunk).toHaveBeenCalledWith("thread-1", {
       type: "data-run-status",
       id: "run-status",
@@ -76,14 +74,50 @@ describe("publishRunStatusStage", () => {
   test("swallows publish failures", async () => {
     const publishRawChunk = mock(() => Promise.reject(new Error("nats down")));
     await expect(
-      publishRunStatusStage({ publishRawChunk }, "thread-1", "starting-run"),
+      publishRunStatusStage({
+        streamBuffer: { publishRawChunk },
+        harnessId: "decopilot",
+        taskId: "thread-1",
+        stage: "starting-run",
+      }),
     ).resolves.toBeUndefined();
   });
 
   test("is a no-op without a stream buffer", async () => {
     await expect(
-      publishRunStatusStage(undefined, "thread-1", "starting-run"),
+      publishRunStatusStage({
+        streamBuffer: undefined,
+        harnessId: "decopilot",
+        taskId: "thread-1",
+        stage: "starting-run",
+      }),
     ).resolves.toBeUndefined();
+  });
+
+  test("publishes for a sandbox-hosted run too", async () => {
+    const publishRawChunk = mock(() => Promise.resolve(true));
+    await publishRunStatusStage({
+      streamBuffer: { publishRawChunk },
+      harnessId: "claude-code",
+      taskId: "thread-1",
+      stage: "starting-sandbox",
+    });
+    expect(publishRawChunk).toHaveBeenCalledWith("thread-1", {
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "starting-sandbox" },
+    });
+  });
+
+  test("publishes nothing for a harness that reports no status", async () => {
+    const publishRawChunk = mock(() => Promise.resolve(true));
+    await publishRunStatusStage({
+      streamBuffer: { publishRawChunk },
+      harnessId: "codex",
+      taskId: "thread-1",
+      stage: "starting-run",
+    });
+    expect(publishRawChunk).not.toHaveBeenCalled();
   });
 });
 
@@ -98,107 +132,12 @@ describe("PREPARE_RUN_STATUS_STAGES", () => {
   });
 });
 
-describe("shouldPublishClusterRunStatus", () => {
-  test("only publishes for decopilot runs in the agent sandbox", () => {
-    expect(
-      shouldPublishClusterRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-        harnessId: "decopilot",
-      }),
-    ).toBe(true);
-
-    expect(
-      shouldPublishClusterRunStatus({
-        sandboxProviderKind: "user-desktop",
-        harnessId: "decopilot",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishClusterRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-        harnessId: "claude-code",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishClusterRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-        harnessId: "codex",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishClusterRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishClusterRunStatus({
-        harnessId: "decopilot",
-      }),
-    ).toBe(false);
-  });
-});
-
-describe("shouldPublishThreadGateRunStatus", () => {
-  test("publishes for decopilot hosted and legacy runs only", () => {
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-        harnessId: "decopilot",
-      }),
-    ).toBe(true);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        harnessId: "decopilot",
-      }),
-    ).toBe(true);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: null,
-        harnessId: "decopilot",
-      }),
-    ).toBe(true);
-
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "user-desktop",
-        harnessId: "decopilot",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "other-provider-kind",
-        harnessId: "decopilot",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-        harnessId: "claude-code",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "user-desktop",
-        harnessId: "claude-code",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-        harnessId: "codex",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "user-desktop",
-        harnessId: "codex",
-      }),
-    ).toBe(false);
-    expect(
-      shouldPublishThreadGateRunStatus({
-        sandboxProviderKind: "agent-sandbox",
-      }),
-    ).toBe(false);
-    expect(shouldPublishThreadGateRunStatus({})).toBe(false);
+describe("shouldPublishRunStatus", () => {
+  test("publishes for both hosted harnesses, nothing else", () => {
+    expect(shouldPublishRunStatus("decopilot")).toBe(true);
+    expect(shouldPublishRunStatus("claude-code")).toBe(true);
+    expect(shouldPublishRunStatus("codex")).toBe(false);
+    expect(shouldPublishRunStatus(null)).toBe(false);
+    expect(shouldPublishRunStatus(undefined)).toBe(false);
   });
 });

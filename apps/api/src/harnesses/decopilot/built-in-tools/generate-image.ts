@@ -8,11 +8,11 @@
 
 import type { UIMessageStreamWriter } from "ai";
 import type { StudioProvider } from "@/ai-providers/types";
-import type { ObjectStorageHooks } from "@/harnesses/lib/harness-deps";
 import type { ModelInfo } from "@/harnesses/lib/decopilot/model-info";
 import {
   createPortableGenerateImageTool,
   type GenerateImageInput,
+  type PortableMediaObjectStorage,
 } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 
 export type { GenerateImageInput };
@@ -22,7 +22,7 @@ export function createGenerateImageTool(
   params: {
     provider: StudioProvider;
     imageModelInfo: ModelInfo;
-    objectStorage: ObjectStorageHooks;
+    objectStorage: PortableMediaObjectStorage;
     allowHttpExternalUrls: boolean;
   },
 ) {

@@ -1,5 +1,5 @@
 /**
- * Kysely-backed RunnerStateStore. `state` jsonb is opaque — each runner
+ * Kysely-backed RunnerStateStore. `state` jsonb is opaque — the provider
  * serialises its own fields. See
  * packages/@decocms/sandbox/server/provider/.
  *
@@ -10,7 +10,7 @@
  * nested-query pool deadlock at `databasePoolMax` concurrent provisionings.
  */
 
-import { createHash } from "node:crypto";
+import { hash } from "node:crypto";
 import { sql, type Kysely } from "kysely";
 import type {
   RunnerStatePut,
@@ -25,31 +25,35 @@ import type { Database } from "./types";
 type Executor = Kysely<Database>;
 
 /**
- * Hash `(userId, projectRef, kind)` to a signed int64 for
- * `pg_advisory_xact_lock` — cast so the range fits pg's `bigint`.
+ * Kept in persisted rows and lock keys so new pods remain compatible with old
+ * pods during a rolling deploy. It is storage metadata, not a provider selector.
  */
-function lockKey(id: SandboxId, kind: string): bigint {
-  const h = createHash("sha256")
-    .update(id.userId)
-    .update("\x00")
-    .update(id.projectRef)
-    .update("\x00")
-    .update(kind)
-    .digest();
+const SANDBOX_PROVIDER_KIND = "agent-sandbox";
+
+/**
+ * Hash `(userId, projectRef, agent-sandbox)` to a signed int64 for
+ * `pg_advisory_xact_lock` — including the constant preserves the lock key used
+ * by old pods during a rolling deploy. Cast so the range fits pg's `bigint`.
+ */
+function lockKey(id: SandboxId): bigint {
+  const h = hash(
+    "sha256",
+    `${id.userId}\x00${id.projectRef}\x00${SANDBOX_PROVIDER_KIND}`,
+    "buffer",
+  );
   return h.readBigInt64BE(0);
 }
 
 async function getRow(
   exec: Executor,
   id: SandboxId,
-  kind: string,
 ): Promise<RunnerStateRecord | null> {
   const row = await exec
     .selectFrom("sandbox_runner_state")
     .select(["handle", "state", "updated_at"])
     .where("user_id", "=", id.userId)
     .where("project_ref", "=", id.projectRef)
-    .where("sandbox_provider_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", SANDBOX_PROVIDER_KIND)
     .executeTakeFirst();
   if (!row) return null;
   return {
@@ -61,13 +65,12 @@ async function getRow(
 
 async function getByHandleRow(
   exec: Executor,
-  kind: string,
   handle: string,
 ): Promise<RunnerStateRecordWithId | null> {
   const row = await exec
     .selectFrom("sandbox_runner_state")
     .select(["user_id", "project_ref", "handle", "state", "updated_at"])
-    .where("sandbox_provider_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", SANDBOX_PROVIDER_KIND)
     .where("handle", "=", handle)
     .executeTakeFirst();
   if (!row) return null;
@@ -82,7 +85,6 @@ async function getByHandleRow(
 async function putRow(
   exec: Executor,
   id: SandboxId,
-  kind: string,
   entry: RunnerStatePut,
 ): Promise<void> {
   const stateJson = JSON.stringify(entry.state);
@@ -92,7 +94,7 @@ async function putRow(
     .values({
       user_id: id.userId,
       project_ref: id.projectRef,
-      sandbox_provider_kind: kind,
+      sandbox_provider_kind: SANDBOX_PROVIDER_KIND,
       handle: entry.handle,
       state: stateJson,
       updated_at: now,
@@ -109,65 +111,57 @@ async function putRow(
     .execute();
 }
 
-async function deleteRow(
-  exec: Executor,
-  id: SandboxId,
-  kind: string,
-): Promise<void> {
+async function deleteRow(exec: Executor, id: SandboxId): Promise<void> {
   await exec
     .deleteFrom("sandbox_runner_state")
     .where("user_id", "=", id.userId)
     .where("project_ref", "=", id.projectRef)
-    .where("sandbox_provider_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", SANDBOX_PROVIDER_KIND)
     .execute();
 }
 
 async function deleteByHandleRow(
   exec: Executor,
-  kind: string,
   handle: string,
 ): Promise<void> {
   await exec
     .deleteFrom("sandbox_runner_state")
-    .where("sandbox_provider_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", SANDBOX_PROVIDER_KIND)
     .where("handle", "=", handle)
     .execute();
 }
 
 function scopedStore(exec: Executor): RunnerStateStoreOps {
   return {
-    get: (id, kind) => getRow(exec, id, kind),
-    getByHandle: (kind, handle) => getByHandleRow(exec, kind, handle),
-    put: (id, kind, entry) => putRow(exec, id, kind, entry),
-    delete: (id, kind) => deleteRow(exec, id, kind),
-    deleteByHandle: (kind, handle) => deleteByHandleRow(exec, kind, handle),
+    get: (id) => getRow(exec, id),
+    getByHandle: (handle) => getByHandleRow(exec, handle),
+    put: (id, entry) => putRow(exec, id, entry),
+    delete: (id) => deleteRow(exec, id),
+    deleteByHandle: (handle) => deleteByHandleRow(exec, handle),
   };
 }
 
 export class KyselySandboxProviderStateStore implements RunnerStateStore {
   constructor(private db: Kysely<Database>) {}
 
-  get(id: SandboxId, kind: string): Promise<RunnerStateRecord | null> {
-    return getRow(this.db, id, kind);
+  get(id: SandboxId): Promise<RunnerStateRecord | null> {
+    return getRow(this.db, id);
   }
 
-  getByHandle(
-    kind: string,
-    handle: string,
-  ): Promise<RunnerStateRecordWithId | null> {
-    return getByHandleRow(this.db, kind, handle);
+  getByHandle(handle: string): Promise<RunnerStateRecordWithId | null> {
+    return getByHandleRow(this.db, handle);
   }
 
-  put(id: SandboxId, kind: string, entry: RunnerStatePut): Promise<void> {
-    return putRow(this.db, id, kind, entry);
+  put(id: SandboxId, entry: RunnerStatePut): Promise<void> {
+    return putRow(this.db, id, entry);
   }
 
-  delete(id: SandboxId, kind: string): Promise<void> {
-    return deleteRow(this.db, id, kind);
+  delete(id: SandboxId): Promise<void> {
+    return deleteRow(this.db, id);
   }
 
-  deleteByHandle(kind: string, handle: string): Promise<void> {
-    return deleteByHandleRow(this.db, kind, handle);
+  deleteByHandle(handle: string): Promise<void> {
+    return deleteByHandleRow(this.db, handle);
   }
 
   /**
@@ -185,10 +179,9 @@ export class KyselySandboxProviderStateStore implements RunnerStateStore {
    */
   async withLock<T>(
     id: SandboxId,
-    kind: string,
     fn: (store: RunnerStateStoreOps) => Promise<T>,
   ): Promise<T> {
-    const key = lockKey(id, kind);
+    const key = lockKey(id);
     return this.db.transaction().execute(async (trx) => {
       try {
         await sql`set local statement_timeout = ${sql.lit(LOCK_WAIT_MS)}`.execute(
@@ -198,7 +191,7 @@ export class KyselySandboxProviderStateStore implements RunnerStateStore {
       } catch (err) {
         if (isStatementTimeoutError(err)) {
           throw new Error(
-            `sandbox advisory lock busy >${LOCK_WAIT_MS}ms for user=${id.userId} projectRef=${id.projectRef} kind=${kind} — provisioner is slow or stuck; retry shortly`,
+            `sandbox advisory lock busy >${LOCK_WAIT_MS}ms for user=${id.userId} projectRef=${id.projectRef} — provisioner is slow or stuck; retry shortly`,
           );
         }
         throw err;

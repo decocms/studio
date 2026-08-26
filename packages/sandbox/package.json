@@ -1,6 +1,6 @@
 {
   "name": "@decocms/sandbox",
-  "version": "1.57.2",
+  "version": "1.58.0",
   "private": true,
   "type": "module",
   "description": "Sandbox runtime for isolated Studio tool execution",
@@ -30,8 +30,6 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@nats-io/jetstream": "3.4.0",
-    "@nats-io/nats-core": "3.4.0",
     "@types/bun": "latest",
     "typescript": "^7.0.2"
   }

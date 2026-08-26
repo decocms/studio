@@ -13,6 +13,13 @@ export const taskBoard = {
   "taskBoard.taskBoard.assignedToSuperAgent": "Assigned to Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Assigned to Super Agent by {name}",
+  "taskBoard.taskBoard.agentFailed": "This task's agent run failed",
+  "taskBoard.taskBoard.agentRunning": "An agent is working on this task",
+  "taskBoard.taskBoard.checksApproved": "approved",
+  "taskBoard.taskBoard.checksChangesRequested": "changes requested",
+  "taskBoard.taskBoard.checksLabel": "{passed} of {total} reviews approved",
+  "taskBoard.taskBoard.checksPending": "not reviewed yet",
+  "taskBoard.taskBoard.checksUnverified": "approved (unverified)",
   "taskBoard.taskBoard.autoFix": "Auto-fix",
   "taskBoard.taskBoard.rerun": "Re-run",
   "taskBoard.taskBoard.blockedBadgeTitle":
@@ -45,7 +52,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.changePriorityButton": "Change priority",
   "taskBoard.taskBoard.assignButton": "Assign",
   "taskBoard.taskBoard.dueDateButton": "Due date",
-  "taskBoard.taskBoard.sprintPill": "Sprint {number}",
   "taskBoard.taskBoard.addTagButton": "Add tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Delete",
   "taskBoard.taskBoard.actionError": "Couldn't do that. Please try again.",
@@ -84,6 +90,8 @@ export const taskBoard = {
     "{reviewer} requested changes and handed the task back to the Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} requested changes: {notes}",
+  "taskBoard.taskDialog.subscribe": "Subscribe",
+  "taskBoard.taskDialog.unsubscribe": "Unsubscribe",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "couldn't merge the pull request — resolving a merge conflict",
   "taskBoard.taskDialog.activityMergeFailed": "couldn't merge the pull request",
@@ -135,10 +143,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.descriptionPlaceholder":
     "Describe a task for an agent...",
   "taskBoard.taskDialog.dueDateLabel": "Due date",
-  "taskBoard.taskDialog.sprintLabel": "Sprint",
-  "taskBoard.taskDialog.sprintBacklog": "No sprint",
-  "taskBoard.taskDialog.sprintNumber": "Sprint {number}",
-  "taskBoard.taskDialog.sprintNumberCurrent": "Sprint {number} (current)",
+  "taskBoard.taskDialog.sprintCurrent": "current",
   "taskBoard.taskDialog.editTaskTitle": "Edit task",
   "taskBoard.taskDialog.membersGroupHeading": "Members",
   "taskBoard.taskDialog.newChatButton": "New chat",
@@ -242,8 +247,7 @@ export const taskBoard = {
   "taskBoard.taskFilters.sprintLabel": "Sprint",
   "taskBoard.taskFilters.sprintAnySprint": "Any sprint",
   "taskBoard.taskFilters.sprintBacklog": "No sprint",
-  "taskBoard.taskFilters.sprintNumber": "Sprint {number}",
-  "taskBoard.taskFilters.sprintNumberCurrent": "Sprint {number} (current)",
+  "taskBoard.taskFilters.sprintCurrent": "current",
   "taskBoard.taskFilters.repoNoRepo": "No repo",
   "taskBoard.taskFilters.repoNoReposFound": "No repos found.",
   "taskBoard.taskFilters.searchLabel": "Search tasks",
@@ -284,4 +288,12 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.dismissButton": "Close",
   "taskBoard.subscriptionPaywall.checkoutError":
     "Couldn't start checkout: {message}",
+  "taskBoard.config.typeBug": "Bug",
+  "taskBoard.config.typeChore": "Chore",
+  "taskBoard.config.typeFeature": "Feature",
+  "taskBoard.config.typeSecurity": "Security",
+  "taskBoard.config.typeSpike": "Spike",
+  "taskBoard.taskBoard.typeLabel": "Type",
+  "taskBoard.taskDialog.activityTypeFromTo": "changed type from {from} to {to}",
+  "taskBoard.taskDialog.activityTypeSet": "set the type to {to}",
 } as const;

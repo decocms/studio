@@ -21,11 +21,13 @@ Studio can tell a live sandbox from a dead one.
 
 ### Dispatch is single-writer per run
 
-One run id, one harness. A dispatch for a run that is already in flight is a
-TAKEOVER: the daemon cancels the run it displaces, waits for that process group
-to die, and only then execs the replacement. Studio sends exactly that when the
-pod driving a run was replaced and another picked the work up, and the invariant
-it buys is that two `claude` processes never share one checkout.
+One run id, one active runner process. The dispatch endpoint always invokes the
+installed Claude Code runner; callers send only the run id and input. A dispatch
+for a run that is already in flight is a TAKEOVER: the daemon cancels the run it
+displaces, waits for that process group to die, and only then execs the
+replacement. Studio sends exactly that when the pod driving a run was replaced
+and another picked the work up, and the invariant it buys is that two `claude`
+processes never share one checkout.
 
 Two properties the consumer depends on, both asserted in `daemon-e2e/`:
 
@@ -43,7 +45,7 @@ Two properties the consumer depends on, both asserted in `daemon-e2e/`:
 | `main.go` | Env contract, wiring, HTTP server, shutdown |
 | `internal/routes/` | HTTP surface: `/health`, `/_sandbox/*`, fs, git, bash, exec, tasks, tools, events |
 | `internal/setup/` | Clone, install, golden cache, dep metrics, orchestration |
-| `internal/dispatch/` | Agent run dispatch, harness runner, offloaded fetch |
+| `internal/dispatch/` | Agent run dispatch and harness runner |
 | `internal/gitx/` | Git: checkout, rebase, publish, branch status, protected-branch guard |
 | `internal/proc/` | PTY spawn, task manager, log tee, ring buffer, port sniffer |
 | `internal/config/` | Tenant config store: classify, merge, validate, persist |
@@ -51,7 +53,7 @@ Two properties the consumer depends on, both asserted in `daemon-e2e/`:
 | `internal/orgfs/` | Links half of org-fs (the privileged mounter is the sidecar in `../orgfs/`) |
 | `internal/proxy/` | Preview HTTP + WebSocket proxy |
 | `internal/probe/`, `internal/lifecycle/` | Health probe and lifecycle state |
-| `internal/auth/`, `internal/urlallow/` | Bearer-token auth and the offload-fetch allowlist |
+| `internal/auth/` | Bearer-token authentication |
 | `internal/telemetry/` | OTLP metrics export |
 | `internal/worktree/` | Worktree lock |
 
@@ -65,7 +67,6 @@ Set by the sandbox template, not by the daemon:
 | `DAEMON_BOOT_ID` | Boot identity echoed by `/health`; how Studio detects a restart |
 | `APP_ROOT` (or `WORKDIR`) | Workspace root — `repo/` checkout, daemon state, log tees |
 | `PROXY_PORT` (or `DAEMON_PORT`) | Listen port |
-| `OFFLOAD_ALLOWED_HOSTS` | Allowlist for offloaded fetch; empty fails closed |
 | `ORGFS_SIDECAR_CONFIG_PATH` / `ORGFS_SIDECAR_STATUS_PATH` | Org-fs relay to the mounter sidecar; org-fs is inert without them |
 
 `/health` is unauthenticated on purpose: Studio polls it and marks the sandbox

@@ -416,6 +416,58 @@ describe("getArrayItemImageSrc", () => {
     );
   });
 
+  test("prefers the always variant over an earlier targeted-rule variant", () => {
+    const item = {
+      matcher: ["/produtos/cheirinho"],
+      image: {
+        __resolveType: "site/flags/multivariate/desktopAndMobileImage.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/device.ts" },
+            value: { desktop: "https://example.com/targeted.jpg" },
+          },
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: { desktop: "https://example.com/default.jpg" },
+          },
+        ],
+      },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.desktop}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBe(
+      "https://example.com/default.jpg",
+    );
+  });
+
+  test("recognizes the legacy $live always matcher as the default variant", () => {
+    const item = {
+      matcher: ["/produtos/cheirinho"],
+      image: {
+        __resolveType: "site/flags/multivariate/desktopAndMobileImage.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/device.ts" },
+            value: { desktop: "https://example.com/targeted.jpg" },
+          },
+          {
+            rule: { __resolveType: "$live/matchers/MatchAlways.ts" },
+            value: { desktop: "https://example.com/default.jpg" },
+          },
+        ],
+      },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.desktop}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBe(
+      "https://example.com/default.jpg",
+    );
+  });
+
   test("defaults to image.mobile when image is a nested object", () => {
     const item = {
       image: {

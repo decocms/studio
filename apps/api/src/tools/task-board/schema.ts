@@ -1,6 +1,19 @@
 import { z } from "zod";
 
+import { SPRINT_STATES } from "@decocms/shared/sprints";
+
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+
+/** No real task description is this long — caps the row a single write can write. */
+export const MAX_TASK_DESCRIPTION_LENGTH = 50_000;
+
+/** No real task title is this long — same reasoning as MAX_TASK_DESCRIPTION_LENGTH,
+ *  a title is a one-line label, not a place for the description's content. */
+export const MAX_TASK_TITLE_LENGTH = 500;
+
+/** `owner/name` — GitHub caps a login at 39 chars and a repo name at 100,
+ *  so nothing legitimate approaches this; same reasoning as the caps above. */
+export const MAX_TASK_REPO_LENGTH = 200;
 
 export const TaskBoardItemStatusSchema = z.enum([
   "triage",
@@ -9,6 +22,37 @@ export const TaskBoardItemStatusSchema = z.enum([
   "in_review",
   "done",
   "archived",
+]);
+
+/**
+ * A sprint cards can belong to — mirrored from the tracker the board syncs
+ * with (today Jira), never authored here.
+ *
+ * Shipped alongside the items in `TASK_BOARD_ITEM_LIST` rather than as its own
+ * tool: it is the sprint filter's option set, the same way `repos` is the repo
+ * filter's, and both are needed exactly when the board loads.
+ */
+export const SprintSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  state: z.enum(SPRINT_STATES),
+  startsAt: z.string().nullable(),
+  endsAt: z.string().nullable(),
+});
+
+/**
+ * What KIND of work a card is — its shape, not its area.
+ *
+ * Areas are tags (`SEO`, `Performance`, `Infra`), a card has many of them and
+ * exactly one shape. Required — a card always has a type, defaulting to
+ * `chore`, the value that asserts the least about work nobody classified.
+ */
+export const TaskBoardItemTypeSchema = z.enum([
+  "bug",
+  "feature",
+  "chore",
+  "spike",
+  "security",
 ]);
 
 export const TaskBoardItemPrioritySchema = z.enum([
@@ -45,6 +89,24 @@ const TaskBoardItemThreadSchema = z.object({
   /** Newest of the thread's `updated_at` / `last_progress_at` — the stall
    *  reaper's heartbeat, present on every `TaskBoardItemThreadRef`. */
   lastActiveAt: z.string(),
+});
+
+/**
+ * One reviewer's standing verdict in the task's CURRENT review cycle — what the
+ * board card's `1/2` checks indicator counts. Verdicts recorded before the task
+ * last entered In Review are stale and never reported; a reviewer that has not
+ * decided yet is simply absent from the array.
+ *
+ * A reviewer's THREAD status can't stand in for this: a review run that reads
+ * `completed` may well have asked for changes.
+ */
+const TaskBoardItemReviewVerdictSchema = z.object({
+  reviewer: z.enum(["qa", "code_review"]),
+  verdict: z.enum(["approved", "changes_requested"]),
+  /** Whether the approval was token-verified. An unverified approval counts as
+   *  an approval but can never satisfy the auto-merge gate, so it must not
+   *  render as a clean pass — see `approvedButUnverified`. */
+  verified: z.boolean(),
 });
 
 /** A tag attached to a task, plus who attached it and when. */
@@ -103,14 +165,18 @@ export const TaskBoardItemSchema = z.object({
   description: z.string().nullable(),
   status: TaskBoardItemStatusSchema,
   priority: TaskBoardItemPrioritySchema,
+  /** What kind of work this is. Present on every `TaskBoardItem`, so it MUST
+   *  be modeled here — see the `retryAttempts` note below on Ajv-revalidating
+   *  clients. */
+  type: TaskBoardItemTypeSchema,
   assigneeId: z.string().nullable(),
   assignedBy: z.string().nullable(),
   // `owner/name` of the repo (site) this task pertains to.
   repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
-  /** Sprint this card is planned into, counted 1-based from the org's
-   *  `sprint_config` cadence. Null = backlog, or sprints never configured. */
-  sprint: z.number().int().nullable(),
+  /** The sprint this card belongs to — an id from `TASK_BOARD_ITEM_LIST`'s
+   *  `sprints`. Null = backlog. Mirrored from the tracker, not writable here. */
+  sprintId: z.string().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.
@@ -127,6 +193,11 @@ export const TaskBoardItemSchema = z.object({
   threads: z.array(TaskBoardItemThreadSchema),
   // Org tags attached to this task, name ascending.
   tags: z.array(TaskBoardItemTagSchema),
+  /** Each reviewer's standing verdict in the current review cycle, in
+   *  `REVIEWER_KINDS` order; undecided reviewers are absent. Present on every
+   *  `TaskBoardItem`, so — like `retryAttempts` above — it MUST be modeled here
+   *  or Ajv-revalidating MCP clients reject every response with `-32602`. */
+  reviewVerdicts: z.array(TaskBoardItemReviewVerdictSchema),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),
@@ -155,6 +226,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_changes_requested",
   "merge_conflict_resolution",
   "merge_failed",
+  "type_changed",
 ] as const;
 
 export type TaskBoardActivityAction =

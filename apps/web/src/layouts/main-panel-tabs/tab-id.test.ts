@@ -39,11 +39,11 @@ describe("parseAutomationTabId", () => {
 });
 
 describe("file tab id", () => {
-  test("round-trips S3 and org-fs keys (slashes, colons, spaces)", () => {
+  test("round-trips org-fs keys (slashes, colons, spaces)", () => {
     for (const key of [
-      "model-outputs/thread-1/report final.pdf",
+      "org-fs:outputs/thread-1/report final.pdf",
       "org-fs:outputs/thread-1/nested/dir/data.csv",
-      "model-outputs/t/weird?#&name.txt",
+      "org-fs:outputs/t/weird?#&name.txt",
     ]) {
       expect(parseFileTabId(formatFileTabId(key))).toEqual({ key });
     }
@@ -61,7 +61,9 @@ describe("file tab id", () => {
   });
 
   test("file tabs are per-thread", () => {
-    expect(isPerThreadTab(formatFileTabId("model-outputs/t/a.pdf"))).toBe(true);
+    expect(isPerThreadTab(formatFileTabId("org-fs:outputs/t/a.pdf"))).toBe(
+      true,
+    );
     expect(isPerThreadTab("settings")).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ export interface Session {
   clientId: string;
   /** OIDC subject identifier (stable per user). */
   user: { sub: string; email?: string; name?: string };
-  /** Bearer token used for API + Warp tunnel auth. */
+  /** Bearer token used for API authentication. */
   accessToken: string;
   /** Refresh token for renewing the access token (when granted). */
   refreshToken?: string;
@@ -28,12 +28,9 @@ export interface Session {
 
 /**
  * Path to the session file for a studio. Sessions are keyed by studio host
- * so multiple studios (prod, staging, …) coexist in one data dir. Omitting
- * `target` yields the legacy `session.json` — still written by the dev-link
- * bootstrap and read as a fallback.
+ * so multiple studios (prod, staging, …) coexist in one data dir.
  */
-export function sessionPath(dataDir: string, target?: string): string {
-  if (!target) return join(dataDir, "session.json");
+export function sessionPath(dataDir: string, target: string): string {
   return join(dataDir, `session.${sessionKey(target)}.json`);
 }
 
@@ -59,12 +56,12 @@ async function readSessionFile(path: string): Promise<Session | null> {
   }
 }
 
-/** All session file paths in `dataDir` (legacy `session.json` + host-keyed). */
+/** All host-keyed session file paths in `dataDir`. */
 async function listSessionPaths(dataDir: string): Promise<string[]> {
   try {
     const names = await readdir(dataDir);
     return names
-      .filter((n) => /^session(\..+)?\.json$/.test(n))
+      .filter((n) => /^session\..+\.json$/.test(n))
       .map((n) => join(dataDir, n));
   } catch {
     return [];
@@ -72,20 +69,16 @@ async function listSessionPaths(dataDir: string): Promise<string[]> {
 }
 
 /**
- * Reads the session for `target` (host-keyed), falling back to the legacy
- * `session.json`. With no `target`, returns any session on disk (legacy file
- * first, then the first host-keyed file) — for target-agnostic callers like
- * `whoami` / `logout`.
+ * Reads the host-keyed session for `target`. With no `target`, returns the
+ * first host-keyed session on disk for target-agnostic callers like `whoami`
+ * and `logout`.
  */
 export async function readSession(
   dataDir: string,
   target?: string,
 ): Promise<Session | null> {
-  const primary = await readSessionFile(sessionPath(dataDir, target));
-  if (primary) return primary;
   if (target) {
-    // Legacy single-file fallback (e.g. the dev-link bootstrap writes this).
-    return readSessionFile(sessionPath(dataDir));
+    return readSessionFile(sessionPath(dataDir, target));
   }
   for (const path of await listSessionPaths(dataDir)) {
     const session = await readSessionFile(path);

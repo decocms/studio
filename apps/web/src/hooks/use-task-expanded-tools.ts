@@ -16,6 +16,7 @@ import type { Task } from "../components/chat/task/types";
 import { useOptionalThreadManager } from "../components/chat/store/hooks";
 import { KEYS } from "../lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
+import { omitSandboxMap } from "@/lib/omit-sandbox-map";
 
 export type { ThreadExpandedTool };
 
@@ -39,7 +40,7 @@ export function useTaskExpandedTools(taskId: string | null) {
       next.push({ ...tool, expandedAt: new Date().toISOString() });
 
       const nextMetadata: ThreadMetadata = {
-        ...currentMetadata,
+        ...omitSandboxMap(currentMetadata),
         expanded_tools: next,
       };
 

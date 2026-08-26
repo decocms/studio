@@ -147,7 +147,7 @@ function PromptRow({
           : [...current, prompt.name];
       }
       const nextMetadata = {
-        ...(agent.metadata ?? {}),
+        instructions: agent.metadata.instructions,
         ui: {
           ...(agent.metadata?.ui ?? {}),
           homePrompts: nextHomePrompts,

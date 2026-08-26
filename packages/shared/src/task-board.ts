@@ -96,6 +96,15 @@ export const PR_DIFF_RECIPE =
   "by directory: each slice re-reads bytes you already have into every " +
   "remaining turn's context, and it is the largest avoidable cost in a review.";
 
+/**
+ * The type a card takes when nobody picked one.
+ *
+ * `chore` because it asserts the least: calling unclassified work maintenance
+ * overstates nothing, where `feature` or `bug` would claim something about it.
+ * Shared so the column default, the create tool and the dialog can't drift.
+ */
+export const DEFAULT_TASK_TYPE = "chore";
+
 export const REVIEWER_KINDS: ReviewerKind[] = ["qa", "code_review"];
 
 /** Human label for a reviewer — also the prefix of its run thread's title

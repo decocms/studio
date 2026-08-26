@@ -80,13 +80,6 @@ describe("projector stream message helpers", () => {
   });
 });
 
-// --- transition-safety: leftover checkpoint markers from in-flight runs ---
-test("parseRunStreamMsgId returns null for a leftover checkpoint marker (transition safety)", () => {
-  // A ckpt msgId from a run that was in-flight when checkpoint publication was
-  // removed must parse to null — not misclassify as chunk or done.
-  expect(parseRunStreamMsgId("run_1:fence_a:ckpt:7")).toBeNull();
-});
-
 // --- existing tests: chunk + done still parse ---
 test("parseRunStreamMsgId still handles chunk msgId", () => {
   expect(parseRunStreamMsgId("r1:f1:3")).toEqual({

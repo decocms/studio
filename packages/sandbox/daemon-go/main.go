@@ -38,10 +38,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/worktree"
 )
 
-const (
-	sandboxPrefix       = "/_sandbox"
-	legacySandboxPrefix = "/_decopilot_vm"
-)
+const sandboxPrefix = "/_sandbox"
 
 func randomUUID() string {
 	b := make([]byte, 16)
@@ -52,15 +49,8 @@ func randomUUID() string {
 	return fmt.Sprintf("%s-%s-%s-%s-%s", s[0:8], s[8:12], s[12:16], s[16:20], s[20:32])
 }
 
-var sandboxPrefixes = []string{sandboxPrefix, legacySandboxPrefix}
-
 func isSandboxPath(pathname string) bool {
-	for _, p := range sandboxPrefixes {
-		if pathname == p || strings.HasPrefix(pathname, p+"/") {
-			return true
-		}
-	}
-	return false
+	return pathname == sandboxPrefix || strings.HasPrefix(pathname, sandboxPrefix+"/")
 }
 
 // Zero for the boot-to-serving measurement. A package var so it is stamped at
@@ -459,7 +449,7 @@ func (d *daemon) linked(fn http.HandlerFunc) http.HandlerFunc {
 // the same loop below, so they cannot drift apart.
 var fsRouteNames = []string{
 	"read", "write", "unlink", "mkdir", "rename", "edit", "grep", "glob",
-	"write_from_url", "upload_to_url", "bash",
+	"bash",
 }
 
 // The subset of the above that mutates the tree, and so runs under the worktree
@@ -469,7 +459,7 @@ var fsRouteNames = []string{
 // (status, diff) are likewise unguarded; the UI polls them.
 var mutatingFsRoutes = map[string]bool{
 	"write": true, "edit": true, "unlink": true, "mkdir": true,
-	"rename": true, "write_from_url": true,
+	"rename": true,
 }
 
 var mutatingGitRoutes = map[string]bool{
@@ -484,9 +474,7 @@ func (d *daemon) treeGuarded(fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// registerSandboxRoutes mounts the daemon's own API under one prefix. Called
-// once per prefix: /_sandbox is canonical, /_decopilot_vm is served for one
-// release window.
+// registerSandboxRoutes mounts the daemon's own API under /_sandbox.
 func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandboxHandlers) {
 	// Unauthenticated: liveness, the event stream, script discovery, the draft
 	// decofile pull, preflight.
@@ -554,7 +542,7 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 func (d *daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 
-	if p != "/health" && p != sandboxPrefix+"/idle" && p != legacySandboxPrefix+"/idle" {
+	if p != "/health" && p != sandboxPrefix+"/idle" {
 		activity.Bump()
 		d.mu.Lock()
 		if !d.firstWorkLogged {
@@ -783,14 +771,6 @@ func main() {
 	// was SIGKILLed before deleting.
 	setup.SweepSubmoduleCredentials(tmpDir)
 
-	var offloadHosts []string
-	for _, h := range strings.Split(os.Getenv("OFFLOAD_ALLOWED_HOSTS"), ",") {
-		h = strings.TrimSpace(h)
-		if h != "" {
-			offloadHosts = append(offloadHosts, h)
-		}
-	}
-
 	d := &daemon{
 		token:         os.Getenv("DAEMON_TOKEN"),
 		bootId:        bootId,
@@ -928,19 +908,6 @@ func main() {
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 	}
-	// Desktop mounts from the boot env rather than a relayed config, so seed the
-	// prefetch credential from it too.
-	if c := orgfs.ParseConfig([]byte(os.Getenv("ORGFS_CONFIG"))); c != nil {
-		d.orgFsLinks.SetAPIConfig(orgfs.APIConfig{
-			BaseUrl: c.BaseUrl, OrgSlug: c.OrgSlug, Token: c.Token,
-		})
-	}
-	// Fail loud rather than silently unmounted: ORGFS_CONFIG is the desktop's
-	// "mount them yourself" env, which only the TS bundle implements.
-	if os.Getenv("ORGFS_CONFIG") != "" && d.orgFsLinks.StatusPath == "" {
-		slog.Warn("ORGFS_CONFIG is set but this daemon does not mount org volumes " +
-			"(cluster sidecar path only) — org files will not appear in the workspace")
-	}
 	// The golden cache's remote tier needs `zstd` in the image; without it every
 	// restore and publish fails into a normal install, silently apart from this.
 	if setup.RemoteEnabled() {
@@ -959,8 +926,6 @@ func main() {
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
-		AllowedHosts:     offloadHosts,
-		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
 		// The tenant env Studio pushed on the config channel — the harness's model
 		// credential lives there, and it reaches the harness as its spawn
@@ -1039,8 +1004,6 @@ func main() {
 			d.branchStatus.Refresh()
 			d.emitFileChanged(path)
 		},
-		AllowedHosts:     offloadHosts,
-		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 	}
 	gitDeps := routes.GitDeps{
 		AppRoot: appRoot,
@@ -1122,17 +1085,15 @@ func main() {
 			},
 		}),
 		fs: map[string]http.HandlerFunc{
-			"read":           routes.Read(fsDeps),
-			"write":          routes.Write(fsDeps),
-			"unlink":         routes.Unlink(fsDeps),
-			"mkdir":          routes.Mkdir(fsDeps),
-			"rename":         routes.Rename(fsDeps),
-			"edit":           routes.Edit(fsDeps),
-			"grep":           routes.Grep(fsDeps),
-			"glob":           routes.Glob(fsDeps),
-			"write_from_url": routes.WriteFromUrl(fsDeps),
-			"upload_to_url":  routes.UploadToUrl(fsDeps),
-			"bash":           routes.Bash(routes.BashDeps{RepoDir: repoDir, TaskManager: d.tasks}),
+			"read":   routes.Read(fsDeps),
+			"write":  routes.Write(fsDeps),
+			"unlink": routes.Unlink(fsDeps),
+			"mkdir":  routes.Mkdir(fsDeps),
+			"rename": routes.Rename(fsDeps),
+			"edit":   routes.Edit(fsDeps),
+			"grep":   routes.Grep(fsDeps),
+			"glob":   routes.Glob(fsDeps),
+			"bash":   routes.Bash(routes.BashDeps{RepoDir: repoDir, TaskManager: d.tasks}),
 		},
 		git: map[string]http.HandlerFunc{
 			"status":  routes.GitStatus(gitDeps),
@@ -1164,9 +1125,7 @@ func main() {
 	}
 
 	d.mux = http.NewServeMux()
-	for _, pre := range sandboxPrefixes {
-		d.registerSandboxRoutes(d.mux, pre, h)
-	}
+	d.registerSandboxRoutes(d.mux, sandboxPrefix, h)
 
 	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {
 		d.store.Hydrate(diskCfg)

@@ -34,7 +34,7 @@ complete product from one artifact.
   `StudioContext`.
 - Proxy downstream MCP connections and enforce credentials and permissions.
 - Coordinate DBOS workflows, automations, event delivery, NATS messaging, and
-  sandbox providers.
+  the hosted AgentSandbox provider.
 - Emit OpenTelemetry traces, metrics, and logs and query monitoring backends.
 - Package the production server, migration runner, CLI, and staged web assets.
 
@@ -117,7 +117,7 @@ Key paths:
 | `src/dbos/` and `src/dispatch-queue/` | Durable workflows and queue coordination |
 | `src/event-bus/` and `src/nats/` | Event delivery and NATS integration |
 | `src/encryption/` and `src/vault/` | Credential encryption and secure token access |
-| `src/sandbox/` and `src/link-daemon/` | Sandbox lifecycle and desktop-link coordination |
+| `src/sandbox/` | Hosted agent-sandbox lifecycle and preview routing |
 | `src/observability/` and `src/monitoring/` | Telemetry export and monitoring queries |
 | `migrations/` | Ordered Kysely migrations |
 | `scripts/` | Bundle, contract-generation, migration, and smoke-test utilities |
@@ -188,7 +188,7 @@ Core settings include:
 | `ENCRYPTION_KEY` | Stable credential-vault key | Set explicitly in production |
 | `CONFIG_PATH` | Theme, logo, and monitoring JSON configuration | `./config.json` |
 | `STUDIO_DISPATCH_ROLE` | Queue role: `all`, `api`, or `worker` | `all` |
-| `STUDIO_SANDBOX_PROVIDER` | Sandbox provider: `user-desktop` or `agent-sandbox` | `user-desktop` |
+| `STUDIO_AGENT_SANDBOX_ENABLED` | Enable hosted AgentSandbox provisioning | `false` |
 | `CLICKHOUSE_URL` | Optional ClickHouse monitoring endpoint | Local monitoring backend |
 
 Authentication providers use `AUTH_*` variables. The validated list lives in

@@ -24,7 +24,7 @@ func TestKeepaliveWritesWhitespaceWhileQuiet(t *testing.T) {
 	dispatchHeartbeat = 5 * time.Millisecond
 	defer func() { dispatchHeartbeat = restore }()
 
-	stop := startKeepalive(context.Background(), body, "claude-code", "run-1")
+	stop := startKeepalive(context.Background(), body, "run-1")
 	time.Sleep(60 * time.Millisecond)
 	stop()
 	body.write(terminalFrame("harness_crashed", "boom"))
@@ -138,21 +138,6 @@ func TestRebaseWorkspaceCwd(t *testing.T) {
 	}
 	if got := RebaseWorkspaceCwd("/etc", "/work"); got != nil {
 		t.Fatalf("non-/repo cwd must map to nil, got %v", *got)
-	}
-}
-
-func TestOffloadAllowlistFailsClosed(t *testing.T) {
-	if err := AssertAllowedRefUrl("https://s3.example.com/x", nil, false); err == nil {
-		t.Fatal("empty allowlist must reject every host")
-	}
-	if err := AssertAllowedRefUrl("https://s3.example.com/x", []string{"s3.example.com"}, false); err != nil {
-		t.Fatalf("allowlisted host rejected: %v", err)
-	}
-	if err := AssertAllowedRefUrl("http://s3.example.com/x", []string{"s3.example.com"}, false); err == nil {
-		t.Fatal("plain http must be rejected outside dev loopback")
-	}
-	if err := AssertAllowedRefUrl("http://127.0.0.1:9000/x", []string{"127.0.0.1"}, true); err != nil {
-		t.Fatalf("dev loopback rejected: %v", err)
 	}
 }
 
@@ -292,7 +277,7 @@ func TestKeepaliveCountsAsActivity(t *testing.T) {
 	defer func() { dispatchHeartbeat = restore }()
 
 	activity.Bump()
-	stop := startKeepalive(context.Background(), newBodyWriter(httptest.NewRecorder()), "claude-code", "run-1")
+	stop := startKeepalive(context.Background(), newBodyWriter(httptest.NewRecorder()), "run-1")
 	time.Sleep(200 * time.Millisecond)
 	stop()
 
@@ -355,9 +340,7 @@ func TestUnauthorizedCancelLeavesNoTombstone(t *testing.T) {
 	}
 }
 
-// An oversized inline dispatch body must be rejected before it is buffered in
-// full — the offload path already caps at this size, and the inline path had
-// no cap at all.
+// An oversized dispatch body must be rejected before it is buffered in full.
 func TestDispatchRejectsOversizedBody(t *testing.T) {
 	const token = "tkn"
 	body := strings.NewReader(strings.Repeat("a", maxDispatchBodyBytes+1))

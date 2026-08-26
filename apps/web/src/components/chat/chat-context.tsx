@@ -43,20 +43,15 @@ import {
   type ThreadObserver,
 } from "./store/thread-connection";
 import { deriveTerminalThreadStatus } from "./store/thread-status";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import {
-  AGENT_OPTION_PINS,
-  agentOptionFor,
+  AGENT_OPTION_HARNESSES,
   resolveNativeAgentOption,
-  type AgentOption,
+  type LocalAgentOption,
   type NativeHarnessId,
 } from "./pills/agent-options";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
-import {
-  isBatchHarness,
-  shouldBlockHostedRuntime,
-} from "./hosted-runtime-guard";
+import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
@@ -210,8 +205,6 @@ export interface ChatTaskContextValue {
   isThreadLocked: boolean;
   /** Locked harness for the active thread (null when unlocked / no thread). */
   lockedHarness: string | null;
-  /** Locked sandbox provider kind (null when unlocked, or harness has no sandbox). */
-  lockedSandbox: SandboxProviderKind | null;
   /** Locked branch (null when unlocked or thread has no branch). */
   lockedBranch: string | null;
   /** thread.branch — alias of `lockedBranch`. Kept for call-site compatibility
@@ -255,16 +248,13 @@ export interface ChatPrefsContextValue {
   simpleModeTier: SimpleTier;
   setSimpleModeTier: (tier: SimpleTier) => void;
   /**
-   * Effective runtime option for the current surface. Hosted web resolves to
-   * Decopilot; native resolves a local terminal agent. Persisted per org so a
-   * native choice survives reloads.
+   * Effective native terminal-agent option. Persisted per org so a choice
+   * survives reloads.
    */
-  pendingAgentOption: AgentOption | null;
-  setPendingAgentOption: (option: AgentOption | null) => void;
+  pendingAgentOption: LocalAgentOption | null;
+  setPendingAgentOption: (option: LocalAgentOption | null) => void;
   /** Derived from `pendingAgentOption`. Read-only. */
   pendingHarnessId: NativeHarnessId | null;
-  /** Derived from `pendingAgentOption`. Read-only. */
-  pendingSandboxProviderKind: SandboxProviderKind | null;
 }
 
 // ============================================================================
@@ -507,64 +497,33 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     });
   };
 
-  // Pending agent — native's pre-launch coding-agent choice. The hosted web
-  // surface always resolves to Decopilot below. Persisted to localStorage so
-  // the native choice survives reloads.
+  // Pending agent — native's pre-launch coding-agent choice. Persisted to
+  // localStorage so the native choice survives reloads.
   //
   // Scoped per `locator` (like the image-model and tier prefs) so a native
   // choice made in one org doesn't leak into another. A fresh org starts with
   // no pick and waits for an explicit coding-agent selection.
   const [pendingAgentOption, setPendingAgentOption] =
-    useLocalStorage<AgentOption | null>(
+    useLocalStorage<LocalAgentOption | null>(
       LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
       (existing) =>
-        existing && existing in AGENT_OPTION_PINS ? existing : null,
+        existing && existing in AGENT_OPTION_HARNESSES ? existing : null,
     );
 
-  // Provider-tree wiring: `ChatPrefsProvider` is mounted INSIDE
-  // `ChatTaskCtx.Provider` (see `ChatContextProvider` below), so the optional
-  // task hook resolves the active-thread lock state in the full chat mount.
-  // On `/$org/` (standalone home composer) there is no task context — the
-  // hook returns `null` and we fall through to the user's global picker.
-  // This is option (b) from the plan: read the inner context here rather
-  // than hoist active-task knowledge into the outer provider, which would
-  // require restructuring the standalone mount path.
+  // Read the active native thread's lock when this provider is mounted inside
+  // ChatTaskCtx. Standalone composers have no task context and use the stored
+  // local choice.
   const taskCtxForLock = useOptionalChatTask();
-  const lockedAgentOption =
-    taskCtxForLock?.isThreadLocked && taskCtxForLock.lockedHarness != null
-      ? agentOptionFor(
-          taskCtxForLock.lockedHarness,
-          taskCtxForLock.lockedSandbox,
-        )
-      : null;
-
-  const isDesktopApp = useIsDesktopApp();
-  // Native has no cloud/Decopilot surface. Ignore stale cloud prefs there and
-  // recover early native threads that pinned a local harness without the
-  // expected sandbox tuple. A new chat stays unselected until the user picks
-  // an agent in the terminal empty state.
-  const nativeAgentOption = resolveNativeAgentOption({
+  const effectiveAgentOption = resolveNativeAgentOption({
     pendingOption: pendingAgentOption,
     lockedHarness: taskCtxForLock?.isThreadLocked
       ? taskCtxForLock.lockedHarness
       : null,
   });
-  // Hosted web has exactly one runnable chat runtime: Decopilot. A locked
-  // thread still reflects its persisted tuple so the hosted runtime guard can
-  // surface legacy/native rows as unavailable instead of relabelling them.
-  // Native recovers older rows by their local harness alone.
-  const effectiveAgentOption: AgentOption | null = isDesktopApp
-    ? nativeAgentOption
-    : taskCtxForLock?.isThreadLocked
-      ? lockedAgentOption
-      : "decopilot";
 
-  const effectivePins = effectiveAgentOption
-    ? AGENT_OPTION_PINS[effectiveAgentOption]
+  const pendingHarnessId = effectiveAgentOption
+    ? AGENT_OPTION_HARNESSES[effectiveAgentOption]
     : null;
-  const pendingHarnessId = effectivePins?.harness ?? null;
-  const pendingSandboxProviderKind: SandboxProviderKind | null =
-    effectivePins?.sandbox ?? null;
 
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
@@ -612,7 +571,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     pendingAgentOption: effectiveAgentOption,
     setPendingAgentOption,
     pendingHarnessId,
-    pendingSandboxProviderKind,
   };
 
   return (
@@ -673,8 +631,6 @@ export function ChatContextProvider({
   const activeTask =
     effectiveTaskId && task?.id === effectiveTaskId ? task : null;
   const lockedHarness = activeTask?.harness_id ?? null;
-  const lockedSandbox = (activeTask?.sandbox_provider_kind ??
-    null) as SandboxProviderKind | null;
   const lockedBranch = activeTask?.branch ?? null;
   const isThreadLocked = lockedHarness != null;
 
@@ -769,7 +725,6 @@ export function ChatContextProvider({
     activeTask,
     isThreadLocked,
     lockedHarness,
-    lockedSandbox,
     lockedBranch,
     currentBranch,
     setCurrentTaskBranch: (branch: string | null) => {
@@ -811,7 +766,6 @@ export function ActiveTaskProvider({
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: activeTask?.harness_id,
-    sandboxProviderKind: activeTask?.sandbox_provider_kind,
   });
   const hostedRuntimeBlockedMessage = t(
     "chat.input.codingAgentRequiresDesktop",
@@ -864,10 +818,7 @@ export function ActiveTaskProvider({
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const conn = getOrOpenStream(org.slug, taskId, {
-    client,
-    batch: isBatchHarness(activeTask?.harness_id),
-  });
+  const conn = getOrOpenStream(org.slug, taskId, { client });
   // Suspend until the initial-page MCP fetch settles. The Suspense boundary
   // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
   // catches this and shows the skeleton instead of an empty message list.
@@ -1005,7 +956,6 @@ export function ActiveTaskProvider({
                 branch?: string | null;
                 githubRepo?: unknown;
                 sandboxMap?: unknown;
-                sandboxProviderKind?: string | null;
               };
             }
           ).data;
@@ -1016,12 +966,6 @@ export function ActiveTaskProvider({
             cb.manager.patchThread({
               id,
               ...(data?.branch ? { branch: data.branch } : {}),
-              ...(data?.sandboxProviderKind
-                ? {
-                    sandbox_provider_kind:
-                      data.sandboxProviderKind as Task["sandbox_provider_kind"],
-                  }
-                : {}),
               metadata: {
                 ...(current?.metadata ?? {}),
                 ...(data?.githubRepo ? { githubRepo: data.githubRepo } : {}),
@@ -1059,26 +1003,22 @@ export function ActiveTaskProvider({
             updated_at: new Date().toISOString(),
           });
         }
-        // Refresh download chips only when this turn could have produced a
-        // file: an explicit share, or sandbox file work (bash/write can drop
-        // results into `org/output/`). AI SDK v5 surfaces tool invocations as
+        // Refresh download chips only when sandbox file work could have written
+        // into `org/output/`. AI SDK v5 surfaces tool invocations as
         // `tool-<name>` parts; `output-available` skips denied/cancelled calls.
-        const sharedFile = message.parts?.some((p) => {
+        const fileWork = message.parts?.some((p) => {
           const part = p as { type: string; state?: string };
           return (
-            (part.type === "tool-share_with_user" ||
-              part.type === "tool-bash" ||
-              part.type === "tool-write") &&
+            (part.type === "tool-bash" || part.type === "tool-write") &&
             part.state === "output-available"
           );
         });
-        if (cb.taskId && sharedFile) {
+        if (cb.taskId && fileWork) {
           const key = KEYS.threadOutputs(cb.taskId);
           // org/output files reach the manifest ~5s after the sandbox closes
           // them (rclone write-back), so a file written in the turn's last
           // seconds misses an immediate refresh. Sweep a few times across a
-          // generous flush window — each sweep is one indexed query, and
-          // share_with_user uploads (synchronous) are covered by the first.
+          // generous flush window; each sweep is one indexed query.
           for (const delayMs of [0, 1_500, 3_000, 6_000, 12_000, 25_000]) {
             setTimeout(() => {
               cb.queryClient.invalidateQueries({ queryKey: key });
@@ -1210,7 +1150,6 @@ export function ActiveTaskProvider({
       thread: activeTask
         ? {
             harness_id: activeTask.harness_id ?? null,
-            sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
             branch: activeTask.branch ?? null,
           }
         : null,
@@ -1219,19 +1158,18 @@ export function ActiveTaskProvider({
       },
     });
 
-    // First message on an unlocked thread: the server pins harness_id /
-    // sandbox_provider_kind on receipt, but that write never flows back through
-    // `/watch` (RowPatch carries it, the SSE event does not). Mirror the
-    // harness into the store now so `findReusableNewChat` stops treating the
+    // First message on an unlocked thread: the server pins both runtime fields,
+    // but that write never flows back through `/watch`. Mirror the complete pin
+    // into the store now so `findReusableNewChat` stops treating the
     // (now non-empty, often just-failed) thread as an empty "New chat" and
-    // dropping the user back onto it. Hosted web always sends Decopilot.
+    // dropping the user back onto it. The hosted server always selects
+    // Decopilot for an unlocked thread.
     // LIST/GET is authoritative; this only keeps the live view correct while
-    // its row refresh is still in flight. Leave the sandbox field to that
-    // authoritative refresh too.
+    // its row refresh is still in flight.
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: submitSettings.harnessId ?? "decopilot",
+        harness_id: "decopilot",
         updated_at: new Date().toISOString(),
       });
     }

@@ -9,20 +9,18 @@
  * pure: computeIdempotencyKey takes a message and returns a string, no I/O.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   applyThreadLock,
-  assertHostedDecopilotHarness,
+  defaultHarnessForAgent,
+  assertHostedHarness,
   assertPersistedHostedRuntime,
-  assertHostedSandboxRuntime,
-  assertHostedSandboxProvider,
-  normalizeHostedRuntimePin,
-  normalizeHostedSandboxProviderKind,
   computeIdempotencyKey,
   shouldPersistRequestMessage,
 } from "./routes";
+
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage } from "./types";
 import type { Thread } from "@/storage/types";
@@ -149,24 +147,7 @@ describe("computeIdempotencyKey", () => {
 });
 
 describe("StreamRequestSchema", () => {
-  test("normalizes legacy cluster sandboxProviderKind to agent-sandbox", () => {
-    const result = StreamRequestSchema.parse({
-      messages: [
-        {
-          id: "user-123",
-          role: "user",
-          parts: [{ type: "text", text: "hi" }],
-        },
-      ],
-      agent: { id: "agent-123" },
-      memory: { thread_id: "thread-123" },
-      sandboxProviderKind: "cluster",
-    });
-
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  test("accepts only Decopilot as an explicit hosted harness", () => {
+  test("rejects every explicit hosted harness selector", () => {
     const base = {
       messages: [
         {
@@ -178,194 +159,54 @@ describe("StreamRequestSchema", () => {
       agent: { id: "agent-123" },
     };
 
-    expect(
-      StreamRequestSchema.safeParse({ ...base, harnessId: "decopilot" })
-        .success,
-    ).toBe(true);
-    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
+    for (const harnessId of [
+      "decopilot",
+      "claude-code",
+      "codex",
+      "opencode",
+      "future",
+    ]) {
       expect(
         StreamRequestSchema.safeParse({ ...base, harnessId }).success,
       ).toBe(false);
     }
   });
-
-  test("accepts only the managed sandbox on hosted requests", () => {
-    const base = {
-      messages: [
-        {
-          id: "user-123",
-          role: "user" as const,
-          parts: [{ type: "text", text: "hi" }],
-        },
-      ],
-      agent: { id: "agent-123" },
-      harnessId: "decopilot" as const,
-    };
-
-    expect(
-      StreamRequestSchema.safeParse({
-        ...base,
-        sandboxProviderKind: "agent-sandbox",
-      }).success,
-    ).toBe(true);
-    expect(
-      StreamRequestSchema.parse({
-        ...base,
-        sandboxProviderKind: "cluster",
-      }).sandboxProviderKind,
-    ).toBe("agent-sandbox");
-    for (const sandboxProviderKind of ["user-desktop", "future-sandbox"]) {
-      expect(
-        StreamRequestSchema.safeParse({ ...base, sandboxProviderKind }).success,
-      ).toBe(false);
-    }
-  });
 });
 
-describe("assertHostedDecopilotHarness", () => {
-  test("allows only Decopilot or an unpinned hosted request", () => {
-    expect(() => assertHostedDecopilotHarness("decopilot")).not.toThrow();
-    expect(() => assertHostedDecopilotHarness(null)).not.toThrow();
-    expect(() => assertHostedDecopilotHarness(undefined)).not.toThrow();
+describe("assertHostedHarness", () => {
+  test("allows hosted harnesses and unpinned rows", () => {
+    // Regression: gating the queue GET like a dispatch 409'd it, so a
+    // claude-code chat rendered empty and erroring on the web.
+    expect(() => assertHostedHarness("claude-code")).not.toThrow();
+    expect(() => assertHostedHarness("decopilot")).not.toThrow();
+    expect(() => assertHostedHarness(null)).not.toThrow();
   });
 
-  test("rejects persisted native, unknown, and future harness ids", () => {
-    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
-      expect(() => assertHostedDecopilotHarness(harnessId)).toThrow(
+  test("rejects native and unknown harnesses", () => {
+    for (const harnessId of ["codex", "opencode", "future"]) {
+      expect(() => assertHostedHarness(harnessId)).toThrow(
         /Studio desktop app/,
       );
     }
   });
 });
 
-describe("assertHostedSandboxProvider", () => {
-  test("allows managed or legacy-unpinned hosted sandboxes", () => {
-    expect(() => assertHostedSandboxProvider("agent-sandbox")).not.toThrow();
-    expect(() => assertHostedSandboxProvider(null)).not.toThrow();
-    expect(() => assertHostedSandboxProvider(undefined)).not.toThrow();
-  });
-
-  test("rejects retired desktop and unknown sandbox ids", () => {
-    for (const kind of ["user-desktop", "cluster", "future-sandbox"]) {
-      expect(() => assertHostedSandboxProvider(kind)).toThrow(
-        /unsupported desktop runtime/,
-      );
-    }
-  });
-});
-
-describe("assertHostedSandboxRuntime", () => {
-  test("lets the web read a sandbox-hosted claude-code queue", () => {
-    // Regression: gating the queue GET like a dispatch 409'd it, so a
-    // claude-code chat rendered empty and erroring on the web.
-    expect(() =>
-      assertHostedSandboxRuntime("claude-code", "agent-sandbox"),
-    ).not.toThrow();
-    expect(() => assertHostedSandboxRuntime("claude-code", null)).not.toThrow();
-  });
-
-  test("still rejects the desktop-pinned and native harnesses", () => {
-    // claude-code + user-desktop is the NATIVE coding agent, not this harness —
-    // and it is refused BY THAT NAME, not with the sandbox-kind complaint. Its
-    // sandbox kind is not what is wrong with it, and e2e `rejects persisted
-    // native and unknown harness rows` asserts this string over the wire.
-    expect(() =>
-      assertHostedSandboxRuntime("claude-code", "user-desktop"),
-    ).toThrow(/Studio desktop app/);
-    for (const harnessId of ["codex", "opencode", "future"]) {
-      expect(() =>
-        assertHostedSandboxRuntime(harnessId, "agent-sandbox"),
-      ).toThrow(/Studio desktop app/);
-    }
-  });
-
-  test("keeps Decopilot and unpinned behaviour identical", () => {
-    expect(() =>
-      assertHostedSandboxRuntime("decopilot", "agent-sandbox"),
-    ).not.toThrow();
-    expect(() => assertHostedSandboxRuntime(null, null)).not.toThrow();
-    expect(() =>
-      assertHostedSandboxRuntime("decopilot", "user-desktop"),
-    ).not.toThrow();
-    expect(() =>
-      assertHostedSandboxRuntime("decopilot", "future-sandbox"),
-    ).toThrow(/unsupported desktop runtime/);
-  });
-});
-
-describe("normalizeHostedRuntimePin", () => {
-  test("dispatches a sandbox-hosted claude-code thread, kind untouched", () => {
-    // The gate that used to close a task-board thread to follow-ups: the
-    // Decopilot-only normalizer 409'd the row on every messages POST.
-    expect(normalizeHostedRuntimePin("claude-code", "agent-sandbox")).toBe(
-      "agent-sandbox",
-    );
-    expect(normalizeHostedRuntimePin("claude-code", null)).toBeNull();
-  });
-
-  test("still refuses the native desktop coding agent, by its own name", () => {
-    // Not the sandbox-kind complaint: this row IS the desktop agent, and the
-    // messages POST reported exactly this before claude-code became
-    // dispatchable. e2e `rejects persisted native and unknown harness rows`
-    // asserts the same string over the wire.
-    expect(() =>
-      normalizeHostedRuntimePin("claude-code", "user-desktop"),
-    ).toThrow(/Studio desktop app/);
-    expect(() => normalizeHostedRuntimePin("codex", "agent-sandbox")).toThrow(
-      /Studio desktop app/,
-    );
-  });
-
-  test("leaves the Decopilot rewrite in place", () => {
-    expect(normalizeHostedRuntimePin("decopilot", "user-desktop")).toBe(
-      "agent-sandbox",
-    );
-    expect(normalizeHostedRuntimePin(null, null)).toBeNull();
-  });
-});
-
 describe("assertPersistedHostedRuntime", () => {
-  test("allows current and legacy Decopilot rows", () => {
-    expect(() =>
-      assertPersistedHostedRuntime("decopilot", "agent-sandbox"),
-    ).not.toThrow();
-    expect(() => assertPersistedHostedRuntime("decopilot", null)).not.toThrow();
-    expect(() =>
-      assertPersistedHostedRuntime("decopilot", "user-desktop"),
-    ).not.toThrow();
-    expect(
-      normalizeHostedSandboxProviderKind("decopilot", "user-desktop"),
-    ).toBe("agent-sandbox");
+  test("allows current hosted rows", () => {
+    expect(() => assertPersistedHostedRuntime("decopilot")).not.toThrow();
+    expect(() => assertPersistedHostedRuntime("claude-code")).not.toThrow();
   });
 
   test("rejects unpinned threads before a hosted control mutation", () => {
-    expect(() => assertPersistedHostedRuntime(null, null)).toThrow(
+    expect(() => assertPersistedHostedRuntime(null)).toThrow(
       /has not started a hosted run/,
     );
   });
 
   test("rejects native runtime rows", () => {
-    expect(() => assertPersistedHostedRuntime("codex", "user-desktop")).toThrow(
+    expect(() => assertPersistedHostedRuntime("codex")).toThrow(
       /Studio desktop app/,
     );
-    expect(() =>
-      normalizeHostedSandboxProviderKind(null, "user-desktop"),
-    ).toThrow(/unsupported desktop runtime/);
-  });
-
-  // A sandbox-hosted turn is startable from the composer, so it has to be
-  // stoppable from it too. The abort reaches the pod and the daemon spawns the
-  // harness on the request's context, so the disconnect ends the agent.
-  test("allows a sandbox-hosted claude-code row", () => {
-    expect(() =>
-      assertPersistedHostedRuntime("claude-code", "agent-sandbox"),
-    ).not.toThrow();
-  });
-
-  test("still refuses the native desktop coding agent", () => {
-    expect(() =>
-      assertPersistedHostedRuntime("claude-code", "user-desktop"),
-    ).toThrow(/Studio desktop app/);
   });
 });
 
@@ -396,118 +237,67 @@ describe("shouldPersistRequestMessage", () => {
 // applyThreadLock — the server-side enforcement point for the lock spec
 // (docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md).
 // Once a thread's `harness_id` is non-null the row wins over any
-// client-supplied harness / sandbox / branch values.
+// client-supplied branch value. The harness is always read from the persisted
+// row once the runtime is locked.
 // ============================================================================
 
 function makeLockedThread(
-  overrides: Partial<
-    Pick<Thread, "harness_id" | "sandbox_provider_kind" | "branch">
-  > = {},
-): Pick<Thread, "harness_id" | "sandbox_provider_kind" | "branch"> {
+  overrides: Partial<Pick<Thread, "harness_id" | "branch">> = {},
+): Pick<Thread, "harness_id" | "branch"> {
   return {
     harness_id: "codex",
-    sandbox_provider_kind: "user-desktop",
     branch: "main",
     ...overrides,
   };
 }
 
 describe("applyThreadLock", () => {
-  let warnSpy: ReturnType<typeof mock>;
-  let originalWarn: typeof console.warn;
-
-  beforeEach(() => {
-    originalWarn = console.warn;
-    warnSpy = mock(() => {});
-    console.warn = warnSpy as unknown as typeof console.warn;
-  });
-
-  afterEach(() => {
-    console.warn = originalWarn;
-  });
-
-  test("locked thread: row beats client overrides for harness, sandbox, and branch", () => {
+  test("locked thread: row supplies runtime and beats the client branch override", () => {
     const result = applyThreadLock({
       taskIdInput: "thread-abc",
       thread: makeLockedThread(),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(true);
     expect(result.harnessId).toBe("codex");
-    expect(result.sandboxProviderKind).toBe("user-desktop");
     expect(result.branch).toBe("main");
   });
 
-  test("locked thread: drifting client harness triggers a console.warn audit", () => {
-    applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: makeLockedThread(),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "feature-x",
-    });
-
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0]?.[0]).toBe(
-      "decopilot.submit: ignored harness override on locked thread",
-    );
-    expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({
-      threadId: "thread-abc",
-      requested: "decopilot",
-      locked: "codex",
-    });
-  });
-
-  test("locked thread: matching client harness does not trigger an audit warn", () => {
-    applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: makeLockedThread({
-        harness_id: "decopilot",
-        sandbox_provider_kind: "agent-sandbox",
-      }),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "main",
-    });
-
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  test("locked thread with null sandbox/branch: row's nulls win, not client values", () => {
+  test("locked thread with null branch: row's null wins, not client values", () => {
     const result = applyThreadLock({
       taskIdInput: "thread-abc",
       thread: makeLockedThread({
-        sandbox_provider_kind: null,
         branch: null,
       }),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(true);
     expect(result.harnessId).toBe("codex");
-    expect(result.sandboxProviderKind).toBeUndefined();
     expect(result.branch).toBeNull();
   });
 
-  test("unlocked thread (harness_id=null): client values flow through", () => {
+  test("unlocked thread (harness_id=null): hosted runtime and client branch flow through", () => {
     const result = applyThreadLock({
       taskIdInput: "thread-abc",
-      thread: { harness_id: null, sandbox_provider_kind: null, branch: null },
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
+      thread: { harness_id: null, branch: null },
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("decopilot");
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.branch).toBe("feature-x");
-    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test("unlocked hosted requests default to Decopilot", () => {
+    const result = applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: { harness_id: null, branch: null },
+      requestedBranch: undefined,
+    });
+
+    expect(result.harnessId).toBe("decopilot");
   });
 
   test("unlocked thread with a pinned branch (first message on a COLLECTION_THREADS_CREATE'd thread): the thread's branch wins over an absent request branch", () => {
@@ -519,11 +309,8 @@ describe("applyThreadLock", () => {
       taskIdInput: "thread-abc",
       thread: {
         harness_id: null,
-        sandbox_provider_kind: null,
         branch: "rho-leonis",
       },
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: undefined,
     });
 
@@ -534,18 +321,15 @@ describe("applyThreadLock", () => {
     expect(result.branch).toBe("rho-leonis");
   });
 
-  test("no thread row (first message ever): client values flow through", () => {
+  test("no thread row (first message ever): hosted runtime and client branch flow through", () => {
     const result = applyThreadLock({
       taskIdInput: "thread-new",
       thread: null,
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("decopilot");
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.branch).toBe("feature-x");
   });
 
@@ -553,14 +337,11 @@ describe("applyThreadLock", () => {
     const result = applyThreadLock({
       taskIdInput: undefined,
       thread: makeLockedThread(),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("decopilot");
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.branch).toBe("feature-x");
   });
 });
@@ -637,5 +418,35 @@ describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", (
     const hostedCancelIdx = body.indexOf("await cancelHostedHarness(");
     expect(gateHeadCancelIdx).toBeGreaterThan(-1);
     expect(hostedCancelIdx).toBeGreaterThan(gateHeadCancelIdx);
+  });
+});
+
+describe("defaultHarnessForAgent", () => {
+  const repo = { githubRepo: { url: "https://github.com/acme/site" } };
+
+  test("keeps a repo-backed agent on decopilot while the flag is off", () => {
+    expect(
+      defaultHarnessForAgent({ flagEnabled: false, agentMetadata: repo }),
+    ).toBe("decopilot");
+  });
+
+  test("runs a Code Agent on claude-code when the flag is on", () => {
+    expect(
+      defaultHarnessForAgent({ flagEnabled: true, agentMetadata: repo }),
+    ).toBe("claude-code");
+  });
+
+  test("leaves a repo-less agent on decopilot", () => {
+    for (const agentMetadata of [
+      null,
+      undefined,
+      {},
+      { githubRepo: null },
+      { githubRepo: { url: "" } },
+    ]) {
+      expect(defaultHarnessForAgent({ flagEnabled: true, agentMetadata })).toBe(
+        "decopilot",
+      );
+    }
   });
 });

@@ -17,26 +17,72 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
-import { fetchPrMerged } from "./prs-get";
+import { fetchPrLanding } from "./prs-get";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
-/** How the sweep asks GitHub whether a PR merged — a parameter only so a
- *  local/CI harness can drive the archive path without a GitHub connection. */
-type PrMergedReader = (
+/** What {@link cardWorkLanded} needs to know about one linked PR: the repo it
+ *  targets, and whether it is still in play. */
+export interface PrLanding {
+  repoOwner: string;
+  repoName: string;
+  state: "open" | "closed" | null;
+  merged: boolean | null;
+}
+
+/** How a sweep asks GitHub where a PR stands — a parameter only so a local/CI
+ *  harness can drive the path without a GitHub connection. Shared with the
+ *  merged-tag sweep, which gates on the same question. */
+export type PrLandingReader = (
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
-) => Promise<boolean | null>;
+) => Promise<Pick<PrLanding, "state" | "merged">>;
 
 /**
- * Is this Done card's work landed? Every linked PR merged, and at least one
- * linked. No PRs means there's nothing to verify — a design/research task is
- * left in Done for a human to archive. `null` (GitHub unreachable) is never read
- * as merged, so a bad fetch defers the archive to the next sweep instead of
- * archiving on a guess.
+ * Has this card's work landed?
+ *
+ * Per REPOSITORY, not per PR. A card carries several PRs for two unrelated
+ * reasons and the old "every linked PR merged" rule conflated them. A reviewer
+ * bounce that opens a fresh PR instead of pushing to the reviewed branch leaves
+ * the abandoned one closed-and-unmerged forever, so `every(merged)` could never
+ * be satisfied and the card was stranded out of the archive, the merged tag and
+ * the reconcile permanently — while `pickActivePr`, asking the neighbouring
+ * question, reads exactly the same list as a retry history. A card touching two
+ * repos, meanwhile, genuinely does need both to land.
+ *
+ * So each repo the card has PRs in needs one merged and none still in play.
+ * Note this cannot be answered from `merged` alone: closed-unmerged and still
+ * open both report `merged: false`, and only the first is settled.
+ *
+ * "In play" is deliberately generous — an unreadable PR (`state: null`) counts
+ * as outstanding, so a GitHub blip defers rather than landing a card on a
+ * guess. Same conservative direction the previous rule took with `merged: null`.
+ *
+ * No PRs at all means there is nothing to verify: a design or research task is
+ * left for a human, never landed automatically.
  */
-export function allPrsMerged(merged: (boolean | null)[]): boolean {
-  return merged.length > 0 && merged.every((m) => m === true);
+export function cardWorkLanded(prs: PrLanding[]): boolean {
+  if (prs.length === 0) return false;
+  const byRepo = new Map<string, PrLanding[]>();
+  for (const pr of prs) {
+    // GitHub treats owner/name case-insensitively, and the two spellings can
+    // reach us from different places (a parsed URL vs a connection's scope).
+    const key = `${pr.repoOwner}/${pr.repoName}`.toLowerCase();
+    const group = byRepo.get(key);
+    if (group) group.push(pr);
+    else byRepo.set(key, [pr]);
+  }
+  return [...byRepo.values()].every(repoLanded);
+}
+
+/** One repo's PRs on a card: one of them merged, and none left in play.
+ *  `merged === true` also passes the second test on its own, for the partial
+ *  read that reports a merge without a state. */
+function repoLanded(prs: PrLanding[]): boolean {
+  return (
+    prs.some((pr) => pr.merged === true) &&
+    prs.every((pr) => pr.merged === true || pr.state === "closed")
+  );
 }
 
 /**
@@ -50,16 +96,19 @@ async function archiveIfMerged(
   ctx: StudioContext,
   organizationId: string,
   itemId: string,
-  prMerged: PrMergedReader,
+  prLanding: PrLandingReader,
 ): Promise<boolean> {
   const item = await ctx.storage.taskBoard.getById(itemId, organizationId);
   if (!item || item.status !== "done") return false;
 
   const prs = await ctx.storage.taskBoard.listPrs(itemId, organizationId);
-  const merged = await Promise.all(
-    prs.map((pr) => prMerged(ctx, organizationId, pr)),
+  const landings = await Promise.all(
+    prs.map(async (pr) => ({
+      ...pr,
+      ...(await prLanding(ctx, organizationId, pr)),
+    })),
   );
-  if (!allPrsMerged(merged)) return false;
+  if (!cardWorkLanded(landings)) return false;
 
   const updated = await ctx.storage.taskBoard.update(
     itemId,
@@ -88,12 +137,12 @@ export async function archiveMergedForOrg(
   ctx: StudioContext,
   organizationId: string,
   itemIds: string[],
-  prMerged: PrMergedReader = fetchPrMerged,
+  prLanding: PrLandingReader = fetchPrLanding,
 ): Promise<{ archived: number }> {
   let archived = 0;
   for (const itemId of itemIds) {
     try {
-      if (await archiveIfMerged(ctx, organizationId, itemId, prMerged)) {
+      if (await archiveIfMerged(ctx, organizationId, itemId, prLanding)) {
         archived += 1;
       }
     } catch (err) {

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
-import { TaskBoardItemSchema } from "./schema";
+import { SprintSchema, TaskBoardItemSchema } from "./schema";
 import { recoverStalledTasks } from "./stall-recovery";
 
 export const TASK_BOARD_ITEM_LIST = defineTool({
@@ -23,6 +23,8 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     items: z.array(TaskBoardItemSchema),
     // The repo picker's option set — the valid values for a task's `repo`.
     repos: z.array(z.string()),
+    // The sprint filter's option set, in reading order (running → next → past).
+    sprints: z.array(SprintSchema),
   }),
   handler: async (_input, ctx) => {
     requireAuth(ctx);
@@ -35,9 +37,10 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
       );
     }
 
-    const [items, { items: githubConnections }] = await Promise.all([
+    const [items, { items: githubConnections }, sprints] = await Promise.all([
       ctx.storage.taskBoard.list(organizationId),
       ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
+      ctx.storage.sprints.listByOrg(organizationId),
     ]);
     const repos = listRepoScopeLabels(githubConnections);
 
@@ -48,6 +51,6 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     // moves broadcast over SSE, which is how the board already learns them).
     void recoverStalledTasks(ctx, items);
 
-    return { items, repos };
+    return { items, repos, sprints };
   },
 });

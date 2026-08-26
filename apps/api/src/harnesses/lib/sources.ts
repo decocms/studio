@@ -75,18 +75,6 @@ export type DecopilotSecretModelSources = {
     : never;
 };
 
-export type DecopilotSandboxSource =
-  | { kind: "none" }
-  | {
-      kind: "in-process";
-      call: (path: string, input: unknown) => Promise<unknown>;
-    }
-  | {
-      kind: "http";
-      baseUrl: string;
-      headers?: Record<string, string>;
-    };
-
 export interface OpenedMcpSource {
   client: McpClientLike;
   close: () => Promise<void>;

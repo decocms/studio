@@ -33,8 +33,9 @@ import type {
 } from "./types";
 import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { GithubRepo } from "@decocms/shared/sdk";
 
-export type ThreadUpdateData = Partial<Thread> & {
+export type ThreadUpdateData = Omit<Partial<Thread>, "harness_id"> & {
   /**
    * Internal liveness heartbeat. Exposed only on updates so RUN_STARTED can
    * clear progress from an older turn in the same write that marks the new run
@@ -47,9 +48,10 @@ export type ThreadUpdateData = Partial<Thread> & {
   failure_kind?: string | null;
 };
 
+export type ThreadCreateData = Partial<Thread>;
+
 export interface ThreadRuntimePin {
   harnessId: string;
-  sandboxProviderKind: string | null;
   branch: string | null;
   messageStorageVersion?: number;
 }
@@ -63,7 +65,7 @@ export interface ThreadStoragePort {
   /** `isNew` is false when `data.id` collided with an existing row (the
    *  insert is `ON CONFLICT DO NOTHING`) — callers use it to skip
    *  create-only side effects (e.g. analytics) on a replayed/idempotent call. */
-  create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }>;
+  create(data: ThreadCreateData): Promise<Thread & { isNew: boolean }>;
   get(id: string, organizationId: string): Promise<Thread | null>;
   update(
     id: string,
@@ -75,6 +77,12 @@ export interface ThreadStoragePort {
    * predicate is the lock: concurrent native and hosted starts cannot
    * overwrite whichever runtime won first.
    */
+  appendThreadGithubRepo(
+    id: string,
+    organizationId: string,
+    repo: GithubRepo,
+  ): Promise<GithubRepo[]>;
+
   pinRuntimeIfUnset(
     id: string,
     organizationId: string,
@@ -338,7 +346,6 @@ export interface OrganizationSettingsStoragePort {
         | "default_home_agents"
         | "flags"
         | "main_agent_id"
-        | "sprint_config"
       >
     >,
   ): Promise<OrganizationSettings>;

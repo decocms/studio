@@ -38,7 +38,6 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Page } from "@/components/page";
 import { JiraIcon } from "@/components/icons/jira-icon";
-import { SprintSettings } from "@/components/settings/sprint-settings";
 import {
   AgentToolsSettings,
   ReviewSettings,
@@ -67,7 +66,24 @@ import {
 } from "@/hooks/use-jira-integration";
 import { timeAgo } from "@/layouts/library/cards";
 
-type BoardStatus = JiraIntegration["statusMapping"][string];
+type BoardStatus = keyof JiraIntegration["statusMapping"];
+type StatusMapping = JiraIntegration["statusMapping"];
+
+/** One column of the org's Jira board, as `JIRA_BOARD_COLUMNS_LIST` returns it. */
+type BoardColumn = { name: string; statuses: string[] };
+
+/** The lane a board column currently maps to, found through any one of the
+ *  statuses it groups. */
+function laneOfColumn(
+  mapping: StatusMapping,
+  column: BoardColumn,
+): BoardStatus | undefined {
+  const first = column.statuses[0];
+  if (!first) return undefined;
+  return Object.entries(mapping).find(([, names]) =>
+    (names as string[]).includes(first),
+  )?.[0] as BoardStatus | undefined;
+}
 
 const BOARD_STATUS_OPTIONS: Array<{
   value: BoardStatus;
@@ -229,16 +245,24 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
     );
   }
 
-  // The mapping is keyed by STATUS name; one row writes every status its column groups.
-  function setColumnMapping(statuses: string[], value: string) {
+  /**
+   * Rewrite the whole mapping from the column list rather than patching one
+   * entry, so each lane's statuses come out in BOARD ORDER. That order is not
+   * cosmetic: the push sends a card entering a lane to position 0, so the
+   * leftmost Jira column of a lane is where it lands.
+   */
+  function setColumnMapping(changed: BoardColumn, value: string) {
     const previous = mapping;
-    const next = { ...mapping };
-    for (const status of statuses) {
-      if (value === DONT_SYNC) {
-        delete next[status];
-      } else {
-        next[status] = value as BoardStatus;
-      }
+    const next: StatusMapping = {};
+    for (const column of columns.data ?? []) {
+      const lane =
+        column.name === changed.name
+          ? value === DONT_SYNC
+            ? undefined
+            : (value as BoardStatus)
+          : laneOfColumn(mapping, column);
+      if (!lane) continue;
+      next[lane] = [...(next[lane] ?? []), ...column.statuses];
     }
     setMapping(next);
     upsert.mutate(
@@ -253,8 +277,21 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
     );
   }
 
+  /** An unmapped column is not "Don't sync" — nobody chose it. Work moving
+   *  into one freezes its card in whatever lane it last had, silently. */
+  const unmapped = (columns.data ?? []).filter(
+    (column) => !laneOfColumn(mapping, column),
+  );
+
   return (
     <div className="flex flex-col mt-3">
+      {unmapped.length > 0 && (
+        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+          {t("settings.jira.unmappedWarning", {
+            columns: unmapped.map((column) => column.name).join(", "),
+          })}
+        </p>
+      )}
       {(columns.data ?? []).map((column) => (
         <div
           key={column.name}
@@ -270,10 +307,8 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
             )}
           </div>
           <Select
-            value={
-              (column.statuses[0] && mapping[column.statuses[0]]) ?? DONT_SYNC
-            }
-            onValueChange={(value) => setColumnMapping(column.statuses, value)}
+            value={laneOfColumn(mapping, column) ?? DONT_SYNC}
+            onValueChange={(value) => setColumnMapping(column, value)}
           >
             <SelectTrigger className="w-44 shrink-0">
               <SelectValue />
@@ -451,47 +486,6 @@ function MappingRow({ integration }: { integration: JiraIntegration }) {
   );
 }
 
-function JqlRow({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  const upsert = useUpsertJiraIntegration();
-  const [value, setValue] = useState(integration.jqlFilter ?? "");
-  const dirty = value.trim() !== (integration.jqlFilter ?? "");
-
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.jqlLabel")}
-      description={t("settings.jira.jqlDescription")}
-    >
-      <div className="flex items-center gap-2 mt-3">
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={t("settings.jira.jqlPlaceholder")}
-          className="font-mono text-xs"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          disabled={!dirty || upsert.isPending}
-          onClick={() =>
-            upsert.mutate(
-              { jqlFilter: value.trim() === "" ? null : value.trim() },
-              {
-                onSuccess: () => toast.success(t("settings.jira.jqlSaved")),
-                onError: (err) =>
-                  toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
-              },
-            )
-          }
-        >
-          {t("settings.jira.jqlSave")}
-        </Button>
-      </div>
-    </SettingsCardItem>
-  );
-}
-
 function AutoDelegateRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -544,6 +538,7 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
                       t("settings.jira.syncDone", {
                         created: String(result.created),
                         updated: String(result.updated),
+                        archived: String(result.archived),
                       }),
                     );
                   }
@@ -653,7 +648,6 @@ function JiraContent() {
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
       {data.boardId && <MappingRow integration={data} />}
-      {data.boardId && <JqlRow integration={data} />}
       {data.boardId && <AutoDelegateRow integration={data} />}
       <SyncRow integration={data} />
       <WebhookRow integration={data} />
@@ -670,7 +664,6 @@ export function OrgTasksSettingsPage() {
           <SettingsPage>
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
-            <SprintSettings />
             <AgentToolsSettings />
             <SettingsSection
               title={

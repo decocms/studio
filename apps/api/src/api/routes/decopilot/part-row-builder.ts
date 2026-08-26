@@ -220,8 +220,8 @@ export class PartRowBuilder {
   }
 
   /**
-   * Commit rows that have been successfully handed off to durable storage or a
-   * desktop batcher. Rows are intentionally not committed during `emit*` so a
+   * Commit rows that have been successfully handed off to durable storage.
+   * Rows are intentionally not committed during `emit*` so a
    * failed handoff can retry and receive the same deterministic rows again.
    */
   acknowledge(rows: ThreadMessagePart[]): void {

@@ -249,3 +249,71 @@ func TestCloneOnlyPatchRoundTrip(t *testing.T) {
 		t.Error("a config without cloneOnly reported clone-only")
 	}
 }
+
+// A secondary checkout entering or leaving must be DELIVERED to subscribers.
+// Classified as no-op it is persisted silently (store.Apply skips the
+// subscriber wake-up on no-op), and the sweep that clones it never runs — which
+// is how a secondary added mid-run only appeared minutes later, when some
+// unrelated step happened to run the pipeline.
+func TestClassifySecondaryRepos(t *testing.T) {
+	withRepos := func(base *TenantConfig, repos ...GitRepository) *TenantConfig {
+		out := *base
+		git := *out.Git
+		git.Repositories = repos
+		out.Git = &git
+		return &out
+	}
+	secondary := func(name, cloneUrl string) GitRepository {
+		return GitRepository{CloneUrl: Str(cloneUrl), RepoName: Str(name)}
+	}
+
+	base := repo("https://github.com/o/primary.git", "main")
+	one := withRepos(base, secondary("checkout", "https://github.com/o/checkout.git"))
+	two := withRepos(base,
+		secondary("checkout", "https://github.com/o/checkout.git"),
+		secondary("design", "https://github.com/o/design.git"),
+	)
+
+	if got := Classify(base, one).Kind; got != KindReposChange {
+		t.Errorf("adding the first secondary: got %q, want %q", got, KindReposChange)
+	}
+	if got := Classify(one, two).Kind; got != KindReposChange {
+		t.Errorf("adding a second secondary: got %q, want %q", got, KindReposChange)
+	}
+	if got := Classify(two, one).Kind; got != KindReposChange {
+		t.Errorf("removing a secondary: got %q, want %q", got, KindReposChange)
+	}
+	if got := Classify(one, one).Kind; got != KindNoOp {
+		t.Errorf("unchanged set: got %q, want %q", got, KindNoOp)
+	}
+
+	// Order is not identity: the tool sends the whole accumulated list every
+	// time and has no reason to keep it stable.
+	reordered := withRepos(base,
+		secondary("design", "https://github.com/o/design.git"),
+		secondary("checkout", "https://github.com/o/checkout.git"),
+	)
+	if got := Classify(two, reordered).Kind; got != KindNoOp {
+		t.Errorf("reordered set: got %q, want %q", got, KindNoOp)
+	}
+
+	// A refreshed clone token is not a repository change — re-cloning on every
+	// credential refresh would be a needless clone per token TTL.
+	retokened := withRepos(base,
+		secondary("checkout", "https://x-access-token:ghs_new@github.com/o/checkout.git"),
+	)
+	tokened := withRepos(base,
+		secondary("checkout", "https://x-access-token:ghs_old@github.com/o/checkout.git"),
+	)
+	if got := Classify(tokened, retokened).Kind; got == KindReposChange {
+		t.Errorf("token refresh classified as a repos change")
+	}
+
+	// A branch change still outranks it, since its clone step sweeps secondaries.
+	movedBranch := withRepos(repo("https://github.com/o/primary.git", "other"),
+		secondary("checkout", "https://github.com/o/checkout.git"),
+	)
+	if got := Classify(base, movedBranch).Kind; got != KindBranchChange {
+		t.Errorf("branch + repos change: got %q, want %q", got, KindBranchChange)
+	}
+}
