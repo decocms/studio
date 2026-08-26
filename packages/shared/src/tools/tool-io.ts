@@ -333,6 +333,7 @@ export interface StudioToolIO {
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
+      type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
@@ -354,6 +355,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
+        type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -388,6 +390,11 @@ export interface StudioToolIO {
           color: string | null;
           createdBy: string;
           createdAt: string;
+        }[];
+        reviewVerdicts: {
+          reviewer: "qa" | "code_review";
+          verdict: "approved" | "changes_requested";
+          verified: boolean;
         }[];
         createdBy: string;
         createdAt: string;
@@ -412,6 +419,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
+        type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -446,6 +454,11 @@ export interface StudioToolIO {
           color: string | null;
           createdBy: string;
           createdAt: string;
+        }[];
+        reviewVerdicts: {
+          reviewer: "qa" | "code_review";
+          verdict: "approved" | "changes_requested";
+          verified: boolean;
         }[];
         createdBy: string;
         createdAt: string;
@@ -469,6 +482,7 @@ export interface StudioToolIO {
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
+      type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
@@ -492,6 +506,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
+        type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -526,6 +541,11 @@ export interface StudioToolIO {
           color: string | null;
           createdBy: string;
           createdAt: string;
+        }[];
+        reviewVerdicts: {
+          reviewer: "qa" | "code_review";
+          verdict: "approved" | "changes_requested";
+          verified: boolean;
         }[];
         createdBy: string;
         createdAt: string;
@@ -628,7 +648,8 @@ export interface StudioToolIO {
           | "title_changed"
           | "description_changed"
           | "tags_changed"
-          | "merge_conflict_resolution";
+          | "merge_conflict_resolution"
+          | "type_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

@@ -100,6 +100,14 @@ export type TaskBoardItemStatus =
   | "in_review"
   | "done";
 
+/** What KIND of work a card is — its shape, not its area (that's tags). */
+export type TaskBoardItemType =
+  | "bug"
+  | "feature"
+  | "chore"
+  | "spike"
+  | "security";
+
 export type TaskBoardItemPriority =
   | "none"
   | "low"
@@ -150,6 +158,8 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is. Required; defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */
@@ -166,6 +176,14 @@ export interface TaskBoardItem {
   retryAttempts: number;
   threads: TaskBoardItemThreadRef[];
   tags: TaskBoardItemTagRef[];
+  /** Each reviewer's standing verdict in the current review cycle; reviewers
+   *  that have not decided are absent. Mirrors `TaskBoardItemReviewVerdict` in
+   *  `apps/api/src/storage/types.ts`. */
+  reviewVerdicts: {
+    reviewer: "qa" | "code_review";
+    verdict: "approved" | "changes_requested";
+    verified: boolean;
+  }[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;

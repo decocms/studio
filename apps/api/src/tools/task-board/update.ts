@@ -10,6 +10,7 @@ import type {
 import {
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
+  TaskBoardItemTypeSchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
@@ -34,15 +35,43 @@ import {
  * links.
  */
 const LOGGED_FIELDS: {
-  field: "status" | "assigneeId" | "priority" | "dueDate" | "title";
+  field: "status" | "assigneeId" | "priority" | "dueDate" | "title" | "type";
   action: TaskBoardActivityAction;
 }[] = [
   { field: "status", action: "status_changed" },
   { field: "assigneeId", action: "assignee_changed" },
   { field: "priority", action: "priority_changed" },
+  { field: "type", action: "type_changed" },
   { field: "dueDate", action: "due_date_changed" },
   { field: "title", action: "title_changed" },
 ];
+
+/**
+ * Every input field that earns a write. One list rather than a boolean chain:
+ * the chain this replaces drifted from the write payload below — `type` reached
+ * the schema and the payload but not the chain, so an update carrying only
+ * `type` skipped the write entirely and still answered 200 with the old item.
+ */
+const UPDATABLE_FIELDS = [
+  "title",
+  "description",
+  "status",
+  "priority",
+  "type",
+  "assigneeId",
+  "repo",
+  "dueDate",
+  "sprint",
+  "sortOrder",
+  "tagIds",
+] as const;
+
+/** Whether an update touches any persisted field, as opposed to only linking a thread or a PR. */
+export function updatesAnyField(
+  input: Partial<Record<(typeof UPDATABLE_FIELDS)[number], unknown>>,
+): boolean {
+  return UPDATABLE_FIELDS.some((field) => input[field] !== undefined);
+}
 
 /**
  * Which activity entries an update earns, diffed against the pre-update item.
@@ -146,6 +175,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     description: z.string().nullable().optional(),
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
+    type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
@@ -215,17 +245,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
     }
 
-    const hasFieldUpdate =
-      input.title !== undefined ||
-      input.description !== undefined ||
-      input.status !== undefined ||
-      input.priority !== undefined ||
-      input.assigneeId !== undefined ||
-      input.repo !== undefined ||
-      input.dueDate !== undefined ||
-      input.sprint !== undefined ||
-      input.sortOrder !== undefined ||
-      input.tagIds !== undefined;
+    const hasFieldUpdate = updatesAnyField(input);
 
     // The pre-update item, used to enqueue only on the transition INTO Super
     // Agent (not on every later edit) and to diff status/assignee for the
@@ -314,6 +334,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           description: input.description,
           status: becameSuperAgent ? "todo" : input.status,
           priority: input.priority,
+          type: input.type,
           assigneeId: input.assigneeId,
           // Stamp who delegated only when the assignee actually changes.
           assignedBy: assigneeChanged

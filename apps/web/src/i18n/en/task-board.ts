@@ -13,6 +13,13 @@ export const taskBoard = {
   "taskBoard.taskBoard.assignedToSuperAgent": "Assigned to Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Assigned to Super Agent by {name}",
+  "taskBoard.taskBoard.agentFailed": "This task's agent run failed",
+  "taskBoard.taskBoard.agentRunning": "An agent is working on this task",
+  "taskBoard.taskBoard.checksApproved": "approved",
+  "taskBoard.taskBoard.checksChangesRequested": "changes requested",
+  "taskBoard.taskBoard.checksLabel": "{passed} of {total} reviews approved",
+  "taskBoard.taskBoard.checksPending": "not reviewed yet",
+  "taskBoard.taskBoard.checksUnverified": "approved (unverified)",
   "taskBoard.taskBoard.autoFix": "Auto-fix",
   "taskBoard.taskBoard.rerun": "Re-run",
   "taskBoard.taskBoard.blockedBadgeTitle":
@@ -286,4 +293,12 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.dismissButton": "Close",
   "taskBoard.subscriptionPaywall.checkoutError":
     "Couldn't start checkout: {message}",
+  "taskBoard.config.typeBug": "Bug",
+  "taskBoard.config.typeChore": "Chore",
+  "taskBoard.config.typeFeature": "Feature",
+  "taskBoard.config.typeSecurity": "Security",
+  "taskBoard.config.typeSpike": "Spike",
+  "taskBoard.taskBoard.typeLabel": "Type",
+  "taskBoard.taskDialog.activityTypeFromTo": "changed type from {from} to {to}",
+  "taskBoard.taskDialog.activityTypeSet": "set the type to {to}",
 } as const;

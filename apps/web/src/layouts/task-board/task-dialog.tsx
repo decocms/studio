@@ -79,6 +79,10 @@ import {
   nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
+  TASK_TYPE_CONFIG,
+  TASK_TYPES,
+  type TaskBoardItemType,
+  DEFAULT_TASK_TYPE,
   STATUS_CONFIG,
   STATUSES,
   statusIconClassName,
@@ -152,6 +156,8 @@ type TaskForm = {
   description: string;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is. Always set — defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   repo: string | null;
   dueDate: Date | null;
@@ -377,6 +383,7 @@ export function TaskBoardItemDialog({
     description: string | null;
     status: TaskBoardItemStatus;
     priority: TaskBoardItemPriority;
+    type: TaskBoardItemType;
     assigneeId: string | null;
     repo: string | null;
     dueDate: string | null;
@@ -415,6 +422,7 @@ export function TaskBoardItemDialog({
     description: item?.description ?? "",
     status: item?.status ?? defaultStatus ?? "triage",
     priority: item?.priority ?? "medium",
+    type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
     repo: item?.repo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
@@ -423,6 +431,7 @@ export function TaskBoardItemDialog({
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
+  const taskType = form.type;
   const sprint = form.sprint;
   const sprintConfig = useSprintConfig();
   const sprintsEnabled = sprintConfig?.enabled === true;
@@ -464,6 +473,7 @@ export function TaskBoardItemDialog({
       description: v.description.trim() || null,
       status: v.status,
       priority: v.priority,
+      type: v.type,
       assigneeId: v.assigneeId,
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
@@ -854,6 +864,44 @@ export function TaskBoardItemDialog({
                           className={STATUS_CONFIG[s].iconClassName}
                         />
                         {t(STATUS_CONFIG[s].labelKey)}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={contentLocked}
+                    title={
+                      contentLocked
+                        ? t("taskBoard.taskDialog.reportsContentLocked")
+                        : undefined
+                    }
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      contentLocked && "cursor-default opacity-60",
+                    )}
+                  >
+                    {(() => {
+                      const Icon = TASK_TYPE_CONFIG[taskType].icon;
+                      return <Icon size={16} />;
+                    })()}
+                    {t(TASK_TYPE_CONFIG[taskType].labelKey)}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  {TASK_TYPES.map((tp) => {
+                    const Icon = TASK_TYPE_CONFIG[tp].icon;
+                    return (
+                      <DropdownMenuItem
+                        key={tp}
+                        onSelect={() => patch({ type: tp })}
+                      >
+                        <Icon size={16} />
+                        {t(TASK_TYPE_CONFIG[tp].labelKey)}
                       </DropdownMenuItem>
                     );
                   })}
@@ -1280,7 +1328,7 @@ export function TaskBoardItemDialog({
  * is not an error the user can act on, and painting it red is what made a card
  * the reviewers approved look broken.
  */
-export function threadStatusStyle(
+function threadStatusStyle(
   thread: {
     status: NonNullable<TaskBoardItemThread["status"]>;
     failureKind?: string | null;
@@ -2228,6 +2276,12 @@ function describeActivity(
         ),
         { name: assigneeChip(d.to) },
       );
+    // Type is mandatory, so this is always a move between two types. Entries
+    // written before it became mandatory can still carry a null `from`.
+    case "type_changed":
+      return d.from
+        ? t("taskBoard.taskDialog.activityTypeFromTo", { from, to })
+        : t("taskBoard.taskDialog.activityTypeSet", { to });
     // "none" is priority's unset value, so it reads as a set/clear, not a move.
     case "priority_changed":
       if (d.to === "none")

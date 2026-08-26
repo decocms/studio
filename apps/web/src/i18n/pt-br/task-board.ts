@@ -15,6 +15,13 @@ export const taskBoard = {
   "taskBoard.taskBoard.assignedToSuperAgent": "Atribuído ao Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Atribuído ao Super Agent por {name}",
+  "taskBoard.taskBoard.agentFailed": "A execução do agente nesta tarefa falhou",
+  "taskBoard.taskBoard.agentRunning": "Um agente está trabalhando nesta tarefa",
+  "taskBoard.taskBoard.checksApproved": "aprovado",
+  "taskBoard.taskBoard.checksChangesRequested": "mudanças solicitadas",
+  "taskBoard.taskBoard.checksLabel": "{passed} de {total} revisões aprovadas",
+  "taskBoard.taskBoard.checksPending": "ainda não revisado",
+  "taskBoard.taskBoard.checksUnverified": "aprovado (não verificado)",
   "taskBoard.taskBoard.autoFix": "Auto-correção",
   "taskBoard.taskBoard.rerun": "Executar de novo",
   "taskBoard.taskBoard.blockedBadgeTitle":
@@ -297,4 +304,12 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.dismissButton": "Fechar",
   "taskBoard.subscriptionPaywall.checkoutError":
     "Não foi possível iniciar o checkout: {message}",
+  "taskBoard.config.typeBug": "Bug",
+  "taskBoard.config.typeChore": "Manutenção",
+  "taskBoard.config.typeFeature": "Funcionalidade",
+  "taskBoard.config.typeSecurity": "Segurança",
+  "taskBoard.config.typeSpike": "Spike",
+  "taskBoard.taskBoard.typeLabel": "Tipo",
+  "taskBoard.taskDialog.activityTypeFromTo": "mudou o tipo de {from} para {to}",
+  "taskBoard.taskDialog.activityTypeSet": "definiu o tipo como {to}",
 } satisfies Record<keyof typeof taskBoardEn, string>;

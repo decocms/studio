@@ -17,10 +17,17 @@ import type {
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
   TaskBoardItemTagRef,
+  TaskBoardItemType,
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { DEFAULT_TASK_TYPE } from "@decocms/shared/task-board";
+import {
+  type ReviewCycleActivity,
+  REVIEWER_KINDS,
+  reviewCycleVerdicts,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
 import type { NotificationType } from "@decocms/shared/notification-types";
@@ -255,6 +262,7 @@ export class TaskBoardStorage {
     description?: string | null;
     status?: TaskBoardItemStatus;
     priority?: TaskBoardItemPriority;
+    type?: TaskBoardItemType;
     assigneeId?: string | null;
     assignedBy?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
@@ -287,6 +295,7 @@ export class TaskBoardStorage {
           description: params.description ?? null,
           status,
           priority: params.priority ?? "medium",
+          type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
@@ -333,6 +342,7 @@ export class TaskBoardStorage {
       description?: string | null;
       status?: TaskBoardItemStatus;
       priority?: TaskBoardItemPriority;
+      type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
@@ -351,6 +361,7 @@ export class TaskBoardStorage {
           : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
         ...(data.assigneeId !== undefined
           ? { assignee_id: data.assigneeId }
           : {}),
@@ -1542,9 +1553,9 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Populate each item's `threads` and `tags` — one transaction, so a card
-   * can't read its threads from before a concurrent edit and its tags from
-   * after.
+   * Populate each item's `threads`, `tags` and `reviewVerdicts` — one
+   * transaction, so a card can't read one of them from before a concurrent
+   * edit and another from after.
    */
   private async attachRefs(
     items: TaskBoardItem[],
@@ -1554,6 +1565,7 @@ export class TaskBoardStorage {
     await this.inTransaction(async (db) => {
       await this.attachThreads(db, items, organizationId);
       await this.attachTags(db, items);
+      await this.attachReviewVerdicts(db, items);
     });
   }
 
@@ -1718,6 +1730,69 @@ export class TaskBoardStorage {
     }
 
     for (const item of items) item.tags = byItem.get(item.id) ?? [];
+  }
+
+  /**
+   * Populate each item's `reviewVerdicts` — every reviewer's standing decision
+   * in the task's current review cycle. One batched query for the whole board,
+   * served by `idx_task_board_activity_item`.
+   *
+   * Reduced by `reviewCycleVerdicts`, the same reducer the auto-merge gate runs,
+   * so the card's `1/2` can never disagree with the gate that ships the PR.
+   * `status_changed` rows come along because that reducer needs the cycle
+   * boundary — without them a stale approval reads as current forever.
+   */
+  private async attachReviewVerdicts(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_activity")
+      .select(["task_board_item_id as taskId", "action", "data", "occurred_at"])
+      .where("task_board_item_id", "in", ids)
+      .where("action", "in", [
+        "status_changed",
+        "review_approved",
+        "review_changes_requested",
+      ])
+      .orderBy("occurred_at", "asc")
+      .execute();
+
+    const byItem = new Map<string, ReviewCycleActivity[]>();
+    for (const row of rows) {
+      const entry: ReviewCycleActivity = {
+        action: row.action,
+        data: (row.data ?? null) as Record<string, unknown> | null,
+        occurredAt:
+          row.occurred_at instanceof Date
+            ? row.occurred_at.toISOString()
+            : (row.occurred_at as unknown as string),
+      };
+      const list = byItem.get(row.taskId);
+      if (list) list.push(entry);
+      else byItem.set(row.taskId, [entry]);
+    }
+
+    for (const item of items) {
+      const activity = byItem.get(item.id) ?? [];
+      const verdicts = reviewCycleVerdicts(activity);
+      const verifiedApprovals = reviewCycleVerdicts(activity, {
+        verifiedOnly: true,
+      });
+      item.reviewVerdicts = REVIEWER_KINDS.flatMap((reviewer) => {
+        const verdict = verdicts.get(reviewer);
+        if (!verdict) return [];
+        return [
+          {
+            reviewer,
+            verdict,
+            verified: verifiedApprovals.get(reviewer) === "approved",
+          },
+        ];
+      });
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -2081,6 +2156,7 @@ export class TaskBoardStorage {
     description: string | null;
     status: string;
     priority: string;
+    type?: string;
     assignee_id: string | null;
     assigned_by: string | null;
     repo: string | null;
@@ -2101,6 +2177,7 @@ export class TaskBoardStorage {
       description: row.description,
       status: row.status as TaskBoardItemStatus,
       priority: row.priority as TaskBoardItemPriority,
+      type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
       repo: row.repo,
@@ -2112,9 +2189,10 @@ export class TaskBoardStorage {
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
-      // Populated by attachThreads/attachTags for reads; empty for a fresh create.
+      // Populated by attachRefs for reads; empty for a fresh create.
       threads: [],
       tags: [],
+      reviewVerdicts: [],
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

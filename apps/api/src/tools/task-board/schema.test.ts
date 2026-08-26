@@ -34,6 +34,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     description: null,
     status: "todo" as const,
     priority: "high" as const,
+    type: "bug" as const,
     assigneeId: null,
     assignedBy: null,
     repo: null,
@@ -44,6 +45,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     retryAttempts: 0,
     threads: [],
     tags: [],
+    reviewVerdicts: [],
     createdBy: "user_1",
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedBy: "user_1",
@@ -134,5 +136,27 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
         }
       ).item.threads[0]?.lastActiveAt,
     ).toBe("2024-01-01T00:05:00.000Z");
+  });
+
+  // Same closed-object trap as `retryAttempts`, one field over.
+  it("accepts an item carrying review verdicts", async () => {
+    const result = await roundTrip({
+      item: {
+        ...baseItem,
+        reviewVerdicts: [
+          {
+            reviewer: "qa" as const,
+            verdict: "approved" as const,
+            verified: true,
+          },
+          {
+            reviewer: "code_review" as const,
+            verdict: "changes_requested" as const,
+            verified: false,
+          },
+        ],
+      },
+    });
+    expect(result.isError).toBeFalsy();
   });
 });

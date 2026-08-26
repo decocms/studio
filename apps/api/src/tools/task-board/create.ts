@@ -5,6 +5,7 @@ import { getUserId, requireAuth } from "@/core/studio-context";
 import {
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
+  TaskBoardItemTypeSchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
@@ -29,6 +30,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     description: z.string().nullable().optional(),
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
+    type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
@@ -98,6 +100,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       // A task handed to the Super Agent is queued to run — land it in To Do.
       status: delegatedToSuperAgent ? "todo" : input.status,
       priority: input.priority,
+      type: input.type,
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       repo: input.repo ?? null,

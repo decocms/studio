@@ -178,6 +178,8 @@ import * as migration176taskboarddonesweepindex from "./176-task-board-done-swee
 import * as migration177notifications from "./177-notifications.ts";
 import * as migration178jirastatusmappingarray from "./178-jira-status-mapping-array.ts";
 import * as migration179notificationmentioned from "./179-notification-mentioned.ts";
+import * as migration180taskboarditemtype from "./180-task-board-item-type.ts";
+import * as migration181taskboarditemtyperequired from "./181-task-board-item-type-required.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -387,6 +389,8 @@ const migrations: Record<string, Migration> = {
   "177-notifications": migration177notifications,
   "178-jira-status-mapping-array": migration178jirastatusmappingarray,
   "179-notification-mentioned": migration179notificationmentioned,
+  "180-task-board-item-type": migration180taskboarditemtype,
+  "181-task-board-item-type-required": migration181taskboarditemtyperequired,
 };
 
 export default migrations;

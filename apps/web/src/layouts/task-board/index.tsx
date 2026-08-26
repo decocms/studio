@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -34,7 +34,14 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
+  AlertTriangle,
   Calendar,
+  CheckCircle,
   ChevronRight,
   Columns03,
   DotsHorizontal,
@@ -64,6 +71,7 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { LoaderCircle } from "lucide-react";
 import { QaAgentIcon } from "@/components/qa-agent-icon";
 import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -93,13 +101,15 @@ import {
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
+  agentRunState,
+  cardNeedsAttention,
+  TASK_TYPE_CONFIG,
+  type TaskBoardItemType,
+  dueDateUrgency,
   insertSortOrder,
-  isReviewerThreadTitle,
   isTaskBlocked,
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
-  primaryThread,
-  reviewerThreads,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
@@ -108,29 +118,30 @@ import {
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
+  TASK_TYPES,
   type TaskBoardItem,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
   type TaskBoardItemTag,
-  type TaskBoardItemThread,
   visibleSprint,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import { useSprintConfig } from "@/hooks/use-organization-settings";
+import { useOrgFlag, useSprintConfig } from "@/hooks/use-organization-settings";
 import { sprintOptions } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
-import {
-  TaskBoardItemDialog,
-  threadStatusStyle,
-  toEndOfDayIso,
-} from "./task-dialog";
+import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
-import { isResolvedRunFailure } from "@decocms/shared/entities";
+import {
+  type ChecksSummary,
+  checksSummary,
+  enabledReviewers,
+} from "./review-status";
+import { taskKey } from "@decocms/shared/task-key";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
@@ -166,22 +177,35 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   return { label: DATE_FMT.format(d), overdue };
 }
 
-/**
- * Shared meta chip: outlined (border, no fill), lightly rounded (not a full
- * pill), with room for a larger leading icon.
- */
+/** Shared meta chip: an outlined pill, neutral border by default. */
 const PILL =
-  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground";
+  "inline-flex items-center gap-1 rounded-full border-[length:var(--border-hairline)] border-border px-2 py-0.5 text-xs font-medium text-muted-foreground";
+
+/**
+ * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
+ * 12 is exactly half, so strokes land on whole device pixels. At 14 the scale
+ * is 7/12 and a two-line glyph like `Equal` straddles pixel boundaries in
+ * mirrored proportions — one line smears up, the other down, and the pair reads
+ * as a pixel out of true.
+ */
+const FOOTER_GLYPH = 12;
+
+/** A footer property glyph. 14, not 16: the footer's text is 12, and a glyph that outweighs its own label reads as the subject rather than the annotation. */
+const PROPERTY_GLYPH_CLASS = "size-3.5";
+
+/** Tags a card shows before collapsing the rest into `+N`. Matches the list
+ *  view's existing cap; the full set is in the task dialog. */
+const CARD_TAG_LIMIT = 2;
 
 /** Card flag for a task whose agent is paused waiting on human input. */
 function BlockedBadge() {
   const t = useT();
   return (
     <span
-      className={cn(PILL, "border-warning/30 text-warning")}
+      className={cn(PILL, "border-warning/50 text-warning")}
       title={t("taskBoard.taskBoard.blockedBadgeTitle")}
     >
-      <HelpCircle size={14} />
+      <HelpCircle size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.needsInput")}
     </span>
   );
@@ -191,33 +215,337 @@ function HandedToHumanBadge() {
   const t = useT();
   return (
     <span
-      className={cn(PILL, "border-warning/30 text-warning")}
+      className={cn(PILL, "border-warning/50 text-warning")}
       title={t("taskBoard.taskBoard.handedToHumanBadgeTitle")}
     >
-      <HelpCircle size={14} />
+      <HelpCircle size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.needsYou")}
     </span>
   );
 }
 
+/** Priority as a single glyph: a tooltip when read-only, a picker when `onChange` is given. */
+function PriorityIcon({
+  priority,
+  onChange,
+}: {
+  priority: TaskBoardItemPriority;
+  onChange?: (priority: TaskBoardItemPriority) => void;
+}) {
+  const t = useT();
+  const config = PRIORITY_CONFIG[priority];
+  const label = t(config.labelKey);
+  // Sized by class, not by `size`: inside a Button, `[&_svg]:size-4` beats the attribute.
+  const glyph = (
+    <config.icon
+      className={cn(PROPERTY_GLYPH_CLASS, "shrink-0", config.iconClassName)}
+      aria-label={label}
+    />
+  );
+  if (!onChange) return <GlyphTooltip label={label}>{glyph}</GlyphTooltip>;
+  return (
+    <FooterGlyphMenu label={label} glyph={glyph}>
+      {PRIORITIES.map((p) => {
+        const Icon = PRIORITY_CONFIG[p].icon;
+        return (
+          <DropdownMenuItem
+            key={p}
+            onSelect={() => onChange(p)}
+            className={cn("gap-2", p === priority && "bg-accent")}
+          >
+            <Icon
+              size={FOOTER_GLYPH}
+              className={cn("shrink-0", PRIORITY_CONFIG[p].iconClassName)}
+            />
+            {t(PRIORITY_CONFIG[p].labelKey)}
+          </DropdownMenuItem>
+        );
+      })}
+    </FooterGlyphMenu>
+  );
+}
+
+/**
+ * Turns a footer glyph into a Jira-style property picker: click the glyph,
+ * pick a new value from the dropdown, stopping the click from also opening
+ * the card (it's already a button) or starting a drag.
+ */
+function FooterGlyphMenu({
+  label,
+  glyph,
+  children,
+}: {
+  label: string;
+  glyph: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={label}
+          aria-label={label}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          // Cancels the button's 6px padding in the layout so it takes only its glyph's width: the row spaces itself off the glyph, and the leftover 6px is what the hover surface bleeds into.
+          className="-m-1.5"
+        >
+          {glyph}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-36"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Hover label for a footer glyph.
+ *
+ * `asChild` over a span on purpose: `TooltipTrigger` renders a button by
+ * default, and the card is already a button — nesting one inside it is a
+ * hydration error. The span isn't focusable, so the glyph keeps its
+ * `aria-label` for anyone not using a pointer.
+ */
+function GlyphTooltip({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex shrink-0 items-center">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The card's kind, as one glyph. Shape carries it; the name is on hover. */
+function TaskTypeIcon({
+  type,
+  onChange,
+}: {
+  type: TaskBoardItemType;
+  onChange?: (type: TaskBoardItemType) => void;
+}) {
+  const t = useT();
+  const config = TASK_TYPE_CONFIG[type];
+  const label = t(config.labelKey);
+  const glyph = (
+    <config.icon
+      className={cn(PROPERTY_GLYPH_CLASS, "shrink-0", config.iconClassName)}
+      aria-label={label}
+    />
+  );
+  if (!onChange) return <GlyphTooltip label={label}>{glyph}</GlyphTooltip>;
+  return (
+    <FooterGlyphMenu label={label} glyph={glyph}>
+      {TASK_TYPES.map((tp) => {
+        const Icon = TASK_TYPE_CONFIG[tp].icon;
+        return (
+          <DropdownMenuItem
+            key={tp}
+            onSelect={() => onChange(tp)}
+            className={cn("gap-2", tp === type && "bg-accent")}
+          >
+            <Icon
+              size={FOOTER_GLYPH}
+              className={cn("shrink-0", TASK_TYPE_CONFIG[tp].iconClassName)}
+            />
+            {t(TASK_TYPE_CONFIG[tp].labelKey)}
+          </DropdownMenuItem>
+        );
+      })}
+    </FooterGlyphMenu>
+  );
+}
+
+/**
+ * A card's due date, in the footer. Shown whenever the card has one — the
+ * footer is the row of fixed facts — but only coloured once it is close enough
+ * to act on, so a date months out sits quiet instead of competing with the
+ * overdue ones.
+ */
+function FooterDueDate({
+  iso,
+  onChange,
+}: {
+  iso: string;
+  onChange?: (iso: string) => void;
+}) {
+  const urgency = dueDateUrgency(iso);
+  const { label } = formatDueDate(iso);
+  const content = (
+    <>
+      <Calendar className={PROPERTY_GLYPH_CLASS} />
+      {label}
+    </>
+  );
+  const tone = cn(
+    "shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums text-muted-foreground/70",
+    urgency === "overdue" && "text-destructive",
+    urgency === "soon" && "text-warning",
+  );
+  if (!onChange) return <span className={cn("flex", tone)}>{content}</span>;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          // Matches the glyph buttons: the padding is hover surface only, so the row still spaces itself off the content.
+          className={cn("-mx-1.5 h-auto px-1.5 py-1 font-medium", tone)}
+        >
+          {content}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-auto p-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DayPickerCalendar
+          mode="single"
+          selected={new Date(iso)}
+          defaultMonth={new Date(iso)}
+          onSelect={(date) => date && onChange(toEndOfDayIso(date))}
+          initialFocus
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The card's one run action, as a footer glyph. Its slot is always reserved, so revealing it on hover shifts nothing and covers nothing. */
+function CardActionGlyph({
+  action,
+}: {
+  action: { icon: typeof RefreshCw01; label: string; onClick: () => void };
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      title={action.label}
+      aria-label={action.label}
+      onClick={(e) => {
+        e.stopPropagation();
+        action.onClick();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="-m-1.5 pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+    >
+      <action.icon className={PROPERTY_GLYPH_CLASS} />
+    </Button>
+  );
+}
+
+/**
+ * The card's baseline: its key, its priority, how far review got. Fixed height
+ * and always present, so the eye finds the same three facts at the same offset
+ * on every card in a lane — which is the whole point of the redesign.
+ */
+function CardFooter({
+  item,
+  checks,
+  assignee,
+  assignedBy,
+  members,
+  onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
+  action,
+}: {
+  item: TaskBoardItem;
+  checks: { summary: ChecksSummary; enabled: ReviewerKind[] } | null;
+  action?: { icon: typeof RefreshCw01; label: string; onClick: () => void };
+  assignee?: Member;
+  assignedBy?: Member;
+  members?: Member[];
+  onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
+}) {
+  const { org } = useProjectContext();
+  const key = taskKey(org.slug, item.keySeq);
+  return (
+    // No inset of its own: the footer shares the card's padding, so the type glyph starts on the same left edge as the title and the labels.
+    <div className="mt-auto flex shrink-0 items-center justify-between gap-2 pt-1">
+      {/* Each glyph binds to its own label at `gap-1.5`, and the pairs stand apart at `gap-3` — an icon spaced the same as its neighbours belongs to neither. */}
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex shrink-0 items-center gap-1.5">
+          <TaskTypeIcon type={item.type} onChange={onTypeChange} />
+          <span className="text-xs font-medium tabular-nums text-muted-foreground/70">
+            {key}
+          </span>
+        </span>
+        {item.dueDate && (
+          <FooterDueDate iso={item.dueDate} onChange={onDueDateChange} />
+        )}
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        {action && <CardActionGlyph action={action} />}
+        {(item.priority !== "none" || onPriorityChange) && (
+          <PriorityIcon priority={item.priority} onChange={onPriorityChange} />
+        )}
+        {checks && (
+          <ChecksChip
+            summary={checks.summary}
+            verdicts={item.reviewVerdicts}
+            enabled={checks.enabled}
+          />
+        )}
+        <AssigneeDisplay
+          item={item}
+          assignee={assignee}
+          assignedBy={assignedBy}
+          members={members}
+          onAssign={onAssign}
+          showDelegation={false}
+        />
+      </span>
+    </div>
+  );
+}
+
+/** List-row priority: dot + name. Cards use {@link PriorityIcon} instead. */
 function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
   const t = useT();
   const config = PRIORITY_CONFIG[priority];
+  const label = t(config.labelKey);
   return (
-    <span className={PILL}>
-      <span className={cn("size-2 rounded-full", config.dotClassName)} />
-      {t(config.labelKey)}
+    <span className={PILL} title={label}>
+      <span
+        className={cn("size-2 shrink-0 rounded-full", config.dotClassName)}
+      />
+      {label}
     </span>
   );
 }
 
+/** List-row due date. Cards use {@link FooterDueDate} instead. */
 function DueDatePill({ iso }: { iso: string }) {
   const { label, overdue } = formatDueDate(iso);
   return (
     <span
-      className={cn(PILL, overdue && "border-destructive/30 text-destructive")}
+      className={cn(PILL, overdue && "border-destructive/50 text-destructive")}
     >
-      <Calendar size={14} />
+      <Calendar size={FOOTER_GLYPH} />
       {label}
     </span>
   );
@@ -236,22 +564,152 @@ function SprintPill({ sprint }: { sprint: number }) {
   const t = useT();
   return (
     <span className={PILL}>
-      <Repeat04 size={14} />
+      <Repeat04 size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
   );
 }
 
+/** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
 function TagPill({ tag }: { tag: TaskBoardItemTag }) {
   return (
-    <span className={PILL}>
-      <span
-        className="size-2 rounded-full"
-        style={{ backgroundColor: tagDotColor(tag.color) }}
-      />
+    <span
+      className={cn(PILL, "text-foreground")}
+      style={{ borderColor: tagDotColor(tag.color) }}
+    >
       {tag.name}
     </span>
   );
+}
+
+/**
+ * How far a card is through review, as one glyph: `1/2`.
+ *
+ * Replaces a footer row that named whichever agent thread ranked highest and
+ * echoed its prose — which agent that was depended on run ordering, so a lane
+ * headlined three different agents and none of them compared.
+ *
+ * Per-reviewer detail lives in the `title`: a card is already a button, so a
+ * hover card here would nest interactive elements.
+ */
+function ChecksChip({
+  summary,
+  verdicts,
+  enabled,
+}: {
+  summary: ChecksSummary;
+  verdicts: TaskBoardItem["reviewVerdicts"];
+  enabled: ReviewerKind[];
+}) {
+  const t = useT();
+  // One row per reviewer, rather than a joined string — the whole point of a
+  // real tooltip over a `title` is that it can be laid out.
+  const detail = (
+    <span className="flex flex-col gap-0.5">
+      {enabled.map((kind) => {
+        const verdict = verdicts.find((v) => v.reviewer === kind);
+        const Glyph = kind === "qa" ? QaAgentIcon : CodeReviewerIcon;
+        const name = t(
+          kind === "qa"
+            ? "taskBoard.taskDialog.qaAgentLabel"
+            : "taskBoard.taskDialog.codeReviewerLabel",
+        );
+        const state = !verdict
+          ? t("taskBoard.taskBoard.checksPending")
+          : verdict.verdict === "changes_requested"
+            ? t("taskBoard.taskBoard.checksChangesRequested")
+            : t(
+                verdict.verified
+                  ? "taskBoard.taskBoard.checksApproved"
+                  : "taskBoard.taskBoard.checksUnverified",
+              );
+        return (
+          <span
+            key={kind}
+            className="flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <Glyph size={12} />
+            {name} — {state}
+          </span>
+        );
+      })}
+    </span>
+  );
+
+  return (
+    <GlyphTooltip label={detail}>
+      <span
+        className={cn(
+          // Not a button, but it carries a property like one — so it wears the same glyph and the same 6px inset.
+          "flex shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums",
+          summary.tone === "ok" && "text-success",
+          summary.tone === "pending" && "text-warning",
+          summary.tone === "danger" && "text-destructive",
+        )}
+        aria-label={t("taskBoard.taskBoard.checksLabel", {
+          passed: String(summary.passed),
+          total: String(summary.total),
+        })}
+      >
+        <CheckCircle className={PROPERTY_GLYPH_CLASS} />
+        {summary.passed}/{summary.total}
+      </span>
+    </GlyphTooltip>
+  );
+}
+
+/**
+ * Run state as a single dot: an agent is working, or one died. Small as it is,
+ * the footer this card no longer has was the only place a failed run surfaced.
+ */
+function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
+  const t = useT();
+  const running = state === "running";
+  const label = t(
+    running
+      ? "taskBoard.taskBoard.agentRunning"
+      : "taskBoard.taskBoard.agentFailed",
+  );
+  // LoaderCircle, not the board's `Loading01`: that one is eight evenly-spaced
+  // spokes, so rotating it lands on an identical image every 45° and
+  // `animate-spin` reads as a still frame. An arc has to be asymmetric to look
+  // like it is turning.
+  const Icon = running ? LoaderCircle : AlertTriangle;
+  return (
+    <span className="mt-px flex shrink-0 items-center">
+      <GlyphTooltip label={label}>
+        <Icon
+          size={14}
+          className={cn(
+            "shrink-0",
+            running ? "animate-spin text-primary" : "text-destructive",
+          )}
+          aria-label={label}
+        />
+      </GlyphTooltip>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * The card's checks indicator, or null when there is nothing to say: this org
+ * runs no reviewers, or the task has not reached review yet (a To Do card with
+ * `0/2` would be reporting a failure that hasn't had a chance to happen).
+ */
+function useCardChecks(item: TaskBoardItem): {
+  summary: ChecksSummary;
+  enabled: ReviewerKind[];
+} | null {
+  const enabled = enabledReviewers({
+    qa: useOrgFlag("qa_agent_enabled"),
+    codeReview: useOrgFlag("code_reviewer_enabled"),
+  });
+  if (item.reviewVerdicts.length === 0 && item.status !== "in_review") {
+    return null;
+  }
+  const summary = checksSummary(item.reviewVerdicts, enabled);
+  return summary ? { summary, enabled } : null;
 }
 
 /**
@@ -259,6 +717,9 @@ function TagPill({ tag }: { tag: TaskBoardItemTag }) {
  * delegation as overlapping avatars — the assigner's avatar eclipsed by the
  * Super Agent capybara — so it's clear a human handed the task off. Otherwise a
  * plain member avatar.
+ *
+ * `showDelegation` is off on board cards — repeated down a lane the capybara says
+ * nothing the pulse dot and checks don't. A list row has no lane, so it keeps it.
  */
 function AssigneeDisplay({
   item,
@@ -266,28 +727,37 @@ function AssigneeDisplay({
   assignedBy,
   members,
   onAssign,
+  showDelegation = true,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
   onAssign?: (userId: string | null) => void;
+  showDelegation?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
+    const title = assignedBy?.user?.name
+      ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
+          name: assignedBy.user.name,
+        })
+      : t("taskBoard.taskBoard.assignedToSuperAgent");
+    if (!showDelegation) {
+      return assignedBy ? (
+        <Avatar
+          url={assignedBy.user?.image ?? undefined}
+          fallback={getInitials(assignedBy.user?.name)}
+          shape="circle"
+          size="xs"
+          title={title}
+        />
+      ) : null;
+    }
     return (
-      <span
-        className="inline-flex items-center"
-        title={
-          assignedBy?.user?.name
-            ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
-                name: assignedBy.user.name,
-              })
-            : t("taskBoard.taskBoard.assignedToSuperAgent")
-        }
-      >
+      <span className="inline-flex items-center" title={title}>
         {assignedBy && (
           <Avatar
             url={assignedBy.user?.image ?? undefined}
@@ -748,6 +1218,13 @@ export function TaskBoardPage() {
               { onError: onDelegateError },
             );
           }}
+          onPriorityChange={(id, priority) =>
+            actions.update.mutate({ id, priority })
+          }
+          onTypeChange={(id, type) => actions.update.mutate({ id, type })}
+          onDueDateChange={(id, dueDate) =>
+            actions.update.mutate({ id, dueDate })
+          }
           onAutoFix={(item) => {
             if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
             actions.update.mutate(
@@ -1311,6 +1788,9 @@ function Lanes({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
 }: {
   items: TaskBoardItem[];
   members: Member[];
@@ -1328,6 +1808,9 @@ function Lanes({
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
+  onPriorityChange?: (id: string, priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (id: string, type: TaskBoardItemType) => void;
+  onDueDateChange?: (id: string, iso: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
@@ -1593,6 +2076,9 @@ function Lanes({
               onAutoFix={onAutoFix}
               onRerun={onRerun}
               onAssign={onAssign}
+              onPriorityChange={onPriorityChange}
+              onTypeChange={onTypeChange}
+              onDueDateChange={onDueDateChange}
               onHide={
                 HIDDEN_STATUSES.includes(status)
                   ? () => setLaneShown(status, false)
@@ -1737,6 +2223,9 @@ function Lane({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
   onHide,
 }: {
   status: TaskBoardItemStatus;
@@ -1756,6 +2245,9 @@ function Lane({
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
+  onPriorityChange?: (id: string, priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (id: string, type: TaskBoardItemType) => void;
+  onDueDateChange?: (id: string, iso: string) => void;
   /** Present only for a hidden-by-default lane, which can be put back away. */
   onHide?: () => void;
 }) {
@@ -1849,7 +2341,7 @@ function Lane({
       <div
         ref={setNodeRef}
         data-lane-scroll={status}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
       >
         <SortableContext
           items={items.map((item) => item.id)}
@@ -1880,6 +2372,19 @@ function Lane({
               onAssign={
                 onAssign ? (userId) => onAssign(item.id, userId) : undefined
               }
+              onPriorityChange={
+                onPriorityChange
+                  ? (priority) => onPriorityChange(item.id, priority)
+                  : undefined
+              }
+              onTypeChange={
+                onTypeChange ? (type) => onTypeChange(item.id, type) : undefined
+              }
+              onDueDateChange={
+                onDueDateChange
+                  ? (iso) => onDueDateChange(item.id, iso)
+                  : undefined
+              }
             />
           ))}
         </SortableContext>
@@ -1908,6 +2413,9 @@ function SortableTaskCard({
   onAutoFix?: () => void;
   onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
 }) {
   const {
     attributes,
@@ -1958,6 +2466,9 @@ function TaskCard({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
@@ -1974,20 +2485,18 @@ function TaskCard({
   onAutoFix?: () => void;
   onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
 }) {
   const t = useT();
-  const StatusIcon = STATUS_CONFIG[item.status].icon;
   const sprint = visibleSprint(item.sprint, useSprintsEnabled());
-  // The Super Agent's own thread, not one of its reviewers' — falls back to
-  // the most recent thread overall so a card still shows something before the
-  // reviewer/main distinction exists (e.g. mid-migration data).
-  const mainThread =
-    item.threads.find(
-      (thr) =>
-        !isReviewerThreadTitle(thr.title, "qa") &&
-        !isReviewerThreadTitle(thr.title, "code_review"),
-    ) ?? primaryThread(item);
-  const reviewThreads = reviewerThreads(item);
+  const checks = useCardChecks(item);
+  const runState = agentRunState(item);
+  // A state of the card, not a label on it — hence the colour, not a chip.
+  const attentionLabel = cardNeedsAttention(item)
+    ? t("taskBoard.taskBoard.blockedBadgeTitle")
+    : null;
 
   const showAutoFix =
     onAutoFix &&
@@ -2021,210 +2530,66 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
+        attentionLabel
+          ? "bg-warning/10 hover:bg-warning/15"
+          : "bg-card hover:bg-accent/60",
+        // A dead run outranks a question: both want a person, but only one is already broken.
+        runState === "failed"
+          ? "card-ring-destructive"
+          : attentionLabel && "card-ring-warning",
         selected && "bg-accent",
         className,
       )}
-      title={item.title}
     >
       <div className="flex items-start gap-2">
-        <StatusIcon
-          size={16}
-          className={cn("mt-px shrink-0", statusIconClassName(item))}
-        />
-        <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground line-clamp-2">
+        {/* 14px: one step over the design system's `text-sm`, which is 13 here, not Tailwind's 14. */}
+        <span className="min-w-0 flex-1 text-[14px] font-[450] leading-snug text-foreground line-clamp-2">
           {item.title}
         </span>
-        <AssigneeDisplay
-          item={item}
-          assignee={assignee}
-          assignedBy={assignedBy}
-          members={members}
-          onAssign={onAssign}
-        />
+        {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
+        {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {(isTaskBlocked(item) ||
-        isTaskHandedToHuman(item) ||
-        item.priority !== "none" ||
-        Boolean(item.dueDate) ||
-        sprint != null ||
-        item.tags.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5 pl-6">
-          {isTaskBlocked(item) && <BlockedBadge />}
-          {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
-          {item.priority !== "none" && (
-            <PriorityPill priority={item.priority} />
-          )}
-          {item.dueDate && <DueDatePill iso={item.dueDate} />}
+      {(sprint != null || item.tags.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           {sprint != null && <SprintPill sprint={sprint} />}
-          {item.tags.map((tag) => (
+          {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
+          {item.tags.length > CARD_TAG_LIMIT && (
+            <span className={PILL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+          )}
         </div>
       )}
 
-      {showAutoFix && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAutoFix();
-          }}
-          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-        >
-          <Lightning01 size={12} />
-          {t("taskBoard.taskBoard.autoFix")}
-        </button>
-      )}
-
-      {showRerun && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRerun();
-          }}
-          // Absolutely positioned so it never reserves layout space: every
-          // Super-Agent card qualifies, so a flow-positioned hover button
-          // left a permanent empty gap on every card, and showing it
-          // unconditionally would put a button on nearly the whole board.
-          className="pointer-events-none absolute bottom-2 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
-        >
-          <RefreshCw01 size={12} />
-          {t("taskBoard.taskBoard.rerun")}
-        </button>
-      )}
-
-      {mainThread && (
-        <AgentReviewFooter
-          mainThread={mainThread}
-          reviewThreads={reviewThreads}
-        />
-      )}
+      <CardFooter
+        item={item}
+        checks={checks}
+        assignee={assignee}
+        assignedBy={assignedBy}
+        members={members}
+        onAssign={onAssign}
+        onPriorityChange={onPriorityChange}
+        onTypeChange={onTypeChange}
+        onDueDateChange={onDueDateChange}
+        action={
+          showAutoFix
+            ? {
+                icon: Lightning01,
+                label: t("taskBoard.taskBoard.autoFix"),
+                onClick: onAutoFix,
+              }
+            : showRerun
+              ? {
+                  icon: RefreshCw01,
+                  label: t("taskBoard.taskBoard.rerun"),
+                  onClick: onRerun,
+                }
+              : undefined
+        }
+      />
     </button>
-  );
-}
-
-/** An agent thread paired with its glyph kind and display name, for the card footer. */
-type FooterAgent = {
-  kind: "main" | ReviewerKind;
-  name: string;
-  thread: TaskBoardItemThread;
-};
-
-/** Rank for picking which agent's row the card footer shows — lower wins. A
- *  running/awaiting-input agent is always the most important thing on the
- *  card; once nothing is running, a failure the user can act on is; a clean run
- *  outranks a settled failure (a superseded attempt, or a run that died after
- *  delivering — see `isResolvedRunFailure`), which is history and must not paint
- *  the card red; otherwise the most recently run agent wins. */
-function statusPriority(thread: TaskBoardItemThread): number {
-  if (thread.status === "in_progress" || thread.status === "requires_action") {
-    return 0;
-  }
-  if (thread.status === "failed") {
-    return isResolvedRunFailure(thread.failureKind) ? 3 : 1;
-  }
-  return 2;
-}
-
-/**
- * The card footer shows a single row for whichever agent thread — the Super
- * Agent's own run, or a QA/code-review thread — matters most right now:
- * something running or awaiting input beats everything else, an error beats
- * a clean run, and among equals the most recently run agent wins. Stacking
- * all three threads (one row each, or a row plus a collapsed icon strip)
- * cost more space than it was worth for a card whose job is a quick glance —
- * full activity detail already lives one click away in the task dialog.
- */
-function AgentReviewFooter({
-  mainThread,
-  reviewThreads,
-}: {
-  mainThread: TaskBoardItemThread;
-  reviewThreads: { kind: ReviewerKind; thread: TaskBoardItemThread }[];
-}) {
-  const t = useT();
-  const agents: FooterAgent[] = [
-    {
-      kind: "main",
-      name: t("taskBoard.taskDialog.superAgentDefaultName"),
-      thread: mainThread,
-    },
-    ...reviewThreads.map(({ kind, thread }) => ({
-      kind,
-      name: t(
-        kind === "qa"
-          ? "taskBoard.taskDialog.qaAgentLabel"
-          : "taskBoard.taskDialog.codeReviewerLabel",
-      ),
-      thread,
-    })),
-  ];
-  const featuredAgent = agents.reduce((best, agent) => {
-    const rank = statusPriority(agent.thread);
-    const bestRank = statusPriority(best.thread);
-    if (rank !== bestRank) return rank < bestRank ? agent : best;
-    return agent.thread.createdAt > best.thread.createdAt ? agent : best;
-  });
-
-  return (
-    <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-3">
-      <AgentThreadFooterRow {...featuredAgent} />
-    </div>
-  );
-}
-
-/** An agent's glyph — the Super Agent capybara, or the QA/Code Reviewer badge. */
-function AgentGlyph({
-  kind,
-  size,
-  className,
-}: {
-  kind: FooterAgent["kind"];
-  size: number;
-  className?: string;
-}) {
-  if (kind === "qa") return <QaAgentIcon size={size} className={className} />;
-  if (kind === "code_review") {
-    return <CodeReviewerIcon size={size} className={className} />;
-  }
-  return <SuperAgentIcon size={size} className={className} />;
-}
-
-/**
- * One agent's row in the card footer, all on a single truncated line: glyph,
- * name, its live status — e.g. the red "Error" state — then a preview of the
- * thread's last message. A condensed version of `ThreadActivityItem`'s status
- * row in the task dialog.
- */
-function AgentThreadFooterRow({ kind, name, thread }: FooterAgent) {
-  const t = useT();
-  const state = thread.status
-    ? threadStatusStyle({ ...thread, status: thread.status }, t)
-    : null;
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <AgentGlyph kind={kind} size={16} />
-      <span className="shrink-0 text-xs font-medium text-foreground">
-        {name}
-      </span>
-      {state && (
-        <span
-          className={cn("flex shrink-0 items-center gap-1", state.className)}
-        >
-          <state.icon size={12} className={cn(state.spin && "animate-spin")} />
-          <span className="text-xs">{state.label}</span>
-        </span>
-      )}
-      {thread.lastMessage && (
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {thread.lastMessage}
-        </span>
-      )}
-    </div>
   );
 }
 

@@ -11,6 +11,21 @@ export const TaskBoardItemStatusSchema = z.enum([
   "archived",
 ]);
 
+/**
+ * What KIND of work a card is — its shape, not its area.
+ *
+ * Areas are tags (`SEO`, `Performance`, `Infra`), a card has many of them and
+ * exactly one shape. Required — a card always has a type, defaulting to
+ * `chore`, the value that asserts the least about work nobody classified.
+ */
+export const TaskBoardItemTypeSchema = z.enum([
+  "bug",
+  "feature",
+  "chore",
+  "spike",
+  "security",
+]);
+
 export const TaskBoardItemPrioritySchema = z.enum([
   "none",
   "low",
@@ -45,6 +60,24 @@ const TaskBoardItemThreadSchema = z.object({
   /** Newest of the thread's `updated_at` / `last_progress_at` — the stall
    *  reaper's heartbeat, present on every `TaskBoardItemThreadRef`. */
   lastActiveAt: z.string(),
+});
+
+/**
+ * One reviewer's standing verdict in the task's CURRENT review cycle — what the
+ * board card's `1/2` checks indicator counts. Verdicts recorded before the task
+ * last entered In Review are stale and never reported; a reviewer that has not
+ * decided yet is simply absent from the array.
+ *
+ * A reviewer's THREAD status can't stand in for this: a review run that reads
+ * `completed` may well have asked for changes.
+ */
+const TaskBoardItemReviewVerdictSchema = z.object({
+  reviewer: z.enum(["qa", "code_review"]),
+  verdict: z.enum(["approved", "changes_requested"]),
+  /** Whether the approval was token-verified. An unverified approval counts as
+   *  an approval but can never satisfy the auto-merge gate, so it must not
+   *  render as a clean pass — see `approvedButUnverified`. */
+  verified: z.boolean(),
 });
 
 /** A tag attached to a task, plus who attached it and when. */
@@ -103,6 +136,10 @@ export const TaskBoardItemSchema = z.object({
   description: z.string().nullable(),
   status: TaskBoardItemStatusSchema,
   priority: TaskBoardItemPrioritySchema,
+  /** What kind of work this is. Present on every `TaskBoardItem`, so it MUST
+   *  be modeled here — see the `retryAttempts` note below on Ajv-revalidating
+   *  clients. */
+  type: TaskBoardItemTypeSchema,
   assigneeId: z.string().nullable(),
   assignedBy: z.string().nullable(),
   // `owner/name` of the repo (site) this task pertains to.
@@ -127,6 +164,11 @@ export const TaskBoardItemSchema = z.object({
   threads: z.array(TaskBoardItemThreadSchema),
   // Org tags attached to this task, name ascending.
   tags: z.array(TaskBoardItemTagSchema),
+  /** Each reviewer's standing verdict in the current review cycle, in
+   *  `REVIEWER_KINDS` order; undecided reviewers are absent. Present on every
+   *  `TaskBoardItem`, so — like `retryAttempts` above — it MUST be modeled here
+   *  or Ajv-revalidating MCP clients reject every response with `-32602`. */
+  reviewVerdicts: z.array(TaskBoardItemReviewVerdictSchema),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),
@@ -155,6 +197,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_changes_requested",
   "merge_conflict_resolution",
   "merge_failed",
+  "type_changed",
 ] as const;
 
 export type TaskBoardActivityAction =
