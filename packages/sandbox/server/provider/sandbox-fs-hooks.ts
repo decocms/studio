@@ -1,26 +1,9 @@
 /**
- * createSandboxFsHooks — the harness→sandbox cycle-breaker (spec
- * 2026-06-11-harness-extraction-design.md §4.3).
+ * Retrying adapter from the hosted harness to the in-sandbox daemon.
  *
- * Builds the flat filesystem hooks (`onRead`/`onWrite`/`onEdit`/`onBash`/
- * `onGlob`/`onGrep`) that the harness consumes through `HarnessDeps` (§5.1) over
- * an `AgentSandboxProvider.proxyDaemonRequest`. The harness calls
- * `deps.onRead(...)` and never sees the provider — the lifecycle (handle
- * resolution, daemon reachability, auto-restart) is hidden behind these
- * closures.
- *
- * The `DaemonUnreachableError` sentinel, the `daemonRequest` proxy wrapper, and
- * the call-level retry layer are moved verbatim from
- * `apps/api/src/harnesses/decopilot/built-in-tools/vm-tools/index.ts` (where
- * they used to live in-tool). The richer LLM-visible read/write/edit/grep/glob/
- * bash *tools* (truncation, image-queueing, html-buffer mirroring) stay in the
- * harness and call these flat hooks.
- *
- * The hook payload shapes mirror `HarnessDeps`'s `EditOp`/`BashOpts`/
- * `BashResult`/`GrepOpts`/`GrepHit` (`apps/api/src/harnesses/lib/harness-deps.ts`) so
- * hosted harness wiring can set `deps.onRead = hooks.onRead`, etc. They are
- * declared locally here because packages may not import an `apps/*` tree
- * (ban-cross-tree-imports).
+ * VM tools use `onProxy` for daemon routes while the few callers that execute
+ * commands directly use typed `onBash`. Handle resolution, TTL renewal,
+ * deadlines, and the one-shot restart retry stay hidden behind both hooks.
  */
 
 import type { AgentSandboxProvider } from "./agent-sandbox/runner";
@@ -29,12 +12,6 @@ type SandboxFsProvider = Pick<
   AgentSandboxProvider,
   "proxyDaemonRequest" | "renewTtl"
 >;
-
-export interface SandboxFsEdit {
-  oldText: string;
-  newText: string;
-  replaceAll?: boolean;
-}
 
 export interface SandboxFsBashOpts {
   cwd?: string;
@@ -47,36 +24,11 @@ export interface SandboxFsBashResult {
   exitCode: number;
 }
 
-export interface SandboxFsGrepOpts {
-  path?: string;
-  glob?: string;
-  caseInsensitive?: boolean;
-}
-
-export interface SandboxFsGrepHit {
-  file: string;
-  line: number;
-  text: string;
-}
-
 export interface SandboxFsHooks {
-  onRead(path: string): Promise<string>;
-  onWrite(path: string, content: string): Promise<void>;
-  onEdit(path: string, edits: SandboxFsEdit[]): Promise<void>;
   onBash(cmd: string, opts?: SandboxFsBashOpts): Promise<SandboxFsBashResult>;
-  onGlob(pattern: string): Promise<string[]>;
-  onGrep(
-    pattern: string,
-    opts?: SandboxFsGrepOpts,
-  ): Promise<SandboxFsGrepHit[]>;
   /**
-   * Escape hatch — proxy an arbitrary `/_sandbox/*` daemon route and return its
-   * parsed JSON body, sharing the same handle-resolution + auto-restart retry
-   * layer as the flat ops above. The richer LLM-visible read/write/edit/grep/
-   * glob/bash *tools* in the harness use this to preserve behavior that the flat
-   * ops intentionally drop (the image-read branch and the html-buffer preview
-   * shapes of write/edit). New harness code should prefer the typed flat ops;
-   * this exists only to cover the daemon surfaces those ops don't model.
+   * Proxy a `/_sandbox/*` daemon route and return its parsed JSON body, sharing
+   * the same handle-resolution and restart behavior as `onBash`.
    *
    * `signal` is the run's abort signal (AI-SDK `ToolCallOptions.abortSignal`):
    * cancelling the run aborts the in-flight daemon request instead of leaving
@@ -85,14 +37,13 @@ export interface SandboxFsHooks {
   onProxy(
     path: string,
     body: Record<string, unknown>,
-    method?: "POST" | "PUT",
     signal?: AbortSignal,
   ): Promise<unknown>;
 }
 
 export interface SandboxFsHooksLifecycle {
   /**
-   * Lazy handle resolver. Invoked on every fs op; the caller is expected to
+   * Lazy handle resolver. Invoked on every daemon call; the caller is expected to
    * memoise so the first invocation provisions and later calls reuse.
    */
   ensureHandle(): Promise<string>;
@@ -116,7 +67,7 @@ export interface SandboxFsHooksLifecycle {
    */
   canAutoRestart: boolean;
   /**
-   * Fixed per-op deadline override. Default derives from the op's own budget
+   * Fixed per-call deadline override. Default derives from the call's budget
    * (`opDeadlineMs`); tests override with a tiny value. Production callers
    * should not need to.
    */
@@ -133,7 +84,7 @@ export interface SandboxFsHooksLifecycle {
 }
 
 /**
- * HTTP deadline for one daemon op, enforced HERE (transport-agnostic) — the
+ * HTTP deadline for one daemon call, enforced HERE (transport-agnostic) — the
  * daemon's own bash timeout (30s default / 120s max) only protects when the
  * daemon is healthy enough to respond. Without this bound, a wedged daemon or
  * stalled org-fs mount left the harness awaiting silently past the 10-min
@@ -143,8 +94,7 @@ export interface SandboxFsHooksLifecycle {
  * body carries one (bash; clamped to the daemon's 120s cap), else the daemon's
  * 30s default — plus a grace window so a command the daemon kills at its cap
  * still delivers its stdout/stderr here instead of losing the race to the
- * client-side abort. Ops without a budget (read/write/edit/grep/glob) fail at
- * 45s.
+ * client-side abort. Calls without a budget fail at 45s.
  */
 const DAEMON_BASH_MAX_TIMEOUT_MS = 120_000; // daemon clamp (daemon/routes/bash.ts)
 const DAEMON_DEFAULT_TIMEOUT_MS = 30_000; // daemon default (daemon/routes/bash.ts)
@@ -217,11 +167,10 @@ async function daemonRequest(
   provider: SandboxFsProvider,
   handle: string,
   path: string,
-  body: Record<string, unknown> | null,
-  method: "GET" | "POST" | "PUT" = "POST",
+  body: Record<string, unknown>,
   opts?: { signal?: AbortSignal; timeoutMs?: number; threadId?: string },
 ): Promise<unknown> {
-  const timeoutMs = opts?.timeoutMs ?? opDeadlineMs(body ?? {});
+  const timeoutMs = opts?.timeoutMs ?? opDeadlineMs(body);
   const timeout = AbortSignal.timeout(timeoutMs);
   const reqSignal = opts?.signal
     ? AbortSignal.any([opts.signal, timeout])
@@ -236,19 +185,14 @@ async function daemonRequest(
     const init: {
       method: string;
       headers: Headers;
-      body: string | null;
+      body: string;
       signal: AbortSignal;
     } = {
-      method,
+      method: "POST",
       headers,
-      body: null,
+      body: JSON.stringify(body),
       signal: reqSignal,
     };
-    // GET/HEAD must not carry a body; the provider proxy strips it anyway,
-    // but constructing it is wasteful and obscures intent.
-    if (method !== "GET" && body !== null) {
-      init.body = JSON.stringify(body);
-    }
     // `abortable` (not just init.signal) so a transport that ignores the
     // signal — or a body read that stalls — still respects the deadline.
     ({ res, rawText } = await abortable(
@@ -266,7 +210,7 @@ async function daemonRequest(
     if (opts?.signal?.aborted) throw cause;
     if (timeout.aborted) {
       throw new Error(
-        `Sandbox ${method} ${path} timed out after ${Math.round(timeoutMs / 1000)}s — the sandbox may be overloaded or its filesystem stalled. Retry, or use a smaller operation.`,
+        `Sandbox POST ${path} timed out after ${Math.round(timeoutMs / 1000)}s — the sandbox may be overloaded or its filesystem stalled. Retry, or use a smaller operation.`,
       );
     }
     throw new DaemonUnreachableError(cause);
@@ -312,34 +256,7 @@ async function daemonRequest(
 }
 
 /**
- * Parse the daemon grep route's `output_mode: "content"` block — newline-
- * separated `file:line:text` rows (ripgrep `--line-number`) — into structured
- * hits. Rows that don't match the shape (e.g. ripgrep context separators) are
- * skipped.
- *
- * The file-explorer UI has an equivalent `parseGrepContent` in
- * `apps/web/src/components/sandbox/preview/file-explorer/utils.ts` —
- * same wire shape, kept separate because packages can't import app code.
- * Update both if the shape changes.
- */
-function parseGrepResults(results: string): SandboxFsGrepHit[] {
-  const hits: SandboxFsGrepHit[] = [];
-  for (const row of results.split("\n")) {
-    if (!row) continue;
-    const firstColon = row.indexOf(":");
-    if (firstColon < 0) continue;
-    const secondColon = row.indexOf(":", firstColon + 1);
-    if (secondColon < 0) continue;
-    const file = row.slice(0, firstColon);
-    const line = Number.parseInt(row.slice(firstColon + 1, secondColon), 10);
-    if (!Number.isFinite(line)) continue;
-    hits.push({ file, line, text: row.slice(secondColon + 1) });
-  }
-  return hits;
-}
-
-/**
- * Build the flat fs hooks over the two AgentSandboxProvider capabilities they
+ * Build the daemon hooks over the two AgentSandboxProvider capabilities they
  * need. Keeping this as a narrow Pick prevents filesystem helpers from growing
  * an implicit dependency on the full provisioning surface.
  */
@@ -384,11 +301,10 @@ export function createSandboxFsHooks(
   const call = async (
     daemonPath: string,
     input: Record<string, unknown>,
-    method: "POST" | "PUT" = "POST",
     signal?: AbortSignal,
   ): Promise<unknown> => {
     const tryOnce = async (handle: string) =>
-      daemonRequest(provider, handle, daemonPath, input, method, {
+      daemonRequest(provider, handle, daemonPath, input, {
         signal,
         timeoutMs: lifecycle.opTimeoutMs,
         threadId: lifecycle.threadId,
@@ -444,26 +360,7 @@ export function createSandboxFsHooks(
   };
 
   return {
-    onProxy: (path, body, method, signal) => call(path, body, method, signal),
-    onRead: async (path) => {
-      const r = (await call("/_sandbox/read", { path })) as { content: string };
-      return r.content;
-    },
-    onWrite: async (path, content) => {
-      await call("/_sandbox/write", { path, content });
-    },
-    onEdit: async (path, edits) => {
-      // The daemon edit route is single-edit (one old/new pair per call) and
-      // uses snake_case keys. Apply each edit in sequence.
-      for (const edit of edits) {
-        await call("/_sandbox/edit", {
-          path,
-          old_string: edit.oldText,
-          new_string: edit.newText,
-          replace_all: edit.replaceAll === true,
-        });
-      }
-    },
+    onProxy: (path, body, signal) => call(path, body, signal),
     onBash: async (cmd, opts) => {
       const r = (await call("/_sandbox/bash", {
         command: cmd,
@@ -471,22 +368,6 @@ export function createSandboxFsHooks(
         ...(opts?.timeoutMs !== undefined ? { timeout: opts.timeoutMs } : {}),
       })) as SandboxFsBashResult;
       return r;
-    },
-    onGlob: async (pattern) => {
-      const r = (await call("/_sandbox/glob", { pattern })) as {
-        files: string[];
-      };
-      return r.files;
-    },
-    onGrep: async (pattern, opts) => {
-      const r = (await call("/_sandbox/grep", {
-        pattern,
-        output_mode: "content",
-        ...(opts?.path !== undefined ? { path: opts.path } : {}),
-        ...(opts?.glob !== undefined ? { glob: opts.glob } : {}),
-        ...(opts?.caseInsensitive ? { ignore_case: true } : {}),
-      })) as { results: string };
-      return parseGrepResults(r.results);
     },
   };
 }
