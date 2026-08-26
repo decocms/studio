@@ -125,6 +125,36 @@ const CLONE_POLL_MS = 1_500;
 /** Consecutive probe failures that mean the pod is gone, not slow. */
 const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
 
+/**
+ * Secondary checkouts a single run may accumulate.
+ *
+ * Nothing else bounds `TASK_ADD_REPO`: the model can call it once per repo the
+ * org has imported, and each call clones into the pod and appends to the
+ * thread's `githubRepos` list forever (`appendThreadGithubRepo` never
+ * shrinks it). An org with a large connected-repo catalog would otherwise let
+ * one run pile up an unbounded number of pod checkouts and an unbounded
+ * `git.repositories` config payload pushed to the daemon on every add.
+ */
+export const MAX_SECONDARY_REPOS = 20;
+
+/**
+ * Whether adding `candidate` would push a thread's secondary checkouts past
+ * the cap. A repo the thread already has is always let through — appending it
+ * again is a no-op in storage, not a new checkout, so it can never be what
+ * fills the cap.
+ */
+export function secondaryRepoCapExceeded(
+  existing: { owner: string; name: string }[],
+  candidate: { owner: string; name: string },
+  cap = MAX_SECONDARY_REPOS,
+): boolean {
+  const key = (r: { owner: string; name: string }) =>
+    `${r.owner}/${r.name}`.toLowerCase();
+  const candidateKey = key(candidate);
+  if (existing.some((r) => key(r) === candidateKey)) return false;
+  return existing.length >= cap;
+}
+
 /** One bash command in the run's pod. Throws on a non-2xx from the daemon. */
 async function podBash(
   provider: AgentSandboxProvider,
@@ -341,6 +371,32 @@ export const TASK_ADD_REPO = defineTool({
       );
     }
 
+    const existingPrimary = (
+      thread.metadata as { githubRepo?: { owner?: string } } | null
+    )?.githubRepo?.owner;
+    const existingSecondaries =
+      (
+        thread.metadata as {
+          githubRepos?: { owner: string; name: string }[];
+        } | null
+      )?.githubRepos ?? [];
+    if (
+      existingPrimary &&
+      secondaryRepoCapExceeded(existingSecondaries, {
+        owner: repo.owner,
+        name: repo.repo,
+      })
+    ) {
+      return {
+        success: false,
+        repo: `${repo.owner}/${repo.repo}`,
+        cloned: false,
+        message:
+          `This run already has ${MAX_SECONDARY_REPOS} additional repositories checked out, ` +
+          `which is the limit. Work with what's already checked out instead of adding another.`,
+      };
+    }
+
     // Fresh credential BEFORE anything is written: a clone URL is only useful
     // with a live token behind it, and this is the failure worth reporting
     // as "could not add the repo" rather than half-binding one.
@@ -364,9 +420,6 @@ export const TASK_ADD_REPO = defineTool({
       { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
     );
 
-    const existingPrimary = (
-      thread.metadata as { githubRepo?: { owner?: string } } | null
-    )?.githubRepo?.owner;
     const bound = {
       url: `https://github.com/${repo.owner}/${repo.repo}`,
       owner: repo.owner,
