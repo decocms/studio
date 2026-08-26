@@ -223,7 +223,8 @@ export interface NatsStreamBufferOptions {
 function isTransientJsApiError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   if (err.name === "TimeoutError") return true;
-  return /timeout|no responders|503/i.test(err.message);
+  // "not enabled" reads like config but is what a leaderless cluster reports.
+  return /timeout|no responders|503|not enabled/i.test(err.message);
 }
 
 export class NatsStreamBuffer implements StreamBuffer {
@@ -427,6 +428,54 @@ export class NatsStreamBuffer implements StreamBuffer {
    * caller knows the publish is confirmed. Returns `false` when JetStream is
    * unavailable so the caller does NOT advance its cursor.
    */
+  /**
+   * Publish ONE already-serialized message, riding out a transient JetStream
+   * outage (leader election, brief no-responders, the node holding the stream
+   * restarting) instead of failing the run. Retried PER MESSAGE, not per
+   * fragment set, so a multi-fragment chunk keeps its order and a mid-loop
+   * failure never republishes the fragments already acked.
+   *
+   * Safe to retry: every publish on the ingest path carries a `msgId` keyed by
+   * `(fenceToken, seq)` and the stream's `duplicate_window` is 2 min, so a
+   * republish inside that window is dropped server-side rather than
+   * double-writing a UI part. Returns `false` once the transient window is
+   * exhausted, preserving this class's "never advance the caller's cursor on a
+   * failed publish" contract rather than throwing a new error shape at callers.
+   */
+  private async publishSerialized(
+    js: JetStreamClient,
+    m: {
+      subject: string;
+      data: Uint8Array;
+      headers?: Record<string, string>;
+      msgId?: string;
+    },
+  ): Promise<boolean> {
+    try {
+      await retry(
+        () =>
+          js.publish(m.subject, m.data, {
+            ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
+            ...(m.msgId ? { msgID: m.msgId } : {}),
+          }),
+        {
+          maxAttempts: 6,
+          minTimeout: 250,
+          maxTimeout: 5000,
+          jitter: 0.5,
+          isRetriable: isTransientJsApiError,
+        },
+      );
+      return true;
+    } catch (err) {
+      console.error(
+        `[Decopilot] publish failed after retries subject=${m.subject}`,
+        err,
+      );
+      return false;
+    }
+  }
+
   async publishRawChunk(
     taskId: string,
     chunk: unknown,
@@ -442,10 +491,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     encodeMsHistogram().record(performance.now() - t0);
     publishedChunksCounter().add(1);
     for (const m of msgs) {
-      await js.publish(m.subject, m.data, {
-        ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
-        ...(m.msgId ? { msgID: m.msgId } : {}),
-      });
+      if (!(await this.publishSerialized(js, m))) return false;
     }
     return true;
   }
@@ -458,8 +504,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     const js = this.js;
     if (!js) return false;
     const m = serializeDone({ runId: taskId, fenceToken, finalSeq });
-    await js.publish(m.subject, m.data, { msgID: m.msgId });
-    return true;
+    return await this.publishSerialized(js, m);
   }
 
   async createTailStream(

@@ -629,6 +629,46 @@ describe("NatsStreamBuffer", () => {
       );
     });
 
+    it("rides out a transient JetStreamNotEnabled and still resolves true", async () => {
+      let attempts = 0;
+      const mockJs = {
+        publish: mockOf(() => {
+          attempts += 1;
+          if (attempts < 3) {
+            const err = new Error("jetstream is not enabled");
+            err.name = "JetStreamNotEnabled";
+            return Promise.reject(err);
+          }
+          return Promise.resolve({ seq: 1 });
+        }),
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+      expect(await buffer.publishRawChunk("run_1", { type: "start" })).toBe(
+        true,
+      );
+      expect(attempts).toBe(3);
+    });
+
+    it("resolves false (never throws) once the transient window is exhausted", async () => {
+      const mockJs = {
+        publish: mockOf(() =>
+          Promise.reject(new Error("no responders: decopilot.stream.run_1")),
+        ),
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+      expect(await buffer.publishRawChunk("run_1", { type: "start" })).toBe(
+        false,
+      );
+    }, 30_000); // exhaustion costs ~13s of real backoff
+
     it("forwards an explicit msgId for JetStream dedup", async () => {
       const published: Array<{ subj: string; opts?: unknown }> = [];
       const mockJs = {
