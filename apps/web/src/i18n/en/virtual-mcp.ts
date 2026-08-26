@@ -199,6 +199,8 @@ Define step-by-step how the agent should handle requests.
 4. Ask for confirmation before making any changes.
 </workflows>`,
   "virtualMcp.virtualMcp.publishing": "Publishing",
+  "virtualMcp.virtualMcp.publishingDescription":
+    "Control when this agent's changes can be published directly, skipping pull-request review.",
   "virtualMcp.virtualMcp.publishPolicySmart": "Smart review",
   "virtualMcp.virtualMcp.publishPolicySmartDescription":
     "AI checks each change and only asks for review when the code looks risky (new endpoints, large or backend changes). Content and design edits publish directly.",

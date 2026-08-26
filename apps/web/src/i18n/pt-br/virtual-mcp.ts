@@ -202,6 +202,8 @@ Defina passo a passo como o agente deve tratar as solicitações.
 4. Pedir confirmação antes de fazer qualquer alteração.
 </workflows>`,
   "virtualMcp.virtualMcp.publishing": "Publicação",
+  "virtualMcp.virtualMcp.publishingDescription":
+    "Controle quando as alterações deste agente podem ser publicadas diretamente, sem revisão por pull request.",
   "virtualMcp.virtualMcp.publishPolicySmart": "Revisão inteligente",
   "virtualMcp.virtualMcp.publishPolicySmartDescription":
     "A IA analisa cada alteração e só pede revisão quando o código parece arriscado (novos endpoints, mudanças grandes ou de backend). Ajustes de conteúdo e design são publicados diretamente.",

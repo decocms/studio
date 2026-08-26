@@ -25,10 +25,8 @@ import { useT } from "@/i18n/use-t.ts";
  * The CMS mode select (`metadata.ui.layout.cms`): whether this agent offers
  * content editing at all, and where the preview lands when it does. `off` hides
  * both entry points — the Content tab and the Preview toolbar's CMS toggle.
- * Ordered by how much CMS each mode gives, so the three read as one scale. The
- * selected mode's description sits under the label, since a select shows one
- * option at a time. Only meaningful for agents with a clonable source — the
- * caller gates on it.
+ * Ordered by how much CMS each mode gives, so the three read as one scale.
+ * Only meaningful for agents with a clonable source — the caller gates on it.
  */
 export interface ContentEditingFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -81,7 +79,7 @@ export function ContentEditingField<T extends FieldValues>({
                 {t("sandbox.cmsSettings.contentEditing.title")}
               </Label>
               <p className="text-xs text-muted-foreground">
-                {options.find((option) => option.value === mode)?.description}
+                {t("sandbox.cmsSettings.contentEditing.description")}
               </p>
             </div>
             <Select

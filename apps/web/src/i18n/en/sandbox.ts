@@ -568,6 +568,8 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
+  "sandbox.cmsSettings.contentEditing.description":
+    "Whether this agent offers a CMS, and where the preview lands when it does.",
   "sandbox.cmsSettings.contentEditing.manual": "On demand",
   "sandbox.cmsSettings.contentEditing.manualDescription":
     "Editors open the CMS from the preview when they need it.",

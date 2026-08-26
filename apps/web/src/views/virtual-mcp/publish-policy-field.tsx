@@ -16,10 +16,9 @@ import { useT } from "@/i18n/use-t.ts";
 
 /**
  * The publish-policy select (`metadata.publishPolicy`): how a code agent's
- * CMS/code changes reach the live site — direct publish vs. PR review. The
- * selected policy's description sits under the label, since a select shows one
- * option at a time. Shares its shape with ContentEditingField in the same
- * section. Code-agent only — the caller gates on a connected GitHub repo.
+ * CMS/code changes reach the live site — direct publish vs. PR review. Shares
+ * its shape with ContentEditingField in the same section. Code-agent only —
+ * the caller gates on a connected GitHub repo.
  */
 export interface PublishPolicyFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -67,7 +66,7 @@ export function PublishPolicyField<T extends FieldValues>({
                 {t("virtualMcp.virtualMcp.publishing")}
               </Label>
               <p className="text-xs text-muted-foreground">
-                {options.find((option) => option.value === policy)?.description}
+                {t("virtualMcp.virtualMcp.publishingDescription")}
               </p>
             </div>
             <Select
