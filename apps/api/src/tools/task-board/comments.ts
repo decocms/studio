@@ -12,6 +12,9 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueJiraCommentPush } from "@/jira/dbos-jira-sync";
 import { taskRunContextStore } from "./task-run-context";
 
+/** No real comment is this long — caps the row a single POST can write. */
+const MAX_COMMENT_BODY_LENGTH = 50_000;
+
 const TaskBoardCommentSchema = z.object({
   id: z.string(),
   taskBoardItemId: z.string(),
@@ -94,7 +97,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
   },
   inputSchema: z.object({
     taskBoardItemId: z.string(),
-    body: z.string().trim().min(1),
+    body: z.string().trim().min(1).max(MAX_COMMENT_BODY_LENGTH),
     /** Reply target. Replying to a reply lands on its thread root. */
     parentId: z.string().nullish(),
   }),
@@ -166,7 +169,7 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
   },
   inputSchema: z.object({
     id: z.string(),
-    body: z.string().trim().min(1).optional(),
+    body: z.string().trim().min(1).max(MAX_COMMENT_BODY_LENGTH).optional(),
     resolved: z.boolean().optional(),
   }),
   outputSchema: z.object({ comment: TaskBoardCommentSchema }),
