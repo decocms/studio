@@ -137,21 +137,6 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
 
-/** True when `queryKey` is a cached live-meta entry for this org/vmid/branch, regardless of its previewUrl suffix. */
-export function isLiveMetaKeyForScope(
-  queryKey: readonly unknown[],
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-): boolean {
-  return (
-    queryKey[0] === "live-meta" &&
-    queryKey[1] === orgSlug &&
-    queryKey[2] === virtualMcpId &&
-    queryKey[3] === branch
-  );
-}
-
 export function buildDirectDaemonEventsUrl(
   previewUrl: string | null | undefined,
 ): string | null {
@@ -390,11 +375,9 @@ export function SandboxEventsProvider({
               void queryClient.invalidateQueries({
                 queryKey: KEYS.decofile(cacheKeyForBranch),
               });
+              // Prefix key — the entry also carries preview/production URL suffixes.
               void queryClient.invalidateQueries({
-                predicate: (query) =>
-                  query.queryKey[0] === "live-meta" &&
-                  typeof query.queryKey[1] === "string" &&
-                  query.queryKey[1].startsWith(`${cacheKeyForBranch}/`),
+                queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
               });
             }
             prevLifecyclePhase = lp.state.phase;
@@ -504,13 +487,7 @@ export function SandboxEventsProvider({
               liveMetaDebounceTimer = setTimeout(() => {
                 liveMetaDebounceTimer = null;
                 void queryClient.invalidateQueries({
-                  predicate: (query) =>
-                    isLiveMetaKeyForScope(
-                      query.queryKey,
-                      org.slug,
-                      virtualMcpId,
-                      branch,
-                    ),
+                  queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
                 });
               }, 1_000);
             }
