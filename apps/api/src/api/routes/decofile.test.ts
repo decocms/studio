@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { patchBodySchema } from "./decofile";
+import { Hono } from "hono";
+import { patchBodyLimit, patchBodySchema } from "./decofile";
 
 describe("decofile patchBodySchema", () => {
   test("accepts a reasonably sized patch", () => {
@@ -32,5 +33,25 @@ describe("decofile patchBodySchema", () => {
       delete: ["x".repeat(2000)],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("decofile patchBodyLimit", () => {
+  const app = new Hono().patch("/", patchBodyLimit, (c) => c.text("ok"));
+
+  test("rejects a body over the raw size cap before it's parsed", async () => {
+    // Before the fix: nothing capped the raw body before c.req.json().
+    const body = "x".repeat(9 * 1024 * 1024);
+    const res = await app.request("/", {
+      method: "PATCH",
+      body,
+      headers: { "content-length": String(body.length) },
+    });
+    expect(res.status).toBe(413);
+  });
+
+  test("lets a body under the cap through", async () => {
+    const res = await app.request("/", { method: "PATCH", body: "small" });
+    expect(res.status).toBe(200);
   });
 });
