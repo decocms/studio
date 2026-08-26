@@ -29,10 +29,36 @@ export function secondaryRepoDirNames(repos: SecondaryRepoRef[]): string[] {
       .map((r) => r.name.toLowerCase())
       .filter((name, i, all) => all.indexOf(name) !== i),
   );
-  return repos.map((r) =>
+  const useOwner = repos.map((r) => shared.has(r.name.toLowerCase()));
+  const candidateOf = (i: number) =>
     sanitize(
-      shared.has(r.name.toLowerCase()) ? `${r.owner}-${r.name}` : r.name,
-    ),
+      useOwner[i] ? `${repos[i].owner}-${repos[i].name}` : repos[i].name,
+    ).toLowerCase();
+
+  // An owner-qualified name can itself collide with a sibling's bare name; escalate the losing side until stable, bounded by repos.length.
+  for (let pass = 0; pass < repos.length; pass++) {
+    const seen = new Map<string, number>();
+    let changed = false;
+    for (let i = 0; i < repos.length; i++) {
+      const candidate = candidateOf(i);
+      const prior = seen.get(candidate);
+      if (prior !== undefined) {
+        if (!useOwner[i]) {
+          useOwner[i] = true;
+          changed = true;
+        }
+        if (!useOwner[prior]) {
+          useOwner[prior] = true;
+          changed = true;
+        }
+      }
+      seen.set(candidate, i);
+    }
+    if (!changed) break;
+  }
+
+  return repos.map((r, i) =>
+    sanitize(useOwner[i] ? `${r.owner}-${r.name}` : r.name),
   );
 }
 

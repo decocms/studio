@@ -49,6 +49,16 @@ describe("secondaryRepoDirNames", () => {
   it("has nothing to name for no repos", () => {
     expect(secondaryRepoDirNames([])).toEqual([]);
   });
+
+  // "a"/"x" and "b"/"x" collide, and "a-x" is a real bare name in the set.
+  it("escalates a bare name that collides with a sibling's owner-qualified fallback", () => {
+    const names = secondaryRepoDirNames([
+      r("a", "x"),
+      r("b", "x"),
+      r("c", "a-x"),
+    ]);
+    expect(new Set(names).size).toBe(names.length);
+  });
 });
 
 // The whole point of the shared rule: TASK_ADD_REPO asks for one repo's name
