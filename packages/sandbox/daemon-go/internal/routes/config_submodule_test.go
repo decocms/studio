@@ -84,3 +84,45 @@ func TestConfigResponsesRedactSubmoduleTokens(t *testing.T) {
 		}
 	})
 }
+
+const secondaryRepoPatch = `{"git":{"repository":{"cloneUrl":"https://github.com/acme/site.git"},` +
+	`"repositories":[{"cloneUrl":"https://github.com/acme/checkout.git","repoName":"checkout",` +
+	`"submoduleCredentials":[{"host":"github.com","token":"ghp_secondarysecret"}]}]}}`
+
+// A secondary checkout carries its own submodule PATs, and the redaction used
+// to reach only the primary. Adding one to the struct without extending the
+// strip would have published them on the same browser-reachable response.
+func TestConfigResponsesRedactSecondaryRepoTokens(t *testing.T) {
+	store := config.NewStore()
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(secondaryRepoPatch), &wire); err != nil {
+		t.Fatal(err)
+	}
+	patch, err := config.ParsePatch(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := store.Apply(patch); !res.Applied {
+		t.Fatalf("apply rejected: %s %s", res.Reason, res.Detail)
+	}
+
+	rec := httptest.NewRecorder()
+	ConfigRead(ConfigDeps{
+		Store:    store,
+		GetReady: func() bool { return true },
+	})(rec, httptest.NewRequest("GET", "/_sandbox/config", nil))
+
+	body := rec.Body.String()
+	if strings.Contains(body, "ghp_secondarysecret") {
+		t.Fatal("secondary repo submodule token leaked in the GET response")
+	}
+	if !strings.Contains(body, "checkout") {
+		t.Fatal("secondary repo should still be reported, minus its credentials")
+	}
+
+	// The store keeps them — the clone step reads them from there.
+	kept := store.Read().Git.Repositories[0].SubmoduleCredentials
+	if len(kept) != 1 || kept[0].Token != "ghp_secondarysecret" {
+		t.Fatalf("strip must copy, not clear the live store: %v", kept)
+	}
+}

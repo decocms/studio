@@ -222,6 +222,20 @@ export function repointedRepoBinding(
  * Note: the sandbox branch embeds the connection id (`threadBranch`), so a
  * repoint yields a fresh sandbox. The old one was unusable anyway.
  */
+/**
+ * The thread's SECONDARY checkouts, the ones `TASK_ADD_REPO` accumulated past
+ * the first. Read on every provision so a recreated pod gets back every repo
+ * the run had added, rather than only the primary.
+ */
+export async function getThreadGithubRepos(
+  ctx: StudioContext,
+  threadId: string | undefined | null,
+): Promise<GithubRepo[]> {
+  const meta = await getThreadMeta(ctx, threadId);
+  const repos = (meta as { githubRepos?: GithubRepo[] } | null)?.githubRepos;
+  return Array.isArray(repos) ? repos.filter((r) => r?.owner && r?.name) : [];
+}
+
 export async function getThreadGithubRepo(
   ctx: StudioContext,
   threadId: string | undefined | null,

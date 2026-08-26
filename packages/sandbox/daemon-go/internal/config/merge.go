@@ -62,10 +62,16 @@ func mergeGit(current, patch *GitConfig) *GitConfig {
 	if current == nil {
 		return patch
 	}
-	return &GitConfig{
-		Repository: mergeRepository(current.Repository, patch.Repository),
-		Identity:   mergeIdentity(current.Identity, patch.Identity),
+	out := &GitConfig{
+		Repository:   mergeRepository(current.Repository, patch.Repository),
+		Repositories: current.Repositories,
+		Identity:     mergeIdentity(current.Identity, patch.Identity),
 	}
+	// Absent keeps current; an explicit list replaces it, empty to drop them all.
+	if patch.Repositories != nil {
+		out.Repositories = patch.Repositories
+	}
+	return out
 }
 
 func mergeRepository(current, patch *GitRepository) *GitRepository {
