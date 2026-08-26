@@ -176,7 +176,6 @@ async function dispatchRunAndWaitStep(
   if (shouldPublishRunStatus(request.harnessId)) {
     await publishRunStatusStage({
       streamBuffer: rt.deps.streamBuffer,
-      organizationId: request.organizationId,
       harnessId: request.harnessId,
       taskId,
       stage: "starting-run",

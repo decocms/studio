@@ -5,21 +5,9 @@
  * thread that in fact runs fine (that is what happened to `claude-code`).
  *
  * `claude-code` runs in the hosted sandbox, not on the user's machine, so it is
- * viewable here.
+ * viewable — and streamable — here, on the same per-thread tail as Decopilot.
  */
 const HOSTED_HARNESS_IDS = new Set(["decopilot", "claude-code"]);
-
-/**
- * Harnesses that run as a batch job rather than a live stream.
- *
- * `claude-code` executes its loop inside the sandbox pod and flushes whole turns
- * on the SDK's `result`, so there is no incremental stream to follow — the chat
- * renders persisted parts and learns about completion from the org-level
- * `/watch`. Decopilot streams token-by-token and is not in this set.
- */
-export function isBatchHarness(harnessId: string | null | undefined): boolean {
-  return harnessId === "claude-code";
-}
 
 /**
  * Hosted chat runs a fixed set of harnesses. Coding-agent ids can still appear

@@ -94,11 +94,6 @@ function isRunStatusStage(value: unknown): value is RunStatusStage {
   );
 }
 
-/** A stage name off the wire, or null when this client cannot render it. */
-export function parseRunStatusStage(value: unknown): RunStatusStage | null {
-  return isRunStatusStage(value) ? value : null;
-}
-
 export function parseRunStatusStageChunk(
   chunk: unknown,
 ): RunStatusStage | null {
@@ -108,7 +103,8 @@ export function parseRunStatusStageChunk(
     data?: { stage?: unknown };
   };
   if (record.type !== "data-run-status") return null;
-  return parseRunStatusStage(record.data?.stage);
+  const stage = record.data?.stage;
+  return isRunStatusStage(stage) ? stage : null;
 }
 
 export function isRunStatusControlChunk(chunk: unknown): boolean {

@@ -281,7 +281,6 @@ const publishWaitingCapacity = (
 ): Promise<void> =>
   publishRunStatusStage({
     streamBuffer: rt.deps.streamBuffer,
-    organizationId: input.request.organizationId,
     harnessId: input.request.harnessId,
     taskId: input.runId,
     stage: "waiting-capacity",

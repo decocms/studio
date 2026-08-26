@@ -69,7 +69,10 @@ import { getPublicUrl } from "@/core/server-constants";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
-import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
+import {
+  publishRunStatusStage,
+  type RunStatusStreamBuffer,
+} from "@/api/routes/decopilot/run-status-stage";
 import {
   getThreadGithubRepo,
   syntheticBranchToGitRef,
@@ -218,6 +221,7 @@ export class SandboxDispatchClient {
   private readonly credential: ClaudeCodeCredential | null;
   private readonly resume: { reason: string } | null;
   private readonly interactive: boolean;
+  private readonly streamBuffer: RunStatusStreamBuffer | undefined;
 
   constructor(args: {
     ctx: StudioContext;
@@ -225,6 +229,9 @@ export class SandboxDispatchClient {
     branch: string;
     /** Resolved thinking-slot credential; becomes the sandbox's model env. */
     credential: ClaudeCodeCredential | null;
+    /** The run's chunk stream, for out-of-band status chunks (see
+     *  `publishRunStatusStage`). Absent on paths that have none. */
+    streamBuffer?: RunStatusStreamBuffer;
     /**
      * Set when the caller knows this dispatch continues a turn a previous
      * Studio process started (see `dispatch-run.ts`'s `resumeFromSeq`). A
@@ -249,6 +256,7 @@ export class SandboxDispatchClient {
     this.credential = args.credential;
     this.resume = args.resume ?? null;
     this.interactive = args.interactive ?? false;
+    this.streamBuffer = args.streamBuffer;
   }
 
   dispatch(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
@@ -492,8 +500,7 @@ export class SandboxDispatchClient {
     // rather than a second agent in the same checkout (see the daemon's
     // `Registry.claim`).
     const runId = input.threadId;
-    const { ctx, virtualMcpId, branch, interactive } = this;
-    const organizationId = organization.id;
+    const { ctx, virtualMcpId, branch, interactive, streamBuffer } = this;
     const credentialProviderId = this.credential.providerId;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
@@ -514,8 +521,7 @@ export class SandboxDispatchClient {
         // install. The chat has no per-thread stream here, so this rides
         // the org `/watch`.
         await publishRunStatusStage({
-          streamBuffer: undefined,
-          organizationId,
+          streamBuffer,
           harnessId: SANDBOX_HOSTED_HARNESS,
           taskId: runId,
           stage: "starting-sandbox",

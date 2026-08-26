@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { translate } from "@/i18n/use-t.ts";
 import {
   advanceRunStatusStage,
-  parseRunStatusStage,
   getRunStatusCopy,
   isRunStatusControlChunk,
   parseRunStatusStageChunk,
@@ -102,11 +101,5 @@ describe("starting-sandbox", () => {
     expect(advanceRunStatusStage("analyzing-scope", "starting-sandbox")).toBe(
       "starting-sandbox",
     );
-  });
-
-  test("parses off the wire, and unknown stages do not", () => {
-    expect(parseRunStatusStage("starting-sandbox")).toBe("starting-sandbox");
-    expect(parseRunStatusStage("not-a-stage")).toBeNull();
-    expect(parseRunStatusStage(undefined)).toBeNull();
   });
 });

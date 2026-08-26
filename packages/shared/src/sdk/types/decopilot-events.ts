@@ -34,7 +34,6 @@ export const DECOPILOT_EVENTS = {
   STEP: "decopilot.step",
   FINISH: "decopilot.finish",
   THREAD_STATUS: "decopilot.thread.status",
-  RUN_STATUS: "decopilot.run.status",
 } as const;
 
 export type DecopilotEventType =
@@ -63,21 +62,6 @@ export interface DecopilotStepEvent extends BaseDecopilotEvent {
 export interface DecopilotFinishEvent extends BaseDecopilotEvent {
   type: typeof DECOPILOT_EVENTS.FINISH;
   data: { status: ThreadStatus };
-}
-
-/**
- * Progress of a run that has not produced content yet — "starting the sandbox",
- * "gathering context". A streaming harness sends the same stages down its own
- * per-thread stream as `data-run-status` chunks; a sandbox-hosted (batch) one
- * has no such stream, so its stages ride the org-level `/watch` instead.
- *
- * `stage` stays a bare string on the wire: the stage vocabulary is owned by the
- * two ends (the API publishes it, the chat validates it against the stages it
- * can render), and a mismatch should drop one event, not fail the union.
- */
-export interface DecopilotRunStatusEvent extends BaseDecopilotEvent {
-  type: typeof DECOPILOT_EVENTS.RUN_STATUS;
-  data: { stage: string };
 }
 
 export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
@@ -119,15 +103,13 @@ export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
 export type DecopilotSSEEvent =
   | DecopilotStepEvent
   | DecopilotFinishEvent
-  | DecopilotThreadStatusEvent
-  | DecopilotRunStatusEvent;
+  | DecopilotThreadStatusEvent;
 
 /** Map from event type string → typed payload (useful for generic handlers) */
 export interface DecopilotEventMap {
   [DECOPILOT_EVENTS.STEP]: DecopilotStepEvent;
   [DECOPILOT_EVENTS.FINISH]: DecopilotFinishEvent;
   [DECOPILOT_EVENTS.THREAD_STATUS]: DecopilotThreadStatusEvent;
-  [DECOPILOT_EVENTS.RUN_STATUS]: DecopilotRunStatusEvent;
 }
 
 // ============================================================================
@@ -144,20 +126,6 @@ export function createDecopilotStepEvent(
     source: "decopilot",
     subject: taskId,
     data: { stepCount },
-    time: new Date().toISOString(),
-  };
-}
-
-export function createDecopilotRunStatusEvent(
-  taskId: string,
-  stage: string,
-): DecopilotRunStatusEvent {
-  return {
-    id: crypto.randomUUID(),
-    type: DECOPILOT_EVENTS.RUN_STATUS,
-    source: "decopilot",
-    subject: taskId,
-    data: { stage },
     time: new Date().toISOString(),
   };
 }

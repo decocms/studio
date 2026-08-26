@@ -94,28 +94,29 @@ describe("publishRunStatusStage", () => {
     ).resolves.toBeUndefined();
   });
 
-  test("leaves the thread stream alone for a sandbox-hosted run", async () => {
+  test("publishes for a sandbox-hosted run too", async () => {
     const publishRawChunk = mock(() => Promise.resolve(true));
     await publishRunStatusStage({
       streamBuffer: { publishRawChunk },
-      organizationId: "org-1",
       harnessId: "claude-code",
       taskId: "thread-1",
       stage: "starting-sandbox",
     });
-    expect(publishRawChunk).not.toHaveBeenCalled();
+    expect(publishRawChunk).toHaveBeenCalledWith("thread-1", {
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "starting-sandbox" },
+    });
   });
 
-  test("publishes nothing for a sandbox-hosted run with no org to watch", async () => {
+  test("publishes nothing for a harness that reports no status", async () => {
     const publishRawChunk = mock(() => Promise.resolve(true));
-    await expect(
-      publishRunStatusStage({
-        streamBuffer: { publishRawChunk },
-        harnessId: "claude-code",
-        taskId: "thread-1",
-        stage: "starting-sandbox",
-      }),
-    ).resolves.toBeUndefined();
+    await publishRunStatusStage({
+      streamBuffer: { publishRawChunk },
+      harnessId: "codex",
+      taskId: "thread-1",
+      stage: "starting-run",
+    });
     expect(publishRawChunk).not.toHaveBeenCalled();
   });
 });
