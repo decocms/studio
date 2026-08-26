@@ -2018,6 +2018,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cmsDisabled?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2225,6 +2226,7 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
+                          cmsDisabled?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2375,6 +2377,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cmsDisabled?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2562,6 +2565,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cmsDisabled?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2740,6 +2744,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cmsDisabled?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2912,6 +2917,7 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
+                          cmsDisabled?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -3070,6 +3076,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cmsDisabled?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3246,6 +3253,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cmsDisabled?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -4279,6 +4287,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cmsDisabled?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;

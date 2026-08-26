@@ -592,6 +592,9 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
   "sandbox.cmsSettings.editing.title": "Edição",
+  "sandbox.cmsSettings.disableCms.label": "Desativar CMS",
+  "sandbox.cmsSettings.disableCms.description":
+    "Oculta a aba Conteúdo e o botão CMS no Preview. O site continua sendo pré-visualizado normalmente, e o agente ainda pode editar o conteúdo.",
   "sandbox.cmsUnavailable.title":
     "Este chat não consegue pré-visualizar seu site",
   "sandbox.cmsUnavailable.noPreviewServer":

@@ -103,6 +103,14 @@ export const VirtualMcpUILayoutSchema = z.object({
    * relevant for agents with a preview.
    */
   cmsDefaultOpen: z.boolean().nullable().optional(),
+  /**
+   * When true, this agent has no CMS: the Content tab and the Preview
+   * toolbar's CMS toggle — the two entry points into content editing — are
+   * not rendered. Off by default (absent / null / false → CMS available
+   * wherever the repo supports it). Purely a UI gate: the decofile is still
+   * readable and the agent can still edit content through its tools.
+   */
+  cmsDisabled: z.boolean().nullable().optional(),
   tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
 });
 

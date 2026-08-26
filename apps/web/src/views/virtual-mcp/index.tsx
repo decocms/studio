@@ -343,6 +343,9 @@ function VirtualMcpDetailViewWithData({
   // Off by default (absent / null → false): the CMS auto-opens in Preview only
   // when an agent explicitly opts in via this toggle.
   const cmsDefaultOpen = layoutMeta?.cmsDefaultOpen ?? false;
+  // On, the two entry points — the Content tab and Preview's CMS toggle — go
+  // away, which also makes "Open CMS" moot (hidden below).
+  const cmsDisabled = layoutMeta?.cmsDisabled ?? false;
 
   // Repo info for the Runtime card (display-only — loose check is intentional)
   const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
@@ -1134,6 +1137,30 @@ function VirtualMcpDetailViewWithData({
                     </p>
                   </div>
                   {hasClonableSource && (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5 min-w-0">
+                        <Label className="font-normal text-foreground">
+                          {t("sandbox.cmsSettings.disableCms.label")}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {t("sandbox.cmsSettings.disableCms.description")}
+                        </p>
+                      </div>
+                      <Switch
+                        className="shrink-0"
+                        checked={cmsDisabled}
+                        onCheckedChange={(checked) => {
+                          form.setValue(
+                            "metadata.ui.layout",
+                            { ...layoutMeta, cmsDisabled: checked },
+                            { shouldDirty: true },
+                          );
+                          flushAndSave();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {hasClonableSource && !cmsDisabled && (
                     <div className="flex items-center justify-between gap-4">
                       <div className="space-y-0.5 min-w-0">
                         <Label className="font-normal text-foreground">

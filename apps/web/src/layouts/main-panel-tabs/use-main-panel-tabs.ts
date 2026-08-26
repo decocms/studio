@@ -145,6 +145,7 @@ export function useMainPanelTabs(ctx: {
               id?: string;
               toolName?: string;
             } | null;
+            cmsDisabled?: boolean | null;
           };
         };
       } | null
@@ -257,10 +258,16 @@ export function useMainPanelTabs(ctx: {
     decofileFetchParams,
     { fetchEnabled: devServerReady },
   );
-  const showContentTab = hasEditableDecoContent(decofile, meta);
-  // Don't bounce a deep-linked `?main=content` away before the first load resolves.
+  // Per-agent "Disable CMS" (Settings › CMS) — same switch that hides the
+  // Preview toolbar's CMS toggle. Off by default.
+  const cmsDisabled = entityLayout?.cmsDisabled ?? false;
+  const showContentTab = !cmsDisabled && hasEditableDecoContent(decofile, meta);
+  // Don't bounce a deep-linked `?main=content` before the first load resolves —
+  // unless the CMS is off, where the answer can't change.
   const contentTabPending =
-    !!decofileFetchParams && (decofileIsPending || metaIsPending);
+    !cmsDisabled &&
+    !!decofileFetchParams &&
+    (decofileIsPending || metaIsPending);
 
   /**
    * Assets is a per-site tab: it shows whenever an S3 bucket is associated to
@@ -365,7 +372,8 @@ export function useMainPanelTabs(ctx: {
   // A tab configured as the default main view stays pinned in the bar even
   // before its runtime data is ready (e.g. Content while the repo is still
   // cloning) — otherwise the bar would drop the tab the user chose to land on.
-  const contentIsDefaultMain = effectiveDefaultMainView?.type === "content";
+  const contentIsDefaultMain =
+    !cmsDisabled && effectiveDefaultMainView?.type === "content";
   if (hasClonableSource && (showContentTab || contentIsDefaultMain)) {
     systemTabs.push({
       id: "content",
