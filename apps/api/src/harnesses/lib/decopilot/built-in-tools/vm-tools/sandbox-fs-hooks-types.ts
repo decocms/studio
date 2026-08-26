@@ -60,8 +60,8 @@ export interface SandboxFsHooks {
    * Escape hatch — proxy an arbitrary `/_sandbox/*` daemon route and return its
    * parsed JSON body, sharing the flat ops' handle-resolution + auto-restart
    * retry layer. Used by the richer LLM-visible tools to cover daemon surfaces
-   * the typed flat ops intentionally don't model (image reads, html-buffer
-   * preview shapes, copy_to_sandbox/share_with_user transfer routes).
+   * the typed flat ops intentionally don't model (image reads and html-buffer
+   * preview shapes).
    *
    * `signal` is the run's abort signal (AI-SDK `ToolCallOptions.abortSignal`):
    * cancelling the run aborts the in-flight daemon request.

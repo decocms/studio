@@ -190,8 +190,8 @@ export function createVmTools(params: VmToolsParams) {
     },
   });
 
-  // org-fs is now the universal substrate: chat attachments arrive in
-  // `org/upload/` (no copy_to_sandbox) and deliverables go to `org/output/`
-  // surfaced via the thread-outputs chips (no share_with_user).
+  // org-fs is the universal substrate: chat attachments arrive in
+  // `org/upload/`, and deliverables in `org/output/` surface through the
+  // thread-output chips.
   return { read, write, edit, grep, glob, bash, skill };
 }

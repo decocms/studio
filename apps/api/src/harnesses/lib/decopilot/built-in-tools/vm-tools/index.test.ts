@@ -53,9 +53,6 @@ describe("createVmTools", () => {
       toolOutputMap: new Map(),
       needsApproval: false,
       pendingImages: [],
-      ctx: { baseUrl: "https://x", objectStorage: null, organization: null },
-      threadId: "t1",
-      virtualMcpId: "agent-1",
     });
     const out = (await tools.read.execute!({ path: "/app/x.ts" }, {
       toolCallId: "tc1",
@@ -77,9 +74,6 @@ describe("createVmTools", () => {
       toolOutputMap: new Map(),
       needsApproval: false,
       pendingImages: pendingImages as never,
-      ctx: { baseUrl: "https://x", objectStorage: null, organization: null },
-      threadId: "t1",
-      virtualMcpId: "agent-1",
     });
     const out = (await tools.read.execute!({ path: "/app/pic.png" }, {
       toolCallId: "tc2",

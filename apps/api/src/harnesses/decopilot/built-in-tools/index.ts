@@ -86,10 +86,9 @@ export type VmContext = {
   branch: string;
   userId: string;
   /**
-   * Current chat thread id. Used by `share_with_user` to scope artifacts
-   * under `model-outputs/<threadId>/`. Required because one ephemeral
-   * sandbox serves multiple threads of the same (user, agent), so the
-   * thread isn't deducible from the sandbox identity alone.
+   * Current thread id. Sent with sandbox filesystem calls so the daemon can
+   * point `org/output/` at this thread's subtree. Required because one
+   * ephemeral sandbox can serve multiple threads of the same (user, agent).
    */
   threadId: string;
   /**
@@ -264,9 +263,6 @@ async function buildAllTools(
       toolOutputMap,
       needsApproval: vmNeedsApproval,
       pendingImages,
-      ctx,
-      threadId: vmContext.threadId,
-      virtualMcpId: vmContext.virtualMcpId,
     }) as ToolSet;
     Object.assign(tools, vmTools);
     // Repo switcher — dynamic description lists the org's imported repos; calling

@@ -14,15 +14,5 @@
   "daemon e2e: smoke and CORS > OPTIONS preflight returns 204 + CORS headers (no auth)",
   "daemon e2e: smoke and CORS > no-auth GETs tolerate an arbitrary Authorization header",
   "daemon e2e: smoke and CORS > serves no-auth GETs and sets CORS on the native branch",
-  "daemon e2e: smoke and CORS > sets Access-Control-Allow-Origin=* on every response branch",
-  "with a live loopback origin allowed &gt; daemon e2e: url transfer SSRF gate > write_from_url does not follow a redirect off the allowlist",
-  "with an allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url rejects a non-http scheme",
-  "with an allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url rejects a suffix of a listed host",
-  "with an allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url rejects an unlisted host",
-  "with an allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url rejects cloud metadata",
-  "with an allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url rejects ip-literal loopback",
-  "with an allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url rejects ipv6 loopback",
-  "with an allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url rejects plain http on a listed host",
-  "with no allowlist configured &gt; daemon e2e: url transfer SSRF gate > upload_to_url denies every host (fail closed)",
-  "with no allowlist configured &gt; daemon e2e: url transfer SSRF gate > write_from_url denies every host (fail closed)"
+  "daemon e2e: smoke and CORS > sets Access-Control-Allow-Origin=* on every response branch"
 ]

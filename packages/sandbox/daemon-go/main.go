@@ -449,7 +449,7 @@ func (d *daemon) linked(fn http.HandlerFunc) http.HandlerFunc {
 // the same loop below, so they cannot drift apart.
 var fsRouteNames = []string{
 	"read", "write", "unlink", "mkdir", "rename", "edit", "grep", "glob",
-	"write_from_url", "upload_to_url", "bash",
+	"bash",
 }
 
 // The subset of the above that mutates the tree, and so runs under the worktree
@@ -459,7 +459,7 @@ var fsRouteNames = []string{
 // (status, diff) are likewise unguarded; the UI polls them.
 var mutatingFsRoutes = map[string]bool{
 	"write": true, "edit": true, "unlink": true, "mkdir": true,
-	"rename": true, "write_from_url": true,
+	"rename": true,
 }
 
 var mutatingGitRoutes = map[string]bool{
@@ -771,14 +771,6 @@ func main() {
 	// was SIGKILLed before deleting.
 	setup.SweepSubmoduleCredentials(tmpDir)
 
-	var transferAllowedHosts []string
-	for _, h := range strings.Split(os.Getenv("OFFLOAD_ALLOWED_HOSTS"), ",") {
-		h = strings.TrimSpace(h)
-		if h != "" {
-			transferAllowedHosts = append(transferAllowedHosts, h)
-		}
-	}
-
 	d := &daemon{
 		token:         os.Getenv("DAEMON_TOKEN"),
 		bootId:        bootId,
@@ -1012,8 +1004,6 @@ func main() {
 			d.branchStatus.Refresh()
 			d.emitFileChanged(path)
 		},
-		AllowedHosts:     transferAllowedHosts,
-		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 	}
 	gitDeps := routes.GitDeps{
 		AppRoot: appRoot,
@@ -1095,17 +1085,15 @@ func main() {
 			},
 		}),
 		fs: map[string]http.HandlerFunc{
-			"read":           routes.Read(fsDeps),
-			"write":          routes.Write(fsDeps),
-			"unlink":         routes.Unlink(fsDeps),
-			"mkdir":          routes.Mkdir(fsDeps),
-			"rename":         routes.Rename(fsDeps),
-			"edit":           routes.Edit(fsDeps),
-			"grep":           routes.Grep(fsDeps),
-			"glob":           routes.Glob(fsDeps),
-			"write_from_url": routes.WriteFromUrl(fsDeps),
-			"upload_to_url":  routes.UploadToUrl(fsDeps),
-			"bash":           routes.Bash(routes.BashDeps{RepoDir: repoDir, TaskManager: d.tasks}),
+			"read":   routes.Read(fsDeps),
+			"write":  routes.Write(fsDeps),
+			"unlink": routes.Unlink(fsDeps),
+			"mkdir":  routes.Mkdir(fsDeps),
+			"rename": routes.Rename(fsDeps),
+			"edit":   routes.Edit(fsDeps),
+			"grep":   routes.Grep(fsDeps),
+			"glob":   routes.Glob(fsDeps),
+			"bash":   routes.Bash(routes.BashDeps{RepoDir: repoDir, TaskManager: d.tasks}),
 		},
 		git: map[string]http.HandlerFunc{
 			"status":  routes.GitStatus(gitDeps),

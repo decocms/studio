@@ -53,7 +53,7 @@ Two properties the consumer depends on, both asserted in `daemon-e2e/`:
 | `internal/orgfs/` | Links half of org-fs (the privileged mounter is the sidecar in `../orgfs/`) |
 | `internal/proxy/` | Preview HTTP + WebSocket proxy |
 | `internal/probe/`, `internal/lifecycle/` | Health probe and lifecycle state |
-| `internal/auth/`, `internal/urlallow/` | Bearer-token auth and the remote file-transfer allowlist |
+| `internal/auth/` | Bearer-token authentication |
 | `internal/telemetry/` | OTLP metrics export |
 | `internal/worktree/` | Worktree lock |
 
@@ -67,7 +67,6 @@ Set by the sandbox template, not by the daemon:
 | `DAEMON_BOOT_ID` | Boot identity echoed by `/health`; how Studio detects a restart |
 | `APP_ROOT` (or `WORKDIR`) | Workspace root — `repo/` checkout, daemon state, log tees |
 | `PROXY_PORT` (or `DAEMON_PORT`) | Listen port |
-| `OFFLOAD_ALLOWED_HOSTS` | Allowlist for remote file upload/download URLs; empty fails closed |
 | `ORGFS_SIDECAR_CONFIG_PATH` / `ORGFS_SIDECAR_STATUS_PATH` | Org-fs relay to the mounter sidecar; org-fs is inert without them |
 
 `/health` is unauthenticated on purpose: Studio polls it and marks the sandbox

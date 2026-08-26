@@ -1,26 +1,16 @@
 /**
- * Black-box ordering contract for filesystem mutation shutdown.
+ * Black-box durability contract for filesystem shutdown.
  *
- * A slow streaming `write_from_url` must never write directly into the Git
- * worktree. SIGTERM cancels and joins its detached preparation owner, and
- * shutdown deliberately performs NO git commit or push: an earlier completed
- * write survives in the worktree uncommitted (durable local state, reused on
- * the next launch), the remote stays untouched, and neither a partial target
- * nor mutation-stage residue reaches the repository.
+ * A completed write survives in the worktree uncommitted across SIGTERM and
+ * immediate same-root restart. Shutdown deliberately performs no git commit
+ * or push, so the remote stays untouched.
  */
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { retry, sleep } from "@decocms/shared/std";
+import { retry } from "@decocms/shared/std";
 import { afterEach, expect, it } from "bun:test";
 
 import {
@@ -41,7 +31,6 @@ const RETRY_OPTIONS = {
 
 let api: LocalApi | null = null;
 let originRoot: string | null = null;
-let source: ReturnType<typeof Bun.serve> | null = null;
 
 function git(cwd: string, args: string[], allowFailure = false): string {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -71,16 +60,14 @@ function configureOriginFixture(localApi: LocalApi): string {
 }
 
 afterEach(async () => {
-  source?.stop(true);
-  source = null;
   await stopLocalApi(api);
   api = null;
   if (originRoot) rmSync(originRoot, { recursive: true, force: true });
   originRoot = null;
 });
 
-describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
-  it("cancels a staged download, keeps completed work local and unpushed, and leaves no partial worktree file", async () => {
+describeLocalApi("local-api e2e: filesystem shutdown durability", () => {
+  it("keeps completed work local and unpushed across shutdown", async () => {
     const first = await startLocalApi({ LOCAL_API_TOKEN_STORE: "memory" });
     api = first;
     const bare = configureOriginFixture(first);
@@ -96,49 +83,6 @@ describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
     });
     expect(completed.status).toBe(200);
 
-    let sourceStarted = false;
-    let sourceCancelled = false;
-    source = Bun.serve({
-      port: 0,
-      hostname: "127.0.0.1",
-      fetch() {
-        sourceStarted = true;
-        let cancelled = false;
-        return new Response(
-          new ReadableStream<Uint8Array>({
-            async start(controller) {
-              controller.enqueue(new TextEncoder().encode("partial-data"));
-              while (!cancelled) {
-                await sleep(25);
-                if (cancelled) break;
-                try {
-                  controller.enqueue(new Uint8Array(1024));
-                } catch {
-                  break;
-                }
-              }
-            },
-            cancel() {
-              cancelled = true;
-              sourceCancelled = true;
-            },
-          }),
-        );
-      },
-    });
-
-    const slowRequest = fetch(url(first, "/_sandbox/write_from_url"), {
-      method: "POST",
-      headers: jsonAuthHeaders(),
-      body: JSON.stringify({
-        path: "slow-download.bin",
-        url: `http://127.0.0.1:${source.port}/slow`,
-      }),
-    }).catch(() => null);
-    await retry(async () => {
-      if (!sourceStarted) throw new Error("download source was not reached");
-    }, RETRY_OPTIONS);
-
     const shutdownStartedAt = Date.now();
     expect(first.proc.kill("SIGTERM")).toBe(true);
     await retry(async () => {
@@ -146,13 +90,9 @@ describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
         throw new Error("local-api has not completed graceful shutdown");
       }
     }, RETRY_OPTIONS);
-    await Promise.race([slowRequest, sleep(1_000)]);
 
     expect(Date.now() - shutdownStartedAt).toBeLessThan(15_000);
     expect(first.proc.exitCode).toBe(0);
-    expect(existsSync(join(repo, "slow-download.bin"))).toBe(false);
-    // The completed write survives shutdown in the worktree, uncommitted:
-    // shutdown neither commits nor pushes local work.
     expect(readFileSync(join(repo, "before-shutdown.txt"), "utf8")).toBe(
       "must stay local\n",
     );
@@ -165,24 +105,7 @@ describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
       { cwd: bare, encoding: "utf8" },
     );
     expect(publishedToRemote.status).not.toBe(0);
-    const partialInRemote = spawnSync(
-      "git",
-      ["show", "sandbox-work:slow-download.bin"],
-      { cwd: bare, encoding: "utf8" },
-    );
-    expect(partialInRemote.status).not.toBe(0);
 
-    const stages = join(first.workdir, ".decocms", "mutations");
-    expect(existsSync(stages) ? readdirSync(stages) : []).toEqual([]);
-    await retry(async () => {
-      if (!sourceCancelled) {
-        throw new Error("download connection has not observed cancellation");
-      }
-    }, RETRY_OPTIONS);
-
-    // The instance lock remains held until mutation cancellation and
-    // listener drain finish. Immediate same-root restart proves no
-    // detached filesystem owner retained the previous server lifecycle.
     const restarted = await startLocalApi(
       { LOCAL_API_TOKEN_STORE: "memory" },
       { workdir: first.workdir },
