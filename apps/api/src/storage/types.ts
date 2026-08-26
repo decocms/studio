@@ -2034,6 +2034,11 @@ export interface OrgJiraIntegrationTable {
    *  as it got, so the next run resumes instead of skipping. */
   last_synced_at: ColumnType<Date | null, never, Date | string | null>;
   last_sync_error: ColumnType<string | null, never, string | null>;
+  /** Set while a rescan (scope change, existing-card fix, or first import)
+   *  hasn't yet finished re-reading the whole scope — survives across the
+   *  multiple runs a large board needs, independent of `last_synced_at`
+   *  (see migration 186). */
+  rescan_pending: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
@@ -2054,6 +2059,7 @@ export interface OrgJiraIntegration {
   enabled: boolean;
   lastSyncedAt: string | null;
   lastSyncError: string | null;
+  rescanPending: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

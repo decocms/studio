@@ -98,10 +98,14 @@ export async function syncJiraIntegrationSafe(
   integration: OrgJiraIntegration,
 ): Promise<JiraSyncResult> {
   try {
-    const { counts, watermark } = await runSync(ctx, integration);
+    const { counts, watermark, rescanPending } = await runSync(
+      ctx,
+      integration,
+    );
     await ctx.storage.jiraIntegrations.recordSyncResult(integration.id, {
       error: null,
       watermark,
+      rescanPending,
     });
     return counts;
   } catch (err) {
@@ -167,6 +171,28 @@ export function isUnchanged(
 ): boolean {
   if (isRescan) return false;
   return new Date(linkUpdatedAt) >= issueUpdated;
+}
+
+/**
+ * Whether the rescan must keep forcing a full re-read on the NEXT run.
+ *
+ * A run only advances as far as `MAX_ISSUES_PER_RUN`/`MAX_PAGES_PER_RUN` let
+ * it (deliberate pacing, see below) — so a rescan on a board with more mapped
+ * issues than one run's cap sets a non-null `last_synced_at` before the scope
+ * is fully re-read. Without this, the next run would read `lastSyncedAt !==
+ * null`, stop treating itself as a rescan, and silently go back to
+ * `isUnchanged`'s shortcut for every issue the first run never reached — the
+ * same bug migration 185 fixed, just past the 500-issue mark instead of at
+ * `updated === lastSyncedAt`.
+ */
+export function rescanContinues(
+  isRescan: boolean,
+  processed: number,
+  pages: number,
+): boolean {
+  const truncated =
+    processed >= MAX_ISSUES_PER_RUN || pages >= MAX_PAGES_PER_RUN;
+  return isRescan && truncated;
 }
 
 /** Epics (hierarchyLevel 1) and anything above are containers, not cards. */
@@ -442,7 +468,11 @@ async function reconcileVanishedIssues(
 async function runSync(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
-): Promise<{ counts: JiraSyncCounts; watermark?: Date }> {
+): Promise<{
+  counts: JiraSyncCounts;
+  watermark?: Date;
+  rescanPending?: boolean;
+}> {
   const orgId = integration.organizationId;
   const boardId = integration.boardId;
   if (!boardId) {
@@ -454,12 +484,9 @@ async function runSync(
     throw new Error("No status mapping configured");
   }
 
-  // A null watermark means "mirror everything from scratch" — a first connect,
-  // or a scope change that cleared it (see migration 184). Both are a backfill
-  // rather than activity, so neither triggers auto-delegation (it would
-  // dispatch one paid run per pre-existing To Do issue), and both must re-read
-  // every card rather than trust what the links already say.
-  const isRescan = integration.lastSyncedAt === null;
+  // First connect / scope change (migration 184) or an unfinished rescan (migration 186).
+  const isRescan =
+    integration.lastSyncedAt === null || integration.rescanPending;
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
@@ -660,9 +687,10 @@ async function runSync(
   // `last_synced_at` stays NULL: the UI would sit on "waiting for the first
   // sync" forever and every later run would count as the initial import, which
   // is exactly the state that suppresses auto-delegation.
+  const rescanPending = rescanContinues(isRescan, processed, pages);
   if (watermark === undefined && processed === 0) {
-    return { counts, watermark: runStartedAt };
+    return { counts, watermark: runStartedAt, rescanPending };
   }
 
-  return { counts, watermark };
+  return { counts, watermark, rescanPending };
 }
