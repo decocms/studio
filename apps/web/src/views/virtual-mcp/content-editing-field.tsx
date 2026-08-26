@@ -71,7 +71,6 @@ export function ContentEditingField<T extends FieldValues>({
               type="single"
               variant="outline"
               size="sm"
-              className="w-full"
               value={mode}
               aria-label={t("sandbox.cmsSettings.contentEditing.title")}
               onValueChange={(next) => {
@@ -86,7 +85,7 @@ export function ContentEditingField<T extends FieldValues>({
                 <ToggleGroupItem
                   key={option.value}
                   value={option.value}
-                  className="flex-1 h-8 px-3 text-sm"
+                  className="h-8 px-3 text-sm"
                 >
                   {option.label}
                 </ToggleGroupItem>

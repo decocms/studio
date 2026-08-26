@@ -339,7 +339,12 @@ function VirtualMcpDetailViewWithData({
   // gate Preview/Content as a main-view option (a Start Website template or a
   // connected GitHub repo).
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
-  const cmsMode = resolveCmsMode(form.watch("metadata.ui.layout"));
+  // No CMS for this agent — the rest of the CMS card configures one, so it
+  // collapses to the control that turned it off. Needs the control on screen
+  // (`hasClonableSource`) or an API-written mode would empty the card.
+  const cmsOff =
+    hasClonableSource &&
+    resolveCmsMode(form.watch("metadata.ui.layout")) === "off";
 
   // Repo info for the Runtime card (display-only — loose check is intentional)
   const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
@@ -1099,48 +1104,56 @@ function VirtualMcpDetailViewWithData({
                         onCommit={flushAndSave}
                       />
                       {/* Blocks-form preference — nothing to tune with the CMS off. */}
-                      {cmsMode !== "off" && (
+                      {!cmsOff && (
                         <FieldDescriptionTooltipsField control={form.control} />
                       )}
                     </CardContent>
-                    <div className="border-t border-border -mx-6" />
+                    {!cmsOff && (
+                      <div className="border-t border-border -mx-6" />
+                    )}
                   </>
                 )}
-                {/* Preview — preview URL + the Fast Preview switch it gates
-                    (a URL is required for Fast Preview to take effect). */}
-                <CardContent className="p-0 space-y-5">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-sm font-medium text-foreground">
-                      {t("sandbox.cmsSettings.preview.title")}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {t("sandbox.cmsSettings.preview.description")}
-                    </p>
-                  </div>
-                  <PreviewServerUrlField control={form.control} />
-                  <FastPreviewField
-                    control={form.control}
-                    previewServerUrl={form.watch("metadata.previewServerUrl")}
-                  />
-                </CardContent>
-
-                {hasGithubRepo && (
+                {!cmsOff && (
                   <>
-                    <div className="border-t border-border -mx-6" />
+                    {/* Preview — preview URL + the Fast Preview switch it gates
+                        (a URL is required for Fast Preview to take effect). */}
                     <CardContent className="p-0 space-y-5">
                       <div className="flex flex-col gap-1">
                         <h3 className="text-sm font-medium text-foreground">
-                          {t("virtualMcp.virtualMcp.publishing")}
+                          {t("sandbox.cmsSettings.preview.title")}
                         </h3>
                         <p className="text-sm text-muted-foreground">
-                          {t("virtualMcp.virtualMcp.publishingDescription")}
+                          {t("sandbox.cmsSettings.preview.description")}
                         </p>
                       </div>
-                      <PublishPolicyField
+                      <PreviewServerUrlField control={form.control} />
+                      <FastPreviewField
                         control={form.control}
-                        onCommit={flushAndSave}
+                        previewServerUrl={form.watch(
+                          "metadata.previewServerUrl",
+                        )}
                       />
                     </CardContent>
+
+                    {hasGithubRepo && (
+                      <>
+                        <div className="border-t border-border -mx-6" />
+                        <CardContent className="p-0 space-y-5">
+                          <div className="flex flex-col gap-1">
+                            <h3 className="text-sm font-medium text-foreground">
+                              {t("virtualMcp.virtualMcp.publishing")}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              {t("virtualMcp.virtualMcp.publishingDescription")}
+                            </p>
+                          </div>
+                          <PublishPolicyField
+                            control={form.control}
+                            onCommit={flushAndSave}
+                          />
+                        </CardContent>
+                      </>
+                    )}
                   </>
                 )}
               </Card>
