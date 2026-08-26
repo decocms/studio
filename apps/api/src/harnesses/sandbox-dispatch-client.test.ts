@@ -222,6 +222,26 @@ describe("ndjsonLines", () => {
     expect(seen).toEqual([{ chunks: [], note: "日本語" }]);
   });
 
+  test("a runaway line without a newline is refused instead of buffered forever", async () => {
+    // No trailing newline — the whole thing is one buffered, unterminated tail.
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(`{"x":"${"a".repeat(70_000_000)}`),
+        );
+        controller.close();
+      },
+    });
+    let thrown: unknown;
+    try {
+      for await (const _ of ndjsonLines(body)) void _;
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toMatch(/without a newline/);
+  });
+
   test("a non-transport read failure stays terminal", async () => {
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
