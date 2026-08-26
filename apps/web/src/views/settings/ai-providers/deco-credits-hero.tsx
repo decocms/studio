@@ -275,46 +275,47 @@ export function DecoCreditsHero() {
             </p>
           ) : (
             <>
-          {/* Balance */}
-          <div className="flex flex-col gap-2 pt-2">
-            <div className="flex items-baseline gap-2">
-              {isLoading || isFetching ? (
-                <Skeleton className="h-9 w-24" />
-              ) : (
-                <span
-                  className={cn(
-                    "text-3xl font-semibold tabular-nums tracking-tight",
-                    balanceDollars != null && creditColorClass(balanceDollars),
+              {/* Balance */}
+              <div className="flex flex-col gap-2 pt-2">
+                <div className="flex items-baseline gap-2">
+                  {isLoading || isFetching ? (
+                    <Skeleton className="h-9 w-24" />
+                  ) : (
+                    <span
+                      className={cn(
+                        "text-3xl font-semibold tabular-nums tracking-tight",
+                        balanceDollars != null &&
+                          creditColorClass(balanceDollars),
+                      )}
+                    >
+                      {displayBalance}
+                    </span>
                   )}
-                >
-                  {displayBalance}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
-                aria-label={t("settings.decoCreditsHero.refreshBalance")}
-              >
-                <RefreshCw01
-                  size={14}
-                  className={cn(isFetching && "animate-spin")}
-                />
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.decoCreditsHero.availableBalance")}
-            </p>
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => refetch()}
+                    disabled={isFetching}
+                    className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
+                    aria-label={t("settings.decoCreditsHero.refreshBalance")}
+                  >
+                    <RefreshCw01
+                      size={14}
+                      className={cn(isFetching && "animate-spin")}
+                    />
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.decoCreditsHero.availableBalance")}
+                </p>
+              </div>
 
-          {/* Quick top-up */}
-          <div className="pt-4 border-t border-border/60">
-            <p className="text-xs font-medium text-muted-foreground mb-2.5">
-              {t("settings.decoCreditsHero.addCredits")}
-            </p>
-            <QuickTopUp />
-          </div>
+              {/* Quick top-up */}
+              <div className="pt-4 border-t border-border/60">
+                <p className="text-xs font-medium text-muted-foreground mb-2.5">
+                  {t("settings.decoCreditsHero.addCredits")}
+                </p>
+                <QuickTopUp />
+              </div>
             </>
           )}
         </div>
