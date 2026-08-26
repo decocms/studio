@@ -5,10 +5,11 @@ import {
   type FieldValues,
 } from "react-hook-form";
 import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@decocms/ui/components/radio-group.tsx";
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import {
+  CmsModeSchema,
   resolveCmsMode,
   withCmsMode,
   type CmsMode,
@@ -17,12 +18,11 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 
 /**
- * The CMS mode radio group (`metadata.ui.layout.cms`): whether this agent
- * offers content editing at all, and where the preview lands when it does.
- * `off` hides both entry points — the Content tab and the Preview toolbar's CMS
- * toggle. Sits next to PublishPolicyField in the CMS section and follows the
- * same shape. Only meaningful for agents with a clonable source — the caller
- * gates on it.
+ * The CMS mode control (`metadata.ui.layout.cms`): whether this agent offers
+ * content editing at all, and where the preview lands when it does. `off` hides
+ * both entry points — the Content tab and the Preview toolbar's CMS toggle.
+ * Ordered by how much CMS each mode gives, so the three read as one scale.
+ * Only meaningful for agents with a clonable source — the caller gates on it.
  */
 export interface ContentEditingFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -37,6 +37,11 @@ export function ContentEditingField<T extends FieldValues>({
   const t = useT();
   const options = [
     {
+      value: "off",
+      label: t("sandbox.cmsSettings.contentEditing.off"),
+      description: t("sandbox.cmsSettings.contentEditing.offDescription"),
+    },
+    {
       value: "manual",
       label: t("sandbox.cmsSettings.contentEditing.manual"),
       description: t("sandbox.cmsSettings.contentEditing.manualDescription"),
@@ -45,11 +50,6 @@ export function ContentEditingField<T extends FieldValues>({
       value: "auto",
       label: t("sandbox.cmsSettings.contentEditing.auto"),
       description: t("sandbox.cmsSettings.contentEditing.autoDescription"),
-    },
-    {
-      value: "off",
-      label: t("sandbox.cmsSettings.contentEditing.off"),
-      description: t("sandbox.cmsSettings.contentEditing.offDescription"),
     },
   ] as const satisfies ReadonlyArray<{
     value: CmsMode;
@@ -64,37 +64,38 @@ export function ContentEditingField<T extends FieldValues>({
       control={control}
       render={({ field }) => {
         const layout = (field.value ?? null) as VirtualMcpUILayout | null;
+        const mode = resolveCmsMode(layout);
         return (
-          <RadioGroup
-            value={resolveCmsMode(layout)}
-            onValueChange={(value) => {
-              field.onChange(withCmsMode(layout, value as CmsMode));
-              onCommit();
-            }}
-            className="gap-4"
-          >
-            {options.map((option) => (
-              <label
-                key={option.value}
-                htmlFor={`content-editing-${option.value}`}
-                className="flex cursor-pointer items-start gap-3"
-              >
-                <RadioGroupItem
-                  id={`content-editing-${option.value}`}
+          <div className="flex flex-col gap-2">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              value={mode}
+              aria-label={t("sandbox.cmsSettings.contentEditing.title")}
+              onValueChange={(next) => {
+                // Radix yields "" when the active item is clicked again.
+                const parsed = CmsModeSchema.safeParse(next);
+                if (!parsed.success) return;
+                field.onChange(withCmsMode(layout, parsed.data));
+                onCommit();
+              }}
+            >
+              {options.map((option) => (
+                <ToggleGroupItem
+                  key={option.value}
                   value={option.value}
-                  className="mt-0.5"
-                />
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-foreground">
-                    {option.label}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    {option.description}
-                  </span>
-                </div>
-              </label>
-            ))}
-          </RadioGroup>
+                  className="flex-1 h-8 px-3 text-sm"
+                >
+                  {option.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <p className="text-xs text-muted-foreground">
+              {options.find((option) => option.value === mode)?.description}
+            </p>
+          </div>
         );
       }}
     />

@@ -85,6 +85,7 @@ import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
+import { resolveCmsMode } from "@decocms/shared/sdk/types";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -338,6 +339,7 @@ function VirtualMcpDetailViewWithData({
   // gate Preview/Content as a main-view option (a Start Website template or a
   // connected GitHub repo).
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
+  const cmsMode = resolveCmsMode(form.watch("metadata.ui.layout"));
 
   // Repo info for the Runtime card (display-only — loose check is intentional)
   const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
@@ -1096,6 +1098,10 @@ function VirtualMcpDetailViewWithData({
                         control={form.control}
                         onCommit={flushAndSave}
                       />
+                      {/* Blocks-form preference — nothing to tune with the CMS off. */}
+                      {cmsMode !== "off" && (
+                        <FieldDescriptionTooltipsField control={form.control} />
+                      )}
                     </CardContent>
                     <div className="border-t border-border -mx-6" />
                   </>
@@ -1137,21 +1143,6 @@ function VirtualMcpDetailViewWithData({
                     </CardContent>
                   </>
                 )}
-
-                {/* Editing — content-editing preferences (auto-open the CMS,
-                    team sync, compact field descriptions). */}
-                <div className="border-t border-border -mx-6" />
-                <CardContent className="p-0 space-y-5">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-sm font-medium text-foreground">
-                      {t("sandbox.cmsSettings.editing.title")}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {t("sandbox.cmsSettings.editing.description")}
-                    </p>
-                  </div>
-                  <FieldDescriptionTooltipsField control={form.control} />
-                </CardContent>
               </Card>
             </div>
 

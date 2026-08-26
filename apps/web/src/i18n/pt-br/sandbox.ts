@@ -591,7 +591,6 @@ export const sandbox = {
     "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
-  "sandbox.cmsSettings.editing.title": "Edição",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
     "Se este agente oferece um CMS e onde o preview abre quando oferece.",
@@ -612,8 +611,6 @@ export const sandbox = {
     "É uma sessão de CMS, mas este projeto não tem repositório do GitHub para salvar.",
   "sandbox.cmsUnavailable.startCodingSession":
     "Continuar esta branch em uma sessão de código",
-  "sandbox.cmsSettings.editing.description":
-    "Personalize a experiência de edição de conteúdo no formulário de blocos.",
   "sandbox.previewServerUrlField.description":
     "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
   "sandbox.previewServerUrlField.label": "Servidor de preview",
