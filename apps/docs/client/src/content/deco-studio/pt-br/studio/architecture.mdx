@@ -15,7 +15,7 @@ O Studio abrange três fronteiras de confiança/localidade:
 
 - **Edge** — o caminho da internet pública: um CDN e um load balancer L4.
 - **Cloud cluster** — o deployment no Kubernetes: web, API, workers, Postgres, NATS e cloud sandboxes.
-- **Desktop** — o laptop do usuário, conectado via `deco link`, onde o desktop loop e o desktop sandbox podem rodar.
+- **Desktop** — a app nativa do Studio no laptop do usuário, onde o `local-api` embutido gerencia coding harnesses nativos e sandboxes locais.
 
 <ArchitectureDiagram />
 
@@ -28,16 +28,16 @@ EDGE                CLOUD CLUSTER                                     DESKTOP
 Client ─▶ CF ─┬─▶ NLB ─▶ Web(nginx) ─▶ API ──┬─▶ MCP Proxy ─▶ Downstream MCP (ext)
               │                               ├─▶ Files/Storage ─▶ Object Store (ext)
               │                               ├─▶ DB (Postgres)
-              │                               ├─▶ NATS ───────────────▶ Link Daemon
-              │                               └─▶ Worker                    │
-              │                                     │  model                ▼
-              │                                     ├──────────▶ LLM   Desktop Loop ─▶ Desktop Sandbox
-              │                                     ├─▶ DB                   │              └─ Org FS (mount)
-              │                                     ├─▶ Files/Storage        └─(MCP presigned)─▶ API
-              │                                     ├─▶ Downstream MCP (in-process bridge)
-              │                                     └─▶ Cloud Sandbox ─┬─ Daemon API (/_sandbox/*)
-              │                                                        └─ Org FS (sidecar) ─▶ /api/:org/fs ─▶ S3
+              │                               ├─▶ NATS
+              │                               └─▶ Worker ─┬─▶ LLM
+              │                                           ├─▶ Downstream MCP (in-process bridge)
+              │                                           └─▶ AgentSandbox ─┬─ Daemon API (/_sandbox/*)
+              │                                                             └─ Org FS (sidecar) ─▶ /api/:org/fs ─▶ S3
               └─▶ Gateway (k8s) ─▶ Preview (public dev-server)
+
+Desktop app ─▶ local-api ─┬─▶ Studio API (dados upstream e MCP)
+                          ├─▶ Claude Code / Codex / OpenCode
+                          └─▶ Desktop Sandbox ─▶ Org FS (mount)
 ```
 
 ## Edge
@@ -70,7 +70,7 @@ O conjunto de queues que um pod worker escuta é configurado por env (`listenQue
 | Componente | Função |
 | --- | --- |
 | **DB** (PostgreSQL, via Kysely) | Sistema de registro: orgs, connections, credential vault, audit, threads + mensagens e `sandbox_runner_state`. Também mantém as **queues do DBOS e o journal `workflow_status`** que tornam os runs duráveis e recuperáveis. |
-| **NATS** | Infraestrutura de mensageria ao vivo com três tarefas: (1) fan-out do JetStream `/stream` (`decopilot.stream.<thread>`) → live tail da UI; (2) a work-queue de pull (`link.work.<user>`) → desktop; (3) o KV de link-claim (`studio_links`) que rastreia qual pod é dono do link de cada usuário. |
+| **NATS** | Infraestrutura de mensageria ao vivo com três tarefas: (1) o log de runs com fencing no JetStream (`decopilot.stream.<thread>`), usado por `/stream` e pelo projector durável; (2) broadcasts de cancelamento de runs entre pods; (3) estado em JetStream KV compartilhado entre réplicas para caches de listas MCP e circuit breakers de connections. |
 
 <Callout type="warning">
   **O event bus está dormente.** O *recurso* de pub/sub de CloudEvents (`EVENT_PUBLISH`/`EVENT_SUBSCRIBE`, a queue de eventos durável, os subscribers `ON_EVENTS`) só é consumido pelo plugin de workflow, que não está em uso. O NATS em si **não** está dormente — ele serve as tarefas ao vivo listadas acima. Não confunda as duas coisas.
@@ -82,14 +82,16 @@ O conjunto de queues que um pod worker escuta é configurado por env (`listenQue
 2. A **API** o enfileira em uma queue do DBOS no Postgres:
    - `THREAD_GATE_QUEUE` — serializada por thread (concorrência 1 por `threadId`).
    - `AUTOMATIONS_QUEUE` — particionada por org, então uma org saturada só bloqueia a própria partição.
-3. Um **Worker** desenfileira o gate workflow, que inicia um child workflow na `HOSTED_HARNESS_QUEUE` (também concorrência 1 por `threadId`) que roda o agent loop: chama o model, executa as chamadas de tool, repete (até um limite de steps). O gate pai não espera o child — ele acompanha (live-tail) o mesmo stream do NATS que o child publica e é quem escreve o status terminal.
+3. Um **Worker** desenfileira o gate workflow e inicia um child workflow hosted. Runs in-process do Decopilot usam `HOSTED_HARNESS_QUEUE`; runs de Claude Code hosted na sandbox usam `HOSTED_HARNESS_SANDBOXED_QUEUE`. O gate pai não espera o child — ele acompanha (live-tail) o mesmo stream do NATS que o child publica, enquanto o projector durável escreve mensagens e o status terminal.
 4. Os chunks de output são publicados no NATS e acompanhados de volta para a UI via `/stream`.
 5. Se o pod cair, o **replay do journal do DBOS** retoma os steps retriáveis em outro pod — a recuperação é trabalho do framework, não feito à mão.
 
-Há dois transportes para o passo 3:
+Os dois caminhos são hosted e usam o provider fixo **AgentSandbox** do Studio quando precisam de uma sandbox:
 
-- **Hosted** (padrão) — o run executa in-process no worker e usa um **cloud sandbox**.
-- **Pull** — o run é publicado no NATS `link.work.<user>`; o **desktop** do usuário o pega e roda o loop localmente contra um **desktop sandbox**.
+- **Decopilot** roda seu model loop in-process no worker e acessa a sandbox gerenciada para operações de repositório, filesystem, Git e shell.
+- **Claude Code** roda seu harness loop dentro da sandbox gerenciada; o worker encaminha seu stream para o mesmo pipeline de NATS e projector.
+
+Chats de coding agents nativos são uma superfície separada. A app desktop roda Claude Code, Codex ou OpenCode localmente e sincroniza a thread por meio do `local-api` embutido.
 
 ## MCP: in-process vs. as rotas de proxy
 
@@ -110,7 +112,7 @@ As rotas de file e object-storage são a verdadeira superfície "chamada por amb
 
 ## Sandboxes
 
-Uma sandbox clona o repo, roda o dev server e expõe um **daemon** in-pod. Sua superfície HTTP se divide em duas:
+Uma AgentSandbox hosted clona o repo, roda o dev server e expõe um **daemon** in-pod. Sua superfície HTTP se divide em duas:
 
 | Superfície | Auth | Propósito | Quem chama |
 | --- | --- | --- | --- |
@@ -121,25 +123,27 @@ Uma sandbox clona o repo, roda o dev server e expõe um **daemon** in-pod. Sua s
 
 | | Cloud sandbox | Desktop sandbox |
 | --- | --- | --- |
-| Onde | operador agent-sandbox + um pod `SandboxClaim` por (user, projectRef) | Mesmo daemon, iniciado localmente no laptop |
-| Acessado via | port-forward do k8s / Service in-cluster (controle); ingress ou port-forward (preview) | loopback (controle); `<handle>.localhost:<port>` (preview) |
-| Selecionado quando | é o padrão para runs hosted | um `deco link` está ativo — `user-desktop` é o provider padrão então |
+| Onde | operador agent-sandbox + um pod `SandboxClaim` por (user, projectRef) | O `local-api` e o `SandboxManager` da app nativa, com um worktree local por handle |
+| Acessado via | port-forward do k8s / Service in-cluster (controle); ingress ou port-forward (preview) | interceptação em loopback; `<handle>.localhost:<port>` (preview) |
+| Dono do roteamento | A API hosted do Studio sempre usa AgentSandbox e reporta `agent-sandbox` | A app nativa intercepta localmente as mesmas chamadas de lifecycle/filesystem e reporta `local-api` |
 
 ### Org filesystem (org-fs)
 
 Cada sandbox pode montar o **org filesystem** em `<appRoot>/org/<volume>`, para que o agent e o dev server leiam e escrevam arquivos da org como paths comuns. A stack de mount é `rclone (NFS/FUSE) → o WebDAV de loopback do daemon → /api/:org/fs/* → S3` — o mesmo object store das rotas de arquivo, exposto como um volume montado. É o mesmo filesystem que você navega na [Library](/pt-br/studio/library).
 
-Ele é conectado em **ambos** os providers, com mecânicas de mount diferentes:
+Ele é conectado em **ambas** as superfícies, com mecânicas de mount diferentes:
 
 | | Cloud sandbox | Desktop sandbox |
 | --- | --- | --- |
-| Quem monta | um container **sidecar privilegiado** (o daemon não-privilegiado não consegue montar) | o **daemon diretamente** (ele tem permissões completas) |
-| Entrega da config | pós-bind: Studio `POST /_sandbox/orgfs-config`; o daemon a repassa para um control volume compartilhado que o sidecar observa (claims do warm-pool rejeitam `spec.env`) | env de boot: `ORGFS_CONFIG`, montada na inicialização do daemon |
+| Quem monta | um container **sidecar privilegiado** (o daemon não-privilegiado não consegue montar) | o `local-api` diretamente na máquina do usuário |
+| Entrega da config | pós-bind: Studio `POST /_sandbox/orgfs-config`; o daemon a repassa para um control volume compartilhado que o sidecar observa (claims do warm-pool rejeitam `spec.env`) | o runtime nativo resolve os volumes da org e mantém o mount local |
 | Propagação | `rclone` com `allowOther` para que o mount se propague ao container principal | client único — sem necessidade de propagação |
 
 ## Desktop
 
-Quando um usuário roda `deco link`, um **Link Daemon** no laptop dele faz long-poll no cluster (`/api/links/work` para chat, `/api/links/proxy` para controle de sandbox) e envia heartbeats de presença para o KV de link-claim do NATS. Os runs puxados (pulled) executam no **Desktop Loop** (`runNativeAgentLoopCore`) — uma cópia portável do agent loop. O thinking model é injetado pelo cluster, e o MCP é acessado via HTTP por uma presigned URL de volta para o cluster.
+A app nativa do Studio embute a UI de produção e um **`local-api`** em Axum na mesma origin autenticada de loopback. O `local-api` encaminha dados compartilhados e tráfego MCP para o upstream, mas termina no laptop as rotas exclusivas de thread, harness, sandbox, filesystem, Git, task, terminal e preview. Ele inicia o CLI do Claude Code, Codex ou OpenCode do usuário no worktree local da thread e persiste o estado nativo de threads e sandboxes no SQLite.
+
+O roteamento do provider segue a superfície que recebe o request, e não uma opção do request: chamadas de lifecycle do browser chegam à API hosted e ao AgentSandbox; as mesmas chamadas feitas pela webview nativa são interceptadas pelo `local-api` e operam na sandbox `local-api`. Assim, os registros hosted e desktop continuam distinguíveis sem expor um seletor de provider aos callers.
 
 ## Em resumo
 
@@ -148,4 +152,4 @@ Quando um usuário roda `deco link`, um **Link Daemon** no laptop dele faz long-
 - **As chamadas de tool de MCP são in-process** no worker; as rotas de proxy `/mcp/*` são apenas para clients externos.
 - **As rotas de file/object-storage** são a superfície compartilhada entre API e worker.
 - **O NATS está ao vivo**; o recurso de event-bus de CloudEvents está dormente.
-- **As sandboxes** expõem um preview público e uma control API protegida por token, na cloud (k8s) ou no desktop (`deco link`).
+- **O roteamento de sandbox pertence à superfície**: o Studio hosted usa AgentSandbox; a app nativa intercepta localmente e registra `local-api`.

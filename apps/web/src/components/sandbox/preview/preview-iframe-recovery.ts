@@ -23,7 +23,7 @@ const RETRY_CAP_MS = 30_000;
  * on the browser's connection-refused page and stay there: the failed
  * cross-origin navigation fires no `load`/`error` event, so nothing tells the
  * app to retry once the server is back (SSE reload signals only fire on port
- * changes / `.deco` writes / explicit daemon events — not on this recovery).
+ * changes / explicit daemon events — not on this recovery).
  *
  * This watchdog arms a timer each time the iframe is pointed at a sandbox URL;
  * if no `load` arrives in {@link LOAD_TIMEOUT_MS} it reassigns `src` to retry,

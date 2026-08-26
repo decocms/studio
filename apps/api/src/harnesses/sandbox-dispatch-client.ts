@@ -1,16 +1,16 @@
 /**
- * SandboxDispatchClient — the `SandboxClient` for harnesses that run INSIDE the
- * sandbox instead of in this process.
+ * Dispatches harnesses that run inside the hosted sandbox instead of in the
+ * Studio process.
  *
- * Decopilot runs in-process (`InProcessSandboxClient`); the Claude Agent SDK
- * cannot — it is a TS library that drives the `claude` CLI, and it belongs next
+ * Decopilot runs in-process; the Claude Agent SDK cannot — it is a TS library
+ * that drives the `claude` CLI, and it belongs next
  * to the checkout. So this client provisions the pod, POSTs the same
  * `HarnessStreamInputWire` to the daemon's `/_sandbox/dispatch`, and yields the
  * turn it answers with as the `UIMessageChunk` iterable every consumer upstream
  * already expects. Nothing downstream of `dispatch()` can tell the difference.
  *
- * STUDIO-OWNED, like its in-process sibling: it closes over StudioContext, so
- * it cannot live in `@decocms/sandbox`.
+ * STUDIO-OWNED: it closes over StudioContext, so it cannot live in
+ * `@decocms/sandbox`.
  *
  * Transport note: one request per run, held open for its whole length, with the
  * daemon streaming newline-delimited `HarnessRunResult` frames as the harness
@@ -31,18 +31,18 @@
 
 import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/shared/std";
-import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
-import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import {
+  harnessRunResultSchema,
+  type HarnessStreamInputWire,
+} from "@decocms/sandbox/dispatch/schemas";
 import {
   SANDBOX_GONE_TERMINAL_CODE,
   SANDBOX_UNREACHABLE_PREFIX,
 } from "@decocms/sandbox/dispatch/error-codes";
-import type {
-  PodTermination,
-  SandboxProvider,
-} from "@decocms/sandbox/provider";
+import type { PodTermination } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
-import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
+import type { HarnessStreamInput } from "@/harnesses/lib/types";
 import {
   claudeCodeEnvFromCredential,
   modelClassFromMetadata,
@@ -52,10 +52,27 @@ import {
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import type { StudioContext } from "../core/studio-context";
-import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
+import {
+  mintMcpEndpoint,
+  orgMcpServers,
+  runKeyPermissions,
+} from "@/mcp-clients/virtual-mcp/mint-endpoint";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import type { ConnectionEntity } from "@/tools/connection/schema";
+import { hasAdminRole } from "@decocms/shared/auth/roles";
+import { fetchRolePermissions } from "@/core/context-factory";
+import type { Permission } from "@/storage/types";
+import { connectionGrantsFor, rolesOf } from "@/harnesses/org-mcp-grants";
+import { REVIEW_RUN_TOOL_NAMES } from "@/tools/task-board/task-run-context";
+import { getPublicUrl } from "@/core/server-constants";
+import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import {
+  publishRunStatusStage,
+  type RunStatusStreamBuffer,
+} from "@/api/routes/decopilot/run-status-stage";
 import {
   getThreadGithubRepo,
   syntheticBranchToGitRef,
@@ -73,8 +90,8 @@ import {
  */
 const SANDBOX_REPO_CWD = "/repo";
 
-/** Harnesses this client can dispatch. Decopilot is in-process, never here. */
-const SANDBOX_HOSTED_HARNESSES = new Set<HarnessId>(["claude-code"]);
+/** The one harness this client dispatches. Decopilot runs in-process. */
+const SANDBOX_HOSTED_HARNESS = "claude-code";
 
 /**
  * Dispatches per run WITHOUT PROGRESS: the first, plus ONE continuation after
@@ -191,32 +208,30 @@ export function isUnreachableStatus(status: number): boolean {
   return status === 404 || status === 410 || status >= 500;
 }
 
-/**
- * Widened past `HarnessId` so callers holding a raw `threads.harness_id` can ask
- * without an `as`-cast — a cast there would hide a renamed harness until
- * runtime. A Set lookup is total over strings, so nothing is lost.
- */
 export function harnessRunsInSandbox(
   harnessId: string | null | undefined,
 ): boolean {
-  return SANDBOX_HOSTED_HARNESSES.has(harnessId as HarnessId);
+  return harnessId === SANDBOX_HOSTED_HARNESS;
 }
 
-export class SandboxDispatchClient implements SandboxClient {
+export class SandboxDispatchClient {
   private readonly ctx: StudioContext;
-  private readonly harnessId: HarnessId;
   private readonly virtualMcpId: string;
   private readonly branch: string;
   private readonly credential: ClaudeCodeCredential | null;
   private readonly resume: { reason: string } | null;
+  private readonly interactive: boolean;
+  private readonly streamBuffer: RunStatusStreamBuffer | undefined;
 
   constructor(args: {
     ctx: StudioContext;
-    harnessId: HarnessId;
     virtualMcpId: string;
     branch: string;
     /** Resolved thinking-slot credential; becomes the sandbox's model env. */
     credential: ClaudeCodeCredential | null;
+    /** The run's chunk stream, for out-of-band status chunks (see
+     *  `publishRunStatusStage`). Absent on paths that have none. */
+    streamBuffer?: RunStatusStreamBuffer;
     /**
      * Set when the caller knows this dispatch continues a turn a previous
      * Studio process started (see `dispatch-run.ts`'s `resumeFromSeq`). A
@@ -224,18 +239,24 @@ export class SandboxDispatchClient implements SandboxClient {
      * supplies its own reason.
      */
     resume?: { reason: string };
+    /**
+     * This run shares a sandbox with a person: a chat on a Code Agent, where
+     * the preview panel and the dev server are the point. Such a pod is
+     * provisioned `interactive` (install + dev server, not checkout-only) and
+     * is NOT released when the turn ends — the user is still looking at it.
+     *
+     * A task run is the other case: one headless loop, nobody watching, so it
+     * stays checkout-only and its pod is dropped as soon as the run settles.
+     */
+    interactive?: boolean;
   }) {
-    if (!harnessRunsInSandbox(args.harnessId)) {
-      throw new Error(
-        `SandboxDispatchClient runs sandbox-hosted harnesses only; got "${args.harnessId}"`,
-      );
-    }
     this.ctx = args.ctx;
-    this.harnessId = args.harnessId;
     this.virtualMcpId = args.virtualMcpId;
     this.branch = args.branch;
     this.credential = args.credential;
     this.resume = args.resume ?? null;
+    this.interactive = args.interactive ?? false;
+    this.streamBuffer = args.streamBuffer;
   }
 
   dispatch(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
@@ -283,12 +304,146 @@ export class SandboxDispatchClient implements SandboxClient {
     };
   }
 
+  /**
+   * The MCP surfaces one run gets: its own narrow Studio endpoint (`mcp`), plus
+   * — when the org opted in — every MCP connection in the org as its own server
+   * (`orgMcps`).
+   *
+   * Behind a flag because it is unbounded: each connection is one more server
+   * the harness connects to, and nothing here knows whether an org has three
+   * connections or thirty.
+   *
+   * The connections are resolved BEFORE the key is minted, because they are
+   * part of its scope: every proxied tool call is authorized as
+   * `{ <connectionId>: [<toolName>] }` (see the outbound transport's
+   * `AccessControl`), so a key that does not name a connection cannot call
+   * anything on it. One credential for all of them — a key per connection would
+   * be N live credentials nobody revokes for one run.
+   *
+   * A connection the proxy cannot reach is still not this method's problem: the
+   * harness treats a broken org server as a missing toolset, not a failed run.
+   */
+  private async mcpForRun(
+    organization: { id: string; slug?: string; name?: string },
+    threadId: string,
+    dispatcherUserId: string,
+  ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
+    const candidates = await this.orgMcpConnections(organization);
+    const grants = await this.dispatcherConnectionGrants(
+      organization.id,
+      dispatcherUserId,
+      candidates.map((connection) => connection.id),
+    );
+    const connections = candidates.filter(
+      (connection) => connection.id in grants,
+    );
+    const mcp = await mintMcpEndpoint(
+      this.ctx,
+      this.virtualMcpId,
+      organization,
+      `${SANDBOX_HOSTED_HARNESS}-run`,
+      "task-run",
+      threadId,
+      // Exactly what this run mounts, never a wildcard: the tools its own
+      // Studio surface exposes, plus the connections it was given.
+      //
+      // `self` is the resource key management tools are checked under (see
+      // AccessControl's default `connectionId`); the reviewer superset covers
+      // both run kinds, and which of them a given run can actually call is
+      // already decided by the server it talks to (`toolSubsetMCP`). Each
+      // connection is its own resource key, `"*"` because a run that was given
+      // a connection was given the whole connection.
+      runKeyPermissions({ toolNames: REVIEW_RUN_TOOL_NAMES, grants }),
+    );
+    if (connections.length === 0 || !organization.slug) return { mcp };
+    const orgMcps = orgMcpServers({
+      publicUrl: getPublicUrl(),
+      organizationSlug: organization.slug,
+      headers: mcp.headers,
+      connections,
+    });
+    console.log(
+      `[${SANDBOX_HOSTED_HARNESS}] org mcps: ${
+        orgMcps.map((server) => server.name).join(" ") || "none"
+      }${
+        candidates.length === connections.length
+          ? ""
+          : ` (${candidates.length - connections.length} withheld — the ` +
+            `dispatching user has no grant for them)`
+      }`,
+    );
+    return { mcp, orgMcps };
+  }
+
+  /**
+   * The dispatching user's own per-connection authority, as
+   * `{ <connectionId>: [tools] }` — the scope the run's key gets, and the
+   * filter on which connections it mounts at all.
+   *
+   * The role is read from the member row rather than taken off the context: a
+   * dispatch can arrive from the board or a worker, where the context was not
+   * built from that user's session, and a missing role would silently strip
+   * every connection.
+   */
+  private async dispatcherConnectionGrants(
+    organizationId: string,
+    dispatcherUserId: string,
+    connectionIds: string[],
+  ): Promise<Record<string, string[]>> {
+    if (connectionIds.length === 0) return {};
+    const member = await this.ctx.db
+      .selectFrom("member")
+      .select(["role"])
+      .where("organizationId", "=", organizationId)
+      .where("userId", "=", dispatcherUserId)
+      .executeTakeFirst();
+    const role = member?.role;
+    const statements = hasAdminRole(role ?? undefined)
+      ? []
+      : (
+          await Promise.all(
+            rolesOf(role).map((one) =>
+              fetchRolePermissions(this.ctx.db, organizationId, one),
+            ),
+          )
+        ).filter((statement): statement is Permission => Boolean(statement));
+    return connectionGrantsFor({
+      role,
+      roleStatements: statements,
+      connectionIds,
+    });
+  }
+
+  /**
+   * The org connections this run mounts, or none when the org has not opted in
+   * (or has no slug, without which the per-connection URL cannot be built).
+   */
+  private async orgMcpConnections(organization: {
+    id: string;
+    slug?: string;
+  }): Promise<ConnectionEntity[]> {
+    if (!organization.slug) return [];
+    const settings = await this.ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    if (!orgFlagEnabled(settings?.flags, "coding_agent_org_mcps")) return [];
+    // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
+    const { items } = await this.ctx.storage.connections.list(organization.id);
+    return items.filter(
+      (connection) =>
+        // A connection Studio already knows is erroring only costs the session
+        // a failed connect at startup.
+        connection.status === "active" &&
+        !isStudioOwnedConnection(organization.id, connection.id),
+    );
+  }
+
   private async *stream(
     input: HarnessStreamInput,
   ): AsyncIterable<UIMessageChunk> {
     if (!this.credential) {
       throw new Error(
-        `the ${this.harnessId} harness needs a resolved model credential; ` +
+        `the ${SANDBOX_HOSTED_HARNESS} harness needs a resolved model credential; ` +
           `this run has none (check the agent's thinking model)`,
       );
     }
@@ -303,7 +458,7 @@ export class SandboxDispatchClient implements SandboxClient {
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(
-        `the ${this.harnessId} harness needs an organization on the context ` +
+        `the ${SANDBOX_HOSTED_HARNESS} harness needs an organization on the context ` +
           `to mint its MCP endpoint; this run has none`,
       );
     }
@@ -311,11 +466,7 @@ export class SandboxDispatchClient implements SandboxClient {
     // Resolved before the pod exists; model credential wins — see `mergeRunEnv`.
     const runEnv = mergeRunEnv(await resolveOrgRunEnv(this.ctx), modelEnv);
 
-    const { provider, kind } = await resolveSandboxProvider(this.ctx, {
-      userId: input.user.id,
-      branch: this.branch,
-      virtualMcpMetadata: null,
-    });
+    const provider = await getAgentSandboxProvider(this.ctx);
     const wireInput = {
       ...input,
       // Hosted Decopilot's in-process client ignores `mcp` and gets the
@@ -335,17 +486,9 @@ export class SandboxDispatchClient implements SandboxClient {
       // tools plus `TASK_ADD_REPO`. It used to be `/mcp/self` — every management
       // tool Studio has, ~200 of them, for the two this harness calls.
       //
-      // ponytail: one surface, not both — the agent's aggregated connections
-      // are not merged in. Add a second MCP server on the wire if a
-      // claude-code run ever needs an agent's own external tools.
-      mcp: await mintMcpEndpoint(
-        this.ctx,
-        this.virtualMcpId,
-        organization,
-        `${this.harnessId}-run`,
-        "task-run",
-        input.threadId,
-      ),
+      // The org's own MCP connections come alongside it (`orgMcps`), behind
+      // the `coding_agent_org_mcps` flag — see `mcpForRun`.
+      ...(await this.mcpForRun(organization, input.threadId, input.user.id)),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId),
@@ -357,7 +500,7 @@ export class SandboxDispatchClient implements SandboxClient {
     // rather than a second agent in the same checkout (see the daemon's
     // `Registry.claim`).
     const runId = input.threadId;
-    const { ctx, harnessId, virtualMcpId, branch } = this;
+    const { ctx, virtualMcpId, branch, interactive, streamBuffer } = this;
     const credentialProviderId = this.credential.providerId;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
@@ -374,13 +517,21 @@ export class SandboxDispatchClient implements SandboxClient {
       resume: { reason: string } | null,
     ): AsyncIterable<UIMessageChunk> =>
       (async function* () {
+        // The longest silence in the run: pod boot, clone, and (interactive)
+        // install. The chat has no per-thread stream here, so this rides
+        // the org `/watch`.
+        await publishRunStatusStage({
+          streamBuffer,
+          harnessId: SANDBOX_HOSTED_HARNESS,
+          taskId: runId,
+          stage: "starting-sandbox",
+        });
         const sandbox = await ensureSandbox(
           {
             virtualMcpId,
             branch,
-            sandboxProviderKind: kind,
-            // One agent loop, no preview, and a memory ceiling of its own.
-            purpose: "harness-run",
+            // Headless loop, no preview — unless someone is watching it.
+            purpose: interactive ? "interactive" : "harness-run",
           },
           ctx,
         );
@@ -392,7 +543,6 @@ export class SandboxDispatchClient implements SandboxClient {
           dispatchToDaemon({
             provider,
             handle: sandbox.sandboxHandle,
-            harnessId,
             input: resume ? { ...wireInput, resume } : wireInput,
             runId,
             signal: input.signal,
@@ -413,9 +563,7 @@ export class SandboxDispatchClient implements SandboxClient {
         describeTermination: async (handle) =>
           handle === null
             ? null
-            : describeTermination(
-                (await provider.lastTermination?.(handle)) ?? null,
-              ),
+            : describeTermination(await provider.lastTermination(handle)),
       });
     } finally {
       // The run is over — cleanly, failed, or aborted. This pod is `cloneOnly`:
@@ -427,9 +575,13 @@ export class SandboxDispatchClient implements SandboxClient {
       // useless as a successful one's. `releaseAfter` only ever moves shutdown
       // earlier and swallows its own errors, so this cannot fail a run or cut
       // short a sandbox another turn just extended.
-      if (lastHandle && getSettings().sandboxReleaseOnRunEndEnabled) {
+      if (
+        lastHandle &&
+        !this.interactive &&
+        getSettings().sandboxReleaseOnRunEndEnabled
+      ) {
         await provider
-          .releaseAfter?.(lastHandle, getSettings().sandboxReleaseGraceMs)
+          .releaseAfter(lastHandle, getSettings().sandboxReleaseGraceMs)
           .catch(() => {});
       }
     }
@@ -595,7 +747,7 @@ const PUSH_ENV_TIMEOUT_MS = 30_000;
  * the request body in an error message.
  */
 export async function pushSandboxEnv(
-  provider: SandboxProvider,
+  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
   handle: string,
   env: Record<string, string | null>,
 ): Promise<void> {
@@ -647,13 +799,12 @@ const TTL_RENEW_MS = 5 * 60_000;
  * protecting.
  */
 function renewWhileStreaming(
-  provider: SandboxProvider,
+  provider: Pick<AgentSandboxProvider, "renewTtl">,
   handle: string,
 ): () => void {
-  if (!provider.renewTtl) return () => {};
   const renew = () =>
     void provider
-      .renewTtl?.(handle)
+      .renewTtl(handle)
       .catch((err) =>
         console.warn(
           `[sandbox-dispatch] TTL renew failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
@@ -669,9 +820,8 @@ function renewWhileStreaming(
 }
 
 async function* dispatchToDaemon(args: {
-  provider: SandboxProvider;
+  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest" | "renewTtl">;
   handle: string;
-  harnessId: HarnessId;
   runId: string;
   input: HarnessStreamInput;
   signal?: AbortSignal;
@@ -680,22 +830,37 @@ async function* dispatchToDaemon(args: {
   // "operation timed out" with no run, no handle and no duration on it, which is
   // indistinguishable from a model error until you go read pod logs.
   const startedAt = Date.now();
+  const wireInput = toWireInput(args.input);
+  const request = (legacyHarnessId = false) =>
+    args.provider.proxyDaemonRequest(args.handle, "/_sandbox/dispatch", {
+      method: "POST",
+      headers: new Headers({ "content-type": "application/json" }),
+      body: JSON.stringify({
+        ...(legacyHarnessId ? { harnessId: SANDBOX_HOSTED_HARNESS } : {}),
+        runId: args.runId,
+        input: wireInput,
+      }),
+      ...(args.signal ? { signal: args.signal } : {}),
+    });
   let res: Response;
   try {
-    res = await args.provider.proxyDaemonRequest(
-      args.handle,
-      "/_sandbox/dispatch",
-      {
-        method: "POST",
-        headers: new Headers({ "content-type": "application/json" }),
-        body: JSON.stringify({
-          harnessId: args.harnessId,
-          runId: args.runId,
-          input: toWireInput(args.input),
-        }),
-        ...(args.signal ? { signal: args.signal } : {}),
-      },
-    );
+    res = await request();
+    if (res.status === 400) {
+      const errorBody: unknown = await res
+        .clone()
+        .json()
+        .catch(() => null);
+      if (
+        typeof errorBody === "object" &&
+        errorBody !== null &&
+        "error" in errorBody &&
+        errorBody.error === "missing_harness_id"
+      ) {
+        // Old pods can outlive an API rollout; their rejection happens before
+        // the run is claimed, so this compatibility retry is side-effect-free.
+        res = await request(true);
+      }
+    }
   } catch (err) {
     // The proxy could not reach the pod at all (port-forward gone, TLS to a
     // dead node, ECONNRESET). Nothing ran, so this is always safe to continue
@@ -858,9 +1023,8 @@ export async function* ndjsonLines(
         .then(() => "silent" as const)
         .catch(() => "read-won" as const);
       const step = await Promise.race([next, timeout]).catch((err: unknown) => {
-        // The body's socket broke mid-run. This is the port-forward
-        // WebSocket to the pod (`AgentSandboxRunner.openForwarder`), and the
-        // API server hanging it up is not the harness failing — the checkout
+        // The body's socket broke mid-run. The API server hanging up its
+        // port-forward to the pod is not the harness failing — the checkout
         // is intact and the turn is continuable, exactly like the silence
         // timeout below. Without this the read rejection travels as a plain
         // Error, `dispatchWithContinuation` refuses to retry it, and a
@@ -894,4 +1058,27 @@ export async function* ndjsonLines(
     // leaves the request (and the daemon's run) hanging behind us.
     await reader.return?.().catch(() => {});
   }
+}
+
+/**
+ * Studio's own well-known connections — the management surface, the two store
+ * registries, and (for orgs that ran commerce onboarding) the Commerce
+ * Discovery report connection. Excluded from a run's `orgMcps` — `_self`
+ * alone is ~200 management tools, which is exactly what the narrow task-run
+ * surface exists to avoid, browsing the MCP store is not a coding agent's
+ * job, and the report connection is a diagnostics tool for the commerce UI,
+ * not something a coding agent should be handed. What the user actually
+ * connected is everything else.
+ */
+export function isStudioOwnedConnection(
+  organizationId: string,
+  connectionId: string,
+): boolean {
+  return [
+    WellKnownOrgMCPId.SELF,
+    WellKnownOrgMCPId.REGISTRY,
+    WellKnownOrgMCPId.COMMUNITY_REGISTRY,
+    WellKnownOrgMCPId.DEV_ASSETS,
+    WellKnownOrgMCPId.COMMERCE_DISCOVERY,
+  ].some((id) => id(organizationId) === connectionId);
 }

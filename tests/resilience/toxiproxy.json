@@ -10,10 +10,5 @@
     "name": "studio_http",
     "listen": "0.0.0.0:3011",
     "upstream": "studio:3000"
-  },
-  {
-    "name": "studio_ws",
-    "listen": "0.0.0.0:3010",
-    "upstream": "nats:4224"
   }
 ]

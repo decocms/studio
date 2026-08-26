@@ -17,11 +17,28 @@ import type {
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
   TaskBoardItemTagRef,
+  TaskBoardItemType,
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { DEFAULT_TASK_TYPE } from "@decocms/shared/task-board";
+import {
+  type ReviewCycleActivity,
+  REVIEWER_KINDS,
+  reviewCycleVerdicts,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
+import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
+import type { NotificationType } from "@decocms/shared/notification-types";
+import { notify } from "../notifications/notify";
+
+/** Activity actions that also earn an inbox row and an email. */
+const NOTIFIED_ACTIONS = new Set<string>(NOTIFICATION_TYPES);
+
+function notifiedType(action: string): NotificationType | null {
+  return NOTIFIED_ACTIONS.has(action) ? (action as NotificationType) : null;
+}
 
 /** One comment on a task, as the tools return it. `parentId` null = thread root;
  *  `resolved` only means anything on a root. */
@@ -70,7 +87,7 @@ function commentFromDbRow(row: {
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
 /** Actions that describe editing prose, where a burst of saves is one edit.
  *  A repeat inside the window moves the existing entry instead of adding one. */
-const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
+export const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
   "description_changed",
   "title_changed",
 ]);
@@ -245,11 +262,14 @@ export class TaskBoardStorage {
     description?: string | null;
     status?: TaskBoardItemStatus;
     priority?: TaskBoardItemPriority;
+    type?: TaskBoardItemType;
     assigneeId?: string | null;
     assignedBy?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
     dueDate?: string | null;
+    /** Sprint the card belongs to (`TaskBoardSprint.id`); null/absent = backlog. */
+    sprintId?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
     by: string;
@@ -275,10 +295,12 @@ export class TaskBoardStorage {
           description: params.description ?? null,
           status,
           priority: params.priority ?? "medium",
+          type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
           due_date: params.dueDate ?? null,
+          sprint_id: params.sprintId ?? null,
           external_key: params.externalKey ?? null,
           sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
@@ -320,10 +342,12 @@ export class TaskBoardStorage {
       description?: string | null;
       status?: TaskBoardItemStatus;
       priority?: TaskBoardItemPriority;
+      type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
       dueDate?: string | null;
+      sprintId?: string | null;
       sortOrder?: number;
     },
     by: string,
@@ -337,6 +361,7 @@ export class TaskBoardStorage {
           : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
         ...(data.assigneeId !== undefined
           ? { assignee_id: data.assigneeId }
           : {}),
@@ -345,6 +370,7 @@ export class TaskBoardStorage {
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
+        ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
@@ -1527,9 +1553,9 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Populate each item's `threads` and `tags` — one transaction, so a card
-   * can't read its threads from before a concurrent edit and its tags from
-   * after.
+   * Populate each item's `threads`, `tags` and `reviewVerdicts` — one
+   * transaction, so a card can't read one of them from before a concurrent
+   * edit and another from after.
    */
   private async attachRefs(
     items: TaskBoardItem[],
@@ -1539,6 +1565,7 @@ export class TaskBoardStorage {
     await this.inTransaction(async (db) => {
       await this.attachThreads(db, items, organizationId);
       await this.attachTags(db, items);
+      await this.attachReviewVerdicts(db, items);
     });
   }
 
@@ -1705,6 +1732,69 @@ export class TaskBoardStorage {
     for (const item of items) item.tags = byItem.get(item.id) ?? [];
   }
 
+  /**
+   * Populate each item's `reviewVerdicts` — every reviewer's standing decision
+   * in the task's current review cycle. One batched query for the whole board,
+   * served by `idx_task_board_activity_item`.
+   *
+   * Reduced by `reviewCycleVerdicts`, the same reducer the auto-merge gate runs,
+   * so the card's `1/2` can never disagree with the gate that ships the PR.
+   * `status_changed` rows come along because that reducer needs the cycle
+   * boundary — without them a stale approval reads as current forever.
+   */
+  private async attachReviewVerdicts(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_activity")
+      .select(["task_board_item_id as taskId", "action", "data", "occurred_at"])
+      .where("task_board_item_id", "in", ids)
+      .where("action", "in", [
+        "status_changed",
+        "review_approved",
+        "review_changes_requested",
+      ])
+      .orderBy("occurred_at", "asc")
+      .execute();
+
+    const byItem = new Map<string, ReviewCycleActivity[]>();
+    for (const row of rows) {
+      const entry: ReviewCycleActivity = {
+        action: row.action,
+        data: (row.data ?? null) as Record<string, unknown> | null,
+        occurredAt:
+          row.occurred_at instanceof Date
+            ? row.occurred_at.toISOString()
+            : (row.occurred_at as unknown as string),
+      };
+      const list = byItem.get(row.taskId);
+      if (list) list.push(entry);
+      else byItem.set(row.taskId, [entry]);
+    }
+
+    for (const item of items) {
+      const activity = byItem.get(item.id) ?? [];
+      const verdicts = reviewCycleVerdicts(activity);
+      const verifiedApprovals = reviewCycleVerdicts(activity, {
+        verifiedOnly: true,
+      });
+      item.reviewVerdicts = REVIEWER_KINDS.flatMap((reviewer) => {
+        const verdict = verdicts.get(reviewer);
+        if (!verdict) return [];
+        return [
+          {
+            reviewer,
+            verdict,
+            verified: verifiedApprovals.get(reviewer) === "approved",
+          },
+        ];
+      });
+    }
+  }
+
   // --------------------------------------------------------------------------
   // Activity log (the card's change timeline)
   // --------------------------------------------------------------------------
@@ -1717,6 +1807,8 @@ export class TaskBoardStorage {
     action: TaskBoardActivityAction;
     actorId: string | null;
     data?: Record<string, unknown>;
+    /** Users this event enrolls as followers (see `notify`). */
+    alsoSubscribe?: (string | null | undefined)[];
   }): Promise<void> {
     await this.db
       .insertInto("task_board_activity")
@@ -1729,6 +1821,30 @@ export class TaskBoardStorage {
         occurred_at: new Date().toISOString(),
       })
       .execute();
+    await this.fanOut([params]);
+  }
+
+  /** Inbox + digest fan-out for the entries that earn one. Never throws — the
+   *  activity row has already committed. */
+  private async fanOut(
+    entries: {
+      taskBoardItemId: string;
+      action: string;
+      actorId: string | null;
+      alsoSubscribe?: (string | null | undefined)[];
+    }[],
+  ): Promise<void> {
+    for (const entry of entries) {
+      const type = notifiedType(entry.action);
+      if (!type) continue;
+      await notify({
+        db: this.db,
+        taskBoardItemId: entry.taskBoardItemId,
+        type,
+        actorId: entry.actorId,
+        alsoSubscribe: entry.alsoSubscribe,
+      });
+    }
   }
 
   /** Resolve a legacy review token to its claim for a task. Null when the token
@@ -1760,6 +1876,8 @@ export class TaskBoardStorage {
       action: TaskBoardActivityAction;
       actorId: string | null;
       data?: Record<string, unknown>;
+      /** Users this event enrolls as followers (see `notify`). */
+      alsoSubscribe?: (string | null | undefined)[];
     }[],
   ): Promise<void> {
     if (entries.length === 0) return;
@@ -1785,6 +1903,7 @@ export class TaskBoardStorage {
         })),
       )
       .execute();
+    await this.fanOut(fresh);
   }
 
   /**
@@ -2002,6 +2121,20 @@ export class TaskBoardStorage {
     return true;
   }
 
+  async getComment(
+    id: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment | null> {
+    const row = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .selectAll("c")
+      .where("c.id", "=", id)
+      .where("item.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row ? commentFromDbRow(row) : null;
+  }
+
   private async commentInOrg(
     id: string,
     organizationId: string,
@@ -2023,10 +2156,12 @@ export class TaskBoardStorage {
     description: string | null;
     status: string;
     priority: string;
+    type?: string;
     assignee_id: string | null;
     assigned_by: string | null;
     repo: string | null;
     due_date: string | Date | null;
+    sprint_id?: string | null;
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
@@ -2042,6 +2177,7 @@ export class TaskBoardStorage {
       description: row.description,
       status: row.status as TaskBoardItemStatus,
       priority: row.priority as TaskBoardItemPriority,
+      type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
       repo: row.repo,
@@ -2049,12 +2185,14 @@ export class TaskBoardStorage {
         row.due_date instanceof Date
           ? row.due_date.toISOString()
           : row.due_date,
+      sprintId: row.sprint_id ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
-      // Populated by attachThreads/attachTags for reads; empty for a fresh create.
+      // Populated by attachRefs for reads; empty for a fresh create.
       threads: [],
       tags: [],
+      reviewVerdicts: [],
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

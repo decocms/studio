@@ -25,9 +25,8 @@
 //! mode keeps its ordinary local bearer. The upstream leg attaches the
 //! signed-in user's Keychain-backed access token server-side via
 //! [`crate::routes::upstream::send_org_request`]. The
-//! daemon's `ORGFS_CONFIG` fs-scoped API key — provisioned because a cluster
-//! pod had no identity of its own — has no counterpart here and is
-//! deliberately gone.
+//! hosted daemon's fs-scoped API key — provisioned because a cluster pod has
+//! no identity of its own — has no counterpart here and is deliberately gone.
 //!
 //! Two consequences the P2 mount manager owns, noted here so they are not
 //! rediscovered from a failing mount:

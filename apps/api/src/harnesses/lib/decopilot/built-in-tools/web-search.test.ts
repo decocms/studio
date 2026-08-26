@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageStreamWriter } from "ai";
-import type { ResearchParams, ResearchResult } from "../../harness-deps";
-import { createWebSearchTool } from "./web-search";
+import {
+  createWebSearchTool,
+  type ResearchParams,
+  type ResearchResult,
+} from "./web-search";
 
 function makeWriter(): {
   writer: UIMessageStreamWriter;

@@ -18,6 +18,22 @@ export interface ParsedSection {
   isMultivariate?: boolean;
 }
 
+/** A saved block's own `name`, or its resolveType humanized, or a positional fallback. */
+function resolvedBlockLabel(
+  blockKey: string,
+  idx: number,
+  decofile: Record<string, unknown>,
+): string {
+  const resolvedBlock = decofile[blockKey] as
+    | Record<string, unknown>
+    | undefined;
+  return (
+    (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
+    blockKey.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ||
+    `Section ${idx + 1}`
+  );
+}
+
 /**
  * Parse raw decofile sections into display-ready entries with
  * isLazy / isHidden / isSavedBlock / isMultivariate flags.
@@ -32,15 +48,10 @@ export function parseSections(
     const isLazy = isLazyResolveType(rt);
 
     if (!isLazy && rt !== "" && isSavedBlockResolveType(rt) && rt in decofile) {
-      const resolvedBlock = decofile[rt] as Record<string, unknown> | undefined;
-      const label =
-        (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
-        rt.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ||
-        `Section ${idx + 1}`;
       return {
         index: idx,
         resolveType: rt,
-        label,
+        label: resolvedBlockLabel(rt, idx, decofile),
         isLazy: false,
         isSavedBlock: true,
       };
@@ -69,12 +80,53 @@ export function parseSections(
         >;
         let innerRt = (innerValue.__resolveType as string) ?? "";
         const innerIsLazy = isLazyResolveType(innerRt);
+        let mvInner: Record<string, unknown> = innerValue;
         if (innerIsLazy) {
           const nested = innerValue.section as
             | Record<string, unknown>
             | undefined;
           innerRt = (nested?.__resolveType as string) ?? innerRt;
+          if (nested) mvInner = nested;
         }
+
+        // Hidden variant section: keep the "Variants of X" label from the wrapped multivariate block.
+        if (
+          innerRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
+          innerRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
+        ) {
+          const innerVariants = Array.isArray(mvInner.variants)
+            ? (mvInner.variants as Array<Record<string, unknown>>)
+            : [];
+          const firstValueRt = (
+            innerVariants[0]?.value as Record<string, unknown> | undefined
+          )?.__resolveType as string | undefined;
+          const sectionLabel = firstValueRt
+            ? labelFromResolveType(firstValueRt)
+            : "Section";
+          return {
+            index: idx,
+            resolveType: rt,
+            label: `Variants of ${sectionLabel}`,
+            isHidden: true,
+            isLazy: innerIsLazy,
+          };
+        }
+
+        if (
+          innerRt !== "" &&
+          isSavedBlockResolveType(innerRt) &&
+          innerRt in decofile
+        ) {
+          return {
+            index: idx,
+            resolveType: rt,
+            label: resolvedBlockLabel(innerRt, idx, decofile),
+            isHidden: true,
+            isLazy: innerIsLazy,
+            isSavedBlock: true,
+          };
+        }
+
         return {
           index: idx,
           resolveType: rt,
@@ -106,19 +158,10 @@ export function parseSections(
       isSavedBlockResolveType(effectiveRt) &&
       effectiveRt in decofile
     ) {
-      const resolvedBlock = decofile[effectiveRt] as
-        | Record<string, unknown>
-        | undefined;
-      const label =
-        (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
-        effectiveRt
-          .replace(/[-_]/g, " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase()) ||
-        `Section ${idx + 1}`;
       return {
         index: idx,
         resolveType: rt,
-        label,
+        label: resolvedBlockLabel(effectiveRt, idx, decofile),
         isLazy: true,
         isSavedBlock: true,
       };

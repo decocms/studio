@@ -131,13 +131,9 @@ export function getProjectorWorkflowRuntime(): ProjectorWorkflowRuntime {
 
 /**
  * Process-wide progress-bump throttle for the projector's live chunk
- * consumption (Task 9, A1/A2) — the SOLE liveness heartbeat for both
- * topologies (unified-control-plane). Desktop chunks go daemon → NATS
- * directly (no studio HTTP hop), so this tap on the JetStream-sourced
- * chunkStream is the only place a desktop run's progress gets recorded.
- * Hosted runs are live-tailed the same way post-unification (dispatch-run.ts
- * no longer has its own tap — its wrapped stream never enqueued a chunk, so
- * it never fired; removed). Without this tap the reaper's
+ * consumption — the sole liveness heartbeat for hosted runs. Dispatch-run.ts
+ * no longer has its own tap because its wrapped stream never enqueued a chunk.
+ * Without this projector tap the reaper's
  * `RUN_IDLE_TIMEOUT_MS` (run-registry.ts) force-fails any run running longer
  * than ~10 minutes. Module scope (not per-call) so the per-task last-bump
  * map survives across the multiple `projectFromJetStreamStep` invocations a

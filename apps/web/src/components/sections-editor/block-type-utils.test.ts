@@ -53,6 +53,7 @@ describe("block-type-utils", () => {
     );
     expect(isSavedBlockResolveType("__proto__")).toBe(false);
     expect(isSavedBlockResolveType("constructor")).toBe(false);
+    expect(isSavedBlockResolveType("")).toBe(false);
   });
 
   it("isAutoPreviewBlockKey detects generated preview stubs", () => {

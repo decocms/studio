@@ -119,8 +119,6 @@ pub fn build(
         .route("/edit", post(routes::fs::edit))
         .route("/grep", post(routes::fs::grep))
         .route("/glob", post(routes::fs::glob))
-        .route("/write_from_url", post(routes::fs::write_from_url))
-        .route("/upload_to_url", post(routes::fs::upload_to_url))
         .route("/tools/sync", post(routes::fs::tools_sync))
         .route("/bash", post(routes::bash::bash))
         .route("/tasks", get(routes::tasks::list))
@@ -151,7 +149,6 @@ pub fn build(
         // WITHOUT respawning, giving the sandbox drawer's Stop button a
         // real desktop-local action to call.
         .route("/setup/stop", post(routes::setup::stop))
-        .route("/orgfs-config", post(routes::orgfs::orgfs_config))
         // `/_sandbox/orgfs/:org/:volume/**` — the loopback WebDAV surface
         // rclone mounts as the org filesystem (P1 of
         // `apps/native/docs/org-fs-plan.md`). Nested as a catchall rather
@@ -1116,8 +1113,6 @@ mod tests {
             "/_sandbox/git/publish",
             "/_local/agent-capabilities",
             "/api/acme/tools/ANYTHING",
-            // Not under `orgfs` despite naming it — a prefix, not a substring.
-            "/_sandbox/orgfs-config",
         ] {
             assert_eq!(
                 mounted(denied, Method::POST).await.unwrap().status(),

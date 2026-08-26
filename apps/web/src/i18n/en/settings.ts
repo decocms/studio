@@ -39,7 +39,7 @@ export const settings = {
   "settings.jira.cancel": "Cancel",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
-    "The board's visible cards are mirrored — its Backlog tab, epics and sub-tasks are not.",
+    "Everything the board covers is mirrored, its backlog included. Epics and sub-tasks are not, and cards show which sprint they are in.",
   "settings.jira.boardPlaceholder": "Select a board",
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
@@ -48,13 +48,6 @@ export const settings = {
   "settings.jira.mappingDescription":
     "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
   "settings.jira.dontSync": "Don't sync",
-  "settings.jira.jqlLabel": "JQL filter (optional)",
-  "settings.jira.jqlDescription":
-    "Extra JQL to narrow what syncs — useful to match your Jira board's saved filter. Epics and sub-tasks are always excluded.",
-  "settings.jira.jqlPlaceholder":
-    "e.g. labels = storefront AND sprint in openSprints()",
-  "settings.jira.jqlSave": "Save filter",
-  "settings.jira.jqlSaved": "Filter saved — it applies from the next sync",
   "settings.jira.columnsFailed": "Could not load the board's columns",
   "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
   "settings.jira.autoDelegateDescription":
@@ -66,7 +59,10 @@ export const settings = {
   "settings.jira.waitingFirstSync": "Waiting for the first sync",
   "settings.jira.syncNow": "Sync now",
   "settings.jira.syncing": "Syncing…",
-  "settings.jira.syncDone": "Synced: {created} created, {updated} updated",
+  "settings.jira.syncDone":
+    "Synced: {created} created, {updated} updated, {archived} archived",
+  "settings.jira.unmappedWarning":
+    "Not mapped yet: {columns}. An issue moving into one of these columns is skipped, and its card stays in whatever lane it last had — pick a lane, or \u201cDon't sync\u201d to say so on purpose.",
   "settings.jira.syncFailed": "Sync failed",
   "settings.jira.saveFailed": "Could not save the Jira settings",
   "settings.jira.createTokenLink": "Create an API token",
@@ -140,6 +136,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Play sounds for agent actions and notifications.",
   "settings.preferences.soundsPreview": "Preview notification sound",
+  "settings.preferences.projectSettingsGear": "Project settings shortcut",
+  "settings.preferences.projectSettingsGearDescription":
+    "Reveal a settings shortcut when you hover a project in the sidebar.",
   "settings.preferences.toolApproval": "Tool Approval",
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",
@@ -479,6 +478,31 @@ export const settings = {
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.agentTools.title": "Agent tools",
+  "settings.agentTools.description":
+    "What a coding-agent run reaches beyond the repository it is working in.",
+  "settings.agentTools.orgMcpsTitle": "Give runs this org's MCP connections",
+  "settings.agentTools.orgMcpsDescription":
+    "Every MCP you have connected becomes available to the Super Agent and the reviewers, on top of the task tools they always get. Tools load only when the agent looks for one, so connecting more does not crowd its context.",
+  "settings.agentTools.codingAgentsClaudeCodeTitle":
+    "Run Code Agent chats with Claude Code",
+  "settings.agentTools.codingAgentsClaudeCodeDescription":
+    "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
+  "settings.sprints.title": "Sprints",
+  "settings.sprints.description":
+    "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
+  "settings.sprints.enabledTitle": "Enable sprints",
+  "settings.sprints.enabledDescription":
+    "Adds a sprint property to every task and a sprint filter to the board.",
+  "settings.sprints.cadenceTitle": "Cadence",
+  "settings.sprints.cadenceDescription":
+    "How long a sprint lasts, and the day sprint 1 started.",
+  "settings.sprints.cadenceCurrent":
+    "Sprint {number} is running now ({start} to {end}).",
+  "settings.sprints.weeksValue": "{count} weeks",
+  "settings.sprints.weeksValueOne": "1 week",
+  "settings.sprints.startDateLabel": "Sprint 1 start day",
+  "settings.sprints.updateError": "Couldn't update the sprint settings",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

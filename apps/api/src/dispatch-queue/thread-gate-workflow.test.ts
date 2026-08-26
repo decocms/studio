@@ -47,28 +47,26 @@ describe("claimRunFenceForDispatch", () => {
     temperature: 0,
     toolApprovalLevel: "auto",
     mode: "default",
-    sandboxProviderKind: "agent-sandbox",
-    target: { sandboxProviderKind: "agent-sandbox" },
     harnessId: "decopilot",
-  } as SerializableDispatchRunInput;
+  } satisfies SerializableDispatchRunInput;
 
   it("preserves the submit-time run fence token", () => {
     const claim = claimRunFenceForDispatch(request, () => "new-fence");
 
     expect(claim.runFenceToken).toBe("submit-fence");
-    expect(claim.claimedRequest).toBe(request);
+    expect(claim.claimedRequest).toEqual(request);
     expect(claim.shouldPersistFence).toBe(false);
   });
 
-  it("mints and marks legacy requests for persistence when no submit fence exists", () => {
-    const { runFenceToken: _ignored, ...legacyRequest } = request;
+  it("mints and marks pre-claim requests for persistence", () => {
+    const { runFenceToken: _ignored, ...unclaimedRequest } = request;
     const claim = claimRunFenceForDispatch(
-      legacyRequest as SerializableDispatchRunInput,
-      () => "legacy-fence",
+      unclaimedRequest as SerializableDispatchRunInput,
+      () => "claimed-fence",
     );
 
-    expect(claim.runFenceToken).toBe("legacy-fence");
-    expect(claim.claimedRequest.runFenceToken).toBe("legacy-fence");
+    expect(claim.runFenceToken).toBe("claimed-fence");
+    expect(claim.claimedRequest.runFenceToken).toBe("claimed-fence");
     expect(claim.shouldPersistFence).toBe(true);
   });
 });

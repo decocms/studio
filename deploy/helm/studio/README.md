@@ -156,7 +156,7 @@ kubectl apply -f examples/secrets-example.yaml -n deco-studio
 ```
 
 The Secrets file contains:
-- **Main Secret** (`deco-studio-secrets`): Contains `BETTER_AUTH_SECRET`, `DATABASE_URL`, the `AUTH_*` auth configuration (OAuth client IDs/secrets, email provider API keys — see `apps/api/src/auth/auth-env.ts` for the full key list), and optional NATS tunnel credentials
+- **Main Secret** (`deco-studio-secrets`): Contains `BETTER_AUTH_SECRET`, `DATABASE_URL`, the `AUTH_*` auth configuration (OAuth client IDs/secrets, email provider API keys — see `apps/api/src/auth/auth-env.ts` for the full key list), and optional internal NATS credentials
 
 #### Step 2: Configure values.yaml to Use Secrets
 
@@ -885,27 +885,21 @@ configMap:
 # AUTH_RESEND_API_KEY, ...
 ```
 
-### Public NATS Tunnel
+### Internal NATS authentication
 
-Studio pods keep using the internal `NATS_URL` for service-to-service traffic. External CLI links use `NATS_PUBLIC_URL`, configured with `tunnel.nats.publicUrl`, after a client creates a link session with `POST /api/links/session`.
-
-`tunnel.nats.*` only configures Studio's environment. Helm cannot derive native NATS subchart websocket or ingress values from it, so expose websockets explicitly in the `nats` subchart values when a public tunnel is needed:
+Studio connects to NATS through `NATS_URL`. Anonymous connections work with the
+bundled default configuration. When the target NATS deployment requires a
+credentials file, enable `nats.clusterCreds` and provide `NATS_CLUSTER_CREDS`
+through the chart-managed Secret, `secret.secretName`, or `externalSecret`:
 
 ```yaml
-tunnel:
-  nats:
-    publicUrl: "wss://nats.example.com"
-    publicEnabled: true
-    sessionTtlSeconds: 900
-    clusterCreds:
-      enabled: true
+nats:
+  clusterCreds:
+    enabled: true
 
 secret:
   # Prefer secret.secretName or externalSecret in production so these values do
   # not live in plain values files.
-  NATS_ACCOUNT_JWT: "your-tunnel-account-jwt"
-  NATS_ACCOUNT_SIGNING_KEY: "your-tunnel-account-signing-seed"
-  NATS_OPERATOR_JWT: "your-operator-jwt"
   NATS_CLUSTER_CREDS: |-
     -----BEGIN NATS USER JWT-----
     ...
@@ -918,36 +912,12 @@ secret:
     -----BEGIN USER NKEY SEED-----
     ...
     ------END USER NKEY SEED------
-
-nats:
-  enabled: true
-  config:
-    jetstream:
-      enabled: true
-    resolver:
-      enabled: true
-      merge:
-        type: full
-        interval: 2m
-        timeout: 1.9s
-    merge:
-      operator: "your-operator-jwt"
-      system_account: "your-system-account-public-key"
-      resolver_preload:
-        "your-system-account-public-key": "your-system-account-jwt"
-        "your-tunnel-account-public-key": "your-tunnel-account-jwt"
-    websocket:
-      enabled: true
-      port: 8080
-      ingress:
-        enabled: true
-        hosts:
-          - nats.example.com
 ```
 
-NATS operator/account credential env vars such as `NATS_OPERATOR_JWT`, `NATS_ACCOUNT_JWT`, `NATS_ACCOUNT_SIGNING_KEY`, and `NATS_CLUSTER_CREDS` are sensitive. The chart-managed Secret supports these keys under `secret.*`, and both API and worker pods consume the env vars via `envFrom`. When `tunnel.nats.clusterCreds.enabled=true`, the chart also mounts `NATS_CLUSTER_CREDS` from the Secret as `/etc/nats-creds/cluster.creds` and sets `NATS_CREDS` to that path for both API and worker pods. For production GitOps, prefer `secret.secretName` or `externalSecret` so the same values come from a Kubernetes Secret or ExternalSecret instead of a plain values file.
-
-The public link session endpoint requires `NATS_PUBLIC_URL`, `NATS_TUNNEL_PUBLIC_ENABLED=true`, `NATS_ACCOUNT_JWT`, and `NATS_ACCOUNT_SIGNING_KEY`. It returns `503` until those values are present. When bundled NATS runs in operator/JWT mode, Studio's internal connection also needs `NATS_CREDS`; otherwise anonymous `NATS_URL` connections will fail.
+`NATS_CLUSTER_CREDS` is sensitive. With `nats.clusterCreds.enabled=true`, the
+chart mounts it at `/etc/nats-creds/cluster.creds` and sets `NATS_CREDS` for
+both API and worker pods. Production GitOps deployments should prefer
+`secret.secretName` or `externalSecret` over plain values files.
 
 ### In-cluster ClickHouse (optional)
 
@@ -996,9 +966,7 @@ The chart supports three secret management scenarios:
    - The existing Secret must contain the necessary keys:
      - `BETTER_AUTH_SECRET` (required)
      - `DATABASE_URL` (required)
-     - `NATS_ACCOUNT_JWT` and `NATS_ACCOUNT_SIGNING_KEY` (required for the public NATS link tunnel)
-     - `NATS_OPERATOR_JWT` (optional, useful for keeping the operator material alongside account material)
-     - `NATS_CLUSTER_CREDS` (required when `tunnel.nats.clusterCreds.enabled=true`)
+     - `NATS_CLUSTER_CREDS` (required when `nats.clusterCreds.enabled=true`)
    - Useful for using secrets managed by External Secrets Operator, Sealed Secrets, or other systems
 
 3. **Use ExternalSecret**:

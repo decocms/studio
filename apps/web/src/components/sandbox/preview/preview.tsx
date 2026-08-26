@@ -1,6 +1,5 @@
 import { sleep } from "@decocms/shared/std";
 import { useState, useRef, useEffect, type CSSProperties } from "react";
-import { useIsMutating } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
@@ -90,7 +89,7 @@ import {
   withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
-import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
+import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
@@ -113,7 +112,6 @@ import { VisualEditorPrompt } from "./visual-editor-prompt";
 import {
   useSandboxEvents,
   useSandboxReloadHandler,
-  useSandboxReloadStartHandler,
 } from "../hooks/use-sandbox-events";
 import { SandboxStateCard } from "./state-card";
 import {
@@ -163,7 +161,7 @@ const VSCODE_ICON_URL =
 const CURSOR_ICON_URL =
   "https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png";
 
-/** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
+/** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
 
 type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
@@ -214,17 +212,20 @@ export function withDeviceHint(url: string, device: PreviewDeviceSize): string {
 }
 
 /**
- * Force `__decoFBT=0` on the preview URL — disables deco's loader/block-tree
- * cache so edits render immediately in the iframe (same param the "Open result
- * in new tab" invoke path sets, see `buildInvokeRunUrl`). Passes `null` through
- * so it can wrap the whole `iframeSrc` computation regardless of mode, and
- * falls back to the unmodified `url` on a malformed input instead of throwing.
+ * Force `__decoFBT=0` and `__deco_ssr=1` on the preview URL — `__decoFBT=0`
+ * disables deco's loader/block-tree cache so edits render immediately in the
+ * iframe (same param the "Open result in new tab" invoke path sets, see
+ * `buildInvokeRunUrl`); `__deco_ssr=1` forces server-side rendering for the
+ * iframe. Passes `null` through so it can wrap the whole `iframeSrc`
+ * computation regardless of mode, and falls back to the unmodified `url` on a
+ * malformed input instead of throwing.
  */
 export function withDecoFBT(url: string | null): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url, window.location.href);
     parsed.searchParams.set("__decoFBT", "0");
+    parsed.searchParams.set("__deco_ssr", "1");
     return parsed.href;
   } catch {
     return url;
@@ -375,8 +376,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
   const [createPageError, setCreatePageError] = useState<string | undefined>();
-  // Bumped after a Blocks save so the Fast Preview daemon frame re-navigates and
-  // the daemon re-reads the fresh `.deco/blocks/*` (the "save → refresh" step).
   const [activeGlobalSection, setActiveGlobalSection] =
     useState<GlobalSectionEntry | null>(null);
   /** Decofile key of the global loader open in the Blocks panel, if any. */
@@ -424,7 +423,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const lifecyclePhase = vmEvents.lifecycle.phase;
   const devServerReady = lifecyclePhase === "running";
 
-  const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
+  const isDesktopSandbox = isDesktopApp && !!vmEntry;
   const rawRepoDir = useSandboxRepoDir({
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
@@ -433,8 +432,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
   });
   // Guard the value, not just the query: React Query's staleTime=Infinity cache
-  // can retain a stale repoDir after the provider kind changes from desktop to
-  // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
+  // can retain a native repoDir when this shared UI is rendered on hosted web,
+  // whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
   // Live production URL of the linked site, persisted on the agent's
@@ -676,20 +675,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // bumped by every save). No sandbox, no SSE — a new version after a save is
   // still what re-navigates the frame.
   //
-  // Autosave indicator: an in-flight block write shows the same thin top bar
-  // as navigation. In sandbox mode the daemon's `.deco/` change SSE drives the
-  // bar; sandbox-less has no daemon, so the mutation itself is the signal. The
-  // handoff is seamless — when the write lands, the new draft version changes
-  // `draftPreviewUrl`, and the re-navigation effect keeps the bar up (via
-  // `beginNavigation`) until the reloaded iframe fires onLoad.
-  const decofileWriting =
-    useIsMutating({
-      mutationKey: decofileWriteMutationKey(
-        org.slug,
-        virtualMcpId ?? "",
-        branch ?? "",
-      ),
-    }) > 0;
+  // Autosave indicator: an in-flight block write shares navigation's top bar.
+  const decofileWriting = useDecofileWriting(
+    org.slug,
+    virtualMcpId ?? "",
+    branch ?? "",
+  );
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
   const { url: draftPreviewUrl } = useFastPreviewDraftUrl(
@@ -1151,10 +1142,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     iframe.src = iframeSrc;
   };
 
-  // Reload the preview without moving keyboard focus. Used both for the daemon
-  // "reload" event (config edits HMR won't catch) and, via the debounced
-  // `.deco/` file-changed signal, after a Blocks save once the dev server has
-  // rebuilt (see sandbox-events-context).
+  /** Reload the preview without moving keyboard focus. */
   const reloadPreviewPreservingScroll = () => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
@@ -1190,22 +1178,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     fallbackTimer = setTimeout(restore, 3000);
   };
 
-  // Fires on the daemon "reload" event and on debounced `.deco/` file changes
-  // (Blocks saves, external/agent decofile writes) — the only refresh path for
-  // decofile edits, which the framework's HMR doesn't cover. In Fast Preview
-  // the refresh is already driven by the draft VERSION: the same write emits a
-  // `decofile` event, the new version changes `draftPreviewUrl`, and the effect
-  // above re-navigates the frame. Reloading here as well would race that with a
-  // stale URL, so this path yields; the sandbox path uses the normal reload.
-  useSandboxReloadHandler(() => {
-    if (draftPreviewUrl) return;
-    reloadPreviewPreservingScroll();
-  });
-  // Show the loading overlay the instant a `.deco/` change is detected, ahead of
-  // the debounced reload above, so the pending refresh feels immediate.
-  useSandboxReloadStartHandler(() => {
-    beginNavigation();
-  });
+  // Only a moved or restarted dev server; file edits reload the page themselves.
+  useSandboxReloadHandler(reloadPreviewPreservingScroll);
 
   const handleDeviceToggle = () => {
     const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);

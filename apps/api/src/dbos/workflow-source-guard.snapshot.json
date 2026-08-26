@@ -1,13 +1,14 @@
 {
   "auth/install-studio-pack-workflow.ts": "6f6c4fe37f2163dcf6a521164185fd364a22b1e5617653d14d1d5de40110a7ab",
   "automations/dbos-workflow.ts": "dd8535f7577bbd3c0270c60f14f480d4fb42e366666245c3efa77f0ce73a9da2",
-  "dispatch-queue/hosted-harness-workflow.ts": "cfd768375dc88a9066f2978e871e8d49eefbac0116794b5b6a2d71d686ddcb5e",
-  "dispatch-queue/thread-gate-workflow.ts": "c56fe55f6306b7fed3323d6b77f5632abf1d8dcd2a1673cb1cd625a1728333ef",
+  "dispatch-queue/hosted-harness-workflow.ts": "76b1eaad5eeef0d00a4e3ece6413d9bbde662f1a8793a466292723d7bb73bd9d",
+  "dispatch-queue/thread-gate-workflow.ts": "86728557a444719d6761c26632e94ed28bcadce72abbd826b7d38a473054a604",
   "file-storage/dbos-org-repo-sync.ts": "32c606976916fde2be7abe3084f7388744bdb610c178e9c2a07a8080f764904e",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
-  "harnesses/decopilot/background-tool-workflow.ts": "9febb699f45b63b418481ed998aee0ec8251c97cb5c409d54d714eb365a08fd0",
-  "jira/dbos-jira-sync.ts": "f0b69aea436e5fbd6b7486665bad910a6a27cbc1588c94508edffa3d932ce3ff",
+  "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",
+  "jira/dbos-jira-sync.ts": "4befebae160cf7cb88b8b8f1412d1f68fbcb55edc58c890193bc3175da1387d9",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
+  "notifications/dbos-digest.ts": "673bc164593266704d2918a0bcaaf838a2480dfb46d1d19c02bdb38c73ecc370",
   "tools/task-board/dbos-archive-sweep.ts": "fe2db3802dd291f4d9ad5369a21c28854403bd2756518d9b48c1fcda4f100000",
   "tools/task-board/dbos-github-read.ts": "8757159d594f776d021ed28887e5ba51f7a6e007607a2dc6962efd53152b4d60",
   "tools/task-board/dbos-tag-merged-sweep.ts": "afc48f5309fd1da3196167855b52ec0074a5f24b8a96b8ef9be2e07a8abb7a0a"

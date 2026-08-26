@@ -176,4 +176,15 @@ export const reports = {
   "reports.commerceBanner.generatingSubtitle":
     "Analisando {store}. Isso leva alguns minutos.",
   "reports.commerceBanner.readySubtitle": "Veja a análise completa de {store}.",
+  "reports.emptyState.title": "Nenhum relatório ainda",
+  "reports.emptyState.description":
+    "Rode um diagnóstico da sua loja para ver como ela está e o que corrigir primeiro.",
+  "reports.emptyState.siteUrlLabel": "URL da loja",
+  "reports.emptyState.siteUrlPlaceholder": "sualoja.com.br",
+  "reports.emptyState.start": "Iniciar diagnóstico",
+  "reports.emptyState.starting": "Iniciando...",
+  "reports.emptyState.checkPerformance": "Performance",
+  "reports.emptyState.checkSeo": "SEO",
+  "reports.emptyState.checkFunnel": "Funil de conversão",
+  "reports.emptyState.checkTracking": "Dados e rastreamento",
 } satisfies Record<keyof typeof reportsEn, string>;

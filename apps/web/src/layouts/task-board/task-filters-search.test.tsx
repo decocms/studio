@@ -42,6 +42,7 @@ describe("task filter options — searchable value matches the displayed label",
         members={[]}
         tags={[]}
         repos={[]}
+        sprints={[]}
         onChange={() => {}}
       />,
     );
@@ -60,6 +61,7 @@ describe("task filter options — searchable value matches the displayed label",
         members={[]}
         tags={[]}
         repos={["acme/site"]}
+        sprints={[]}
         onChange={() => {}}
       />,
     );
@@ -69,5 +71,69 @@ describe("task filter options — searchable value matches the displayed label",
       const item = getByText(label).closest("[cmdk-item]");
       expect(item?.getAttribute("data-value")).toBe(label);
     }
+  });
+});
+
+describe("search toggle — collapses when cleared externally", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test("an unfocused search chip collapses when 'Clear all' resets filters", () => {
+    const { getByPlaceholderText, queryByPlaceholderText, rerender } = render(
+      <TaskFiltersBar
+        filters={{ ...EMPTY_FILTERS, search: "login" }}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        onChange={() => {}}
+      />,
+    );
+
+    const input = getByPlaceholderText("Search tasks…");
+    fireEvent.blur(input);
+
+    rerender(
+      <TaskFiltersBar
+        filters={EMPTY_FILTERS}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(queryByPlaceholderText("Search tasks…")).toBeNull();
+  });
+
+  test("a focused search box stays open while backspaced to empty", () => {
+    const { getByPlaceholderText, rerender } = render(
+      <TaskFiltersBar
+        filters={{ ...EMPTY_FILTERS, search: "login" }}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        onChange={() => {}}
+      />,
+    );
+
+    const input = getByPlaceholderText("Search tasks…");
+    fireEvent.focus(input);
+
+    rerender(
+      <TaskFiltersBar
+        filters={EMPTY_FILTERS}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(getByPlaceholderText("Search tasks…")).not.toBeNull();
   });
 });

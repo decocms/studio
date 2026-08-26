@@ -120,7 +120,6 @@ export function normalizeThreadForResponse(
     virtual_mcp_id: thread.virtual_mcp_id || undefined,
     trigger_id: thread.trigger_id,
     branch: thread.branch,
-    sandbox_provider_kind: thread.sandbox_provider_kind,
     harness_id: thread.harness_id,
     metadata:
       thread.metadata && Object.keys(thread.metadata).length > 0

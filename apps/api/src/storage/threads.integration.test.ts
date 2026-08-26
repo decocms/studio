@@ -181,18 +181,17 @@ describe("SqlThreadStorage", () => {
   });
 
   describe("runtime pin", () => {
-    it("stores explicit runtime pins during create", async () => {
+    it("stores the harness and branch during create", async () => {
       const thread = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
         branch: "main",
         harness_id: "decopilot",
-        sandbox_provider_kind: "agent-sandbox",
       });
 
       expect(thread.harness_id).toBe("decopilot");
-      expect(thread.sandbox_provider_kind).toBe("agent-sandbox");
       expect(thread.branch).toBe("main");
+      expect(thread).not.toHaveProperty("sandbox_provider_kind");
     });
 
     it("lets exactly one concurrent runtime claim win", async () => {
@@ -203,13 +202,11 @@ describe("SqlThreadStorage", () => {
       const pins = [
         {
           harnessId: "decopilot",
-          sandboxProviderKind: "agent-sandbox",
           branch: "hosted",
         },
         {
-          harnessId: "codex",
-          sandboxProviderKind: "user-desktop",
-          branch: "native",
+          harnessId: "claude-code",
+          branch: "other-hosted",
         },
       ] as const;
 
@@ -222,9 +219,6 @@ describe("SqlThreadStorage", () => {
       expect(winner).not.toBeNull();
       for (const result of results) {
         expect(result.thread?.harness_id).toBe(winner?.harness_id);
-        expect(result.thread?.sandbox_provider_kind).toBe(
-          winner?.sandbox_provider_kind,
-        );
         expect(result.thread?.branch).toBe(winner?.branch);
       }
     });
@@ -237,7 +231,6 @@ describe("SqlThreadStorage", () => {
       });
       const result = await storage.pinRuntimeIfUnset(thread.id, "org_1", {
         harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         branch: "stale-branch",
       });
 
@@ -245,23 +238,37 @@ describe("SqlThreadStorage", () => {
       expect(result.thread?.branch).toBe("already-selected");
     });
 
-    it("does not overwrite a conflicting partial runtime", async () => {
+    it("ignores and preserves a dirty legacy provider value", async () => {
       const thread = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
-        sandbox_provider_kind: "user-desktop",
         branch: "native-branch",
       });
+      await sql`UPDATE threads
+        SET sandbox_provider_kind = 'local-api'
+        WHERE id = ${thread.id}`.execute(database.db);
       const result = await storage.pinRuntimeIfUnset(thread.id, "org_1", {
         harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         branch: "hosted-branch",
       });
 
-      expect(result.claimed).toBe(false);
-      expect(result.thread?.harness_id).toBeNull();
-      expect(result.thread?.sandbox_provider_kind).toBe("user-desktop");
+      expect(result.claimed).toBe(true);
+      expect(result.thread?.harness_id).toBe("decopilot");
       expect(result.thread?.branch).toBe("native-branch");
+      expect(result.thread).not.toHaveProperty("sandbox_provider_kind");
+
+      const persisted = await sql<{
+        harness_id: string | null;
+        sandbox_provider_kind: string | null;
+      }>`SELECT harness_id, sandbox_provider_kind
+        FROM threads
+        WHERE id = ${thread.id}`.execute(database.db);
+      expect(persisted.rows).toEqual([
+        {
+          harness_id: "decopilot",
+          sandbox_provider_kind: "local-api",
+        },
+      ]);
     });
 
     it("returns no row for missing and cross-tenant targets", async () => {
@@ -271,7 +278,6 @@ describe("SqlThreadStorage", () => {
       });
       const pin = {
         harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         branch: "hosted",
       };
 

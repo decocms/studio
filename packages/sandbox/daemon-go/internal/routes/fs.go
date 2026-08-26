@@ -12,28 +12,21 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
 	"github.com/decocms/studio/sandbox-daemon/internal/httpx"
 	"github.com/decocms/studio/sandbox-daemon/internal/paths"
-	"github.com/decocms/studio/sandbox-daemon/internal/urlallow"
 )
 
 const (
-	maxImageBytes    = 5 * 1024 * 1024
-	maxTransferBytes = 500 * 1024 * 1024
-	transferDeadline = 5 * time.Minute
+	maxImageBytes       = 5 * 1024 * 1024
+	maxRequestBodyBytes = 500 * 1024 * 1024
 )
 
 type FsDeps struct {
 	AppRoot            string
 	RepoDir            string
 	OnWorkingTreeWrite func(path string)
-	// AllowedHosts gates /write_from_url and /upload_to_url. Boot env, never
-	// the request body. Empty denies every transfer.
-	AllowedHosts     []string
-	AllowSameHostDev bool
 }
 
 // escapesRoot is the 400 for a path SafePath rejected. It names what IS
@@ -50,17 +43,17 @@ func (d FsDeps) notifyWrite(path string) {
 	}
 }
 
-// decodeBody caps the request body at maxTransferBytes: without a limit, a
+// decodeBody caps the request body at maxRequestBodyBytes: without a limit, a
 // misbehaving or malicious caller could stream an unbounded body into memory
 // and crash the daemon, tearing down the sandbox pod on the next missed
-// health probe. The cap matches the daemon's other file-transfer bound.
+// health probe.
 func decodeBody(r *http.Request, out any) error {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, maxTransferBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
 	if err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
 	}
-	if len(raw) > maxTransferBytes {
-		return fmt.Errorf("Request body exceeded %d bytes", maxTransferBytes)
+	if len(raw) > maxRequestBodyBytes {
+		return fmt.Errorf("Request body exceeded %d bytes", maxRequestBodyBytes)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
@@ -561,6 +554,14 @@ func Grep(deps FsDeps) http.HandlerFunc {
 			}
 			lines = append(lines, line)
 		}
+		if reader.Err() != nil && !truncated {
+			// A line over the scanner's buffer cap (e.g. a minified/lockfile
+			// match) leaves rg still writing to a pipe nobody drains; without
+			// killing it here, cmd.Wait() below blocks forever once the pipe
+			// buffer fills, hanging the request and the daemon's health probe.
+			truncated = true
+			cmd.Process.Kill()
+		}
 		err = cmd.Wait()
 		code := 0
 		if err != nil {
@@ -779,135 +780,5 @@ func Glob(deps FsDeps) http.HandlerFunc {
 			resp["truncated"] = true
 		}
 		httpx.JSON(w, 200, resp)
-	}
-}
-
-func WriteFromUrl(deps FsDeps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Path string `json:"path"`
-			URL  string `json:"url"`
-		}
-		if err := decodeBody(r, &body); err != nil {
-			httpx.Error(w, 400, err.Error())
-			return
-		}
-		if body.URL == "" {
-			httpx.Error(w, 400, "url is required")
-			return
-		}
-		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
-		if !ok {
-			httpx.Error(w, 400, deps.escapesRoot())
-			return
-		}
-		if err := urlallow.Assert(body.URL, deps.AllowedHosts, deps.AllowSameHostDev); err != nil {
-			httpx.Error(w, 400, err.Error())
-			return
-		}
-		client := urlallow.Client(transferDeadline, deps.AllowedHosts, deps.AllowSameHostDev)
-		resp, err := client.Get(body.URL)
-		if err != nil {
-			httpx.Error(w, 502, fmt.Sprintf("fetch failed: %s", err.Error()))
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			httpx.Error(w, 502, fmt.Sprintf("upstream returned HTTP %d", resp.StatusCode))
-			return
-		}
-		if resp.ContentLength > maxTransferBytes {
-			httpx.Error(w, 413, fmt.Sprintf("Payload too large (%d > %d)", resp.ContentLength, maxTransferBytes))
-			return
-		}
-		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
-			httpx.Error(w, 500, err.Error())
-			return
-		}
-		out, err := os.Create(filePath)
-		if err != nil {
-			httpx.Error(w, 500, err.Error())
-			return
-		}
-		written, err := io.Copy(out, io.LimitReader(resp.Body, maxTransferBytes+1))
-		out.Close()
-		if err != nil || written > maxTransferBytes {
-			os.Remove(filePath)
-			msg := fmt.Sprintf("Stream exceeded %d bytes", maxTransferBytes)
-			if err != nil {
-				msg = err.Error()
-			}
-			httpx.Error(w, 502, fmt.Sprintf("stream failed: %s", msg))
-			return
-		}
-		httpx.JSON(w, 200, map[string]any{"ok": true, "path": body.Path, "size": written})
-	}
-}
-
-func UploadToUrl(deps FsDeps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Path        string `json:"path"`
-			URL         string `json:"url"`
-			ContentType string `json:"contentType"`
-		}
-		if err := decodeBody(r, &body); err != nil {
-			httpx.Error(w, 400, err.Error())
-			return
-		}
-		if body.URL == "" {
-			httpx.Error(w, 400, "url is required")
-			return
-		}
-		filePath, ok := resolveReadPath(deps.AppRoot, deps.RepoDir, body.Path)
-		if !ok {
-			httpx.Error(w, 400, "Path escapes project root")
-			return
-		}
-		if err := urlallow.Assert(body.URL, deps.AllowedHosts, deps.AllowSameHostDev); err != nil {
-			httpx.Error(w, 400, err.Error())
-			return
-		}
-		stat, err := os.Stat(filePath)
-		if err != nil {
-			httpx.Error(w, 400, fmt.Sprintf("File not found: %s", body.Path))
-			return
-		}
-		if stat.IsDir() {
-			httpx.Error(w, 400, "Path is a directory")
-			return
-		}
-		if stat.Size() > maxTransferBytes {
-			httpx.Error(w, 413, fmt.Sprintf("File too large (%d > %d)", stat.Size(), maxTransferBytes))
-			return
-		}
-		f, err := os.Open(filePath)
-		if err != nil {
-			httpx.Error(w, 500, err.Error())
-			return
-		}
-		defer f.Close()
-		req, err := http.NewRequest("PUT", body.URL, f)
-		if err != nil {
-			httpx.Error(w, 502, fmt.Sprintf("upload failed: %s", err.Error()))
-			return
-		}
-		req.ContentLength = stat.Size()
-		if body.ContentType != "" {
-			req.Header.Set("Content-Type", body.ContentType)
-		}
-		client := urlallow.Client(transferDeadline, deps.AllowedHosts, deps.AllowSameHostDev)
-		resp, err := client.Do(req)
-		if err != nil {
-			httpx.Error(w, 502, fmt.Sprintf("upload failed: %s", err.Error()))
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			errText, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
-			httpx.Error(w, 502, fmt.Sprintf("upstream returned HTTP %d: %s", resp.StatusCode, string(errText)))
-			return
-		}
-		httpx.JSON(w, 200, map[string]any{"ok": true, "size": stat.Size()})
 	}
 }

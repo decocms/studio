@@ -597,7 +597,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         trigger_id: triggerId,
         virtual_mcp_id: automation.virtual_mcp_id,
         harness_id: "decopilot",
-        sandbox_provider_kind: "agent-sandbox",
         // A headless agent run needs a pod, so it is a sandbox session whatever the project defaults to.
         metadata: JSON.stringify({ runtime: "sandbox" }),
         hidden: false,

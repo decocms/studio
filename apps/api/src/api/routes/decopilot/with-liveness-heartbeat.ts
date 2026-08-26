@@ -70,8 +70,7 @@ export type DataLivenessChunk = Extract<
 };
 
 /** Builds one `data-liveness` chunk. `now` is injectable for tests.
- * Delegates to the shared wire-shape source of truth so the hosted and
- * desktop emitters can never drift; this wrapper only re-asserts the
+ * Delegates to the shared wire-shape source of truth; this wrapper only re-asserts the
  * stronger `ai`-typed shape (see LivenessDataChunk's doc in the helper). */
 export function buildLivenessChunk(
   now: () => number = Date.now,

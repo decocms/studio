@@ -48,6 +48,22 @@ export class TagStorage {
   }
 
   /**
+   * Get several tags by ID in one query. Missing ids are simply absent from
+   * the result, so callers must not assume the returned array's length
+   * matches `tagIds`.
+   */
+  async getTagsByIds(tagIds: string[]): Promise<OrganizationTag[]> {
+    if (tagIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom("organization_tags")
+      .selectAll()
+      .where("id", "in", tagIds)
+      .execute();
+
+    return rows.map((row) => this.tagFromDbRow(row));
+  }
+
+  /**
    * Get a tag by name within an organization
    */
   async getTagByName(

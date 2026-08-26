@@ -326,10 +326,6 @@ const unifiedChatSearchSchema = z.object({
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),
   autosend: z.string().optional(),
-  /** Carried from the homepage composer so the new thread's first send
-   *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds
-   *  runLocally from this on mount. */
-  runLocally: z.string().optional(),
   /** Commerce onboarding hand-off: `"1"` mounts the blocking connections modal
    *  over this report route until at least one data source is connected. Dropped
    *  by the modal once the enriching run is triggered. */
@@ -354,6 +350,7 @@ const unifiedChatSearchSchema = z.object({
   due: z.string().optional(),
   tags: z.string().optional(),
   repo: z.string().optional(),
+  sprint: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({

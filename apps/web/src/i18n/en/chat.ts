@@ -245,8 +245,7 @@ export const chat = {
     "Read only - you're viewing someone else's chat",
   "chat.input.readOnlyOthersChatNamed":
     "Read only - you're viewing {name}'s chat",
-  "chat.input.readOnlyThread":
-    "Read only - this chat ran autonomously and takes no replies",
+  "chat.input.readOnlyThread": "Read only - this chat takes no replies",
   "chat.input.sendMessage": "Send message",
   "chat.input.sendMessageEnter": "Send message (Enter)",
   "chat.input.stillSendingPreviousMessage":
@@ -354,6 +353,9 @@ export const chat = {
   "chat.runStatus.analyzingScopeLabel": "Thinking",
   "chat.runStatus.choosingNextStepsDetail": "Deciding what to do next",
   "chat.runStatus.choosingNextStepsLabel": "Thinking",
+  "chat.runStatus.startingSandboxDetail":
+    "Booting the machine and checking out the repository",
+  "chat.runStatus.startingSandboxLabel": "Starting the sandbox",
   "chat.runStatus.gatheringContextDetail":
     "Looking through the history, files, and notes",
   "chat.runStatus.gatheringContextLabel": "Reading the chat",

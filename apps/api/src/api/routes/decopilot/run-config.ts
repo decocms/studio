@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ChatMode } from "./mode-config";
+import type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 
 /**
  * Persisted run configuration schema.

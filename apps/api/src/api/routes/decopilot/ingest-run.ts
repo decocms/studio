@@ -1,12 +1,13 @@
 /**
  * The ONE shared ingest unit (spec §unified-pipeline / Phase B).
  *
- * Both execution paths — agent-sandbox (in-studio) and user-desktop (relay) —
- * route through `ingestRun`. It does two things, in lockstep, per chunk:
+ * Hosted stream producers route through `ingestRun`. It does two things, in
+ * lockstep, per chunk:
  *
  *  1. **Publish** the raw chunk to `DECOPILOT_STREAMS` with a seq-keyed
  *     `Nats-Msg-Id` (`${runId}:${fenceToken}:${seq}`) so an at-least-once
- *     producer (outbox replay) can re-publish without double-writing. The
+ *     durable producer can re-publish after a workflow retry without
+ *     double-writing. The
  *     projector (Phase A) is the SOLE writer of parts + status + title from
  *     that NATS log — `ingestRun` itself does ZERO DB writes.
  *  2. **Drive the live hooks** (usage, posthog completion, SSE finish) and the
@@ -15,10 +16,10 @@
  *     title injection fire EXACTLY ONCE per logical chunk because the dedup
  *     happens before the kernel ever sees a replay.
  *
- * Dedup policy is ported verbatim from `links/uplink-ingest.ts`: a rolling
- * CONTIGUOUS `ackSeq` (highest seq with all <= it publish-confirmed) plus a
- * `pending` set for out-of-order arrivals. A seq already at/below `ackSeq` is a
- * replayed prefix → skipped (no publish, no hook).
+ * Dedup uses a rolling CONTIGUOUS `ackSeq` (highest seq with all <= it
+ * publish-confirmed) plus a `pending` set for out-of-order arrivals. A seq
+ * already at/below `ackSeq` is a replayed prefix → skipped (no publish, no
+ * hook).
  *
  * Pure: the stream buffer, hooks, title options, and `fenceOk` are injected, so
  * this is a unit (no StudioContext, no NATS, no DB).
@@ -103,8 +104,8 @@ export interface IngestRunDeps {
   title: HarnessStreamTitleOptions;
   /**
    * Persists the assistant message parts as the run streams. Defaults to the
-   * no-op (the durable projector is the sole writer for the desktop/relay
-   * path). The hosted background-job caller passes its PartEmitter so the
+   * no-op (the durable projector is the sole writer). The hosted background-job
+   * caller passes its PartEmitter so the
    * message lands in the DB before the stream closes; the projector still
    * re-projects from JetStream as an idempotent backstop (stable row
    * ids → ON CONFLICT DO NOTHING).
@@ -113,7 +114,7 @@ export interface IngestRunDeps {
 }
 
 /** Default persistence: write nothing — the durable projector is the sole
- *  writer (desktop/relay path). Hosted background jobs override via deps. */
+ *  writer. Hosted background jobs override via deps. */
 const NOOP_PERSISTENCE: HarnessStreamPersistence = {
   emitStepParts: async () => {},
   emitFinal: async () => {},
@@ -139,7 +140,7 @@ export async function ingestRun(
   const { runId, fenceToken } = input;
   const fenceOk = input.fenceOk ?? (() => true);
 
-  // Rolling contiguous floor + out-of-order pending set (uplink-ingest policy).
+  // Rolling contiguous floor + out-of-order pending set.
   // Seeded from `initialAckSeq` (durable resume floor) so the already-published
   // prefix 1..initialAckSeq is skipped without re-publishing (same msgIds would
   // collide in JetStream dedup, silently dropping the run's tail).

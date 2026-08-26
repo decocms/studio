@@ -1,9 +1,9 @@
 /**
- * CLUSTER Decopilot environment-deps assembler (spec §5.2/§9 — "ONE factory").
+ * Studio's concrete Decopilot environment-deps assembler.
  *
  * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`). The
- * package factory gets its StudioContext-backed `DecopilotToolRuntime` +
- * `telemetry` through this registered cluster assembler:
+ * stream executor gets its StudioContext-backed `DecopilotToolRuntime` and
+ * telemetry directly from this cluster assembler:
  *
  *   - the in-process virtual-MCP passthrough client + the full cluster tool set
  *     (web_search / update_interests / Browserless built-ins) + the per-run
@@ -26,6 +26,7 @@ import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
 import { createHtmlArtifactWatcher } from "./built-in-tools/vm-tools/html-artifact-watcher";
+import { createToolOutputMap } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import type { PendingImage } from "./built-in-tools";
 import type {
   DecopilotToolRuntime,
@@ -125,7 +126,7 @@ export function buildClusterEnvironmentTools(args: {
   const toolRuntime: DecopilotToolRuntime = {
     buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
       const runContext = requireDecopilotRunContext(streamInput);
-      const toolOutputMap = new Map<string, string>();
+      const toolOutputMap = createToolOutputMap();
       const pendingImages: PendingImage[] = [];
       const { resolveArgs, onToolCalled, onPrOpened } =
         buildClusterMcpToolHooks(ctx, streamInput.threadId);

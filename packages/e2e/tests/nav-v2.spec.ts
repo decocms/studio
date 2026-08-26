@@ -101,6 +101,32 @@ async function clearSeededNavV2(orgId: string): Promise<void> {
  *  from every agent title below so the sidebar's label source is unambiguous. */
 const CODING_AGENT_REPO = "nav-v2-e2e";
 
+/**
+ * Wire contract: the per-user preferences blob, and the opt-in that reveals the
+ * settings shortcut on project rows. It is OFF by default, so every spec that
+ * wants the shortcut has to ask for it — that default is itself asserted below.
+ *
+ * `addInitScript` re-runs on each document, which survives `expandSidebar`'s
+ * reloads. localStorage throws on opaque origins (about:blank), hence the catch.
+ */
+const PREFERENCES_KEY = "studio:user:preferences";
+
+async function enableProjectSettingsGear(page: Page): Promise<void> {
+  await page.addInitScript(
+    ([key, value]) => {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        /* opaque origin — the real navigation re-runs this */
+      }
+    },
+    [PREFERENCES_KEY, JSON.stringify({ showProjectSettingsGear: true })] as [
+      string,
+      string,
+    ],
+  );
+}
+
 /** A repo-backed ("coding") agent — the sidebar lists one row per repo. */
 async function createCodingAgent(
   request: APIRequestContext,
@@ -282,19 +308,26 @@ test.describe("first-class navigation", () => {
     ).toBeVisible();
   });
 
-  test("Reports is hidden until the org has a report, then opens the report app", async ({
+  test("Reports offers a diagnostic until the org has a report, then opens the report app", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.goto(`/${orgSlug}`);
     await expandSidebar(page, "Home");
 
-    // No Commerce Discovery connection yet → no Reports destination.
+    // No Commerce Discovery connection yet → the empty state, which starts one.
     await expect(
       page.getByRole("button", { name: "Tasks", exact: true }),
     ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await page
+      .getByRole("button", { name: "Reports", exact: true })
+      .click({ timeout: SHELL_TIMEOUT_MS });
+    await expect(page).toHaveURL(/[?&]main=reports\b/);
+    await expect(page.getByText("No reports yet")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
     await expect(
-      page.getByRole("button", { name: "Reports", exact: true }),
-    ).toHaveCount(0);
+      page.getByRole("button", { name: "Start diagnostic" }),
+    ).toBeVisible();
 
     const request = page.context().request;
     const orgId = await findOrgId(request, orgSlug);
@@ -433,5 +466,120 @@ test.describe("first-class navigation", () => {
     });
     await expect(row("before rename")).toHaveCount(0);
     await expect(row(CODING_AGENT_REPO)).toHaveCount(0);
+  });
+
+  test("a coding agent's row gear opens that agent's settings", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const agent = await createCodingAgent(request, orgSlug, "gear agent");
+
+    await enableProjectSettingsGear(page);
+    await page.goto(`/${orgSlug}`);
+    await expandSidebar(page, "Home");
+
+    const sidebar = page.locator('[data-sidebar="content"]');
+    const row = sidebar.getByRole("button", {
+      name: "gear agent",
+      exact: true,
+    });
+    await expect(row).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    // The gear only reveals on hover; its label is the wire contract asserted here.
+    await row.hover();
+    await sidebar
+      .getByRole("button", { name: "gear agent settings", exact: true })
+      .click();
+
+    await expect(page).toHaveURL(
+      new RegExp(`[?&]virtualmcpid=${agent.item.id}\\b`),
+    );
+    await expect(page).toHaveURL(/[?&]main=settings\b/);
+    await expect(page.getByPlaceholder("Agent name")).toHaveValue(
+      "gear agent",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+  });
+
+  test("the gear keeps the open thread when already on that agent", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const agent = await createCodingAgent(request, orgSlug, "same thread");
+    const thread = await callSelfMcpTool<{ item: { id: string } }>(
+      request,
+      orgSlug,
+      "COLLECTION_THREADS_CREATE",
+      { data: { virtual_mcp_id: agent.item.id } },
+    );
+
+    await enableProjectSettingsGear(page);
+    await page.goto(
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}`,
+    );
+    await expandSidebar(page, "Home");
+
+    const sidebar = page.locator('[data-sidebar="content"]');
+    const row = sidebar.getByRole("button", {
+      name: "same thread",
+      exact: true,
+    });
+    await expect(row).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await row.hover();
+    await sidebar
+      .getByRole("button", { name: "same thread settings", exact: true })
+      .click();
+
+    await expect(page).toHaveURL(/[?&]main=settings\b/);
+    await expect(page).toHaveURL(new RegExp(`/${thread.item.id}\\?`));
+  });
+
+  test("the settings shortcut is off until the preference is turned on", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    await createCodingAgent(request, orgSlug, "opt in");
+
+    // No enableProjectSettingsGear() — a fresh person gets the default.
+    await page.goto(`/${orgSlug}`);
+    await expandSidebar(page, "Home");
+
+    const sidebar = page.locator('[data-sidebar="content"]');
+    await expect(
+      sidebar.getByRole("button", { name: "opt in", exact: true }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      sidebar.getByRole("button", { name: "opt in settings", exact: true }),
+    ).toHaveCount(0);
+
+    // Flip it in Settings → Preferences, the way a person would.
+    await page.goto(`/${orgSlug}/settings/profile`);
+    const toggle = page.getByRole("switch", {
+      name: /project settings shortcut/i,
+    });
+    await toggle.waitFor({ state: "visible", timeout: SHELL_TIMEOUT_MS });
+    await expect(toggle).not.toBeChecked();
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+
+    await page.goto(`/${orgSlug}`);
+    await expandSidebar(page, "Home");
+    await expect(
+      sidebar.getByRole("button", { name: "opt in settings", exact: true }),
+    ).toHaveCount(1, { timeout: SHELL_TIMEOUT_MS });
+  });
+
+  test("the fixed destinations carry no settings gear", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    // Even with the shortcut opted in, only projects get one.
+    await enableProjectSettingsGear(page);
+    await page.goto(`/${orgSlug}`);
+    await expandSidebar(page, "Home");
+
+    const sidebar = page.locator('[data-sidebar="content"]');
+    await expect(
+      sidebar.getByRole("button", { name: /^(Home|Tasks|Library) settings$/ }),
+    ).toHaveCount(0);
   });
 });

@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { Editor } from "@tiptap/core";
 import { markdownEditorExtensions } from "./extensions";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
+import { parseMentions } from "@decocms/shared/mentions";
 
 /**
  * The description is stored as markdown, so the schema's whole contract is the
@@ -31,6 +32,14 @@ describe("markdown editor schema", () => {
     expect(JSON.stringify(json)).toContain('"type":"attachment"');
     // Same markdown back out — the value on the wire never changes shape.
     expect(markdown).toBe(`[spec.pdf](${FILE_URL})`);
+  });
+
+  test("a mention link becomes a chip and round-trips unchanged", () => {
+    const { markdown, editor } = roundTrip("ping [@Ana](mention:usr_1) please");
+    expect(JSON.stringify(editor.getJSON())).toContain('"type":"mention"');
+    expect(markdown).toBe("ping [@Ana](mention:usr_1) please");
+    // What the server reads back out is the id, not the name.
+    expect(parseMentions(markdown)).toEqual(["usr_1"]);
   });
 
   test("an ordinary link stays a link", () => {

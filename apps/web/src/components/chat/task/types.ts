@@ -21,8 +21,6 @@ export interface Task {
   trigger_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop"). */
-  sandbox_provider_kind?: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot"). */
   harness_id?: string | null;
   /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
@@ -55,7 +53,6 @@ export type RowPatch = Pick<Task, "id"> &
       | "trigger_id"
       | "virtual_mcp_id"
       | "harness_id"
-      | "sandbox_provider_kind"
       | "metadata"
     >
   >;

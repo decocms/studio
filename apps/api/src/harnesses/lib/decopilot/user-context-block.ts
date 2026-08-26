@@ -3,7 +3,7 @@
  *
  * Pure function over PRE-RESOLVED `HarnessUserContext` (read agent-side by
  * `prepareRun`, not via `ctx.storage`). Renders identity + shared history +
- * interests; skips any sub-block whose data is absent (e.g. desktop runs).
+ * interests; skips any sub-block whose data is absent.
  */
 
 import type {

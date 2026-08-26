@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
+  agentRunState,
+  cardNeedsAttention,
+  dueDateUrgency,
+  formatSprintDates,
   insertSortOrder,
   isTaskHandedToHuman,
   runSortOrders,
@@ -16,6 +20,8 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     description: null,
     status: "todo",
     priority: "none",
+    type: "chore",
+    sprintId: null,
     assigneeId: null,
     assignedBy: null,
     repo: null,
@@ -25,6 +31,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     retryAttempts: 0,
     threads: [],
     tags: [],
+    reviewVerdicts: [],
     createdBy: "user-1",
     createdAt: new Date().toISOString(),
     updatedBy: "user-1",
@@ -126,5 +133,145 @@ describe("isTaskHandedToHuman", () => {
     for (const status of ["triage", "todo", "in_progress", "done"] as const) {
       expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
     }
+  });
+});
+
+describe("formatSprintDates", () => {
+  const sprint = {
+    id: "sprint_1",
+    name: "Sprint 12",
+    state: "active" as const,
+    startsAt: "2026-01-05T00:00:00.000Z",
+    endsAt: "2026-01-18T00:00:00.000Z",
+  };
+
+  test("spans the sprint's own days, read in UTC", () => {
+    // Day numbers, not the whole string: month names follow the test locale.
+    const label = formatSprintDates(sprint);
+    expect(label).toContain("5");
+    expect(label).toContain("18");
+  });
+
+  test("renders the one date it has when the other is missing", () => {
+    expect(formatSprintDates({ ...sprint, endsAt: null })).toContain("5");
+    expect(formatSprintDates({ ...sprint, startsAt: null })).toContain("18");
+  });
+
+  test("is null for a sprint nobody has scheduled", () => {
+    expect(formatSprintDates({ ...sprint, startsAt: null, endsAt: null })).toBe(
+      null,
+    );
+  });
+
+  test("is null rather than `Invalid Date` for an unparseable date", () => {
+    expect(
+      formatSprintDates({ ...sprint, startsAt: "nope", endsAt: null }),
+    ).toBe(null);
+  });
+});
+
+/**
+ * The card's one dot of run state. It exists because the card no longer has an
+ * agent footer, and a card whose run died must not look like a card that is
+ * simply idle.
+ */
+describe("agentRunState", () => {
+  const withThreads = (
+    threads: { status: string; failureKind?: string | null }[],
+  ) => ({ ...item("a", 0), threads }) as unknown as TaskBoardItem;
+
+  test("no threads, nothing to say", () => {
+    expect(agentRunState(item("a", 0))).toBeNull();
+  });
+
+  test("a completed run is not a pulse", () => {
+    expect(agentRunState(withThreads([{ status: "completed" }]))).toBeNull();
+  });
+
+  test("an in-progress run is running", () => {
+    expect(agentRunState(withThreads([{ status: "in_progress" }]))).toBe(
+      "running",
+    );
+  });
+
+  test("an unresolved failure is failed", () => {
+    expect(
+      agentRunState(withThreads([{ status: "failed", failureKind: null }])),
+    ).toBe("failed");
+  });
+
+  test("a live run outranks an earlier attempt's error", () => {
+    expect(
+      agentRunState(
+        withThreads([
+          { status: "failed", failureKind: null },
+          { status: "in_progress" },
+        ]),
+      ),
+    ).toBe("running");
+  });
+
+  test("a failure that is settled history is not the task's failure", () => {
+    for (const failureKind of ["superseded", "ended_after_delivery"]) {
+      expect(
+        agentRunState(withThreads([{ status: "failed", failureKind }])),
+      ).toBe(null);
+    }
+  });
+});
+
+describe("dueDateUrgency", () => {
+  const now = Date.parse("2026-03-10T12:00:00.000Z");
+  const at = (iso: string) => dueDateUrgency(iso, now);
+
+  test("a date in the past is overdue", () => {
+    expect(at("2026-03-10T11:59:00.000Z")).toBe("overdue");
+    expect(at("2026-01-01T00:00:00.000Z")).toBe("overdue");
+  });
+
+  test("within three days is soon", () => {
+    expect(at("2026-03-10T18:00:00.000Z")).toBe("soon");
+    expect(at("2026-03-13T11:00:00.000Z")).toBe("soon");
+  });
+
+  test("further out earns no ink on a card", () => {
+    expect(at("2026-03-13T13:00:00.000Z")).toBeNull();
+    expect(at("2026-09-01T00:00:00.000Z")).toBeNull();
+  });
+
+  test("an unparseable date is not urgent", () => {
+    expect(at("not a date")).toBeNull();
+  });
+});
+
+/**
+ * The one state that colours a whole card. Narrowed to `requires_action`
+ * alone: the hand-off signal it used to include is `in_review && !assigneeId`,
+ * which every unowned card in the lane matches, so the colour stopped meaning
+ * anything. An empty assignee slot in the footer carries that case instead.
+ */
+describe("cardNeedsAttention", () => {
+  const inReview = (assigneeId: string | null) =>
+    ({ ...item("a", 0), status: "in_review", assigneeId }) as TaskBoardItem;
+  const asking = (base: TaskBoardItem) =>
+    ({ ...base, threads: [{ status: "requires_action" }] }) as TaskBoardItem;
+
+  test("a quiet card needs nobody", () => {
+    expect(cardNeedsAttention(item("a", 0))).toBe(false);
+  });
+
+  test("an agent waiting on input needs attention", () => {
+    expect(cardNeedsAttention(asking(item("a", 0)))).toBe(true);
+  });
+
+  // Inverted: this used to colour the card, and matched nearly every card in
+  // the In Review lane.
+  test("In Review with no owner does NOT colour the card", () => {
+    expect(cardNeedsAttention(inReview(null))).toBe(false);
+  });
+
+  test("an owner makes no difference either way", () => {
+    expect(cardNeedsAttention(inReview("user-1"))).toBe(false);
+    expect(cardNeedsAttention(asking(inReview("user-1")))).toBe(true);
   });
 });

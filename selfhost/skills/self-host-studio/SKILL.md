@@ -61,6 +61,19 @@ detected environment, then walk these. Record answers into a values file you'll
      subcharts → two-phase CRD; then provision the `studio_monitoring_logs` view).
    - **NATS**: bundled (default) OR their own (`nats.enabled=false` + `NATS_URL`).
 
+2b. **First install against an empty database?** Nothing to configure if the
+   image carries the migration advisory lock — replica count does not matter.
+   On an image that predates it, expect the app pods to crash and restart a few
+   times (`deadlock detected`, `duplicate key ... pg_class_relname_nsp_index`)
+   while whichever process wins finishes the DBOS migration. Measured 2-4
+   restarts per pod on a 3-replica local install; it settled, but the same race
+   is what bricked a customer's database, so treat a pre-lock image as needing
+   the pods held back until the migration Job completes.
+   Every replica migrates the DBOS system schema on boot and the SDK's version
+   bump is an `UPDATE` with no `WHERE`; two replicas racing there leave two rows
+   in `dbos.dbos_migrations` and brick the database permanently. The chart's
+   `migrateJob` closes this under Argo CD but not under plain `helm install`.
+
 3. **Reachability / ingress** — the public URL → `BASE_URL` + `BETTER_AUTH_URL`
    (`http://studio.localhost` locally; `https://studio.<domain>` real). The
    chart's Ingress is optional and OFF by default, so ask what they have:
@@ -93,7 +106,7 @@ detected environment, then walk these. Record answers into a values file you'll
    - a **shared sentinel token**: the SAME value in `sandbox-env.sentinel.token`
      and Studio's `STUDIO_SANDBOX_SENTINEL_TOKEN` (generate one: `openssl rand -hex 32`).
      Missing → Studio cold-provisions and the template rejects `DAEMON_TOKEN`.
-   - `STUDIO_SANDBOX_PROVIDER=agent-sandbox`, `STUDIO_ENV=<env>`,
+   - `STUDIO_AGENT_SANDBOX_ENABLED=true`, `STUDIO_ENV=<env>`,
      `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`.
    All three live in ONE artifact, so the values file is the only place the
    handshake has to be right.
@@ -276,7 +289,7 @@ For a standalone/prod install, wire Studio with:
 ```yaml
 configMap:
   meshConfig:
-    STUDIO_SANDBOX_PROVIDER: "agent-sandbox"          # or "user-desktop" (laptop via NATS link)
+    STUDIO_AGENT_SANDBOX_ENABLED: "true"
     STUDIO_ENV: "<envName>"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-<envName>"
 ```
@@ -311,6 +324,7 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
 | ClickHouse torn down / `UPGRADE FAILED` after a re-run with observability | disabling the `clickhouse-cluster` CR on a running release makes the operator delete ClickHouse → only two-phase when the CRD is ABSENT (first install) — never do `--set clickhouse-cluster.enabled=false` on a live release |
 | `helm install` fails "must be installed into the 'agent-sandbox-system' namespace" | installing `sandbox-operator` as a subchart under another release namespace → set `sandbox-operator.allowForeignNamespace=true` (operator resources are pinned to agent-sandbox-system regardless); the umbrella does this |
 | `kind: SandboxTemplate` / CRD not found on install | operator's CRDs must exist before the CR → the operator ships them in `crds/` (installed before templates), so a single umbrella release works; if you installed the charts separately, install the operator and wait for the CRD first |
+| All pods `CrashLoopBackOff`, `duplicate key ... dbos_migrations_pkey`, `Key (version)=(N) already exists` | `dbos.dbos_migrations` holds more than one row, left by concurrent first boots. The SDK bumps the version with an `UPDATE` that has no `WHERE`, so it writes the same value into every row and collides forever — deterministic, reproduces with a single pod. Recover: `DELETE FROM dbos.dbos_migrations WHERE version <> (SELECT max(version) FROM dbos.dbos_migrations);` leaving exactly ONE row, then run the migration once with the Deployments scaled to 0, then scale up. Never `INSERT` another row — that makes it worse. Prevented at the source since the advisory lock landed; a database damaged before that still needs the DELETE above. |
 | Namespace stuck / "object has been deleted" on re-install | previous `uninstall` still Terminating → wait for it to clear before recreating |
 
 Always show real evidence (`kubectl get pods`, `logs`, `get events

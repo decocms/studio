@@ -12,6 +12,9 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueJiraCommentPush } from "@/jira/dbos-jira-sync";
 import { taskRunContextStore } from "./task-run-context";
 
+/** No real comment is this long — caps the row a single POST can write. */
+const MAX_COMMENT_BODY_LENGTH = 50_000;
+
 const TaskBoardCommentSchema = z.object({
   id: z.string(),
   taskBoardItemId: z.string(),
@@ -94,7 +97,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
   },
   inputSchema: z.object({
     taskBoardItemId: z.string(),
-    body: z.string().trim().min(1),
+    body: z.string().trim().min(1).max(MAX_COMMENT_BODY_LENGTH),
     /** Reply target. Replying to a reply lands on its thread root. */
     parentId: z.string().nullish(),
   }),
@@ -123,6 +126,21 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       body,
     });
     if (!comment) throw new Error("Task board item not found");
+    // Not an activity action, hence its own fan-out. The agent has no inbox.
+    await ctx.storage.notifications.notify({
+      taskBoardItemId: comment.taskBoardItemId,
+      type: "commented",
+      actorId: taskRun ? null : getUserId(ctx)!,
+      alsoSubscribe: taskRun ? [] : [getUserId(ctx)!],
+    });
+    // Separate from the "commented" fan-out above: that one reaches the task's
+    // followers, this one the people the comment names — who may be neither.
+    await ctx.storage.notifications.notifyMentions({
+      taskBoardItemId: comment.taskBoardItemId,
+      organizationId,
+      actorId: taskRun ? null : getUserId(ctx)!,
+      body: comment.body,
+    });
     // Durable enqueue (a DB write): the DBOS queue mirrors it onto the issue.
     await enqueueJiraCommentPush(ctx, {
       commentId: comment.id,
@@ -151,16 +169,21 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
   },
   inputSchema: z.object({
     id: z.string(),
-    body: z.string().trim().min(1).optional(),
+    body: z.string().trim().min(1).max(MAX_COMMENT_BODY_LENGTH).optional(),
     resolved: z.boolean().optional(),
   }),
   outputSchema: z.object({ comment: TaskBoardCommentSchema }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
+    const organizationId = requireOrg(ctx);
+    const existing =
+      input.body !== undefined
+        ? await ctx.storage.taskBoard.getComment(input.id, organizationId)
+        : null;
     const comment = await ctx.storage.taskBoard.updateComment({
       id: input.id,
-      organizationId: requireOrg(ctx),
+      organizationId,
       callerId: getUserId(ctx)!,
       body: input.body,
       resolved: input.resolved,
@@ -169,6 +192,16 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
       throw new Error(
         "Comment not found, or you can only edit your own comments",
       );
+    }
+    // Notify only mentions this edit added, same as an edited description.
+    if (input.body !== undefined && comment.body !== existing?.body) {
+      await ctx.storage.notifications.notifyMentions({
+        taskBoardItemId: comment.taskBoardItemId,
+        organizationId,
+        actorId: getUserId(ctx)!,
+        body: comment.body,
+        previousBody: existing?.body ?? null,
+      });
     }
     return { comment };
   },

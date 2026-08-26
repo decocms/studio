@@ -171,8 +171,15 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     // whether there's a valid session), so it must never wait on, or be
     // gated by, this proxy's auth machinery. See that module's doc comment
     // for the full route table and the map citations behind each entry.
-    if let Some(response) =
-        intercept::try_intercept(&state, &parts.method, &path, parts.uri.query(), &body_bytes).await
+    if let Some(response) = intercept::try_intercept(
+        &state,
+        &parts.method,
+        &path,
+        parts.uri.query(),
+        &body_bytes,
+        &parts.headers,
+    )
+    .await
     {
         return response;
     }
@@ -1040,14 +1047,10 @@ fn proxy_client() -> &'static reqwest::Client {
 /// access token. Resource-specific `401`s pass through without signing out.
 /// Call an org-scoped builtin tool upstream and return its parsed JSON body.
 ///
-/// The interception table is otherwise a strictly-local surface (see
-/// `routes/intercept`'s doc comment: an intercepted route "never talks to
-/// upstream at all"). This is the one deliberate exception, for the single
-/// fact local-api cannot know on its own: a virtual MCP's git repo and runtime
-/// live in the cluster-side registry, and `SANDBOX_START` must resolve them
-/// before it can provision a local sandbox. It fails closed — a signed-out or
-/// unreachable upstream surfaces an error rather than provisioning a sandbox
-/// against a guessed repo.
+/// Sandbox lifecycle interception uses this for the facts local-api cannot
+/// know on its own: virtual-MCP configuration lives in the hosted registry,
+/// while native sandbox state lives on this machine. Calls fail closed rather
+/// than provisioning or enriching responses from guessed data.
 pub(crate) async fn call_org_tool(
     org: &str,
     tool_name: &str,
@@ -1072,9 +1075,6 @@ pub(crate) async fn call_org_tool(
     headers.insert(header::ACCEPT, HeaderValue::from_static("application/json"));
 
     let body = axum::body::Bytes::from(serde_json::to_vec(input).map_err(|e| e.to_string())?);
-    // Same browser-shaped credential rule as the proxy branch: cookie leads,
-    // bearer in reserve — tool handlers upstream can make nested Better Auth
-    // calls with these headers, and a bearer poisons those (api-key probe).
     let cookie_attached = attach_persisted_cookie(&mut headers, &session).await;
     let response = send_with_retry(
         &session,
@@ -2244,7 +2244,7 @@ mod tests {
                     }
                 }),
             )
-            .route("/api/links/me", get(|| async { StatusCode::OK }));
+            .route("/api/auth/desktop/me", get(|| async { StatusCode::OK }));
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -2316,7 +2316,7 @@ mod tests {
                 }),
             )
             .route(
-                "/api/links/me",
+                "/api/auth/desktop/me",
                 get(|headers: HeaderMap| async move {
                     match headers
                         .get(header::AUTHORIZATION)
@@ -2391,7 +2391,10 @@ mod tests {
                     }
                 }),
             )
-            .route("/api/links/me", get(|| async { StatusCode::UNAUTHORIZED }));
+            .route(
+                "/api/auth/desktop/me",
+                get(|| async { StatusCode::UNAUTHORIZED }),
+            );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -2448,7 +2451,10 @@ mod tests {
                     )
                 }),
             )
-            .route("/api/links/me", get(|| async { StatusCode::UNAUTHORIZED }));
+            .route(
+                "/api/auth/desktop/me",
+                get(|| async { StatusCode::UNAUTHORIZED }),
+            );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {

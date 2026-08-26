@@ -17,6 +17,9 @@ import { AtMention } from "./mention-at.tsx";
 import { SlashMention } from "./mention-slash.tsx";
 import { AiProviderModel } from "@/hooks/collections/use-ai-providers.ts";
 
+const DEFAULT_PLACEHOLDER =
+  "Ask anything, / for prompts & skills, @ for agents & resources...";
+
 function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
   return [
     StarterKit.configure({
@@ -27,9 +30,7 @@ function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
       dropcursor: false,
     }),
     Placeholder.configure({
-      placeholder: () =>
-        placeholderRef.current ??
-        "Ask anything, / for prompts & skills, @ for agents & resources...",
+      placeholder: () => placeholderRef.current ?? DEFAULT_PLACEHOLDER,
       showOnlyWhenEditable: false,
     }),
     MentionNode,
@@ -89,6 +90,9 @@ export function TiptapProvider({
     editorProps: {
       attributes: {
         "data-chat-input": "true",
+        role: "textbox",
+        "aria-multiline": "true",
+        "aria-label": placeholder ?? DEFAULT_PLACEHOLDER,
         class:
           "prose prose-sm max-w-none focus:outline-none w-full h-full text-[15px] p-[18px]",
       },

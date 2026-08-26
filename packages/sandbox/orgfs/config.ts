@@ -1,7 +1,7 @@
 /**
- * Pure config types for org-fs mounting, shared by the daemon's `TenantConfig`
- * (types.ts) and the `MountManager`. Kept import-free so `types.ts` doesn't
- * pull in the mount-manager's runtime dependencies.
+ * Pure config types for org-fs mounting, shared by the hosted sidecar and its
+ * `MountManager`. Kept import-free so config parsing has no runtime mounting
+ * dependencies.
  */
 
 /** One mountable volume → where it lands in the workspace. */
@@ -25,10 +25,8 @@ export interface OrgFsMountConfig {
 }
 
 /**
- * Parse the daemon's `ORGFS_CONFIG` boot env (a JSON `OrgFsMountConfig`). The
- * studio sets it at spawn (like `OFFLOAD_ALLOWED_HOSTS`) rather than via a
- * post-boot config push, so it's available when the daemon reads it at boot.
- * Returns null for absent/malformed/empty config (mounting is then skipped).
+ * Parse the JSON `OrgFsMountConfig` relayed into the sidecar's config file.
+ * Returns null for absent, malformed, or empty config (mounting is skipped).
  */
 export function parseOrgFsConfig(
   raw: string | undefined,

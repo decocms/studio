@@ -40,12 +40,20 @@ export const ORGANIZATION_UPDATE = defineTool({
     // Check authorization
     await ctx.access.check();
 
+    // Reject a target org the caller isn't authenticated against (see member-remove.ts).
+    if (input.id !== ctx.organization?.id) {
+      throw new Error(
+        "Organization ID does not match authenticated organization",
+      );
+    }
+
     // Build update data
     // Slug is intentionally NOT updatable: it anchors org URLs (/api/:org/...)
     // and renaming would silently invalidate every saved URL.
     const updateData: Record<string, unknown> = {};
     if (input.name) updateData.name = input.name;
-    if (input.description)
+    // !== undefined, not truthy: "" clears the description and must persist.
+    if (input.description !== undefined)
       updateData.metadata = { description: input.description };
 
     // Update organization via Better Auth

@@ -28,12 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  useIsMutating,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
@@ -45,7 +40,7 @@ import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
+import { useDecofileWriting } from "../../sections-editor/use-decofile-writing.ts";
 import { useFastPreviewDraftUrl } from "../../sections-editor/use-fast-preview-draft-url.ts";
 import { fillPathTemplate } from "../../sections-editor/page-path-utils.ts";
 import {
@@ -57,6 +52,7 @@ import {
   CmsPublishPopover,
   type CmsPublishMode,
 } from "./cms-publish-popover.tsx";
+import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
   isCmsStateSettling,
   selectCmsHeaderButton,
@@ -140,12 +136,15 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    *  this key. Shared verbatim with the publish popover, which reads the
    *  changed-file manifest off the same entry — hence one options factory. */
   const statusQuery = useQuery({
-    ...sandboxGitStatusQueryOptions({
-      orgSlug: org.slug,
-      virtualMcpId,
-      branch: branch ?? "",
-      threadId: taskId ?? null,
-    }),
+    ...sandboxGitStatusQueryOptions(
+      {
+        orgSlug: org.slug,
+        virtualMcpId,
+        branch: branch ?? "",
+        threadId: taskId ?? null,
+      },
+      { fastPreview: true },
+    ),
     enabled: !!branch,
   });
   const status = statusQuery.data ?? null;
@@ -161,6 +160,19 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         headSha: status.headSha ?? "",
       }
     : { kind: "unknown" };
+
+  /**
+   * The publishable change count, derived from the SAME manifest summarizer the
+   * popover uses (the count ignores `lookup`/`diff`, so the manifest alone is
+   * enough here), so with a manifest the header button and the popover agree on
+   * whether there is anything to publish — auto-generated artifacts are excluded
+   * in both. `null` when the manifest is absent (sandbox daemon); the state
+   * machine then falls back to the branch's `aheadOfBase` commit count, which
+   * the popover doesn't, so the two can drift apart in that window alone.
+   */
+  const publishableChangeCount = status?.changedFiles
+    ? summarizePublishManifest({ files: status.changedFiles }).count
+    : null;
 
   const githubHeadBranch =
     (branchMeta.kind === "ready" ? branchMeta.branch : null) ?? branch ?? null;
@@ -245,6 +257,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           threadId: taskId ?? null,
         },
         target.base,
+        { fastPreview: true },
       );
       return target;
     },
@@ -275,14 +288,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   });
 
   /** Same in-flight signal the preview's autosave indicator reads. */
-  const saving =
-    useIsMutating({
-      mutationKey: decofileWriteMutationKey(
-        org.slug,
-        virtualMcpId,
-        branch ?? "",
-      ),
-    }) > 0;
+  const saving = useDecofileWriting(org.slug, virtualMcpId, branch ?? "");
 
   /**
    * Detached: repo linked via a GitHub connection that's no longer aggregated.
@@ -367,6 +373,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           ? String(statusQuery.error)
           : null,
     loading: Boolean(settling),
+    publishableChangeCount,
     t,
   });
 

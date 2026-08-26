@@ -46,11 +46,14 @@ describe("taxAndAddressParams", () => {
     const guest = toStripeForm(taxAndAddressParams(null));
     expect(guest.get("billing_address_collection")).toBe("required");
     expect(guest.get("tax_id_collection[enabled]")).toBe("true");
+    // Without `required`, `enabled` alone lets the buyer submit blank.
+    expect(guest.get("tax_id_collection[required]")).toBe("if_supported");
     // Stripe rejects customer_update without a `customer` on the session.
     expect(guest.has("customer_update[address]")).toBe(false);
 
     const saved = toStripeForm(taxAndAddressParams("cus_1"));
     expect(saved.get("billing_address_collection")).toBe("required");
+    expect(saved.get("tax_id_collection[required]")).toBe("if_supported");
     // Required by Stripe once a saved customer meets address collection.
     expect(saved.get("customer_update[address]")).toBe("auto");
     expect(saved.get("customer_update[name]")).toBe("auto");

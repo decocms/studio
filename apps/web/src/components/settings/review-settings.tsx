@@ -2,9 +2,11 @@ import { toast } from "sonner";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Coins01,
+  Cube01,
   FileSearch02,
   GitMerge,
   ShieldTick,
+  Terminal,
   UserSquare,
 } from "@untitledui/icons";
 import {
@@ -59,6 +61,36 @@ export function ReviewSettings() {
           icon={<UserSquare size={16} />}
           titleKey="settings.review.autoAssignReportTasksTitle"
           descriptionKey="settings.review.autoAssignReportTasksDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * What a coding-agent run (the Super Agent, the reviewers) can reach beyond its
+ * own checkout. Its own section, not part of the reviewer card above: this is
+ * about the tools a run holds, not about who reviews its work.
+ */
+export function AgentToolsSettings() {
+  const t = useT();
+  return (
+    <SettingsSection
+      title={t("settings.agentTools.title")}
+      description={t("settings.agentTools.description")}
+    >
+      <SettingsCard>
+        <FlagToggle
+          flag="coding_agent_org_mcps"
+          icon={<Cube01 size={16} />}
+          titleKey="settings.agentTools.orgMcpsTitle"
+          descriptionKey="settings.agentTools.orgMcpsDescription"
+        />
+        <FlagToggle
+          flag="coding_agents_claude_code"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
+          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
         />
       </SettingsCard>
     </SettingsSection>

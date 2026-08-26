@@ -64,6 +64,12 @@ export default defineConfig({
             find: /^@\/components\/file-picker\/file-picker-dialog$/,
             replacement: stub("file-picker-dialog.tsx"),
           },
+          // The mention picker's members hook: same useProjectContext() issue,
+          // and the list itself is fixture data as far as the picker cares.
+          {
+            find: /^@\/hooks\/use-mention-members$/,
+            replacement: stub("use-mention-members.ts"),
+          },
           // FieldLabel's useVirtualMCP call hits the same useProjectContext() issue as above.
           {
             find: /^@\/sdk\/hooks\/use-virtual-mcp$/,

@@ -89,7 +89,6 @@ describe("buildDurableDispatchInput", () => {
         organizationId: "org-1",
         userId: "user-1",
         harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
         windowSize: 50,
         branch: "main",
@@ -102,6 +101,7 @@ describe("buildDurableDispatchInput", () => {
     );
 
     expect("messages" in durable).toBe(false);
+    expect("sandboxProviderKind" in durable).toBe(false);
     expect(JSON.stringify(durable)).not.toContain("secret prompt");
     expect(durable).toMatchObject({
       organizationId: "org-1",
@@ -126,7 +126,6 @@ describe("buildDurableDispatchInput", () => {
         organizationId: "org-1",
         userId: "user-1",
         harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
         runMetadata: { org_id: "org-xyz", url: "shop.com" },
       },
@@ -160,7 +159,6 @@ describe("buildDurableDispatchInput", () => {
         organizationId: "org-1",
         userId: "user-1",
         harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
       },
       { messageId: "msg-user", runFenceToken: "fence-1" },
@@ -190,7 +188,6 @@ describe("buildDurableDispatchInput", () => {
         organizationId: "org-1",
         userId: "user-1",
         harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
       },
       { messageId: "msg-user", runFenceToken: "fence-1" },

@@ -17,7 +17,6 @@ import type {
   SandboxMap,
   SandboxRecord,
 } from "@decocms/shared/sdk";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import {
   findReusableRepoConnection,
   getRepoScope,
@@ -223,6 +222,20 @@ export function repointedRepoBinding(
  * Note: the sandbox branch embeds the connection id (`threadBranch`), so a
  * repoint yields a fresh sandbox. The old one was unusable anyway.
  */
+/**
+ * The thread's SECONDARY checkouts, the ones `TASK_ADD_REPO` accumulated past
+ * the first. Read on every provision so a recreated pod gets back every repo
+ * the run had added, rather than only the primary.
+ */
+export async function getThreadGithubRepos(
+  ctx: StudioContext,
+  threadId: string | undefined | null,
+): Promise<GithubRepo[]> {
+  const meta = await getThreadMeta(ctx, threadId);
+  const repos = (meta as { githubRepos?: GithubRepo[] } | null)?.githubRepos;
+  return Array.isArray(repos) ? repos.filter((r) => r?.owner && r?.name) : [];
+}
+
 export async function getThreadGithubRepo(
   ctx: StudioContext,
   threadId: string | undefined | null,
@@ -347,7 +360,8 @@ export async function resolveSandboxBranchForThread(
 
 /**
  * Persist a sandbox record on the THREAD's `metadata.sandboxMap`
- * ([userId][branch][kind]) via the shared {@link mergeSandboxMapEntry}. The
+ * ([userId][branch][agent-sandbox]) via the shared
+ * {@link mergeSandboxMapEntry}. The
  * synthetic Decopilot agent's sandboxMap write is a no-op, so for thread-scoped
  * branches this is the only place the frontend reads the live `previewUrl`/
  * handle from. Called from `provisionSandbox` so every provisioning path
@@ -359,7 +373,6 @@ export async function setThreadSandboxMapEntry(
   threadId: string,
   userId: string,
   branch: string,
-  kind: SandboxProviderKind,
   entry: SandboxRecord,
 ): Promise<void> {
   const meta = await getThreadMeta(ctx, threadId);
@@ -368,7 +381,6 @@ export async function setThreadSandboxMapEntry(
     readSandboxMap(meta),
     userId,
     branch,
-    kind,
     entry,
   );
   await ctx.storage.threads
@@ -389,7 +401,7 @@ export async function getThreadSandboxMap(
   return readSandboxMap(await getThreadMeta(ctx, threadId));
 }
 
-/** Remove sandboxMap[userId][branch][kind] from the thread via the shared
+/** Remove sandboxMap[userId][branch][agent-sandbox] from the thread via the shared
  *  {@link deleteSandboxMapEntry}. No-op when the thread or entry is absent.
  *  Never throws. Mirrors the agent-scoped `removeSandboxMapEntry`. */
 export async function removeThreadSandboxMapEntry(
@@ -397,16 +409,10 @@ export async function removeThreadSandboxMapEntry(
   threadId: string,
   userId: string,
   branch: string,
-  kind: SandboxProviderKind,
 ): Promise<void> {
   const meta = await getThreadMeta(ctx, threadId);
   if (!meta) return;
-  const next = deleteSandboxMapEntry(
-    readSandboxMap(meta),
-    userId,
-    branch,
-    kind,
-  );
+  const next = deleteSandboxMapEntry(readSandboxMap(meta), userId, branch);
   if (!next) return;
   await ctx.storage.threads
     .update(threadId, { metadata: { ...meta, sandboxMap: next } })

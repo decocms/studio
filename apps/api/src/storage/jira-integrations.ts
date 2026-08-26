@@ -1,10 +1,10 @@
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
-import type {
-  Database,
-  OrgJiraIntegration,
-  TaskBoardItemStatus,
-} from "./types";
+import {
+  type JiraStatusMapping,
+  normalizeStatusMapping,
+} from "@decocms/shared/jira-status-mapping";
+import type { Database, OrgJiraIntegration } from "./types";
 
 /**
  * Per-org Jira Cloud integration configs (see migration 171). One row per
@@ -26,8 +26,7 @@ type Row = {
   api_token: string;
   board_id: string | null;
   board_name: string | null;
-  status_mapping: Record<string, TaskBoardItemStatus> | string;
-  jql_filter: string | null;
+  status_mapping: unknown;
   auto_delegate: boolean;
   webhook_secret: string;
   enabled: boolean;
@@ -62,11 +61,13 @@ export class JiraIntegrationStorage {
       boardId: row.board_id,
       boardName: row.board_name,
       // Defensive parse — driver jsonb handling varies (see organization-settings.ts).
-      statusMapping:
+      // Normalized on the way out, so every reader gets lane → statuses and
+      // a row still in the legacy status → lane shape keeps syncing.
+      statusMapping: normalizeStatusMapping(
         typeof row.status_mapping === "string"
           ? JSON.parse(row.status_mapping)
           : row.status_mapping,
-      jqlFilter: row.jql_filter,
+      ),
       autoDelegate: row.auto_delegate,
       webhookSecret: row.webhook_secret,
       enabled: row.enabled,
@@ -95,8 +96,7 @@ export class JiraIntegrationStorage {
     apiToken: string;
     boardId: string | null;
     boardName: string | null;
-    statusMapping: Record<string, TaskBoardItemStatus>;
-    jqlFilter: string | null;
+    statusMapping: JiraStatusMapping;
     autoDelegate: boolean;
     enabled: boolean;
     createdBy: string;
@@ -112,7 +112,6 @@ export class JiraIntegrationStorage {
         board_id: params.boardId,
         board_name: params.boardName,
         status_mapping: JSON.stringify(params.statusMapping),
-        jql_filter: params.jqlFilter,
         auto_delegate: params.autoDelegate,
         enabled: params.enabled,
         created_by: params.createdBy,
@@ -125,7 +124,6 @@ export class JiraIntegrationStorage {
           board_id: params.boardId,
           board_name: params.boardName,
           status_mapping: JSON.stringify(params.statusMapping),
-          jql_filter: params.jqlFilter,
           auto_delegate: params.autoDelegate,
           enabled: params.enabled,
           updated_at: new Date(),
@@ -199,6 +197,33 @@ export class JiraIntegrationStorage {
       })
       .where("id", "=", id)
       .execute();
+  }
+
+  /**
+   * Every linked issue in the org, for the reconciliation pass — the cards
+   * whose issue is no longer in the board's scope.
+   *
+   * Only cards still on the board: an already-archived one is the resting
+   * state this reconciliation moves cards TO, so re-reading it every tick
+   * would re-archive it forever.
+   */
+  async listLinkedIssuesOnBoard(
+    organizationId: string,
+  ): Promise<
+    Array<{ itemId: string; jiraIssueId: string; jiraIssueKey: string }>
+  > {
+    const rows = await this.db
+      .selectFrom("task_board_item_jira_links as l")
+      .innerJoin("task_board_items as t", "t.id", "l.item_id")
+      .select(["l.item_id", "l.jira_issue_id", "l.jira_issue_key"])
+      .where("l.organization_id", "=", organizationId)
+      .where("t.status", "!=", "archived")
+      .execute();
+    return rows.map((row) => ({
+      itemId: row.item_id,
+      jiraIssueId: row.jira_issue_id,
+      jiraIssueKey: row.jira_issue_key,
+    }));
   }
 
   async getLinksByIssueIds(

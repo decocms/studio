@@ -10,7 +10,10 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
-import { labelFromResolveType } from "./section-types";
+import {
+  labelFromResolveType,
+  SECTION_MULTIVARIATE_RESOLVE_TYPE,
+} from "./section-types";
 
 export interface SectionCatalogEntry {
   resolveType: string;
@@ -107,17 +110,80 @@ export function listAvailableSections(
   meta: LiveMeta,
 ): Array<{ resolveType: string; title: string }> {
   const blocks = meta.manifest?.blocks ?? {};
-  const entries: Array<{ resolveType: string; title: string }> = [];
+  const byResolveType = new Map<
+    string,
+    { resolveType: string; title: string }
+  >();
 
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("sections")) continue;
     for (const resolveType of Object.keys(blockMap)) {
       if (shouldSkipSectionResolveType(resolveType)) continue;
-      entries.push({ resolveType, title: labelFromResolveType(resolveType) });
+      if (byResolveType.has(resolveType)) continue;
+      byResolveType.set(resolveType, {
+        resolveType,
+        title: labelFromResolveType(resolveType),
+      });
     }
   }
 
-  return entries.sort((a, b) => a.title.localeCompare(b.title));
+  return [...byResolveType.values()].sort((a, b) =>
+    a.title.localeCompare(b.title),
+  );
+}
+
+/**
+ * For a saved block wrapped in the multivariate section flag
+ * (`website/flags/multivariate/section.ts`), the underlying component's
+ * resolveType — read from the first variant that resolves to a manifest
+ * section (with A/B variants + matcher rules). Mirrors how the runtime
+ * resolves the block ref. Non-multivariate blocks (or a flag with no
+ * resolvable variant) just return their own resolveType unchanged.
+ */
+export function underlyingSectionResolveType(
+  meta: LiveMeta,
+  block: Record<string, unknown>,
+): string {
+  const rt = block.__resolveType;
+  if (typeof rt !== "string") return "";
+  if (rt !== SECTION_MULTIVARIATE_RESOLVE_TYPE) return rt;
+
+  const variants = block.variants;
+  if (!Array.isArray(variants)) return rt;
+
+  for (const variant of variants) {
+    const value = (variant as Record<string, unknown>)?.value as
+      | Record<string, unknown>
+      | undefined;
+    if (!value) continue;
+
+    // Lazy-wrapped section values nest the real section under `.section`.
+    let variantRt = value.__resolveType;
+    if (typeof variantRt === "string" && isLazyResolveType(variantRt)) {
+      const inner = value.section as Record<string, unknown> | undefined;
+      variantRt = inner?.__resolveType ?? variantRt;
+    }
+    if (
+      typeof variantRt === "string" &&
+      isManifestSectionResolveType(meta, variantRt)
+    ) {
+      return variantRt;
+    }
+  }
+
+  return rt;
+}
+
+/**
+ * A saved block whose top-level resolveType is the multivariate section flag
+ * is still an insertable section — confirm at least one variant resolves to a
+ * manifest section so a dead flag isn't offered.
+ */
+function multivariateWrapsManifestSection(
+  meta: LiveMeta,
+  block: Record<string, unknown>,
+): boolean {
+  return underlyingSectionResolveType(meta, block) !== block.__resolveType;
 }
 
 export function listSavedSectionBlocks(
@@ -137,7 +203,12 @@ export function listSavedSectionBlocks(
     if (PAGE_BLOCK_RESOLVE_TYPES.has(rt)) continue;
     if (typeof obj.path === "string") continue;
     if (shouldSkipSectionResolveType(rt)) continue;
-    if (!isManifestSectionResolveType(meta, rt)) continue;
+
+    const isSectionBlock =
+      isManifestSectionResolveType(meta, rt) ||
+      (rt === SECTION_MULTIVARIATE_RESOLVE_TYPE &&
+        multivariateWrapsManifestSection(meta, obj));
+    if (!isSectionBlock) continue;
 
     entries.push({
       resolveType: key,

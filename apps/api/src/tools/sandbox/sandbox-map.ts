@@ -1,22 +1,24 @@
 /**
- * sandboxMap helpers — per-(user, branch, sandboxProviderKind) sandbox registry.
+ * Hosted sandbox-map helpers.
  *
  * Lookup: sandboxMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
- * Stored in the virtualmcp's metadata JSON column. Threads sharing the same
- * (user, branch, kind) triple share one sandbox.
+ * Stored in the virtualmcp's metadata JSON column. Hosted threads sharing the
+ * same (user, branch) pair share one `agent-sandbox` entry. Native `local-api`
+ * entries may coexist in the same branch cell and are preserved by writes.
  *
  * NOTE: read-modify-write is NOT atomic across pods — two concurrent SANDBOX_START
- * calls for the same (sandbox, user, branch, kind) can race. Accepted for v1. A
+ * calls for the same (sandbox, user, branch) can race. Accepted for v1. A
  * proper fix requires a Postgres advisory lock or a dedicated sandbox_sessions table.
  */
 
 import { parseBranchMap } from "@decocms/shared/sdk";
 import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 import type { VirtualMCPStoragePort } from "../../storage/ports";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
+
+export const AGENT_SANDBOX_KIND = "agent-sandbox" as const;
 
 export function readSandboxMap(
   metadata: Record<string, unknown> | null | undefined,
@@ -31,19 +33,18 @@ export function resolveVm(
   sandboxMap: SandboxMap,
   userId: string,
   branch: string,
-  sandboxProviderKind: SandboxProviderKind,
 ): SandboxRecord | null {
   const raw = sandboxMap[userId]?.[branch];
   if (!raw) return null;
   const parsed = parseBranchMap(raw);
-  return parsed[sandboxProviderKind] ?? null;
+  return parsed[AGENT_SANDBOX_KIND] ?? null;
 }
 
 /**
- * Pure merge: returns a copy of `current` with sandboxMap[userId][branch][kind]
- * set to `entry`. Creates intermediate buckets as needed and preserves any
- * sibling users, branches, and kinds. Normalizes the target branch cell through
- * `parseBranchMap` so a legacy stringified cell can't corrupt the spread. The
+ * Pure merge: returns a copy of `current` with the hosted entry set. Creates
+ * intermediate buckets as needed and preserves sibling users, branches, and
+ * native entries. Normalizes the target branch cell through `parseBranchMap`
+ * so a malformed stringified cell can't corrupt the spread. The
  * single source of truth for both the agent-scoped (`setSandboxMapEntry`) and
  * thread-scoped (`setThreadSandboxMapEntry`) writers.
  */
@@ -51,13 +52,12 @@ export function mergeSandboxMapEntry(
   current: SandboxMap,
   targetUserId: string,
   branch: string,
-  sandboxProviderKind: SandboxProviderKind,
   entry: SandboxRecord,
 ): SandboxMap {
   const currentBranchMap = parseBranchMap(current[targetUserId]?.[branch]);
   const nextBranchMap = {
     ...currentBranchMap,
-    [sandboxProviderKind]: entry,
+    [AGENT_SANDBOX_KIND]: entry,
   };
   return {
     ...current,
@@ -69,9 +69,8 @@ export function mergeSandboxMapEntry(
 }
 
 /**
- * Read-modify-write: sets sandboxMap[userId][branch][kind] = entry on the
- * virtualmcp. Creates intermediate buckets as needed. Preserves any
- * sibling-kind entries already present at sandboxMap[userId][branch][*].
+ * Read-modify-write: sets the hosted entry on the virtualmcp. Creates
+ * intermediate buckets as needed and preserves a native sibling entry.
  */
 export async function setSandboxMapEntry(
   storage: VirtualMCPStoragePort,
@@ -79,7 +78,6 @@ export async function setSandboxMapEntry(
   actingUserId: string,
   targetUserId: string,
   branch: string,
-  sandboxProviderKind: SandboxProviderKind,
   entry: SandboxRecord,
 ): Promise<void> {
   const virtualMcp = await storage.findById(virtualMcpId);
@@ -90,7 +88,6 @@ export async function setSandboxMapEntry(
     readSandboxMap(meta),
     targetUserId,
     branch,
-    sandboxProviderKind,
     entry,
   );
 
@@ -113,13 +110,12 @@ export function deleteSandboxMapEntry(
   current: SandboxMap,
   targetUserId: string,
   branch: string,
-  sandboxProviderKind: SandboxProviderKind,
 ): SandboxMap | null {
   const branchMap = parseBranchMap(current[targetUserId]?.[branch]);
-  if (!branchMap[sandboxProviderKind]) return null;
+  if (!branchMap[AGENT_SANDBOX_KIND]) return null;
 
   const nextBranchMap = { ...branchMap };
-  delete nextBranchMap[sandboxProviderKind];
+  delete nextBranchMap[AGENT_SANDBOX_KIND];
 
   const userMap = { ...(current[targetUserId] ?? {}) };
   if (Object.keys(nextBranchMap).length === 0) {
@@ -148,7 +144,6 @@ export async function removeSandboxMapEntry(
   actingUserId: string,
   targetUserId: string,
   branch: string,
-  sandboxProviderKind: SandboxProviderKind,
 ): Promise<void> {
   const virtualMcp = await storage.findById(virtualMcpId);
   if (!virtualMcp) return;
@@ -158,7 +153,6 @@ export async function removeSandboxMapEntry(
     readSandboxMap(meta),
     targetUserId,
     branch,
-    sandboxProviderKind,
   );
   if (!next) return;
 

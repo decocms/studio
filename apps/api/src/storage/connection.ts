@@ -227,12 +227,25 @@ export class ConnectionStorage implements ConnectionStoragePort {
       created_at: now,
       updated_at: now,
     });
-    // returningAll() avoids a second round trip to re-fetch the inserted row.
-    const row = await this.db
-      .insertInto("connections")
-      .values(serialized as Insertable<Database["connections"]>)
-      .returningAll()
-      .executeTakeFirst();
+    let row: RawConnectionRow | undefined;
+    try {
+      // returningAll() avoids a second round trip to re-fetch the inserted row.
+      row = (await this.db
+        .insertInto("connections")
+        .values(serialized as Insertable<Database["connections"]>)
+        .returningAll()
+        .executeTakeFirst()) as RawConnectionRow | undefined;
+    } catch (error) {
+      // Race with a concurrent create() for the same id: match createNew()'s error.
+      if (
+        error instanceof Error &&
+        (error.message.includes("duplicate key") ||
+          error.message.includes("unique constraint"))
+      ) {
+        throw new Error("Connection ID already exists");
+      }
+      throw error;
+    }
     if (!row) {
       throw new Error(`Failed to create connection with id: ${id}`);
     }

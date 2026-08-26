@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 
-// Re-exported so downstream packages (@decocms/sandbox's SandboxClient, the
-// web client) consume the AI-SDK chunk type via @decocms/shared without
+// Re-exported so downstream packages consume the AI-SDK chunk type via
+// @decocms/shared without
 // declaring a direct `ai` dependency — keeping a SINGLE hoisted `ai` instance
 // (avoids the double-AI-SDK / broken-instanceof hazard).
 export type { UIMessageChunk } from "ai";
@@ -14,8 +14,8 @@ export type { UIMessageChunk } from "ai";
  * structural compatibility: the cluster passes its richer types where these
  * expect a UIMessage, and TS accepts the widening.
  *
- * The host-side execution contracts (`Harness`, `HarnessContext`,
- * `HarnessFactory`) stay in apps/api/src/harnesses/lib — only the API runs one.
+ * The concrete in-process Decopilot executor stays in apps/api; this module
+ * contains only the browser-safe inputs shared with sandbox dispatch.
  */
 
 /** Built-in harness identifiers. Open-ended on purpose — third-party harnesses
@@ -153,13 +153,9 @@ export interface HarnessStreamInput {
   maxAgentSteps?: number;
   user: { id: string; email: string };
   organizationId: string;
-  organizationSlug?: string;
   agent: HarnessAgent;
-  triggerId?: string;
   currentThreadTitle?: string;
   signal: AbortSignal;
-  traceparent?: string;
-  runFenceToken?: string;
   /**
    * Set when this dispatch continues a turn a previous attempt started and
    * infrastructure cut short (the Studio pod driving it died, or the sandbox

@@ -35,10 +35,10 @@
  *
  * ── unified-control-plane T9 extension ────────────────────────────────
  * This cluster's `docker-compose.yml` pins every Studio pod to
- * `STUDIO_SANDBOX_PROVIDER=agent-sandbox` (see that file's comment on the
- * the first service), so `resolveDispatchTarget` short-circuits every
- * dispatch in this suite to HOSTED execution — this test already drives a
- * hosted streaming turn through the (now v4) gate: dispatch →
+ * `STUDIO_AGENT_SANDBOX_ENABLED=true` (see that file's comment on the
+ * first service), so every dispatch in this suite uses the server-owned hosted
+ * runtime. This test already drives a hosted streaming turn through the (now
+ * v4) gate: dispatch →
  * `hostedHarnessWorkflow` (detached, not awaited) → `consumeRunProjection`
  * live-tailing the subject, identically to desktop. That makes this the
  * multi-pod suite's existing streaming-turn scenario the T9 proof
@@ -49,7 +49,7 @@
  * terminal `completed`, and parts persisted exactly once (a part count
  * that's stable across two reads taken a beat apart — the exact count mock-ai's
  * chunk-to-part folding produces isn't a stable contract to pin at this
- * granularity; see `projector-parity.test.ts` for that level of detail).
+ * granularity).
  */
 
 import { describe, expect, test } from "bun:test";

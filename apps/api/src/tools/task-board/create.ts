@@ -2,8 +2,12 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
+  MAX_TASK_DESCRIPTION_LENGTH,
+  MAX_TASK_REPO_LENGTH,
+  MAX_TASK_TITLE_LENGTH,
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
+  TaskBoardItemTypeSchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
@@ -24,14 +28,19 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    title: z.string().min(1),
-    description: z.string().nullable().optional(),
+    title: z.string().min(1).max(MAX_TASK_TITLE_LENGTH),
+    description: z
+      .string()
+      .max(MAX_TASK_DESCRIPTION_LENGTH)
+      .nullable()
+      .optional(),
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
+    type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
-    repo: z.string().nullable().optional(),
+    repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
-    tagIds: z.array(z.string()).optional(),
+    tagIds: z.array(z.string()).max(1000).optional(),
     prUrl: z
       .string()
       .nullable()
@@ -87,6 +96,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       // A task handed to the Super Agent is queued to run — land it in To Do.
       status: delegatedToSuperAgent ? "todo" : input.status,
       priority: input.priority,
+      type: input.type,
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       repo: input.repo ?? null,
@@ -119,6 +129,18 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       taskBoardItemId: item.id,
       action: "created",
       actorId: getUserId(ctx)!,
+      // The only place an assignee named at create time gets enrolled.
+      alsoSubscribe: [
+        getUserId(ctx)!,
+        item.assigneeId === SUPER_AGENT_ASSIGNEE_ID ? null : item.assigneeId,
+      ],
+    });
+
+    await ctx.storage.notifications.notifyMentions({
+      taskBoardItemId: item.id,
+      organizationId,
+      actorId: getUserId(ctx)!,
+      body: item.description ?? "",
     });
 
     // Broadcast the new card so every open board adds it live, no polling.

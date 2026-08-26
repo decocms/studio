@@ -14,7 +14,7 @@ export interface LoginOptions {
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
-export interface PerformInteractiveLoginOptions {
+interface PerformInteractiveLoginOptions {
   target?: string;
   openBrowser?: (url: string) => Promise<void>;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
@@ -45,10 +45,10 @@ interface IdTokenClaims {
 /**
  * Runs the OAuth 2.0 + PKCE flow and returns a fresh Session object.
  *
- * Does NOT write the session to disk — callers (`loginCommand`,
- * `ensureSession`) are responsible for persistence.
+ * Does NOT write the session to disk — callers are responsible for
+ * persistence.
  */
-export async function performInteractiveLogin(
+async function performInteractiveLogin(
   options: PerformInteractiveLoginOptions = {},
 ): Promise<Session> {
   const target = (options.target ?? DEFAULT_TARGET).replace(/\/$/, "");

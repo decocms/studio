@@ -1,6 +1,6 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
-import { useIsMutating, useQuery } from "@tanstack/react-query";
-import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
+import { useQuery } from "@tanstack/react-query";
+import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   SplitButton,
@@ -236,14 +236,20 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
 
   /** An in-flight autosave means the branch state is mid-change — hold the publish surfaces until the write lands. */
-  const decofileSaving =
-    useIsMutating({
-      mutationKey: decofileWriteMutationKey(
-        org.slug,
-        virtualMcpId,
-        branch ?? sandboxRouteBranch ?? "",
-      ),
-    }) > 0;
+  const decofileSaving = useDecofileWriting(
+    org.slug,
+    virtualMcpId,
+    branch ?? sandboxRouteBranch ?? "",
+  );
+
+  /**
+   * Preview URL must come from the sandbox lifecycle — the raw
+   * `vm.metadata.sandboxMap` does not always carry it. Called before the early
+   * returns below: `attachment.status` can flip from "detached" to attached
+   * (a live GitHub reconnect) while this component stays mounted, and a hook
+   * called only on some renders breaks React's hook-order invariant.
+   */
+  const { previewUrl } = useSandboxLifecycle();
 
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {
@@ -256,9 +262,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     );
   }
   if (!githubRepo) return null;
-
-  /** Preview URL must come from the sandbox lifecycle — the raw `vm.metadata.sandboxMap` does not always carry it. */
-  const { previewUrl } = useSandboxLifecycle();
 
   const button = githubHeadBranch
     ? selectHeaderButton({
@@ -535,7 +538,7 @@ function HeaderButtonRenderer(props: {
         {...(action && !loading ? { icon: actionIcon(action) } : {})}
         {...(tooltip ? { tooltip } : {})}
         items={items}
-        menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
+        menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
         onClick={action ? () => onAction(action) : undefined}
       />
     </span>

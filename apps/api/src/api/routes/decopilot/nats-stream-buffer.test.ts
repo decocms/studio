@@ -88,11 +88,15 @@ test("decopilot stream is file-backed with a dedup window and SLA retention", ()
   const c = decopilotStreamConfig();
   expect(c.storage).toBe(StorageType.File);
   expect(c.duplicate_window).toBeGreaterThanOrEqual(2 * 60 * 1_000_000_000); // >= 2min (ns)
-  // Retention must outlast a day-long desktop run so seq 1 survives until the
+  // Retention must outlast a day-long run so seq 1 survives until the
   // terminal projection re-reads [1..finalSeq].
   expect(c.max_age).toBeGreaterThanOrEqual(24 * 60 * 60 * 1_000_000_000); // >= 24h
   expect(c.max_msgs_per_subject).toBeGreaterThanOrEqual(500_000);
   expect(c.max_bytes).toBeGreaterThanOrEqual(4 * 1024 * 1024 * 1024); // >= 4GB
+});
+
+test("decopilot stream is replicated so one node loss keeps the run streaming", () => {
+  expect(decopilotStreamConfig().num_replicas).toBe(3);
 });
 
 describe("NatsStreamBuffer", () => {
@@ -628,6 +632,46 @@ describe("NatsStreamBuffer", () => {
         true,
       );
     });
+
+    it("rides out a transient JetStreamNotEnabled and still resolves true", async () => {
+      let attempts = 0;
+      const mockJs = {
+        publish: mockOf(() => {
+          attempts += 1;
+          if (attempts < 3) {
+            const err = new Error("jetstream is not enabled");
+            err.name = "JetStreamNotEnabled";
+            return Promise.reject(err);
+          }
+          return Promise.resolve({ seq: 1 });
+        }),
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+      expect(await buffer.publishRawChunk("run_1", { type: "start" })).toBe(
+        true,
+      );
+      expect(attempts).toBe(3);
+    });
+
+    it("resolves false (never throws) once the transient window is exhausted", async () => {
+      const mockJs = {
+        publish: mockOf(() =>
+          Promise.reject(new Error("no responders: decopilot.stream.run_1")),
+        ),
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+      expect(await buffer.publishRawChunk("run_1", { type: "start" })).toBe(
+        false,
+      );
+    }, 30_000); // exhaustion costs ~13s of real backoff
 
     it("forwards an explicit msgId for JetStream dedup", async () => {
       const published: Array<{ subj: string; opts?: unknown }> = [];

@@ -32,7 +32,6 @@ import { createSideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { ingestRun } from "@/api/routes/decopilot/ingest-run";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { UIMessageChunk } from "ai";
-import { isHostedDecopilotRuntime } from "./hosted-runtime";
 
 // Re-export from the side-effect-free `queue-names` module so `index.ts` can
 // reference the name without importing this module (which registers a workflow).
@@ -188,16 +187,11 @@ export function isHostedDecopilotThread(
   thread:
     | {
         harness_id?: string | null;
-        sandbox_provider_kind?: string | null;
       }
     | null
     | undefined,
 ): boolean {
-  if (!thread) return false;
-  return isHostedDecopilotRuntime({
-    harnessId: thread.harness_id,
-    sandboxProviderKind: thread.sandbox_provider_kind,
-  });
+  return thread?.harness_id === "decopilot";
 }
 
 async function requireHostedThreadContext(
@@ -218,7 +212,6 @@ function resolveThreadTarget(
   thread:
     | {
         harness_id?: string | null;
-        sandbox_provider_kind?: string | null;
       }
     | null
     | undefined,
@@ -262,7 +255,6 @@ function buildReactionRequest(
     branch: s.branch ?? undefined,
     resumedFromBackground: true,
     harnessId: opts.harnessId,
-    sandboxProviderKind: "agent-sandbox",
     runMetadata: opts.runMetadata,
   };
 }

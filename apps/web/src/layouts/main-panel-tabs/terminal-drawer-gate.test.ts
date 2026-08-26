@@ -39,6 +39,7 @@ describe("shouldShowTerminalDrawer", () => {
     expect(
       shouldShowTerminalDrawer(input({ mainTab: "connect-sources" })),
     ).toBe(false);
+    expect(shouldShowTerminalDrawer(input({ mainTab: "reports" }))).toBe(false);
   });
 
   test("shows under a non-overlay tab", () => {

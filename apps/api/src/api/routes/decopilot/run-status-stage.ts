@@ -4,6 +4,10 @@ import type { StreamBuffer } from "./stream-buffer";
 const RUN_STATUS_STAGES = [
   "waiting-runner",
   "starting-run",
+  // Sandbox-hosted only: the pod is booting and the repo is being checked out.
+  // The longest silence in a claude-code run, and the one the generic
+  // "Thinking…" fallback described worst.
+  "starting-sandbox",
   // Queued behind the hosted-harness queue's per-pod cap (see queue-names.ts).
   "waiting-capacity",
   "gathering-context",
@@ -23,27 +27,14 @@ export const PREPARE_RUN_STATUS_STAGES = [
 
 const STAGE_SET = new Set<string>(RUN_STATUS_STAGES);
 
-export function shouldPublishClusterRunStatus(input: {
-  harnessId?: string | null;
-  sandboxProviderKind?: string | null;
-}): boolean {
-  return (
-    input.sandboxProviderKind === "agent-sandbox" &&
-    input.harnessId === "decopilot"
-  );
-}
-
-export function shouldPublishThreadGateRunStatus(input: {
-  harnessId?: string | null;
-  sandboxProviderKind?: string | null;
-}): boolean {
-  // Legacy requests may have no target; those replay through hosted dispatch
-  // alongside explicit agent-sandbox targets.
-  return (
-    input.harnessId === "decopilot" &&
-    (input.sandboxProviderKind == null ||
-      input.sandboxProviderKind === "agent-sandbox")
-  );
+/**
+ * Whether a run reports its pre-content progress at all. Both hosted harnesses
+ * do; they differ only in the channel (see {@link publishRunStatusStage}).
+ */
+export function shouldPublishRunStatus(
+  harnessId: string | null | undefined,
+): boolean {
+  return harnessId === "decopilot" || harnessId === "claude-code";
 }
 
 export type RunStatusChunk = Extract<
@@ -85,12 +76,24 @@ export function isRunStatusControlChunk(chunk: unknown): boolean {
   return (chunk as { type?: unknown }).type === "data-run-status";
 }
 
-export async function publishRunStatusStage(
-  streamBuffer: Pick<StreamBuffer, "publishRawChunk"> | undefined,
-  taskId: string,
-  stage: BackendRunStatusStage,
-): Promise<void> {
-  if (!streamBuffer) return;
+/** The publish surface a stage needs: one raw chunk on the run's own stream. */
+export type RunStatusStreamBuffer = Pick<StreamBuffer, "publishRawChunk">;
+
+/**
+ * Report one pre-content stage on the run's chunk stream, where the chat is
+ * already listening. Raw (out-of-band) so the stage never becomes a message
+ * part — `isRunStatusControlChunk` is what keeps it out of the projector.
+ *
+ * Best-effort: a status hint must never fail a dispatch.
+ */
+export async function publishRunStatusStage(args: {
+  streamBuffer: RunStatusStreamBuffer | undefined;
+  harnessId: string | null | undefined;
+  taskId: string;
+  stage: BackendRunStatusStage;
+}): Promise<void> {
+  const { streamBuffer, harnessId, taskId, stage } = args;
+  if (!streamBuffer || !shouldPublishRunStatus(harnessId)) return;
   try {
     await streamBuffer.publishRawChunk(taskId, buildRunStatusChunk(stage));
   } catch {

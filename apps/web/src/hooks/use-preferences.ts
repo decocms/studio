@@ -12,6 +12,12 @@ interface Preferences {
   theme: ThemeMode;
   language: Locale;
   /**
+   * Reveal a settings shortcut on each sidebar project row on hover. Off by
+   * default — the row is a navigation target first, and the shortcut is a
+   * second control competing for the same space.
+   */
+  showProjectSettingsGear: boolean;
+  /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
    * pulled back onto the board. Statuses, not lane indexes, so a reordered or
    * renamed lane can't resurrect the wrong column.
@@ -25,6 +31,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
+  showProjectSettingsGear: false,
   shownTaskBoardLanes: [],
 };
 

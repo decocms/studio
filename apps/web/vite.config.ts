@@ -203,10 +203,8 @@ const serveSelfHostedMonaco: Plugin = {
 // event to propagate client disconnects upstream (http-proxy destroys the
 // proxied request when the downstream client goes away). Bun's node:http
 // compat never emits that event on premature disconnect, so under Bun an
-// aborted SSE stream / long-poll keeps running on the Bun API server forever —
-// chat-turn cancels never arrive and orphaned `GET /api/links/work` polls
-// swallow pull-dispatch work items (e2e: link-proxy.spec.ts,
-// link-dispatch-pull.spec.ts).
+// aborted SSE stream / long-poll keeps running on the Bun API server forever,
+// so chat-turn cancellations never reach the upstream request.
 
 // Shared by the dev server AND `vite preview`: e2e serves the production
 // build through preview, and its readiness probe + every spec reach the API

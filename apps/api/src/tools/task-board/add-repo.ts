@@ -30,7 +30,7 @@ import {
 } from "@/core/studio-context";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import { pickGitBranch } from "@/sandbox/head-ref";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
+import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import {
   buildCloneInfo,
   ensureGithubCloneToken,
@@ -43,7 +43,11 @@ import {
   syntheticBranchToGitRef,
 } from "@/tools/sandbox/thread-repo";
 import { retry, sleep } from "@decocms/shared/std";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import {
+  secondaryRepoDirNames,
+  secondaryRepoDirName,
+} from "@decocms/shared/secondary-repo-dirs";
 import { requireTaskRunContext } from "./task-run-context";
 
 /**
@@ -82,7 +86,6 @@ async function waitForSandboxRecord(
   threadId: string,
   sandboxUserId: string,
   branch: string,
-  kind: Parameters<typeof resolveVm>[3],
 ): Promise<ReturnType<typeof resolveVm>> {
   return retry(
     async () => {
@@ -90,7 +93,6 @@ async function waitForSandboxRecord(
         await getThreadSandboxMap(ctx, threadId),
         sandboxUserId,
         branch,
-        kind,
       );
       if (!record) throw new Error("sandbox record not written yet");
       return record;
@@ -104,15 +106,58 @@ async function waitForSandboxRecord(
   ).catch(() => null);
 }
 
-/** Wait at most this long for the checkout before answering anyway. */
-const CLONE_TIMEOUT_MS = 180_000;
+/**
+ * Wait at most this long for the checkout before answering anyway.
+ *
+ * MUST stay under the harness's MCP tool-call timeout, which is 60s: past that
+ * the caller has already abandoned the call, so every extra second of polling
+ * buys nothing and the model is told the add FAILED even when the clone lands
+ * moments later. This was 180s, and the 120s beyond the cutoff were spent
+ * probing a pod for an answer no one would read — an autonomous run then
+ * re-cloned a repo it already had.
+ *
+ * A clone still in flight at the deadline is reported as "may still be in
+ * progress" with the directory to look in, which is the honest answer and
+ * one the model can act on.
+ */
+const CLONE_TIMEOUT_MS = 45_000;
 const CLONE_POLL_MS = 1_500;
 /** Consecutive probe failures that mean the pod is gone, not slow. */
 const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
 
+/**
+ * Secondary checkouts a single run may accumulate.
+ *
+ * Nothing else bounds `TASK_ADD_REPO`: the model can call it once per repo the
+ * org has imported, and each call clones into the pod and appends to the
+ * thread's `githubRepos` list forever (`appendThreadGithubRepo` never
+ * shrinks it). An org with a large connected-repo catalog would otherwise let
+ * one run pile up an unbounded number of pod checkouts and an unbounded
+ * `git.repositories` config payload pushed to the daemon on every add.
+ */
+export const MAX_SECONDARY_REPOS = 20;
+
+/**
+ * Whether adding `candidate` would push a thread's secondary checkouts past
+ * the cap. A repo the thread already has is always let through — appending it
+ * again is a no-op in storage, not a new checkout, so it can never be what
+ * fills the cap.
+ */
+export function secondaryRepoCapExceeded(
+  existing: { owner: string; name: string }[],
+  candidate: { owner: string; name: string },
+  cap = MAX_SECONDARY_REPOS,
+): boolean {
+  const key = (r: { owner: string; name: string }) =>
+    `${r.owner}/${r.name}`.toLowerCase();
+  const candidateKey = key(candidate);
+  if (existing.some((r) => key(r) === candidateKey)) return false;
+  return existing.length >= cap;
+}
+
 /** One bash command in the run's pod. Throws on a non-2xx from the daemon. */
 async function podBash(
-  provider: SandboxProvider,
+  provider: AgentSandboxProvider,
   handle: string,
   threadId: string,
   command: string,
@@ -176,6 +221,49 @@ async function listOrgRepos(ctx: StudioContext, orgId: string) {
     slug: "mcp-github",
   });
   return selectLoadableRepos(items);
+}
+
+/**
+ * The daemon's `git.repositories` entries for a thread's secondary checkouts.
+ *
+ * Every clone URL is minted fresh here rather than reused from a previous call:
+ * they embed a GitHub App installation token that lives an hour, and this same
+ * payload is what a recreated pod replays. A repo whose connection has since
+ * gone is dropped rather than sent with a dead URL, so one revoked connection
+ * costs its own checkout and not the others.
+ */
+async function secondaryRepoConfigs(
+  ctx: StudioContext,
+  repos: { owner: string; name: string; connectionId?: string }[],
+): Promise<
+  { cloneUrl: string; repoName: string; submoduleCredentials: never[] }[]
+> {
+  const dirNames = secondaryRepoDirNames(repos);
+  const out: {
+    cloneUrl: string;
+    repoName: string;
+    submoduleCredentials: never[];
+  }[] = [];
+  for (const [i, repo] of repos.entries()) {
+    if (!repo.connectionId) continue;
+    try {
+      const { cloneUrl } = await buildCloneInfo(
+        repo.connectionId,
+        repo.owner,
+        repo.name,
+        ctx.db,
+        ctx.vault,
+        { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
+      );
+      out.push({ cloneUrl, repoName: dirNames[i]!, submoduleCredentials: [] });
+    } catch (err) {
+      console.warn(
+        `[TASK_ADD_REPO] skipping secondary ${repo.owner}/${repo.name}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return out;
 }
 
 export const TASK_ADD_REPO = defineTool({
@@ -269,23 +357,44 @@ export const TASK_ADD_REPO = defineTool({
       runBranch: thread.branch,
     });
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
-    const { provider, kind } = await resolveSandboxProvider(ctx, {
-      userId: sandboxUserId,
-      branch,
-      virtualMcpMetadata: null,
-    });
+    const provider = await getAgentSandboxProvider(ctx);
     const record = await waitForSandboxRecord(
       ctx,
       threadId,
       sandboxUserId,
       branch,
-      kind,
     );
     if (!record) {
       throw new Error(
         `No sandbox is registered for this run (thread ${threadId}), so there ` +
           `is nowhere to clone into.`,
       );
+    }
+
+    const existingPrimary = (
+      thread.metadata as { githubRepo?: { owner?: string } } | null
+    )?.githubRepo?.owner;
+    const existingSecondaries =
+      (
+        thread.metadata as {
+          githubRepos?: { owner: string; name: string }[];
+        } | null
+      )?.githubRepos ?? [];
+    if (
+      existingPrimary &&
+      secondaryRepoCapExceeded(existingSecondaries, {
+        owner: repo.owner,
+        name: repo.repo,
+      })
+    ) {
+      return {
+        success: false,
+        repo: `${repo.owner}/${repo.repo}`,
+        cloned: false,
+        message:
+          `This run already has ${MAX_SECONDARY_REPOS} additional repositories checked out, ` +
+          `which is the limit. Work with what's already checked out instead of adding another.`,
+      };
     }
 
     // Fresh credential BEFORE anything is written: a clone URL is only useful
@@ -311,29 +420,41 @@ export const TASK_ADD_REPO = defineTool({
       { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
     );
 
+    const bound = {
+      url: `https://github.com/${repo.owner}/${repo.repo}`,
+      owner: repo.owner,
+      name: repo.repo,
+      installationId: repo.installationId,
+      connectionId: repo.connectionId,
+    };
     // Bind the repo to the thread. This is what every later consumer reads —
     // the shutdown git sync, a re-provision's credential refresh, the board's
     // PR extraction — so it has to be persisted, not just handed to the daemon.
-    await ctx.storage.threads.update(threadId, {
-      metadata: {
-        ...(thread.metadata ?? {}),
-        githubRepo: {
-          url: `https://github.com/${repo.owner}/${repo.repo}`,
-          owner: repo.owner,
-          name: repo.repo,
-          installationId: repo.installationId,
-          connectionId: repo.connectionId,
-        },
-      },
-      updated_by: userId,
-    });
+    //
+    // The FIRST repo is the primary: `githubRepo` is what drives the sandbox's
+    // package-manager probe, dev server and preview, and a second call must not
+    // move that out from under a running dev server. Later ones accumulate in
+    // `githubRepos` and land as secondary checkouts.
+    const isPrimary = !existingPrimary;
+    const secondaries = isPrimary
+      ? []
+      : await ctx.storage.threads.appendThreadGithubRepo(threadId, bound);
+    if (isPrimary) {
+      await ctx.storage.threads.update(threadId, {
+        metadata: { ...(thread.metadata ?? {}), githubRepo: bound },
+        updated_by: userId,
+      });
+    }
 
-    // The daemon reads its clone target off the config channel. Adding a
-    // repository (and its branch) to a config that had none classifies as a
-    // branch-change, which runs its clone step; `cloneOnly` was already set at
-    // provision, so no install and no dev server follow. The explicit
-    // `setup/clone` behind it makes the outcome independent of that
-    // classification — the step no-ops when the checkout is already there.
+    /**
+     * The daemon reads its clone target off the config channel. A primary
+     * classifies as a branch-change and runs the clone step (`cloneOnly` was
+     * set at provision, so no install and no dev server follow). A secondary
+     * classifies as nothing — `Classify` has no opinion on `git.repositories` —
+     * and is instead swept off the daemon's step queue on every config apply,
+     * which is what keeps it from waiting out the primary's install. The
+     * explicit `setup/clone` below is the belt for both.
+     */
     const gitRef = pickGitBranch({
       branch,
       derivedRef: syntheticBranchToGitRef(branch),
@@ -349,11 +470,18 @@ export const TASK_ADD_REPO = defineTool({
         // ⚠️ SECURITY: `cloneUrl` embeds a GitHub token. Never log this body.
         body: JSON.stringify({
           git: {
-            repository: {
-              cloneUrl,
-              branch: gitRef,
-              repoName: `${repo.owner}/${repo.repo}`,
-            },
+            // The full list every time, not just the new entry: the daemon's
+            // merge replaces this key, and a recreated pod has to be able to
+            // read one config and know every checkout it owes.
+            ...(isPrimary
+              ? {
+                  repository: {
+                    cloneUrl,
+                    branch: gitRef,
+                    repoName: `${repo.owner}/${repo.repo}`,
+                  },
+                }
+              : { repositories: await secondaryRepoConfigs(ctx, secondaries) }),
             identity: { userName: gitUserName, userEmail: gitUserEmail },
           },
         }),
@@ -375,6 +503,24 @@ export const TASK_ADD_REPO = defineTool({
         console.warn("[TASK_ADD_REPO] explicit clone kick failed", err);
       });
 
+    // Bash lands in the daemon's own repo dir, which is the PRIMARY. Probing
+    // there for a secondary reports the primary's checkout as this call's
+    // success, immediately and with the wrong file listing, so a secondary has
+    // to be waited for where it actually lands. `$PWD`'s parent rather than a
+    // literal `/app`, so the layout stays the daemon's to define.
+    // Named against the whole accumulated list, the same way provisioning names
+    // it, so the directory survives a pod restart.
+    const secondaryDirName = isPrimary
+      ? null
+      : secondaryRepoDirName(secondaries, {
+          owner: repo.owner,
+          name: repo.repo,
+        });
+    const checkoutDir =
+      isPrimary || !secondaryDirName
+        ? "."
+        : `"$(dirname "$PWD")/repos/${secondaryDirName}"`;
+
     // Wait for the checkout: the whole point is that the model can read files on
     // the next tool call instead of polling an empty directory itself.
     const deadline = Date.now() + CLONE_TIMEOUT_MS;
@@ -389,7 +535,7 @@ export const TASK_ADD_REPO = defineTool({
         provider,
         record.sandboxHandle,
         threadId,
-        "if git rev-parse HEAD >/dev/null 2>&1; then echo __CLONED__; fi; ls -A 2>/dev/null",
+        `cd ${checkoutDir} 2>/dev/null || exit 1; if git rev-parse HEAD >/dev/null 2>&1; then echo __CLONED__; fi; ls -A 2>/dev/null`,
       ).catch(() => null);
       if (!probe) {
         if (++failures >= CLONE_MAX_CONSECUTIVE_FAILURES) break;
@@ -424,7 +570,9 @@ export const TASK_ADD_REPO = defineTool({
       cloned,
       files: listing,
       message: cloned
-        ? `${repo.owner}/${repo.repo} is checked out at your working directory on branch ${gitRef}. \`git\` and \`gh\` are authenticated. Start working.`
+        ? isPrimary
+          ? `${repo.owner}/${repo.repo} is checked out at your working directory on branch ${gitRef}. \`git\` and \`gh\` are authenticated. Start working.`
+          : `${repo.owner}/${repo.repo} is checked out at ../repos/${secondaryDirName}, beside your working directory, on its default branch. \`git\` and \`gh\` are authenticated there too. Your first checkout is untouched — commit and open a pull request in each repository you change.`
         : `The clone of ${repo.owner}/${repo.repo} did not finish within ${Math.round(
             CLONE_TIMEOUT_MS / 1000,
           )}s. It may still be in progress — check your working directory before calling this again.`,

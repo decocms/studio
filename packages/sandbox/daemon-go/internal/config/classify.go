@@ -3,11 +3,13 @@ package config
 import (
 	"net/url"
 	"sort"
+	"strings"
 )
 
 const (
 	KindBootstrap            = "bootstrap"
 	KindBranchChange         = "branch-change"
+	KindReposChange          = "repos-change"
 	KindPmChange             = "pm-change"
 	KindRuntimeChange        = "runtime-change"
 	KindPortChange           = "port-change"
@@ -38,8 +40,9 @@ type Transition struct {
 }
 
 // Classify derives the single highest-impact transition between two configs.
-// Precedence: identity-conflict > bootstrap > branch-change > runtime-change >
-// pm-change > port-change > env-change > git-credential-refresh > no-op.
+// Precedence: identity-conflict > bootstrap > branch-change > repos-change >
+// runtime-change > pm-change > port-change > env-change >
+// git-credential-refresh > no-op.
 func Classify(before, after *TenantConfig) Transition {
 	beforeHasUrl := before.HasCloneUrl()
 	afterHasUrl := after.HasCloneUrl()
@@ -66,6 +69,10 @@ func Classify(before, after *TenantConfig) Transition {
 		if !before.HasBranch() || beforeBranch != afterBranch {
 			return Transition{Kind: KindBranchChange, BranchFrom: beforeBranch, BranchTo: afterBranch}
 		}
+	}
+
+	if secondaryRepoKeys(before) != secondaryRepoKeys(after) {
+		return Transition{Kind: KindReposChange}
 	}
 
 	if after != nil && after.Application != nil && after.Application.Runtime != nil {
@@ -96,6 +103,36 @@ func Classify(before, after *TenantConfig) Transition {
 	}
 
 	return Transition{Kind: KindNoOp}
+}
+
+// secondaryRepoKeys is the set of secondary checkouts a config asks for, as one
+// comparable string.
+//
+// Credentials are stripped and the names sorted, so a token refresh or a
+// reordered list is not a change — only a repository entering or leaving is. A
+// change here needs no step (nothing about a sibling checkout touches the
+// primary's install or dev server), but it MUST reach subscribers: a no-op
+// classification is not delivered at all, and the sweep that clones the new
+// checkout hangs off that delivery.
+func secondaryRepoKeys(c *TenantConfig) string {
+	if c == nil {
+		return ""
+	}
+	repos := c.AdditionalRepositories()
+	keys := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		name := ""
+		if repo.RepoName != nil {
+			name = *repo.RepoName
+		}
+		cloneUrl := ""
+		if repo.CloneUrl != nil {
+			cloneUrl = StripCredentials(*repo.CloneUrl)
+		}
+		keys = append(keys, name+"\x00"+cloneUrl)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, "\x01")
 }
 
 func diffEnv(before, after map[string]string) *EnvDiff {

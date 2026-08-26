@@ -51,11 +51,9 @@ export class ProgressBumpThrottle {
  * drives this for the `ReadableStream`-shaped `chunkStream` used by
  * project-chunks.ts).
  *
- * This is the run's liveness heartbeat for BOTH topologies: desktop chunks
- * go daemon → NATS directly, so the projector's live chunk consumption is
- * the only studio component that ever sees them; hosted runs are also
- * live-tailed by the projector post-unification, so this one tap covers
- * both — see the reaper's `RUN_IDLE_TIMEOUT_MS` in run-registry.ts.
+ * This is the hosted run's liveness heartbeat. The projector live-tails every
+ * hosted run, so this one tap covers the full hosted path; see the reaper's
+ * `RUN_IDLE_TIMEOUT_MS` in run-registry.ts.
  */
 export function tapProgressStream<T>(
   stream: ReadableStream<T>,

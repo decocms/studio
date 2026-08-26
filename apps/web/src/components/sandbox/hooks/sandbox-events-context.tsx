@@ -32,7 +32,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
@@ -82,14 +82,8 @@ export interface SandboxEventsValue {
   getBuffer: (source: string) => string;
   hasData: (source: string) => boolean;
   subscribeChunks: (handler: ChunkHandler) => () => void;
-  /** "reload" SSE fires on config edits framework HMR doesn't watch. */
+  /** The preview's origin moved or came back — never a file edit. */
   subscribeReload: (handler: ReloadHandler) => () => void;
-  /**
-   * Fires the instant a `.deco/*` change is detected — before the debounced
-   * reload — so the preview can show its loading overlay immediately instead of
-   * waiting out the rebuild debounce.
-   */
-  subscribeReloadStart: (handler: ReloadHandler) => () => void;
 }
 
 const DEFAULT_VALUE: SandboxEventsValue = {
@@ -104,7 +98,6 @@ const DEFAULT_VALUE: SandboxEventsValue = {
   hasData: () => false,
   subscribeChunks: () => () => {},
   subscribeReload: () => () => {},
-  subscribeReloadStart: () => () => {},
 };
 
 export const SandboxEventsContext =
@@ -143,21 +136,6 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
 ] as const;
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
-
-/** True when `queryKey` is a cached live-meta entry for this org/vmid/branch, regardless of its previewUrl suffix. */
-export function isLiveMetaKeyForScope(
-  queryKey: readonly unknown[],
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-): boolean {
-  return (
-    queryKey[0] === "live-meta" &&
-    queryKey[1] === orgSlug &&
-    queryKey[2] === virtualMcpId &&
-    queryKey[3] === branch
-  );
-}
 
 export function buildDirectDaemonEventsUrl(
   previewUrl: string | null | undefined,
@@ -234,9 +212,18 @@ export function SandboxEventsProvider({
   const buffers = useRef(new Map<string, ChunkBuffer>());
   const chunkHandlers = useRef(new Set<ChunkHandler>());
   const reloadHandlers = useRef(new Set<ReloadHandler>());
-  const reloadStartHandlers = useRef(new Set<ReloadHandler>());
   const prevPortRef = useRef<number | null>(null);
   const directDaemonEventsUrl = buildDirectDaemonEventsUrl(previewUrl);
+
+  /**
+   * Deno/Fresh dev servers don't watch `.deco/blocks/*`, so unlike the Vite
+   * runtime they never reload the preview on a Blocks save (#6430 handed that
+   * refresh to the dev server). We drive the iframe reload ourselves for Deno.
+   * A dep of the SSE effect below; stable per project (reconnects at most once
+   * if the VM metadata resolves after mount).
+   */
+  const isDenoRuntime =
+    useVirtualMCP(virtualMcpId)?.metadata?.runtime?.selected === "deno";
 
   const getOrCreateBuffer = (source: string) => {
     let buf = buffers.current.get(source);
@@ -388,11 +375,9 @@ export function SandboxEventsProvider({
               void queryClient.invalidateQueries({
                 queryKey: KEYS.decofile(cacheKeyForBranch),
               });
+              // Prefix key — the entry also carries preview/production URL suffixes.
               void queryClient.invalidateQueries({
-                predicate: (query) =>
-                  query.queryKey[0] === "live-meta" &&
-                  typeof query.queryKey[1] === "string" &&
-                  query.queryKey[1].startsWith(`${cacheKeyForBranch}/`),
+                queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
               });
             }
             prevLifecyclePhase = lp.state.phase;
@@ -455,10 +440,7 @@ export function SandboxEventsProvider({
             const { path: filePath } =
               payload as DaemonEventPayload<"file-changed">;
             const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
-            // A `.deco/*` change is a config edit the framework's HMR won't pick
-            // up. `/.deco/` (not just a leading `.deco/`) also matches projects
-            // whose package path isn't the repo root (`<pkg>/.deco/...`), since
-            // the daemon reports paths relative to the repo root.
+            // `/.deco/` matches packages whose path isn't the repo root.
             const isDecoFile =
               filePath.startsWith(".deco/") || filePath.includes("/.deco/");
             if (isDecoFile) {
@@ -472,16 +454,6 @@ export function SandboxEventsProvider({
               // truth until the lifecycle→running transition re-invalidates.
               const devServerRunning = prevLifecyclePhase === "running";
               if (!devServerRunning) return;
-              // Turn on the preview's loading overlay immediately — before the
-              // debounce below — so the pending refresh feels instant instead of
-              // only appearing once the reload finally fires.
-              for (const fn of reloadStartHandlers.current) {
-                try {
-                  fn();
-                } catch {
-                  // swallow
-                }
-              }
               // Debounce decofile invalidation for the same reason as liveMeta
               // below: writing a `.deco/` block emits `file-changed`, but the
               // dev server needs a moment to rebuild before `/.decofile`
@@ -493,25 +465,17 @@ export function SandboxEventsProvider({
               if (decofileDebounceTimer) clearTimeout(decofileDebounceTimer);
               decofileDebounceTimer = setTimeout(() => {
                 decofileDebounceTimer = null;
-                // Only refetch the decofile when the dev server is running (the
-                // live `/.decofile` route reflects the write). In Fast Preview
-                // the daemon serves the render straight from disk, so skip the
-                // refetch (it would revert an optimistic edit) and just reload.
-                if (devServerRunning) {
-                  void queryClient.invalidateQueries({
-                    queryKey: KEYS.decofile(cacheKey),
-                  });
-                }
-                // Reload the preview iframe once the write has landed — HMR
-                // won't reflect a decofile edit, so this is the only thing that
-                // refreshes the rendered page after a Blocks save (or an
-                // external/agent `.deco/` write). Debounced so it fires after
-                // the write lands ("save → refresh").
-                for (const fn of reloadHandlers.current) {
-                  try {
-                    fn();
-                  } catch {
-                    // swallow
+                void queryClient.invalidateQueries({
+                  queryKey: KEYS.decofile(cacheKey),
+                });
+                // Deno-only: the dev server won't refresh the preview itself.
+                if (isDenoRuntime) {
+                  for (const fn of reloadHandlers.current) {
+                    try {
+                      fn();
+                    } catch {
+                      // swallow
+                    }
                   }
                 }
               }, 500);
@@ -523,13 +487,7 @@ export function SandboxEventsProvider({
               liveMetaDebounceTimer = setTimeout(() => {
                 liveMetaDebounceTimer = null;
                 void queryClient.invalidateQueries({
-                  predicate: (query) =>
-                    isLiveMetaKeyForScope(
-                      query.queryKey,
-                      org.slug,
-                      virtualMcpId,
-                      branch,
-                    ),
+                  queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
                 });
               }, 1_000);
             }
@@ -667,6 +625,7 @@ export function SandboxEventsProvider({
     taskId,
     directDaemonEventsUrl,
     queryClient,
+    isDenoRuntime,
   ]);
 
   const value: SandboxEventsValue = {
@@ -690,12 +649,6 @@ export function SandboxEventsProvider({
       reloadHandlers.current.add(handler);
       return () => {
         reloadHandlers.current.delete(handler);
-      };
-    },
-    subscribeReloadStart: (handler: ReloadHandler) => {
-      reloadStartHandlers.current.add(handler);
-      return () => {
-        reloadStartHandlers.current.delete(handler);
       };
     },
   };

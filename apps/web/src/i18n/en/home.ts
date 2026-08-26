@@ -112,4 +112,6 @@ export const home = {
   "home.projectCard.mainAgentSet": '"{title}" is now the main agent',
   "home.projectCard.mainAgentUnset": 'Removed "{title}" as the main agent',
   "home.projectCard.mainAgentError": "Couldn't update the main agent",
+  "home.projectCard.pinToSidebar": "Pin to sidebar",
+  "home.projectCard.unpinFromSidebar": "Unpin from sidebar",
 } as const;

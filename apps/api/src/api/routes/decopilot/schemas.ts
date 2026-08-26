@@ -48,15 +48,6 @@ export const StreamRequestSchema = z
      */
     branch: z.string().nullish(),
     toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
-    sandboxProviderKind: z
-      .enum(["agent-sandbox", "cluster"])
-      .transform((kind) => (kind === "cluster" ? "agent-sandbox" : kind))
-      .nullish()
-      .describe("Hosted chat supports only the managed agent sandbox."),
-    harnessId: z
-      .literal("decopilot")
-      .nullish()
-      .describe("Hosted chat supports only the Decopilot harness."),
     mode: z
       .enum(["default", "plan", "web-search", "deep-research", "gen-image"])
       .default("default"),

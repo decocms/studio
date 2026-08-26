@@ -539,7 +539,6 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
         id: tileData.agentId,
         data: {
           metadata: {
-            ...(item.metadata ?? {}),
             ui: {
               ...(item.metadata?.ui ?? {}),
               homeTile: null,

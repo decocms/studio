@@ -384,24 +384,6 @@ describe("tryUpgradePreviewWs", () => {
     expect((res as Response).status).toBe(404);
   });
 
-  it("rejects legacy /_decopilot_vm/* paths even on WS (dual-serve compat)", async () => {
-    const fakeRunner = {
-      resolvePreviewUpstreamUrl: async () => "http://x:9000",
-    };
-    const req = wsRequest("/_decopilot_vm/bash");
-    const res = await tryUpgradePreviewWs(
-      req,
-      { upgrade: () => true },
-      {
-        baseDomain,
-        // biome-ignore lint/suspicious/noExplicitAny: structural duck-type
-        getRunner: async () => fakeRunner as any,
-      },
-    );
-    expect(res).not.toBeNull();
-    expect((res as Response).status).toBe(404);
-  });
-
   it("calls server.upgrade and returns undefined when upgrade succeeds", async () => {
     const fakeRunner = {
       resolvePreviewUpstreamUrl: async () => "http://upstream:9000",

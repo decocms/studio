@@ -9,7 +9,13 @@
 
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import type { InterestsWrite } from "../../harness-deps";
+
+export interface InterestsWrite {
+  orgId: string;
+  agentId: string;
+  userId: string;
+  interests: Array<{ title: string; summary: string }>;
+}
 
 const UpdateInterestsInputSchema = z.object({
   interests: z

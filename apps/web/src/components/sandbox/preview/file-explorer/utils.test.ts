@@ -60,6 +60,20 @@ describe("file-explorer utils", () => {
     expect(rows.some((row) => row.node.name === "tavano-folder")).toBe(true);
   });
 
+  it("flattenTree doesn't overflow the stack on a huge expanded directory", () => {
+    const children = Array.from({ length: 700_000 }, (_, i) => ({
+      name: `f${i}`,
+      path: `/dir/f${i}`,
+      kind: "file" as const,
+      children: [],
+    }));
+    const tree = [
+      { name: "dir", path: "/dir", kind: "directory" as const, children },
+    ];
+    const rows = flattenTree(tree, new Set(["/dir"]));
+    expect(rows).toHaveLength(700_001);
+  });
+
   it("decoBlockKeyFromTreePath decodes block keys", () => {
     expect(decoBlockKeyFromTreePath("/.deco/blocks/Header.json")).toBe(
       "Header",

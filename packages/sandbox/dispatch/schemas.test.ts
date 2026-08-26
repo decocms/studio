@@ -1,41 +1,13 @@
 import { describe, expect, it, test } from "bun:test";
 import {
-  capabilitySchema,
-  capabilitiesArraySchema,
-  dispatchSSEEventSchema,
   harnessStreamInputSchema,
   type HarnessStreamInputWire,
 } from "./schemas";
 import { FIXTURE_MINIMAL_INPUT } from "./fixtures";
 
-describe("dispatchSSEEventSchema", () => {
-  it("accepts ui-message-chunk", () => {
-    const result = dispatchSSEEventSchema.safeParse({
-      type: "ui-message-chunk",
-      chunk: { hello: "world" },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("accepts error", () => {
-    const result = dispatchSSEEventSchema.safeParse({
-      type: "error",
-      code: "harness_crashed",
-      message: "boom",
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("accepts done", () => {
-    const result = dispatchSSEEventSchema.safeParse({ type: "done" });
-    expect(result.success).toBe(true);
-  });
-});
-
 describe("harnessStreamInputSchema (v3)", () => {
   test("accepts v3 single-message harness input", () => {
     const result = harnessStreamInputSchema.safeParse({
-      harnessId: "claude-code",
       threadId: "thread-1",
       userMessage: {
         id: "msg-1",
@@ -65,7 +37,6 @@ describe("harnessStreamInputSchema (v3)", () => {
       toolApprovalLevel: "auto",
       user: { id: "user-1", email: "u@example.com" },
       organizationId: "org-1",
-      organizationSlug: "acme",
       agent: { id: "agent-1", instructions: "Help carefully." },
     });
 
@@ -83,6 +54,7 @@ describe("harnessStreamInputSchema (v3)", () => {
     ],
     ["projectSlug", "legacy"],
     ["virtualMcp", { id: "agent-1" }],
+    ["harnessId", "claude-code"],
   ] as const)("rejects removed shared harness field %s", (field, value) => {
     const result = harnessStreamInputSchema.safeParse({
       ...FIXTURE_MINIMAL_INPUT,
@@ -153,10 +125,9 @@ describe("harnessStreamInputSchema (v3)", () => {
     expect(harnessStreamInputSchema.safeParse(v1Input).success).toBe(false);
   });
 
-  it("round-trips all five model slots with per-slot credentialId and harnessId", () => {
+  it("round-trips all five model slots with per-slot credentialId", () => {
     const result = harnessStreamInputSchema.safeParse({
       ...minimalV3,
-      harnessId: "decopilot",
       models: {
         thinking: {
           id: "anthropic/claude-sonnet",
@@ -194,7 +165,6 @@ describe("harnessStreamInputSchema (v3)", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.harnessId).toBe("decopilot");
       expect(result.data.models).toEqual({
         thinking: {
           id: "anthropic/claude-sonnet",
@@ -325,15 +295,6 @@ describe("harnessStreamInputSchema (v3)", () => {
         branch: "main",
       });
     }
-  });
-
-  it("rejects unknown harness ids", () => {
-    const result = harnessStreamInputSchema.safeParse({
-      ...minimalV3,
-      harnessId: "made-up",
-    });
-
-    expect(result.success).toBe(false);
   });
 
   it("rejects unknown harness modes", () => {
@@ -500,28 +461,5 @@ describe("harnessStreamInputSchema (v3)", () => {
     });
 
     expect(result.success).toBe(false);
-  });
-});
-
-describe("capabilitySchema", () => {
-  it("accepts known harnesses", () => {
-    expect(capabilitySchema.safeParse("claude-code").success).toBe(true);
-    expect(capabilitySchema.safeParse("codex").success).toBe(true);
-    expect(capabilitySchema.safeParse("decopilot-sandbox").success).toBe(true);
-  });
-
-  it("rejects unknown harness", () => {
-    expect(capabilitySchema.safeParse("not-a-harness").success).toBe(false);
-  });
-});
-
-describe("capabilities", () => {
-  it("includes body-offload", () => {
-    expect(capabilitySchema.safeParse("body-offload").success).toBe(true);
-  });
-  it("drops unknown elements but keeps known ones (per-element tolerant)", () => {
-    expect(
-      capabilitiesArraySchema.parse(["claude-code", "made-up", "body-offload"]),
-    ).toEqual(["claude-code", "body-offload"]);
   });
 });

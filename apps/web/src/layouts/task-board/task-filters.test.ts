@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   matchesTaskKey,
+  resolveSprintFilter,
   taskMatchesFilters,
   EMPTY_FILTERS,
 } from "./task-filters";
@@ -26,6 +27,78 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     ...overrides,
   } as TaskBoardItem;
 }
+
+/**
+ * A sprint filter arrives from the URL, which outlives the sprint it names.
+ * Left in place, an unknown id hides every card behind a chip that reads
+ * exactly like "no sprint filter".
+ */
+describe("resolveSprintFilter", () => {
+  const sprints = [
+    {
+      id: "sprint_a",
+      name: "Sprint 12",
+      state: "active" as const,
+      startsAt: null,
+      endsAt: null,
+    },
+  ];
+
+  test("keeps a sprint the board actually has", () => {
+    expect(resolveSprintFilter("sprint_a", sprints)).toBe("sprint_a");
+  });
+
+  test("drops one it does not, including on a board with no sprints", () => {
+    expect(resolveSprintFilter("sprint_gone", sprints)).toBe(null);
+    expect(resolveSprintFilter("sprint_a", [])).toBe(null);
+  });
+
+  test("leaves the backlog sentinel and 'any sprint' alone", () => {
+    expect(resolveSprintFilter("backlog", [])).toBe("backlog");
+    expect(resolveSprintFilter(null, sprints)).toBe(null);
+  });
+});
+
+describe("taskMatchesFilters — sprint", () => {
+  test("a sprint filter keeps only that sprint", () => {
+    expect(
+      taskMatchesFilters(item({ sprintId: "sprint_a" }), {
+        ...EMPTY_FILTERS,
+        sprint: "sprint_a",
+      }),
+    ).toBe(true);
+    expect(
+      taskMatchesFilters(item({ sprintId: "sprint_b" }), {
+        ...EMPTY_FILTERS,
+        sprint: "sprint_a",
+      }),
+    ).toBe(false);
+  });
+
+  test("the backlog filter keeps only tasks with no sprint", () => {
+    expect(
+      taskMatchesFilters(item({ sprintId: null }), {
+        ...EMPTY_FILTERS,
+        sprint: "backlog",
+      }),
+    ).toBe(true);
+    expect(
+      taskMatchesFilters(item({ sprintId: "sprint_a" }), {
+        ...EMPTY_FILTERS,
+        sprint: "backlog",
+      }),
+    ).toBe(false);
+  });
+
+  test("no sprint filter keeps both planned and backlog tasks", () => {
+    expect(
+      taskMatchesFilters(item({ sprintId: "sprint_a" }), EMPTY_FILTERS),
+    ).toBe(true);
+    expect(taskMatchesFilters(item({ sprintId: null }), EMPTY_FILTERS)).toBe(
+      true,
+    );
+  });
+});
 
 describe("taskMatchesFilters — due date", () => {
   test("'week' excludes a task that is already overdue", () => {

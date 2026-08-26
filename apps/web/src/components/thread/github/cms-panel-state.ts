@@ -70,6 +70,16 @@ export interface SelectCmsHeaderButtonInput {
   loading: boolean;
   /** Why the branch status could not be read, if it could not. */
   statusError: string | null;
+  /**
+   * Publishable changed-file count from the base…head manifest, auto-generated
+   * artifacts (`*.gen.json`, tailwind output) already excluded — the SAME
+   * number the publish popover renders, so the header button and the popover
+   * agree on whether there is anything to publish. `null` when no manifest is
+   * available (the sandbox daemon has none); then this falls back to the coarse
+   * `aheadOfBase` commit count while the popover falls back to its own diff
+   * count, so the two can drift apart in that manifest-less window alone.
+   */
+  publishableChangeCount: number | null;
   t: TFunction;
 }
 
@@ -195,18 +205,44 @@ export function isCmsStateSettling(input: {
   );
 }
 
-/** Not live yet: one `/git/status` backend commits each save, the other doesn't. */
+/**
+ * Not live yet: one `/git/status` backend commits each save, the other doesn't.
+ *
+ * Prefers the publish manifest's own count — the exact set the popover lists,
+ * auto-generated artifacts already excluded — so with a manifest the header
+ * won't advertise "Review & publish" over a branch whose only drift is
+ * regenerated `*.gen.json` or tailwind output that the popover drops (which
+ * would open the popover onto "Everything published" with a disabled Publish).
+ * Falls back to the raw `aheadOfBase` commit count only when no manifest is
+ * available — where the popover falls back to its own diff count, so the two
+ * can still diverge in that window. The `workingTreeDirty` term is already
+ * artifact-filtered (`hasPublishableLocalWork`) and carries the backend that
+ * leaves each save uncommitted, so it stands alone.
+ */
 function hasUnpublishedWork(
   branch: Extract<BranchMeta, { kind: "ready" }>,
+  publishableChangeCount: number | null,
 ): boolean {
-  return branch.aheadOfBase > 0 || branch.workingTreeDirty;
+  if (branch.workingTreeDirty) return true;
+  if (publishableChangeCount !== null) return publishableChangeCount > 0;
+  return branch.aheadOfBase > 0;
 }
 
 /** Picks the Fast Preview header button; first match wins, so order is behavior. */
 export function selectCmsHeaderButton(
   input: SelectCmsHeaderButtonInput,
 ): CmsHeaderButton {
-  const { branch, pr, checks, reviews, publishing, saving, loading, t } = input;
+  const {
+    branch,
+    pr,
+    checks,
+    reviews,
+    publishing,
+    saving,
+    loading,
+    publishableChangeCount,
+    t,
+  } = input;
 
   // A failed status read is not a slow one; spinning on it never resolves.
   if (branch.kind !== "ready" && input.statusError) {
@@ -329,7 +365,7 @@ export function selectCmsHeaderButton(
     };
   }
 
-  if (hasUnpublishedWork(branch)) {
+  if (hasUnpublishedWork(branch, publishableChangeCount)) {
     return {
       label: t("thread.cmsActions.reviewAndPublish"),
       action: "publish",

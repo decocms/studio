@@ -65,6 +65,12 @@ type Orchestrator struct {
 	// The `running` state a checkout interrupted, restored by stepStartInner
 	// when the dev server turns out never to have stopped. Zero otherwise.
 	interruptedRunning events.LifecycleState
+
+	// Held for the duration of a secondary-checkout sweep. Its own lock, not
+	// `mu`: the sweep runs OFF the step queue (see CloneSecondariesNow) and must
+	// not block, or be blocked by, the primary's pipeline. Two concurrent sweeps
+	// would both pass the same HasGitRepo check and fork two clones into one dir.
+	secondaryMu sync.Mutex
 }
 
 func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
@@ -132,11 +138,41 @@ func (o *Orchestrator) Handle(t config.Transition) {
 	if t.Kind == config.KindBootstrap || t.Kind == config.KindBranchChange {
 		o.clearCrashError()
 	}
+	// Secondary checkouts, off the queue. Classify() has no opinion on
+	// `git.repositories` — a patch that only adds one is a no-op transition, so
+	// before this the config push alone cloned nothing and the whole feature
+	// rode on TASK_ADD_REPO's explicit `setup/clone` kick, which queues behind
+	// whatever pipeline is in flight. A secondary added while the primary was
+	// installing therefore appeared 2-3 MINUTES late, long after the caller gave
+	// up. Nothing about a sibling checkout needs the primary's install or a dev
+	// restart, so it does not belong in that queue at all. Idempotent (existing
+	// checkouts are skipped), so running it on every apply costs one stat each.
+	go o.CloneSecondariesNow()
+
 	step, ok := transitionToStep(t)
 	if !ok {
 		return
 	}
 	o.enqueue(step)
+}
+
+// CloneSecondariesNow checks out any secondary repository the current config
+// names and the disk does not have yet, without waiting for a step.
+//
+// Safe to call concurrently and repeatedly: serialized on secondaryMu, and
+// cloneSecondaryRepos skips checkouts already present.
+func (o *Orchestrator) CloneSecondariesNow() {
+	defer func() { recover() }()
+	cfg := o.deps.Store.Read()
+	if cfg == nil {
+		return
+	}
+	if len(cfg.AdditionalRepositories()) == 0 {
+		return
+	}
+	o.secondaryMu.Lock()
+	defer o.secondaryMu.Unlock()
+	o.cloneSecondaryRepos(cfg)
 }
 
 func (o *Orchestrator) IsRunning() bool {
@@ -381,6 +417,12 @@ func (o *Orchestrator) stepCloneInner() bool {
 		}
 	}
 
+	// Same lock as the off-queue sweep — a bootstrap's pipeline and a config
+	// patch's sweep can otherwise clone the same directory twice at once.
+	o.secondaryMu.Lock()
+	o.cloneSecondaryRepos(cfg)
+	o.secondaryMu.Unlock()
+
 	o.gitSetup(cfg)
 	o.fillApplicationDefaults()
 	// Before install, so install runs against the up-to-date lockfile.
@@ -390,6 +432,80 @@ func (o *Orchestrator) stepCloneInner() bool {
 	o.refreshBranchHead()
 	o.deps.BranchStatus.Refresh()
 	return true
+}
+
+// secondaryCloneConcurrency bounds the parallel git processes. The pod has 1-2
+// CPUs and clones are network-bound, so a handful overlaps usefully while a
+// 17-repo org cannot fork seventeen gits at its own boot.
+const secondaryCloneConcurrency = 4
+
+// cloneSecondaryRepos checks out the extra repositories beside the primary.
+//
+// Never fails the stage: the sandbox's contract is the primary checkout, and a
+// secondary that will not clone (a revoked token, a repo since deleted) must
+// leave the agent with a working pod rather than no pod. Each failure is
+// announced on the stream so the absence is visible rather than mysterious.
+//
+// Already-present checkouts are skipped, so this is idempotent across the
+// re-provisions and config patches that reach a live pod.
+func (o *Orchestrator) cloneSecondaryRepos(cfg *config.Enriched) {
+	type job struct {
+		name, dir, cloneUrl, branch string
+		submodules                  []config.SubmoduleCredential
+	}
+	jobs := make([]job, 0, len(cfg.AdditionalRepositories()))
+	for _, repo := range cfg.AdditionalRepositories() {
+		name := ""
+		if repo.RepoName != nil {
+			name = *repo.RepoName
+		}
+		dir, ok := paths.SecondaryRepoDir(o.deps.RepoDir, name)
+		if !ok {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] skipping secondary repo with unusable name %q\r\n", name))
+			continue
+		}
+		if paths.HasGitRepo(dir) {
+			continue
+		}
+		branch := ""
+		if repo.Branch != nil {
+			branch = *repo.Branch
+		}
+		jobs = append(jobs, job{name, dir, *repo.CloneUrl, branch, repo.SubmoduleCredentials})
+	}
+	if len(jobs) == 0 {
+		return
+	}
+
+	o.chunk(fmt.Sprintf("\r\n[orchestrator] cloning %d secondary repo(s)\r\n", len(jobs)))
+	slots := make(chan struct{}, secondaryCloneConcurrency)
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		go func(j job) {
+			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			// Its own tmp dir, so two clones cannot write each other's
+			// submodule PATs into one fixed-name credentials file.
+			result := SpawnClone(CloneDeps{
+				RepoDir:              j.dir,
+				CloneUrl:             j.cloneUrl,
+				Branch:               j.branch,
+				SubmoduleCredentials: j.submodules,
+				TmpDir:               SecondaryCloneTmpDir(o.deps.LogsDir, j.name),
+				// Output is dropped rather than streamed: N clones interleaving
+				// line-by-line is unreadable, and the primary owns the stream.
+				OnChunk: func(string) {},
+			})
+			if result.Code != 0 {
+				o.chunk(fmt.Sprintf("\r\n[orchestrator] secondary repo %s failed to clone (exit %d) — continuing without it\r\n", j.name, result.Code))
+				return
+			}
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] secondary repo %s ready\r\n", j.name))
+		}(j)
+	}
+	wg.Wait()
 }
 
 // maybeFastForwardToBase advances an idle, unchanged sandbox to its base

@@ -178,9 +178,10 @@ preview:
   # with production sandboxes — see templates/preview-sandbox-rbac.yaml for why
   # that cannot currently be narrowed, and what would remove the need.
   #
-  # The application also needs the matching STUDIO_SANDBOX_* configuration
-  # (provider, runner, template name, preview gateway) pointed at an existing
-  # environment; enabling this alone grants permission but changes no behaviour.
+  # The application also needs STUDIO_AGENT_SANDBOX_ENABLED plus matching
+  # environment, template, sentinel/pool and preview-routing configuration
+  # pointed at an existing environment; enabling this alone grants permission
+  # but changes no behaviour.
   sandbox:
     enabled: false
     # Namespace holding the SandboxTemplates, warm pools and claims.
@@ -197,6 +198,45 @@ preview:
 
   # Resources for the short-lived migration Job.
   jobResources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      memory: "1Gi"
+
+# Single-writer migration Job. ON by default, and you want it on: every replica
+# runs the DBOS system-schema migration on boot, and the SDK's version bump is
+# an UPDATE with no WHERE that assumes one row in dbos.dbos_migrations. Two
+# replicas reaching it together leave two rows, after which every bump collides
+# on the primary key and the schema version can never advance — a permanent
+# CrashLoopBackOff that only a manual DELETE clears.
+#
+# The Job is a Helm post-install/post-upgrade hook (weight -10) and an Argo CD
+# Sync hook (wave -10). Under Argo the app Deployments are held until it
+# finishes, so the race is fully closed. Under plain `helm install` the hook
+# runs alongside the first pods rather than before them — it must, since it
+# consumes this release's ConfigMap and Secret, which do not exist during a
+# pre-install hook. That is fine, because correctness does not depend on the
+# ordering: the app takes a Postgres advisory lock around DBOS.launch(), so
+# whoever gets there first migrates and the rest wait.
+#
+# What the Job adds is a controlled, observable place for the migration to
+# happen — one named resource that either succeeded or failed — instead of
+# whichever pod happened to win. Correctness comes from the lock; legibility
+# comes from the Job.
+#
+# Measured on a local cluster with an image that predates the lock: 3 replicas
+# against an empty database produced 16 `deadlock detected`, 8
+# `pg_type_typname_nsp_index` and 4 `pg_class_relname_nsp_index` errors across
+# the pods, each restarting 2-4 times before the install settled. It did settle,
+# uncorrupted, but only by luck of timing — the customer report this fix comes
+# from is the same race not settling. Pods carrying the lock do not race at all.
+migrateJob:
+  enabled: true
+  # Hard deadline. backoffLimit only counts failed pods; a Job that hangs
+  # without producing one never trips it.
+  deadlineSeconds: 900
+  resources:
     requests:
       cpu: "100m"
       memory: "512Mi"
@@ -361,12 +401,9 @@ secret:
   # If omitted, the server auto-generates a random key on each boot (breaks across restarts).
   # Generate with: openssl rand -base64 32
   ENCRYPTION_KEY: ""
-  # Optional: required for the public NATS link tunnel when using the
-  # chart-managed Secret. Prefer secret.secretName or externalSecret for
-  # production GitOps so these values are not stored in plain values files.
-  # NATS_ACCOUNT_JWT: ""
-  # NATS_ACCOUNT_SIGNING_KEY: ""
-  # NATS_OPERATOR_JWT: ""
+  # Optional internal NATS credentials. Prefer secret.secretName or
+  # externalSecret for production GitOps so credentials are not stored in
+  # plain values files.
   # NATS_CLUSTER_CREDS: ""
 
 # ExternalSecret — pull all values from AWS Secrets Manager via external-secrets operator.
@@ -552,29 +589,18 @@ s3Sync:
 # NATS subchart (https://artifacthub.io/packages/helm/nats/nats)
 # When enabled, NATS_URL is automatically set to nats://<release-name>-nats:4222
 # unless overridden via configMap.meshConfig.NATS_URL
-tunnel:
-  nats:
-    publicUrl: "" # e.g. wss://nats.example.com
-    publicEnabled: false
-    sessionTtlSeconds: 900
-    clusterCreds:
-      # Enable when NATS runs in operator/JWT mode and Studio's internal
-      # NATS_URL connection must authenticate with a creds file.
-      enabled: false
-      # Empty defaults to the same Secret consumed by Studio envFrom
-      # (secret.secretName, externalSecret target, or the chart-managed Secret).
-      secretName: ""
-      secretKey: "NATS_CLUSTER_CREDS"
-      mountDir: "/etc/nats-creds"
-      fileName: "cluster.creds"
-
 nats:
   enabled: true
-  # Native NATS websocket/ingress settings belong to the NATS subchart under
-  # nats.config.websocket and nats.config.websocket.ingress. This chart does
-  # not enable them by default and Helm cannot derive subchart websocket values
-  # from tunnel.nats.*; set both sections explicitly when exposing a public
-  # tunnel.
+  clusterCreds:
+    # Enable when Studio's internal NATS_URL connection must authenticate with
+    # a creds file.
+    enabled: false
+    # Empty defaults to the same Secret consumed by Studio envFrom
+    # (secret.secretName, externalSecret target, or the chart-managed Secret).
+    secretName: ""
+    secretKey: "NATS_CLUSTER_CREDS"
+    mountDir: "/etc/nats-creds"
+    fileName: "cluster.creds"
   config:
     jetstream:
       enabled: true

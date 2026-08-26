@@ -369,18 +369,13 @@ jobs:
   #    A NEW failure (regression) or a VANISHED one (allowlist gone stale)
   #    both fail this job via apps/native/scripts/ci/check-junit-allowlist.mjs.
   #
-  #    What the 27 pinned names are, and which are choices vs. gaps:
-  #      - auth/CORS tightening (6) — local-api is stricter on purpose.
-  #      - no-publish-on-close shutdown (2) — worktrees are durable on a
+  #    The pinned names cover both intentional differences and implementation
+  #    gaps:
+  #      - auth/CORS tightening — local-api is stricter on purpose.
+  #      - no-publish-on-close shutdown — worktrees are durable on a
   #        user's machine, unlike a pod's; see local-api's routes/git.rs.
-  #      - UNIMPLEMENTED in local-api, not a design decision (19). The
+  #      - UNIMPLEMENTED in local-api, not a design decision. The
   #        sandbox daemons grew these; the Rust crate has not been ported:
-  #          * url-transfer SSRF gate (11) — write_from_url / upload_to_url
-  #            in local-api have NO allowlist and follow redirects. That is
-  #            a real hole in the desktop app, pinned here only so this gate
-  #            stays a *set* match; it is not sanctioned. Port
-  #            packages/sandbox/daemon-go/internal/urlallow and delete
-  #            these 11 lines.
   #          * decofile block validation (4) — an invalid block written by
   #            the agent reaches the user's branch and breaks site render.
   #          * protected-branch publish guard (1) — local-api will push to

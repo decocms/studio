@@ -45,6 +45,7 @@ import {
   ChevronDown,
   Flag01,
   FilterLines,
+  Repeat04,
   SearchSm,
   Tag01,
   User01,
@@ -54,6 +55,8 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { getInitials } from "@/lib/get-initials";
 import {
+  formatSprintDates,
+  type Sprint,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -70,6 +73,10 @@ const UNASSIGNED_FILTER = "__unassigned__";
 /** Sentinel repo filter matching tasks with no associated repo. */
 const NO_REPO_FILTER = "__no_repo__";
 
+/** Sentinel sprint filter matching cards in no sprint (the backlog). Shares the
+ *  namespace with sprint ids, which are `sprint_`-prefixed, so it can't collide. */
+const BACKLOG_FILTER = "backlog";
+
 /** Radix `RadioGroup` needs a string value — this stands in for `null` (any). */
 const ANY_FILTER = "__any__";
 
@@ -84,6 +91,8 @@ export type TaskFilters = {
   tags: string[];
   /** `owner/name` | NO_REPO_FILTER | null (any repo) */
   repo: string | null;
+  /** Sprint id | BACKLOG_FILTER (no sprint) | null (any sprint) */
+  sprint: string | null;
   /** Free-text match against title/description, empty string = no filter. */
   search: string;
 };
@@ -94,8 +103,26 @@ export const EMPTY_FILTERS: TaskFilters = {
   due: null,
   tags: [],
   repo: null,
+  sprint: null,
   search: "",
 };
+
+/**
+ * Drop a sprint filter naming a sprint this board does not have.
+ *
+ * The value comes from the URL, which outlives the sprint it names — a shared
+ * link, a bookmark, a sprint deleted in Jira. Left in place it hides every card
+ * while its chip reads exactly like "no sprint filter", so the board looks
+ * empty for no stated reason. Call it only once the sprints have loaded, or an
+ * in-flight read would drop a filter that is about to be valid.
+ */
+export function resolveSprintFilter(
+  value: string | null,
+  sprints: readonly Sprint[],
+): string | null {
+  if (value === null || value === BACKLOG_FILTER) return value;
+  return sprints.some((sprint) => sprint.id === value) ? value : null;
+}
 
 function hasActiveFilters(f: TaskFilters): boolean {
   return (
@@ -104,6 +131,7 @@ function hasActiveFilters(f: TaskFilters): boolean {
     f.due !== null ||
     f.tags.length > 0 ||
     f.repo !== null ||
+    f.sprint !== null ||
     f.search.trim() !== ""
   );
 }
@@ -115,6 +143,7 @@ function activeFilterCount(f: TaskFilters): number {
     (f.due !== null ? 1 : 0) +
     (f.tags.length > 0 ? 1 : 0) +
     (f.repo !== null ? 1 : 0) +
+    (f.sprint !== null ? 1 : 0) +
     (f.search.trim() !== "" ? 1 : 0)
   );
 }
@@ -180,6 +209,13 @@ export function taskMatchesFilters(
       if (item.repo != null) return false;
       // GitHub treats owner/repo case-insensitively, so the filter must too.
     } else if (item.repo?.toLowerCase() !== f.repo.toLowerCase()) {
+      return false;
+    }
+  }
+  if (f.sprint !== null) {
+    if (f.sprint === BACKLOG_FILTER) {
+      if (item.sprintId != null) return false;
+    } else if (item.sprintId !== f.sprint) {
       return false;
     }
   }
@@ -610,6 +646,68 @@ function RepoFilter({
   );
 }
 
+function SprintFilter({
+  value,
+  sprints,
+  onChange,
+  block,
+}: {
+  value: string | null;
+  /** Sprints to offer, in reading order (running → next → past). */
+  sprints: Sprint[];
+  onChange: (next: string | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const selected = sprints.find((sprint) => sprint.id === value);
+  const label =
+    value === null
+      ? t("taskBoard.taskFilters.sprintLabel")
+      : value === BACKLOG_FILTER
+        ? t("taskBoard.taskFilters.sprintBacklog")
+        : // A filter can outlive its sprint (a stored URL, a deleted sprint).
+          (selected?.name ?? t("taskBoard.taskFilters.sprintLabel"));
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={triggerClass}>
+          <Repeat04 size={14} className="shrink-0" />
+          {label}
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-80 w-72 overflow-y-auto"
+      >
+        <DropdownMenuRadioGroup
+          value={value === null ? ANY_FILTER : value}
+          onValueChange={(next) => onChange(next === ANY_FILTER ? null : next)}
+        >
+          <DropdownMenuRadioItem value={ANY_FILTER}>
+            {t("taskBoard.taskFilters.sprintAnySprint")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value={BACKLOG_FILTER}>
+            {t("taskBoard.taskFilters.sprintBacklog")}
+          </DropdownMenuRadioItem>
+          {sprints.map((sprint) => (
+            <DropdownMenuRadioItem key={sprint.id} value={sprint.id}>
+              <span className="truncate">{sprint.name}</span>
+              <span className="ml-auto shrink-0 text-muted-foreground">
+                {sprint.state === "active"
+                  ? t("taskBoard.taskFilters.sprintCurrent")
+                  : formatSprintDates(sprint)}
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /**
  * Search toggle: a plain icon button that expands into a text input on click
  * (collapsing back once empty and blurred), rather than reserving space for a
@@ -626,6 +724,15 @@ function SearchToggle({
 }) {
   const t = useT();
   const [open, setOpen] = useState(value !== "");
+  const [focused, setFocused] = useState(false);
+
+  // Collapse a filter cleared externally while unfocused (not one emptied by typing).
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    if (value === "" && !focused) setOpen(false);
+  }
+
   const expanded = open || block;
 
   return (
@@ -649,7 +756,9 @@ function SearchToggle({
           autoFocus={!block}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
           onBlur={() => {
+            setFocused(false);
             if (value === "") setOpen(false);
           }}
           placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
@@ -675,12 +784,13 @@ function SearchToggle({
   );
 }
 
-/** The five filter controls, shared by the inline bar and the mobile drawer. */
+/** The filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
   members,
   tags,
   repos,
+  sprints,
   onChange,
   block,
 }: {
@@ -688,6 +798,7 @@ function FilterControls({
   members: Member[];
   tags: OrgTag[];
   repos: string[];
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
   block?: boolean;
 }) {
@@ -731,6 +842,17 @@ function FilterControls({
           onChange={(repo) => onChange({ ...filters, repo })}
         />
       )}
+      {/* Same reasoning as the repo control: an active sprint filter keeps its
+          chip visible even when the board mirrors no sprints, so the hidden
+          cards can be brought back. */}
+      {(sprints.length > 0 || filters.sprint !== null) && (
+        <SprintFilter
+          block={block}
+          value={filters.sprint}
+          sprints={sprints}
+          onChange={(sprint) => onChange({ ...filters, sprint })}
+        />
+      )}
     </>
   );
 }
@@ -741,12 +863,14 @@ export function TaskFiltersBar({
   members,
   tags,
   repos,
+  sprints,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
   repos: string[];
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -761,6 +885,7 @@ export function TaskFiltersBar({
         members={members}
         tags={tags}
         repos={repos}
+        sprints={sprints}
         onChange={onChange}
       />
       {hasActiveFilters(filters) && (
@@ -786,12 +911,14 @@ export function TaskFiltersDrawer({
   members,
   tags,
   repos,
+  sprints,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
   repos: string[];
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -822,6 +949,7 @@ export function TaskFiltersDrawer({
             members={members}
             tags={tags}
             repos={repos}
+            sprints={sprints}
             onChange={onChange}
           />
         </div>

@@ -2,6 +2,15 @@ import { sql, type Kysely } from "kysely";
 import type { Database, OrganizationSettings } from "./types";
 import type { OrganizationSettingsStoragePort } from "./ports";
 
+/**
+ * jsonb columns come back as an already-parsed object from some drivers and
+ * as a raw JSON string from others — normalize both to the parsed shape.
+ */
+function parseJsonColumn<T>(value: unknown): T | null {
+  if (!value) return null;
+  return (typeof value === "string" ? JSON.parse(value) : value) as T;
+}
+
 export class OrganizationSettingsStorage
   implements OrganizationSettingsStoragePort
 {
@@ -20,36 +29,22 @@ export class OrganizationSettingsStorage
 
     return {
       organizationId: record.organizationId,
-      sidebar_items: record.sidebar_items
-        ? typeof record.sidebar_items === "string"
-          ? JSON.parse(record.sidebar_items)
-          : record.sidebar_items
-        : null,
-      enabled_plugins: record.enabled_plugins
-        ? typeof record.enabled_plugins === "string"
-          ? JSON.parse(record.enabled_plugins)
-          : record.enabled_plugins
-        : null,
-      registry_config: record.registry_config
-        ? typeof record.registry_config === "string"
-          ? JSON.parse(record.registry_config)
-          : record.registry_config
-        : null,
-      simple_mode: record.simple_mode
-        ? typeof record.simple_mode === "string"
-          ? JSON.parse(record.simple_mode)
-          : record.simple_mode
-        : null,
-      default_home_agents: record.default_home_agents
-        ? typeof record.default_home_agents === "string"
-          ? JSON.parse(record.default_home_agents)
-          : record.default_home_agents
-        : null,
-      flags: record.flags
-        ? typeof record.flags === "string"
-          ? JSON.parse(record.flags)
-          : record.flags
-        : null,
+      sidebar_items: parseJsonColumn<OrganizationSettings["sidebar_items"]>(
+        record.sidebar_items,
+      ),
+      enabled_plugins: parseJsonColumn<OrganizationSettings["enabled_plugins"]>(
+        record.enabled_plugins,
+      ),
+      registry_config: parseJsonColumn<OrganizationSettings["registry_config"]>(
+        record.registry_config,
+      ),
+      simple_mode: parseJsonColumn<OrganizationSettings["simple_mode"]>(
+        record.simple_mode,
+      ),
+      default_home_agents: parseJsonColumn<
+        OrganizationSettings["default_home_agents"]
+      >(record.default_home_agents),
+      flags: parseJsonColumn<OrganizationSettings["flags"]>(record.flags),
       main_agent_id: record.main_agent_id ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,

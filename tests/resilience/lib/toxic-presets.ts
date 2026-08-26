@@ -3,7 +3,6 @@ export const PROXY_NAMES = {
   NATS: "nats",
   EVERYTHING: "everything",
   STUDIO_HTTP: "studio_http",
-  STUDIO_WS: "studio_ws",
 } as const;
 
 export const MODERATE_LATENCY = {

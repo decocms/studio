@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { Selection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
@@ -9,6 +9,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { Suggestion } from "@/components/chat/tiptap/mention";
 import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
+import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
 import { isImageFile, useEditorFileUpload } from "./use-file-upload";
 
@@ -87,15 +88,19 @@ export interface MarkdownMentions {
 }
 
 /**
- * A mention lands as plain text (`@Name`), not as a node.
+ * The `@` picker for a fixed list, inserting PLAIN TEXT (`@Name`).
  *
- * The value of this editor IS markdown, and a node would need both
- * `renderMarkdown` and `parseMarkdown` — the latter meaning a token matcher for
- * arbitrary `@word`, since the markdown parser runs only the first handler
- * registered for a token. Plain text round-trips for free, stays readable in
- * whatever stores it, and survives being hand-edited.
+ * Distinct from the org-member picker in `mention-suggestion.tsx`, which
+ * inserts a node that serializes to a markdown link. Here the literal `@Name`
+ * in the markdown IS the contract — a blog format's brief cites a section, and
+ * both the prompt that reads it and `citedSections` match on that text.
+ *
+ * ponytail: two `@` implementations on one component is real duplication.
+ * Folding this into the member picker means making its item source, its item
+ * row and its insert all injectable — worth doing, but not during a merge, and
+ * that file is under active change.
  */
-function MentionMenu({
+function SectionMentionMenu({
   editor,
   mentions,
 }: {
@@ -175,6 +180,8 @@ export function MarkdownEditor({
 }) {
   const t = useT();
   const { uploadFile, pending } = useEditorFileUpload();
+  // One store per editor: created here so it dies with the editor it drives.
+  const [mentionStore] = useState(() => new MentionMenuStore());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The editor is created once, so its handlers would close over the first
@@ -208,12 +215,21 @@ export function MarkdownEditor({
   };
 
   const editor = useEditor({
-    extensions: markdownEditorExtensions(placeholder),
+    // Both pickers answer to `@`, so only one gets installed.
+    extensions: markdownEditorExtensions(
+      placeholder,
+      mentions ? undefined : mentionStore,
+    ),
     content: unwrapListContinuations(defaultValue),
     contentType: "markdown",
     editable,
     editorProps: {
       attributes: {
+        // A contenteditable has no role and no accessible name of its own, so
+        // without these nothing can address it by the label the user sees.
+        role: "textbox",
+        "aria-label": placeholder ?? "",
+        "aria-multiline": "true",
         class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
       },
       handlePaste: (view, event) => {
@@ -255,12 +271,13 @@ export function MarkdownEditor({
   return (
     <div className="flex flex-col">
       <BubbleToolbar editor={editor} />
+      {!mentions && <MentionMenu store={mentionStore} />}
       <EditorContent
         editor={editor}
         className="text-[15px] text-muted-foreground"
       />
       {editable && mentions && (
-        <MentionMenu editor={editor} mentions={mentions} />
+        <SectionMentionMenu editor={editor} mentions={mentions} />
       )}
       {/* Sits clear of the description body so it reads as a control on the
           editor, not as the last line of the text. Hidden when read-only —

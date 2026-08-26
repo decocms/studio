@@ -23,6 +23,7 @@ type BoardSearch = {
   due?: string;
   tags?: string;
   repo?: string;
+  sprint?: string;
 };
 
 const str = (v: unknown): string | null =>
@@ -36,6 +37,7 @@ export function parseBoardSearch(search: BoardSearch): {
   const priority = str(search.priority);
   const due = str(search.due);
   const tags = str(search.tags);
+  const sprint = str(search.sprint);
   return {
     layout: search.view === "list" ? "list" : "board",
     filters: {
@@ -47,6 +49,7 @@ export function parseBoardSearch(search: BoardSearch): {
       due: DUE_FILTERS.includes(due as DueFilter) ? (due as DueFilter) : null,
       tags: tags ? tags.split(",").filter(Boolean) : [],
       repo: str(search.repo),
+      sprint: sprint,
     },
   };
 }
@@ -64,6 +67,7 @@ export function boardSearchParams(
     due: filters.due ?? undefined,
     tags: filters.tags.length > 0 ? filters.tags.join(",") : undefined,
     repo: filters.repo ?? undefined,
+    sprint: filters.sprint ?? undefined,
   };
 }
 
