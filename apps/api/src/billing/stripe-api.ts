@@ -88,6 +88,8 @@ async function stripeRequest<T>(
  * Checkout — both are API-only params with no Dashboard fallback, so omitting
  * them means we never see either.
  *
+ * `required` defaults to `never` — `enabled` alone renders a skippable field.
+ *
  * `customer_update` is mandatory, not cosmetic: with a saved `customer` and
  * address collection on, Stripe 400s the session unless we explicitly allow
  * Checkout to write back to the customer — and a customer whose address is
@@ -98,7 +100,7 @@ export function taxAndAddressParams(
 ): Record<string, unknown> {
   return {
     billing_address_collection: "required",
-    tax_id_collection: { enabled: true },
+    tax_id_collection: { enabled: true, required: "if_supported" },
     ...(customerId && { customer_update: { address: "auto", name: "auto" } }),
   };
 }
