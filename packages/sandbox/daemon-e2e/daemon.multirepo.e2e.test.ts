@@ -66,6 +66,20 @@ describe("daemon secondary checkouts", () => {
   const repoDir = () => join(d.appDir, "repo");
   const secondaryDir = (name: string) => join(d.appDir, "repos", name);
 
+  /**
+   * A secondary sweep runs off the orchestrator's step queue, so
+   * `waitForOrchestratorIdle` reports idle while one is still in flight. Poll
+   * the artifact itself instead.
+   */
+  const waitForPath = async (path: string, deadlineMs = 20_000) => {
+    const deadline = Date.now() + deadlineMs;
+    while (Date.now() < deadline) {
+      if (existsSync(path)) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`timed out waiting for ${path}`);
+  };
+
   it(
     "clones every configured repository, the extras beside the primary",
     async () => {
@@ -134,6 +148,44 @@ describe("daemon secondary checkouts", () => {
       await waitForOrchestratorIdle(d);
 
       expect(existsSync(marker)).toBe(true);
+    },
+    SETUP_TIMEOUT_MS,
+  );
+
+  /**
+   * The case TASK_ADD_REPO actually makes: the pod is already bootstrapped on
+   * its primary and a `repositories`-only patch arrives later. That patch
+   * classifies as NO transition — `Classify` has no opinion on
+   * `git.repositories` — so nothing is enqueued, and a sweep that rode on the
+   * step queue would leave this checkout absent until some unrelated step ran.
+   * In production that was minutes behind the primary's install, past the
+   * caller's timeout. Deliberately no `setup/clone` kick here: the config apply
+   * alone has to be enough.
+   */
+  it(
+    "clones a secondary added after the primary is already bootstrapped",
+    async () => {
+      await postConfig(d, {
+        cloneOnly: true,
+        git: { repository: { cloneUrl: primary.url } },
+      });
+      await waitForOrchestratorIdle(d);
+      expect(existsSync(join(repoDir(), "README.md"))).toBe(true);
+      expect(existsSync(secondaryDir("checkout"))).toBe(false);
+
+      const res = await postConfig(d, {
+        git: {
+          repositories: [{ cloneUrl: extraA.url, repoName: "checkout" }],
+        },
+      });
+      expect(res.status).toBeLessThan(300);
+
+      await waitForPath(join(secondaryDir("checkout"), "README.md"));
+      const status = execSync("git status --porcelain", {
+        cwd: repoDir(),
+        encoding: "utf8",
+      });
+      expect(status.trim()).toBe("");
     },
     SETUP_TIMEOUT_MS,
   );

@@ -65,6 +65,12 @@ type Orchestrator struct {
 	// The `running` state a checkout interrupted, restored by stepStartInner
 	// when the dev server turns out never to have stopped. Zero otherwise.
 	interruptedRunning events.LifecycleState
+
+	// Held for the duration of a secondary-checkout sweep. Its own lock, not
+	// `mu`: the sweep runs OFF the step queue (see CloneSecondariesNow) and must
+	// not block, or be blocked by, the primary's pipeline. Two concurrent sweeps
+	// would both pass the same HasGitRepo check and fork two clones into one dir.
+	secondaryMu sync.Mutex
 }
 
 func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
@@ -132,11 +138,41 @@ func (o *Orchestrator) Handle(t config.Transition) {
 	if t.Kind == config.KindBootstrap || t.Kind == config.KindBranchChange {
 		o.clearCrashError()
 	}
+	// Secondary checkouts, off the queue. Classify() has no opinion on
+	// `git.repositories` — a patch that only adds one is a no-op transition, so
+	// before this the config push alone cloned nothing and the whole feature
+	// rode on TASK_ADD_REPO's explicit `setup/clone` kick, which queues behind
+	// whatever pipeline is in flight. A secondary added while the primary was
+	// installing therefore appeared 2-3 MINUTES late, long after the caller gave
+	// up. Nothing about a sibling checkout needs the primary's install or a dev
+	// restart, so it does not belong in that queue at all. Idempotent (existing
+	// checkouts are skipped), so running it on every apply costs one stat each.
+	go o.CloneSecondariesNow()
+
 	step, ok := transitionToStep(t)
 	if !ok {
 		return
 	}
 	o.enqueue(step)
+}
+
+// CloneSecondariesNow checks out any secondary repository the current config
+// names and the disk does not have yet, without waiting for a step.
+//
+// Safe to call concurrently and repeatedly: serialized on secondaryMu, and
+// cloneSecondaryRepos skips checkouts already present.
+func (o *Orchestrator) CloneSecondariesNow() {
+	defer func() { recover() }()
+	cfg := o.deps.Store.Read()
+	if cfg == nil {
+		return
+	}
+	if len(cfg.AdditionalRepositories()) == 0 {
+		return
+	}
+	o.secondaryMu.Lock()
+	defer o.secondaryMu.Unlock()
+	o.cloneSecondaryRepos(cfg)
 }
 
 func (o *Orchestrator) IsRunning() bool {
@@ -381,7 +417,11 @@ func (o *Orchestrator) stepCloneInner() bool {
 		}
 	}
 
+	// Same lock as the off-queue sweep — a bootstrap's pipeline and a config
+	// patch's sweep can otherwise clone the same directory twice at once.
+	o.secondaryMu.Lock()
 	o.cloneSecondaryRepos(cfg)
+	o.secondaryMu.Unlock()
 
 	o.gitSetup(cfg)
 	o.fillApplicationDefaults()

@@ -106,8 +106,21 @@ async function waitForSandboxRecord(
   ).catch(() => null);
 }
 
-/** Wait at most this long for the checkout before answering anyway. */
-const CLONE_TIMEOUT_MS = 180_000;
+/**
+ * Wait at most this long for the checkout before answering anyway.
+ *
+ * MUST stay under the harness's MCP tool-call timeout, which is 60s: past that
+ * the caller has already abandoned the call, so every extra second of polling
+ * buys nothing and the model is told the add FAILED even when the clone lands
+ * moments later. This was 180s, and the 120s beyond the cutoff were spent
+ * probing a pod for an answer no one would read — an autonomous run then
+ * re-cloned a repo it already had.
+ *
+ * A clone still in flight at the deadline is reported as "may still be in
+ * progress" with the directory to look in, which is the honest answer and
+ * one the model can act on.
+ */
+const CLONE_TIMEOUT_MS = 45_000;
 const CLONE_POLL_MS = 1_500;
 /** Consecutive probe failures that mean the pod is gone, not slow. */
 const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
@@ -380,12 +393,15 @@ export const TASK_ADD_REPO = defineTool({
       });
     }
 
-    // The daemon reads its clone target off the config channel. Adding a
-    // repository (and its branch) to a config that had none classifies as a
-    // branch-change, which runs its clone step; `cloneOnly` was already set at
-    // provision, so no install and no dev server follow. The explicit
-    // `setup/clone` behind it makes the outcome independent of that
-    // classification — the step no-ops when the checkout is already there.
+    /**
+     * The daemon reads its clone target off the config channel. A primary
+     * classifies as a branch-change and runs the clone step (`cloneOnly` was
+     * set at provision, so no install and no dev server follow). A secondary
+     * classifies as nothing — `Classify` has no opinion on `git.repositories` —
+     * and is instead swept off the daemon's step queue on every config apply,
+     * which is what keeps it from waiting out the primary's install. The
+     * explicit `setup/clone` below is the belt for both.
+     */
     const gitRef = pickGitBranch({
       branch,
       derivedRef: syntheticBranchToGitRef(branch),
