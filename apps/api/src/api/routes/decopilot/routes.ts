@@ -338,7 +338,7 @@ async function resolveDefaultHarness(
 ): Promise<HostedHarnessId> {
   try {
     const settings = await ctx.storage.organizationSettings.get(organizationId);
-    if (!orgFlagEnabled(settings?.flags, "code_agents_claude_code")) {
+    if (!orgFlagEnabled(settings?.flags, "coding_agents_claude_code")) {
       return "decopilot";
     }
     const agent = await ctx.storage.virtualMcps.findById(agentId);

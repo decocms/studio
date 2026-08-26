@@ -228,7 +228,7 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow task-run surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
     ),
-  code_agents_claude_code: z
+  coding_agents_claude_code: z
     .boolean()
     .optional()
     .describe(
