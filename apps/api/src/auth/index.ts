@@ -631,6 +631,23 @@ export const auth = betterAuth({
               });
             }
 
+            if (result.status === "joined_via_invitation") {
+              for (const organization of result.organizations) {
+                posthog.capture({
+                  distinctId: user.id,
+                  event: "organization_invitation_auto_accepted",
+                  groups: { organization: organization.id },
+                  properties: {
+                    organization_id: organization.id,
+                    organization_slug: organization.slug,
+                    email_domain: result.domain,
+                    joined_via: result.createdVia,
+                    invitation_count: result.organizations.length,
+                  },
+                });
+              }
+            }
+
             if (result.status === "joined") {
               posthog.capture({
                 distinctId: user.id,
