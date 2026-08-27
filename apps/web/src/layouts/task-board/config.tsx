@@ -19,7 +19,7 @@ import {
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
-import { DEFAULT_TAG_COLOR, DELIVERY_LANES } from "@decocms/shared/task-board";
+import { DEFAULT_TAG_COLOR, isDeliveryLane } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import type { Sprint } from "@decocms/shared/sprints";
 import type { ComponentType } from "react";
@@ -28,6 +28,7 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 export {
   DEFAULT_TASK_TYPE,
   SUPER_AGENT_ASSIGNEE_ID,
+  isDeliveryLane,
   nextTagColor,
 } from "@decocms/shared/task-board";
 
@@ -307,11 +308,6 @@ export const TASK_TYPE_CONFIG: Record<
     iconClassName: "text-purple-500",
   },
 };
-
-/** True for one of the post-merge delivery lanes. */
-export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
-  return (DELIVERY_LANES as string[]).includes(status);
-}
 
 /**
  * Lanes a card may be MOVED to — "Move to", the status dropdown, drag targets.

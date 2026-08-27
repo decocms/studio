@@ -155,6 +155,15 @@ export const DELIVERY_LANES: DeliveryLane[] = [
   "post_deploy_validation",
 ];
 
+/** True for one of the post-merge delivery lanes (Approved, Merged, Post-deploy
+ *  Validation) — the statuses that only exist for an org running
+ *  `delivery_lanes_enabled`. Single home for both api (`tools/task-board/lanes.ts`)
+ *  and web (`layouts/task-board/config.tsx`), which used to define this
+ *  identically on each side. */
+export function isDeliveryLane(status: string): boolean {
+  return (DELIVERY_LANES as string[]).includes(status);
+}
+
 /** True when this org runs the delivery lanes. Off by default. */
 export function deliveryLanesEnabled(
   flags: Record<string, unknown> | null | undefined,
