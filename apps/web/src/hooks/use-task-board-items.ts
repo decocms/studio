@@ -118,6 +118,8 @@ export function useTaskBoardItems() {
     onTaskStatus: (event) => {
       const threadId = event.subject;
       const status = event.data.status;
+      // Same race as onUpdate/onDelete above: cancel a stale in-flight refetch first.
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
         prev
           ? {
