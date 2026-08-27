@@ -3,7 +3,32 @@ import type { ReviewCycleActivity } from "@decocms/shared/task-board";
 import {
   isDuplicateChangeRequest,
   reviewTokenVerified,
+  TASK_BOARD_REVIEW_DECISION,
 } from "./review-decision";
+
+describe("TASK_BOARD_REVIEW_DECISION notes bound", () => {
+  const baseInput = {
+    taskBoardItemId: "item-1",
+    reviewer: "qa" as const,
+    decision: "approve" as const,
+  };
+
+  it("accepts notes at the cap", () => {
+    const result = TASK_BOARD_REVIEW_DECISION.inputSchema.safeParse({
+      ...baseInput,
+      notes: "x".repeat(50_000),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects notes over the cap — unbounded text would land verbatim in a card comment and the next re-dispatch prompt", () => {
+    const result = TASK_BOARD_REVIEW_DECISION.inputSchema.safeParse({
+      ...baseInput,
+      notes: "x".repeat(50_001),
+    });
+    expect(result.success).toBe(false);
+  });
+});
 
 describe("reviewTokenVerified", () => {
   const cycleA = new Date("2026-01-01T00:00:00Z").getTime();
