@@ -184,6 +184,10 @@ export const TaskBoardItemSchema = z.object({
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.
   keySeq: z.number().nullable(),
+  // The key this card's issue wears in the tracker (`OS-333`), for a card that
+  // came from one. It is what the card shows, because it is what people say
+  // out loud about it. Null for a card Studio owns.
+  jiraIssueKey: z.string().nullable(),
   // Infrastructure retries already spent on this card's runs — the budget
   // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
   // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:
