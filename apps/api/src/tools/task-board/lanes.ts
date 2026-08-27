@@ -30,6 +30,14 @@ export const LANE_RANK: Record<TaskBoardItemStatus, number> = {
  *  literal union stays a subset of this side's lane vocabulary. */
 export const DELIVERY_LANE_STATUSES: TaskBoardItemStatus[] = DELIVERY_LANES;
 
+/** True for one of the post-merge delivery lanes (Approved, Merged, Post-deploy
+ *  Validation) — the statuses that only exist for an org running
+ *  `delivery_lanes_enabled`. Mirrors the web-side `isDeliveryLane` in
+ *  `layouts/task-board/config.tsx`. */
+export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
+  return DELIVERY_LANE_STATUSES.includes(status);
+}
+
 /**
  * True when moving `from` → `to` advances the card.
  *
