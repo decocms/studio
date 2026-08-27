@@ -89,4 +89,31 @@ describe("what the schema keeps", () => {
     const code = "```js\nconst a = 1;\n\nconst b = 2;\n```";
     expect(roundTrip(code)).toBe(code);
   });
+
+  /**
+   * An ordered list used to poison every block after it: the nodes were still
+   * created, with their inline content dropped, so a real issue body came back
+   * with empty headings where its sections had been. A bullet list never did
+   * it, and neither did a code block — only the numbered one.
+   *
+   * Fixed upstream in the parser, which is why this pins the SHAPE rather than
+   * a message. Nothing in our code can keep it from coming back on a
+   * downgrade, so the assertion has to.
+   */
+  test("an ordered list does not empty the blocks after it", () => {
+    const out = roundTrip("1. um\n2. dois\n\n## Depois\n\ntexto depois\n");
+    expect(out).toContain("1. um");
+    expect(out).toContain("2. dois");
+    expect(out).toContain("## Depois");
+    expect(out).toContain("texto depois");
+  });
+
+  test("still not when a code block splits the list in two", () => {
+    const out = roundTrip(
+      "1. um\n\n```js\nvar x = 1;\n```\n\n2. dois\n\n## Depois\n\ntexto\n",
+    );
+    expect(out).toContain("var x = 1;");
+    expect(out).toContain("## Depois");
+    expect(out).toContain("texto");
+  });
 });
