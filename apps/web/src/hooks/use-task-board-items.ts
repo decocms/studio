@@ -28,43 +28,6 @@ type TaskBoardData = {
 };
 
 /**
- * The newest item the SSE stream pushed, per id — the board's guard against a
- * refetch answering with a row older than a transition it already rendered.
- *
- * "Click Auto-fix, the card jumps to In Progress and then falls back to To Do
- * until F5" is exactly that race: `TASK_BOARD_ITEM_UPDATE` persists the card in
- * `todo` and only then dispatches the run, which flips it to `in_progress` in a
- * later write. The board invalidates on the update's response, so its refetch
- * can read the DB between those two writes, land after the `in_progress` push,
- * and overwrite it with `todo`.
- *
- * Module-level rather than a ref: `useBoardSprintIndex` and `useTaskBoardItems`
- * share one query key, so whichever `queryFn` React Query keeps must apply the
- * same overlay.
- */
-const liveItems = new Map<string, TaskBoardItem>();
-
-/**
- * Overlay `liveItems` on a freshly fetched list, keeping whichever copy of each
- * card is newer. A tie goes to the server (same `updated_at` = same write) and
- * drops the live copy, so the map stays as small as the transitions in flight.
- */
-export function mergeLiveItems(
-  items: TaskBoardItem[],
-  live: Map<string, TaskBoardItem>,
-): TaskBoardItem[] {
-  if (live.size === 0) return items;
-  return items.map((item) => {
-    const pushed = live.get(item.id);
-    if (!pushed) return item;
-    if (Date.parse(pushed.updatedAt) > Date.parse(item.updatedAt))
-      return pushed;
-    live.delete(item.id);
-    return item;
-  });
-}
-
-/**
  * The board's sprints, indexed by id, read from the same cached list the board
  * loads — so a card can name its sprint without the sprint being threaded down
  * through every lane and row.
@@ -80,7 +43,7 @@ export function useBoardSprintIndex(): Map<string, Sprint> {
     queryKey: KEYS.taskBoardItems(locator),
     queryFn: async (): Promise<TaskBoardData> => {
       const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
-      return { items: mergeLiveItems(items, liveItems), sprints };
+      return { items, sprints };
     },
   });
   return new Map((data?.sprints ?? []).map((sprint) => [sprint.id, sprint]));
@@ -96,7 +59,7 @@ export function useTaskBoardItems() {
     queryKey,
     queryFn: async (): Promise<TaskBoardData> => {
       const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
-      return { items: mergeLiveItems(items, liveItems), sprints };
+      return { items, sprints };
     },
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
@@ -107,7 +70,15 @@ export function useTaskBoardItems() {
   useTaskBoardEvents({
     orgSlug: org.slug,
     onUpdate: (item) => {
-      liveItems.set(item.id, item);
+      // A list refetch already in flight was issued BEFORE this push, so its
+      // answer predates the transition below and would overwrite it. That is
+      // the "click Auto fix, the card jumps to In Progress and falls back to
+      // To Do until F5" bug: `TASK_BOARD_ITEM_UPDATE` returns with the card
+      // still in `todo` (the run worker writes `in_progress` later, in
+      // `advanceTaskBoardForRun`), the mutation invalidates on that response,
+      // and the refetch lands after this push. Cancelling drops the stale
+      // response; the query is left stale, so the 60s backstop re-syncs.
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) => {
         if (!prev) return prev;
         return {
@@ -130,7 +101,6 @@ export function useTaskBoardItems() {
     },
     // Live deletes: drop the removed card so it clears on every open board.
     onDelete: (id) => {
-      liveItems.delete(id);
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
         prev ? { ...prev, items: prev.items.filter((t) => t.id !== id) } : prev,
       );
