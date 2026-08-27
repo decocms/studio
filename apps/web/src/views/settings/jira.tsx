@@ -106,13 +106,19 @@ const BOARD_STATUS_OPTIONS: Array<{
 ];
 
 /** The lanes this org can map a Jira status onto — offering an unrun delivery
- *  lane would route issues into a column the board never draws. */
-function boardStatusOptions(
+ *  lane would route issues into a column the board never draws. `current` is
+ *  this row's already-mapped value: if it's a delivery lane saved while the
+ *  flag was on, it must stay in the list even after the flag turns off, or the
+ *  Select's value stops matching any item and the row silently renders blank
+ *  while the mapping underneath is untouched. */
+export function boardStatusOptions(
   deliveryEnabled: boolean,
+  current: BoardStatus | undefined,
 ): typeof BOARD_STATUS_OPTIONS {
-  return deliveryEnabled
-    ? BOARD_STATUS_OPTIONS
-    : BOARD_STATUS_OPTIONS.filter((o) => !isDeliveryLane(o.value));
+  if (deliveryEnabled) return BOARD_STATUS_OPTIONS;
+  return BOARD_STATUS_OPTIONS.filter(
+    (o) => !isDeliveryLane(o.value) || o.value === current,
+  );
 }
 
 /** Radix Select forbids empty item values — sentinel for "not synced". */
@@ -336,7 +342,10 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
               <SelectItem value={DONT_SYNC}>
                 {t("settings.jira.dontSync")}
               </SelectItem>
-              {boardStatusOptions(deliveryEnabled).map((option) => (
+              {boardStatusOptions(
+                deliveryEnabled,
+                laneOfColumn(mapping, column),
+              ).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {t(option.labelKey)}
                 </SelectItem>
