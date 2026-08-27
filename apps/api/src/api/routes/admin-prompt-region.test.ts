@@ -51,6 +51,45 @@ describe("prompt regions", () => {
 });
 
 /**
+ * A shorter id that is a prefix of a longer one's marker (e.g. "super-agent" /
+ * "super-agent-sandbox", both real ids in the registry today) must not match
+ * the longer marker's line — or an edit to the short id would splice into the
+ * long id's region instead.
+ */
+describe("prompt regions with a prefix-colliding id", () => {
+  const PREFIX_SOURCE = [
+    "const X = {",
+    "  // prompt-region:start super-agent-sandbox",
+    '  sandbox: "be careful",',
+    "  // prompt-region:end super-agent-sandbox",
+    "  // prompt-region:start super-agent",
+    '  hosted: "be quick",',
+    "  // prompt-region:end super-agent",
+    "};",
+    "",
+  ].join("\n");
+
+  it("extracts the exact-id region, not the prefix-matching one", () => {
+    expect(extractPromptRegion(PREFIX_SOURCE, "super-agent")).toBe(
+      '  hosted: "be quick",\n',
+    );
+    expect(extractPromptRegion(PREFIX_SOURCE, "super-agent-sandbox")).toBe(
+      '  sandbox: "be careful",\n',
+    );
+  });
+
+  it("replaces only the exact-id region", () => {
+    const next = replacePromptRegion(
+      PREFIX_SOURCE,
+      "super-agent",
+      '  hosted: "be quick and safe",',
+    );
+    expect(next).toContain('sandbox: "be careful"');
+    expect(next).toContain('hosted: "be quick and safe"');
+  });
+});
+
+/**
  * The registry in `admin-prompts.ts` addresses prompts by marker id. A marker
  * deleted or renamed in a refactor turns the editor into "content: null" for
  * that prompt — silently, since nothing else reads these comments. This is the
