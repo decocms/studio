@@ -1,6 +1,4 @@
 /**
- * First-class navigation (see `useNavV2`).
- *
  * The sidebar lists DESTINATIONS — Home, Reports, Tasks, Library — instead of
  * chat threads. Each opens as the main panel's active view (`?main=<tabId>`),
  * the same mechanism the top tab bar uses. They are org-level, so they always

@@ -30,7 +30,7 @@ import {
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
-import { callSelfMcpTool, setOrgFlags } from "../fixtures/mcp-tools";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
 /** Cold-Vite route compile on a loaded box; the agent shell is a lazy route. */
@@ -119,12 +119,9 @@ test.describe("fast preview publish stages", () => {
       await route.continue();
     });
 
-    // The publish actions sit in the chat header only while the main panel is
-    // closed AND the org is off the first-class navigation.
-    await setOrgFlags(api, orgSlug, { nav_v2: false });
-
+    // Publish lives in the main panel header; open it (the vMCP defaults to chat).
     await page.goto(
-      `/${orgSlug}/${thread.item.id}?virtualmcpid=${project.vmcpId}`,
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${project.vmcpId}&main=preview`,
     );
 
     const primary = page.getByRole("button", {

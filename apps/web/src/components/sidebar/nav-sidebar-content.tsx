@@ -1,6 +1,5 @@
 /**
- * The sidebar body for orgs on the first-class navigation (see `useNavV2`):
- * destinations, not threads.
+ * The sidebar body: destinations, not threads.
  *
  * Expanded, the body is just the destination list — the collapse trigger sits
  * beside the org selector in the sidebar header, and new chat / chat search

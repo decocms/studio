@@ -245,22 +245,6 @@ export function useReportsOnly(): boolean {
 }
 
 /**
- * Whether the org uses the first-class navigation: the sidebar lists
- * destinations (Reports / Library / Tasks) instead of chat threads, and the
- * thread list moves into a menu at the top of the chat panel.
- *
- * Unset means an org created before NEW_ORG_DEFAULT_FLAGS seeded this on; those
- * fall back to reports-only. Raw tri-state read, not `useOrgFlag`, so an explicit
- * `false` wins and one flag's default can depend on another's.
- */
-export function useNavV2(): boolean {
-  const { data } = useOrganizationSettings(
-    (s) => s.flags?.nav_v2 ?? s.flags?.reports_only ?? false,
-  );
-  return data ?? false;
-}
-
-/**
  * Read one org flag from the `flags` bag via `orgFlagEnabled` (see
  * OrgFlagsSchema / DEFAULT_ON_FLAGS in @decocms/shared/organization/schema —
  * the single place flag defaults are defined). The pre-load fallback uses the
