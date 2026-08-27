@@ -664,6 +664,14 @@ const settingsAutomationsRoute = createRoute({
   ),
 });
 
+const settingsSkillsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/skills",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/skills.tsx"),
+  ),
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -675,6 +683,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   collectionDetailRoute,
   settingsAgentsRoute,
   settingsAutomationsRoute,
+  settingsSkillsRoute,
   monitoringRoute,
   settingsGeneralRoute,
   settingsConnectRoute,
