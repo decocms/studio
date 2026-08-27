@@ -55,6 +55,14 @@ test.describe("Invite: only an autoAccept invitation is claimed at signup", () =
        ON CONFLICT (id) DO NOTHING`,
       [ORG_ID, "AutoAccept E2E Org", `e2e-autoaccept-org-${RUN}`],
     );
+    // The inviter has to exist: `invitation."inviterId"` is a foreign key into
+    // `user`, so seeding an invitation without one fails the insert outright.
+    await db.query(
+      `INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+       VALUES ($1, $2, false, $3, now(), now())
+       ON CONFLICT (id) DO NOTHING`,
+      [INVITER_ID, `inviter-${RUN}@${TEST_DOMAIN}`, "AutoAccept E2E Inviter"],
+    );
   });
 
   test.afterAll(async () => {
@@ -66,6 +74,7 @@ test.describe("Invite: only an autoAccept invitation is claimed at signup", () =
       ORG_ID,
     ]);
     await db.query(`DELETE FROM "organization" WHERE id = $1`, [ORG_ID]);
+    await db.query(`DELETE FROM "user" WHERE id = $1`, [INVITER_ID]);
     await db.end();
   });
 
