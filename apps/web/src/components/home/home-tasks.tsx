@@ -99,7 +99,7 @@ function TaskRow({
           <span
             className={cn(
               "hidden items-center gap-1 @xl:inline-flex",
-              due.overdue ? "text-red-600" : "",
+              due.overdue ? "text-destructive" : "",
             )}
           >
             <Calendar className="size-3" />
