@@ -124,7 +124,7 @@ describe("mergeRetryExpired", () => {
   });
   const approved = (at: string) => ({
     action: "review_approved",
-    data: { reviewer: "qa", verified: true },
+    data: { reviewer: "reviewer", verified: true },
     occurredAt: at,
   });
 

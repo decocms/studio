@@ -97,8 +97,7 @@ describe("prompt regions with a prefix-colliding id", () => {
  */
 describe("the real prompt regions", () => {
   const REGIONS: Array<[string, string]> = [
-    ["qa-agent", "../../tools/task-board/enqueue-reviewer.ts"],
-    ["code-reviewer", "../../tools/task-board/enqueue-reviewer.ts"],
+    ["reviewer", "../../tools/task-board/enqueue-reviewer.ts"],
     ["super-agent", "../../tools/task-board/enqueue-super-agent.ts"],
     ["super-agent-sandbox", "../../tools/task-board/claude-code-task-run.ts"],
   ];

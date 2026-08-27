@@ -1,5 +1,6 @@
 import type { Metadata } from "./chat.ts";
 import type { ThreadRuntime } from "./thread/session-runtime.ts";
+import type { ReviewerKind } from "./task-board.ts";
 
 export const THREAD_STATUSES = [
   "in_progress",
@@ -183,7 +184,7 @@ export interface TaskBoardItem {
    *  that have not decided are absent. Mirrors `TaskBoardItemReviewVerdict` in
    *  `apps/api/src/storage/types.ts`. */
   reviewVerdicts: {
-    reviewer: "qa" | "code_review";
+    reviewer: ReviewerKind;
     verdict: "approved" | "changes_requested";
     verified: boolean;
   }[];

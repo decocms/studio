@@ -847,10 +847,9 @@ async function fetchPrStatusExtras(
  * merged is done with; anything else — open, or unknown because GitHub was quiet
  * — is a candidate.
  *
- * Check status does NOT gate this: the reviewers run WITHOUT waiting for CI. The
- * QA reviewer exercises the deploy preview and the Code Reviewer reads the diff,
- * so we start them as soon as there's a PR rather than sitting on a slow or
- * stuck check. Shipping stays safe — the MERGE is gated on green checks
+ * Check status does NOT gate this: the reviewer runs WITHOUT waiting for CI. It
+ * reads the diff and exercises the deploy preview, so we start it as soon as
+ * there's a PR rather than sitting on a slow or stuck check. Shipping stays safe — the MERGE is gated on green checks
  * separately (`mergeLinkedPr` → `fetchPrChecksStatus`), so nothing merges on red
  * no matter what a reviewer decided.
  *
@@ -1197,9 +1196,9 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       }),
     );
 
-    // Auto-hand-off to the enabled reviewers: once the Super Agent's PR is In
-    // Review and its checks are green — OR it has no checks at all — delegate to
-    // each reviewer the org turned on (QA Agent / Code Reviewer). Only a pending
+    // Auto-hand-off to the reviewer: once the Super Agent's PR is In Review and
+    // its checks are green — OR it has no checks at all — delegate to the
+    // reviewer, if the org has it turned on. Only a pending
     // or failing run blocks the hand-off; a PR without CI (`checksStatus ===
     // null`) shouldn't sit in review forever. Like the merge→done reconcile
     // below this is reconcile-on-view (no PR webhook), driven by the modal's 10s

@@ -6,7 +6,6 @@ import {
   FileSearch02,
   GitMerge,
   Rocket01,
-  ShieldTick,
   Terminal,
   UserSquare,
 } from "@untitledui/icons";
@@ -34,16 +33,10 @@ export function ReviewSettings() {
     >
       <SettingsCard>
         <FlagToggle
-          flag="qa_agent_enabled"
-          icon={<ShieldTick size={16} />}
-          titleKey="settings.review.qaAgentTitle"
-          descriptionKey="settings.review.qaAgentDescription"
-        />
-        <FlagToggle
-          flag="code_reviewer_enabled"
+          flag="reviewer_enabled"
           icon={<FileSearch02 size={16} />}
-          titleKey="settings.review.codeReviewerTitle"
-          descriptionKey="settings.review.codeReviewerDescription"
+          titleKey="settings.review.reviewerTitle"
+          descriptionKey="settings.review.reviewerDescription"
         />
         <FlagToggle
           flag="cheap_reviewer_model"

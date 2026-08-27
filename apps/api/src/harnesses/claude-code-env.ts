@@ -39,7 +39,7 @@ const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
  * `claude` CLI, which only works against Claude models, so the slot's id is not
  * usable here.
  *
- * `reviewer` is a cheaper tier for the QA Agent and Code Reviewer, whose job is
+ * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
  * those two ran MORE threads than the Super Agent on one month of production
  * boards (1,247 vs 707) and took 57% of the spend — all of it at the builder's

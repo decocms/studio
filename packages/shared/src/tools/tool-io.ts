@@ -121,6 +121,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
@@ -191,6 +192,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
@@ -261,6 +263,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
@@ -391,7 +394,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -459,7 +462,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -559,7 +562,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -616,7 +619,7 @@ export interface StudioToolIO {
   TASK_BOARD_REVIEW_DECISION: {
     input: {
       taskBoardItemId: string;
-      reviewer: "qa" | "code_review";
+      reviewer: "reviewer" | "qa" | "code_review";
       decision: "approve" | "request_changes";
       notes: string;
       reviewToken?: string | undefined;

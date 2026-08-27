@@ -459,16 +459,13 @@ export const settings = {
   "settings.mainAgent.errorToast": "Couldn't update the main agent",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
-    "Automated reviewers run on a task's pull request once it's In Review (checks passing or none). Both appear as sessions on the task card.",
-  "settings.review.qaAgentTitle": "Enable QA Agent",
-  "settings.review.qaAgentDescription":
-    "Verifies the task actually solved the problem — exercises the feature, not just the diff.",
-  "settings.review.codeReviewerTitle": "Enable Code Reviewer",
-  "settings.review.codeReviewerDescription":
-    "Reviews the code using the repository's stack-appropriate review skills.",
+    "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
+  "settings.review.reviewerTitle": "Enable Reviewer",
+  "settings.review.reviewerDescription":
+    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
-    "The QA Agent and Code Reviewer read a diff and reach a verdict, so they run on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
+    "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",

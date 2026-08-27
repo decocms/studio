@@ -66,29 +66,21 @@ describe("isDuplicateChangeRequest", () => {
     occurredAt: at,
   });
 
-  it("is true for the same reviewer twice in one cycle", () => {
+  it("is true for a repeated change request in one cycle", () => {
     const history = [
       cycle("2026-08-13T02:39:20Z"),
-      changes("qa", "2026-08-13T02:54:59Z"),
+      changes("reviewer", "2026-08-13T02:54:59Z"),
     ];
-    expect(isDuplicateChangeRequest(history, "qa")).toBe(true);
-  });
-
-  it("is false for the other reviewer's first verdict", () => {
-    const history = [
-      cycle("2026-08-13T02:39:20Z"),
-      changes("qa", "2026-08-13T02:54:59Z"),
-    ];
-    expect(isDuplicateChangeRequest(history, "code_review")).toBe(false);
+    expect(isDuplicateChangeRequest(history, "reviewer")).toBe(true);
   });
 
   it("is false once the card came back for a fresh cycle", () => {
     const history = [
       cycle("2026-08-13T02:39:20Z"),
-      changes("qa", "2026-08-13T02:54:59Z"),
+      changes("reviewer", "2026-08-13T02:54:59Z"),
       cycle("2026-08-13T02:55:21Z"),
     ];
-    expect(isDuplicateChangeRequest(history, "qa")).toBe(false);
+    expect(isDuplicateChangeRequest(history, "reviewer")).toBe(false);
   });
 
   it("is false when this cycle's only verdict was an approval", () => {
@@ -96,10 +88,10 @@ describe("isDuplicateChangeRequest", () => {
       cycle("2026-08-13T02:39:20Z"),
       {
         action: "review_approved",
-        data: { reviewer: "qa", verified: true },
+        data: { reviewer: "reviewer", verified: true },
         occurredAt: "2026-08-13T02:44:00Z",
       } as ReviewCycleActivity,
     ];
-    expect(isDuplicateChangeRequest(history, "qa")).toBe(false);
+    expect(isDuplicateChangeRequest(history, "reviewer")).toBe(false);
   });
 });

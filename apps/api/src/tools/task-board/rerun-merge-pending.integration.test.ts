@@ -70,8 +70,7 @@ describe("refuseIfMergePending", () => {
     await organizationSettings.upsert(ORG, {
       flags: {
         auto_merge: true,
-        qa_agent_enabled: true,
-        code_reviewer_enabled: true,
+        reviewer_enabled: true,
       },
     });
     ctx = {
@@ -85,8 +84,7 @@ describe("refuseIfMergePending", () => {
 
   it("refuses when every enabled reviewer verifiably approved", async () => {
     const item = await cardWithVerdicts([
-      { reviewer: "qa", verified: true },
-      { reviewer: "code_review", verified: true },
+      { reviewer: "reviewer", verified: true },
     ]);
     await expect(refuseIfMergePending(ctx, item)).rejects.toThrow(
       /merge is retrying/,
@@ -94,23 +92,21 @@ describe("refuseIfMergePending", () => {
   });
 
   it("allows a re-run when a reviewer has not approved yet", async () => {
-    const item = await cardWithVerdicts([{ reviewer: "qa", verified: true }]);
+    const item = await cardWithVerdicts([]);
     await expect(refuseIfMergePending(ctx, item)).resolves.toBeUndefined();
   });
 
   // An unverified approval is the dead end a re-run is the only way out of.
   it("allows a re-run when an approval did not verify", async () => {
     const item = await cardWithVerdicts([
-      { reviewer: "qa", verified: true },
-      { reviewer: "code_review", verified: false },
+      { reviewer: "reviewer", verified: false },
     ]);
     await expect(refuseIfMergePending(ctx, item)).resolves.toBeUndefined();
   });
 
   it("allows a re-run of a card that is not In Review", async () => {
     const item = await cardWithVerdicts([
-      { reviewer: "qa", verified: true },
-      { reviewer: "code_review", verified: true },
+      { reviewer: "reviewer", verified: true },
     ]);
     await expect(
       refuseIfMergePending(ctx, { ...item, status: "in_progress" }),
@@ -119,14 +115,12 @@ describe("refuseIfMergePending", () => {
 
   it("allows a re-run when the org has auto-merge off", async () => {
     const item = await cardWithVerdicts([
-      { reviewer: "qa", verified: true },
-      { reviewer: "code_review", verified: true },
+      { reviewer: "reviewer", verified: true },
     ]);
     await organizationSettings.upsert(ORG, {
       flags: {
         auto_merge: false,
-        qa_agent_enabled: true,
-        code_reviewer_enabled: true,
+        reviewer_enabled: true,
       },
     });
     await expect(refuseIfMergePending(ctx, item)).resolves.toBeUndefined();
@@ -140,13 +134,11 @@ describe("refuseIfMergePending", () => {
     await organizationSettings.upsert(ORG, {
       flags: {
         auto_merge: true,
-        qa_agent_enabled: true,
-        code_reviewer_enabled: true,
+        reviewer_enabled: true,
       },
     });
     const item = await cardWithVerdicts([
-      { reviewer: "qa", verified: true },
-      { reviewer: "code_review", verified: true },
+      { reviewer: "reviewer", verified: true },
     ]);
     await taskBoard.linkPr({
       taskBoardItemId: item.id,
@@ -176,8 +168,7 @@ describe("refuseIfMergePending", () => {
   // time. Aged rows rather than a fake clock: the guard reads `now()`.
   it("allows a re-run once the merge has been retrying past the grace window", async () => {
     const item = await cardWithVerdicts([
-      { reviewer: "qa", verified: true },
-      { reviewer: "code_review", verified: true },
+      { reviewer: "reviewer", verified: true },
     ]);
     await sql`
       UPDATE task_board_activity SET occurred_at = now() - interval '30 minutes'
