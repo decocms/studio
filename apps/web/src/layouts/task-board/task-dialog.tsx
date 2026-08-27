@@ -1353,14 +1353,16 @@ function TaskBoardItemEditor({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    /* Hugs its label like every other property; the cap is
+                       what keeps a long repo name inside the column. */
                     className={cn(
                       PROPERTY_BUTTON,
-                      "w-full min-w-0",
+                      "max-w-full",
                       !repo && EMPTY_PROPERTY,
                     )}
                   >
                     <GitHubIcon className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-left">
+                    <span className="min-w-0 truncate text-left">
                       {repo ?? t("taskBoard.taskDialog.repoButton")}
                     </span>
                   </button>
