@@ -97,13 +97,13 @@ export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 32_000;
  *
  * A reviewer is capped because its cost is superlinear in turns: every turn
  * re-reads the whole context, so a 150k-token review at 52 turns bills ~7.9M
- * input tokens. 30 covers every review we have measured with room to spare, and
+ * input tokens. 60 covers every review we have measured with room to spare, and
  * the run is TOLD its budget (see the harness runner) so it plans against the
  * cap instead of being cut off mid-verdict.
  */
 const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
   default: null,
-  reviewer: 30,
+  reviewer: 60,
 };
 
 /** The subset of a resolved model source this needs. */
