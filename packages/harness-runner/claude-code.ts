@@ -352,6 +352,72 @@ const MCP_ATTEMPTS = 8;
 const MCP_BACKOFF_BASE_MS = 2_000;
 
 /**
+ * Retries allowed against a rejecting upstream model provider, and the base of
+ * the equal-jittered backoff between them (0.5-1s, 1-2s, 2-4s).
+ *
+ * OpenRouter fronts one Claude model with several upstreams (Anthropic, Bedrock,
+ * Vertex, Azure) and picks one per request, so a request it relays as
+ * `400 Provider returned error` is a property of the upstream it happened to
+ * pick, not of the request: on production threads the SAME prompt in the SAME
+ * pod failed and then completed 87 seconds later, untouched. The SDK will not
+ * retry it for us — a 400 is a permanent client error by every Anthropic SDK's
+ * rules, which is the right default and the wrong one here.
+ *
+ * Three retries because one is only worth anything if it lands on a different
+ * upstream, which it does immediately; waiting longer buys nothing.
+ * The jitter is not decoration — these failures arrive in bursts (14 threads in
+ * one hour on one org), so an unjittered backoff would retry them in lockstep.
+ */
+const PROVIDER_RETRIES = 3;
+const PROVIDER_BACKOFF_BASE_MS = 1_000;
+
+/**
+ * Whether an SDK throw is the upstream provider failing rather than the request
+ * being wrong.
+ *
+ * Matched on OpenRouter's own relay wording, not on the status code: a 400 whose
+ * body describes the request (`messages.0: text content blocks must be
+ * non-empty`) is a bug a retry would only repeat, and must stay fatal. Exported
+ * for the unit test — pure.
+ */
+export function isTransientProviderRejection(message: string): boolean {
+  return /provider returned error/i.test(message);
+}
+
+/**
+ * Equal-jitter exponential backoff for {@link PROVIDER_RETRIES}.
+ *
+ * Hand-rolled rather than `exponentialBackoffWithJitter` from
+ * `@decocms/shared/std`, which every other retry in the repo uses: this package
+ * is installed into the sandbox image from a tarball and so can only depend on
+ * published packages, which a private workspace module is not. Same reason
+ * `Bun.sleep` stands in for `sleep` here and on the MCP path above.
+ */
+function providerBackoffMs(attempt: number): number {
+  const exponential = PROVIDER_BACKOFF_BASE_MS * 2 ** (attempt - 1);
+  return Math.round(exponential * (0.5 + Math.random() / 2));
+}
+
+/**
+ * A live-only progress chunk telling the UI what this pause is.
+ *
+ * The shape is the `data-run-status` contract owned by
+ * `apps/api/src/api/routes/decopilot/run-status-stage.ts`, restated here rather
+ * than imported: this package is installed into the sandbox image from a tarball
+ * (`packages/sandbox/image/Dockerfile`) and can only depend on published
+ * packages, so the process boundary is the wall. Studio drops these from the
+ * durable projection (`isTransientControlChunk`), so a retry the user watched
+ * happen leaves nothing behind in the thread.
+ */
+function retryingProviderChunk(): Record<string, unknown> {
+  return {
+    type: "data-run-status",
+    id: "run-status",
+    data: { stage: "retrying-provider" },
+  };
+}
+
+/**
  * Run one turn, emitting its chunks as the SDK produces them. An SDK throw
  * becomes a final `error` frame after whatever the turn had already emitted, so
  * a crash mid-turn still shows the work instead of an empty message.
@@ -385,6 +451,16 @@ export async function runClaudeCode(
     started = true;
     emit({ chunks: [...turnStartChunks(id), ...pending.splice(0)] });
   };
+  /**
+   * Whether a failed attempt can be restarted without duplicating work.
+   *
+   * `started` flips on the turn's first assistant message, and a tool call is
+   * part of one — so an un-started turn has run no tool and side-effected
+   * nothing, and restarting it loses only the request that failed. Past that
+   * point a restart would re-run work and splice two generations into one
+   * message, which is a worse failure than the one it recovers from.
+   */
+  const canRestartCleanly = () => !started;
   const push = (chunks: unknown[]) => {
     if (chunks.length === 0) return;
     if (started) emit({ chunks });
@@ -394,6 +470,7 @@ export async function runClaudeCode(
   try {
     let forkedForSession = false;
     let restartedWithoutResume = false;
+    let providerRetries = 0;
     for (let attempt = 1; ; attempt++) {
       let broken: string | null;
       try {
@@ -423,6 +500,26 @@ export async function runClaudeCode(
           );
           sessionId = crypto.randomUUID();
           resumeSession = false;
+          attempt = 0;
+          continue;
+        }
+        if (
+          canRestartCleanly() &&
+          providerRetries < PROVIDER_RETRIES &&
+          isTransientProviderRejection(msg)
+        ) {
+          providerRetries++;
+          const waitMs = providerBackoffMs(providerRetries);
+          console.error(
+            `[claude-code] provider rejected the request (${msg}) — retrying ` +
+              `in ${waitMs}ms (attempt ${providerRetries}/${PROVIDER_RETRIES})`,
+          );
+          // Straight to `emit`: `push` buffers until the turn starts.
+          emit({ chunks: [retryingProviderChunk()] });
+          // What the dead attempt buffered is not part of the next one.
+          pending.length = 0;
+          await Bun.sleep(waitMs);
+          if (!resumeSession) sessionId = crypto.randomUUID();
           attempt = 0;
           continue;
         }
