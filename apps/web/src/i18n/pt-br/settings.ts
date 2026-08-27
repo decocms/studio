@@ -453,14 +453,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.navigation.title": "Navegação",
-  "settings.navigation.description":
-    "Como esta organização circula pelo Studio.",
-  "settings.navigation.updateError":
-    "Não foi possível atualizar as configurações de navegação",
-  "settings.navigation.navV2Title": "Navegação de primeira classe",
-  "settings.navigation.navV2Description":
-    "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações novas e em organizações de relatório.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":

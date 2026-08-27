@@ -32,7 +32,7 @@ import {
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
-import { callSelfMcpTool, setOrgFlags } from "../fixtures/mcp-tools";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
 /**
@@ -121,10 +121,7 @@ test.describe("fast preview publish surface", () => {
      */
     expect(thread.item.branch).toBe(branch);
 
-    // The publish actions sit in the chat header only while the main panel is
-    // closed AND the org is off the first-class navigation.
-    await setOrgFlags(api, orgSlug, { nav_v2: false });
-
+    // Repo-backed vMCP: the main panel opens on Preview, so publish lives there.
     await page.goto(
       `/${orgSlug}/${thread.item.id}?virtualmcpid=${project.vmcpId}`,
     );
