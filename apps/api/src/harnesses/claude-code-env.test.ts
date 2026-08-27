@@ -197,7 +197,7 @@ describe("claudeCodeEnvFromCredential", () => {
       expect(
         claudeCodeEnvFromCredential(credential, "reviewer")
           .CLAUDE_CODE_MAX_TURNS,
-      ).toBe("30");
+      ).toBe("60");
       // `null` deletes a cap a prior reviewer run left on this sandbox.
       expect(
         claudeCodeEnvFromCredential(credential, "default")
