@@ -140,8 +140,13 @@ export function delegatesToSuperAgent(
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
  *  lands here it's out of the review loop, same as "done" — `archived` skips
- *  review just as effectively as completing it does. */
+ *  review just as effectively as completing it does. The delivery lanes count
+ *  too: they sit past In Review, so a run setting `merged` would escape this
+ *  guard and drop the card out of `listItemsPendingReview`. */
 const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
+  "approved",
+  "merged",
+  "post_deploy_validation",
   "done",
   "archived",
 ]);

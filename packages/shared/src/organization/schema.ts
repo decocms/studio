@@ -185,6 +185,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
+  delivery_lanes_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Board lanes for shipping: Approved, Merged and Post-deploy Validation sit between In Review and Done, and a merged pull request lands on Merged instead of Done. For teams whose release process continues after the merge. Off by default — with it off the board and the state machine behave exactly as if the lanes did not exist.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

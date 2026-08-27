@@ -7,15 +7,17 @@ import {
   enabledReviewerKinds,
   type ReviewCycleActivity,
   type ReviewerKind,
+  shippedLane,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
+import { SHIP_ELIGIBLE_LANES } from "./lanes";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { mergeLinkedPr } from "./merge-pr";
 
 /**
- * The board only shows "Ship to production" once the task is In Review and
- * every enabled reviewer approved (`reviewsSatisfiedForPromotion` on the web
+ * The board only shows "Ship to production" once the task is In Review or
+ * Approved, with every enabled reviewer approved (`reviewsSatisfiedForPromotion` on the web
  * side) — but that's client-side gating only. Without this check here, any
  * caller of this tool (a decopilot agent, a stale client, a direct MCP call)
  * could merge ANY task's linked PR — todo, in_progress, unreviewed — bypassing
@@ -26,7 +28,7 @@ export function isReadyToShip(
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
 ): boolean {
-  if (status !== "in_review") return false;
+  if (!SHIP_ELIGIBLE_LANES.has(status)) return false;
   return enabled.length === 0 || allReviewersApproved(activity, enabled);
 }
 
@@ -34,8 +36,9 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
   name: "TASK_BOARD_PROMOTE_TO_PRODUCTION",
   description:
     "Ship a reviewed task: merge its open pull request and move the task to " +
-    "Done. Used by the board's 'Ship to production' button after the enabled " +
-    "reviewers approved, when auto-merge is off (a human does the final merge).",
+    "Merged (or Done, on a board without the delivery lanes). Used by the " +
+    "board's 'Ship to production' button after the enabled reviewers " +
+    "approved, when auto-merge is off (a human does the final merge).",
   annotations: {
     title: "Ship to Production",
     readOnlyHint: false,
@@ -76,7 +79,7 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
     );
     if (!isReadyToShip(item.status, activity, enabled)) {
       throw new Error(
-        "Task is not ready to ship: it must be In Review with every enabled reviewer approved",
+        "Task is not ready to ship: it must be In Review or Approved with every enabled reviewer approved",
       );
     }
 
@@ -96,18 +99,19 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
       return { status: item.status, merged: false };
     }
 
+    const shipped = shippedLane(settings?.flags);
     const updated = await ctx.storage.taskBoard.update(
       taskBoardItemId,
       organizationId,
-      { status: "done" },
+      { status: shipped },
       item.updatedBy,
     );
-    if (item.status !== "done") {
+    if (item.status !== shipped) {
       await recordTaskActivity(ctx, {
         taskBoardItemId,
         action: "status_changed",
         actorId: null,
-        data: { from: item.status, to: "done" },
+        data: { from: item.status, to: shipped },
       });
     }
     emitTaskBoardUpdated(organizationId, updated);

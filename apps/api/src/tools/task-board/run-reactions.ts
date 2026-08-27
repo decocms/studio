@@ -35,18 +35,9 @@ import {
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
+import { LANE_RANK } from "./lanes";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
-
-/** Board lane order — a transition only moves a card forward, never back. */
-const RANK: Record<TaskBoardItemStatus, number> = {
-  triage: 0,
-  todo: 1,
-  in_progress: 2,
-  in_review: 3,
-  done: 4,
-  archived: 5,
-};
 
 /** Run-lifecycle funnel events (auto-fix leg of the PLG funnel). System
  *  actions with no acting user — org identity, person processing off.
@@ -161,7 +152,7 @@ export async function advanceTaskBoardForRun(
       // repeated PR tool call, or in_progress re-fired on a DBOS retry, won't
       // regress a card that's already further along). Upgrade to a conditional
       // UPDATE ... WHERE status-rank < new-rank only if concurrency ever bites.
-      if (!current || RANK[status] <= RANK[current.status]) continue;
+      if (!current || LANE_RANK[status] <= LANE_RANK[current.status]) continue;
       const item = await ctx.storage.taskBoard.update(
         itemId,
         orgId,
@@ -320,8 +311,9 @@ export async function reactToFailedTaskRun(
     for (const itemId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(itemId, orgId);
       if (!item) continue;
-      // The run moved the card itself and only THEN lost its stream.
-      if (item.status === "in_review" || item.status === "done") {
+      // The run moved the card itself and only THEN lost its stream. By rank, so
+      // a card the merged-PR reconcile pushed further still counts as delivered.
+      if (LANE_RANK[item.status] >= LANE_RANK.in_review) {
         await taskBoard
           .relabelDeliveredFailure(threadId, orgId, DELIVERED_FAILURE_REASON)
           .catch(() => {});
@@ -424,7 +416,7 @@ export async function refundUnproductiveTaskClaims(
     for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(taskId, orgId);
       if (!item) continue;
-      if (RANK[item.status] >= RANK.in_review) continue;
+      if (LANE_RANK[item.status] >= LANE_RANK.in_review) continue;
       const stillRunning = item.threads.some(
         (t) =>
           t.hasMessages &&

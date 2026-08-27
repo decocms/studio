@@ -489,6 +489,9 @@ export const settings = {
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
+  "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
+  "settings.review.deliveryLanesDescription":
+    "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
   "settings.review.autoAssignReportTasksTitle":
     "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":

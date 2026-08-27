@@ -213,11 +213,20 @@ describe("closesOwnReview", () => {
     expect(closesOwnReview("archived", "in_review", true)).toBe(true);
   });
 
+  // Shipping yourself past review also drops the card out of the review sweep.
+  it("catches a run shipping a task under review into a delivery lane", () => {
+    expect(closesOwnReview("approved", "in_review", true)).toBe(true);
+    expect(closesOwnReview("merged", "in_review", true)).toBe(true);
+    expect(closesOwnReview("post_deploy_validation", "in_review", true)).toBe(
+      true,
+    );
+  });
+
   it("allows a run to complete a task that needed no code change", () => {
     expect(closesOwnReview("done", "in_progress", true)).toBe(false);
   });
 
-  it("allows a run to move a task under review anywhere but Done/Archived", () => {
+  it("allows a run to move a task under review BACKWARD, or not at all", () => {
     expect(closesOwnReview("in_progress", "in_review", true)).toBe(false);
     expect(closesOwnReview(undefined, "in_review", true)).toBe(false);
   });

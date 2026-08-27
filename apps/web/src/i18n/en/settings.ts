@@ -473,6 +473,9 @@ export const settings = {
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
+  "settings.review.deliveryLanesTitle": "Show delivery lanes",
+  "settings.review.deliveryLanesDescription":
+    "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
   "settings.review.autoAssignReportTasksTitle":
     "Auto-assign report tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":

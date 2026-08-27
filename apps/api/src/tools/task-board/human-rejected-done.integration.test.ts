@@ -73,6 +73,30 @@ describe("hasHumanRejectedDone", () => {
     expect(await taskBoard.hasHumanRejectedDone(id, ORG)).toBe(true);
   });
 
+  // Merged is where a merged PR lands, so leaving it is the same veto as Done.
+  it("is true once a member moves the card out of Merged", async () => {
+    const id = await seed();
+    await taskBoard.recordActivity({
+      taskBoardItemId: id,
+      action: "status_changed",
+      actorId: USER,
+      data: { from: "merged", to: "in_review" },
+    });
+    expect(await taskBoard.hasHumanRejectedDone(id, ORG)).toBe(true);
+  });
+
+  // Past Merged, moving forward agrees with the ship rather than rejecting it.
+  it("is false for a member's move out of a later delivery lane", async () => {
+    const id = await seed();
+    await taskBoard.recordActivity({
+      taskBoardItemId: id,
+      action: "status_changed",
+      actorId: USER,
+      data: { from: "post_deploy_validation", to: "done" },
+    });
+    expect(await taskBoard.hasHumanRejectedDone(id, ORG)).toBe(false);
+  });
+
   it("ignores a machine move out of Done", async () => {
     const id = await seed();
     await taskBoard.recordActivity({

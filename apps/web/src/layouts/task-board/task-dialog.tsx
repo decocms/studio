@@ -90,7 +90,7 @@ import {
   type TaskBoardItemType,
   DEFAULT_TASK_TYPE,
   STATUS_CONFIG,
-  STATUSES,
+  moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
@@ -115,6 +115,7 @@ import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
 import {
   enabledReviewers,
+  laneCanShip,
   reviewsSatisfiedForPromotion,
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
@@ -426,6 +427,7 @@ function TaskBoardItemEditor({
   const { org } = useProjectContext();
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -954,7 +956,7 @@ function TaskBoardItemEditor({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
-                {STATUSES.map((s) => {
+                {moveTargets(deliveryEnabled).map((s) => {
                   const Icon = STATUS_CONFIG[s].icon;
                   return (
                     <DropdownMenuItem
@@ -1952,13 +1954,12 @@ function LinksSection({
     return null;
   }
 
-  // Task-level readiness for the manual ship button: In Review + every enabled
-  // reviewer approved. Shown regardless of auto-merge — it's a manual escape
-  // hatch (a human can ship even while auto-merge is pending/blocked on token
-  // verification). The per-card PrCard adds the PR-open + green-checks gate (so
-  // a failing PR never offers the button).
+  // Task-level readiness for the manual ship button: a shippable lane + every
+  // enabled reviewer approved. Shown regardless of auto-merge — it's a manual
+  // escape hatch (a human can ship even while auto-merge is pending/blocked on
+  // token verification). The per-card PrCard adds the PR-open + green-checks gate.
   const reviewsReady =
-    item.status === "in_review" &&
+    laneCanShip(item.status) &&
     reviewsSatisfiedForPromotion(
       activity ?? [],
       enabledReviewers({ qa: qaEnabled, codeReview: codeReviewerEnabled }),
