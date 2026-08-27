@@ -1,5 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { computeHeatmapView } from "./utils.ts";
+import { computeHeatmapView, getIntervalFromRange } from "./utils.ts";
+
+describe("getIntervalFromRange", () => {
+  test("falls back to the coarsest bucket for a range wider than any of them", () => {
+    // ~5 years — wider than the largest configured bucket (7d at 40 steps).
+    const range = {
+      startDate: new Date("2020-01-01T00:00:00Z"),
+      endDate: new Date("2026-01-01T00:00:00Z"),
+    };
+    expect(getIntervalFromRange(range)).toBe("7d");
+  });
+
+  test("picks the smallest bucket that keeps steps near the target for an in-range span", () => {
+    const range = {
+      startDate: new Date("2026-01-01T00:00:00Z"),
+      endDate: new Date("2026-01-02T00:00:00Z"),
+    };
+    expect(getIntervalFromRange(range)).toBe("1h");
+  });
+});
 
 describe("computeHeatmapView", () => {
   test("maxValue only reflects cells for agents actually rendered", () => {
