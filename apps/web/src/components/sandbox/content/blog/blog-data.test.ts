@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  addCategoryToPost,
   blockComponentName,
   blocksPostStatus,
   buildBlogBlock,
@@ -14,7 +13,6 @@ import {
   relationPickerState,
   removeCategoryFromPost,
   renameCategoryOnPost,
-  replaceCategoryOnPost,
   extractBlockProse,
   filledBrandRules,
   normalizeBrandRules,
@@ -878,68 +876,6 @@ describe("stampPostModified", () => {
 describe("emptyBlogPayload", () => {
   test("new authors default to type Person", () => {
     expect(emptyBlogPayload("authors").type).toBe("Person");
-  });
-});
-
-describe("addCategoryToPost", () => {
-  test("appends a new category and keeps existing ones", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(next.categories).toEqual([
-      { name: "News", slug: "news" },
-      { name: "Tips", slug: "tips" },
-    ]);
-  });
-
-  test("initializes categories when the post has none", () => {
-    const next = addCategoryToPost(
-      { title: "P" },
-      { name: "News", slug: "news" },
-    );
-    expect(next).toEqual({
-      title: "P",
-      categories: [{ name: "News", slug: "news" }],
-    });
-  });
-
-  test("is idempotent — adding a present slug does not duplicate", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("does not mutate the input payload", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(payload.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-});
-
-describe("replaceCategoryOnPost", () => {
-  test("replaces all categories with the chosen one", () => {
-    const payload = {
-      categories: [
-        { name: "News", slug: "news" },
-        { name: "Tips", slug: "tips" },
-      ],
-    };
-    const next = replaceCategoryOnPost(payload, {
-      name: "Guides",
-      slug: "guides",
-    });
-    expect(next.categories).toEqual([{ name: "Guides", slug: "guides" }]);
-  });
-
-  test("sets the category when the post had none", () => {
-    const next = replaceCategoryOnPost({}, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("is a no-op when it already has exactly that category", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    expect(replaceCategoryOnPost(payload, { name: "News", slug: "news" })).toBe(
-      payload,
-    );
   });
 });
 

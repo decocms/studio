@@ -6,6 +6,7 @@
  * against an app version that ignores it is offering a promise nothing keeps.
  * Every gate fails closed: an unreadable or non-semver ref reads as too old.
  */
+import type { PostStatus } from "./blog-data";
 
 /** Apps version that introduced the post `status` filter. */
 export const APPS_STATUS_VERSION = "0.161.0";
@@ -121,4 +122,39 @@ export function supportsPublishToggle(support: BlogSupport): boolean {
 /** Whether the editor and calendar may offer scheduling. */
 export function supportsScheduling(support: BlogSupport): boolean {
   return support.kind === "full";
+}
+
+/** Why this site can't hold a post in `next`, or null when it can. */
+export interface StatusUnsupported {
+  /** Apps version the target needs. */
+  required: string;
+  /** Version this site is on, or null when unreadable / not a Deno site. */
+  version: string | null;
+}
+
+/**
+ * Whether a post may be moved into `next` on this site.
+ *
+ * Only the live states are gated: they hand the post to the blog app, which
+ * needs to know `status` to filter it and `scheduledDatetime` to hold it. Every
+ * non-live state is stored as a block the site does not resolve at all, so it
+ * works against any apps version — including pulling a post back OUT of a live
+ * state on a site too old to have put it there.
+ *
+ * One predicate for the board and the editor both, so the two surfaces cannot
+ * disagree about what is possible.
+ */
+export function postStatusUnsupported(
+  support: BlogSupport,
+  next: PostStatus,
+): StatusUnsupported | null {
+  const version =
+    support.kind === "unsupported-runtime" ? null : support.version;
+  if (next === "scheduled" && !supportsScheduling(support)) {
+    return { required: APPS_SCHEDULING_VERSION, version };
+  }
+  if (next === "published" && !supportsPublishToggle(support)) {
+    return { required: APPS_STATUS_VERSION, version };
+  }
+  return null;
 }

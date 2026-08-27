@@ -43,10 +43,14 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import {
+  APPS_UPDATE_COMMAND,
+  type BlogSupport,
+  postStatusUnsupported,
+} from "./blog-capabilities";
+import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   BRAND_BLOCK_KEY,
-  blocksPostStatus,
   buildPlanningPostBlock,
   dedupeSuggestedThemes,
   emptyIdeaPayload,
@@ -54,7 +58,6 @@ import {
   FORMATS_BLOCK_KEY,
   getBlogPayload,
   listAllPostsWithMeta,
-  movePostToStatus,
   newPostId,
   normalizeBrandRules,
   planningMeta,
@@ -67,15 +70,6 @@ import { str } from "./blocks/primitives";
 
 export type PostsView = "board" | "list";
 export type PostsGroupBy = "status" | "format" | "pillar";
-
-const LANE_LABEL: Record<PostStatus, TranslationKey> = {
-  draft: "sandbox.postBoard.laneDraft",
-  generating: "sandbox.postBoard.laneGenerating",
-  awaiting_review: "sandbox.postBoard.laneAwaitingReview",
-  scheduled: "sandbox.postBoard.laneScheduled",
-  published: "sandbox.postBoard.lanePublished",
-  archived: "sandbox.postBoard.laneArchived",
-};
 
 const STATUS_VARIANT: Record<
   PostStatus,
@@ -104,6 +98,8 @@ export function PostsWorkspace({
   onGroupByChange,
   onOpen,
   onClose,
+  move,
+  support,
   renderDetail,
 }: {
   orgSlug: string;
@@ -119,6 +115,10 @@ export function PostsWorkspace({
   onOpen: (key: string) => void;
   /** Close the board's post drawer. */
   onClose?: () => void;
+  /** The shared status transition — the same one the editor's control uses. */
+  move: PostStatusMove;
+  /** What this site's blog app can honour — gates the live lanes. */
+  support: BlogSupport;
   /** Renders the open post — the list's right pane or the board's floating panel. */
   renderDetail?: (
     key: string,
@@ -132,7 +132,6 @@ export function PostsWorkspace({
   const t = useT();
   const studio = useStudioTools();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
@@ -159,48 +158,18 @@ export function PostsWorkspace({
       : (posts[0]?.key ?? null);
 
   /**
-   * Apply a promote/demote as write(s) then delete(s) — delete after write.
-   * Reports whether the move landed, so a caller can skip its own toast.
-   */
-  const applyMove = async (post: PostMeta, next: PostStatus) => {
-    const move = movePostToStatus(
-      { key: post.key, payload: payloadOf(post.key) },
-      next,
-      new Date(),
-    );
-    try {
-      for (const [key, data] of Object.entries(move.writes)) {
-        await save.mutateAsync({ blockKey: key, data });
-      }
-      for (const key of move.deletes) {
-        await deleteBlock.mutateAsync({ blockKey: key });
-      }
-      return true;
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-      return false;
-    }
-  };
-
-  /**
    * Delete is a soft delete: the post moves to Archived, off every working
    * lane but still recoverable by dragging it back out.
    */
   const archivePost = async (post: PostMeta) => {
-    if (await applyMove(post, "archived")) {
+    if (await move.apply(post.key, "archived")) {
       toast.success(t("sandbox.postBoard.archived"));
     }
   };
 
   const onDrop = (next: PostStatus, key: string) => {
     setDragOverLane(null);
-    const post = posts.find((p) => p.key === key);
-    if (!post || post.status === next || next === "generating") return;
-    if (blocksPostStatus(payloadOf(post.key), next)) {
-      toast.error(t("sandbox.postBoard.moveBlocked"));
-      return;
-    }
-    void applyMove(post, next);
+    void move.apply(key, next);
   };
 
   const createIdea = () => {
@@ -430,10 +399,11 @@ export function PostsWorkspace({
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
           {POST_STATUSES.map((status) => {
             const lanePosts = posts.filter((p) => p.status === status);
-            const laneLabel = t(LANE_LABEL[status]);
+            const laneLabel = t(POST_STATUS_LABEL[status]);
             /** Archived is the one lane nobody works out of, so only it collapses. */
             const collapsible = status === "archived";
             const isCollapsed = collapsible && archivedCollapsed;
+            const unsupported = postStatusUnsupported(support, status);
             return (
               <div
                 key={status}
@@ -448,9 +418,19 @@ export function PostsWorkspace({
                   e.preventDefault();
                   onDrop(status, e.dataTransfer.getData(DRAG_KEY));
                 }}
+                title={
+                  unsupported
+                    ? t("sandbox.postBoard.moveUnsupported", {
+                        required: unsupported.required,
+                        command: APPS_UPDATE_COMMAND,
+                      })
+                    : undefined
+                }
                 className={cn(
                   "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
                   isCollapsed ? "w-11" : "w-72",
+                  // Dimmed, not hidden: the lane still explains why it's out of reach.
+                  unsupported && "opacity-50",
                   dragOverLane === status && "border-primary bg-primary/5",
                 )}
               >
@@ -507,6 +487,7 @@ export function PostsWorkspace({
                             key={post.key}
                             post={post}
                             payload={payloadOf(post.key)}
+                            moving={move.isMoving(post.key)}
                             onOpen={() => onOpen(post.key)}
                             onArchive={
                               post.status === "archived"
@@ -532,6 +513,7 @@ export function PostsWorkspace({
               payloadOf={payloadOf}
               selectedKey={detailKey}
               onOpen={onOpen}
+              isMoving={move.isMoving}
               onArchive={(post) => void archivePost(post)}
             />
           </div>
@@ -647,7 +629,7 @@ function groupOf(
   t: ReturnType<typeof useT>,
 ): { key: string; label: string } {
   if (groupBy === "status") {
-    return { key: post.status, label: t(LANE_LABEL[post.status]) };
+    return { key: post.status, label: t(POST_STATUS_LABEL[post.status]) };
   }
   const plan = planningMeta(payload);
   if (groupBy === "format") {
@@ -668,6 +650,7 @@ function PostList({
   payloadOf,
   selectedKey,
   onOpen,
+  isMoving,
   onArchive,
 }: {
   posts: PostMeta[];
@@ -675,6 +658,7 @@ function PostList({
   payloadOf: (key: string) => Record<string, unknown>;
   selectedKey?: string | null;
   onOpen: (key: string) => void;
+  isMoving: (key: string) => boolean;
   onArchive: (post: PostMeta) => void;
 }) {
   const t = useT();
@@ -735,6 +719,7 @@ function PostList({
                     post={post}
                     selected={post.key === selectedKey}
                     showStatus={groupBy !== "status"}
+                    moving={isMoving(post.key)}
                     onOpen={() => onOpen(post.key)}
                     onArchive={
                       post.status === "archived"
@@ -756,6 +741,7 @@ function PostRow({
   post,
   selected,
   showStatus,
+  moving,
   onOpen,
   onArchive,
 }: {
@@ -763,6 +749,8 @@ function PostRow({
   selected: boolean;
   /** Show the status badge — redundant when the list is already grouped by status. */
   showStatus: boolean;
+  /** A move for this post is in flight — freeze the delete action. */
+  moving: boolean;
   onOpen: () => void;
   /** Omitted for a post that is already archived — there is nothing to archive. */
   onArchive?: () => void;
@@ -774,7 +762,13 @@ function PostRow({
   const showMeta = showStatus || hasIssues || hasDate;
   return (
     <li className="group/row relative">
-      {onArchive && <ArchiveButton onArchive={onArchive} className="top-2.5" />}
+      {onArchive && (
+        <ArchiveButton
+          onArchive={onArchive}
+          disabled={moving}
+          className="top-2.5"
+        />
+      )}
       <button
         type="button"
         onClick={onOpen}
@@ -793,7 +787,7 @@ function PostRow({
           <div className="flex items-center gap-2">
             {showStatus && (
               <Badge variant={STATUS_VARIANT[post.status]} className="shrink-0">
-                {t(LANE_LABEL[post.status])}
+                {t(POST_STATUS_LABEL[post.status])}
               </Badge>
             )}
             {hasIssues && (
@@ -818,17 +812,20 @@ function PostRow({
 function PostCard({
   post,
   payload,
+  moving,
   onOpen,
   onArchive,
 }: {
   post: PostMeta;
   payload: Record<string, unknown>;
+  /** A move for this post is in flight — freeze it so a second one can't race. */
+  moving: boolean;
   onOpen: () => void;
   /** Omitted for a post that is already archived — there is nothing to archive. */
   onArchive?: () => void;
 }) {
   const t = useT();
-  const draggable = post.status !== "generating";
+  const draggable = post.status !== "generating" && !moving;
   const plan = planningMeta(payload);
 
   return (
@@ -838,7 +835,13 @@ function PostCard({
         !draggable && "opacity-80",
       )}
     >
-      {onArchive && <ArchiveButton onArchive={onArchive} className="top-2" />}
+      {onArchive && (
+        <ArchiveButton
+          onArchive={onArchive}
+          disabled={moving}
+          className="top-2"
+        />
+      )}
       <button
         type="button"
         draggable={draggable}
@@ -905,15 +908,18 @@ function PostCard({
  */
 function ArchiveButton({
   onArchive,
+  disabled,
   className,
 }: {
   onArchive: () => void;
+  disabled?: boolean;
   className?: string;
 }) {
   const t = useT();
   return (
     <button
       type="button"
+      disabled={disabled}
       aria-label={t("sandbox.postBoard.delete")}
       title={t("sandbox.postBoard.delete")}
       onClick={(e) => {

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   AlertCircle,
@@ -25,27 +26,23 @@ import { ImageField } from "@/components/sections-editor/fields/image-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
-  blocksPostStatus,
   buildPostBlock,
   getBlogPayload,
   listBlogPayloads,
   missingPostFields,
+  POST_STATUSES,
   type PostStatus,
   postStatus,
   relationPickerState,
-  setPostStatus,
   stampPostModified,
 } from "./blog-data";
+import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  type BlogSupport,
-  supportsPublishToggle,
-  supportsScheduling,
-} from "./blog-capabilities";
+import { type BlogSupport, supportsScheduling } from "./blog-capabilities";
 import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -87,7 +84,7 @@ export function PostEditor({
   decofile,
   meta,
   previewBaseUrl,
-  onMoveStatus,
+  move,
   onClose,
   expanded,
   onToggleExpand,
@@ -106,13 +103,8 @@ export function PostEditor({
   onToggleExpand?: () => void;
   /** When set, renders a close control in the top cluster. */
   onClose?: () => void;
-  /**
-   * Apply a status transition as a promote/demote (crossing the planning↔live
-   * block boundary and updating the open selection). When omitted, the status
-   * switches fall back to an in-place stamp — correct only for a post that
-   * never changes form.
-   */
-  onMoveStatus?: (next: PostStatus) => void;
+  /** The one status transition, shared with the board — see `usePostStatusMove`. */
+  move: PostStatusMove;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
@@ -121,12 +113,31 @@ export function PostEditor({
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
-  const [post, setPost] = useAutosave(initial, (next) => {
+  const [post, setPost, syncPost] = useAutosave(initial, (next) => {
     save.mutate({
       blockKey,
       data: buildPostBlock(blockKey, stampPostModified(next)),
     });
   });
+
+  // A move renamed the block, so drop a pending write aimed at the retired key.
+  const [seenBlockKey, setSeenBlockKey] = useState(blockKey);
+  if (seenBlockKey !== blockKey) {
+    setSeenBlockKey(blockKey);
+    syncPost(initial);
+  }
+
+  /**
+   * Change the status through the shared move, handing it the live draft.
+   *
+   * `syncPost` first: the move carries the draft itself, so the pending
+   * autosave has nothing left to write — and letting it fire would write to a
+   * block key the move is about to retire, resurrecting the post's old form.
+   */
+  const moveStatus = (next: PostStatus) => {
+    syncPost(post);
+    void move.apply(blockKey, next, post);
+  };
 
   const setField = (key: string, value: unknown) =>
     setPost({ ...post, [key]: value });
@@ -273,8 +284,9 @@ export function PostEditor({
                   decofile={decofile}
                   support={support}
                   onChange={setField}
-                  onPatch={(fields) => setPost({ ...post, ...fields })}
-                  onMoveStatus={onMoveStatus}
+                  blockKey={blockKey}
+                  move={move}
+                  onMoveStatus={moveStatus}
                 />
               </div>
             </TabsContent>
@@ -285,46 +297,58 @@ export function PostEditor({
   );
 }
 
-/**
- * A switch plus its tooltip, disabled when required fields are missing. Only
- * flipping *on* is ever gated, so a post can always be pulled back down.
- */
-function StatusSwitch({
-  id,
-  label,
-  checked,
-  blocked,
-  blockedReason,
-  className,
-  onCheckedChange,
+/** The board's lanes as a control, gated by the same `move.refuse`. */
+function StatusPicker({
+  blockKey,
+  post,
+  move,
+  onMoveStatus,
 }: {
-  id: string;
-  label: string;
-  checked: boolean;
-  blocked: boolean;
-  blockedReason: string;
-  className?: string;
-  onCheckedChange: (checked: boolean) => void;
+  blockKey: string;
+  post: Record<string, unknown>;
+  move: PostStatusMove;
+  onMoveStatus: (next: PostStatus) => void;
 }) {
+  const t = useT();
+  const current = postStatus(post);
+  // `generating` belongs to a generation run — shown only while the post is in it.
+  const options = POST_STATUSES.filter(
+    (status) => status !== "generating" || current === "generating",
+  );
   return (
-    <div className="flex items-center justify-between gap-3">
-      <Label htmlFor={id}>{label}</Label>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <Switch
-              id={id}
-              className={className}
-              checked={checked}
-              disabled={blocked}
-              onCheckedChange={onCheckedChange}
-            />
-          </span>
-        </TooltipTrigger>
-        {blocked && (
-          <TooltipContent side="bottom">{blockedReason}</TooltipContent>
-        )}
-      </Tooltip>
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((status) => {
+        const active = status === current;
+        const refusal = active ? null : move.refuse(blockKey, status, post);
+        return (
+          <Tooltip key={status}>
+            <TooltipTrigger asChild>
+              <span>
+                <button
+                  type="button"
+                  disabled={!!refusal}
+                  aria-pressed={active}
+                  onClick={() => onMoveStatus(status)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "cursor-pointer bg-card hover:bg-muted",
+                    refusal && "cursor-not-allowed opacity-50",
+                  )}
+                >
+                  {t(POST_STATUS_LABEL[status])}
+                </button>
+              </span>
+            </TooltipTrigger>
+            {refusal && (
+              <TooltipContent side="bottom">
+                {move.reasonText(refusal)}
+              </TooltipContent>
+            )}
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
@@ -334,82 +358,50 @@ function PostSettings({
   decofile,
   support,
   onChange,
-  onPatch,
+  blockKey,
+  move,
   onMoveStatus,
 }: {
   post: Record<string, unknown>;
   decofile: Record<string, unknown>;
-  /** Gates the status controls — see {@link supportsPublishToggle}. */
+  /** Gates the scheduled go-live field — see {@link supportsScheduling}. */
   support: BlogSupport;
   onChange: (key: string, value: unknown) => void;
-  onPatch: (fields: Record<string, unknown>) => void;
-  onMoveStatus?: (next: PostStatus) => void;
+  blockKey: string;
+  move: PostStatusMove;
+  onMoveStatus: (next: PostStatus) => void;
 }) {
   const t = useT();
-  const canPublish = supportsPublishToggle(support);
-  const canSchedule = supportsScheduling(support);
   const status = postStatus(post);
-  const isScheduled = canSchedule && status === "scheduled";
-  const missing = missingPostFields(post);
-  const missingLabel =
-    missing.length === 1
-      ? t("sandbox.postEditor.missingFieldSingular", {
-          fields: missing.join(", "),
-        })
-      : t("sandbox.postEditor.missingFieldPlural", {
-          fields: missing.join(", "),
-        });
-  const setStatus = (next: PostStatus) =>
-    onMoveStatus
-      ? onMoveStatus(next)
-      : onPatch(setPostStatus(post, next, new Date()));
+  const isScheduled = supportsScheduling(support) && status === "scheduled";
 
   return (
     <div className="space-y-5">
-      {canPublish && (
-        <div className="space-y-4 border-b pb-4">
-          {canSchedule && (
-            <StatusSwitch
-              id="post-scheduled"
-              label={t("sandbox.postEditor.schedulingLabel")}
-              checked={isScheduled}
-              blocked={blocksPostStatus(post, "scheduled")}
-              blockedReason={missingLabel}
-              onCheckedChange={(checked) =>
-                setStatus(checked ? "scheduled" : "awaiting_review")
-              }
-            />
-          )}
-          {isScheduled ? (
-            <StringField
-              schema={{
-                type: "string",
-                format: "date-time",
-                title: t("sandbox.postEditor.scheduledDatetimeLabel"),
-                description: t(
-                  "sandbox.postEditor.scheduledDatetimeDescription",
-                ),
-              }}
-              value={str(post.scheduledDatetime)}
-              onChange={(v) => onChange("scheduledDatetime", v)}
-              path="post-scheduled-datetime"
-              label={t("sandbox.postEditor.scheduledDatetimeLabel")}
-            />
-          ) : (
-            <StatusSwitch
-              id="post-published"
-              label={t("sandbox.postEditor.publishedLabel")}
-              className="data-[state=checked]:bg-success"
-              checked={status === "published"}
-              blocked={blocksPostStatus(post, "published")}
-              blockedReason={missingLabel}
-              onCheckedChange={(checked) =>
-                setStatus(checked ? "published" : "awaiting_review")
-              }
-            />
-          )}
+      <div className="space-y-4 border-b pb-4">
+        <div className="space-y-2">
+          <Label>{t("sandbox.postEditor.statusLabel")}</Label>
+          <StatusPicker
+            blockKey={blockKey}
+            post={post}
+            move={move}
+            onMoveStatus={onMoveStatus}
+          />
         </div>
-      )}
+        {isScheduled && (
+          <StringField
+            schema={{
+              type: "string",
+              format: "date-time",
+              title: t("sandbox.postEditor.scheduledDatetimeLabel"),
+              description: t("sandbox.postEditor.scheduledDatetimeDescription"),
+            }}
+            value={str(post.scheduledDatetime)}
+            onChange={(v) => onChange("scheduledDatetime", v)}
+            path="post-scheduled-datetime"
+            label={t("sandbox.postEditor.scheduledDatetimeLabel")}
+          />
+        )}
+      </div>
       <div className="space-y-2">
         <Label htmlFor="post-excerpt">
           {t("sandbox.postEditor.excerptLabel")}

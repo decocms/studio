@@ -89,22 +89,16 @@ import { RedirectTypeBadge } from "./redirect-type-badge";
 import {
   type BlogEntry,
   type BlogKind,
-  type CategoryRef,
-  addCategoryToPost,
   BLOG_KINDS,
   BLOG_SINGULAR,
-  blocksPostStatus,
   buildBlogBlock,
   emptyBlogPayload,
   generateBlogKey,
   getBlogPayload,
   isBlogKind,
   listBlogPayloads,
-  listPostsWithMeta,
-  movePostToStatus,
-  type PostStatus,
+  postIdOfKey,
   removeCategoryFromPost,
-  replaceCategoryOnPost,
   scanBlogEntries,
   stampPostModified,
 } from "./blog/blog-data";
@@ -113,6 +107,7 @@ import {
   scheduledPostPayload,
 } from "./blog/post-calendar-data";
 import { useBlogSupport } from "./blog/use-blog-support";
+import { usePostStatusMove } from "./blog/use-post-status-move";
 import {
   PostsWorkspace,
   type PostsGroupBy,
@@ -121,10 +116,8 @@ import {
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
-import { useT } from "@/i18n/use-t.ts";
 import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
-import { PostFilterBar, PostSelectionToolbar } from "./post-toolbar";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import {
@@ -152,12 +145,6 @@ const BlogContext = lazy(() =>
 
 const CategoryEditor = lazy(() =>
   import("./blog/category-editor").then((m) => ({ default: m.CategoryEditor })),
-);
-
-const BulkCategoryPanel = lazy(() =>
-  import("./blog/bulk-category-panel").then((m) => ({
-    default: m.BulkCategoryPanel,
-  })),
 );
 
 const SectionsEditor = lazy(() =>
@@ -245,13 +232,7 @@ type DeleteTarget =
   | { kind: "section"; key: string; label: string }
   | { kind: "redirect"; key: string; label: string }
   | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
-  | { kind: "blog-bulk"; keys: string[]; count: number }
   | null;
-
-export type PostSort = "date-desc" | "date-asc" | "az" | "za";
-
-/** Publication states the posts list can filter on — see `postStatus`. */
-export type PostStatusFilter = PostStatus;
 
 export interface ContentBrowserProps {
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
@@ -360,7 +341,6 @@ function ContentBrowserReady({
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
-  const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
@@ -395,44 +375,15 @@ function ContentBrowserReady({
   // Posts workspace view + grouping — lifted so they survive opening a post.
   const [postsView, setPostsView] = useState<PostsView>("board");
   const [postsGroupBy, setPostsGroupBy] = useState<PostsGroupBy>("status");
-  // Posts-only filter/sort + bulk selection state.
-  const [postCategoryFilter, setPostCategoryFilter] = useState<string | null>(
-    null,
-  );
-  const [postAuthorFilter, setPostAuthorFilter] = useState<string | null>(null);
-  const [postStatusFilter, setPostStatusFilter] =
-    useState<PostStatusFilter | null>(null);
-  const [postSort, setPostSort] = useState<PostSort>("date-desc");
-  const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
-    () => new Set(),
-  );
-  // Category slug that pre-opens the bulk "Update category" panel (set when
-  // arriving from a category's "Add posts" / "Manage posts" action). While
-  // non-null the panel stays open even with zero posts selected.
-  const [bulkCategorySeed, setBulkCategorySeed] = useState<string | null>(null);
-  // Multi-select is implicit: selecting the first post (via the hover-revealed
-  // checkbox) enters "selection mode". Closing the panel (or applying) leaves
-  // it and drops the seed.
-  const clearSelection = () => {
-    setSelectedPostKeys(new Set());
-    setBulkCategorySeed(null);
-  };
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
   };
-  // Reset search + post filters/selection when switching collections
-  // (derived-state sync pattern).
+  // Reset search when switching collections (derived-state sync pattern).
   const [prevCollection, setPrevCollection] = useState(activeCollection);
   if (prevCollection !== activeCollection) {
     setPrevCollection(activeCollection);
     setSearchQuery("");
-    setPostCategoryFilter(null);
-    setPostAuthorFilter(null);
-    setPostStatusFilter(null);
-    setPostSort("date-desc");
-    setSelectedPostKeys(new Set());
-    setBulkCategorySeed(null);
   }
 
   const {
@@ -502,6 +453,20 @@ function ContentBrowserReady({
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
 
+  const postMove = usePostStatusMove({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    decofile: decofile ?? {},
+    support: blogSupport,
+    onMoved: (fromKey: string, toKey: string) =>
+      setSelection((current) =>
+        current?.collection === "posts" && current.key === fromKey
+          ? { collection: "posts", key: toKey }
+          : current,
+      ),
+  });
+
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
   const [pageDialogError, setPageDialogError] = useState<string | undefined>();
@@ -545,30 +510,6 @@ function ContentBrowserReady({
   const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
   const blogEntries = isBlogKind(activeCollection)
     ? allBlogEntries[activeCollection]
-    : [];
-
-  // Category choices for the bulk "Update category" panel (parent scope, since
-  // the panel renders in the right pane rather than inside ItemList).
-  const bulkCategoryChoices: CategoryRef[] = (
-    showBlog ? listBlogPayloads(decofile, "categories") : []
-  )
-    .map(({ key, payload }) => {
-      const slug = typeof payload.slug === "string" ? payload.slug : "";
-      const name = typeof payload.name === "string" ? payload.name : "";
-      return { slug: slug || key, name: name || slug || key };
-    })
-    .filter((c) => c.slug)
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  // The bulk "Update category" panel shows while posts are selected, or while
-  // a category seed forces it open (arriving from the category editor).
-  const bulkPanelOpen =
-    activeCollection === "posts" &&
-    (selectedPostKeys.size > 0 || bulkCategorySeed !== null);
-  // Posts the panel will act on (selection order is irrelevant — list order
-  // mirrors the decofile scan, same as the list pane).
-  const selectedPostsMeta = bulkPanelOpen
-    ? listPostsWithMeta(decofile).filter((p) => selectedPostKeys.has(p.key))
     : [];
 
   const loadersCount = countAvailableRunnables(meta, "loaders");
@@ -880,36 +821,6 @@ function ContentBrowserReady({
     }
   };
 
-  /**
-   * Board / editor status change: promote or demote the post across the
-   * planning↔live block boundary and follow the selection to the new key, so
-   * an idea scheduled from the editor becomes a real site-rendered post.
-   */
-  const handleMovePostStatus = async (key: string, next: PostStatus) => {
-    const source = decofile[key] as Record<string, unknown> | undefined;
-    if (!source) return;
-    const payload = getBlogPayload(source, "posts");
-    if (blocksPostStatus(payload, next)) {
-      toast.error(t("sandbox.postBoard.moveBlocked"));
-      return;
-    }
-    const move = movePostToStatus({ key, payload }, next, new Date());
-    try {
-      for (const [k, data] of Object.entries(move.writes)) {
-        await saveBlock.mutateAsync({ blockKey: k, data });
-      }
-      for (const k of move.deletes) {
-        await deleteBlock.mutateAsync({ blockKey: k });
-      }
-      const targetKey = Object.keys(move.writes)[0];
-      if (targetKey) setSelection({ collection: "posts", key: targetKey });
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t("sandbox.postBoard.moveFailed"),
-      );
-    }
-  };
-
   const handleDuplicateBlog = async (entry: BlogEntry) => {
     const source = decofile[entry.key] as Record<string, unknown> | undefined;
     if (!source) {
@@ -934,111 +845,19 @@ function ContentBrowserReady({
     }
   };
 
-  // ------------------ Posts: filter jump + bulk actions ------------------
-  const togglePostSelection = (key: string) => {
-    setSelectedPostKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
-  // Land on the unfiltered posts list with the bulk "Update category" panel
-  // already open and the clicked category pre-selected (from the category
-  // editor's "Add posts" / "Manage posts" actions). Sync `prevCollection` here
-  // so the collection-change reset above doesn't immediately clear what we're
-  // setting.
-  const handleManagePosts = (slug: string) => {
+  /** Jump to the posts workspace from a category's "Manage posts" action. */
+  const handleManagePosts = () => {
     setActiveCollection("posts");
     setPrevCollection("posts");
     setSelection(null);
     setOpenPageSeoKey(null);
     setSearchQuery("");
-    setPostCategoryFilter(null);
-    setPostAuthorFilter(null);
-    setPostStatusFilter(null);
-    setPostSort("date-desc");
-    setSelectedPostKeys(new Set());
-    setBulkCategorySeed(slug || null);
-  };
-
-  // Apply a pure category mutation to every selected post and persist
-  // sequentially — each mutation's optimistic onMutate patches the shared
-  // decofile cache key, so sequential writes avoid lost updates. The mutation
-  // helpers return the SAME payload object on a no-op, so reference equality
-  // tells us which posts actually changed. Returns the changed count.
-  const applyBulkCategory = async (
-    mode: "add" | "replace",
-    category: CategoryRef,
-  ): Promise<number> => {
-    const keys = [...selectedPostKeys];
-    let changed = 0;
-    for (const key of keys) {
-      const block = decofile[key] as Record<string, unknown> | undefined;
-      const payload = getBlogPayload(block, "posts");
-      const next =
-        mode === "add"
-          ? addCategoryToPost(payload, category)
-          : replaceCategoryOnPost(payload, category);
-      if (next === payload) continue;
-      await saveBlock.mutateAsync({
-        blockKey: key,
-        data: buildBlogBlock(key, "posts", stampPostModified(next)),
-      });
-      changed += 1;
-    }
-    return changed;
-  };
-
-  // Driven by the "Update category" panel: applies the chosen mode, reports
-  // the outcome, then clears the selection (which closes the panel).
-  const runBulkCategoryUpdate = async (
-    mode: "add" | "replace",
-    category: CategoryRef,
-  ) => {
-    const total = selectedPostKeys.size;
-    try {
-      const changed = await applyBulkCategory(mode, category);
-      const verb = mode === "add" ? "Added to" : "Moved";
-      const unchanged = total - changed;
-      toast.success(
-        `${verb} ${changed} ${changed === 1 ? "post" : "posts"}` +
-          (unchanged > 0 ? ` (${unchanged} already set)` : ""),
-      );
-      clearSelection();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Bulk update failed");
-    }
   };
 
   // ------------------ Delete ------------------
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
-      if (deleteTarget.kind === "blog-bulk") {
-        for (const key of deleteTarget.keys) {
-          await deleteBlock.mutateAsync({ blockKey: key });
-        }
-        toast.success(
-          `Deleted ${deleteTarget.count} ${
-            deleteTarget.count === 1 ? "post" : "posts"
-          }`,
-        );
-        if (
-          selection &&
-          selection.collection !== "available-section" &&
-          deleteTarget.keys.includes(selection.key)
-        ) {
-          setSelection(null);
-        }
-        clearSelection();
-        setDeleteTarget(null);
-        return;
-      }
       const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
         // Deleting a category cascades to posts: they carry a denormalized
@@ -1089,9 +908,7 @@ function ContentBrowserReady({
   const deleteNoun =
     deleteTarget?.kind === "blog"
       ? BLOG_SINGULAR[deleteTarget.blogKind]
-      : deleteTarget?.kind === "blog-bulk"
-        ? `${deleteTarget.count} ${deleteTarget.count === 1 ? "post" : "posts"}`
-        : (deleteTarget?.kind ?? "item");
+      : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
       <CollectionsSidebar
@@ -1124,36 +941,6 @@ function ContentBrowserReady({
             decofile={decofile}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
-            postCategoryFilter={postCategoryFilter}
-            postAuthorFilter={postAuthorFilter}
-            postStatusFilter={postStatusFilter}
-            postSort={postSort}
-            onPostCategoryFilterChange={(slug) => {
-              setPostCategoryFilter(slug);
-              setSelectedPostKeys(new Set());
-            }}
-            onPostAuthorFilterChange={(email) => {
-              setPostAuthorFilter(email);
-              setSelectedPostKeys(new Set());
-            }}
-            onPostStatusFilterChange={(status) => {
-              setPostStatusFilter(status);
-              setSelectedPostKeys(new Set());
-            }}
-            onPostSortChange={setPostSort}
-            selectedPostKeys={selectedPostKeys}
-            postBulkPanelOpen={bulkPanelOpen}
-            onTogglePostSelect={togglePostSelection}
-            onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
-            onClearPostSelection={() => setSelectedPostKeys(new Set())}
-            onExitPostSelection={clearSelection}
-            onBulkDeletePosts={() =>
-              setDeleteTarget({
-                kind: "blog-bulk",
-                keys: [...selectedPostKeys],
-                count: selectedPostKeys.size,
-              })
-            }
             selection={selection}
             onSelect={selectItem}
             onCreate={() => {
@@ -1335,9 +1122,11 @@ function ContentBrowserReady({
                   setSelection({ collection: "posts", key });
                   setOpenPageSeoKey(null);
                 }}
+                move={postMove}
+                support={blogSupport}
                 renderDetail={(key, controls) => (
                   <PostEditor
-                    key={`post:${key}`}
+                    key={`post:${postIdOfKey(key)}`}
                     orgSlug={orgSlug}
                     virtualMcpId={virtualMcpId}
                     branch={branch}
@@ -1346,30 +1135,12 @@ function ContentBrowserReady({
                     decofile={decofile}
                     meta={meta}
                     previewBaseUrl={sitePreviewUrl}
-                    onMoveStatus={(next) =>
-                      void handleMovePostStatus(key, next)
-                    }
+                    move={postMove}
                     onClose={controls?.onClose}
                     expanded={controls?.expanded}
                     onToggleExpand={controls?.onToggleExpand}
                   />
                 )}
-              />
-            ) : bulkPanelOpen ? (
-              // Posts selection mode: the bulk "Update category" panel takes
-              // over the right pane (rows toggle selection, not the editor).
-              // Keyed by seed so arriving from a category remounts the panel
-              // with that category pre-selected.
-              <BulkCategoryPanel
-                key={bulkCategorySeed ?? "selection"}
-                posts={selectedPostsMeta}
-                categories={bulkCategoryChoices}
-                initialSlug={bulkCategorySeed}
-                isPending={saveBlock.isPending}
-                onApply={(mode, category) =>
-                  void runBulkCategoryUpdate(mode, category)
-                }
-                onClose={clearSelection}
               />
             ) : selection && selection.collection !== "available-section" ? (
               selection.collection === "apps" ? (
@@ -1403,7 +1174,7 @@ function ContentBrowserReady({
                   block={decofile[selection.key] as Record<string, unknown>}
                   decofile={decofile}
                   meta={meta}
-                  onManagePosts={handleManagePosts}
+                  onManagePosts={() => handleManagePosts()}
                   onOpenPost={(key) => {
                     setActiveCollection("posts");
                     setPrevCollection("posts");
@@ -1549,13 +1320,9 @@ function ContentBrowserReady({
             <AlertDialogDescription>
               {deleteTarget?.kind === "section"
                 ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
-                : deleteTarget?.kind === "blog-bulk"
-                  ? `${deleteTarget.count} ${
-                      deleteTarget.count === 1 ? "post" : "posts"
-                    } will be removed permanently. This can't be undone.`
-                  : deleteTarget
-                    ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
-                    : null}
+                : deleteTarget
+                  ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
+                  : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1596,21 +1363,6 @@ function ItemList({
   decofile,
   searchQuery,
   onSearchChange,
-  postCategoryFilter,
-  postAuthorFilter,
-  postStatusFilter,
-  postSort,
-  onPostCategoryFilterChange,
-  onPostAuthorFilterChange,
-  onPostStatusFilterChange,
-  onPostSortChange,
-  selectedPostKeys,
-  postBulkPanelOpen,
-  onTogglePostSelect,
-  onSelectAllPosts,
-  onClearPostSelection,
-  onExitPostSelection,
-  onBulkDeletePosts,
   selection,
   onSelect,
   onCreate,
@@ -1638,24 +1390,6 @@ function ItemList({
   decofile: Record<string, unknown>;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  postCategoryFilter: string | null;
-  postAuthorFilter: string | null;
-  postStatusFilter: PostStatusFilter | null;
-  postSort: PostSort;
-  onPostCategoryFilterChange: (slug: string | null) => void;
-  onPostAuthorFilterChange: (email: string | null) => void;
-  onPostStatusFilterChange: (status: PostStatusFilter | null) => void;
-  onPostSortChange: (sort: PostSort) => void;
-  selectedPostKeys: Set<string>;
-  /** The right-pane bulk panel is open (forces selection mode in the list). */
-  postBulkPanelOpen: boolean;
-  onTogglePostSelect: (key: string) => void;
-  onSelectAllPosts: (keys: string[]) => void;
-  /** Deselect all posts, staying in selection mode if the panel is open. */
-  onClearPostSelection: () => void;
-  /** Leave selection mode entirely (also closes the bulk panel). */
-  onExitPostSelection: () => void;
-  onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
   onCreate: () => void;
@@ -1715,96 +1449,6 @@ function ItemList({
       e.subtitle.toLowerCase().includes(q),
   );
 
-  // Posts get their own filter/sort pipeline driven by denormalized
-  // category/author metadata, so the plain `blogEntries` path is skipped.
-  const isPostsCollection = activeCollection === "posts";
-  const asStr = (v: unknown) => (typeof v === "string" ? v : "");
-  const postsWithMeta = isPostsCollection ? listPostsWithMeta(decofile) : [];
-
-  // Live counts per category/author so the filter dropdowns can show how
-  // many posts each option matches (and hide the ones that match none).
-  const categoryCounts = new Map<string, number>();
-  const authorCounts = new Map<string, number>();
-  const statusCounts = {
-    draft: 0,
-    generating: 0,
-    awaiting_review: 0,
-    scheduled: 0,
-    published: 0,
-    archived: 0,
-  } satisfies Record<PostStatusFilter, number>;
-  for (const p of postsWithMeta) statusCounts[p.status]++;
-  for (const p of postsWithMeta) {
-    for (const slug of p.categorySlugs) {
-      categoryCounts.set(slug, (categoryCounts.get(slug) ?? 0) + 1);
-    }
-    for (const email of p.authorEmails) {
-      authorCounts.set(email, (authorCounts.get(email) ?? 0) + 1);
-    }
-  }
-  const categoryOptions = (
-    isPostsCollection ? listBlogPayloads(decofile, "categories") : []
-  )
-    .map(({ key, payload }) => {
-      const slug = asStr(payload.slug) || key;
-      return {
-        slug,
-        name: asStr(payload.name) || asStr(payload.slug) || key,
-        count: categoryCounts.get(slug) ?? 0,
-      };
-    })
-    .filter((c) => c.slug);
-  const authorOptions = (
-    isPostsCollection ? listBlogPayloads(decofile, "authors") : []
-  )
-    .map(({ key, payload }) => {
-      const email = asStr(payload.email);
-      return {
-        email,
-        name: asStr(payload.name) || asStr(payload.email) || key,
-        count: authorCounts.get(email) ?? 0,
-      };
-    })
-    .filter((a) => a.email);
-  const sortedPosts = postsWithMeta
-    .filter(
-      (p) =>
-        !q ||
-        p.title.toLowerCase().includes(q) ||
-        p.slug.toLowerCase().includes(q),
-    )
-    .filter(
-      (p) =>
-        !postCategoryFilter || p.categorySlugs.includes(postCategoryFilter),
-    )
-    .filter(
-      (p) => !postAuthorFilter || p.authorEmails.includes(postAuthorFilter),
-    )
-    .filter((p) => !postStatusFilter || p.status === postStatusFilter)
-    .sort((a, b) => {
-      if (postSort === "az") return a.title.localeCompare(b.title);
-      if (postSort === "za") return b.title.localeCompare(a.title);
-      // ISO date strings sort lexically; empty dates sink to the bottom.
-      const cmp = a.date.localeCompare(b.date);
-      return postSort === "date-asc" ? cmp : -cmp;
-    });
-  const selectionCount = selectedPostKeys.size;
-  const visiblePostKeys = sortedPosts.map((p) => p.key);
-  const allVisibleSelected =
-    visiblePostKeys.length > 0 &&
-    visiblePostKeys.every((k) => selectedPostKeys.has(k));
-  // Selecting the first post enters "selection mode": the toolbar replaces the
-  // filter bar and every row's checkbox becomes visible. The open bulk panel
-  // forces it too, so posts can be picked right after landing from a category.
-  const selectionActive = selectionCount > 0 || postBulkPanelOpen;
-  const toggleSelectAll = () => {
-    if (allVisibleSelected) {
-      onClearPostSelection();
-    } else {
-      onSelectAllPosts(visiblePostKeys);
-    }
-  };
-
   const placeholder = `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
     ? `Create new ${BLOG_SINGULAR[activeCollection]}`
@@ -1849,30 +1493,6 @@ function ItemList({
           </Tooltip>
         )}
       </div>
-      {isPostsCollection &&
-        (selectionActive ? (
-          <PostSelectionToolbar
-            count={selectionCount}
-            allSelected={allVisibleSelected}
-            onToggleSelectAll={toggleSelectAll}
-            onDelete={onBulkDeletePosts}
-            onExit={onExitPostSelection}
-          />
-        ) : (
-          <PostFilterBar
-            categories={categoryOptions}
-            authors={authorOptions}
-            categoryFilter={postCategoryFilter}
-            statusCounts={statusCounts}
-            authorFilter={postAuthorFilter}
-            statusFilter={postStatusFilter}
-            sort={postSort}
-            onCategoryFilterChange={onPostCategoryFilterChange}
-            onAuthorFilterChange={onPostAuthorFilterChange}
-            onStatusFilterChange={onPostStatusFilterChange}
-            onSortChange={onPostSortChange}
-          />
-        ))}
       {/* Force Radix's inner `display:table` content wrapper back to block so
           long titles truncate instead of widening the viewport. */}
       <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
@@ -2082,52 +1702,6 @@ function ItemList({
                   }
                 />
               ))
-            )
-          ) : isPostsCollection ? (
-            sortedPosts.length === 0 ? (
-              <ListEmpty
-                hasItems={postsWithMeta.length > 0}
-                emptyLabel="No posts yet."
-                emptyHint='Click "+" to create your first post.'
-              />
-            ) : (
-              sortedPosts.map((post) => {
-                const entry: BlogEntry = {
-                  key: post.key,
-                  kind: "posts",
-                  label: post.title,
-                  subtitle: post.slug,
-                };
-                return (
-                  <ItemRow
-                    key={post.key}
-                    icon={File02}
-                    title={post.title}
-                    subtitle={post.slug || "no slug"}
-                    invalid={post.missing.length > 0}
-                    invalidReason={`Missing: ${post.missing.join(", ")}`}
-                    active={
-                      selection?.collection === "posts" &&
-                      selection.key === post.key
-                    }
-                    selectable
-                    selectionActive={selectionActive}
-                    selected={selectedPostKeys.has(post.key)}
-                    onToggleSelect={() => onTogglePostSelect(post.key)}
-                    onClick={() =>
-                      selectionActive
-                        ? onTogglePostSelect(post.key)
-                        : onSelect({ collection: "posts", key: post.key })
-                    }
-                    menu={
-                      <ItemActions
-                        onDuplicate={() => onDuplicateBlog(entry)}
-                        onDelete={() => onDeleteBlog(entry)}
-                      />
-                    }
-                  />
-                );
-              })
             )
           ) : filteredBlog.length === 0 ? (
             <ListEmpty
