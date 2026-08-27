@@ -77,7 +77,9 @@ function insertUpload(
  * and the string stays legible wherever it's read outside the editor.
  *
  * Uncontrolled by design — the initial markdown seeds the document and
- * `onChange` reports every edit. Remount (via `key`) to load a different value.
+ * `onChange` reports every edit, and ONLY an edit: a caret landing in the text
+ * must not hand the caller a value to save. Remount (via `key`) to load a
+ * different value.
  */
 export function MarkdownEditor({
   defaultValue,
@@ -168,7 +170,12 @@ export function MarkdownEditor({
         return uploadInto(view, files, at);
       },
     },
-    onUpdate: ({ editor }) => onChangeRef.current(editor.getMarkdown()),
+    onUpdate: ({ editor, transaction }) => {
+      // Selection-only transactions carry no steps, and TipTap fires onUpdate
+      // for them anyway — clicking into a description was enough to save it.
+      if (!transaction.docChanged) return;
+      onChangeRef.current(editor.getMarkdown());
+    },
   });
 
   if (!editor) return null;
