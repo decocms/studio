@@ -99,8 +99,9 @@ export function useTaskBoardItems() {
     onResync: () => {
       queryClient.invalidateQueries({ queryKey });
     },
-    // Live deletes: drop the removed card so it clears on every open board.
+    // Live deletes: drop the removed card, canceling a stale in-flight refetch first (same race as onUpdate above).
     onDelete: (id) => {
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
         prev ? { ...prev, items: prev.items.filter((t) => t.id !== id) } : prev,
       );
