@@ -46,13 +46,47 @@ describe("a caret is not an edit", () => {
   });
 });
 
+/**
+ * Inverts what this file used to pin. The table was dropped at parse, and that
+ * loss was recorded here as accepted rather than left undocumented; the schema
+ * now has a node for it, so the same fixture has to come back whole.
+ */
 describe("what the schema keeps", () => {
-  test("a table is already gone at parse, before anything is saved", () => {
-    const editor = new Editor({
+  const roundTrip = (markdown: string) =>
+    new Editor({
       extensions: markdownEditorExtensions(),
-      content: unwrapListContinuations(WITH_TABLE),
+      content: unwrapListContinuations(markdown),
       contentType: "markdown",
-    });
-    expect(editor.getMarkdown()).toBe("## Contexto");
+    }).getMarkdown();
+
+  test("a table survives with every cell", () => {
+    const out = roundTrip(WITH_TABLE);
+    expect(out).toContain("## Contexto");
+    expect(out).toContain("| Onde");
+    expect(out).toContain("| String");
+    expect(out).toContain("| Banner");
+    expect(out).toContain("| aceitar");
+  });
+
+  test("a checklist keeps which boxes are ticked", () => {
+    const out = roundTrip("- [ ] traduzir\n- [x] revisar\n");
+    expect(out).toContain("- [ ] traduzir");
+    expect(out).toContain("- [x] revisar");
+  });
+
+  /**
+   * The serializer pads cells and spaces blocks its own way, so the first pass
+   * rewrites whitespace. That is only tolerable because it settles: were it not
+   * idempotent, every edit would rewrite the whole document's whitespace and
+   * bury the real change in the timeline.
+   */
+  test("the whitespace it normalizes settles on the first pass", () => {
+    const once = roundTrip(WITH_TABLE);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("a fenced block's blank lines are not touched", () => {
+    const code = "```js\nconst a = 1;\n\nconst b = 2;\n```";
+    expect(roundTrip(code)).toBe(code);
   });
 });

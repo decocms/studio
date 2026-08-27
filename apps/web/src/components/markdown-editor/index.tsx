@@ -38,6 +38,18 @@ const CONTENT_CLASS = [
   "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2",
   "[&_hr]:my-4 [&_hr]:border-border",
   "[&_strong]:font-semibold [&_strong]:text-foreground",
+  // Tables and checklists come from markdown the editor did not author — a
+  // synced issue body — so they have to be legible without anyone styling
+  // them by hand. `table-fixed` keeps one long cell from starving the rest.
+  "[&_table]:my-3 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse",
+  "[&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:p-2 [&_th]:text-left [&_th]:font-semibold",
+  "[&_td]:border [&_td]:border-border [&_td]:p-2 [&_td]:align-top",
+  "[&_th>p]:my-0 [&_td>p]:my-0",
+  // The checkbox is the marker; a disc next to it reads as two bullets.
+  "[&_ul[data-type=taskList]]:my-3 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0",
+  "[&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2",
+  "[&_li[data-type=taskItem]>label]:mt-1 [&_li[data-type=taskItem]>label]:shrink-0",
+  "[&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div>p]:my-0",
 ].join(" ");
 
 /** Tailwind can't reach a pseudo-element on a child node without this dance. */
