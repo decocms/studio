@@ -67,3 +67,19 @@ export function compareSprints(a: Sprint, b: Sprint): number {
   }
   return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 }
+
+/**
+ * The sprint a board opens on: the one that is running.
+ *
+ * Reads the tracker's `state` rather than asking which window today falls in —
+ * a sprint that started three days late is still the current one, and the board
+ * has to agree with what Jira shows. Jira allows several sprints running on one
+ * board, so this takes the first in reading order. Null when nothing is
+ * running, which leaves the board showing every sprint.
+ */
+export function currentSprintId(sprints: readonly Sprint[]): string | null {
+  const running = sprints
+    .filter((sprint) => sprint.state === "active")
+    .sort(compareSprints);
+  return running[0]?.id ?? null;
+}
