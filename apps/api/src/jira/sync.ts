@@ -98,10 +98,14 @@ export async function syncJiraIntegrationSafe(
   integration: OrgJiraIntegration,
 ): Promise<JiraSyncResult> {
   try {
-    const { counts, watermark } = await runSync(ctx, integration);
+    const { counts, watermark, rescanPending } = await runSync(
+      ctx,
+      integration,
+    );
     await ctx.storage.jiraIntegrations.recordSyncResult(integration.id, {
       error: null,
       watermark,
+      rescanPending,
     });
     return counts;
   } catch (err) {
@@ -144,6 +148,61 @@ export function buildJql(
     ...(since !== null ? [`updated >= -${since}m`] : []),
   ].join(" AND ");
   return `${conditions} ORDER BY updated ASC`;
+}
+
+/**
+ * Whether a linked issue can be skipped without re-reading its fields.
+ *
+ * Normally yes: the link records the `updated` we last processed, so an issue
+ * no newer than that has nothing to tell us, and this shortcut is what keeps a
+ * tick cheap.
+ *
+ * NEVER on a rescan. A rescan happens because the shape of what we mirror
+ * changed, which makes every existing card stale by definition — and the
+ * shortcut fires BEFORE any field is written, so the rescan would create the
+ * cards it was missing and leave every card it already had untouched. That is
+ * exactly what happened when sprints shipped: 50 cards arrived, 274 kept a null
+ * sprint, and the board showed 253 issues that Jira had in a sprint as backlog.
+ */
+export function isUnchanged(
+  linkUpdatedAt: string,
+  issueUpdated: Date,
+  isRescan: boolean,
+): boolean {
+  if (isRescan) return false;
+  return new Date(linkUpdatedAt) >= issueUpdated;
+}
+
+/**
+ * Whether this run stopped short of the full incremental scope — either cap
+ * can be why: `MAX_ISSUES_PER_RUN` on a page full of mapped issues, or
+ * `MAX_PAGES_PER_RUN` on a filter that returns many empty-but-tokened pages
+ * (an issue-sparse JQL still burns a page per call). Shared by every caller
+ * that needs to know "did this run actually finish", so the two truncation
+ * reasons can't drift apart again.
+ */
+export function runTruncated(processed: number, pages: number): boolean {
+  return processed >= MAX_ISSUES_PER_RUN || pages >= MAX_PAGES_PER_RUN;
+}
+
+/**
+ * Whether the rescan must keep forcing a full re-read on the NEXT run.
+ *
+ * A run only advances as far as `MAX_ISSUES_PER_RUN`/`MAX_PAGES_PER_RUN` let
+ * it (deliberate pacing, see below) — so a rescan on a board with more mapped
+ * issues than one run's cap sets a non-null `last_synced_at` before the scope
+ * is fully re-read. Without this, the next run would read `lastSyncedAt !==
+ * null`, stop treating itself as a rescan, and silently go back to
+ * `isUnchanged`'s shortcut for every issue the first run never reached — the
+ * same bug migration 185 fixed, just past the 500-issue mark instead of at
+ * `updated === lastSyncedAt`.
+ */
+export function rescanContinues(
+  isRescan: boolean,
+  processed: number,
+  pages: number,
+): boolean {
+  return isRescan && runTruncated(processed, pages);
 }
 
 /** Epics (hierarchyLevel 1) and anything above are containers, not cards. */
@@ -419,7 +478,11 @@ async function reconcileVanishedIssues(
 async function runSync(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
-): Promise<{ counts: JiraSyncCounts; watermark?: Date }> {
+): Promise<{
+  counts: JiraSyncCounts;
+  watermark?: Date;
+  rescanPending?: boolean;
+}> {
   const orgId = integration.organizationId;
   const boardId = integration.boardId;
   if (!boardId) {
@@ -431,8 +494,9 @@ async function runSync(
     throw new Error("No status mapping configured");
   }
 
-  // The first import is a backfill, not activity — never its auto-delegate trigger (it would dispatch one run per pre-existing To Do issue).
-  const isInitialImport = integration.lastSyncedAt === null;
+  // First connect / scope change (migration 184) or an unfinished rescan (migration 186).
+  const isRescan =
+    integration.lastSyncedAt === null || integration.rescanPending;
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
@@ -506,7 +570,7 @@ async function runSync(
       }
 
       const link = links.get(issue.id);
-      if (link && new Date(link.jiraUpdatedAt) >= issueUpdated) {
+      if (link && isUnchanged(link.jiraUpdatedAt, issueUpdated, isRescan)) {
         counts.unchanged++;
         watermark = issueUpdated;
         continue;
@@ -541,7 +605,7 @@ async function runSync(
             data: { from: before.status, to: status },
           });
         }
-        if (statusChangedOnJira && !isInitialImport) {
+        if (statusChangedOnJira && !isRescan) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
@@ -592,7 +656,7 @@ async function runSync(
           }
           throw err;
         }
-        if (!isInitialImport) {
+        if (!isRescan) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
@@ -617,10 +681,9 @@ async function runSync(
   }
 
   counts.unmappedStatuses = [...unmapped].sort();
-  // Reconciliation reads the WHOLE scope, so it waits for a run that finished
-  // the incremental pass — mid-backfill, most of the board is legitimately
-  // not linked yet.
-  if (processed < MAX_ISSUES_PER_RUN) {
+  // Reconciliation reads the WHOLE scope, so it waits for a run that actually finished the incremental pass.
+  const truncated = runTruncated(processed, pages);
+  if (!truncated) {
     counts.archived = await reconcileVanishedIssues(
       ctx,
       integration,
@@ -633,9 +696,10 @@ async function runSync(
   // `last_synced_at` stays NULL: the UI would sit on "waiting for the first
   // sync" forever and every later run would count as the initial import, which
   // is exactly the state that suppresses auto-delegation.
+  const rescanPending = isRescan && truncated;
   if (watermark === undefined && processed === 0) {
-    return { counts, watermark: runStartedAt };
+    return { counts, watermark: runStartedAt, rescanPending };
   }
 
-  return { counts, watermark };
+  return { counts, watermark, rescanPending };
 }

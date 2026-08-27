@@ -110,6 +110,32 @@ describe("auto-archive sweep", () => {
     ]);
   });
 
+  // The delivery lanes sit BEFORE Done, so a card parked in one is still in flight.
+  it("never sweeps a card resting in a delivery lane", async () => {
+    const settled = new Date(Date.now() - 3 * DAY_MS);
+    const lanes = ["approved", "merged", "post_deploy_validation"] as const;
+    const parked = await Promise.all(
+      lanes.map((lane) => seed(lane, settled, true)),
+    );
+
+    const candidates = await taskBoard.listItemsAwaitingArchive(
+      new Date(Date.now() - DAY_MS),
+      200,
+    );
+    const ids = candidates.map((c) => c.id);
+    for (const id of parked) expect(ids).not.toContain(id);
+
+    // And the write path refuses too, even when handed the id directly.
+    const swept = await archiveMergedForOrg(ctx, ORG, parked, async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
+    expect(swept.archived).toBe(0);
+    for (const [i, id] of parked.entries()) {
+      expect((await taskBoard.getById(id, ORG))?.status).toBe(lanes[i]);
+    }
+  });
+
   it("archives a merged card, logs it, and won't archive it twice", async () => {
     const id = await seed("done", new Date(Date.now() - 3 * DAY_MS), true);
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
   MAX_TASK_REPO_LENGTH,
@@ -16,6 +17,7 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { extractPrFromText } from "./pr-extract";
+import { rejectsUngatedDeliveryLane } from "./update";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -71,6 +73,23 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
           "https://github.com/<owner>/<repo>/pull/<number>)",
       );
+    }
+
+    if (input.status !== undefined) {
+      const settings =
+        await ctx.storage.organizationSettings.get(organizationId);
+      if (
+        rejectsUngatedDeliveryLane(
+          input.status,
+          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
+        )
+      ) {
+        throw new Error(
+          "Delivery lanes are not enabled for this organization — enable " +
+            "them in Settings before creating a task in Approved, Merged, " +
+            "or Post-deploy Validation.",
+        );
+      }
     }
 
     if (input.assigneeId) {

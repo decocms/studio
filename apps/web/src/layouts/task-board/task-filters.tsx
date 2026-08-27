@@ -7,6 +7,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
+import { currentSprintId } from "@decocms/shared/sprints";
 import { parseTaskKeySeq } from "@decocms/shared/task-key";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -77,6 +78,11 @@ const NO_REPO_FILTER = "__no_repo__";
  *  namespace with sprint ids, which are `sprint_`-prefixed, so it can't collide. */
 const BACKLOG_FILTER = "backlog";
 
+/** Sentinel for "every sprint", which has to be SAID rather than implied by an
+ *  absent param: absence is what selects the running sprint, so without this the
+ *  Any-sprint option would drop out of the URL and default straight back. */
+const ALL_SPRINTS_FILTER = "all";
+
 /** Radix `RadioGroup` needs a string value — this stands in for `null` (any). */
 const ANY_FILTER = "__any__";
 
@@ -108,42 +114,72 @@ export const EMPTY_FILTERS: TaskFilters = {
 };
 
 /**
- * Drop a sprint filter naming a sprint this board does not have.
+ * The sprint filter this board should apply, given what the URL says.
  *
- * The value comes from the URL, which outlives the sprint it names — a shared
- * link, a bookmark, a sprint deleted in Jira. Left in place it hides every card
- * while its chip reads exactly like "no sprint filter", so the board looks
- * empty for no stated reason. Call it only once the sprints have loaded, or an
- * in-flight read would drop a filter that is about to be valid.
+ * A board that runs sprints opens on the running one, the way Jira does, so an
+ * absent param is not "no filter" — it is "nobody has chosen yet". Every sprint
+ * is reachable only through {@link ALL_SPRINTS_FILTER}, which is the whole
+ * reason that sentinel exists.
+ *
+ * An unresolvable id resolves like an absent one. The URL outlives the sprint it
+ * names — a shared link, a bookmark, a sprint deleted in Jira — and left in
+ * place it hides every card behind a chip that reads like "no filter". Falling
+ * back to the default keeps a single rule: you see every sprint only by asking.
+ *
+ * Call it only once the sprints have loaded, or an in-flight read would drop a
+ * filter that is about to be valid.
  */
 export function resolveSprintFilter(
   value: string | null,
   sprints: readonly Sprint[],
 ): string | null {
-  if (value === null || value === BACKLOG_FILTER) return value;
-  return sprints.some((sprint) => sprint.id === value) ? value : null;
+  if (value === ALL_SPRINTS_FILTER) return null;
+  if (value === BACKLOG_FILTER) return value;
+  if (value !== null && sprints.some((sprint) => sprint.id === value)) {
+    return value;
+  }
+  return currentSprintId(sprints);
 }
 
-function hasActiveFilters(f: TaskFilters): boolean {
+/**
+ * Whether the sprint scope is one the user narrowed to, as opposed to the board
+ * opening on its running sprint. The default must not count: it would light up
+ * "Clear" on a board nobody filtered, and clearing cannot remove it — the reset
+ * writes an absent param, which is exactly what re-selects the default.
+ *
+ * Picking the running sprint by hand lands on the same state and so reads as
+ * the default. Indistinguishable and harmless: the board shows the same cards.
+ */
+function sprintNarrowed(f: TaskFilters, defaultSprint: string | null): boolean {
+  return f.sprint !== null && f.sprint !== defaultSprint;
+}
+
+function hasActiveFilters(
+  f: TaskFilters,
+  defaultSprint: string | null,
+): boolean {
   return (
     f.assignee !== null ||
     f.priority !== null ||
     f.due !== null ||
     f.tags.length > 0 ||
     f.repo !== null ||
-    f.sprint !== null ||
+    sprintNarrowed(f, defaultSprint) ||
     f.search.trim() !== ""
   );
 }
 
-function activeFilterCount(f: TaskFilters): number {
+function activeFilterCount(
+  f: TaskFilters,
+  defaultSprint: string | null,
+): number {
   return (
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
     (f.due !== null ? 1 : 0) +
     (f.tags.length > 0 ? 1 : 0) +
     (f.repo !== null ? 1 : 0) +
-    (f.sprint !== null ? 1 : 0) +
+    (sprintNarrowed(f, defaultSprint) ? 1 : 0) +
     (f.search.trim() !== "" ? 1 : 0)
   );
 }
@@ -160,13 +196,35 @@ function isSameDay(a: number, b: number): boolean {
   );
 }
 
-/** True when the term names this card by its human key (see `taskKey`). */
+/** A term written as a bare number — the shorthand both key vocabularies take. */
+const BARE_SEQ = /^0*(\d+)$/;
+
+/**
+ * True when the term names this card by the key it SHOWS (see `taskKey`).
+ *
+ * A card synced from a tracker shows the tracker's key, so that is the only
+ * lettered key it answers to. Falling through to the sequence would be worse
+ * than useless: `parseTaskKeySeq` ignores the prefix, so searching `OS-333`
+ * would quietly match whichever unrelated card happens to hold Studio sequence
+ * 333, and miss the one actually named that.
+ *
+ * A bare number still works either way, since it is ambiguous by construction
+ * and a search returning both readings of it is the honest answer.
+ */
 export function matchesTaskKey(
   search: string,
   keySeq: number | null | undefined,
+  trackerKey?: string | null,
 ): boolean {
-  if (keySeq == null) return false;
-  return parseTaskKeySeq(search) === keySeq;
+  const term = search.trim();
+  if (term === "") return false;
+  const tracker = trackerKey?.trim();
+  if (tracker) {
+    if (term.toLowerCase() === tracker.toLowerCase()) return true;
+    const bare = BARE_SEQ.exec(term)?.[1];
+    return bare !== undefined && Number(bare) === parseTaskKeySeq(tracker);
+  }
+  return keySeq != null && parseTaskKeySeq(term) === keySeq;
 }
 
 export function taskMatchesFilters(
@@ -176,7 +234,10 @@ export function taskMatchesFilters(
   const search = f.search.trim().toLowerCase();
   if (search !== "") {
     const haystack = `${item.title} ${item.description ?? ""}`.toLowerCase();
-    if (!haystack.includes(search) && !matchesTaskKey(search, item.keySeq)) {
+    if (
+      !haystack.includes(search) &&
+      !matchesTaskKey(search, item.keySeq, item.jiraIssueKey)
+    ) {
       return false;
     }
   }
@@ -655,7 +716,8 @@ function SprintFilter({
   value: string | null;
   /** Sprints to offer, in reading order (running → next → past). */
   sprints: Sprint[];
-  onChange: (next: string | null) => void;
+  /** Always a stored value — `ALL_SPRINTS_FILTER`, never a bare null. */
+  onChange: (next: string) => void;
   block?: boolean;
 }) {
   const t = useT();
@@ -684,7 +746,9 @@ function SprintFilter({
       >
         <DropdownMenuRadioGroup
           value={value === null ? ANY_FILTER : value}
-          onValueChange={(next) => onChange(next === ANY_FILTER ? null : next)}
+          onValueChange={(next) =>
+            onChange(next === ANY_FILTER ? ALL_SPRINTS_FILTER : next)
+          }
         >
           <DropdownMenuRadioItem value={ANY_FILTER}>
             {t("taskBoard.taskFilters.sprintAnySprint")}
@@ -888,7 +952,7 @@ export function TaskFiltersBar({
         sprints={sprints}
         onChange={onChange}
       />
-      {hasActiveFilters(filters) && (
+      {hasActiveFilters(filters, currentSprintId(sprints)) && (
         <button
           type="button"
           onClick={() => onChange(EMPTY_FILTERS)}
@@ -923,7 +987,7 @@ export function TaskFiltersDrawer({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const count = activeFilterCount(filters);
+  const count = activeFilterCount(filters, currentSprintId(sprints));
   const triggerClass = chipClass(count > 0);
   return (
     <Drawer open={open} onOpenChange={setOpen} direction="bottom">

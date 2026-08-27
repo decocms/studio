@@ -15,6 +15,9 @@ export const RUN_STATUS_STAGE_ORDER = [
   // monotonic.
   "starting-sandbox",
   "choosing-next-steps",
+  // Last on purpose: the harness retries a provider rejection only before the
+  // turn produces content, so this always supersedes the stage it interrupts.
+  "retrying-provider",
 ] as const;
 
 export type RunStatusStage = (typeof RUN_STATUS_STAGE_ORDER)[number];
@@ -71,6 +74,10 @@ const RUN_STATUS_I18N_KEYS: Record<
   "choosing-next-steps": {
     label: "chat.runStatus.choosingNextStepsLabel",
     detail: "chat.runStatus.choosingNextStepsDetail",
+  },
+  "retrying-provider": {
+    label: "chat.runStatus.retryingProviderLabel",
+    detail: "chat.runStatus.retryingProviderDetail",
   },
 };
 

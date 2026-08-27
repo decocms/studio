@@ -275,6 +275,7 @@ export const orgs = {
     "Try adjusting your filters or search query.",
   "orgs.threads.tryExpandingTimeRange":
     "Try expanding the time range to see older chats.",
+  "orgs.threads.untitledChat": "Untitled chat",
   "orgs.threads.user": "User",
   "orgs.threadsFiltersPopover.active": "Active",
   "orgs.threadsFiltersPopover.agent": "Agent",

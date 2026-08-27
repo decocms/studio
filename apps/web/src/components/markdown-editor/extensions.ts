@@ -2,6 +2,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
+import { TableKit } from "@tiptap/extension-table";
+import { TaskItem, TaskList } from "@tiptap/extension-list";
 import type { Extensions } from "@tiptap/core";
 import { MarkdownAttachment } from "./attachment-node";
 import { MarkdownMention } from "./mention-node";
@@ -66,6 +68,9 @@ export function markdownEditorExtensions(
     }),
     AttachmentAwareLink.configure(LINK_OPTIONS),
     Placeholder.configure({ placeholder }),
+    TableKit,
+    TaskList,
+    TaskItem.configure({ nested: true }),
     MarkdownImage,
     MarkdownAttachment,
     MarkdownMention,

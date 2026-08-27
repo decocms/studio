@@ -29,33 +29,58 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
 }
 
 /**
- * A sprint filter arrives from the URL, which outlives the sprint it names.
- * Left in place, an unknown id hides every card behind a chip that reads
- * exactly like "no sprint filter".
+ * A board that runs sprints opens on the running one, so an absent param means
+ * "nobody has chosen yet" rather than "no filter". The URL also outlives the
+ * sprint it names, and an unknown id left in place would hide every card behind
+ * a chip that reads exactly like "no sprint filter".
  */
 describe("resolveSprintFilter", () => {
-  const sprints = [
-    {
-      id: "sprint_a",
-      name: "Sprint 12",
-      state: "active" as const,
-      startsAt: null,
-      endsAt: null,
-    },
-  ];
+  const sprint = (id: string, state: "active" | "future" | "closed") => ({
+    id,
+    name: id,
+    state,
+    startsAt: null,
+    endsAt: null,
+  });
+  const sprints = [sprint("sprint_a", "active"), sprint("sprint_b", "future")];
 
   test("keeps a sprint the board actually has", () => {
-    expect(resolveSprintFilter("sprint_a", sprints)).toBe("sprint_a");
+    expect(resolveSprintFilter("sprint_b", sprints)).toBe("sprint_b");
   });
 
-  test("drops one it does not, including on a board with no sprints", () => {
-    expect(resolveSprintFilter("sprint_gone", sprints)).toBe(null);
-    expect(resolveSprintFilter("sprint_a", [])).toBe(null);
+  test("opens on the running sprint when the URL says nothing", () => {
+    expect(resolveSprintFilter(null, sprints)).toBe("sprint_a");
   });
 
-  test("leaves the backlog sentinel and 'any sprint' alone", () => {
+  /** Inverts the pre-default behaviour: both used to resolve to "any sprint". */
+  test("falls back to the running sprint for an id the board lost", () => {
+    expect(resolveSprintFilter("sprint_gone", sprints)).toBe("sprint_a");
+  });
+
+  test("shows every sprint only when asked", () => {
+    expect(resolveSprintFilter("all", sprints)).toBe(null);
+  });
+
+  test("has no default to apply without a running sprint", () => {
+    expect(resolveSprintFilter(null, [])).toBe(null);
+    expect(resolveSprintFilter(null, [sprint("sprint_b", "future")])).toBe(
+      null,
+    );
+    expect(resolveSprintFilter("sprint_gone", [])).toBe(null);
+  });
+
+  test("picks one running sprint when the tracker has several", () => {
+    expect(
+      resolveSprintFilter(null, [
+        sprint("sprint_z", "active"),
+        sprint("sprint_a", "active"),
+      ]),
+    ).toBe("sprint_a");
+  });
+
+  test("leaves the backlog sentinel alone, default or not", () => {
     expect(resolveSprintFilter("backlog", [])).toBe("backlog");
-    expect(resolveSprintFilter(null, sprints)).toBe(null);
+    expect(resolveSprintFilter("backlog", sprints)).toBe("backlog");
   });
 });
 
@@ -297,5 +322,41 @@ describe("matchesTaskKey", () => {
 
   test("a card from before the backfill never matches", () => {
     expect(matchesTaskKey("7", null)).toBe(false);
+  });
+});
+
+/**
+ * The collision this exists to prevent: `parseTaskKeySeq` ignores a term's
+ * prefix, so before the tracker key was consulted, searching `OS-333` resolved
+ * to the number 333 and quietly matched whichever unrelated card held Studio
+ * sequence 333 — while missing the card actually named OS-333.
+ */
+describe("matchesTaskKey with a tracker key", () => {
+  test("finds a synced card by the key it shows, any case", () => {
+    expect(matchesTaskKey("OS-333", 320, "OS-333")).toBe(true);
+    expect(matchesTaskKey("os-333", 320, "OS-333")).toBe(true);
+    expect(matchesTaskKey("  OS-333  ", 320, "OS-333")).toBe(true);
+  });
+
+  test("does not match a synced card by the sequence it no longer shows", () => {
+    expect(matchesTaskKey("OSKL-320", 320, "OS-333")).toBe(false);
+  });
+
+  test("never lets a tracker key match an unrelated card's sequence", () => {
+    expect(matchesTaskKey("OS-333", 333, "OS-999")).toBe(false);
+    expect(matchesTaskKey("OS-333", 333, null)).toBe(true);
+  });
+
+  test("takes a bare number against either vocabulary, ambiguity included", () => {
+    expect(matchesTaskKey("333", 320, "OS-333")).toBe(true);
+    expect(matchesTaskKey("0333", 320, "OS-333")).toBe(true);
+    expect(matchesTaskKey("320", 320, "OS-333")).toBe(false);
+    expect(matchesTaskKey("333", 333, null)).toBe(true);
+  });
+
+  test("an empty or unparseable term names nothing", () => {
+    expect(matchesTaskKey("", 320, "OS-333")).toBe(false);
+    expect(matchesTaskKey("   ", 320, "OS-333")).toBe(false);
+    expect(matchesTaskKey("schema", 320, "OS-333")).toBe(false);
   });
 });

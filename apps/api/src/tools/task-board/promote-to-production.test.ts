@@ -6,10 +6,13 @@
  * state, but the tool itself used to trust the caller, not the task's status.
  */
 import { describe, expect, it } from "bun:test";
-import type { ReviewCycleActivity } from "@decocms/shared/task-board";
+import type {
+  ReviewCycleActivity,
+  ReviewerKind,
+} from "@decocms/shared/task-board";
 import { isReadyToShip } from "./promote-to-production";
 
-function approved(reviewer: "qa" | "code_review"): ReviewCycleActivity {
+function approved(reviewer: ReviewerKind): ReviewCycleActivity {
   return {
     action: "review_approved",
     data: { reviewer },
@@ -27,19 +30,27 @@ describe("isReadyToShip", () => {
     expect(isReadyToShip("in_review", [], [])).toBe(true);
   });
 
-  it("rejects an in_review task while a required reviewer hasn't approved", () => {
-    expect(
-      isReadyToShip("in_review", [approved("qa")], ["qa", "code_review"]),
-    ).toBe(false);
+  it("rejects an in_review task while the required reviewer hasn't approved", () => {
+    expect(isReadyToShip("in_review", [], ["reviewer"])).toBe(false);
   });
 
-  it("allows an in_review task once every enabled reviewer approved", () => {
+  it("allows an in_review task once the enabled reviewer approved", () => {
     expect(
-      isReadyToShip(
-        "in_review",
-        [approved("qa"), approved("code_review")],
-        ["qa", "code_review"],
-      ),
+      isReadyToShip("in_review", [approved("reviewer")], ["reviewer"]),
     ).toBe(true);
+  });
+
+  // Refusing to ship from Approved would make the lane a dead end.
+  it("allows shipping from Approved", () => {
+    expect(isReadyToShip("approved", [], [])).toBe(true);
+    expect(
+      isReadyToShip("approved", [approved("reviewer")], ["reviewer"]),
+    ).toBe(true);
+  });
+
+  it("rejects an already-shipped task", () => {
+    expect(isReadyToShip("merged", [], [])).toBe(false);
+    expect(isReadyToShip("post_deploy_validation", [], [])).toBe(false);
+    expect(isReadyToShip("done", [], [])).toBe(false);
   });
 });

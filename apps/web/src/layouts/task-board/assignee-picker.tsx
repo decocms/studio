@@ -25,6 +25,7 @@ export function AssigneePickerContent({
     <Command>
       <CommandInput
         placeholder={t("taskBoard.taskDialog.assignToPlaceholder")}
+        aria-label={t("taskBoard.taskDialog.assignToPlaceholder")}
         className="h-9"
       />
       <CommandList>

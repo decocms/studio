@@ -61,10 +61,13 @@ import {
   useJiraBoardColumns,
   useJiraBoards,
   useJiraIntegration,
+  useRequestJiraResync,
   useRunJiraSync,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
 import { timeAgo } from "@/layouts/library/cards";
+import { isDeliveryLane } from "@/layouts/task-board/config";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 
 type BoardStatus = keyof JiraIntegration["statusMapping"];
 type StatusMapping = JiraIntegration["statusMapping"];
@@ -93,9 +96,31 @@ const BOARD_STATUS_OPTIONS: Array<{
   { value: "todo", labelKey: "taskBoard.config.statusTodo" },
   { value: "in_progress", labelKey: "taskBoard.config.statusInProgress" },
   { value: "in_review", labelKey: "taskBoard.config.statusInReview" },
+  { value: "approved", labelKey: "taskBoard.config.statusApproved" },
+  { value: "merged", labelKey: "taskBoard.config.statusMerged" },
+  {
+    value: "post_deploy_validation",
+    labelKey: "taskBoard.config.statusPostDeployValidation",
+  },
   { value: "done", labelKey: "taskBoard.config.statusDone" },
   { value: "archived", labelKey: "taskBoard.config.statusArchived" },
 ];
+
+/** The lanes this org can map a Jira status onto — offering an unrun delivery
+ *  lane would route issues into a column the board never draws. `current` is
+ *  this row's already-mapped value: if it's a delivery lane saved while the
+ *  flag was on, it must stay in the list even after the flag turns off, or the
+ *  Select's value stops matching any item and the row silently renders blank
+ *  while the mapping underneath is untouched. */
+export function boardStatusOptions(
+  deliveryEnabled: boolean,
+  current: BoardStatus | undefined,
+): typeof BOARD_STATUS_OPTIONS {
+  if (deliveryEnabled) return BOARD_STATUS_OPTIONS;
+  return BOARD_STATUS_OPTIONS.filter(
+    (o) => !isDeliveryLane(o.value) || o.value === current,
+  );
+}
 
 /** Radix Select forbids empty item values — sentinel for "not synced". */
 const DONT_SYNC = "__dont_sync__";
@@ -227,6 +252,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const columns = useJiraBoardColumns(integration.boardId);
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
 
   // Optimistic local copy so two quick edits don't race the save round-trip and stomp each other.
   const [mapping, setMapping] = useState(integration.statusMapping);
@@ -286,7 +312,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
   return (
     <div className="flex flex-col mt-3">
       {unmapped.length > 0 && (
-        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
           {t("settings.jira.unmappedWarning", {
             columns: unmapped.map((column) => column.name).join(", "),
           })}
@@ -317,7 +343,10 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
               <SelectItem value={DONT_SYNC}>
                 {t("settings.jira.dontSync")}
               </SelectItem>
-              {BOARD_STATUS_OPTIONS.map((option) => (
+              {boardStatusOptions(
+                deliveryEnabled,
+                laneOfColumn(mapping, column),
+              ).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {t(option.labelKey)}
                 </SelectItem>
@@ -516,6 +545,8 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const runSync = useRunJiraSync();
+  const requestResync = useRequestJiraResync();
+  const [resyncOpen, setResyncOpen] = useState(false);
   const hasMapping = Object.keys(integration.statusMapping).length > 0;
 
   return (
@@ -524,6 +555,49 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
       description={<SyncStatusLine integration={integration} />}
       action={
         <div className="flex items-center gap-3">
+          <AlertDialog open={resyncOpen} onOpenChange={setResyncOpen}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                !integration.enabled ||
+                runSync.isPending ||
+                requestResync.isPending
+              }
+              onClick={() => setResyncOpen(true)}
+            >
+              {t("settings.jira.resyncAll")}
+            </Button>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("settings.jira.resyncAllTitle")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("settings.jira.resyncAllDescription")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {t("settings.jira.cancel")}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    requestResync.mutate(undefined, {
+                      onSuccess: () =>
+                        toast.success(t("settings.jira.resyncAllQueued")),
+                      onError: (err) =>
+                        toast.error(
+                          errorMessage(err, t("settings.jira.syncFailed")),
+                        ),
+                    })
+                  }
+                >
+                  {t("settings.jira.resyncAll")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button
             variant="outline"
             size="sm"

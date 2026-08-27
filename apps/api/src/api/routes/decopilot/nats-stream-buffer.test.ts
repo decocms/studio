@@ -99,6 +99,11 @@ test("decopilot stream is replicated so one node loss keeps the run streaming", 
   expect(decopilotStreamConfig().num_replicas).toBe(3);
 });
 
+test("decopilot stream config honours an explicit replica count", () => {
+  // The single-node fallback in `init()` re-issues the config with 1.
+  expect(decopilotStreamConfig(1).num_replicas).toBe(1);
+});
+
 describe("NatsStreamBuffer", () => {
   it("purge is a no-op when jsm is not initialized (no throw)", () => {
     const buffer = new NatsStreamBuffer({
@@ -243,6 +248,70 @@ describe("NatsStreamBuffer", () => {
     expect(publishMock).toHaveBeenCalled();
   });
 
+  it("init falls back to an unreplicated stream on a single-node NATS", async () => {
+    // Regression: a replicated default made `streams.update` reject on any
+    // non-clustered JetStream (local dev, self-hosts, the multi-pod test
+    // cluster), leaving `js` null so every chunk of every run was dropped.
+    const configs: Array<{ num_replicas: number }> = [];
+    const streamUpdateMock = mock(
+      (_name: string, config: { num_replicas: number }) => {
+        configs.push(config);
+        if (config.num_replicas > 1) {
+          return Promise.reject(
+            new Error("replicas > 1 not supported in non-clustered mode"),
+          );
+        }
+        return Promise.resolve({});
+      },
+    );
+    const mockJsm = {
+      streams: {
+        info: mock(() => Promise.resolve({})),
+        update: streamUpdateMock,
+        add: mock(() => Promise.resolve({})),
+      },
+    };
+    const publishMock = mock(() => Promise.resolve({ seq: 1 }));
+
+    const buffer = new NatsStreamBuffer({
+      getConnection: () => ({}) as never,
+      getJetStream: () => ({ publish: publishMock }) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
+    });
+
+    await buffer.init();
+
+    expect(configs.map((c) => c.num_replicas)).toEqual([3, 1]);
+    // Degraded to unreplicated, but streaming — not wedged at js=null.
+    expect(
+      await buffer.publishRawChunk("thrd_x", { type: "text" } as never),
+    ).toBe(true);
+  });
+
+  it("init does NOT fall back to 1 replica on an unrelated update failure", async () => {
+    // The fallback is scoped to replica rejections; a real config error must
+    // still surface instead of silently shipping an unreplicated stream.
+    const streamUpdateMock = mock(() =>
+      Promise.reject(new Error("invalid stream config: bad subject")),
+    );
+    const mockJsm = {
+      streams: {
+        info: mock(() => Promise.resolve({})),
+        update: streamUpdateMock,
+        add: mock(() => Promise.resolve({})),
+      },
+    };
+
+    const buffer = new NatsStreamBuffer({
+      getConnection: () => ({}) as never,
+      getJetStream: () => ({}) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
+    });
+
+    await expect(buffer.init()).rejects.toThrow("invalid stream config");
+    expect(streamUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
   it("init does NOT retry a non-transient (semantic) error", async () => {
     const getJetStreamManager = mock(() =>
       Promise.resolve({
@@ -358,6 +427,54 @@ describe("NatsStreamBuffer", () => {
         getJetStream: () => null,
       });
       const result = await buffer.createTailStream("task-1");
+      expect(result).toBeNull();
+    });
+
+    it("retries a leaderless stream when opening the tail consumer", async () => {
+      const { sub, end } = createControlledSubscription();
+      let attempts = 0;
+      let failures = 2;
+      const mockJs = {
+        consumers: {
+          get: async () => {
+            attempts++;
+            if (failures-- > 0) throw new Error("stream is offline");
+            return { consume: () => Promise.resolve(sub) };
+          },
+        },
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+
+      const stream = await buffer.createTailStream("task-1");
+      end();
+
+      expect(attempts).toBe(3);
+      expect(stream).not.toBeNull();
+    });
+
+    it("does not retry a permanent consumer-open error", async () => {
+      let attempts = 0;
+      const mockJs = {
+        consumers: {
+          get: async () => {
+            attempts++;
+            throw new Error("stream not found");
+          },
+        },
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+
+      const result = await buffer.createTailStream("task-1");
+
+      expect(attempts).toBe(1);
       expect(result).toBeNull();
     });
 

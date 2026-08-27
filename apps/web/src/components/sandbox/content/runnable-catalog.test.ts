@@ -163,13 +163,20 @@ describe("runnable-catalog", () => {
       MySubmit: { __resolveType: "site/actions/submit.ts" },
       // Not a runnable — should be ignored.
       Header: { __resolveType: "site/sections/Header/Header.tsx" },
-      // Nested path keys and non-objects are skipped.
-      "pages/home": { __resolveType: "site/loaders/products.ts" },
+      // Module-key defaults and non-objects are skipped.
+      "site/loaders/products.ts": { __resolveType: "site/loaders/products.ts" },
       plain: "value",
+      // User-named block whose name contains "/" is KEPT.
+      "Estampas / Flags": { __resolveType: "site/loaders/products.ts" },
     };
 
     const savedLoaders = listSavedRunnables(meta, decofile, "loaders");
     expect(savedLoaders).toEqual([
+      {
+        key: "Estampas / Flags",
+        resolveType: "site/loaders/products.ts",
+        title: "Estampas / Flags",
+      },
       {
         key: "MyProducts",
         resolveType: "site/loaders/products.ts",

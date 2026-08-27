@@ -32,6 +32,7 @@ type Row = {
   enabled: boolean;
   last_synced_at: Date | string | null;
   last_sync_error: string | null;
+  rescan_pending: boolean;
   created_by: string;
   created_at: Date | string;
   updated_at: Date | string;
@@ -73,6 +74,7 @@ export class JiraIntegrationStorage {
       enabled: row.enabled,
       lastSyncedAt: row.last_synced_at ? toIso(row.last_synced_at) : null,
       lastSyncError: row.last_sync_error,
+      rescanPending: row.rescan_pending,
       createdBy: row.created_by,
       createdAt: toIso(row.created_at),
       updatedAt: toIso(row.updated_at),
@@ -183,16 +185,48 @@ export class JiraIntegrationStorage {
 
   /** Record a sync outcome. `watermark` (the max issue `updated` fully
    *  processed) only advances on success — an errored run keeps the old one
-   *  so the next run re-covers the gap. */
+   *  so the next run re-covers the gap. `rescanPending` left unset (an error,
+   *  or a run that hasn't decided) leaves the flag as it was — only a run
+   *  that actually ran the rescan/incremental decision gets to change it. */
   async recordSyncResult(
     id: string,
-    result: { error: string | null; watermark?: Date },
+    result: { error: string | null; watermark?: Date; rescanPending?: boolean },
   ): Promise<void> {
     await this.db
       .updateTable("org_jira_integrations")
       .set({
         last_sync_error: result.error,
         ...(result.watermark ? { last_synced_at: result.watermark } : {}),
+        ...(result.rescanPending !== undefined
+          ? { rescan_pending: result.rescanPending }
+          : {}),
+        updated_at: new Date(),
+      })
+      .where("id", "=", id)
+      .execute();
+  }
+
+  /**
+   * Drop the watermark, so the next run re-scans the board from the start.
+   *
+   * `last_synced_at` means "every issue in scope up to here has been
+   * processed", which stops being true whenever what we do with an issue
+   * changes — a widened status mapping, a fixed renderer — rather than only
+   * when the scope does. Issues already behind the watermark are never asked
+   * for again, so those repairs reach nothing without this.
+   *
+   * Safe to call: a null watermark is the initial-import path, which is
+   * idempotent (the link table's UNIQUE dedupes every issue) and deliberately
+   * suppresses auto-delegation, so a re-scan cannot dispatch a paid agent run
+   * per pre-existing card. `MAX_ISSUES_PER_RUN` paces the rest.
+   */
+  async clearWatermark(id: string): Promise<void> {
+    await this.db
+      .updateTable("org_jira_integrations")
+      .set({
+        last_synced_at: null,
+        last_sync_error: null,
+        rescan_pending: false,
         updated_at: new Date(),
       })
       .where("id", "=", id)

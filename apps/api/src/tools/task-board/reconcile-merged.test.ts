@@ -35,11 +35,18 @@ const item = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
     ...over,
   }) as TaskBoardItem;
 
-function fakeCtx(over: { humanRejectedDone?: boolean } = {}) {
+function fakeCtx(
+  over: { humanRejectedDone?: boolean; deliveryLanes?: boolean } = {},
+) {
   const updates: { status: string }[] = [];
   const activity: Record<string, unknown>[] = [];
   const ctx = {
     storage: {
+      organizationSettings: {
+        get: async () => ({
+          flags: { delivery_lanes_enabled: over.deliveryLanes ?? false },
+        }),
+      },
       taskBoard: {
         hasHumanRejectedDone: async () => over.humanRejectedDone ?? false,
         update: async (
@@ -60,7 +67,7 @@ function fakeCtx(over: { humanRejectedDone?: boolean } = {}) {
 }
 
 describe("advanceToDoneIfMerged", () => {
-  it("moves a card whose PR landed outside Studio, and says why", async () => {
+  it("moves a card whose PR landed outside Studio to Done, and says why", async () => {
     const { ctx, updates, activity } = fakeCtx();
     expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
     expect(updates).toEqual([{ status: "done" }]);
@@ -72,6 +79,16 @@ describe("advanceToDoneIfMerged", () => {
         data: { from: "in_review", to: "done", reason: "pr_merged" },
       },
     ]);
+  });
+
+  // With the lanes on a merged PR is DEPLOYED, not finished.
+  it("lands on Merged when the org runs the delivery lanes", async () => {
+    const { ctx, updates, activity } = fakeCtx({ deliveryLanes: true });
+    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
+    expect(updates).toEqual([{ status: "merged" }]);
+    expect(activity[0]).toMatchObject({
+      data: { from: "in_review", to: "merged", reason: "pr_merged" },
+    });
   });
 
   it("leaves an unmerged card alone", async () => {

@@ -281,6 +281,7 @@ export const orgs = {
     "Tente ajustar seus filtros ou consulta de busca.",
   "orgs.threads.tryExpandingTimeRange":
     "Tente expandir o intervalo de tempo para ver chats mais antigos.",
+  "orgs.threads.untitledChat": "Chat sem título",
   "orgs.threads.user": "Usuário",
   "orgs.threadsFiltersPopover.active": "Ativo",
   "orgs.threadsFiltersPopover.agent": "Agente",

@@ -22,6 +22,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
+import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
 
 /** The repo a claude-code task run works in. */
@@ -98,12 +99,16 @@ export function pickSoleTaskRepo(
  *   model would otherwise open with a `TASK_ADD_REPO` call just to find out what
  *   exists, and a tool description can't carry them (it is built once at module
  *   load, with no org in scope).
- * - `null` — none imported, so this harness can't run the task at all.
+ * - `null` — none imported (or the hosted sandbox this harness runs in is
+ *   unavailable on this deployment), so this harness can't run the task at all.
  *
  * Never throws: a lookup failure degrades to the Decopilot path rather than
  * failing the delegation that already persisted. Both non-bound outcomes are
  * logged — "why did this task run Decopilot?" (or "why did it have to pick?")
- * is otherwise invisible.
+ * is otherwise invisible. The availability check comes FIRST, before any
+ * storage access: selecting claude-code while the sandbox capability is off
+ * enqueues a run that fails only when dispatch starts — after quota was
+ * claimed, the thread persisted, and reviewer bookkeeping began (#6502).
  */
 export type TaskRepoChoice =
   | { repo: TaskRepo }
@@ -121,6 +126,13 @@ export async function resolveTaskRepoChoice(
   ctx: StudioContext,
   organizationId: string,
 ): Promise<TaskRepoChoice> {
+  if (!agentSandboxEnabled()) {
+    console.warn(
+      `[task-board] claude-code skipped for org ${organizationId}: ` +
+        `hosted sandbox unavailable — running Decopilot`,
+    );
+    return null;
+  }
   try {
     const { items } = await ctx.storage.connections.list(organizationId, {
       slug: "mcp-github",
@@ -179,6 +191,7 @@ export function buildClaudeCodeTaskPrompt(
   repo: TaskRepo | null,
   opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): string {
+  // prompt-region:start super-agent-sandbox
   const lines: string[] = [
     "You've been assigned this task. Complete it and finish with a pull request if it makes sense (like a coding task) or is explicitly requested.",
     "",
@@ -278,4 +291,5 @@ export function buildClaudeCodeTaskPrompt(
     `(task id: ${task.id})`,
   );
   return lines.join("\n");
+  // prompt-region:end super-agent-sandbox
 }

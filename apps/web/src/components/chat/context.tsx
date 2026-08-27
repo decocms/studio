@@ -11,6 +11,7 @@ export {
   ChatContextProvider as ChatProvider,
   ChatPrefsProvider,
   ChatStreamValueProvider,
+  DetachedChatContext,
   ActiveTaskProvider,
   useChatTask,
   useOptionalChatTask,

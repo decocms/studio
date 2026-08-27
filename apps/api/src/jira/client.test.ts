@@ -93,6 +93,258 @@ describe("jiraBodyToText", () => {
   });
 });
 
+/**
+ * Every container that holds siblings has to say how they are separated. Only
+ * `doc` used to, so a real issue body arrived with its table cells run together
+ * ("VerificaçãoResultado…") and its list items run together — all the text
+ * present, none of it readable.
+ */
+describe("jiraBodyToText block structure", () => {
+  const para = (text: string) => ({
+    type: "paragraph",
+    content: [{ type: "text", text }],
+  });
+  const doc = (...content: unknown[]) => ({ type: "doc", content });
+
+  it("marks headings by level, clamping one it cannot read", () => {
+    expect(
+      jiraBodyToText(
+        doc(
+          {
+            type: "heading",
+            attrs: { level: 2 },
+            content: [{ type: "text", text: "Contexto" }],
+          },
+          {
+            type: "heading",
+            attrs: { level: 99 },
+            content: [{ type: "text", text: "Deep" }],
+          },
+          { type: "heading", content: [{ type: "text", text: "Level-less" }] },
+        ),
+      ),
+    ).toBe("## Contexto\n\n###### Deep\n\n# Level-less");
+  });
+
+  it("keeps a table a table instead of running its cells together", () => {
+    const cell = (text: string, type = "tableCell") => ({
+      type,
+      content: [para(text)],
+    });
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "table",
+          content: [
+            {
+              type: "tableRow",
+              content: [
+                cell("Verificação", "tableHeader"),
+                cell("Resultado", "tableHeader"),
+              ],
+            },
+            {
+              type: "tableRow",
+              content: [cell("#ld-json-product"), cell("não existe")],
+            },
+          ],
+        }),
+      ),
+    ).toBe(
+      "| Verificação | Resultado |\n| --- | --- |\n| #ld-json-product | não existe |",
+    );
+  });
+
+  /**
+   * Order matters: escaping the pipe first would turn `a\|b` into `a\\|b`,
+   * which markdown reads as one literal backslash followed by a LIVE column
+   * separator — the break the escape exists to prevent. Caught by CodeQL as an
+   * incomplete escape, and it is a real one.
+   */
+  it("escapes a backslash before the pipe it precedes", () => {
+    const cell = (text: string) => ({
+      type: "tableCell",
+      content: [para(text)],
+    });
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "table",
+          content: [
+            { type: "tableRow", content: [cell("a\\|b"), cell("c\\\\d")] },
+          ],
+        }),
+      ),
+    ).toBe("| a\\\\\\|b | c\\\\\\\\d |\n| --- | --- |");
+  });
+
+  it("pads a ragged row and neutralizes a pipe inside a cell", () => {
+    const cell = (text: string) => ({
+      type: "tableCell",
+      content: [para(text)],
+    });
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "table",
+          content: [
+            { type: "tableRow", content: [cell("a"), cell("b | c")] },
+            { type: "tableRow", content: [cell("only")] },
+          ],
+        }),
+      ),
+    ).toBe("| a | b \\| c |\n| --- | --- |\n| only |  |");
+  });
+
+  it("folds a multi-line cell onto its row rather than breaking the table", () => {
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "table",
+          content: [
+            {
+              type: "tableRow",
+              content: [
+                { type: "tableCell", content: [para("one"), para("two")] },
+                { type: "tableCell", content: [para("x")] },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toBe("| one two | x |\n| --- | --- |");
+  });
+
+  it("gives every list item its own line", () => {
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "bulletList",
+          content: [
+            { type: "listItem", content: [para("PDP: Product")] },
+            { type: "listItem", content: [para("Home: Organization")] },
+          ],
+        }),
+      ),
+    ).toBe("- PDP: Product\n- Home: Organization");
+  });
+
+  it("numbers an ordered list from where the issue starts it", () => {
+    const items = [para("first"), para("second")].map((p) => ({
+      type: "listItem",
+      content: [p],
+    }));
+    expect(jiraBodyToText(doc({ type: "orderedList", content: items }))).toBe(
+      "1. first\n2. second",
+    );
+    expect(
+      jiraBodyToText(
+        doc({ type: "orderedList", attrs: { order: 3 }, content: items }),
+      ),
+    ).toBe("3. first\n4. second");
+  });
+
+  it("renders a task list as checkboxes that keep their state", () => {
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "taskList",
+          content: [
+            {
+              type: "taskItem",
+              attrs: { state: "DONE" },
+              content: [{ type: "text", text: "shipped" }],
+            },
+            {
+              type: "taskItem",
+              attrs: { state: "TODO" },
+              content: [{ type: "text", text: "pending" }],
+            },
+          ],
+        }),
+      ),
+    ).toBe("- [x] shipped\n- [ ] pending");
+  });
+
+  it("keeps an item's second paragraph inside the item", () => {
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "bulletList",
+          content: [
+            { type: "listItem", content: [para("head"), para("tail")] },
+            { type: "listItem", content: [para("next")] },
+          ],
+        }),
+      ),
+    ).toBe("- head\n\n  tail\n- next");
+  });
+
+  it("fences a code block with the language the issue tagged it", () => {
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "codeBlock",
+          attrs: { language: "js" },
+          content: [{ type: "text", text: "var a = 1;\nreturn a;" }],
+        }),
+      ),
+    ).toBe("```js\nvar a = 1;\nreturn a;\n```");
+  });
+
+  it("quotes a panel and a blockquote, blank lines included", () => {
+    expect(
+      jiraBodyToText(
+        doc({ type: "panel", content: [para("careful"), para("really")] }),
+      ),
+    ).toBe("> careful\n>\n> really");
+  });
+
+  it("renders a rule, and the inline widgets that carry no text node", () => {
+    expect(
+      jiraBodyToText(
+        doc(
+          { type: "rule" },
+          {
+            type: "paragraph",
+            content: [
+              { type: "emoji", attrs: { text: "✅", shortName: ":check:" } },
+              { type: "text", text: " see " },
+              { type: "inlineCard", attrs: { url: "https://example.test/x" } },
+            ],
+          },
+        ),
+      ),
+    ).toBe("---\n\n✅ see https://example.test/x");
+  });
+
+  it("drops media without leaving a blank block, keeping any caption", () => {
+    expect(
+      jiraBodyToText(
+        doc(
+          para("before"),
+          {
+            type: "mediaSingle",
+            content: [{ type: "media", attrs: { id: "m1" } }],
+          },
+          para("after"),
+        ),
+      ),
+    ).toBe("before\n\nafter");
+  });
+
+  it("still contributes the text of a node type it does not know", () => {
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "somethingNew",
+          content: [{ type: "text", text: "kept" }],
+        }),
+      ),
+    ).toBe("kept");
+  });
+});
+
 describe("jiraBodyToText mentions", () => {
   const mention = (attrs: Record<string, unknown>) => ({
     type: "doc",

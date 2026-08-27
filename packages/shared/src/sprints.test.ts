@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   compareSprints,
+  currentSprintId,
   isSprintState,
   type Sprint,
   type SprintState,
@@ -79,5 +80,37 @@ describe("isSprintState", () => {
     for (const state of ["ACTIVE", "backlog", "", null, 1, undefined]) {
       expect(isSprintState(state)).toBe(false);
     }
+  });
+});
+
+describe("currentSprintId", () => {
+  it("names the running sprint", () => {
+    expect(
+      currentSprintId([sprint("closed", "closed"), sprint("now", "active")]),
+    ).toBe("now");
+  });
+
+  it("has no answer when nothing is running", () => {
+    expect(currentSprintId([])).toBe(null);
+    expect(
+      currentSprintId([sprint("next", "future"), sprint("old", "closed")]),
+    ).toBe(null);
+  });
+
+  /** A board can run parallel sprints; reading order breaks the tie so the
+   *  board opens on the same one every time. */
+  it("picks deterministically when several are running", () => {
+    const both = [
+      sprint("b", "active", "2026-02-01T00:00:00Z"),
+      sprint("a", "active", "2026-01-01T00:00:00Z"),
+    ];
+    expect(currentSprintId(both)).toBe("a");
+    expect(currentSprintId([...both].reverse())).toBe("a");
+  });
+
+  it("does not reorder the caller's list", () => {
+    const list = [sprint("b", "future"), sprint("a", "active")];
+    currentSprintId(list);
+    expect(list.map((s) => s.id)).toEqual(["b", "a"]);
   });
 });

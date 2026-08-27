@@ -1,5 +1,6 @@
 import type { Metadata } from "./chat.ts";
 import type { ThreadRuntime } from "./thread/session-runtime.ts";
+import type { ReviewerKind } from "./task-board.ts";
 
 export const THREAD_STATUSES = [
   "in_progress",
@@ -171,6 +172,9 @@ export interface TaskBoardItem {
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`). */
   keySeq: number | null;
+  /** The key this card's issue wears in the tracker (`OS-333`), for a card
+   *  synced from one — what `taskKey` shows. Null for a card Studio owns. */
+  jiraIssueKey: string | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
@@ -180,7 +184,7 @@ export interface TaskBoardItem {
    *  that have not decided are absent. Mirrors `TaskBoardItemReviewVerdict` in
    *  `apps/api/src/storage/types.ts`. */
   reviewVerdicts: {
-    reviewer: "qa" | "code_review";
+    reviewer: ReviewerKind;
     verdict: "approved" | "changes_requested";
     verified: boolean;
   }[];

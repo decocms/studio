@@ -4,17 +4,22 @@ import {
   type FieldPath,
   type FieldValues,
 } from "react-hook-form";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@decocms/ui/components/radio-group.tsx";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
-// The publish-policy radio group (`metadata.publishPolicy`): how a code agent's
-// CMS/code changes reach the live site — direct publish vs. PR review. Extracted
-// from the settings view so it can compose inside the CMS section. Generic over
-// the parent schema, mirroring the other metadata field editors. Code-agent only
-// — the caller gates on a connected GitHub repo.
+/**
+ * The publish-policy select (`metadata.publishPolicy`): how a code agent's
+ * CMS/code changes reach the live site — direct publish vs. PR review. Shares
+ * its shape with ContentEditingField in the same section. Code-agent only —
+ * the caller gates on a connected GitHub repo.
+ */
 export interface PublishPolicyFieldProps<T extends FieldValues> {
   control: Control<T>;
   /** Settings auto-save on change — persist immediately (blur-equivalent). */
@@ -49,38 +54,49 @@ export function PublishPolicyField<T extends FieldValues>({
     <Controller
       name={"metadata.publishPolicy" as FieldPath<T>}
       control={control}
-      render={({ field }) => (
-        <RadioGroup
-          value={(field.value as string | null) ?? "smart"}
-          onValueChange={(value) => {
-            field.onChange(value);
-            onCommit();
-          }}
-          className="gap-4"
-        >
-          {options.map((option) => (
-            <label
-              key={option.value}
-              htmlFor={`publish-policy-${option.value}`}
-              className="flex cursor-pointer items-start gap-3"
+      render={({ field }) => {
+        const policy = (field.value as string | null) ?? "smart";
+        return (
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <Label
+                htmlFor="publish-policy"
+                className="font-normal text-foreground"
+              >
+                {t("virtualMcp.virtualMcp.publishing")}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t("virtualMcp.virtualMcp.publishingDescription")}
+              </p>
+            </div>
+            <Select
+              value={policy}
+              onValueChange={(value) => {
+                field.onChange(value);
+                onCommit();
+              }}
             >
-              <RadioGroupItem
-                id={`publish-policy-${option.value}`}
-                value={option.value}
-                className="mt-0.5"
-              />
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground">
-                  {option.label}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {option.description}
-                </span>
-              </div>
-            </label>
-          ))}
-        </RadioGroup>
-      )}
+              <SelectTrigger
+                id="publish-policy"
+                className="w-44 shrink-0 text-sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-w-80">
+                {options.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    description={option.description}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      }}
     />
   );
 }

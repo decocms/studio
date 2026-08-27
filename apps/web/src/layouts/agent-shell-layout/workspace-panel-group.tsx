@@ -1,18 +1,9 @@
 /**
  * Persistent desktop workspace: SidePanel | MainPanel.
  *
- * Each panel owns a 48px header (see PanelHeader).
- *
- * Classic layout: the headers sit above the cards and the buttons follow their
- * panel — the Chat toggle lives in the chat header while chat is open and moves
- * into the main header when chat is closed; the main view tabs + publish live
- * in the main header while it's open and move into the chat header when the
- * main panel is closed. So a control never vanishes just because its home panel
- * is hidden.
- *
- * First-class navigation (`useNavV2`): each panel is one full-height card that
- * owns its header, and a PanelCollapseToggle pair brackets the workspace — so
- * controls stay with their own panel instead of relocating.
+ * Each panel is one full-height card that owns its own 48px header (see
+ * PanelHeader), and a PanelCollapseToggle pair brackets the workspace — so
+ * controls stay with their own panel instead of relocating when a panel hides.
  */
 
 import {
@@ -42,16 +33,11 @@ import { headerLayout } from "./header-layout";
 import { VirtualMcpHeaderInfo } from "@/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/components/chat/context";
-import {
-  AgentSwitcherCrumb,
-  NewChatCrumb,
-} from "@/components/header/shell-breadcrumb";
-import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
+import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
-import { useNavV2 } from "@/hooks/use-organization-settings";
 import { SidePanel } from "./side-panel";
-import { ChatToggle, PanelCollapseToggle } from "./toggle-buttons";
+import { PanelCollapseToggle } from "./toggle-buttons";
 import {
   MainPanelHeaderEndSlot,
   MainPanelHeaderProvider,
@@ -63,12 +49,8 @@ const SIDE_PANEL_ID = "workspace-side-panel";
 const MAIN_PANEL_ID = "workspace-main-panel";
 
 /**
- * One panel column: a rounded card, optionally preceded by its header.
- *
- * `headerInside` is the first-class navigation's shape — the card runs the full
- * height of the column and owns its own top bar, so both panels read as one
- * identical surface. Otherwise the header sits ABOVE the card on the sidebar
- * background and each column reads as a top bar + a card below it.
+ * One panel column: a rounded card that runs the full height of the column and
+ * owns its own top bar, so both panels read as one identical surface.
  *
  * translateZ(0) promotes the card to its own layer so the Preview iframe clips
  * to the rounded corners (iframes ignore border-radius clipping otherwise,
@@ -78,31 +60,18 @@ function PanelCard({
   children,
   header,
   testId,
-  headerInside,
 }: PropsWithChildren<{
   header?: ReactNode;
   testId: string;
-  headerInside?: boolean;
 }>) {
   const card =
     "min-h-0 flex-1 overflow-hidden rounded-[0.75rem] bg-background card-shadow [transform:translateZ(0)]";
 
-  if (headerInside) {
-    return (
-      <div className="flex h-full min-h-0 flex-col p-0.5">
-        <div data-testid={testId} className={cn(card, "flex flex-col")}>
-          {header}
-          <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-full min-h-0 flex-col p-0.5 pt-0.25">
-      {header}
-      <div data-testid={testId} className={card}>
-        {children}
+    <div className="flex h-full min-h-0 flex-col p-0.5">
+      <div data-testid={testId} className={cn(card, "flex flex-col")}>
+        {header}
+        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       </div>
     </div>
   );
@@ -172,27 +141,9 @@ export function WorkspacePanelGroup({
   const [rightWidth, rightRef] = useElementWidth();
   const { maxTabs } = headerLayout(headerWidth, rightWidth);
 
-  // The agent switcher + new-chat action live in the nav sidebar while it's
-  // expanded. When the sidebar is collapsed it has no room for them, so we
-  // surface them in the panel header: the agent switcher sits by the Chat
-  // button (left), the new-chat action anchors to the right.
-  const { state: sidebarState } = useSidebar();
-  const sidebarCollapsed = sidebarState === "collapsed";
-  /** The first-class navigation is single-teammate: no agent is named or picked
-   *  in the header. The thread list lives here instead of in the sidebar, so
-   *  the threads menu and new-chat action show whatever the sidebar's state. */
-  const navV2 = useNavV2();
-  const agentCrumb = sidebarCollapsed && !navV2 ? <AgentSwitcherCrumb /> : null;
-  const newChatCrumb = sidebarCollapsed || navV2 ? <NewChatCrumb /> : null;
-  const threadsMenu = navV2 ? <ThreadsMenu /> : null;
-
-  /**
-   * The main panel's controls (view tabs + branch + publish) belong to the main
-   * panel. Classically they relocate into the chat header while it is closed,
-   * so the views stay reachable; under the first-class navigation the chat
-   * header's own right-panel toggle reopens it, so they simply go away.
-   */
-  const mainControlsInChat = chatOpen && !mainOpen && !navV2;
+  // The thread list and new-chat action live in the chat panel header.
+  const newChatCrumb = <NewChatCrumb />;
+  const threadsMenu = <ThreadsMenu />;
 
   const publishActions = <VirtualMcpHeaderInfo virtualMcp={entity} />;
 
@@ -217,29 +168,10 @@ export function WorkspacePanelGroup({
   const chatHeader = (
     <PanelHeader>
       {threadsMenu}
-      {agentCrumb}
-      {/* The collapse pair below already owns hide/show for both panels. */}
-      {!navV2 && (
-        <ChatToggle
-          sidePanel={sidePanel}
-          toggleSidePanel={toggleSidePanel}
-          disableActiveSidePanelToggle={!mainOpen}
-        />
-      )}
-      {mainControlsInChat && (
-        <MainControls
-          virtualMcpId={virtualMcpId}
-          taskId={taskId}
-          disableActiveMainToggle
-        />
-      )}
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        {mainControlsInChat && branchSelector}
-        {mainControlsInChat && publishActions}
         {newChatCrumb}
-        {/* The main panel's own toggle lives in ITS header; it only relocates
-            here once that header is gone. */}
-        {navV2 && !mainOpen && (
+        {/* The main panel's own toggle relocates here once its header is gone. */}
+        {!mainOpen && (
           <PanelCollapseToggle
             side="right"
             open={mainOpen}
@@ -263,22 +195,12 @@ export function WorkspacePanelGroup({
           runs optimistic, THIS group yields (its trailing tabs clip) so the
           right actions on the far side are never pushed off-screen. */}
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
-        {!chatOpen && agentCrumb}
-        {navV2 ? (
-          <PanelCollapseToggle
-            side="left"
-            open={chatOpen}
-            disabled={!mainOpen}
-            onToggle={() => toggleSidePanel("chat")}
-          />
-        ) : (
-          !chatOpen && (
-            <ChatToggle
-              sidePanel={sidePanel}
-              toggleSidePanel={toggleSidePanel}
-            />
-          )
-        )}
+        <PanelCollapseToggle
+          side="left"
+          open={chatOpen}
+          disabled={!mainOpen}
+          onToggle={() => toggleSidePanel("chat")}
+        />
         <MainControls
           virtualMcpId={virtualMcpId}
           taskId={taskId}
@@ -326,14 +248,12 @@ export function WorkspacePanelGroup({
         >
           <MainPanelHeaderEndSlot />
           {publishActions}
-          {navV2 && (
-            <PanelCollapseToggle
-              side="right"
-              open={mainOpen}
-              disabled={!chatOpen}
-              onToggle={toggleMain}
-            />
-          )}
+          <PanelCollapseToggle
+            side="right"
+            open={mainOpen}
+            disabled={!chatOpen}
+            onToggle={toggleMain}
+          />
         </div>
       </div>
     </PanelHeader>
@@ -347,9 +267,8 @@ export function WorkspacePanelGroup({
         key={`${virtualMcpId}-${taskId}`}
         orientation="horizontal"
         className={cn(
-          "flex-1 min-h-0 pb-1 pr-1 pl-0 [&>[data-workspace-panel-open]]:!min-w-[320px]",
           // Full-height cards need the same room above as below.
-          navV2 ? "pt-1" : "pt-0",
+          "flex-1 min-h-0 pt-1 pb-1 pr-1 pl-0 [&>[data-workspace-panel-open]]:!min-w-[320px]",
         )}
         style={{ overflow: "visible" }}
         onLayoutChanged={(layout, { isUserInteraction }) => {
@@ -375,11 +294,7 @@ export function WorkspacePanelGroup({
           data-workspace-panel-open={sidePanel !== null ? "" : undefined}
           className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <PanelCard
-            testId="side-panel"
-            headerInside={navV2}
-            header={chatOpen ? chatHeader : null}
-          >
+          <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
             {chatOpen && <SidePanel chatContent={chatContent} />}
           </PanelCard>
         </ResizablePanel>
@@ -395,11 +310,7 @@ export function WorkspacePanelGroup({
           data-workspace-panel-open={mainOpen ? "" : undefined}
           className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <PanelCard
-            testId="main-panel"
-            headerInside={navV2}
-            header={mainOpen ? mainHeader : null}
-          >
+          <PanelCard testId="main-panel" header={mainOpen ? mainHeader : null}>
             <MainPanelWithDrawer taskId={taskId} virtualMcpId={virtualMcpId} />
           </PanelCard>
         </ResizablePanel>

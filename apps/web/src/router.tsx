@@ -134,10 +134,17 @@ const adminOrgsRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/admin/orgs.tsx")),
 });
 
+const adminPromptsRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/prompts",
+  component: lazyRouteComponent(() => import("./routes/admin/prompts.tsx")),
+});
+
 const adminLayoutWithChildren = adminLayout.addChildren([
   adminIndexRoute,
   adminUsersRoute,
   adminOrgsRoute,
+  adminPromptsRoute,
 ]);
 
 // ============================================
@@ -321,7 +328,7 @@ const unifiedChatSearchSchema = z.object({
   id: z.string().optional(),
   toolName: z.string().optional(),
   /** Deep-links a task board card's modal open inside the `main=board`
-   *  overlay (set by a linked chat's "open in board" button). */
+   *  overlay. */
   task: z.string().optional(),
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),

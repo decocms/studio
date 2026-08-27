@@ -83,6 +83,19 @@ export type EnsureOrganizationResult =
       createdVia: string;
     }
   | {
+      /**
+       * The user had one or more pending invitations addressed to their email
+       * and was placed into those orgs at signup. Takes precedence over every
+       * domain rule below — an explicit invitation is a stronger signal of
+       * intent than an email domain ever is.
+       */
+      status: "joined_via_invitation";
+      organization: EnsuredOrganization;
+      organizations: EnsuredOrganization[];
+      domain: string | null;
+      createdVia: string;
+    }
+  | {
       status: "ambiguous";
       domain: string;
       organizations: DomainOrganizationCandidate[];
@@ -155,6 +168,18 @@ async function ensureUserOrganizationInTransaction(options: {
 }): Promise<EnsureOrganizationResult> {
   const { db, authApi, user, allowCreate, createdVia, domain } = options;
 
+  // Only pre-authorized (bulk-migrated) invitations; see migration 188.
+  const invited = await acceptPendingInvitations(db, authApi, user);
+  if (invited.length > 0) {
+    return {
+      status: "joined_via_invitation",
+      organization: invited[0]!,
+      organizations: invited,
+      domain,
+      createdVia,
+    };
+  }
+
   if (isVerifiedCorporateUser(user) && domain) {
     const domainStorage = new OrganizationDomainStorage(db);
     const domainRecords = await domainStorage.getAllByDomain(domain);
@@ -165,10 +190,7 @@ async function ensureUserOrganizationInTransaction(options: {
 
     if (candidates.length === 1 && candidates[0]?.joinMode === "auto") {
       const organization = candidates[0]!;
-      // An explicit invitation to this org already governs membership. Skip the
-      // domain auto-join so accepting the invitation is the single membership
-      // path — otherwise the user gets a member row here AND a second one when
-      // acceptInvitation unconditionally creates a member, showing up twice.
+      // Accepting it is the single membership path; joining here too duplicates.
       if (await hasPendingInvitationToOrg(db, user.email, organization.id)) {
         return { status: "skipped", reason: "pending-invitation", domain };
       }
@@ -408,8 +430,6 @@ async function hasPendingInvitationToOrg(
   email: string,
   organizationId: string,
 ): Promise<boolean> {
-  // The invitation table is managed by Better Auth and isn't in the Kysely
-  // Database type, so query it with raw SQL (camelCase columns need quoting).
   const result = await sql<{ exists: boolean }>`
     select exists(
       select 1 from invitation
@@ -422,14 +442,74 @@ async function hasPendingInvitationToOrg(
   return result.rows[0]?.exists ?? false;
 }
 
+/**
+ * Claim every auto-accept invitation for this email; oldest first becomes active.
+ *
+ * Member row is written before the invitation is marked accepted, because
+ * `addMember` runs outside `db`'s transaction: a rollback then leaves a
+ * membership with a pending invitation, which the next call re-accepts.
+ *
+ * Raw SQL because Better Auth owns `invitation` and it is not in the Kysely types.
+ */
+async function acceptPendingInvitations(
+  db: DatabaseExecutor,
+  authApi: AuthOrganizationApi,
+  user: AssuredUser,
+): Promise<EnsuredOrganization[]> {
+  const pending = await sql<{
+    invitationId: string;
+    role: string | null;
+    id: string;
+    name: string;
+    slug: string;
+    logo: string | null;
+    metadata: unknown;
+  }>`
+    select i.id as "invitationId", i.role,
+           o.id, o.name, o.slug, o.logo, o.metadata
+    from invitation i
+    join organization o on o.id = i."organizationId"
+    where lower(i.email) = lower(${user.email})
+      and i.status = 'pending'
+      and i."autoAccept" = true
+      and i."expiresAt" > now()
+    order by i."createdAt" asc
+  `.execute(db);
+
+  const joined: EnsuredOrganization[] = [];
+
+  for (const row of pending.rows) {
+    if (isOrgArchived(row)) {
+      continue;
+    }
+
+    const { invitationId, role, metadata: _metadata, ...organization } = row;
+    await addMemberIdempotent(
+      authApi,
+      user.id,
+      organization.id,
+      role ?? "user",
+    );
+
+    await sql`
+      update invitation set status = 'accepted' where id = ${invitationId}
+    `.execute(db);
+
+    joined.push(organization);
+  }
+
+  return joined;
+}
+
 async function addMemberIdempotent(
   authApi: AuthOrganizationApi,
   userId: string,
   organizationId: string,
+  role = "user",
 ): Promise<void> {
   try {
     await authApi.addMember({
-      body: { userId, role: "user", organizationId },
+      body: { userId, role, organizationId },
     });
   } catch (error) {
     if (!isAlreadyMemberError(error)) {

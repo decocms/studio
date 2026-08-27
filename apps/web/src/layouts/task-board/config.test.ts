@@ -7,8 +7,11 @@ import {
   formatSprintDates,
   insertSortOrder,
   isTaskHandedToHuman,
+  laneVisibility,
+  moveTargets,
   runSortOrders,
   statusIconClassName,
+  STATUSES,
 } from "./config";
 import type { TaskBoardItem } from "./config";
 
@@ -28,6 +31,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     dueDate: null,
     sortOrder,
     keySeq: 1,
+    jiraIssueKey: null,
     retryAttempts: 0,
     threads: [],
     tags: [],
@@ -273,5 +277,93 @@ describe("cardNeedsAttention", () => {
   test("an owner makes no difference either way", () => {
     expect(cardNeedsAttention(inReview("user-1"))).toBe(false);
     expect(cardNeedsAttention(asking(inReview("user-1")))).toBe(true);
+  });
+});
+
+describe("moveTargets", () => {
+  test("offers no delivery lane to a board that doesn't run them", () => {
+    expect(moveTargets(false)).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+      "archived",
+    ]);
+  });
+
+  test("offers every lane once they're on", () => {
+    expect(moveTargets(true)).toEqual(STATUSES);
+  });
+});
+
+describe("laneVisibility", () => {
+  const shown: string[] = [];
+
+  test("draws the delivery lanes as columns when they're on", () => {
+    const { lanes, hidden } = laneVisibility({
+      deliveryEnabled: true,
+      shownLanes: shown,
+      occupied: [],
+    });
+    expect(lanes).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "approved",
+      "merged",
+      "post_deploy_validation",
+      "done",
+      // archived is hidden by default
+    ]);
+    expect(hidden).toEqual(["archived"]);
+  });
+
+  test("an empty delivery lane is absent, not hidden, when they're off", () => {
+    const { lanes, hidden } = laneVisibility({
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: [],
+    });
+    expect(lanes).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+    ]);
+    expect(hidden).toEqual(["archived"]);
+  });
+
+  // Lanes off with work still in one: the card must stay reachable.
+  test("a card left in a delivery lane keeps the lane in the drawer", () => {
+    const { lanes, hidden, hideable } = laneVisibility({
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: ["merged"],
+    });
+    expect(lanes).not.toContain("merged");
+    expect(hidden).toEqual(["merged", "archived"]);
+    expect(hideable).toContain("merged");
+  });
+
+  test("and showing it puts the column back", () => {
+    const { lanes, hidden } = laneVisibility({
+      deliveryEnabled: false,
+      shownLanes: ["merged"],
+      occupied: ["merged"],
+    });
+    expect(lanes).toContain("merged");
+    expect(hidden).toEqual(["archived"]);
+  });
+
+  test("a lane removed from the product can linger in the preference", () => {
+    const { lanes } = laneVisibility({
+      deliveryEnabled: false,
+      shownLanes: ["a_lane_that_no_longer_exists"],
+      occupied: [],
+    });
+    expect(lanes).not.toContain("a_lane_that_no_longer_exists");
   });
 });

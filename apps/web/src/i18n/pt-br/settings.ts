@@ -59,7 +59,13 @@ export const settings = {
   "settings.jira.enableRequirements":
     "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
   "settings.jira.lastSynced": "Última sincronização {ago}",
-  "settings.jira.waitingFirstSync": "Aguardando a primeira sincronização",
+  "settings.jira.waitingFirstSync": "Aguardando a próxima sincronização",
+  "settings.jira.resyncAll": "Resincronizar tudo",
+  "settings.jira.resyncAllTitle": "Reler o board inteiro?",
+  "settings.jira.resyncAllQueued":
+    "Releitura solicitada — a próxima sincronização vai começá-la.",
+  "settings.jira.resyncAllDescription":
+    'O "Sincronizar agora" só puxa issues alteradas desde a última execução. Esta opção marca todas as issues do board para serem relidas — é o que você quer depois de mudar o mapeamento de status, ou quando os cards estão errados. Ela começa na próxima sincronização agendada, não agora, pode se estender por várias execuções num board grande, e nunca delega um card para um agente.',
   "settings.jira.syncNow": "Sincronizar agora",
   "settings.jira.syncing": "Sincronizando…",
   "settings.jira.syncDone":
@@ -453,14 +459,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.navigation.title": "Navegação",
-  "settings.navigation.description":
-    "Como esta organização circula pelo Studio.",
-  "settings.navigation.updateError":
-    "Não foi possível atualizar as configurações de navegação",
-  "settings.navigation.navV2Title": "Navegação de primeira classe",
-  "settings.navigation.navV2Description":
-    "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações novas e em organizações de relatório.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":
@@ -475,20 +473,20 @@ export const settings = {
     "N\u00e3o foi poss\u00edvel atualizar o agente principal",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "Revisores autom\u00e1ticos rodam no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ambos aparecem como sess\u00f5es no card da tarefa.",
-  "settings.review.qaAgentTitle": "Ativar QA Agent",
-  "settings.review.qaAgentDescription":
-    "Garante que a tarefa realmente resolveu o problema \u2014 testa a feature, n\u00e3o s\u00f3 o diff.",
-  "settings.review.codeReviewerTitle": "Ativar Code Reviewer",
-  "settings.review.codeReviewerDescription":
-    "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
+    "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
+  "settings.review.reviewerTitle": "Ativar Reviewer",
+  "settings.review.reviewerDescription":
+    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para voc\u00ea quando n\u00e3o consegue resolver algo.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
-    "O QA Agent e o Code Reviewer leem um diff e chegam a um veredito, então rodam em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
+    "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
+  "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
+  "settings.review.deliveryLanesDescription":
+    "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
   "settings.review.autoAssignReportTasksTitle":
     "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":

@@ -230,6 +230,7 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_BOARDS_LIST,
   JiraTools.JIRA_BOARD_COLUMNS_LIST,
   JiraTools.JIRA_SYNC_RUN,
+  JiraTools.JIRA_RESYNC_REQUEST,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

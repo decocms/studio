@@ -1,4 +1,5 @@
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
+import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
@@ -311,10 +312,16 @@ export function LayoutTabContent({
       value: "preview",
       label: t("virtualMcp.layoutTabContent.preview"),
     });
-    defaultMainOptions.push({
-      value: "content",
-      label: t("virtualMcp.layoutTabContent.content"),
-    });
+    // Content is only offerable while the agent has a CMS — `off` takes that
+    // tab off the bar, so landing on it is not a layout anyone can choose.
+    // Switching the mode to `off` rewrites an agent already set to it
+    // (`withCmsMode`), so the stored value can't outlive the option.
+    if (resolveCmsMode(layoutMeta) !== "off") {
+      defaultMainOptions.push({
+        value: "content",
+        label: t("virtualMcp.layoutTabContent.content"),
+      });
+    }
   }
   for (const pv of pinnedViews) {
     defaultMainOptions.push({

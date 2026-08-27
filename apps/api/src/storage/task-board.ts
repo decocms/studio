@@ -21,7 +21,7 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { DEFAULT_TASK_TYPE } from "@decocms/shared/task-board";
+import { DEFAULT_TASK_TYPE, DELIVERY_LANES } from "@decocms/shared/task-board";
 import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
@@ -47,6 +47,10 @@ export interface TaskBoardComment {
   taskBoardItemId: string;
   parentId: string | null;
   authorId: string;
+  /** The agent run that wrote it; null for a human's comment. It is what tells
+   *  one agent's comments from another's — every agent comment shares the same
+   *  synthetic author id. */
+  threadId: string | null;
   body: string;
   resolved: boolean;
   createdAt: string;
@@ -66,6 +70,7 @@ function commentFromDbRow(row: {
   task_board_item_id: string;
   parent_id: string | null;
   author_id: string;
+  thread_id: string | null;
   body: string;
   resolved: boolean;
   created_at: Date | string;
@@ -77,6 +82,7 @@ function commentFromDbRow(row: {
     taskBoardItemId: row.task_board_item_id,
     parentId: row.parent_id,
     authorId: row.author_id,
+    threadId: row.thread_id,
     body: row.body,
     resolved: row.resolved,
     createdAt: iso(row.created_at),
@@ -205,6 +211,14 @@ function newestIso(
     lastProgressAt === null ? Number.NEGATIVE_INFINITY : ms(lastProgressAt);
   return new Date(Math.max(a, b)).toISOString();
 }
+
+/** Lanes a merged PR can leave a card on, and therefore where the merged-tag
+ *  sweep has to look. `archived` is deliberately absent: a card that far along
+ *  is history, and tagging it moves nothing. */
+const TAGGABLE_MERGED_STATUSES: TaskBoardItemStatus[] = [
+  ...DELIVERY_LANES,
+  "done",
+];
 
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
@@ -746,7 +760,11 @@ export class TaskBoardStorage {
     const rows = await this.db
       .selectFrom("task_board_items as i")
       .select(["i.id", "i.organization_id as organizationId"])
-      .where("i.status", "=", "done")
+      // Not just Done: with the delivery lanes on a merge lands the card on
+      // `merged`, and gating on Done alone would mean no card is ever tagged
+      // until a human drags it the rest of the way — days after the tag was
+      // worth seeing, which is the whole reason this sweep is not the archive's.
+      .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
       .where((eb) =>
         eb.exists(
@@ -1428,29 +1446,7 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Atomically claim a task for a reviewer's `request_changes` bounce: move it
-   * from In Review to In Progress ONLY if it's still In Review AND still
-   * assigned to the Super Agent, returning the updated item to the single
-   * winner and null to everyone else. QA and Code Reviewer run concurrently,
-   * and either can independently decide changes are needed — without this
-   * fence both would bounce the task and each enqueue its own Super Agent run
-   * on the SAME PR, racing to push conflicting commits. The assignee re-check
-   * closes a second race: a human can reassign the task away from the Super
-   * Agent while a reviewer run is still in flight, and that reviewer's later
-   * `request_changes` must not yank the task back and re-enqueue the Super
-   * Agent out from under the new owner. Same atomic-conditional-UPDATE pattern
-   * as `claimConflictResolution`.
-   */
-  claimReviewChangesBounce(
-    id: string,
-    organizationId: string,
-    by: string,
-  ): Promise<TaskBoardItem | null> {
-    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
-  }
-
-  /**
-   * Shared fence behind both claim methods above: move a task from In Review
+   * The fence behind `claimConflictResolution`: move a task from In Review
    * to In Progress ONLY if it's still In Review AND still assigned to the
    * Super Agent, returning the updated item to the single winner and null to
    * everyone else. A single conditional UPDATE is atomic under READ
@@ -1565,6 +1561,7 @@ export class TaskBoardStorage {
     await this.inTransaction(async (db) => {
       await this.attachThreads(db, items, organizationId);
       await this.attachTags(db, items);
+      await this.attachJiraKeys(db, items);
       await this.attachReviewVerdicts(db, items);
     });
   }
@@ -1691,6 +1688,32 @@ export class TaskBoardStorage {
 
   /** Populate each item's `tags`, name ascending. One batched query. Items are
    *  already org-scoped by the caller, so the join needs no org filter. */
+  /**
+   * Populate each item's `jiraIssueKey` — the key the issue wears in the
+   * tracker, which is what people say out loud about a synced card.
+   *
+   * One batched query, not a join on the item read: the link is one-to-one but
+   * lives in its own table, and every other ref on a card is attached here for
+   * the same reason. Cards Studio owns have no row and stay null.
+   */
+  private async attachJiraKeys(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_item_jira_links")
+      .select(["item_id as itemId", "jira_issue_key as jiraIssueKey"])
+      .where("item_id", "in", ids)
+      .execute();
+
+    const byItem = new Map(rows.map((row) => [row.itemId, row.jiraIssueKey]));
+    for (const item of items) {
+      item.jiraIssueKey = byItem.get(item.id) ?? null;
+    }
+  }
+
   private async attachTags(
     db: Kysely<Database>,
     items: TaskBoardItem[],
@@ -1974,7 +1997,9 @@ export class TaskBoardStorage {
   }
 
   /** A null actor is a machine path; a `reason` marks a move that meant something
-   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`). */
+   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`).
+   *  `merged` counts as leaving Done — with the delivery lanes on, that is
+   *  where a merged PR lands. */
   async hasHumanRejectedDone(
     taskBoardItemId: string,
     organizationId: string,
@@ -1991,7 +2016,7 @@ export class TaskBoardStorage {
       .where("a.task_board_item_id", "=", taskBoardItemId)
       .where("a.action", "=", "status_changed")
       .where(byMember, "is not", null)
-      .where(laneLeft, "=", "done")
+      .where(laneLeft, "in", ["done", "merged"])
       .where(moveReason, "is", null)
       .limit(1)
       .executeTakeFirst();
@@ -2023,6 +2048,8 @@ export class TaskBoardStorage {
     organizationId: string;
     parentId?: string | null;
     authorId: string;
+    /** The agent run writing it, when one is. */
+    threadId?: string | null;
     body: string;
   }): Promise<TaskBoardComment | null> {
     const task = await this.db
@@ -2054,6 +2081,7 @@ export class TaskBoardStorage {
         task_board_item_id: params.taskBoardItemId,
         parent_id: parentId,
         author_id: params.authorId,
+        thread_id: params.threadId ?? null,
         body: params.body,
       })
       .returningAll()
@@ -2189,7 +2217,8 @@ export class TaskBoardStorage {
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
-      // Populated by attachRefs for reads; empty for a fresh create.
+      // Populated by attachRefs for reads; null/empty for a fresh create.
+      jiraIssueKey: null,
       threads: [],
       tags: [],
       reviewVerdicts: [],

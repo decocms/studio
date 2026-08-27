@@ -3,6 +3,7 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
   brokenStudioMcp,
   buildOptions,
+  isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
   promptFromUserMessage,
@@ -173,6 +174,31 @@ describe("buildOptions", () => {
     expect(prompt.type).toBe("preset");
     expect(prompt.preset).toBe("claude_code");
     expect(prompt.append).toStartWith("Be terse.");
+  });
+
+  test("carries the turn cap and tells the model its budget", () => {
+    const prev = process.env.CLAUDE_CODE_MAX_TURNS;
+    try {
+      process.env.CLAUDE_CODE_MAX_TURNS = "60";
+      const capped = options({ agent: { id: "a", instructions: "Review." } });
+      expect(capped.maxTurns).toBe(60);
+      expect((capped.systemPrompt as { append: string }).append).toContain(
+        "at most 60 turns",
+      );
+
+      // A cap the model cannot see is a cap it walks into.
+      for (const bad of ["", "0", "-1", "lots", "1.5"]) {
+        process.env.CLAUDE_CODE_MAX_TURNS = bad;
+        const uncapped = options({ agent: { id: "a", instructions: "Go." } });
+        expect(uncapped.maxTurns).toBeUndefined();
+        expect(
+          (uncapped.systemPrompt as { append: string }).append,
+        ).not.toContain("turns");
+      }
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CODE_MAX_TURNS;
+      else process.env.CLAUDE_CODE_MAX_TURNS = prev;
+    }
   });
 
   test("subtracts the dispatch's disallowed tools — that's what makes a reviewer read-only", () => {
@@ -364,5 +390,40 @@ describe("mcpServersFor", () => {
         ),
       ),
     ).toEqual(["linear"]);
+  });
+});
+
+describe("isTransientProviderRejection", () => {
+  test("matches OpenRouter's upstream relay, whatever the status", () => {
+    expect(
+      isTransientProviderRejection("API Error: 400 Provider returned error"),
+    ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 502 Provider returned error"),
+    ).toBe(true);
+  });
+
+  test("a 400 that describes the request stays fatal", () => {
+    expect(
+      isTransientProviderRejection(
+        "API Error: 400 messages.0: text content blocks must be non-empty",
+      ),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection(
+        "API Error: 400 max_tokens: must be less than or equal to 64000",
+      ),
+    ).toBe(false);
+  });
+
+  test("does not swallow the credit and session errors that have own paths", () => {
+    expect(
+      isTransientProviderRejection(
+        "API Error: 402 requires more credits, requested up to 64000 tokens",
+      ),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("Session ID abc is already in use"),
+    ).toBe(false);
   });
 });

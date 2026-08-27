@@ -4,11 +4,14 @@ export const taskBoard = {
   "taskBoard.config.priorityMedium": "Medium",
   "taskBoard.config.priorityNone": "No priority",
   "taskBoard.config.priorityUrgent": "Urgent",
+  "taskBoard.config.statusApproved": "Approved",
   "taskBoard.config.statusArchived": "Archived",
   "taskBoard.config.statusBacklog": "Backlog",
+  "taskBoard.config.statusMerged": "Merged",
   "taskBoard.config.statusDone": "Done",
   "taskBoard.config.statusInProgress": "In Progress",
   "taskBoard.config.statusInReview": "In Review",
+  "taskBoard.config.statusPostDeployValidation": "Post-deploy Validation",
   "taskBoard.config.statusTodo": "To Do",
   "taskBoard.taskBoard.assignedToSuperAgent": "Assigned to Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
@@ -144,7 +147,8 @@ export const taskBoard = {
     "Describe a task for an agent...",
   "taskBoard.taskDialog.dueDateLabel": "Due date",
   "taskBoard.taskDialog.sprintCurrent": "current",
-  "taskBoard.taskDialog.editTaskTitle": "Edit task",
+  "taskBoard.taskDetail.breadcrumbTasks": "Tasks",
+  "taskBoard.taskDetail.breadcrumbTask": "Task",
   "taskBoard.taskDialog.membersGroupHeading": "Members",
   "taskBoard.taskDialog.newChatButton": "New chat",
   "taskBoard.taskDialog.newTaskTitle": "New task",
@@ -168,10 +172,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.resolveConflictSuccess":
     "Agent dispatched to resolve the conflicts",
   "taskBoard.taskDialog.resolveConflictError": "Couldn't start the agent",
-  "taskBoard.taskDialog.costRunCountSingular": "in {runs} run",
-  "taskBoard.taskDialog.costRunCountPlural": "in {runs} runs",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
-  "taskBoard.taskDialog.costOnSubscription": "· on your Claude plan",
   "taskBoard.taskDialog.costTooltipSingular":
     "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
   "taskBoard.taskDialog.costTooltipPlural":
@@ -206,6 +207,8 @@ export const taskBoard = {
   "taskBoard.taskDialog.setPriorityButton": "Set priority",
   "taskBoard.taskDialog.someoneLabel": "someone",
   "taskBoard.taskDialog.startedByLabel": "started by",
+  "taskBoard.taskDialog.reviewerLabel": "Reviewer",
+  // The two-reviewer era's names, still on older cards' timelines.
   "taskBoard.taskDialog.qaAgentLabel": "QA Agent",
   "taskBoard.taskDialog.codeReviewerLabel": "Code Reviewer",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",

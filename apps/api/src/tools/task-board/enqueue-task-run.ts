@@ -158,6 +158,11 @@ export async function enqueueAgentRunForTask(
     id: crypto.randomUUID(),
     role: "user" as const,
     parts: [{ type: "text" as const, text: opts.prompt }],
+    // The chat POST path gets this from the browser; a dispatched run has no
+    // browser, so stamp it here. It rides the mirrored `data-user-message`
+    // chunk, which is otherwise timestamp-less — a viewer replaying the stream
+    // then sorts this turn by arrival time, i.e. after the reply it triggered.
+    metadata: { created_at: new Date().toISOString() },
   };
 
   // Persist the user turn BEFORE dispatch (as POST /messages does) so it lands

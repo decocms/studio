@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type {
   TaskBoardActivityAction,
   TaskBoardItem,
@@ -16,6 +17,7 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
+import { isDeliveryLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
@@ -140,8 +142,13 @@ export function delegatesToSuperAgent(
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
  *  lands here it's out of the review loop, same as "done" — `archived` skips
- *  review just as effectively as completing it does. */
+ *  review just as effectively as completing it does. The delivery lanes count
+ *  too: they sit past In Review, so a run setting `merged` would escape this
+ *  guard and drop the card out of `listItemsPendingReview`. */
 const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
+  "approved",
+  "merged",
+  "post_deploy_validation",
   "done",
   "archived",
 ]);
@@ -157,6 +164,28 @@ export function closesOwnReview(
     inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
   const awaitingReview = previousStatus === "in_review";
   return isTaskRun && completesTask && awaitingReview;
+}
+
+/**
+ * A delivery lane (Approved, Merged, Post-deploy Validation) is a status that
+ * only exists for an org running `delivery_lanes_enabled` — the schema still
+ * accepts it unconditionally (adding a lane is a compile-time exhaustiveness
+ * concern, not a runtime one), so this tool is the one place that has to
+ * refuse it directly when the flag is off. Without this, any raw
+ * TASK_BOARD_ITEM_UPDATE call (an MCP client, a script, a stale agent) could
+ * park a card in a lane the flag's own description promises "behaves exactly
+ * as if it did not exist" — the board's `moveTargets`/`laneVisibility` only
+ * gate the UI's own drag/dropdown, not the tool underneath them.
+ */
+export function rejectsUngatedDeliveryLane(
+  inputStatus: TaskBoardItemStatus | undefined,
+  deliveryLanesEnabled: boolean,
+): boolean {
+  return (
+    inputStatus !== undefined &&
+    isDeliveryLane(inputStatus) &&
+    !deliveryLanesEnabled
+  );
 }
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
@@ -260,6 +289,23 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // longer org-scoped itself (the join table has no organization_id).
     if (hasFieldUpdate && !previous) {
       throw new Error(`Task board item not found: ${input.id}`);
+    }
+
+    if (input.status !== undefined && isDeliveryLane(input.status)) {
+      const settings =
+        await ctx.storage.organizationSettings.get(organizationId);
+      if (
+        rejectsUngatedDeliveryLane(
+          input.status,
+          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
+        )
+      ) {
+        throw new Error(
+          "Delivery lanes are not enabled for this organization — enable " +
+            "them in Settings before moving a task to Approved, Merged, or " +
+            "Post-deploy Validation.",
+        );
+      }
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;

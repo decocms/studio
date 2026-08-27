@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { buildJql, vanishedLinks } from "./sync";
+import {
+  buildJql,
+  isUnchanged,
+  rescanContinues,
+  runTruncated,
+  vanishedLinks,
+} from "./sync";
 
 /**
  * The pull's query. Worth pinning because it is the whole definition of which
@@ -27,6 +33,7 @@ function integration(
     enabled: true,
     lastSyncedAt: null,
     lastSyncError: null,
+    rescanPending: false,
     createdBy: "user-1",
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
@@ -127,5 +134,81 @@ describe("vanishedLinks", () => {
 
   it("has nothing to do on a board with no linked cards", () => {
     expect(vanishedLinks(new Set(["1"]), [])).toEqual([]);
+  });
+});
+
+/**
+ * The "nothing to do" shortcut. It fires BEFORE any field is written, which is
+ * why a rescan must not take it: migration 184 cleared the watermark to re-read
+ * a widened scope, and the run created the 50 cards it was missing while
+ * leaving 274 existing ones with the `sprint_id` they never had — 253 issues
+ * that Jira has in a sprint read as backlog on the board.
+ */
+describe("isUnchanged", () => {
+  const seen = "2026-03-02T12:00:00.000Z";
+
+  it("skips an issue no newer than what the link recorded", () => {
+    expect(isUnchanged(seen, new Date(seen), false)).toBe(true);
+    expect(isUnchanged(seen, new Date("2026-03-02T11:00:00.000Z"), false)).toBe(
+      true,
+    );
+  });
+
+  it("processes an issue that moved on", () => {
+    expect(isUnchanged(seen, new Date("2026-03-02T12:00:01.000Z"), false)).toBe(
+      false,
+    );
+  });
+
+  it("never skips on a rescan, however old the issue looks", () => {
+    expect(isUnchanged(seen, new Date(seen), true)).toBe(false);
+    expect(isUnchanged(seen, new Date("2020-01-01T00:00:00.000Z"), true)).toBe(
+      false,
+    );
+  });
+});
+
+/**
+ * A rescan run only advances as far as its per-run caps allow. If the flag
+ * that forces the rescan doesn't survive a truncated run, the NEXT run reads
+ * a non-null watermark, stops treating itself as a rescan, and silently skips
+ * every issue past the cap as "unchanged" — the exact bug 185 fixed, just
+ * past 500 issues instead of at the watermark.
+ */
+describe("rescanContinues", () => {
+  it("keeps forcing a rescan when a run hit the issue cap", () => {
+    expect(rescanContinues(true, 500, 3)).toBe(true);
+  });
+
+  it("keeps forcing a rescan when a run hit the page cap", () => {
+    expect(rescanContinues(true, 10, 25)).toBe(true);
+  });
+
+  it("clears once a rescan run finishes the scope under both caps", () => {
+    expect(rescanContinues(true, 42, 1)).toBe(false);
+  });
+
+  it("never claims a rescan for a plain incremental run", () => {
+    expect(rescanContinues(false, 500, 25)).toBe(false);
+  });
+});
+
+/**
+ * `reconcileVanishedIssues` (which archives cards outside Jira's live scope)
+ * gates on this same truncation check — a run that hit the PAGE cap on many
+ * empty-but-tokened pages, with `processed` still low, is just as incomplete
+ * as one that hit the issue cap, and must not be read as "finished".
+ */
+describe("runTruncated", () => {
+  it("is truncated once the issue cap is hit", () => {
+    expect(runTruncated(500, 3)).toBe(true);
+  });
+
+  it("is truncated once the page cap is hit, even with few issues processed", () => {
+    expect(runTruncated(10, 25)).toBe(true);
+  });
+
+  it("is not truncated when a run finishes under both caps", () => {
+    expect(runTruncated(42, 1)).toBe(false);
   });
 });

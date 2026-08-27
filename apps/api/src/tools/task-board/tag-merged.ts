@@ -19,6 +19,7 @@ import { nextTagColor } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { recordTaskActivity } from "./activity";
 import { cardWorkLanded, type PrLandingReader } from "./archive-merged";
+import { isTaggableMergedStatus } from "./lanes";
 import { fetchPrLanding } from "./prs-get";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
@@ -65,7 +66,7 @@ async function tagIfMerged(
   prLanding: PrLandingReader,
 ): Promise<boolean> {
   const item = await ctx.storage.taskBoard.getById(itemId, organizationId);
-  if (!item || item.status !== "done") return false;
+  if (!item || !isTaggableMergedStatus(item.status)) return false;
 
   const prs = await ctx.storage.taskBoard.listPrs(itemId, organizationId);
   const landings = await Promise.all(

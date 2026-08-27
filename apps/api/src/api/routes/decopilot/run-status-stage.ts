@@ -14,6 +14,8 @@ const RUN_STATUS_STAGES = [
   "preparing-tools",
   "starting-assistant",
   "analyzing-scope",
+  // Emitted by the in-sandbox harness runner, not from here.
+  "retrying-provider",
 ] as const;
 
 export type BackendRunStatusStage = (typeof RUN_STATUS_STAGES)[number];

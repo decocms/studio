@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { SPRINT_STATES } from "@decocms/shared/sprints";
+import { REVIEWER_KINDS, type ReviewerKind } from "@decocms/shared/task-board";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
@@ -20,6 +21,9 @@ export const TaskBoardItemStatusSchema = z.enum([
   "todo",
   "in_progress",
   "in_review",
+  "approved",
+  "merged",
+  "post_deploy_validation",
   "done",
   "archived",
 ]);
@@ -101,7 +105,7 @@ const TaskBoardItemThreadSchema = z.object({
  * `completed` may well have asked for changes.
  */
 const TaskBoardItemReviewVerdictSchema = z.object({
-  reviewer: z.enum(["qa", "code_review"]),
+  reviewer: z.enum(REVIEWER_KINDS as [ReviewerKind]),
   verdict: z.enum(["approved", "changes_requested"]),
   /** Whether the approval was token-verified. An unverified approval counts as
    *  an approval but can never satisfy the auto-merge gate, so it must not
@@ -181,6 +185,10 @@ export const TaskBoardItemSchema = z.object({
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.
   keySeq: z.number().nullable(),
+  // The key this card's issue wears in the tracker (`OS-333`), for a card that
+  // came from one. It is what the card shows, because it is what people say
+  // out loud about it. Null for a card Studio owns.
+  jiraIssueKey: z.string().nullable(),
   // Infrastructure retries already spent on this card's runs — the budget
   // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
   // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:

@@ -1600,6 +1600,9 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
+  | "approved"
+  | "merged"
+  | "post_deploy_validation"
   | "done"
   | "archived";
 
@@ -1776,6 +1779,8 @@ export interface TaskBoardCommentTable {
   task_board_item_id: string;
   parent_id: string | null;
   author_id: string;
+  /** The agent run that wrote it (migration 187); null for a human's comment. */
+  thread_id: string | null;
   body: string;
   resolved: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: ColumnType<Date, Date | string | undefined, never>;
@@ -1902,6 +1907,9 @@ export interface TaskBoardItem {
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
   keySeq: number;
+  /** The key this card's issue wears in the tracker (`OS-333`), for a card that
+   *  came from one — attached on reads, null for a card Studio owns. */
+  jiraIssueKey: string | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
@@ -2034,6 +2042,11 @@ export interface OrgJiraIntegrationTable {
    *  as it got, so the next run resumes instead of skipping. */
   last_synced_at: ColumnType<Date | null, never, Date | string | null>;
   last_sync_error: ColumnType<string | null, never, string | null>;
+  /** Set while a rescan (scope change, existing-card fix, or first import)
+   *  hasn't yet finished re-reading the whole scope — survives across the
+   *  multiple runs a large board needs, independent of `last_synced_at`
+   *  (see migration 186). */
+  rescan_pending: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
@@ -2054,6 +2067,7 @@ export interface OrgJiraIntegration {
   enabled: boolean;
   lastSyncedAt: string | null;
   lastSyncError: string | null;
+  rescanPending: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

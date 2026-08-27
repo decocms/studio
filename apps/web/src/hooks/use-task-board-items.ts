@@ -32,10 +32,9 @@ type TaskBoardData = {
  * loads — so a card can name its sprint without the sprint being threaded down
  * through every lane and row.
  *
- * Shares `useTaskBoardItems`' query key and fetcher (as `useTaskForThread`
- * does) rather than calling `useTaskBoardItems` itself: that hook also
- * subscribes to the board's SSE streams, and one subscription per rendered card
- * is not what a lookup should cost.
+ * Shares `useTaskBoardItems`' query key and fetcher rather than calling that
+ * hook itself: it also subscribes to the board's SSE streams, and one
+ * subscription per rendered card is not what a lookup should cost.
  */
 export function useBoardSprintIndex(): Map<string, Sprint> {
   const { locator } = useProjectContext();
@@ -71,6 +70,15 @@ export function useTaskBoardItems() {
   useTaskBoardEvents({
     orgSlug: org.slug,
     onUpdate: (item) => {
+      // A list refetch already in flight was issued BEFORE this push, so its
+      // answer predates the transition below and would overwrite it. That is
+      // the "click Auto fix, the card jumps to In Progress and falls back to
+      // To Do until F5" bug: `TASK_BOARD_ITEM_UPDATE` returns with the card
+      // still in `todo` (the run worker writes `in_progress` later, in
+      // `advanceTaskBoardForRun`), the mutation invalidates on that response,
+      // and the refetch lands after this push. Cancelling drops the stale
+      // response; the query is left stale, so the 60s backstop re-syncs.
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) => {
         if (!prev) return prev;
         return {
@@ -91,8 +99,9 @@ export function useTaskBoardItems() {
     onResync: () => {
       queryClient.invalidateQueries({ queryKey });
     },
-    // Live deletes: drop the removed card so it clears on every open board.
+    // Live deletes: drop the removed card, canceling a stale in-flight refetch first (same race as onUpdate above).
     onDelete: (id) => {
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
         prev ? { ...prev, items: prev.items.filter((t) => t.id !== id) } : prev,
       );
@@ -109,6 +118,8 @@ export function useTaskBoardItems() {
     onTaskStatus: (event) => {
       const threadId = event.subject;
       const status = event.data.status;
+      // Same race as onUpdate/onDelete above: cancel a stale in-flight refetch first.
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
         prev
           ? {

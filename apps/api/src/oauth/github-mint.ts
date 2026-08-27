@@ -140,16 +140,24 @@ async function mintAndStore(
   const mintStartedAt = Date.now();
   const minted = await mintRepoToken(ctx, recipe);
   const expiresAt = resolveGhsExpiry(minted.expiresAt, mintStartedAt);
-  await tokenStorage.upsert({
-    connectionId,
-    accessToken: minted.accessToken,
-    refreshToken: null,
-    scope: null,
-    expiresAt,
-    clientId: null,
-    clientSecret: null,
-    tokenEndpoint: null,
-  });
+  try {
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: minted.accessToken,
+      refreshToken: null,
+      scope: null,
+      expiresAt,
+      clientId: null,
+      clientSecret: null,
+      tokenEndpoint: null,
+    });
+  } catch (error) {
+    // A cache miss, not a failure — the minted token is already valid on GitHub's side.
+    console.warn("[GithubMint] failed to persist minted token", {
+      connectionId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
   return minted.accessToken;
 }
 

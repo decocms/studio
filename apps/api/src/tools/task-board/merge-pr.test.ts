@@ -26,7 +26,7 @@ const errorResult = (text: string) => ({
 const notAllowed = (method: string, pr = 71) =>
   `failed to merge pull request: PUT https://api.github.com/repos/o/r/pulls/${pr}/merge: 405 ${method} are not allowed on this repository. []`;
 
-const BOTH = ["qa", "code_review"] as const;
+const ENABLED = ["reviewer"] as const;
 const at = "2026-08-12T00:00:00.000Z";
 const approved = (
   reviewer: string,
@@ -181,34 +181,33 @@ describe("checksBlockMerge", () => {
 });
 
 describe("approvedButUnverified", () => {
-  it("is true when a full set of approvals includes an unverified one", () => {
-    const activity = [approved("qa", true), approved("code_review", false)];
-    expect(approvedButUnverified(activity, [...BOTH])).toBe(true);
+  it("is true when the approval is unverified — green checks that can never merge", () => {
+    expect(
+      approvedButUnverified([approved("reviewer", false)], [...ENABLED]),
+    ).toBe(true);
   });
 
   // The happy path must not be handed to a human — it is about to merge.
-  it("is false when every approval verified", () => {
-    const activity = [approved("qa", true), approved("code_review", true)];
-    expect(approvedButUnverified(activity, [...BOTH])).toBe(false);
+  it("is false when the approval verified", () => {
+    expect(
+      approvedButUnverified([approved("reviewer", true)], [...ENABLED]),
+    ).toBe(false);
   });
 
-  // Still waiting on the other reviewer is not a dead end.
-  it("is false while a reviewer has not voted yet", () => {
-    expect(approvedButUnverified([approved("qa", false)], [...BOTH])).toBe(
-      false,
-    );
+  // Not yet voted is not a dead end.
+  it("is false while the reviewer has not voted yet", () => {
+    expect(approvedButUnverified([], [...ENABLED])).toBe(false);
   });
 
-  it("is false when a reviewer requested changes", () => {
+  it("is false when the reviewer requested changes", () => {
     const activity: ReviewCycleActivity[] = [
-      approved("qa", false),
       {
         action: "review_changes_requested",
-        data: { reviewer: "code_review", verified: true },
+        data: { reviewer: "reviewer", verified: true },
         occurredAt: at,
       },
     ];
-    expect(approvedButUnverified(activity, [...BOTH])).toBe(false);
+    expect(approvedButUnverified(activity, [...ENABLED])).toBe(false);
   });
 });
 

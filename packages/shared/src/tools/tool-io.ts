@@ -121,7 +121,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
@@ -129,6 +129,7 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -191,7 +192,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
@@ -199,6 +200,7 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -261,7 +263,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
@@ -269,6 +271,7 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -323,6 +326,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
@@ -345,6 +351,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
@@ -355,6 +364,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -384,7 +394,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -409,6 +419,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
@@ -419,6 +432,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -448,7 +462,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -478,6 +492,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
@@ -502,6 +519,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
@@ -512,6 +532,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -541,7 +562,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -598,7 +619,7 @@ export interface StudioToolIO {
   TASK_BOARD_REVIEW_DECISION: {
     input: {
       taskBoardItemId: string;
-      reviewer: "qa" | "code_review";
+      reviewer: "reviewer" | "qa" | "code_review";
       decision: "approve" | "request_changes";
       notes: string;
       reviewToken?: string | undefined;
@@ -610,6 +631,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived";
       merged: boolean;
     };
@@ -623,6 +647,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived";
       merged: boolean;
     };
@@ -2135,6 +2162,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2342,6 +2370,7 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
+                          cms?: "off" | "auto" | "manual" | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2492,6 +2521,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2679,6 +2709,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2857,6 +2888,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3029,6 +3061,7 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
+                          cms?: "off" | "auto" | "manual" | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -3187,6 +3220,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3363,6 +3397,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -4396,6 +4431,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -5006,6 +5042,9 @@ export interface StudioToolIO {
             | "todo"
             | "in_progress"
             | "in_review"
+            | "approved"
+            | "merged"
+            | "post_deploy_validation"
             | "archived",
             string[]
           >
@@ -5034,6 +5073,9 @@ export interface StudioToolIO {
               | "todo"
               | "in_progress"
               | "in_review"
+              | "approved"
+              | "merged"
+              | "post_deploy_validation"
               | "archived",
               string[]
             >
@@ -5056,6 +5098,9 @@ export interface StudioToolIO {
             | "todo"
             | "in_progress"
             | "in_review"
+            | "approved"
+            | "merged"
+            | "post_deploy_validation"
             | "archived",
             string[]
           >
@@ -5103,6 +5148,10 @@ export interface StudioToolIO {
           }
         | { error: string };
     };
+  };
+  JIRA_RESYNC_REQUEST: {
+    input: { [x: string]: never };
+    output: { queued: true };
   };
   LIST_OBJECTS: {
     input: {
@@ -6820,7 +6869,7 @@ export interface StudioToolIO {
               | "remove_private"
               | "remove_all"
               | undefined;
-            schedule?: "cron" | "manual" | undefined;
+            schedule?: "manual" | "cron" | undefined;
             cronExpression?: string | undefined;
             scheduleEventId?: string | undefined;
             perMcpTimeoutMs?: number | undefined;
@@ -6848,7 +6897,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;
@@ -6899,7 +6948,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;
@@ -6941,7 +6990,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;
@@ -6982,7 +7031,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;

@@ -1,6 +1,6 @@
 {
   "name": "@decocms/harness-runner",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "private": true,
   "type": "module",
   "description": "In-sandbox harness runner: drives the Claude Agent SDK for Studio's claude-code harness",
