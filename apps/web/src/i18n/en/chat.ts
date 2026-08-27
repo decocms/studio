@@ -355,6 +355,9 @@ export const chat = {
   "chat.runStatus.choosingNextStepsLabel": "Thinking",
   "chat.runStatus.startingSandboxDetail":
     "Booting the machine and checking out the repository",
+  "chat.runStatus.retryingProviderDetail":
+    "The model provider was unavailable — trying another one",
+  "chat.runStatus.retryingProviderLabel": "Waiting for the model provider",
   "chat.runStatus.startingSandboxLabel": "Starting the sandbox",
   "chat.runStatus.gatheringContextDetail":
     "Looking through the history, files, and notes",

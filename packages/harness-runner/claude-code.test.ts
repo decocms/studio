@@ -3,6 +3,7 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
   brokenStudioMcp,
   buildOptions,
+  isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
   promptFromUserMessage,
@@ -364,5 +365,40 @@ describe("mcpServersFor", () => {
         ),
       ),
     ).toEqual(["linear"]);
+  });
+});
+
+describe("isTransientProviderRejection", () => {
+  test("matches OpenRouter's upstream relay, whatever the status", () => {
+    expect(
+      isTransientProviderRejection("API Error: 400 Provider returned error"),
+    ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 502 Provider returned error"),
+    ).toBe(true);
+  });
+
+  test("a 400 that describes the request stays fatal", () => {
+    expect(
+      isTransientProviderRejection(
+        "API Error: 400 messages.0: text content blocks must be non-empty",
+      ),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection(
+        "API Error: 400 max_tokens: must be less than or equal to 64000",
+      ),
+    ).toBe(false);
+  });
+
+  test("does not swallow the credit and session errors that have own paths", () => {
+    expect(
+      isTransientProviderRejection(
+        "API Error: 402 requires more credits, requested up to 64000 tokens",
+      ),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("Session ID abc is already in use"),
+    ).toBe(false);
   });
 });
