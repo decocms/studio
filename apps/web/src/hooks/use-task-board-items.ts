@@ -70,6 +70,15 @@ export function useTaskBoardItems() {
   useTaskBoardEvents({
     orgSlug: org.slug,
     onUpdate: (item) => {
+      // A list refetch already in flight was issued BEFORE this push, so its
+      // answer predates the transition below and would overwrite it. That is
+      // the "click Auto fix, the card jumps to In Progress and falls back to
+      // To Do until F5" bug: `TASK_BOARD_ITEM_UPDATE` returns with the card
+      // still in `todo` (the run worker writes `in_progress` later, in
+      // `advanceTaskBoardForRun`), the mutation invalidates on that response,
+      // and the refetch lands after this push. Cancelling drops the stale
+      // response; the query is left stale, so the 60s backstop re-syncs.
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) => {
         if (!prev) return prev;
         return {
