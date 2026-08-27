@@ -61,4 +61,45 @@ describe("useFlipLanes", () => {
 
     window.requestAnimationFrame = originalRaf;
   });
+
+  it("does not animate moves that landed while the board was hidden", () => {
+    const { card, containerRef, moveTo } = setup();
+
+    const { rerender } = renderHook(
+      ({ signature, visible }: { signature: string; visible: boolean }) =>
+        useFlipLanes(containerRef, signature, true, visible),
+      { initialProps: { signature: "card:todo", visible: true } },
+    );
+
+    // Hidden board: every rect the browser reports collapses to the origin.
+    moveTo({ left: 0, top: 0 }, "todo");
+    rerender({ signature: "card:todo", visible: false });
+
+    // A card changes lane while nobody is looking.
+    moveTo({ left: 0, top: 300 }, "done");
+    rerender({ signature: "card:done", visible: false });
+
+    // Back on the board: the card sits where it belongs, not mid-flight.
+    rerender({ signature: "card:done", visible: true });
+    expect(card.style.transform).toBe("");
+    expect(card.style.transition).toBe("");
+  });
+
+  it("animates again once the board is back and a card moves in view", () => {
+    const { card, containerRef, moveTo } = setup();
+
+    const { rerender } = renderHook(
+      ({ signature, visible }: { signature: string; visible: boolean }) =>
+        useFlipLanes(containerRef, signature, true, visible),
+      { initialProps: { signature: "card:todo", visible: true } },
+    );
+
+    rerender({ signature: "card:todo", visible: false });
+    rerender({ signature: "card:todo", visible: true });
+
+    moveTo({ left: 0, top: 300 }, "done");
+    rerender({ signature: "card:done", visible: true });
+
+    expect(card.style.transform).toContain("translate(0px, -300px)");
+  });
 });

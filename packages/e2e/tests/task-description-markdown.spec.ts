@@ -26,17 +26,15 @@ const PNG = Buffer.from(
   "base64",
 );
 
-/**
- * The description editor's contenteditable. Scoped to the dialog and matched on
- * the editor surface rather than its accessible name, which is derived from the
- * placeholder and so only exists while the description is empty — this test
- * asserts on it both empty and filled.
- */
-/** The description editor specifically. The dialog holds a second ProseMirror
- *  — the comment composer, which also takes `@`-mentions — so `.ProseMirror`
- *  alone is ambiguous. */
+/** The description editor's contenteditable, by test id: its accessible name
+ *  only exists while empty, and the page holds a second ProseMirror. */
 function editorOf(page: Page) {
   return page.getByTestId("task-description").locator(".ProseMirror");
+}
+
+/** The task rendered in place of the board — `?main=board&task=<id>`. */
+function detailOf(page: Page) {
+  return page.getByTestId("task-detail");
 }
 
 // Black-box wire-contract shape (owned by this test, per e2e isolation rules).
@@ -50,19 +48,19 @@ interface TaskBoardItem {
 const AUTOSAVE_POLL_TIMEOUT_MS = 15_000;
 
 /**
- * Close the dialog, which is how a description gets written now: the card
- * autosaves as you type and closing flushes whatever the debounce still holds.
- * There is no Save button to click.
+ * Leave the task, which is how a description gets written now: the card
+ * autosaves as you type and navigating away flushes whatever the debounce
+ * still holds. There is no Save button to click.
  *
- * Closing triggers the autosave mutation but doesn't wait for it to persist —
+ * Leaving triggers the autosave mutation but doesn't wait for it to persist —
  * `networkidle` isn't a fit either, since the board keeps background traffic
  * alive. Callers instead poll the API for the saved value with a generous
  * timeout above.
  */
 async function closeTask(page: Page) {
-  // The button, not Escape: tiptap swallows Escape while the editor has focus.
-  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The breadcrumb, not Escape: in the editor, Escape only blurs.
+  await detailOf(page).getByRole("button", { name: "Tasks" }).click();
+  await expect(detailOf(page)).toHaveCount(0);
 }
 
 async function openTask(page: Page, orgSlug: string, title: string) {
@@ -149,10 +147,10 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const dialog = page.getByRole("dialog");
+    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await dialog
+    await detail
       .locator('input[type="file"]')
       .setInputFiles({ name: PNG_NAME, mimeType: "image/png", buffer: PNG });
 
@@ -234,10 +232,10 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const dialog = page.getByRole("dialog");
+    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await dialog.locator('input[type="file"]').setInputFiles({
+    await detail.locator('input[type="file"]').setInputFiles({
       name: DOC_NAME,
       mimeType: "text/plain",
       buffer: DOC,
