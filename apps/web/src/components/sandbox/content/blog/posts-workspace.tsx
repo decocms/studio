@@ -15,6 +15,7 @@ import {
   Columns03,
   List,
   Loading02,
+  Pilcrow01,
   Plus,
   Stars02,
   Trash01,
@@ -43,6 +44,16 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { GeneratePostDialog, type IdeaSeed } from "./generate-post-dialog";
+import { useGeneratePost } from "./use-generate-post";
 import {
   APPS_UPDATE_COMMAND,
   type BlogSupport,
@@ -51,22 +62,27 @@ import {
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   BRAND_BLOCK_KEY,
+  buildIdeaBlock,
   buildPlanningPostBlock,
   dedupeSuggestedThemes,
-  emptyIdeaPayload,
+  emptyDraftPostPayload,
   filledBrandRules,
   FORMATS_BLOCK_KEY,
   getBlogPayload,
+  type IdeaEntry,
   listAllPostsWithMeta,
+  newIdeaKey,
   newPostId,
   normalizeBrandRules,
   planningMeta,
   planningPostKey,
+  scanIdeas,
+  scanPillars,
   type PostMeta,
   type PostStatus,
   POST_STATUSES,
 } from "./blog-data";
-import { str } from "./blocks/primitives";
+import { PickList, str } from "./blocks/primitives";
 
 export type PostsView = "board" | "list";
 export type PostsGroupBy = "status" | "format" | "pillar";
@@ -82,6 +98,9 @@ const STATUS_VARIANT: Record<
   published: "success",
   archived: "outline",
 };
+
+/** The ideas tray collapses like a lane, but has no status of its own. */
+const IDEAS_LANE = "ideas";
 
 /** Drag payload key — the dragged post's block key. */
 const DRAG_KEY = "application/x-post-key";
@@ -100,6 +119,7 @@ export function PostsWorkspace({
   onClose,
   move,
   support,
+  meta,
   renderDetail,
 }: {
   orgSlug: string;
@@ -119,6 +139,8 @@ export function PostsWorkspace({
   move: PostStatusMove;
   /** What this site's blog app can honour — gates the live lanes. */
   support: BlogSupport;
+  /** Live schema — which section kinds generation may write. */
+  meta: LiveMeta;
   /** Renders the open post — the list's right pane or the board's floating panel. */
   renderDetail?: (
     key: string,
@@ -132,6 +154,7 @@ export function PostsWorkspace({
   const t = useT();
   const studio = useStudioTools();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
@@ -139,13 +162,36 @@ export function PostsWorkspace({
   const [askOpen, setAskOpen] = useState(false);
   const [guidance, setGuidance] = useState("");
   const [count, setCount] = useState(3);
+  const [ideaPillarKey, setIdeaPillarKey] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const [archivedCollapsed, setArchivedCollapsed] = useLocalStorage(
-    LOCALSTORAGE_KEYS.blogBoardArchivedCollapsed(),
-    false,
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [generateSeed, setGenerateSeed] = useState<IdeaSeed | undefined>();
+  // Lanes by status, not by index: a reordered board can't reopen the wrong one.
+  const [collapsedLanes, setCollapsedLanes] = useLocalStorage<string[]>(
+    LOCALSTORAGE_KEYS.blogBoardCollapsedLanes(),
+    [],
   );
+  const toggleLane = (lane: string) =>
+    setCollapsedLanes((prev) =>
+      prev.includes(lane)
+        ? prev.filter((entry) => entry !== lane)
+        : [...prev, lane],
+    );
+
+  const generatePost = useGeneratePost({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    decofile,
+    meta,
+    onStarted: onOpen,
+  });
 
   const posts = listAllPostsWithMeta(decofile);
+  const ideas = scanIdeas(decofile);
+  const pillars = scanPillars(decofile);
+  const pillarTitleOf = (key?: string) =>
+    pillars.find((pillar) => pillar.key === key)?.title;
   const payloadOf = (key: string) =>
     getBlogPayload(
       decofile[key] as Record<string, unknown> | undefined,
@@ -167,21 +213,35 @@ export function PostsWorkspace({
     }
   };
 
+  /**
+   * Write a post from an idea already on the board. The idea stays where it is:
+   * one idea is worth several posts, and consuming it would hide that.
+   */
+  const generateFromIdea = (idea: IdeaEntry) => {
+    setGenerateSeed({ key: idea.key, title: idea.title, body: idea.body });
+    setGenerateOpen(true);
+  };
+
+  const deleteIdea = (idea: IdeaEntry) => {
+    deleteBlock.mutate({ blockKey: idea.key });
+  };
+
   const onDrop = (next: PostStatus, key: string) => {
     setDragOverLane(null);
     void move.apply(key, next);
   };
 
-  const createIdea = () => {
+  const writePost = () => {
     const key = planningPostKey(newPostId());
-    const payload = emptyIdeaPayload({ title: "", now: new Date() });
+    const payload = emptyDraftPostPayload({ title: "", now: new Date() });
     save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
     onOpen(key);
   };
 
-  /** Propose ideas from the brand context and drop them into the Draft lane. */
+  /** Propose ideas from the brand context and drop them into the ideas tray. */
   const generateIdeas = async () => {
     setIsGenerating(true);
+    const pillar = pillars.find((entry) => entry.key === ideaPillarKey);
     try {
       const brand =
         (decofile[BRAND_BLOCK_KEY] as Record<string, unknown>) ?? {};
@@ -202,14 +262,21 @@ export function PostsWorkspace({
           dos: filledBrandRules(normalizeBrandRules(brand.dos)),
           avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
         },
-        existingTitles: posts.map((p) => p.title).filter(Boolean),
+        existingTitles: ideas.map((idea) => idea.title).filter(Boolean),
         formats: formatNames,
-        guidance: guidance.trim() || undefined,
+        guidance:
+          [
+            pillar &&
+              `Every idea must be one angle inside the pillar "${pillar.title}": ${pillar.body}`,
+            guidance.trim(),
+          ]
+            .filter(Boolean)
+            .join("\n\n") || undefined,
         count,
       });
 
       const fresh = dedupeSuggestedThemes(
-        posts.map((p) => p.title),
+        ideas.map((idea) => idea.title),
         result.themes,
       );
       if (fresh.length === 0) {
@@ -220,16 +287,16 @@ export function PostsWorkspace({
       let created = 0;
       // One at a time — parallel writes race the fast-preview decofile cache.
       for (const idea of fresh) {
-        const key = planningPostKey(newPostId());
-        const payload = emptyIdeaPayload({
-          title: idea.title,
-          planning: { brief: idea.body },
-          now: new Date(),
-        });
+        const key = newIdeaKey();
         try {
           await save.mutateAsync({
             blockKey: key,
-            data: buildPlanningPostBlock(key, payload),
+            data: buildIdeaBlock(key, {
+              title: idea.title,
+              body: idea.body,
+              pillarKey: pillar?.key,
+              createdAt: new Date().toISOString(),
+            }),
           });
           created++;
         } catch (err) {
@@ -341,6 +408,27 @@ export function PostsWorkspace({
                   placeholder={t("sandbox.postBoard.ideaGuidancePlaceholder")}
                   className="resize-none text-sm"
                 />
+                {pillars.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">
+                      {t("sandbox.postBoard.ideaPillarLabel")}
+                    </Label>
+                    <PickList
+                      options={pillars.map((pillar) => pillar.title)}
+                      value={
+                        pillars.find((pillar) => pillar.key === ideaPillarKey)
+                          ?.title ?? ""
+                      }
+                      emptyLabel={t("sandbox.postBoard.ideaNoPillar")}
+                      onChange={(title) =>
+                        setIdeaPillarKey(
+                          pillars.find((pillar) => pillar.title === title)
+                            ?.key ?? "",
+                        )
+                      }
+                    />
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <Label htmlFor="idea-count" className="text-xs">
                     {t("sandbox.postBoard.ideaCount")}
@@ -377,14 +465,54 @@ export function PostsWorkspace({
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button type="button" size="sm" onClick={createIdea}>
-            <Plus size={14} />
-            {t("sandbox.postBoard.newPost")}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm">
+                <Plus size={14} />
+                {t("sandbox.postBoard.newPost")}
+                <ChevronDown size={14} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                disabled={!hasAi}
+                onClick={() => {
+                  setGenerateSeed(undefined);
+                  setGenerateOpen(true);
+                }}
+              >
+                <Stars02 size={14} />
+                <div className="flex flex-col">
+                  <span>{t("sandbox.postBoard.newPostGenerate")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("sandbox.postBoard.newPostGenerateHint")}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={writePost}>
+                <Pilcrow01 size={14} />
+                <div className="flex flex-col">
+                  <span>{t("sandbox.postBoard.newPostWrite")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("sandbox.postBoard.newPostWriteHint")}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <GeneratePostDialog
+            key={generateSeed?.title ?? "scratch"}
+            open={generateOpen}
+            onOpenChange={setGenerateOpen}
+            decofile={decofile}
+            hasAi={hasAi}
+            seed={generateSeed}
+            onGenerate={(briefing) => void generatePost(briefing)}
+          />
         </div>
       </div>
 
-      {posts.length === 0 ? (
+      {posts.length === 0 && ideas.length === 0 ? (
         <EmptyState
           className="flex-1"
           icon={<Stars02 size={22} />}
@@ -392,17 +520,28 @@ export function PostsWorkspace({
           description={t("sandbox.postBoard.emptyDescription")}
           buttonProps={{
             children: t("sandbox.postBoard.newPost"),
-            onClick: createIdea,
+            onClick: writePost,
           }}
         />
       ) : view === "board" ? (
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
+          <IdeaTray
+            ideas={ideas}
+            hasAi={hasAi}
+            collapsed={collapsedLanes.includes(IDEAS_LANE)}
+            pillarTitleOf={pillarTitleOf}
+            onToggleCollapsed={() => toggleLane(IDEAS_LANE)}
+            onGenerate={generateFromIdea}
+            onDelete={deleteIdea}
+          />
+          <div
+            aria-hidden
+            className="my-1 w-px shrink-0 self-stretch bg-border"
+          />
           {POST_STATUSES.map((status) => {
             const lanePosts = posts.filter((p) => p.status === status);
             const laneLabel = t(POST_STATUS_LABEL[status]);
-            /** Archived is the one lane nobody works out of, so only it collapses. */
-            const collapsible = status === "archived";
-            const isCollapsed = collapsible && archivedCollapsed;
+            const isCollapsed = collapsedLanes.includes(status);
             const unsupported = postStatusUnsupported(support, status);
             return (
               <div
@@ -435,10 +574,10 @@ export function PostsWorkspace({
                 )}
               >
                 {isCollapsed ? (
-                  // Still a drop target, so a post can be archived onto the closed lane.
+                  // Still a drop target, so a post can be dropped onto a closed lane.
                   <button
                     type="button"
-                    onClick={() => setArchivedCollapsed(false)}
+                    onClick={() => toggleLane(status)}
                     aria-label={t("sandbox.postBoard.expandLane", {
                       lane: laneLabel,
                     })}
@@ -456,22 +595,18 @@ export function PostsWorkspace({
                 ) : (
                   <>
                     <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
-                      {collapsible ? (
-                        <button
-                          type="button"
-                          onClick={() => setArchivedCollapsed(true)}
-                          aria-label={t("sandbox.postBoard.collapseLane", {
-                            lane: laneLabel,
-                          })}
-                          aria-expanded
-                          className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
-                        >
-                          <ChevronDown size={14} className="shrink-0" />
-                          <span className="truncate">{laneLabel}</span>
-                        </button>
-                      ) : (
+                      <button
+                        type="button"
+                        onClick={() => toggleLane(status)}
+                        aria-label={t("sandbox.postBoard.collapseLane", {
+                          lane: laneLabel,
+                        })}
+                        aria-expanded
+                        className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
+                      >
+                        <ChevronDown size={14} className="shrink-0" />
                         <span className="truncate">{laneLabel}</span>
-                      )}
+                      </button>
                       <span className="text-xs tabular-nums text-muted-foreground">
                         {lanePosts.length}
                       </span>
@@ -903,25 +1038,146 @@ function PostCard({
 }
 
 /**
+ * The ideas tray: what the blog could write, parked beside what it is writing.
+ *
+ * Deliberately not a lane. An idea has no status and never moves through the
+ * lifecycle — writing from it produces a post, and the idea stays put, because
+ * one idea is worth several posts in several formats.
+ */
+function IdeaTray({
+  ideas,
+  hasAi,
+  collapsed,
+  pillarTitleOf,
+  onToggleCollapsed,
+  onGenerate,
+  onDelete,
+}: {
+  ideas: IdeaEntry[];
+  hasAi: boolean;
+  collapsed: boolean;
+  pillarTitleOf: (key?: string) => string | undefined;
+  onToggleCollapsed: () => void;
+  onGenerate: (idea: IdeaEntry) => void;
+  onDelete: (idea: IdeaEntry) => void;
+}) {
+  const t = useT();
+  const label = t("sandbox.postBoard.ideasTray");
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        aria-label={t("sandbox.postBoard.expandLane", { lane: label })}
+        aria-expanded={false}
+        className="flex w-11 shrink-0 cursor-pointer flex-col items-center gap-2 py-2.5 text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight size={14} className="shrink-0" />
+        <span className="text-xs tabular-nums">{ideas.length}</span>
+        <span className="[writing-mode:vertical-rl] text-sm font-medium">
+          {label}
+        </span>
+      </button>
+    );
+  }
+  return (
+    <div className="flex w-72 shrink-0 flex-col">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-label={t("sandbox.postBoard.collapseLane", { lane: label })}
+          aria-expanded
+          className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
+        >
+          <ChevronDown size={14} className="shrink-0" />
+          <span className="truncate">{label}</span>
+        </button>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {ideas.length}
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-2 pr-1">
+        {ideas.length === 0 ? (
+          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+            {t("sandbox.postBoard.ideasEmpty")}
+          </p>
+        ) : (
+          ideas.map((idea) => {
+            const pillar = pillarTitleOf(idea.pillarKey);
+            return (
+              <div
+                key={idea.key}
+                className="group/card relative rounded-lg border border-dashed bg-card shadow-sm transition-colors hover:border-primary/40"
+              >
+                <ArchiveButton
+                  label={t("sandbox.postBoard.deleteIdea")}
+                  onArchive={() => onDelete(idea)}
+                  className="top-2"
+                />
+                <div className="p-3">
+                  <p className="line-clamp-2 pr-6 text-sm font-medium">
+                    {idea.title || t("sandbox.postBoard.untitledIdea")}
+                  </p>
+                  {idea.body && (
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {idea.body}
+                    </p>
+                  )}
+                  {pillar && (
+                    <Badge
+                      variant="secondary"
+                      className="mt-2 max-w-full truncate"
+                    >
+                      {pillar}
+                    </Badge>
+                  )}
+                </div>
+                <div className="border-t px-3 py-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={!hasAi}
+                    className="h-7 w-full justify-start px-1.5 text-xs"
+                    onClick={() => onGenerate(idea)}
+                  >
+                    <Stars02 size={13} />
+                    {t("sandbox.postBoard.writeFromIdea")}
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Delete affordance for a post. Deleting is a soft delete — the post moves to
  * the Archived lane, so nothing is lost and no confirmation is warranted.
  */
 function ArchiveButton({
+  label,
   onArchive,
   disabled,
   className,
 }: {
+  label?: string;
   onArchive: () => void;
   disabled?: boolean;
   className?: string;
 }) {
   const t = useT();
+  const text = label ?? t("sandbox.postBoard.delete");
   return (
     <button
       type="button"
       disabled={disabled}
-      aria-label={t("sandbox.postBoard.delete")}
-      title={t("sandbox.postBoard.delete")}
+      aria-label={text}
+      title={text}
       onClick={(e) => {
         e.stopPropagation();
         onArchive();

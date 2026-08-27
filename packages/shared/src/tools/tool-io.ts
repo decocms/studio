@@ -1012,7 +1012,11 @@ export interface StudioToolIO {
           | "Divider";
         purpose?: string | undefined;
       }[];
+      pillar?: { title: string; body: string } | undefined;
       categories?: { name: string; slug: string }[] | undefined;
+      authors?:
+        | { name: string; email: string; bio?: string | undefined }[]
+        | undefined;
       extraInstructions?: string | undefined;
     };
     output: {
@@ -1020,6 +1024,7 @@ export interface StudioToolIO {
       excerpt: string;
       seo: { title: string; description: string };
       categorySlugs: string[];
+      authorEmails: string[];
       sections: {
         type:
           | "Heading"

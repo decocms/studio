@@ -279,6 +279,12 @@ export interface CategoryRef {
   slug: string;
 }
 
+/** A single author reference, denormalized on a post payload. */
+export interface AuthorRef {
+  name: string;
+  email: string;
+}
+
 /** Compact metadata for a post, used by the posts list filters/sort. */
 export interface PostMeta {
   /** Decofile key (block id). */
@@ -534,6 +540,8 @@ export function newPostId(): string {
  * under `payload.planning`; consumed by generation and shown on the card.
  */
 export interface PlanningMeta {
+  /** The idea this post was written from, when it was written from one. */
+  ideaKey?: string;
   pillarKey?: string;
   pillarTitle?: string;
   format?: BrandRule;
@@ -545,6 +553,7 @@ export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
   const record = asRecord(payload.planning) ?? {};
   const format = asRecord(record.format);
   return {
+    ideaKey: str(record.ideaKey) || undefined,
     pillarKey: str(record.pillarKey) || undefined,
     pillarTitle: str(record.pillarTitle) || undefined,
     format: format
@@ -554,8 +563,8 @@ export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
   };
 }
 
-/** Payload for a freshly captured idea — a briefing, no body yet. */
-export function emptyIdeaPayload(args: {
+/** Payload for a post started by hand: a briefing, no body yet. */
+export function emptyDraftPostPayload(args: {
   title: string;
   planning?: PlanningMeta;
   now: Date;
@@ -1214,43 +1223,56 @@ export function selectBrandEvidenceBlocks(
   return selected;
 }
 
-// ------------------ Themes (the editorial planning queue) --------------------
+// ------------------ Ideas (the editorial planning queue) ---------------------
 
-/**
- * Themes live one per block under this prefix, and carry no `__resolveType` —
- * they are planning state for Studio, so the site must never resolve them. One
- * block each (rather than an array in one block) keeps a write surgical: a
- * suggestion appending five themes cannot clobber the one being edited.
- */
-export const THEME_KEY_PREFIX = "blog-manager/themes/";
+/** One block per idea. The prefix says `themes` — this queue's old name. */
+export const IDEA_KEY_PREFIX = "blog-manager/themes/";
 
-/** A theme: a title and a markdown brief. `key` is its block key. */
-export interface ThemeEntry {
+/** One angle, worth several posts. Not a post, and has no status. */
+export interface IdeaEntry {
   key: string;
   title: string;
+  /** The brief: the angle, who it is for, what it must cover. */
   body: string;
+  /** The pillar this idea sits in, when it sits in one. */
+  pillarKey?: string;
   createdAt: string;
 }
 
-export function newThemeKey(): string {
-  return `${THEME_KEY_PREFIX}${crypto.randomUUID()}`;
+export function newIdeaKey(): string {
+  return `${IDEA_KEY_PREFIX}${crypto.randomUUID()}`;
 }
 
-/** Newest first, so a fresh suggestion lands at the top of the list. */
-export function scanThemes(decofile: Record<string, unknown>): ThemeEntry[] {
-  const themes: ThemeEntry[] = [];
+/** Rebuild an idea block — a planning block, so no `__resolveType`. */
+export function buildIdeaBlock(
+  key: string,
+  idea: Omit<IdeaEntry, "key">,
+): Record<string, unknown> {
+  return {
+    name: key,
+    title: idea.title,
+    body: idea.body,
+    pillarKey: idea.pillarKey ?? "",
+    createdAt: idea.createdAt,
+  };
+}
+
+/** Newest first, so a fresh suggestion lands at the top of the tray. */
+export function scanIdeas(decofile: Record<string, unknown>): IdeaEntry[] {
+  const ideas: IdeaEntry[] = [];
   for (const [key, value] of Object.entries(decofile)) {
-    if (!key.startsWith(THEME_KEY_PREFIX)) continue;
+    if (!key.startsWith(IDEA_KEY_PREFIX)) continue;
     const record = asRecord(value);
     if (!record) continue;
-    themes.push({
+    ideas.push({
       key,
       title: str(record.title),
       body: str(record.body),
+      pillarKey: str(record.pillarKey) || undefined,
       createdAt: str(record.createdAt),
     });
   }
-  return themes.sort(
+  return ideas.sort(
     (a, b) =>
       b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
   );
@@ -1281,20 +1303,11 @@ export function newPillarKey(): string {
   return `${PILLAR_KEY_PREFIX}${crypto.randomUUID()}`;
 }
 
-/**
- * Every pillar, newest first. Unions the legacy `blog-manager/themes/*` blocks
- * so sites that used the old themes queue keep reading them as pillars with no
- * migration; new writes use {@link PILLAR_KEY_PREFIX}.
- */
+/** Every pillar, newest first. */
 export function scanPillars(decofile: Record<string, unknown>): PillarEntry[] {
   const pillars: PillarEntry[] = [];
   for (const [key, value] of Object.entries(decofile)) {
-    if (
-      !key.startsWith(PILLAR_KEY_PREFIX) &&
-      !key.startsWith(THEME_KEY_PREFIX)
-    ) {
-      continue;
-    }
+    if (!key.startsWith(PILLAR_KEY_PREFIX)) continue;
     const record = asRecord(value);
     if (!record) continue;
     pillars.push({
@@ -1609,22 +1622,13 @@ export function uniquePostSlug(title: string, taken: string[]): string {
   return `${base}-${randomHex(4)}`;
 }
 
-/**
- * The post payload for a generated draft, always scheduled.
- *
- * Generated posts are never published on save: a human reviews them, and the
- * schedule is the promise they opt into. `setPostStatus` keeps a valid
- * `scheduledDatetime`, so seeding it first is what pins the chosen instant.
- *
- * `image` is left empty — nothing here generates one, and a fabricated URL
- * would render a broken post. `missingPostFields` reports it, which is the
- * honest signal for the reviewer.
- */
+/** A freshly generated post: lands in Awaiting review, with no cover image. */
 export function buildGeneratedPostPayload({
   draft,
   resolveTypes,
   categories,
-  scheduledFor,
+  authors,
+  planning,
   takenSlugs,
   now,
 }: {
@@ -1632,27 +1636,31 @@ export function buildGeneratedPostPayload({
   resolveTypes: Record<string, string>;
   /** The site's categories, to resolve the chosen slugs into stored refs. */
   categories: CategoryRef[];
-  scheduledFor: Date;
+  /** The site's authors, to resolve the chosen emails into stored refs. */
+  authors: AuthorRef[];
+  /** The briefing the card was generated from, kept for the board card. */
+  planning?: PlanningMeta;
   takenSlugs: string[];
   now: Date;
 }): Record<string, unknown> {
-  const chosen = new Set(draft.categorySlugs);
+  const chosenCategories = new Set(draft.categorySlugs);
+  const chosenAuthors = new Set(draft.authorEmails);
   const payload: Record<string, unknown> = {
     title: draft.title,
     slug: uniquePostSlug(draft.title, takenSlugs),
-    date: scheduledFor.toISOString().slice(0, 10),
+    date: now.toISOString().slice(0, 10),
     excerpt: draft.excerpt,
     image: "",
     alt: "",
-    authors: [],
-    categories: categories.filter((category) => chosen.has(category.slug)),
+    authors: authors.filter((author) => chosenAuthors.has(author.email)),
+    categories: categories.filter((c) => chosenCategories.has(c.slug)),
     seo: {
       title: draft.seo.title,
       description: draft.seo.description,
       image: "",
     },
     sections: buildPostSections(draft.sections, resolveTypes),
-    scheduledDatetime: scheduledFor.toISOString(),
+    planning: (planning ?? {}) as Record<string, unknown>,
   };
-  return setPostStatus(payload, "scheduled", now);
+  return setPostStatus(payload, "awaiting_review", now);
 }

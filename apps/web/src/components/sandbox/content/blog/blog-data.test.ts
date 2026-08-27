@@ -20,14 +20,14 @@ import {
   setPostStatus,
   stampPostModified,
   dedupeSuggestedThemes,
-  newThemeKey,
-  scanThemes,
-  THEME_KEY_PREFIX,
+  newIdeaKey,
+  scanIdeas,
+  IDEA_KEY_PREFIX,
   scanPillars,
   newPillarKey,
   PILLAR_KEY_PREFIX,
   PLANNING_POST_KEY_PREFIX,
-  emptyIdeaPayload,
+  emptyDraftPostPayload,
   planningMeta,
   buildPlanningPostBlock,
   listPlanningPosts,
@@ -594,12 +594,12 @@ describe("scanPillars", () => {
     expect(pillars[1]?.formats).toEqual(["Changelog", "Deep dive"]);
   });
 
-  test("unions legacy themes blocks so old sites need no migration", () => {
+  test("leaves the ideas queue alone — those blocks were always ideas", () => {
     const pillars = scanPillars({
       [`${PILLAR_KEY_PREFIX}a`]: { title: "New pillar", createdAt: "2026-02" },
-      [`${THEME_KEY_PREFIX}b`]: { title: "Old theme", createdAt: "2026-01" },
+      [`${IDEA_KEY_PREFIX}b`]: { title: "An idea", createdAt: "2026-01" },
     });
-    expect(pillars.map((p) => p.title)).toEqual(["New pillar", "Old theme"]);
+    expect(pillars.map((p) => p.title)).toEqual(["New pillar"]);
   });
 
   test("ignores non-object and unrelated blocks", () => {
@@ -619,11 +619,11 @@ describe("newPillarKey", () => {
   });
 });
 
-describe("emptyIdeaPayload / planningMeta", () => {
+describe("emptyDraftPostPayload / planningMeta", () => {
   const now = new Date(2026, 7, 21, 15, 30);
 
-  test("captures an idea as a briefing with no body", () => {
-    const payload = emptyIdeaPayload({
+  test("starts a post as a briefing with no body", () => {
+    const payload = emptyDraftPostPayload({
       title: "How to read a label",
       planning: { pillarKey: "p1", brief: "Angle." },
       now,
@@ -1159,15 +1159,15 @@ describe("selectBrandEvidenceBlocks", () => {
   });
 });
 
-describe("scanThemes", () => {
+describe("scanIdeas", () => {
   test("reads only theme blocks, newest first", () => {
-    const themes = scanThemes({
-      [`${THEME_KEY_PREFIX}b`]: {
+    const ideas = scanIdeas({
+      [`${IDEA_KEY_PREFIX}b`]: {
         title: "Segundo",
         body: "briefing b",
         createdAt: "2026-02-01T00:00:00.000Z",
       },
-      [`${THEME_KEY_PREFIX}a`]: {
+      [`${IDEA_KEY_PREFIX}a`]: {
         title: "Primeiro",
         body: "briefing a",
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -1179,42 +1179,52 @@ describe("scanThemes", () => {
       },
     });
 
-    expect(themes.map((t) => t.title)).toEqual(["Segundo", "Primeiro"]);
-    expect(themes[0]?.key).toBe(`${THEME_KEY_PREFIX}b`);
-    expect(themes[1]?.body).toBe("briefing a");
+    expect(ideas.map((idea) => idea.title)).toEqual(["Segundo", "Primeiro"]);
+    expect(ideas[0]?.key).toBe(`${IDEA_KEY_PREFIX}b`);
+    expect(ideas[1]?.body).toBe("briefing a");
   });
 
-  test("a theme still being written has empty fields, not missing ones", () => {
-    const themes = scanThemes({ [`${THEME_KEY_PREFIX}new`]: {} });
-    expect(themes).toEqual([
-      { key: `${THEME_KEY_PREFIX}new`, title: "", body: "", createdAt: "" },
+  test("an idea still being written has empty fields, not missing ones", () => {
+    const ideas = scanIdeas({ [`${IDEA_KEY_PREFIX}new`]: {} });
+    expect(ideas).toEqual([
+      {
+        key: `${IDEA_KEY_PREFIX}new`,
+        title: "",
+        body: "",
+        pillarKey: undefined,
+        createdAt: "",
+      },
     ]);
   });
 
-  test("themes without a date sort last, and ties break by title", () => {
+  test("ideas without a date sort last, and ties break by title", () => {
     const dated = "2026-01-01T00:00:00.000Z";
-    const themes = scanThemes({
-      [`${THEME_KEY_PREFIX}1`]: { title: "Sem data" },
-      [`${THEME_KEY_PREFIX}2`]: { title: "Bravo", createdAt: dated },
-      [`${THEME_KEY_PREFIX}3`]: { title: "Alfa", createdAt: dated },
+    const ideas = scanIdeas({
+      [`${IDEA_KEY_PREFIX}1`]: { title: "Sem data" },
+      [`${IDEA_KEY_PREFIX}2`]: { title: "Bravo", createdAt: dated },
+      [`${IDEA_KEY_PREFIX}3`]: { title: "Alfa", createdAt: dated },
     });
-    expect(themes.map((t) => t.title)).toEqual(["Alfa", "Bravo", "Sem data"]);
+    expect(ideas.map((idea) => idea.title)).toEqual([
+      "Alfa",
+      "Bravo",
+      "Sem data",
+    ]);
   });
 
-  test("ignores a non-object at a theme key", () => {
-    expect(scanThemes({ [`${THEME_KEY_PREFIX}x`]: "corrupted" })).toEqual([]);
+  test("ignores a non-object at an idea key", () => {
+    expect(scanIdeas({ [`${IDEA_KEY_PREFIX}x`]: "corrupted" })).toEqual([]);
   });
 
-  test("returns nothing for a site with no themes", () => {
-    expect(scanThemes({})).toEqual([]);
+  test("returns nothing for a site with no ideas", () => {
+    expect(scanIdeas({})).toEqual([]);
   });
 });
 
-describe("newThemeKey", () => {
+describe("newIdeaKey", () => {
   test("is prefixed and unique", () => {
-    const a = newThemeKey();
-    expect(a.startsWith(THEME_KEY_PREFIX)).toBe(true);
-    expect(a).not.toBe(newThemeKey());
+    const a = newIdeaKey();
+    expect(a.startsWith(IDEA_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(newIdeaKey());
   });
 });
 
@@ -1586,6 +1596,7 @@ describe("buildGeneratedPostPayload", () => {
       excerpt: "E o que isso diz sobre a peça.",
       seo: { title: "Por que o linho amassa", description: "Entenda a fibra." },
       categorySlugs: ["tecidos"],
+      authorEmails: ["ana@marca.com"],
       sections: [{ type: "Paragraph" as const, html: "corpo" }],
     },
     resolveTypes: { Paragraph: "blog/sections/blocks/Paragraph.tsx" },
@@ -1593,25 +1604,50 @@ describe("buildGeneratedPostPayload", () => {
       { name: "Tecidos", slug: "tecidos" },
       { name: "Outra", slug: "outra" },
     ],
-    scheduledFor: new Date("2026-09-01T11:00:00.000Z"),
+    authors: [
+      { name: "Ana", email: "ana@marca.com" },
+      { name: "Bruno", email: "bruno@marca.com" },
+    ],
     takenSlugs: [],
     now: new Date("2026-08-21T12:00:00.000Z"),
   };
 
-  test("is scheduled at the chosen instant, never published", () => {
+  test("lands in review, never scheduled or published", () => {
     const payload = buildGeneratedPostPayload(args);
-    expect(payload.status).toBe("scheduled");
-    expect(payload.scheduledDatetime).toBe("2026-09-01T11:00:00.000Z");
+    expect(payload.status).toBe("awaiting_review");
+    expect(payload.scheduledDatetime).toBe("");
   });
 
-  test("the editorial date follows the scheduled day", () => {
-    expect(buildGeneratedPostPayload(args).date).toBe("2026-09-01");
+  test("the editorial date is the day it was generated", () => {
+    expect(buildGeneratedPostPayload(args).date).toBe("2026-08-21");
   });
 
   test("resolves only the chosen categories into stored refs", () => {
     expect(buildGeneratedPostPayload(args).categories).toEqual([
       { name: "Tecidos", slug: "tecidos" },
     ]);
+  });
+
+  test("resolves only the chosen authors into stored refs", () => {
+    expect(buildGeneratedPostPayload(args).authors).toEqual([
+      { name: "Ana", email: "ana@marca.com" },
+    ]);
+  });
+
+  test("an unmatched pick attributes nobody rather than inventing an author", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      draft: { ...args.draft, authorEmails: ["ghost@marca.com"] },
+    });
+    expect(payload.authors).toEqual([]);
+  });
+
+  test("keeps the briefing, so the card still shows its pillar and format", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      planning: { pillarTitle: "Casos de clientes", brief: "Angle." },
+    });
+    expect(planningMeta(payload).pillarTitle).toBe("Casos de clientes");
   });
 
   test("leaves the cover image empty, so the reviewer is told", () => {

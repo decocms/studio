@@ -101,10 +101,6 @@ type PillarPhase = Extract<TranslationKey, `sandbox.pillars.phase${string}`>;
 const PILLAR_PHASE_READING =
   "sandbox.pillars.phaseReading" satisfies PillarPhase;
 
-function strList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
-}
-
 /**
  * A plain format anyone can start from, written locally: no model, no credits,
  * and so nothing to fail. Cites only sections the site actually has.
@@ -245,10 +241,6 @@ export function BlogContext({
           next[field] = result[field];
           filled.push(field);
         }
-      }
-      if (strList(next.categories).length === 0 && result.categories?.length) {
-        next.categories = result.categories;
-        filled.push("categories");
       }
 
       setBrand(next);
@@ -432,15 +424,6 @@ export function BlogContext({
                 namePlaceholder: t("sandbox.blogBrand.valuesNamePlaceholder"),
                 bodyPlaceholder: t("sandbox.blogBrand.valuesBodyPlaceholder"),
               })}
-            </section>
-
-            <section className="space-y-2">
-              <Label>{t("sandbox.blogBrand.categoriesLabel")}</Label>
-              <StringList
-                addLabel={t("sandbox.blogBrand.addCategory")}
-                values={strList(brand.categories)}
-                onChange={(v) => setField("categories", v)}
-              />
             </section>
 
             <section className="space-y-2">
@@ -1265,43 +1248,6 @@ function EntityPanel({
         </ul>
       )}
       <AddButton label={addLabel} onClick={add} />
-    </div>
-  );
-}
-
-/** Editable list of plain names — used for the blog category taxonomy. */
-function StringList({
-  addLabel,
-  values,
-  onChange,
-}: {
-  addLabel: string;
-  values: string[];
-  onChange: (values: string[]) => void;
-}) {
-  const t = useT();
-  return (
-    <div className="space-y-2">
-      <div className="space-y-1.5">
-        {values.map((value, index) => (
-          <div key={index} className="group/item flex items-center gap-1.5">
-            <Input
-              value={value}
-              onChange={(e) =>
-                onChange(
-                  values.map((v, i) => (i === index ? e.target.value : v)),
-                )
-              }
-              className="h-9"
-            />
-            <RemoveButton
-              label={t("sandbox.blogBrand.removeItem")}
-              onClick={() => onChange(values.filter((_, i) => i !== index))}
-            />
-          </div>
-        ))}
-      </div>
-      <AddButton label={addLabel} onClick={() => onChange([...values, ""])} />
     </div>
   );
 }

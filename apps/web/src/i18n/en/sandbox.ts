@@ -20,13 +20,11 @@ export const sandbox = {
   "sandbox.blockPicker.insertBlockButton": "Insert block",
   "sandbox.blockPicker.noBlocksFound": "No blocks found.",
   "sandbox.blockPicker.searchPlaceholder": "Search blocks…",
-  "sandbox.blogBrand.addCategory": "Add category",
   "sandbox.blogBrand.addCompetitor": "Add competitor",
   "sandbox.blogBrand.addDo": "Add a do",
   "sandbox.blogBrand.addDont": "Add a don't",
   "sandbox.blogBrand.addValue": "Add value",
   "sandbox.blogBrand.audienceLabel": "Target audience",
-  "sandbox.blogBrand.categoriesLabel": "Blog categories",
   "sandbox.blogBrand.companyNameLabel": "Brand name",
   "sandbox.blogBrand.competitorsBodyPlaceholder":
     "How they position themselves, and where this brand differs",
@@ -315,6 +313,49 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} format(s) added",
   "sandbox.formats.unknownCitations":
     "This format cites sections the site doesn't have: {names}",
+  "sandbox.generatePost.authorLabel": "Author",
+  "sandbox.generatePost.back": "Back",
+  "sandbox.generatePost.blockedBrand":
+    "Fill in {fields} on the Brand tab first — a post written without them reads like any other brand's.",
+  "sandbox.generatePost.categoryLabel": "Category",
+  "sandbox.generatePost.done": 'Wrote "{title}" — ready for review',
+  "sandbox.generatePost.extraLabel": "Anything else?",
+  "sandbox.generatePost.extraPlaceholder":
+    "What you want on top of everything else, in your words.",
+  "sandbox.generatePost.failed": "Could not write this post",
+  "sandbox.generatePost.formatHint":
+    "Pick a format this brand already uses, or describe a new one.",
+  "sandbox.generatePost.formatNameLabel": "Format name",
+  "sandbox.generatePost.formatNamePlaceholder":
+    "The format, named by the job it does",
+  "sandbox.generatePost.formatValueLabel": "How a post like this is built",
+  "sandbox.generatePost.formatValuePlaceholder":
+    "How it opens, develops and closes.",
+  "sandbox.generatePost.generate": "Generate",
+  "sandbox.generatePost.ideaBodyLabel": "The angle",
+  "sandbox.generatePost.ideaBodyPlaceholder":
+    "Who it's for and what it should cover. Optional.",
+  "sandbox.generatePost.ideaHint":
+    "One angle, specific enough to be a single post.",
+  "sandbox.generatePost.ideaHintInPillar":
+    'One angle inside "{pillar}" — specific enough to be a single post, not the territory itself.',
+  "sandbox.generatePost.ideaTitleLabel": "What is the post about?",
+  "sandbox.generatePost.ideaTitlePlaceholder": "e.g. Why linen creases",
+  "sandbox.generatePost.inferHint":
+    "Leave category or author unset and the model picks from what your blog already has.",
+  "sandbox.generatePost.inferIt": "Let AI choose",
+  "sandbox.generatePost.next": "Next",
+  "sandbox.generatePost.stepExtra": "Details",
+  "sandbox.generatePost.stepFormat": "Format",
+  "sandbox.generatePost.stepIdea": "Idea",
+  "sandbox.generatePost.subtitle":
+    "An idea, the pillar it belongs to, the format it follows — then anything else you want to pin down.",
+  "sandbox.generatePost.suggestFailed": "Could not suggest",
+  "sandbox.generatePost.suggestIdeas": "Suggest ideas",
+  "sandbox.generatePost.suggestIdeasHint":
+    "Propose ideas from your brand context.",
+  "sandbox.generatePost.title": "Generate a post",
+  "sandbox.generatePost.writeAnIdea": "Write a new one",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.duplicate": "Duplicate",
@@ -428,6 +469,7 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Collapse to panel",
   "sandbox.postBoard.collapseLane": "Collapse {lane}",
   "sandbox.postBoard.delete": "Delete",
+  "sandbox.postBoard.deleteIdea": "Delete idea",
   "sandbox.postBoard.emptyDescription":
     "Generate a few ideas and shape them into published posts.",
   "sandbox.postBoard.emptyTitle": "No posts yet",
@@ -445,8 +487,13 @@ export const sandbox = {
   "sandbox.postBoard.ideaGuidanceLabel": "Rough ideas or a focus",
   "sandbox.postBoard.ideaGuidancePlaceholder":
     "e.g. a piece on choosing fabric weight",
+  "sandbox.postBoard.ideaNoPillar": "Any pillar",
+  "sandbox.postBoard.ideaPillarLabel": "Pillar",
   "sandbox.postBoard.ideasAdded": "Added {count} idea(s)",
+  "sandbox.postBoard.ideasEmpty":
+    "No ideas yet. Generate a few, or write one straight into a post.",
   "sandbox.postBoard.ideasFailed": "Could not generate ideas",
+  "sandbox.postBoard.ideasTray": "Ideas",
   "sandbox.postBoard.laneEmpty": "Nothing here yet",
   "sandbox.postBoard.laneArchived": "Archived",
   "sandbox.postBoard.laneGenerating": "Generating",
@@ -464,14 +511,21 @@ export const sandbox = {
     "This site's blog app is older than {required} — run `{command}` to enable this.",
   "sandbox.postBoard.nIssues": "{count} to fix before scheduling",
   "sandbox.postBoard.newPost": "New post",
+  "sandbox.postBoard.newPostGenerate": "Generate",
+  "sandbox.postBoard.newPostGenerateHint":
+    "Write it with AI, from your context",
+  "sandbox.postBoard.newPostWrite": "Write",
+  "sandbox.postBoard.newPostWriteHint": "Start an empty draft yourself",
   "sandbox.postBoard.noFormat": "No format",
   "sandbox.postBoard.noPillar": "No pillar",
   "sandbox.postBoard.readyToSchedule": "Ready to schedule",
   "sandbox.postBoard.selectPrompt": "Select a post to view it here.",
   "sandbox.postBoard.untitled": "Untitled post",
+  "sandbox.postBoard.untitledIdea": "Untitled idea",
   "sandbox.postBoard.usesCredits": "Uses AI credits",
   "sandbox.postBoard.viewBoard": "Board",
   "sandbox.postBoard.viewList": "List",
+  "sandbox.postBoard.writeFromIdea": "Write a post",
   "sandbox.postCalendar.legendScheduled": "Scheduled",
   "sandbox.postCalendar.legendUnscheduled": "Not scheduled",
   "sandbox.postCalendar.next": "Next month",

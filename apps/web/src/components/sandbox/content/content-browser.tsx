@@ -1124,6 +1124,7 @@ function ContentBrowserReady({
                 }}
                 move={postMove}
                 support={blogSupport}
+                meta={meta}
                 renderDetail={(key, controls) => (
                   <PostEditor
                     key={`post:${postIdOfKey(key)}`}

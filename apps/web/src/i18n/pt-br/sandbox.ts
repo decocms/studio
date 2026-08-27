@@ -22,13 +22,11 @@ export const sandbox = {
   "sandbox.blockPicker.insertBlockButton": "Inserir bloco",
   "sandbox.blockPicker.noBlocksFound": "Nenhum bloco encontrado.",
   "sandbox.blockPicker.searchPlaceholder": "Pesquisar blocos…",
-  "sandbox.blogBrand.addCategory": "Adicionar categoria",
   "sandbox.blogBrand.addCompetitor": "Adicionar concorrente",
   "sandbox.blogBrand.addDo": "Adicionar orientação",
   "sandbox.blogBrand.addDont": "Adicionar restrição",
   "sandbox.blogBrand.addValue": "Adicionar valor",
   "sandbox.blogBrand.audienceLabel": "Público-alvo",
-  "sandbox.blogBrand.categoriesLabel": "Categorias do blog",
   "sandbox.blogBrand.companyNameLabel": "Nome da marca",
   "sandbox.blogBrand.competitorsBodyPlaceholder":
     "Como se posicionam, e onde esta marca se diferencia",
@@ -323,6 +321,49 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} formato(s) adicionado(s)",
   "sandbox.formats.unknownCitations":
     "Este formato cita sections que o site não tem: {names}",
+  "sandbox.generatePost.authorLabel": "Autor",
+  "sandbox.generatePost.back": "Voltar",
+  "sandbox.generatePost.blockedBrand":
+    "Preencha {fields} na aba Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
+  "sandbox.generatePost.categoryLabel": "Categoria",
+  "sandbox.generatePost.done": '"{title}" escrito — pronto para revisão',
+  "sandbox.generatePost.extraLabel": "Mais alguma coisa?",
+  "sandbox.generatePost.extraPlaceholder":
+    "O que você quer além de tudo isso, nas suas palavras.",
+  "sandbox.generatePost.failed": "Não foi possível escrever este post",
+  "sandbox.generatePost.formatHint":
+    "Escolha um formato que a marca já usa, ou descreva um novo.",
+  "sandbox.generatePost.formatNameLabel": "Nome do formato",
+  "sandbox.generatePost.formatNamePlaceholder":
+    "O formato, nomeado pelo trabalho que faz",
+  "sandbox.generatePost.formatValueLabel": "Como um post assim é construído",
+  "sandbox.generatePost.formatValuePlaceholder":
+    "Como ele abre, desenvolve e fecha.",
+  "sandbox.generatePost.generate": "Gerar",
+  "sandbox.generatePost.ideaBodyLabel": "O ângulo",
+  "sandbox.generatePost.ideaBodyPlaceholder":
+    "Para quem é e o que deve cobrir. Opcional.",
+  "sandbox.generatePost.ideaHint":
+    "Um ângulo só, específico o bastante para virar um post.",
+  "sandbox.generatePost.ideaHintInPillar":
+    'Um ângulo dentro de "{pillar}" — específico o bastante para virar um post, não o território inteiro.',
+  "sandbox.generatePost.ideaTitleLabel": "Sobre o que é o post?",
+  "sandbox.generatePost.ideaTitlePlaceholder": "ex.: Por que o linho amassa",
+  "sandbox.generatePost.inferHint":
+    "Deixe categoria ou autor em branco e o modelo escolhe entre os que o seu blog já tem.",
+  "sandbox.generatePost.inferIt": "Deixar a IA escolher",
+  "sandbox.generatePost.next": "Avançar",
+  "sandbox.generatePost.stepExtra": "Detalhes",
+  "sandbox.generatePost.stepFormat": "Formato",
+  "sandbox.generatePost.stepIdea": "Ideia",
+  "sandbox.generatePost.subtitle":
+    "Uma ideia, o pilar a que ela pertence, o formato que ela segue — e o que mais você quiser definir.",
+  "sandbox.generatePost.suggestFailed": "Não foi possível sugerir",
+  "sandbox.generatePost.suggestIdeas": "Sugerir ideias",
+  "sandbox.generatePost.suggestIdeasHint":
+    "Propor ideias a partir do seu contexto de marca.",
+  "sandbox.generatePost.title": "Gerar um post",
+  "sandbox.generatePost.writeAnIdea": "Escrever uma nova",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -438,6 +479,7 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Recolher para o painel",
   "sandbox.postBoard.collapseLane": "Recolher {lane}",
   "sandbox.postBoard.delete": "Excluir",
+  "sandbox.postBoard.deleteIdea": "Excluir ideia",
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
@@ -455,8 +497,13 @@ export const sandbox = {
   "sandbox.postBoard.ideaGuidanceLabel": "Ideias soltas ou um foco",
   "sandbox.postBoard.ideaGuidancePlaceholder":
     "ex.: um texto sobre escolher a gramatura do tecido",
+  "sandbox.postBoard.ideaNoPillar": "Qualquer pilar",
+  "sandbox.postBoard.ideaPillarLabel": "Pilar",
   "sandbox.postBoard.ideasAdded": "{count} ideia(s) adicionada(s)",
+  "sandbox.postBoard.ideasEmpty":
+    "Nenhuma ideia ainda. Gere algumas, ou escreva uma direto num post.",
   "sandbox.postBoard.ideasFailed": "Não foi possível gerar ideias",
+  "sandbox.postBoard.ideasTray": "Ideias",
   "sandbox.postBoard.laneEmpty": "Nada aqui ainda",
   "sandbox.postBoard.laneArchived": "Arquivado",
   "sandbox.postBoard.laneGenerating": "Gerando",
@@ -474,14 +521,21 @@ export const sandbox = {
     "O blog app deste site é anterior à {required} — rode `{command}` para habilitar.",
   "sandbox.postBoard.nIssues": "{count} a corrigir antes de agendar",
   "sandbox.postBoard.newPost": "Novo post",
+  "sandbox.postBoard.newPostGenerate": "Gerar",
+  "sandbox.postBoard.newPostGenerateHint":
+    "Escrever com IA, a partir do seu contexto",
+  "sandbox.postBoard.newPostWrite": "Escrever",
+  "sandbox.postBoard.newPostWriteHint": "Começar um rascunho vazio você mesmo",
   "sandbox.postBoard.noFormat": "Sem formato",
   "sandbox.postBoard.noPillar": "Sem pilar",
   "sandbox.postBoard.readyToSchedule": "Pronto para agendar",
   "sandbox.postBoard.selectPrompt": "Selecione um post para vê-lo aqui.",
   "sandbox.postBoard.untitled": "Post sem título",
+  "sandbox.postBoard.untitledIdea": "Ideia sem título",
   "sandbox.postBoard.usesCredits": "Usa créditos de IA",
   "sandbox.postBoard.viewBoard": "Quadro",
   "sandbox.postBoard.viewList": "Lista",
+  "sandbox.postBoard.writeFromIdea": "Escrever um post",
   "sandbox.postCalendar.legendScheduled": "Agendado",
   "sandbox.postCalendar.legendUnscheduled": "Não agendado",
   "sandbox.postCalendar.next": "Próximo mês",
