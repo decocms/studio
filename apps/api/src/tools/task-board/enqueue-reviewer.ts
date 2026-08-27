@@ -6,6 +6,7 @@ import {
   isReviewerThreadTitle,
   PR_DIFF_RECIPE,
   NO_VISUAL_SURFACE,
+  REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewCycleStart,
   SHALLOW_CHECKOUT_NOTE,
@@ -28,8 +29,8 @@ import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
 
 /**
- * True when a reviewer thread is genuinely still running: non-terminal status
- * AND a heartbeat inside the stall window.
+ * True when a run thread is genuinely still running: non-terminal status AND a
+ * heartbeat inside the stall window.
  *
  * Status alone is not liveness. A reviewer whose pod died mid-run stays
  * `in_progress` forever — the in-memory idle reaper is per-pod, and
@@ -38,7 +39,7 @@ const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
  * reaped by nobody. Uses the same heartbeat and window as the rest of the
  * codebase (`isThreadRunStale`), so "how long is too long" has one definition.
  */
-function isReviewerThreadLive(
+function isThreadRunLive(
   thr: TaskBoardItem["threads"][number],
   now: number,
 ): boolean {
@@ -48,6 +49,25 @@ function isReviewerThreadLive(
   return !isThreadRunStale(
     { updated_at: thr.lastActiveAt, last_progress_at: null },
     now,
+  );
+}
+
+/**
+ * True while the task's author — the Super Agent, i.e. any run thread that
+ * isn't a reviewer's — is still going.
+ *
+ * The Super Agent is told to link the PR and set In Review *while still
+ * running* (`claude-code-task-run.ts`), so the card is reviewable long before
+ * the run that owns the branch is finished. Title is the discriminator the rest
+ * of the board already uses (`resolveReviewRunToolNames`); liveness is
+ * {@link isThreadRunLive}, so a dead author's stall window releases the card
+ * rather than stranding it.
+ */
+export function authorRunLive(task: TaskBoardItem, now: number): boolean {
+  return task.threads.some(
+    (thr) =>
+      !REVIEWER_KINDS.some((kind) => isReviewerThreadTitle(thr.title, kind)) &&
+      isThreadRunLive(thr, now),
   );
 }
 
@@ -161,6 +181,8 @@ export async function enqueueEnabledReviewers(
   );
   const enabled = enabledReviewerKinds(settings?.flags);
   if (enabled.length === 0) return;
+  // Deferred, not dropped — both callers re-poll; above the hand-offs on purpose.
+  if (authorRunLive(task, Date.now())) return;
   const modelClass: ClaudeCodeModelClass = orgFlagEnabled(
     settings?.flags,
     "cheap_reviewer_model",
@@ -312,7 +334,7 @@ function isSpentAttempt(
   return (
     thr.status !== null &&
     !TERMINAL_THREAD_STATUSES.has(thr.status) &&
-    !isReviewerThreadLive(thr, now)
+    !isThreadRunLive(thr, now)
   );
 }
 
@@ -328,7 +350,7 @@ function reviewerThreadsThisCycle(
   return task.threads.filter((thr) => {
     if (!isReviewerThreadTitle(thr.title, kind)) return false;
     return (
-      isReviewerThreadLive(thr, now) ||
+      isThreadRunLive(thr, now) ||
       new Date(thr.createdAt).getTime() >= lastInReviewAt
     );
   });
@@ -400,7 +422,7 @@ export function reviewerHandledThisCycle(
   // nothing re-dispatches, and the merge gate waits on a verdict that will
   // never come. One sat that way while its co-reviewer had approved in 68
   // seconds.
-  if (thisCycle.some((thr) => isReviewerThreadLive(thr, now))) return true;
+  if (thisCycle.some((thr) => isThreadRunLive(thr, now))) return true;
   const spent = thisCycle.filter((thr) => isSpentAttempt(thr, now));
   // Every attempt spent and the budget is gone — stop, a human owns it now.
   if (spent.length >= MAX_REVIEWER_ATTEMPTS) return true;

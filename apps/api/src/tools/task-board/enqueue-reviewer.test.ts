@@ -7,6 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  authorRunLive,
   MAX_REVIEWER_ATTEMPTS,
   reviewerAttemptsExhausted,
   pinnedRepoConnectionId,
@@ -442,5 +443,55 @@ describe("stalePreviewHandoffDue", () => {
     expect(stalePreviewHandoffDue(0, at("2026-08-13T17:00:00.000Z"))).toBe(
       true,
     );
+  });
+});
+
+describe("authorRunLive", () => {
+  it("is true while the Super Agent's own thread is still running", () => {
+    const task = taskWith([
+      thread({
+        title: "Super Agent: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:00:00Z",
+        lastActiveAt: "2026-01-01T10:09:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(true);
+  });
+
+  it("is false once the Super Agent's thread is terminal", () => {
+    const task = taskWith([
+      thread({
+        title: "Super Agent: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:00:00Z",
+        lastActiveAt: "2026-01-01T10:09:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(false);
+  });
+
+  it("is false for an author that went silent — a dead run must not strand the card", () => {
+    const task = taskWith([
+      thread({
+        title: "Super Agent: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T08:00:00Z",
+        lastActiveAt: "2026-01-01T08:00:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(false);
+  });
+
+  it("does not count a live reviewer thread as the author", () => {
+    const task = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:00:00Z",
+        lastActiveAt: "2026-01-01T10:09:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(false);
   });
 });
