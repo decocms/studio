@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { buildJql, isUnchanged, rescanContinues, vanishedLinks } from "./sync";
+import {
+  buildJql,
+  isUnchanged,
+  rescanContinues,
+  runTruncated,
+  vanishedLinks,
+} from "./sync";
 
 /**
  * The pull's query. Worth pinning because it is the whole definition of which
@@ -184,5 +190,25 @@ describe("rescanContinues", () => {
 
   it("never claims a rescan for a plain incremental run", () => {
     expect(rescanContinues(false, 500, 25)).toBe(false);
+  });
+});
+
+/**
+ * `reconcileVanishedIssues` (which archives cards outside Jira's live scope)
+ * gates on this same truncation check — a run that hit the PAGE cap on many
+ * empty-but-tokened pages, with `processed` still low, is just as incomplete
+ * as one that hit the issue cap, and must not be read as "finished".
+ */
+describe("runTruncated", () => {
+  it("is truncated once the issue cap is hit", () => {
+    expect(runTruncated(500, 3)).toBe(true);
+  });
+
+  it("is truncated once the page cap is hit, even with few issues processed", () => {
+    expect(runTruncated(10, 25)).toBe(true);
+  });
+
+  it("is not truncated when a run finishes under both caps", () => {
+    expect(runTruncated(42, 1)).toBe(false);
   });
 });

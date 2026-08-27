@@ -174,6 +174,18 @@ export function isUnchanged(
 }
 
 /**
+ * Whether this run stopped short of the full incremental scope — either cap
+ * can be why: `MAX_ISSUES_PER_RUN` on a page full of mapped issues, or
+ * `MAX_PAGES_PER_RUN` on a filter that returns many empty-but-tokened pages
+ * (an issue-sparse JQL still burns a page per call). Shared by every caller
+ * that needs to know "did this run actually finish", so the two truncation
+ * reasons can't drift apart again.
+ */
+export function runTruncated(processed: number, pages: number): boolean {
+  return processed >= MAX_ISSUES_PER_RUN || pages >= MAX_PAGES_PER_RUN;
+}
+
+/**
  * Whether the rescan must keep forcing a full re-read on the NEXT run.
  *
  * A run only advances as far as `MAX_ISSUES_PER_RUN`/`MAX_PAGES_PER_RUN` let
@@ -190,9 +202,7 @@ export function rescanContinues(
   processed: number,
   pages: number,
 ): boolean {
-  const truncated =
-    processed >= MAX_ISSUES_PER_RUN || pages >= MAX_PAGES_PER_RUN;
-  return isRescan && truncated;
+  return isRescan && runTruncated(processed, pages);
 }
 
 /** Epics (hierarchyLevel 1) and anything above are containers, not cards. */
@@ -671,10 +681,9 @@ async function runSync(
   }
 
   counts.unmappedStatuses = [...unmapped].sort();
-  // Reconciliation reads the WHOLE scope, so it waits for a run that finished
-  // the incremental pass — mid-backfill, most of the board is legitimately
-  // not linked yet.
-  if (processed < MAX_ISSUES_PER_RUN) {
+  // Reconciliation reads the WHOLE scope, so it waits for a run that actually finished the incremental pass.
+  const truncated = runTruncated(processed, pages);
+  if (!truncated) {
     counts.archived = await reconcileVanishedIssues(
       ctx,
       integration,
@@ -687,7 +696,7 @@ async function runSync(
   // `last_synced_at` stays NULL: the UI would sit on "waiting for the first
   // sync" forever and every later run would count as the initial import, which
   // is exactly the state that suppresses auto-delegation.
-  const rescanPending = rescanContinues(isRescan, processed, pages);
+  const rescanPending = isRescan && truncated;
   if (watermark === undefined && processed === 0) {
     return { counts, watermark: runStartedAt, rescanPending };
   }
