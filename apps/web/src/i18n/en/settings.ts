@@ -56,7 +56,13 @@ export const settings = {
   "settings.jira.enableRequirements":
     "Pick a project and map at least one status before enabling the sync",
   "settings.jira.lastSynced": "Last synced {ago}",
-  "settings.jira.waitingFirstSync": "Waiting for the first sync",
+  "settings.jira.waitingFirstSync": "Waiting for the next sync",
+  "settings.jira.resyncAll": "Resync everything",
+  "settings.jira.resyncAllTitle": "Re-scan the whole board?",
+  "settings.jira.resyncAllQueued":
+    "Re-scan requested — the next sync will start it.",
+  "settings.jira.resyncAllDescription":
+    '"Sync now" only pulls issues changed since the last run. This marks every issue on the board to be re-read \u2014 what you want after changing the status mapping, or when cards look wrong. It starts on the next scheduled sync rather than now, can span several runs on a large board, and never assigns an agent to a card.',
   "settings.jira.syncNow": "Sync now",
   "settings.jira.syncing": "Syncing…",
   "settings.jira.syncDone":

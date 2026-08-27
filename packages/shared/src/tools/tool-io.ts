@@ -5026,6 +5026,10 @@ export interface StudioToolIO {
         | { error: string };
     };
   };
+  JIRA_RESYNC_REQUEST: {
+    input: { [x: string]: never };
+    output: { queued: true };
+  };
   LIST_OBJECTS: {
     input: {
       prefix?: string | undefined;

@@ -194,6 +194,7 @@ const ALL_TOOL_NAMES = [
   "JIRA_BOARDS_LIST",
   "JIRA_BOARD_COLUMNS_LIST",
   "JIRA_SYNC_RUN",
+  "JIRA_RESYNC_REQUEST",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -916,6 +917,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
+    name: "JIRA_RESYNC_REQUEST",
+    description:
+      "Mark the whole Jira board to be re-read on the next scheduled sync",
+    category: "Jira",
+  },
+  {
     name: "FILE_CONFIG_UPDATE",
     description:
       "Update an S3 bucket configuration, optionally rotating credentials",
@@ -1440,6 +1447,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_BOARDS_LIST",
       "JIRA_BOARD_COLUMNS_LIST",
       "JIRA_SYNC_RUN",
+      "JIRA_RESYNC_REQUEST",
     ],
   },
   {
