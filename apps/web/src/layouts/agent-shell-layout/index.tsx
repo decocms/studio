@@ -29,7 +29,13 @@ import {
   Suspense,
   type ReactNode,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Chat, useChatTask } from "@/components/chat/index";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  decofileStatusQueryOptions,
+  isBranchStale,
+} from "@/components/sections-editor/decofile-api";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
@@ -271,6 +277,53 @@ function VmEventsBridge({
       ),
     );
   }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
+
+  /**
+   * Auto-fresh-branch (org-gated, off by default): opening the CMS on a branch
+   * whose last commit predates the staleness window moves the session to a
+   * freshly minted branch off the default branch. The stale branch is left on
+   * GitHub. One switch per thread per tab, mirroring the adopt guard above.
+   */
+  const { org } = useProjectContext();
+  const autoFreshBranchEnabled = useOrgFlag("cms_auto_fresh_branch");
+  const { runtime: cmsRuntime, resolved: cmsRuntimeResolved } =
+    useSessionRuntime(virtualMcpId);
+  const freshBranchForThreadRef = useRef<string | null>(null);
+  const staleCheckEnabled =
+    autoFreshBranchEnabled &&
+    cmsRuntimeResolved &&
+    cmsRuntime === "cms" &&
+    !!org?.slug &&
+    !!currentBranch &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
+    freshBranchForThreadRef.current !== (activeTask?.id ?? null);
+  const staleStatusQuery = useQuery({
+    ...decofileStatusQueryOptions({
+      orgSlug: org?.slug ?? "",
+      virtualMcpId,
+      branch: currentBranch ?? "",
+    }),
+    enabled: staleCheckEnabled,
+  });
+  const staleLastCommitAt = staleStatusQuery.data?.lastCommitAt ?? null;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot branch switch gated on the resolved CMS status; no render-time equivalent
+  useEffect(() => {
+    if (!staleCheckEnabled || !activeTask) return;
+    if (!isBranchStale(staleLastCommitAt, Date.now())) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't switch twice
+    freshBranchForThreadRef.current = activeTask.id;
+    setCurrentTaskBranch(
+      generateBranchName(
+        session?.user?.name || session?.user?.email?.split("@")[0],
+      ),
+    );
+  }, [
+    staleCheckEnabled,
+    staleLastCommitAt,
+    activeTask,
+    session,
+    setCurrentTaskBranch,
+  ]);
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.

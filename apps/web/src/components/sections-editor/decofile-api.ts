@@ -128,6 +128,59 @@ export async function fetchDecofile(
   return body.decofile;
 }
 
+/**
+ * A CMS branch is stale once its last commit is older than this. Git has no
+ * ref-creation time, so "last commit" doubles as "last touched" (an untouched
+ * side branch keeps the base commit it was cut from — old the moment the
+ * default branch advances). See {@link fetchDecofileStatus}.
+ */
+export const CMS_STALE_BRANCH_MS = 2 * 24 * 60 * 60 * 1000;
+
+interface DecofileStatus {
+  baseBranch: string;
+  aheadBy: number;
+  behindBy: number;
+  /**
+   * Head commit's committer date (ISO), or null when the branch is the default
+   * branch or not yet materialized on GitHub — either way, never auto-switch.
+   */
+  lastCommitAt: string | null;
+}
+
+/**
+ * Pure staleness predicate — kept side-effect-free so it unit-tests without a
+ * server. `null`/unparseable `lastCommitAt` is never stale (see DecofileStatus).
+ */
+export function isBranchStale(
+  lastCommitAt: string | null | undefined,
+  now: number,
+  windowMs: number = CMS_STALE_BRANCH_MS,
+): boolean {
+  if (!lastCommitAt) return false;
+  const at = new Date(lastCommitAt).getTime();
+  if (Number.isNaN(at)) return false;
+  return now - at > windowMs;
+}
+
+/** GET branch drift + head-commit age; the CMS auto-fresh-branch check reads it. */
+async function fetchDecofileStatus(
+  params: DecofileScopeParams,
+): Promise<DecofileStatus> {
+  const res = await fetch(`${decofileApiUrl(params)}/status`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return throwResponseError(res, "Status");
+  return (await res.json()) as DecofileStatus;
+}
+
+export function decofileStatusQueryOptions(params: DecofileScopeParams) {
+  return {
+    queryKey: KEYS.decofileStatus(decofileCacheKey(params)),
+    queryFn: () => fetchDecofileStatus(params),
+    staleTime: 30_000,
+  };
+}
+
 /** PATCH blocks; resolves with the draft pointer of the carrying commit. */
 export async function patchDecofile(
   params: DecofileScopeParams,

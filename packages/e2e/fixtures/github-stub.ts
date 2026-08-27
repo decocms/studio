@@ -62,6 +62,8 @@ interface CommitRecord {
   treeSha: string;
   parents: string[];
   message: string;
+  /** Committer date (ISO); the branch head's drives the CMS staleness check. */
+  committedAt: string;
 }
 
 interface PullRecord {
@@ -101,7 +103,10 @@ interface SeedRepoBody {
    * (i.e. ahead-by-1). A branch entry WITHOUT a `files` key aliases the
    * default head instead (ahead-by-0) — handy for drift/status tests.
    */
-  branches?: Record<string, { files?: Record<string, string> } | null>;
+  branches?: Record<
+    string,
+    { files?: Record<string, string>; committedAt?: string } | null
+  >;
   mergeMode?: MergeMode;
 }
 
@@ -134,13 +139,14 @@ function putCommit(
   treeSha: string,
   parents: string[],
   message: string,
+  committedAt: string = new Date().toISOString(),
 ): string {
   // The counter keeps same-(tree,parents,message) commits distinct — this is
   // fixture code, not git; determinism-per-run is all the tests need.
   const sha = sha1(
     `commit:${treeSha}:${parents.join(",")}:${message}:${commitCounter++}`,
   );
-  repo.commits.set(sha, { sha, treeSha, parents, message });
+  repo.commits.set(sha, { sha, treeSha, parents, message, committedAt });
   repo.commitLog.push(sha);
   return sha;
 }
@@ -243,7 +249,13 @@ function seedRepo(body: SeedRepoBody): RepoState {
       ]),
     ),
   );
-  const defaultHead = putCommit(repo, defaultTree, [], `seed ${defaultBranch}`);
+  const defaultHead = putCommit(
+    repo,
+    defaultTree,
+    [],
+    `seed ${defaultBranch}`,
+    branches[defaultBranch]?.committedAt,
+  );
   repo.refs.set(defaultBranch, defaultHead);
 
   for (const [branch, spec] of Object.entries(branches)) {
@@ -263,7 +275,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     );
     repo.refs.set(
       branch,
-      putCommit(repo, tree, [defaultHead], `seed ${branch}`),
+      putCommit(repo, tree, [defaultHead], `seed ${branch}`, spec.committedAt),
     );
   }
   repos.set(repoKey(body.owner, body.repo), repo);
@@ -395,6 +407,25 @@ async function handleRepos(
       full_name: repoKey(repo.owner, repo.name),
       default_branch: repo.defaultBranch,
       owner: { login: repo.owner },
+    });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/branches/{branch...}
+  if (req.method === "GET" && rest[0] === "branches" && rest.length >= 2) {
+    const branch = rest.slice(1).join("/");
+    const sha = repo.refs.get(branch);
+    const commit = sha ? repo.commits.get(sha) : undefined;
+    if (!sha || !commit) {
+      notFound(res);
+      return;
+    }
+    json(res, 200, {
+      name: branch,
+      commit: {
+        sha,
+        commit: { committer: { date: commit.committedAt } },
+      },
     });
     return;
   }
