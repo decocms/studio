@@ -79,10 +79,30 @@ export function reviewerCommentGap(
   );
   if (own.length === 0) return "missing";
   if (kind !== "qa") return null;
-  // `![` opens a markdown image either side of `embedOrgOutputImages`.
-  const shown = own.some((c) => c.body.includes("!["));
-  const justified = own.some((c) => c.body.includes(NO_VISUAL_SURFACE));
-  return shown || justified ? null : "no_screenshots";
+  return own.some((c) => hasVisualEvidence(c.body)) ? null : "no_screenshots";
+}
+
+/** Does this one comment carry the visual evidence QA owes? `![` opens a
+ *  markdown image either side of `embedOrgOutputImages`. Pure — unit-tested. */
+function hasVisualEvidence(body: string): boolean {
+  return body.includes("![") || body.includes(NO_VISUAL_SURFACE);
+}
+
+/**
+ * What's still owed right after mirroring the verdict notes into a comment —
+ * checked directly against that one comment, NOT through `reviewerCommentGap`.
+ * The mirrored text IS the reviewer's definitive record regardless of length
+ * (a one-word "LGTM" verdict is still a real verdict, not a progress note),
+ * so re-applying `MIN_RECORD_LENGTH` here would keep flagging a short-but-real
+ * code-review approval as "missing" forever and send it the QA-only
+ * screenshots follow-up meant for a different reviewer kind entirely.
+ */
+export function nextGapAfterMirror(
+  kind: ReviewerKind,
+  mirroredBody: string,
+): ReviewerCommentGap | null {
+  if (kind !== "qa") return null;
+  return hasVisualEvidence(mirroredBody) ? null : "no_screenshots";
 }
 
 /** The mirrored comment's body: the reviewer's own verdict text, headed by which
@@ -152,9 +172,8 @@ export async function ensureReviewerCommented(
       `[task-board] ${kind} reviewer on ${item.id} recorded no comment — ` +
         `mirrored its verdict notes`,
     );
-    // A mirrored verdict is a record, but for QA it is not evidence: the notes
-    // are prose, and the screenshots live in the run's outputs. Re-check.
-    gap = reviewerCommentGap([...comments, { threadId, body }], threadId, kind);
+    // A mirrored verdict is a record, but for QA it is not evidence.
+    gap = nextGapAfterMirror(kind, body);
     if (!gap) return;
   }
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { NO_VISUAL_SURFACE } from "@decocms/shared/task-board";
-import { reviewerCommentGap, verdictCommentBody } from "./reviewer-comment";
+import {
+  nextGapAfterMirror,
+  reviewerCommentGap,
+  verdictCommentBody,
+} from "./reviewer-comment";
 
 const THREAD = "thrd_qa";
 /** Long enough to clear the progress-note floor. */
@@ -68,6 +72,29 @@ describe("reviewerCommentGap", () => {
     expect(
       reviewerCommentGap([{ threadId: THREAD, body }], THREAD, "qa"),
     ).toBeNull();
+  });
+});
+
+describe("nextGapAfterMirror", () => {
+  it("accepts a short-but-real mirrored code-review verdict", () => {
+    // A one-word verdict mirrors under the progress-note floor.
+    expect(
+      nextGapAfterMirror(
+        "code_review",
+        verdictCommentBody("code_review", "approve", "LGTM"),
+      ),
+    ).toBeNull();
+  });
+
+  it("still asks QA for screenshots when the mirrored notes are prose only", () => {
+    expect(
+      nextGapAfterMirror("qa", verdictCommentBody("qa", "approve", RECORD)),
+    ).toBe("no_screenshots");
+  });
+
+  it("accepts a mirrored QA verdict that already embeds a screenshot", () => {
+    const body = verdictCommentBody("qa", "approve", `${RECORD}\n![before](x)`);
+    expect(nextGapAfterMirror("qa", body)).toBeNull();
   });
 });
 
