@@ -59,7 +59,13 @@ export const settings = {
   "settings.jira.enableRequirements":
     "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
   "settings.jira.lastSynced": "Última sincronização {ago}",
-  "settings.jira.waitingFirstSync": "Aguardando a primeira sincronização",
+  "settings.jira.waitingFirstSync": "Aguardando a próxima sincronização",
+  "settings.jira.resyncAll": "Resincronizar tudo",
+  "settings.jira.resyncAllTitle": "Reler o board inteiro?",
+  "settings.jira.resyncAllQueued":
+    "Releitura solicitada — a próxima sincronização vai começá-la.",
+  "settings.jira.resyncAllDescription":
+    'O "Sincronizar agora" só puxa issues alteradas desde a última execução. Esta opção marca todas as issues do board para serem relidas — é o que você quer depois de mudar o mapeamento de status, ou quando os cards estão errados. Ela começa na próxima sincronização agendada, não agora, pode se estender por várias execuções num board grande, e nunca delega um card para um agente.',
   "settings.jira.syncNow": "Sincronizar agora",
   "settings.jira.syncing": "Sincronizando…",
   "settings.jira.syncDone":

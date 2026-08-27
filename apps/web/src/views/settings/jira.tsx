@@ -61,6 +61,7 @@ import {
   useJiraBoardColumns,
   useJiraBoards,
   useJiraIntegration,
+  useRequestJiraResync,
   useRunJiraSync,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
@@ -544,6 +545,8 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const runSync = useRunJiraSync();
+  const requestResync = useRequestJiraResync();
+  const [resyncOpen, setResyncOpen] = useState(false);
   const hasMapping = Object.keys(integration.statusMapping).length > 0;
 
   return (
@@ -552,6 +555,49 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
       description={<SyncStatusLine integration={integration} />}
       action={
         <div className="flex items-center gap-3">
+          <AlertDialog open={resyncOpen} onOpenChange={setResyncOpen}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                !integration.enabled ||
+                runSync.isPending ||
+                requestResync.isPending
+              }
+              onClick={() => setResyncOpen(true)}
+            >
+              {t("settings.jira.resyncAll")}
+            </Button>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("settings.jira.resyncAllTitle")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("settings.jira.resyncAllDescription")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {t("settings.jira.cancel")}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    requestResync.mutate(undefined, {
+                      onSuccess: () =>
+                        toast.success(t("settings.jira.resyncAllQueued")),
+                      onError: (err) =>
+                        toast.error(
+                          errorMessage(err, t("settings.jira.syncFailed")),
+                        ),
+                    })
+                  }
+                >
+                  {t("settings.jira.resyncAll")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button
             variant="outline"
             size="sm"

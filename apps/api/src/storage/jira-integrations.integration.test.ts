@@ -108,6 +108,39 @@ describe("jira integration status mapping", () => {
     ]);
   });
 
+  /**
+   * The watermark is what makes a repair reach nothing: an issue behind it is
+   * never asked for again, so a widened mapping or a fixed renderer only
+   * touches issues that happen to change afterwards. Clearing it has to leave
+   * the row in the initial-import state — which is also the state that
+   * suppresses auto-delegation, so a re-scan cannot dispatch a paid run per
+   * pre-existing card.
+   */
+  it("clears the watermark without disturbing the rest of the row", async () => {
+    const mapping = { in_review: ["QA", "Code Review"] };
+    const written = await write(mapping);
+    await storage.recordSyncResult(written.id, {
+      error: "boom",
+      watermark: new Date("2026-01-01T00:00:00Z"),
+      rescanPending: true,
+    });
+
+    await storage.clearWatermark(written.id);
+
+    const after = await storage.getByOrg(ORG);
+    expect(after?.lastSyncedAt).toBe(null);
+    expect(after?.lastSyncError).toBe(null);
+    expect(after?.rescanPending).toBe(false);
+    expect(after?.statusMapping).toEqual(mapping);
+    expect(after?.boardId).toBe("1");
+  });
+
+  it("is a no-op on an id that is not this org's integration", async () => {
+    const before = await storage.getByOrg(ORG);
+    await storage.clearWatermark("jira_does_not_exist");
+    expect(await storage.getByOrg(ORG)).toEqual(before);
+  });
+
   it("reads an empty mapping as empty rather than throwing", async () => {
     await write({});
     expect((await storage.getByOrg(ORG))?.statusMapping).toEqual({});
