@@ -305,7 +305,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
   return (
     <div className="flex flex-col mt-3">
       {unmapped.length > 0 && (
-        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
           {t("settings.jira.unmappedWarning", {
             columns: unmapped.map((column) => column.name).join(", "),
           })}
