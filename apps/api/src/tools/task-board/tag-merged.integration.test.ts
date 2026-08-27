@@ -96,10 +96,39 @@ describe("merged-tag sweep", () => {
     expect(ids).not.toContain(notDone);
   });
 
+  // With the delivery lanes on a merge lands the card on `deployed`, so gating
+  // the sweep on Done alone tagged nothing until a human finished dragging it.
+  it("picks up a card a merge left in a delivery lane", async () => {
+    const mergedLane = await seed("merged", true);
+    const postDeploy = await seed("post_deploy_validation", true);
+    const approved = await seed("approved", true);
+    const archived = await seed("archived", true);
+
+    const ids = await candidateIds();
+    expect(ids).toContain(mergedLane);
+    expect(ids).toContain(postDeploy);
+    expect(ids).toContain(approved);
+    // Far enough along that a tag moves nothing.
+    expect(ids).not.toContain(archived);
+  });
+
+  it("tags a card that shipped into a delivery lane, not only a Done one", async () => {
+    const id = await seed("merged", true);
+    await tagMergedForOrg(ctx, ORG, [id], async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
+    const tagged = await taskBoard.getById(id, ORG);
+    expect(tagged?.tags.map((t) => t.name)).toContain(MERGED_TAG_NAME);
+  });
+
   it("tags a merged card, logs it, and drops it from the work list", async () => {
     const id = await seed("done", true);
 
-    const first = await tagMergedForOrg(ctx, ORG, [id], async () => true);
+    const first = await tagMergedForOrg(ctx, ORG, [id], async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
     expect(first.tagged).toBe(1);
     expect(
       (await taskBoard.getById(id, ORG))?.tags.map((t) => t.name),
@@ -122,7 +151,10 @@ describe("merged-tag sweep", () => {
     const a = await seed("done", true);
     const b = await seed("done", true);
 
-    await tagMergedForOrg(ctx, ORG, [a, b], async () => true);
+    await tagMergedForOrg(ctx, ORG, [a, b], async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
 
     const merged = (await tags.listOrgTags(ORG)).filter(
       (t) => t.name.toLowerCase() === MERGED_TAG_NAME,
@@ -135,10 +167,20 @@ describe("merged-tag sweep", () => {
     const open = await seed("done", true);
 
     expect(
-      (await tagMergedForOrg(ctx, ORG, [unknown], async () => null)).tagged,
+      (
+        await tagMergedForOrg(ctx, ORG, [unknown], async () => ({
+          state: null,
+          merged: null,
+        }))
+      ).tagged,
     ).toBe(0);
     expect(
-      (await tagMergedForOrg(ctx, ORG, [open], async () => false)).tagged,
+      (
+        await tagMergedForOrg(ctx, ORG, [open], async () => ({
+          state: "open" as const,
+          merged: false,
+        }))
+      ).tagged,
     ).toBe(0);
     expect((await taskBoard.getById(unknown, ORG))?.tags).toEqual([]);
     expect((await taskBoard.getById(open, ORG))?.tags).toEqual([]);
@@ -164,7 +206,10 @@ describe("merged-tag sweep", () => {
       by: USER,
     });
 
-    await tagMergedForOrg(ctx, otherOrg, [item.id], async () => false);
+    await tagMergedForOrg(ctx, otherOrg, [item.id], async () => ({
+      state: "open" as const,
+      merged: false,
+    }));
 
     expect(await tags.listOrgTags(otherOrg)).toEqual([]);
   });

@@ -7,6 +7,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
+import { currentSprintId } from "@decocms/shared/sprints";
 import { parseTaskKeySeq } from "@decocms/shared/task-key";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -45,6 +46,7 @@ import {
   ChevronDown,
   Flag01,
   FilterLines,
+  Repeat04,
   SearchSm,
   Tag01,
   User01,
@@ -54,6 +56,8 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { getInitials } from "@/lib/get-initials";
 import {
+  formatSprintDates,
+  type Sprint,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -70,6 +74,15 @@ const UNASSIGNED_FILTER = "__unassigned__";
 /** Sentinel repo filter matching tasks with no associated repo. */
 const NO_REPO_FILTER = "__no_repo__";
 
+/** Sentinel sprint filter matching cards in no sprint (the backlog). Shares the
+ *  namespace with sprint ids, which are `sprint_`-prefixed, so it can't collide. */
+const BACKLOG_FILTER = "backlog";
+
+/** Sentinel for "every sprint", which has to be SAID rather than implied by an
+ *  absent param: absence is what selects the running sprint, so without this the
+ *  Any-sprint option would drop out of the URL and default straight back. */
+const ALL_SPRINTS_FILTER = "all";
+
 /** Radix `RadioGroup` needs a string value — this stands in for `null` (any). */
 const ANY_FILTER = "__any__";
 
@@ -84,6 +97,8 @@ export type TaskFilters = {
   tags: string[];
   /** `owner/name` | NO_REPO_FILTER | null (any repo) */
   repo: string | null;
+  /** Sprint id | BACKLOG_FILTER (no sprint) | null (any sprint) */
+  sprint: string | null;
   /** Free-text match against title/description, empty string = no filter. */
   search: string;
 };
@@ -94,27 +109,77 @@ export const EMPTY_FILTERS: TaskFilters = {
   due: null,
   tags: [],
   repo: null,
+  sprint: null,
   search: "",
 };
 
-function hasActiveFilters(f: TaskFilters): boolean {
+/**
+ * The sprint filter this board should apply, given what the URL says.
+ *
+ * A board that runs sprints opens on the running one, the way Jira does, so an
+ * absent param is not "no filter" — it is "nobody has chosen yet". Every sprint
+ * is reachable only through {@link ALL_SPRINTS_FILTER}, which is the whole
+ * reason that sentinel exists.
+ *
+ * An unresolvable id resolves like an absent one. The URL outlives the sprint it
+ * names — a shared link, a bookmark, a sprint deleted in Jira — and left in
+ * place it hides every card behind a chip that reads like "no filter". Falling
+ * back to the default keeps a single rule: you see every sprint only by asking.
+ *
+ * Call it only once the sprints have loaded, or an in-flight read would drop a
+ * filter that is about to be valid.
+ */
+export function resolveSprintFilter(
+  value: string | null,
+  sprints: readonly Sprint[],
+): string | null {
+  if (value === ALL_SPRINTS_FILTER) return null;
+  if (value === BACKLOG_FILTER) return value;
+  if (value !== null && sprints.some((sprint) => sprint.id === value)) {
+    return value;
+  }
+  return currentSprintId(sprints);
+}
+
+/**
+ * Whether the sprint scope is one the user narrowed to, as opposed to the board
+ * opening on its running sprint. The default must not count: it would light up
+ * "Clear" on a board nobody filtered, and clearing cannot remove it — the reset
+ * writes an absent param, which is exactly what re-selects the default.
+ *
+ * Picking the running sprint by hand lands on the same state and so reads as
+ * the default. Indistinguishable and harmless: the board shows the same cards.
+ */
+function sprintNarrowed(f: TaskFilters, defaultSprint: string | null): boolean {
+  return f.sprint !== null && f.sprint !== defaultSprint;
+}
+
+function hasActiveFilters(
+  f: TaskFilters,
+  defaultSprint: string | null,
+): boolean {
   return (
     f.assignee !== null ||
     f.priority !== null ||
     f.due !== null ||
     f.tags.length > 0 ||
     f.repo !== null ||
+    sprintNarrowed(f, defaultSprint) ||
     f.search.trim() !== ""
   );
 }
 
-function activeFilterCount(f: TaskFilters): number {
+function activeFilterCount(
+  f: TaskFilters,
+  defaultSprint: string | null,
+): number {
   return (
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
     (f.due !== null ? 1 : 0) +
     (f.tags.length > 0 ? 1 : 0) +
     (f.repo !== null ? 1 : 0) +
+    (sprintNarrowed(f, defaultSprint) ? 1 : 0) +
     (f.search.trim() !== "" ? 1 : 0)
   );
 }
@@ -131,13 +196,35 @@ function isSameDay(a: number, b: number): boolean {
   );
 }
 
-/** True when the term names this card by its human key (see `taskKey`). */
+/** A term written as a bare number — the shorthand both key vocabularies take. */
+const BARE_SEQ = /^0*(\d+)$/;
+
+/**
+ * True when the term names this card by the key it SHOWS (see `taskKey`).
+ *
+ * A card synced from a tracker shows the tracker's key, so that is the only
+ * lettered key it answers to. Falling through to the sequence would be worse
+ * than useless: `parseTaskKeySeq` ignores the prefix, so searching `OS-333`
+ * would quietly match whichever unrelated card happens to hold Studio sequence
+ * 333, and miss the one actually named that.
+ *
+ * A bare number still works either way, since it is ambiguous by construction
+ * and a search returning both readings of it is the honest answer.
+ */
 export function matchesTaskKey(
   search: string,
   keySeq: number | null | undefined,
+  trackerKey?: string | null,
 ): boolean {
-  if (keySeq == null) return false;
-  return parseTaskKeySeq(search) === keySeq;
+  const term = search.trim();
+  if (term === "") return false;
+  const tracker = trackerKey?.trim();
+  if (tracker) {
+    if (term.toLowerCase() === tracker.toLowerCase()) return true;
+    const bare = BARE_SEQ.exec(term)?.[1];
+    return bare !== undefined && Number(bare) === parseTaskKeySeq(tracker);
+  }
+  return keySeq != null && parseTaskKeySeq(term) === keySeq;
 }
 
 export function taskMatchesFilters(
@@ -147,7 +234,10 @@ export function taskMatchesFilters(
   const search = f.search.trim().toLowerCase();
   if (search !== "") {
     const haystack = `${item.title} ${item.description ?? ""}`.toLowerCase();
-    if (!haystack.includes(search) && !matchesTaskKey(search, item.keySeq)) {
+    if (
+      !haystack.includes(search) &&
+      !matchesTaskKey(search, item.keySeq, item.jiraIssueKey)
+    ) {
       return false;
     }
   }
@@ -180,6 +270,13 @@ export function taskMatchesFilters(
       if (item.repo != null) return false;
       // GitHub treats owner/repo case-insensitively, so the filter must too.
     } else if (item.repo?.toLowerCase() !== f.repo.toLowerCase()) {
+      return false;
+    }
+  }
+  if (f.sprint !== null) {
+    if (f.sprint === BACKLOG_FILTER) {
+      if (item.sprintId != null) return false;
+    } else if (item.sprintId !== f.sprint) {
       return false;
     }
   }
@@ -610,6 +707,71 @@ function RepoFilter({
   );
 }
 
+function SprintFilter({
+  value,
+  sprints,
+  onChange,
+  block,
+}: {
+  value: string | null;
+  /** Sprints to offer, in reading order (running → next → past). */
+  sprints: Sprint[];
+  /** Always a stored value — `ALL_SPRINTS_FILTER`, never a bare null. */
+  onChange: (next: string) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const selected = sprints.find((sprint) => sprint.id === value);
+  const label =
+    value === null
+      ? t("taskBoard.taskFilters.sprintLabel")
+      : value === BACKLOG_FILTER
+        ? t("taskBoard.taskFilters.sprintBacklog")
+        : // A filter can outlive its sprint (a stored URL, a deleted sprint).
+          (selected?.name ?? t("taskBoard.taskFilters.sprintLabel"));
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={triggerClass}>
+          <Repeat04 size={14} className="shrink-0" />
+          {label}
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-80 w-72 overflow-y-auto"
+      >
+        <DropdownMenuRadioGroup
+          value={value === null ? ANY_FILTER : value}
+          onValueChange={(next) =>
+            onChange(next === ANY_FILTER ? ALL_SPRINTS_FILTER : next)
+          }
+        >
+          <DropdownMenuRadioItem value={ANY_FILTER}>
+            {t("taskBoard.taskFilters.sprintAnySprint")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value={BACKLOG_FILTER}>
+            {t("taskBoard.taskFilters.sprintBacklog")}
+          </DropdownMenuRadioItem>
+          {sprints.map((sprint) => (
+            <DropdownMenuRadioItem key={sprint.id} value={sprint.id}>
+              <span className="truncate">{sprint.name}</span>
+              <span className="ml-auto shrink-0 text-muted-foreground">
+                {sprint.state === "active"
+                  ? t("taskBoard.taskFilters.sprintCurrent")
+                  : formatSprintDates(sprint)}
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /**
  * Search toggle: a plain icon button that expands into a text input on click
  * (collapsing back once empty and blurred), rather than reserving space for a
@@ -626,6 +788,15 @@ function SearchToggle({
 }) {
   const t = useT();
   const [open, setOpen] = useState(value !== "");
+  const [focused, setFocused] = useState(false);
+
+  // Collapse a filter cleared externally while unfocused (not one emptied by typing).
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    if (value === "" && !focused) setOpen(false);
+  }
+
   const expanded = open || block;
 
   return (
@@ -649,7 +820,9 @@ function SearchToggle({
           autoFocus={!block}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
           onBlur={() => {
+            setFocused(false);
             if (value === "") setOpen(false);
           }}
           placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
@@ -675,12 +848,13 @@ function SearchToggle({
   );
 }
 
-/** The five filter controls, shared by the inline bar and the mobile drawer. */
+/** The filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
   members,
   tags,
   repos,
+  sprints,
   onChange,
   block,
 }: {
@@ -688,6 +862,7 @@ function FilterControls({
   members: Member[];
   tags: OrgTag[];
   repos: string[];
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
   block?: boolean;
 }) {
@@ -731,6 +906,17 @@ function FilterControls({
           onChange={(repo) => onChange({ ...filters, repo })}
         />
       )}
+      {/* Same reasoning as the repo control: an active sprint filter keeps its
+          chip visible even when the board mirrors no sprints, so the hidden
+          cards can be brought back. */}
+      {(sprints.length > 0 || filters.sprint !== null) && (
+        <SprintFilter
+          block={block}
+          value={filters.sprint}
+          sprints={sprints}
+          onChange={(sprint) => onChange({ ...filters, sprint })}
+        />
+      )}
     </>
   );
 }
@@ -741,12 +927,14 @@ export function TaskFiltersBar({
   members,
   tags,
   repos,
+  sprints,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
   repos: string[];
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -761,9 +949,10 @@ export function TaskFiltersBar({
         members={members}
         tags={tags}
         repos={repos}
+        sprints={sprints}
         onChange={onChange}
       />
-      {hasActiveFilters(filters) && (
+      {hasActiveFilters(filters, currentSprintId(sprints)) && (
         <button
           type="button"
           onClick={() => onChange(EMPTY_FILTERS)}
@@ -786,17 +975,19 @@ export function TaskFiltersDrawer({
   members,
   tags,
   repos,
+  sprints,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
   repos: string[];
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const count = activeFilterCount(filters);
+  const count = activeFilterCount(filters, currentSprintId(sprints));
   const triggerClass = chipClass(count > 0);
   return (
     <Drawer open={open} onOpenChange={setOpen} direction="bottom">
@@ -822,6 +1013,7 @@ export function TaskFiltersDrawer({
             members={members}
             tags={tags}
             repos={repos}
+            sprints={sprints}
             onChange={onChange}
           />
         </div>

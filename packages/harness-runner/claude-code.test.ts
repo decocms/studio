@@ -3,6 +3,8 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
   brokenStudioMcp,
   buildOptions,
+  isTransientProviderRejection,
+  mcpServersFor,
   promptForRun,
   promptFromUserMessage,
 } from "./claude-code";
@@ -122,16 +124,30 @@ describe("brokenStudioMcp", () => {
     );
   });
 
-  test("reports every unusable server so the retry log says which", () => {
+  test("reports Studio's own server, not an org connection's", () => {
+    // An org MCP (`orgMcps`) riding along on the same session can be down,
+    // unauthorized or gone; that is a missing toolset, not a run to refuse.
     expect(
       brokenStudioMcp(
         [
           { name: "studio", status: "failed" },
-          { name: "other", status: "needs-auth" },
+          { name: "linear", status: "needs-auth" },
         ],
         url,
       ),
-    ).toBe("studio=failed other=needs-auth");
+    ).toBe("studio=failed");
+  });
+
+  test("a broken org connection alone leaves the run usable", () => {
+    expect(
+      brokenStudioMcp(
+        [
+          { name: "studio", status: "connected" },
+          { name: "linear", status: "failed" },
+        ],
+        url,
+      ),
+    ).toBe(null);
   });
 
   test("no MCP configured means nothing to wait for", () => {
@@ -158,6 +174,31 @@ describe("buildOptions", () => {
     expect(prompt.type).toBe("preset");
     expect(prompt.preset).toBe("claude_code");
     expect(prompt.append).toStartWith("Be terse.");
+  });
+
+  test("carries the turn cap and tells the model its budget", () => {
+    const prev = process.env.CLAUDE_CODE_MAX_TURNS;
+    try {
+      process.env.CLAUDE_CODE_MAX_TURNS = "60";
+      const capped = options({ agent: { id: "a", instructions: "Review." } });
+      expect(capped.maxTurns).toBe(60);
+      expect((capped.systemPrompt as { append: string }).append).toContain(
+        "at most 60 turns",
+      );
+
+      // A cap the model cannot see is a cap it walks into.
+      for (const bad of ["", "0", "-1", "lots", "1.5"]) {
+        process.env.CLAUDE_CODE_MAX_TURNS = bad;
+        const uncapped = options({ agent: { id: "a", instructions: "Go." } });
+        expect(uncapped.maxTurns).toBeUndefined();
+        expect(
+          (uncapped.systemPrompt as { append: string }).append,
+        ).not.toContain("turns");
+      }
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CODE_MAX_TURNS;
+      else process.env.CLAUDE_CODE_MAX_TURNS = prev;
+    }
   });
 
   test("subtracts the dispatch's disallowed tools — that's what makes a reviewer read-only", () => {
@@ -256,6 +297,7 @@ describe("buildOptions", () => {
         type: "http",
         url: "https://studio.example/mcp/virtual-mcp/agent_1",
         headers: { Authorization: "Bearer k", "x-org-id": "org_1" },
+        alwaysLoad: true,
       },
     });
   });
@@ -264,5 +306,124 @@ describe("buildOptions", () => {
     // Decopilot's in-process runs carry `mcp.url === ""`; a server pointing at
     // an empty URL would fail the SDK's startup connect.
     expect(options().mcpServers).toBeUndefined();
+  });
+});
+
+describe("mcpServersFor", () => {
+  const studio = {
+    url: "https://studio.example/mcp/task-run/thrd_1",
+    headers: { Authorization: "Bearer k" },
+    expiresAt: 1,
+  };
+
+  test("mounts one server per org connection alongside Studio's", () => {
+    expect(
+      mcpServersFor(
+        input({
+          mcp: studio,
+          orgMcps: [
+            {
+              name: "linear",
+              url: "https://studio.example/api/acme/mcp/conn_1",
+              headers: { Authorization: "Bearer k" },
+            },
+          ],
+        }),
+      ),
+    ).toEqual({
+      linear: {
+        type: "http",
+        url: "https://studio.example/api/acme/mcp/conn_1",
+        headers: { Authorization: "Bearer k" },
+      },
+      studio: {
+        type: "http",
+        url: studio.url,
+        headers: studio.headers,
+        alwaysLoad: true,
+      },
+    });
+  });
+
+  test("org connections stay deferred; only Studio's own is always loaded", () => {
+    // The whole reason an org can hand a run thirty connections: their tools
+    // sit behind tool search instead of the turn-1 prompt. Studio's own cannot
+    // — the board tools are how the run reports what it did.
+    const servers = mcpServersFor(
+      input({
+        mcp: studio,
+        orgMcps: [
+          { name: "linear", url: "https://x.example/mcp", headers: {} },
+        ],
+      }),
+    );
+    expect(servers.linear).not.toHaveProperty("alwaysLoad");
+    expect(servers.studio).toHaveProperty("alwaysLoad", true);
+  });
+
+  test("Studio's surface survives an org connection named `studio`", () => {
+    const servers = mcpServersFor(
+      input({
+        mcp: studio,
+        orgMcps: [
+          { name: "studio", url: "https://elsewhere.example/mcp", headers: {} },
+        ],
+      }),
+    );
+    expect(servers.studio).toEqual({
+      type: "http",
+      url: studio.url,
+      headers: studio.headers,
+      alwaysLoad: true,
+    });
+  });
+
+  test("org connections still mount when Studio's url is the empty sentinel", () => {
+    expect(
+      Object.keys(
+        mcpServersFor(
+          input({
+            orgMcps: [
+              { name: "linear", url: "https://x.example/mcp", headers: {} },
+            ],
+          }),
+        ),
+      ),
+    ).toEqual(["linear"]);
+  });
+});
+
+describe("isTransientProviderRejection", () => {
+  test("matches OpenRouter's upstream relay, whatever the status", () => {
+    expect(
+      isTransientProviderRejection("API Error: 400 Provider returned error"),
+    ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 502 Provider returned error"),
+    ).toBe(true);
+  });
+
+  test("a 400 that describes the request stays fatal", () => {
+    expect(
+      isTransientProviderRejection(
+        "API Error: 400 messages.0: text content blocks must be non-empty",
+      ),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection(
+        "API Error: 400 max_tokens: must be less than or equal to 64000",
+      ),
+    ).toBe(false);
+  });
+
+  test("does not swallow the credit and session errors that have own paths", () => {
+    expect(
+      isTransientProviderRejection(
+        "API Error: 402 requires more credits, requested up to 64000 tokens",
+      ),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("Session ID abc is already in use"),
+    ).toBe(false);
   });
 });

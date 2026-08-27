@@ -43,9 +43,8 @@
  *   2. The step immediately after — `consumeRunProjection` — now runs at a
  *      structurally different point in time for the hosted topology: before,
  *      it always ran AFTER the child (and everything it published) had
- *      already finished; now it runs concurrently with the child, live-
- *      tailing the stream exactly like the desktop topology already did (see
- *      `consume-run-projection.ts`'s T3 comment). That's a genuine step-
+ *      already finished; now it runs concurrently with the child and live-
+ *      tails the stream (see `consume-run-projection.ts`). That's a genuine step-
  *      sequence/timing contract change on a durably-recorded step, not an
  *      edit confined to logic inside one step.
  * Deploy consequence: any v3 gate workflow still mid-flight at deploy time
@@ -72,5 +71,14 @@
  * `DBOSUnexpectedStepError`; those instances strand instead, by design. The
  * one already past its Jira POST is still not re-mirrored by the pull, which
  * cuts the echo by author account as well as by comment link (`sync.ts`).
+ *
+ * Version 9 turns the notification digest event-triggered:
+ * `notificationDigestWorkflow` keeps its name but is now the safety-net sweep
+ * (`loadOrphanedNotifications`, and a `claimForEmail` step before each send in
+ * place of the old `stampEmailed` after it), and the new per-recipient
+ * `notificationUserDigestWorkflow` carries the normal path. Steps were added,
+ * removed and reordered, so a v8 digest instance replayed against v9 diverges.
+ * Cheap to strand: the workflow was a five-minute tick that finishes in
+ * milliseconds and holds nothing a user is waiting on.
  */
-export const DBOS_WORKFLOW_VERSION = "8";
+export const DBOS_WORKFLOW_VERSION = "9";

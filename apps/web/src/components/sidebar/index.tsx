@@ -5,15 +5,10 @@ import { NavigationSidebar } from "./navigation";
 import { MobileNavigationSidebar } from "./navigation-mobile";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
-import { TaskGroupsList } from "./task-groups/task-groups-list";
 import { TaskGroupsSkeleton } from "./task-groups/task-groups-skeleton";
 import { NavSidebarContent } from "./nav-sidebar-content";
 import { SidebarAgentGroupsProvider } from "./sidebar-agent-groups-context";
-import {
-  AgentSwitcherCrumb,
-  OrgSwitcherCrumb,
-} from "@/components/header/shell-breadcrumb";
-import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
+import { OrgSwitcherCrumb } from "@/components/header/shell-breadcrumb";
 import { SidebarTriggerButton } from "@/layouts/shell-controls";
 
 export type {
@@ -24,45 +19,25 @@ export type {
 } from "./types";
 
 /**
- * Commerce (reports-only) orgs get no agent navigation in the sidebar header —
- * just the org, named. Same under the first-class navigation, where the agent
- * crumb lives in the chat panel header instead.
+ * The sidebar header: the named org plus the collapse trigger, so the
+ * destinations start flush at the top. The active agent is named in the chat
+ * panel header instead.
  */
 function SidebarOwnHeader() {
-  const reportsOnly = useReportsOnly();
-  const navV2 = useNavV2();
-  // Collapse trigger beside the org, so the destinations start flush at the top.
-  if (navV2) {
-    return (
-      <>
-        <OrgSwitcherCrumb showName />
-        <SidebarTriggerButton className="ml-auto md:size-[34px] rounded-lg" />
-      </>
-    );
-  }
-  if (reportsOnly) {
-    return <OrgSwitcherCrumb showName />;
-  }
   return (
     <>
-      <OrgSwitcherCrumb />
-      <AgentSwitcherCrumb />
+      <OrgSwitcherCrumb showName />
+      <SidebarTriggerButton className="ml-auto md:size-[34px] rounded-lg" />
     </>
   );
 }
 
-/** The sidebar body: destinations under the first-class navigation, the thread
- *  list otherwise. */
+/** The sidebar body: the destinations list (Reports / Library / Tasks). */
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
-  const navV2 = useNavV2();
   return (
     <ErrorBoundary>
       <Suspense fallback={<TaskGroupsSkeleton />}>
-        {navV2 ? (
-          <NavSidebarContent onNavigate={onNavigate} />
-        ) : (
-          <TaskGroupsList onNavigate={onNavigate} />
-        )}
+        <NavSidebarContent onNavigate={onNavigate} />
       </Suspense>
     </ErrorBoundary>
   );

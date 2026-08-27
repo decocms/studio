@@ -5,6 +5,7 @@ import {
   allReviewersApproved,
   approvedButUnverified,
   enabledReviewerKinds,
+  shippedLane,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
@@ -448,17 +449,18 @@ export async function retryAutoMergeIfApproved(
     return false;
   }
 
+  const shipped = shippedLane(settings?.flags);
   const done = await ctx.storage.taskBoard.update(
     item.id,
     orgId,
-    { status: "done" },
+    { status: shipped },
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
     taskBoardItemId: item.id,
     action: "status_changed",
     actorId: null,
-    data: { from: item.status, to: "done" },
+    data: { from: item.status, to: shipped },
   });
   emitTaskBoardUpdated(orgId, done);
   return true;

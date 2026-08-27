@@ -1,17 +1,23 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type {
   TaskBoardActivityAction,
   TaskBoardItem,
   TaskBoardItemStatus,
 } from "@/storage/types";
 import {
+  MAX_TASK_DESCRIPTION_LENGTH,
+  MAX_TASK_REPO_LENGTH,
+  MAX_TASK_TITLE_LENGTH,
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
+  TaskBoardItemTypeSchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
+import { isDeliveryLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
@@ -33,15 +39,42 @@ import {
  * links.
  */
 const LOGGED_FIELDS: {
-  field: "status" | "assigneeId" | "priority" | "dueDate" | "title";
+  field: "status" | "assigneeId" | "priority" | "dueDate" | "title" | "type";
   action: TaskBoardActivityAction;
 }[] = [
   { field: "status", action: "status_changed" },
   { field: "assigneeId", action: "assignee_changed" },
   { field: "priority", action: "priority_changed" },
+  { field: "type", action: "type_changed" },
   { field: "dueDate", action: "due_date_changed" },
   { field: "title", action: "title_changed" },
 ];
+
+/**
+ * Every input field that earns a write. One list rather than a boolean chain:
+ * the chain this replaces drifted from the write payload below — `type` reached
+ * the schema and the payload but not the chain, so an update carrying only
+ * `type` skipped the write entirely and still answered 200 with the old item.
+ */
+const UPDATABLE_FIELDS = [
+  "title",
+  "description",
+  "status",
+  "priority",
+  "type",
+  "assigneeId",
+  "repo",
+  "dueDate",
+  "sortOrder",
+  "tagIds",
+] as const;
+
+/** Whether an update touches any persisted field, as opposed to only linking a thread or a PR. */
+export function updatesAnyField(
+  input: Partial<Record<(typeof UPDATABLE_FIELDS)[number], unknown>>,
+): boolean {
+  return UPDATABLE_FIELDS.some((field) => input[field] !== undefined);
+}
 
 /**
  * Which activity entries an update earns, diffed against the pre-update item.
@@ -109,8 +142,13 @@ export function delegatesToSuperAgent(
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
  *  lands here it's out of the review loop, same as "done" — `archived` skips
- *  review just as effectively as completing it does. */
+ *  review just as effectively as completing it does. The delivery lanes count
+ *  too: they sit past In Review, so a run setting `merged` would escape this
+ *  guard and drop the card out of `listItemsPendingReview`. */
 const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
+  "approved",
+  "merged",
+  "post_deploy_validation",
   "done",
   "archived",
 ]);
@@ -128,6 +166,28 @@ export function closesOwnReview(
   return isTaskRun && completesTask && awaitingReview;
 }
 
+/**
+ * A delivery lane (Approved, Merged, Post-deploy Validation) is a status that
+ * only exists for an org running `delivery_lanes_enabled` — the schema still
+ * accepts it unconditionally (adding a lane is a compile-time exhaustiveness
+ * concern, not a runtime one), so this tool is the one place that has to
+ * refuse it directly when the flag is off. Without this, any raw
+ * TASK_BOARD_ITEM_UPDATE call (an MCP client, a script, a stale agent) could
+ * park a card in a lane the flag's own description promises "behaves exactly
+ * as if it did not exist" — the board's `moveTargets`/`laneVisibility` only
+ * gate the UI's own drag/dropdown, not the tool underneath them.
+ */
+export function rejectsUngatedDeliveryLane(
+  inputStatus: TaskBoardItemStatus | undefined,
+  deliveryLanesEnabled: boolean,
+): boolean {
+  return (
+    inputStatus !== undefined &&
+    isDeliveryLane(inputStatus) &&
+    !deliveryLanesEnabled
+  );
+}
+
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
   description:
@@ -141,17 +201,22 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
   },
   inputSchema: z.object({
     id: z.string(),
-    title: z.string().min(1).optional(),
-    description: z.string().nullable().optional(),
+    title: z.string().min(1).max(MAX_TASK_TITLE_LENGTH).optional(),
+    description: z
+      .string()
+      .max(MAX_TASK_DESCRIPTION_LENGTH)
+      .nullable()
+      .optional(),
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
+    type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
-    repo: z.string().nullable().optional(),
+    repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
     /** Replaces the task's tags with this exact set (org tag ids). */
-    tagIds: z.array(z.string()).optional(),
+    tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
     prUrl: z
@@ -212,16 +277,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
     }
 
-    const hasFieldUpdate =
-      input.title !== undefined ||
-      input.description !== undefined ||
-      input.status !== undefined ||
-      input.priority !== undefined ||
-      input.assigneeId !== undefined ||
-      input.repo !== undefined ||
-      input.dueDate !== undefined ||
-      input.sortOrder !== undefined ||
-      input.tagIds !== undefined;
+    const hasFieldUpdate = updatesAnyField(input);
 
     // The pre-update item, used to enqueue only on the transition INTO Super
     // Agent (not on every later edit) and to diff status/assignee for the
@@ -233,6 +289,23 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // longer org-scoped itself (the join table has no organization_id).
     if (hasFieldUpdate && !previous) {
       throw new Error(`Task board item not found: ${input.id}`);
+    }
+
+    if (input.status !== undefined && isDeliveryLane(input.status)) {
+      const settings =
+        await ctx.storage.organizationSettings.get(organizationId);
+      if (
+        rejectsUngatedDeliveryLane(
+          input.status,
+          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
+        )
+      ) {
+        throw new Error(
+          "Delivery lanes are not enabled for this organization — enable " +
+            "them in Settings before moving a task to Approved, Merged, or " +
+            "Post-deploy Validation.",
+        );
+      }
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
@@ -310,6 +383,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           description: input.description,
           status: becameSuperAgent ? "todo" : input.status,
           priority: input.priority,
+          type: input.type,
           assigneeId: input.assigneeId,
           // Stamp who delegated only when the assignee actually changes.
           assignedBy: assigneeChanged
@@ -356,9 +430,27 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
             taskBoardItemId: item.id,
             actorId,
             ...entry,
+            // Only a reassignment enrolls anyone; editing a field does not.
+            alsoSubscribe:
+              entry.action === "assignee_changed" &&
+              item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+                ? [item.assigneeId]
+                : undefined,
           })),
         );
       }
+    }
+
+    // Only the mentions this edit ADDED — the body is resent whole, so the
+    // previous description is what keeps a typo fix from re-pinging everyone.
+    if (previous && item.description !== previous.description) {
+      await ctx.storage.notifications.notifyMentions({
+        taskBoardItemId: item.id,
+        organizationId,
+        actorId: getUserId(ctx)!,
+        body: item.description ?? "",
+        previousBody: previous.description,
+      });
     }
 
     // Broadcast EVERY change so open boards reflect it live. Not just the

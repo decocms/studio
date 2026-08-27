@@ -3,8 +3,8 @@
  * `merged` tag, so "done" and "actually shipped" are told apart on the board
  * without opening every card's PR link.
  *
- * Same shape and the same gate as `archive-merged.ts` (it reuses `allPrsMerged`
- * and `groupByOrg`), but no settle window: the tag is a statement about the PR,
+ * Same shape and the same gate as `archive-merged.ts` (it reuses
+ * `cardWorkLanded` and `groupByOrg`), but no settle window: the tag is a statement about the PR,
  * not about the card being finished with. It runs unattended on the hourly
  * `taskBoardMergedTagSweepWorkflow` (see `dbos-tag-merged-sweep.ts`) — nothing
  * about it is a decision a human makes per task.
@@ -17,23 +17,15 @@
 
 import { nextTagColor } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
-import type { TaskBoardItemPrRef } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
-import { allPrsMerged } from "./archive-merged";
-import { fetchPrMerged } from "./prs-get";
+import { cardWorkLanded, type PrLandingReader } from "./archive-merged";
+import { isTaggableMergedStatus } from "./lanes";
+import { fetchPrLanding } from "./prs-get";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 /** Lowercase — org tags are matched case-insensitively, so an existing
  *  "Merged" is reused rather than forked into a second tag. */
 export const MERGED_TAG_NAME = "merged";
-
-/** How the sweep asks GitHub whether a PR merged — a parameter only so a
- *  local/CI harness can drive the tag path without a GitHub connection. */
-type PrMergedReader = (
-  ctx: StudioContext,
-  orgId: string,
-  pr: TaskBoardItemPrRef,
-) => Promise<boolean | null>;
 
 /**
  * The org's `merged` tag id, created on first use. Resolved lazily — only once
@@ -71,16 +63,19 @@ async function tagIfMerged(
   organizationId: string,
   itemId: string,
   tagId: () => Promise<string>,
-  prMerged: PrMergedReader,
+  prLanding: PrLandingReader,
 ): Promise<boolean> {
   const item = await ctx.storage.taskBoard.getById(itemId, organizationId);
-  if (!item || item.status !== "done") return false;
+  if (!item || !isTaggableMergedStatus(item.status)) return false;
 
   const prs = await ctx.storage.taskBoard.listPrs(itemId, organizationId);
-  const merged = await Promise.all(
-    prs.map((pr) => prMerged(ctx, organizationId, pr)),
+  const landings = await Promise.all(
+    prs.map(async (pr) => ({
+      ...pr,
+      ...(await prLanding(ctx, organizationId, pr)),
+    })),
   );
-  if (!allPrsMerged(merged)) return false;
+  if (!cardWorkLanded(landings)) return false;
 
   await ctx.storage.taskBoard.addItemTags(itemId, [await tagId()], "system");
   const updated = await ctx.storage.taskBoard.getById(itemId, organizationId);
@@ -107,7 +102,7 @@ export async function tagMergedForOrg(
   ctx: StudioContext,
   organizationId: string,
   itemIds: string[],
-  prMerged: PrMergedReader = fetchPrMerged,
+  prLanding: PrLandingReader = fetchPrLanding,
 ): Promise<{ tagged: number }> {
   let cached: Promise<string> | null = null;
   const tagId = () => (cached ??= resolveMergedTagId(ctx, organizationId));
@@ -115,7 +110,7 @@ export async function tagMergedForOrg(
   let tagged = 0;
   for (const itemId of itemIds) {
     try {
-      if (await tagIfMerged(ctx, organizationId, itemId, tagId, prMerged)) {
+      if (await tagIfMerged(ctx, organizationId, itemId, tagId, prLanding)) {
         tagged += 1;
       }
     } catch (err) {

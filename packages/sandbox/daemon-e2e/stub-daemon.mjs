@@ -60,8 +60,7 @@ function readBody(req) {
 
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://127.0.0.1:${PORT}`);
-  // Dual-serve compat: the real daemon serves both prefixes identically.
-  const path = u.pathname.replace(/^\/_decopilot_vm\//, "/_sandbox/");
+  const path = u.pathname;
   const { method } = req;
 
   if (method === "OPTIONS") {

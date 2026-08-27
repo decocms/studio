@@ -464,10 +464,10 @@ const IMAGE_MIME_TYPES = [
 
 /**
  * MIME types that no model handles natively but are usable end-to-end
- * via sandbox skills: the file reaches the sandbox (org/upload with
- * org-fs mounts, copy_to_sandbox otherwise) and the model runs the
- * matching skill (e.g. pptx-extract) to get text/images it can reason
- * over. Allowed whenever the model has any file-bearing capability —
+ * via sandbox skills: the file reaches the sandbox through `org/upload/`
+ * and the model runs the matching skill (e.g. pptx-extract) to get
+ * text/images it can reason over. Allowed whenever the model has any
+ * file-bearing capability —
  * text output is universal and thumbnail images need vision, both
  * already covered by the existing checks.
  */

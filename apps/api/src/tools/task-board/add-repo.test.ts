@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { parseRepoProbe } from "./add-repo";
+import {
+  MAX_SECONDARY_REPOS,
+  parseRepoProbe,
+  secondaryRepoCapExceeded,
+} from "./add-repo";
 
 // The probe is what decides "you can start reading files now". A HEAD ref lands
 // before the checkout does on a lagging FS, so the marker alone must NOT count
@@ -24,4 +28,35 @@ test("working-tree entries are, and .git is not one of them", () => {
 
 test("an empty directory is not cloned", () => {
   expect(parseRepoProbe("")).toEqual({ cloned: false, listing: "" });
+});
+
+test("a new repo is refused once the thread is at the secondary cap", () => {
+  const existing = Array.from({ length: MAX_SECONDARY_REPOS }, (_, i) => ({
+    owner: "acme",
+    name: `repo-${i}`,
+  }));
+  expect(
+    secondaryRepoCapExceeded(existing, { owner: "acme", name: "one-more" }),
+  ).toBe(true);
+});
+
+test("a repo below the cap is allowed", () => {
+  const existing = Array.from({ length: MAX_SECONDARY_REPOS - 1 }, (_, i) => ({
+    owner: "acme",
+    name: `repo-${i}`,
+  }));
+  expect(
+    secondaryRepoCapExceeded(existing, { owner: "acme", name: "one-more" }),
+  ).toBe(false);
+});
+
+// Re-adding an existing repo is a storage no-op, so it must never be blocked.
+test("a repo already checked out is let through at the cap, case-insensitively", () => {
+  const existing = Array.from({ length: MAX_SECONDARY_REPOS }, (_, i) => ({
+    owner: "acme",
+    name: `repo-${i}`,
+  }));
+  expect(
+    secondaryRepoCapExceeded(existing, { owner: "ACME", name: "Repo-0" }),
+  ).toBe(false);
 });

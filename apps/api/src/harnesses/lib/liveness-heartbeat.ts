@@ -6,7 +6,7 @@
  * emit again after `stop()`" scheduler. It stays in the harness library so
  * both hosted call sites share one implementation without a dependency cycle.
  *
- * Pure: no NATS/DBOS/StudioContext/relay-transport knowledge — just a timer
+ * Pure: no NATS/DBOS/StudioContext/transport knowledge — just a timer
  * plus the shared `data-liveness` wire-shape builder below. Uses
  * `@decocms/shared/std`'s `sleep(ms, { signal })` for the wait, never a hand-rolled
  * `setTimeout` loop (see the repo's async-primitives rule in
@@ -52,7 +52,7 @@ export interface HeartbeatEmitterOptions {
 
 /**
  * Pure timer scheduler: emits on a fixed interval while ARMED, resets on
- * every call to `arm()` (a real chunk/relay line arrived), and never emits
+ * every call to `arm()` (a real chunk arrived), and never emits
  * again once `stop()`ped.
  *
  * Usage: call `arm()` once to start watching for silence, then call `arm()`

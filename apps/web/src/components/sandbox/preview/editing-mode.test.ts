@@ -20,7 +20,7 @@ describe("togglePreviewEditorMode", () => {
 
 describe("shouldAutoOpenCms", () => {
   const ready = {
-    cmsDefaultOpen: true,
+    autoOpen: true,
     blocksReady: true,
     autoOpenResolved: false,
     editingMode: "preview",
@@ -30,8 +30,8 @@ describe("shouldAutoOpenCms", () => {
     expect(shouldAutoOpenCms(ready)).toBe(true);
   });
 
-  test("off by default: never fires when the setting is disabled", () => {
-    expect(shouldAutoOpenCms({ ...ready, cmsDefaultOpen: false })).toBe(false);
+  test("never fires outside the `auto` mode (manual is the default)", () => {
+    expect(shouldAutoOpenCms({ ...ready, autoOpen: false })).toBe(false);
   });
 
   test("waits until Blocks metadata is ready", () => {

@@ -119,19 +119,48 @@ async function parseJson<T>(res: Response): Promise<T> {
   return body;
 }
 
-/** Never cache sandbox git/fs calls — 410 Gone must not stick in disk cache. */
-function sandboxFetch(url: string, init?: RequestInit): Promise<Response> {
-  return fetch(url, { cache: "no-store", ...init });
+/**
+ * Tells the desktop app not to answer this call from a local sandbox.
+ *
+ * Fast Preview is sandbox-less, so `/sandbox/*` must reach the API that serves
+ * it from GitHub. The desktop interceptor keys its worktree handle off the
+ * repository, so a sandbox left over from a coding session on the same repo
+ * would otherwise claim the route. This is only a routing hint: the API
+ * re-derives the runtime from the thread and vMCP before serving the request.
+ */
+const FAST_PREVIEW_HEADER = "x-deco-fast-preview";
+
+export interface SandboxGitCallOptions {
+  fastPreview?: boolean;
 }
 
-export async function fetchGitStatus(ref: SandboxProxyRef): Promise<GitStatus> {
-  const res = await sandboxFetch(buildSandboxGitUrl(ref, "status"));
+/** Never cache sandbox git/fs calls — 410 Gone must not stick in disk cache. */
+function sandboxFetch(
+  url: string,
+  init?: RequestInit,
+  call?: SandboxGitCallOptions,
+): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (call?.fastPreview) headers.set(FAST_PREVIEW_HEADER, "1");
+  return fetch(url, { cache: "no-store", ...init, headers });
+}
+
+export async function fetchGitStatus(
+  ref: SandboxProxyRef,
+  call?: SandboxGitCallOptions,
+): Promise<GitStatus> {
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(ref, "status"),
+    undefined,
+    call,
+  );
   return parseJson<GitStatus>(res);
 }
 
 export async function fetchGitDiff(
   ref: SandboxProxyRef,
   options?: { base?: string; headSha?: string },
+  call?: SandboxGitCallOptions,
 ): Promise<GitDiffResult> {
   const payload =
     options?.base || options?.headSha
@@ -140,11 +169,15 @@ export async function fetchGitDiff(
           ...(options.headSha ? { headSha: options.headSha } : {}),
         }
       : undefined;
-  const res = await sandboxFetch(buildSandboxGitUrl(ref, "diff"), {
-    method: "POST",
-    headers: payload ? { "content-type": "application/json" } : undefined,
-    body: payload ? JSON.stringify(payload) : undefined,
-  });
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(ref, "diff"),
+    {
+      method: "POST",
+      headers: payload ? { "content-type": "application/json" } : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
+    },
+    call,
+  );
   return parseJson<GitDiffResult>(res);
 }
 
@@ -188,12 +221,17 @@ export async function fetchSuggestCommitMessage(
 export async function publishGitChanges(
   ref: SandboxProxyRef,
   message: string,
+  call?: SandboxGitCallOptions,
 ): Promise<void> {
-  const res = await sandboxFetch(buildSandboxGitUrl(ref, "publish"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message }),
-  });
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(ref, "publish"),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message }),
+    },
+    call,
+  );
   await parseJson(res);
 }
 
@@ -207,12 +245,17 @@ export async function publishGitChanges(
 export async function rebaseGitBranch(
   ref: SandboxProxyRef,
   base: string,
+  call?: SandboxGitCallOptions,
 ): Promise<void> {
-  const res = await sandboxFetch(buildSandboxGitUrl(ref, "rebase"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ base }),
-  });
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(ref, "rebase"),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ base }),
+    },
+    call,
+  );
   await parseJson(res);
 }
 
@@ -368,31 +411,41 @@ export function reviewDiffSignature(diff: GitDiffResult): string {
 export async function fetchReviewVerdict(
   ref: SandboxProxyRef,
   payload: { status: GitStatus; diff: GitDiffResult; language?: string },
+  call?: SandboxGitCallOptions,
 ): Promise<ReviewVerdict> {
-  const res = await sandboxFetch(buildSandboxGitUrl(ref, "judge-review"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      status: payload.status,
-      diff: stripGeneratedFilesFromDiff(payload.diff),
-      // The `reason` is shown to the user, so ask the model to write it in
-      // the UI language. This is a deliberate exception to "don't thread
-      // locale to the server" — it applies only to this displayed AI text.
-      ...(payload.language ? { language: payload.language } : {}),
-    }),
-  });
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(ref, "judge-review"),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        status: payload.status,
+        diff: stripGeneratedFilesFromDiff(payload.diff),
+        // The `reason` is shown to the user, so ask the model to write it in
+        // the UI language. This is a deliberate exception to "don't thread
+        // locale to the server" — it applies only to this displayed AI text.
+        ...(payload.language ? { language: payload.language } : {}),
+      }),
+    },
+    call,
+  );
   return parseJson<ReviewVerdict>(res);
 }
 
 export async function discardGitFiles(
   ref: SandboxProxyRef,
   filepaths: string[],
+  call?: SandboxGitCallOptions,
 ): Promise<void> {
-  const res = await sandboxFetch(buildSandboxGitUrl(ref, "discard"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ filepaths }),
-  });
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(ref, "discard"),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filepaths }),
+    },
+    call,
+  );
   await parseJson(res);
 }
 
@@ -428,10 +481,13 @@ const GIT_STATUS_STALE_MS = 5_000;
  * header already fetched — spread this into both rather than restating the key.
  * Deliberately without `enabled`: `useSuspenseQuery` has no such option.
  */
-export function sandboxGitStatusQueryOptions(ref: SandboxProxyRef) {
+export function sandboxGitStatusQueryOptions(
+  ref: SandboxProxyRef,
+  call?: SandboxGitCallOptions,
+) {
   return {
     queryKey: sandboxGitStatusQueryKey(ref),
-    queryFn: () => fetchGitStatus(ref),
+    queryFn: () => fetchGitStatus(ref, call),
     staleTime: GIT_STATUS_STALE_MS,
     retry: retryGitRequest,
   };

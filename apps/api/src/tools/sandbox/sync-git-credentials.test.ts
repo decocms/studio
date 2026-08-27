@@ -4,7 +4,6 @@ import {
   SANDBOX_START_ERROR_CODES,
 } from "@decocms/shared/sandbox-start-errors";
 import type { StudioContext } from "../../core/studio-context";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
 
 mock.module("../../shared/github-clone-info", () => ({
   buildCloneInfo: mock(async () => {
@@ -84,7 +83,7 @@ describe("refreshSandboxGitCredentials", () => {
       db: {},
       vault: {},
     } as unknown as StudioContext;
-    const runner = {} as SandboxProvider;
+    const runner = {} as Parameters<typeof refreshSandboxGitCredentials>[1];
 
     await expect(
       refreshSandboxGitCredentials(ctx, runner, "handle_1", {

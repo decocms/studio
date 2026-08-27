@@ -109,6 +109,22 @@ describe("unwrapSection", () => {
     expect(unwrapSection(raw, parsed, {})).toBeNull();
   });
 
+  it("unwraps a hidden saved-block section to its resolved data", () => {
+    const raw = {
+      __resolveType: MV,
+      variants: [
+        { value: { __resolveType: "Header" }, rule: { __resolveType: NEVER } },
+      ],
+    };
+    const decofile = { Header: { __resolveType: HERO, title: "Site Header" } };
+    const parsed = parseSections([raw], decofile)[0]!;
+    expect(parsed.isSavedBlock).toBe(true);
+    expect(unwrapSection(raw, parsed, decofile)).toEqual({
+      data: { __resolveType: HERO, title: "Site Header" },
+      resolveType: HERO,
+    });
+  });
+
   it("unwrapBlockReference loads saved block data for site theme pointers", () => {
     const decofile = {
       Deco: {
@@ -125,6 +141,33 @@ describe("unwrapSection", () => {
       },
       resolveType: "site/sections/Theme/Theme.tsx",
     });
+  });
+
+  it("returns null for a hidden variant section (would flatten the variants)", () => {
+    const raw = {
+      __resolveType: MV,
+      variants: [
+        {
+          value: {
+            __resolveType: MV,
+            variants: [
+              {
+                value: { __resolveType: HERO, title: "A" },
+                rule: { __resolveType: "website/matchers/always.ts" },
+              },
+              {
+                value: { __resolveType: HERO, title: "B" },
+                rule: { __resolveType: "website/matchers/device.ts" },
+              },
+            ],
+          },
+          rule: { __resolveType: NEVER },
+        },
+      ],
+    };
+    const parsed = parseSections([raw], {})[0]!;
+    expect(parsed.isHidden).toBe(true);
+    expect(unwrapSection(raw, parsed, {})).toBeNull();
   });
 
   it("returns null for multivariate sections", () => {

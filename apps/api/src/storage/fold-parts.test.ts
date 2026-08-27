@@ -132,10 +132,10 @@ describe("foldParts", () => {
     // message via two SEPARATE PartRowBuilders sharing run_id == thread_id,
     // each with seq restarting at 0. Per-message-scoped ids
     // (`${runId}:${messageId}:${seq}`) keep their rows distinct, and distinct
-    // baseTimeMs (dispatch time vs later relay time) keeps the user message
+    // baseTimeMs (dispatch time vs later response time) keeps the user message
     // ordered before the assistant message by created_at.
     const userBase = "2026-01-01T00:00:01.000"; // dispatch time
-    const assistantBase = "2026-01-01T00:00:02.000"; // later relay time
+    const assistantBase = "2026-01-01T00:00:02.000"; // later response time
     const out = foldParts([
       // user message (builder A, seq 0,1)
       part({

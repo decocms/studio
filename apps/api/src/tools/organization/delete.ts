@@ -32,10 +32,21 @@ export const ORGANIZATION_DELETE = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
 
+    // Reject a target org the caller isn't authenticated against (see member-remove.ts).
+    if (input.id !== ctx.organization?.id) {
+      throw new Error(
+        "Organization ID does not match authenticated organization",
+      );
+    }
+
+    // Merge into existing metadata — organization.update replaces it wholesale.
+    const existing = await ctx.boundAuth.organization.get(input.id);
+
     await ctx.boundAuth.organization.update({
       organizationId: input.id,
       data: {
         metadata: {
+          ...existing?.metadata,
           archived: true,
           archivedAt: new Date().toISOString(),
         },

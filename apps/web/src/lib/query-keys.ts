@@ -25,6 +25,10 @@ export const KEYS = {
 
   // Organization members (scoped by org)
   members: (locator: ProjectLocator) => [locator, "members"] as const,
+  /** The mention picker's own view of the members list — narrowed, and backed
+   *  by a browser-persisted copy, so it can't share `members`' cache entry. */
+  mentionMembers: (locator: ProjectLocator) =>
+    [locator, "mention-members"] as const,
 
   // Organization invitations (scoped by org)
   invitations: (locator: ProjectLocator) => [locator, "invitations"] as const,
@@ -48,6 +52,14 @@ export const KEYS = {
   // A task's change timeline (created, status/assignee changes)
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,
+
+  // The current user's unread notifications in this org
+  notifications: (locator: ProjectLocator) =>
+    [locator, "notifications"] as const,
+
+  // Everyone following a task
+  notificationSubscribers: (locator: ProjectLocator, itemId: string) =>
+    [locator, "notification-subscribers", itemId] as const,
 
   // A task's comment threads
   taskBoardComments: (locator: ProjectLocator, itemId: string) =>
@@ -621,6 +633,7 @@ export const KEYS = {
     ["deployment-admin", "orgs", search] as const,
   // Prefix key: invalidates every orgs query regardless of the search term.
   deploymentAdminOrgsList: () => ["deployment-admin", "orgs"] as const,
+  deploymentAdminPrompts: () => ["deployment-admin", "prompts"] as const,
 
   // Brand context (scoped by organization)
   defaultBrand: (organizationId: string) =>

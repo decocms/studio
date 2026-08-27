@@ -905,6 +905,38 @@ describe("applyLocalMessage", () => {
     expect(conn.messages.get().map((m) => m.id)).toEqual(["flip-1"]);
   });
 
+  test("a server-dispatched message keeps its metadata.created_at, so it sorts before the reply it triggered", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-apply-local-metadata-ts", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // A task-board run replays: the assistant chunks land first, then the
+    // mirrored user-message chunk. Its timestamp lives in `metadata`.
+    conn.messages.set([
+      {
+        id: "reply",
+        role: "assistant",
+        parts: [{ type: "text", text: "on it" }],
+        created_at: "2026-01-01T00:00:05.000Z",
+      } as UIMessage,
+    ]);
+
+    conn.applyLocalMessage({
+      id: "dispatched",
+      role: "user",
+      parts: [{ type: "text", text: "You've been assigned this task." }],
+      metadata: { created_at: "2026-01-01T00:00:01.000Z" },
+    } as UIMessage);
+
+    expect(conn.messages.get().map((m) => m.id)).toEqual([
+      "dispatched",
+      "reply",
+    ]);
+  });
+
   test("dedupes by id when the row is already in the body (refetch raced the flip)", async () => {
     globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
 
@@ -2118,156 +2150,5 @@ describe("reconnect refetch", () => {
 
     // Both rows present, ordered ascending by created_at.
     expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1", "m-2"]);
-  });
-});
-
-// ─── Batch mode (sandbox-hosted harness) ─────────────────────────────────────
-
-describe("batch mode", () => {
-  /** Minimal SSESubscription stub: capture the handler, fire events at will. */
-  function makeSSEStub() {
-    let handler: ((e: MessageEvent) => void) | null = null;
-    const unsubscribe = mock(() => {});
-    return {
-      sse: {
-        subscribe: (_key: string, h: (e: MessageEvent) => void) => {
-          handler = h;
-          return unsubscribe;
-        },
-      } as never,
-      unsubscribe,
-      fire: (type: string, subject: string) =>
-        handler?.({ type, data: JSON.stringify({ subject }) } as MessageEvent),
-    };
-  }
-
-  /** Client returning a fresh page per call, counted. */
-  function makePagingClient(pages: unknown[][]) {
-    let call = 0;
-    return {
-      client: {
-        callTool: () => {
-          const items = pages[Math.min(call, pages.length - 1)] ?? [];
-          call += 1;
-          return Promise.resolve({
-            structuredContent: { items, hasMore: false },
-          });
-        },
-      } as never,
-      calls: () => call,
-    };
-  }
-
-  const row = (id: string, at: string) => ({
-    id,
-    role: "assistant",
-    parts: [],
-    created_at: at,
-  });
-
-  test("refetches the transcript on a decopilot.step for this thread", async () => {
-    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
-    const stub = makeSSEStub();
-    const c = makePagingClient([
-      [row("m-1", "2026-01-01T00:00:00Z")],
-      [row("m-1", "2026-01-01T00:00:00Z"), row("m-2", "2026-01-01T00:00:01Z")],
-    ]);
-
-    const conn = getOrOpenStream("acme", "t-batch", {
-      client: c.client,
-      batch: true,
-      sse: stub.sse,
-    });
-    await conn.ready;
-    expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1"]);
-
-    stub.fire("decopilot.step", "t-batch");
-    await new Promise((r) => setTimeout(r, 20));
-
-    expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1", "m-2"]);
-  });
-
-  test("ignores events for other threads and other event types", async () => {
-    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
-    const stub = makeSSEStub();
-    const c = makePagingClient([[row("m-1", "2026-01-01T00:00:00Z")]]);
-
-    const conn = getOrOpenStream("acme", "t-batch-2", {
-      client: c.client,
-      batch: true,
-      sse: stub.sse,
-    });
-    await conn.ready;
-    const afterBoot = c.calls();
-
-    stub.fire("decopilot.step", "some-other-thread");
-    stub.fire("workflow.something", "t-batch-2");
-    await new Promise((r) => setTimeout(r, 20));
-
-    expect(c.calls()).toBe(afterBoot);
-  });
-
-  test("a connection opened before the harness was pinned still goes live", async () => {
-    // `harness_id` is null until the thread's first run pins it, so the chat
-    // opens in streaming mode and only learns it is batch on a later render.
-    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
-    const stub = makeSSEStub();
-    const c = makePagingClient([
-      [row("m-1", "2026-01-01T00:00:00Z")],
-      [row("m-1", "2026-01-01T00:00:00Z"), row("m-2", "2026-01-01T00:00:01Z")],
-    ]);
-
-    const conn = getOrOpenStream("acme", "t-batch-late", {
-      client: c.client,
-      batch: false,
-      sse: stub.sse,
-    });
-    await conn.ready;
-
-    // Same thread, now known to be batch — must reuse the connection AND
-    // subscribe it, not silently keep the streaming-only one.
-    expect(
-      getOrOpenStream("acme", "t-batch-late", {
-        client: c.client,
-        batch: true,
-        sse: stub.sse,
-      }),
-    ).toBe(conn);
-
-    stub.fire("decopilot.step", "t-batch-late");
-    await new Promise((r) => setTimeout(r, 20));
-
-    expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1", "m-2"]);
-  });
-
-  test("enabling batch twice subscribes once", async () => {
-    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
-    const stub = makeSSEStub();
-    const c = makePagingClient([[row("m-1", "2026-01-01T00:00:00Z")]]);
-    const conn = getOrOpenStream("acme", "t-batch-twice", {
-      client: c.client,
-      batch: true,
-      sse: stub.sse,
-    });
-    await conn.ready;
-    conn.enableBatch();
-    conn.dispose();
-    // One subscribe → one unsubscribe. A second would leak a handler that
-    // doubles every refetch.
-    expect(stub.unsubscribe).toHaveBeenCalledTimes(1);
-  });
-
-  test("dispose drops the watch subscription", async () => {
-    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
-    const stub = makeSSEStub();
-    const c = makePagingClient([[]]);
-    const conn = getOrOpenStream("acme", "t-batch-3", {
-      client: c.client,
-      batch: true,
-      sse: stub.sse,
-    });
-    await conn.ready;
-    conn.dispose();
-    expect(stub.unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

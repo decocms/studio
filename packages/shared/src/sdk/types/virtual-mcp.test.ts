@@ -6,10 +6,102 @@ import {
   VirtualMcpUILayoutSchema,
   VirtualMCPUpdateDataSchema,
   SandboxRecordSchema,
-  parseSandboxRecord,
   parseBranchMap,
   normalizeSandboxMap,
+  resolveCmsMode,
+  withCmsMode,
 } from "./virtual-mcp";
+
+describe("withCmsMode", () => {
+  it("writes the mode and drops the boolean it supersedes", () => {
+    expect(withCmsMode({ cmsDefaultOpen: true }, "manual")).toEqual({
+      cms: "manual",
+      cmsDefaultOpen: null,
+    });
+    expect(
+      resolveCmsMode(withCmsMode({ cmsDefaultOpen: true }, "manual")),
+    ).toBe("manual");
+  });
+
+  it("keeps every other layout setting", () => {
+    const layout = {
+      chatDefaultOpen: true,
+      defaultMainView: { type: "preview" },
+      tabs: [
+        {
+          id: "analytics",
+          title: "Analytics",
+          view: { type: "ext-app" as const, appId: "app_abc" },
+        },
+      ],
+    };
+    const next = withCmsMode(layout, "auto");
+    expect(next.chatDefaultOpen).toBe(true);
+    expect(next.defaultMainView).toEqual({ type: "preview" });
+    expect(next.tabs).toEqual(layout.tabs);
+  });
+
+  it("moves an agent off a Content home when the CMS goes off", () => {
+    const next = withCmsMode({ defaultMainView: { type: "content" } }, "off");
+    expect(next.defaultMainView).toEqual({ type: "preview" });
+  });
+
+  it("leaves a Content home alone while the CMS is still offered", () => {
+    for (const mode of ["manual", "auto"] as const) {
+      expect(
+        withCmsMode({ defaultMainView: { type: "content" } }, mode)
+          .defaultMainView,
+      ).toEqual({ type: "content" });
+    }
+  });
+
+  it("leaves any other home alone when the CMS goes off", () => {
+    expect(
+      withCmsMode({ defaultMainView: { type: "chat" } }, "off").defaultMainView,
+    ).toEqual({ type: "chat" });
+    expect(withCmsMode(null, "off").defaultMainView).toBeUndefined();
+  });
+
+  it("produces a layout the schema accepts", () => {
+    expect(() =>
+      VirtualMcpUILayoutSchema.parse(
+        withCmsMode({ defaultMainView: { type: "content" } }, "off"),
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe("resolveCmsMode", () => {
+  it("defaults to manual for an agent that never configured a CMS", () => {
+    expect(resolveCmsMode(null)).toBe("manual");
+    expect(resolveCmsMode(undefined)).toBe("manual");
+    expect(resolveCmsMode({})).toBe("manual");
+  });
+
+  it("reads the legacy cmsDefaultOpen boolean the enum replaced", () => {
+    expect(resolveCmsMode({ cmsDefaultOpen: true })).toBe("auto");
+    expect(resolveCmsMode({ cmsDefaultOpen: false })).toBe("manual");
+    expect(resolveCmsMode({ cmsDefaultOpen: null })).toBe("manual");
+  });
+
+  it("lets an explicit mode win over the legacy boolean", () => {
+    expect(resolveCmsMode({ cms: "off", cmsDefaultOpen: true })).toBe("off");
+    expect(resolveCmsMode({ cms: "manual", cmsDefaultOpen: true })).toBe(
+      "manual",
+    );
+    expect(resolveCmsMode({ cms: "auto", cmsDefaultOpen: false })).toBe("auto");
+  });
+
+  it("round-trips every mode through the layout schema", () => {
+    for (const cms of ["off", "manual", "auto"] as const) {
+      expect(resolveCmsMode(VirtualMcpUILayoutSchema.parse({ cms }))).toBe(cms);
+    }
+  });
+
+  it("rejects a mode outside the enum", () => {
+    expect(() => VirtualMcpUILayoutSchema.parse({ cms: "hidden" })).toThrow();
+  });
+});
 
 describe("VirtualMcpUILayoutSchema tabs", () => {
   it("parses a tabs array with ext-app view", () => {
@@ -123,65 +215,27 @@ test("SandboxRecord.startedWith is optional with nullable packageManager/port/pa
   expect(c.startedWith?.path).toBeNull();
 });
 
+test("SandboxRecord rejects rows missing sandboxHandle", () => {
+  expect(
+    SandboxRecordSchema.safeParse({ vmId: "v-pre-rename", previewUrl: null })
+      .success,
+  ).toBe(false);
+});
+
 describe("parseBranchMap", () => {
   test("parses 3-level (kind-keyed) map with canonical kinds", () => {
     const result = parseBranchMap({
       "agent-sandbox": {
         sandboxHandle: "v1",
         previewUrl: null,
-        sandboxProviderKind: "agent-sandbox",
       },
-      "user-desktop": {
+      "local-api": {
         sandboxHandle: "v2",
         previewUrl: null,
-        sandboxProviderKind: "user-desktop",
       },
     });
     expect(result["agent-sandbox"]?.sandboxHandle).toBe("v1");
-    expect(result["user-desktop"]?.sandboxHandle).toBe("v2");
-  });
-
-  test("normalizes legacy cluster key and record kind", () => {
-    const result = parseBranchMap({
-      cluster: {
-        sandboxHandle: "v1",
-        previewUrl: null,
-        sandboxProviderKind: "cluster",
-      },
-    });
-    expect(result).toEqual({
-      "agent-sandbox": {
-        sandboxHandle: "v1",
-        previewUrl: null,
-        sandboxProviderKind: "agent-sandbox",
-      },
-    });
-  });
-
-  test("prefers canonical agent-sandbox over legacy cluster regardless of key order", () => {
-    const canonical = {
-      sandboxHandle: "canonical",
-      previewUrl: null,
-      sandboxProviderKind: "agent-sandbox",
-    };
-    const legacy = {
-      sandboxHandle: "legacy",
-      previewUrl: null,
-      sandboxProviderKind: "cluster",
-    };
-
-    expect(
-      parseBranchMap({
-        "agent-sandbox": canonical,
-        cluster: legacy,
-      })["agent-sandbox"]?.sandboxHandle,
-    ).toBe("canonical");
-    expect(
-      parseBranchMap({
-        cluster: legacy,
-        "agent-sandbox": canonical,
-      })["agent-sandbox"]?.sandboxHandle,
-    ).toBe("canonical");
+    expect(result["local-api"]?.sandboxHandle).toBe("v2");
   });
 
   test("returns empty object for null/undefined/arrays", () => {
@@ -197,90 +251,33 @@ describe("parseBranchMap", () => {
       docker: {
         sandboxHandle: "v-legacy",
         previewUrl: null,
-        sandboxProviderKind: "cluster",
       },
       "local-docker": {
         sandboxHandle: "v-retired",
         previewUrl: null,
-        sandboxProviderKind: "cluster",
       },
     });
     expect(result).toEqual({});
   });
 });
 
-describe("parseSandboxRecord", () => {
-  test("accepts canonical sandboxProviderKind", () => {
-    const result = parseSandboxRecord({
-      sandboxHandle: "v1",
-      previewUrl: null,
-      sandboxProviderKind: "agent-sandbox",
-    });
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  test("normalizes legacy cluster sandboxProviderKind", () => {
-    const result = parseSandboxRecord({
-      sandboxHandle: "v1",
-      previewUrl: null,
-      sandboxProviderKind: "cluster",
-    });
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  test("rejects legacy/retired kind values", () => {
-    expect(() =>
-      parseSandboxRecord({
-        sandboxHandle: "v1",
-        previewUrl: null,
-        sandboxProviderKind: "docker",
-      }),
-    ).toThrow();
-    expect(() =>
-      parseSandboxRecord({
-        sandboxHandle: "v1",
-        previewUrl: null,
-        sandboxProviderKind: "local-docker",
-      }),
-    ).toThrow();
-  });
-
-  test("rejects rows missing `sandboxHandle` (legacy `vmId` no longer accepted)", () => {
-    expect(() =>
-      parseSandboxRecord({
-        vmId: "v-pre-rename",
-        previewUrl: null,
-        sandboxProviderKind: "agent-sandbox",
-      }),
-    ).toThrow();
-  });
-});
-
-const sandboxRecord = {
-  sandboxHandle: "v1",
-  previewUrl: null,
-  sandboxProviderKind: "cluster",
-} as const;
-
 const canonicalSandboxRecord = {
   sandboxHandle: "v1",
   previewUrl: null,
-  sandboxProviderKind: "agent-sandbox",
 } as const;
 
 function expectSandboxMapHasOnlyCanonicalProviderKind(
   sandboxMap: Record<string, Record<string, Record<string, unknown>>>,
 ) {
-  expect(sandboxMap.u?.b?.cluster).toBeUndefined();
   expect(sandboxMap.u?.b?.["agent-sandbox"]).toEqual(canonicalSandboxRecord);
 }
 
-describe("Sandbox map provider kind normalization", () => {
-  test("normalizeSandboxMap normalizes legacy cluster keys and record kinds", () => {
+describe("Sandbox map provider kind validation", () => {
+  test("normalizeSandboxMap keeps canonical provider keys", () => {
     const parsed = normalizeSandboxMap({
       u: {
         b: {
-          cluster: sandboxRecord,
+          "agent-sandbox": canonicalSandboxRecord,
         },
       },
     });
@@ -322,25 +319,47 @@ describe("Sandbox map provider kind normalization", () => {
     expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata.sandboxMap!);
   });
 
-  test("VirtualMCPCreateDataSchema accepts canonical embedded sandbox maps", () => {
-    const parsed = VirtualMCPCreateDataSchema.parse({
-      title: "x",
-      metadata: {
-        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
-      },
-      connections: [],
-    });
+  test("create and update reject the server-managed sandbox map", () => {
+    const sandboxMap = {
+      u: { b: { "agent-sandbox": canonicalSandboxRecord } },
+    };
 
-    expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata!.sandboxMap!);
+    expect(
+      VirtualMCPCreateDataSchema.safeParse({
+        title: "x",
+        metadata: { sandboxMap },
+        connections: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({ metadata: { sandboxMap } })
+        .success,
+    ).toBe(false);
   });
 
-  test("VirtualMCPUpdateDataSchema accepts canonical embedded sandbox maps", () => {
-    const parsed = VirtualMCPUpdateDataSchema.parse({
-      metadata: {
-        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
+  test("rejects unsupported provider keys at write boundaries", () => {
+    const sandboxMap = {
+      u: {
+        b: {
+          "unsupported-provider": {
+            sandboxHandle: "unsupported",
+            previewUrl: null,
+          },
+        },
       },
-    });
+    };
 
-    expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata!.sandboxMap!);
+    expect(SandboxMapSchema.safeParse(sandboxMap).success).toBe(false);
+    expect(
+      VirtualMCPCreateDataSchema.safeParse({
+        title: "x",
+        metadata: { sandboxMap },
+        connections: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({ metadata: { sandboxMap } })
+        .success,
+    ).toBe(false);
   });
 });

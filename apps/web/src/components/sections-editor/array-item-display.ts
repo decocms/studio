@@ -1,23 +1,32 @@
 import { arrayItemDisplayValue } from "./array-item-hidden";
 import { lazyWrappedInner } from "./block-ref-field-utils";
 import { extractUrl } from "./fields/extract-url";
+import { formatMatcher } from "./format-matcher";
 import { inferInlineUnionIndex } from "./fields/inline-union-value";
 import type { SchemaProperty } from "./resolve-schema";
-import { labelFromResolveType } from "./section-types";
+import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
+  labelFromResolveType,
+} from "./section-types";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
 
-function resolveResolvable(obj: Record<string, unknown>): string | undefined {
+// Legacy $live path for the same "always" matcher (see format-matcher.ts's alwaysTypes).
+const LEGACY_ALWAYS_MATCHER_RESOLVE_TYPE = "$live/matchers/MatchAlways.ts";
+
+function resolveResolvable(obj: Record<string, unknown>): unknown {
   if (Array.isArray(obj.variants)) {
     const variants = obj.variants as Array<{
       rule?: { __resolveType?: string };
       value?: unknown;
     }>;
-    const always = variants.find((v) =>
-      v.rule?.__resolveType?.includes("always"),
+    const always = variants.find(
+      (v) =>
+        v.rule?.__resolveType === ALWAYS_MATCHER_RESOLVE_TYPE ||
+        v.rule?.__resolveType === LEGACY_ALWAYS_MATCHER_RESOLVE_TYPE,
     );
-    if (typeof always?.value === "string") return always.value;
-    const first = variants.find((v) => typeof v.value === "string");
-    if (first) return first.value as string;
+    // Unwrap object-valued variants too (e.g. `{ desktop, mobile }`), not only strings.
+    const chosen = always ?? variants.find((v) => v.value != null);
+    if (chosen && chosen.value != null) return chosen.value;
   }
   if (typeof obj.src === "string") return obj.src;
   if (typeof obj.url === "string") return obj.url;
@@ -34,7 +43,9 @@ function resolveImageValue(value: unknown): unknown {
   }
   const obj = value as Record<string, unknown>;
   if (obj.__resolveType) {
-    return resolveResolvable(obj) ?? value;
+    // Recurse: an unwrapped variant value may itself be an object of URLs.
+    const unwrapped = resolveResolvable(obj);
+    return unwrapped === undefined ? value : resolveImageValue(unwrapped);
   }
   return resolveImageValues(obj);
 }
@@ -138,6 +149,8 @@ function baseArrayItemLabel(
     const inner = lazyWrappedInner(obj);
     if (inner) {
       obj = inner;
+      // Unwrap again in case the lazy wrapper contains a hidden item.
+      obj = arrayItemDisplayValue(obj) as Record<string, unknown>;
     }
     if (itemSchema?.titleBy) {
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);
@@ -195,6 +208,10 @@ function baseArrayItemLabel(
     }
     const resolveType = obj.__resolveType;
     if (typeof resolveType === "string" && resolveType) {
+      // Matcher items show their configured rule, matching the variant tabs.
+      if (resolveType.includes("/matchers/")) {
+        return formatMatcher(obj);
+      }
       return labelFromResolveType(resolveType);
     }
     if (itemSchema?.title) {

@@ -17,6 +17,7 @@ import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
+import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -117,7 +118,8 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     }
 
     // `prompts` is seeded to org-fs after creation, not stored on the agent row.
-    const { prompts, ...createData } = input.data;
+    const { prompts, metadata: rawMetadata, ...createData } = input.data;
+    const metadata = stripServerManagedMetadata(rawMetadata);
 
     if (createData.connections.length > 0) {
       await requireConnectionsInOrganization(
@@ -132,6 +134,7 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     // Use a random icon+color if no icon is provided
     const dataWithIcon = {
       ...createData,
+      metadata,
       icon: createData.icon ?? pickRandomAgentIcon(),
     };
 

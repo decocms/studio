@@ -1,5 +1,6 @@
 import type { Metadata } from "./chat.ts";
 import type { ThreadRuntime } from "./thread/session-runtime.ts";
+import type { ReviewerKind } from "./task-board.ts";
 
 export const THREAD_STATUSES = [
   "in_progress",
@@ -78,11 +79,9 @@ export interface StudioThread {
   last_progress_at: string | null;
   virtual_mcp_id: string;
   branch: string | null;
-  sandbox_provider_kind: string | null;
   harness_id: string | null;
   metadata: ThreadMetadata;
   message_storage_version: number;
-  link_transport: string | null;
 }
 
 export interface StudioThreadMessage {
@@ -101,6 +100,14 @@ export type TaskBoardItemStatus =
   | "in_progress"
   | "in_review"
   | "done";
+
+/** What KIND of work a card is — its shape, not its area (that's tags). */
+export type TaskBoardItemType =
+  | "bug"
+  | "feature"
+  | "chore"
+  | "spike"
+  | "security";
 
 export type TaskBoardItemPriority =
   | "none"
@@ -152,20 +159,35 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is. Required; defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
   dueDate: string | null;
+  /** Sprint this card belongs to (`Sprint.id`); null = backlog. */
+  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`). */
   keySeq: number | null;
+  /** The key this card's issue wears in the tracker (`OS-333`), for a card
+   *  synced from one — what `taskKey` shows. Null for a card Studio owns. */
+  jiraIssueKey: string | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
   threads: TaskBoardItemThreadRef[];
   tags: TaskBoardItemTagRef[];
+  /** Each reviewer's standing verdict in the current review cycle; reviewers
+   *  that have not decided are absent. Mirrors `TaskBoardItemReviewVerdict` in
+   *  `apps/api/src/storage/types.ts`. */
+  reviewVerdicts: {
+    reviewer: ReviewerKind;
+    verdict: "approved" | "changes_requested";
+    verified: boolean;
+  }[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;

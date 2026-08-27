@@ -31,12 +31,12 @@ describe("KyselySandboxProviderStateStore", () => {
   it("put + get round-trips all fields", async () => {
     const id = mkId("round-trip");
     const before = Date.now();
-    await store.put(id, "agent-sandbox", {
+    await store.put(id, {
       handle: "handle-round-trip",
       state: { token: "abc", hostPort: 1234, nested: { k: "v" } },
     });
 
-    const row = await store.get(id, "agent-sandbox");
+    const row = await store.get(id);
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("handle-round-trip");
     expect(row!.state).toEqual({
@@ -50,18 +50,18 @@ describe("KyselySandboxProviderStateStore", () => {
     expect(row!.updatedAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
   });
 
-  it("put UPSERTs on same (user_id, project_ref, sandbox_provider_kind)", async () => {
+  it("put UPSERTs on the same sandbox id", async () => {
     const id = mkId("upsert");
-    await store.put(id, "agent-sandbox", {
+    await store.put(id, {
       handle: "upsert-handle-1",
       state: { version: 1 },
     });
-    await store.put(id, "agent-sandbox", {
+    await store.put(id, {
       handle: "upsert-handle-2",
       state: { version: 2 },
     });
 
-    const row = await store.get(id, "agent-sandbox");
+    const row = await store.get(id);
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("upsert-handle-2");
     expect(row!.state).toEqual({ version: 2 });
@@ -75,20 +75,20 @@ describe("KyselySandboxProviderStateStore", () => {
     expect(rows[0]!.count).toBe("1");
   });
 
-  it("put allows duplicate handle across different (user, project, kind)", async () => {
+  it("put allows duplicate handle across different sandbox ids", async () => {
     const id1 = mkId("dup-handle-a");
     const id2 = mkId("dup-handle-b");
     const sharedHandle = "shared-handle-conflict";
 
-    await store.put(id1, "agent-sandbox", {
+    await store.put(id1, {
       handle: sharedHandle,
       state: { which: "a" },
     });
 
-    // Migration 074 dropped the unique constraint on handle — different
-    // runners can legitimately share a handle (hash entropy collisions).
+    // Migration 074 dropped the unique constraint on handle, so distinct
+    // logical sandbox ids may share one (for example after a hash collision).
     await expect(
-      store.put(id2, "user-desktop", {
+      store.put(id2, {
         handle: sharedHandle,
         state: { which: "b" },
       }),
@@ -97,32 +97,32 @@ describe("KyselySandboxProviderStateStore", () => {
 
   it("delete removes the row", async () => {
     const id = mkId("delete");
-    await store.put(id, "agent-sandbox", {
+    await store.put(id, {
       handle: "delete-handle",
       state: { x: 1 },
     });
-    expect(await store.get(id, "agent-sandbox")).not.toBeNull();
+    expect(await store.get(id)).not.toBeNull();
 
-    await store.delete(id, "agent-sandbox");
-    expect(await store.get(id, "agent-sandbox")).toBeNull();
+    await store.delete(id);
+    expect(await store.get(id)).toBeNull();
   });
 
   it("deleteByHandle removes the row", async () => {
     const id = mkId("delete-by-handle");
     const handle = "delete-by-handle-h";
-    await store.put(id, "agent-sandbox", { handle, state: { x: 1 } });
-    expect(await store.get(id, "agent-sandbox")).not.toBeNull();
+    await store.put(id, { handle, state: { x: 1 } });
+    expect(await store.get(id)).not.toBeNull();
 
-    await store.deleteByHandle("agent-sandbox", handle);
-    expect(await store.get(id, "agent-sandbox")).toBeNull();
+    await store.deleteByHandle(handle);
+    expect(await store.get(id)).toBeNull();
   });
 
   it("getByHandle returns populated row with id", async () => {
     const id = mkId("get-by-handle");
     const handle = "get-by-handle-h";
-    await store.put(id, "agent-sandbox", { handle, state: { token: "t" } });
+    await store.put(id, { handle, state: { token: "t" } });
 
-    const row = await store.getByHandle("agent-sandbox", handle);
+    const row = await store.getByHandle(handle);
     expect(row).not.toBeNull();
     expect(row!.handle).toBe(handle);
     expect(row!.id).toEqual(id);
@@ -130,19 +130,10 @@ describe("KyselySandboxProviderStateStore", () => {
     expect(row!.updatedAt).toBeInstanceOf(Date);
   });
 
-  it("getByHandle returns null when kind does not match", async () => {
-    const id = mkId("kind-mismatch");
-    const handle = "kind-mismatch-handle";
-    await store.put(id, "agent-sandbox", { handle, state: {} });
-
-    const row = await store.getByHandle("user-desktop", handle);
-    expect(row).toBeNull();
-  });
-
   it("withLock returns the callback's result and persists writes", async () => {
     const id = mkId("withlock-happy");
-    const result = await store.withLock(id, "agent-sandbox", async (scoped) => {
-      await scoped.put(id, "agent-sandbox", {
+    const result = await store.withLock(id, async (scoped) => {
+      await scoped.put(id, {
         handle: "withlock-happy-handle",
         state: { ok: true },
       });
@@ -150,7 +141,7 @@ describe("KyselySandboxProviderStateStore", () => {
     });
     expect(result).toBe(42);
 
-    const row = await store.get(id, "agent-sandbox");
+    const row = await store.get(id);
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("withlock-happy-handle");
     expect(row!.state).toEqual({ ok: true });
@@ -161,8 +152,8 @@ describe("KyselySandboxProviderStateStore", () => {
     const boom = new Error("boom");
 
     await expect(
-      store.withLock(id, "agent-sandbox", async (scoped) => {
-        await scoped.put(id, "agent-sandbox", {
+      store.withLock(id, async (scoped) => {
+        await scoped.put(id, {
           handle: "withlock-throw-handle",
           state: { bad: true },
         });
@@ -171,7 +162,7 @@ describe("KyselySandboxProviderStateStore", () => {
     ).rejects.toThrow("boom");
 
     // The put inside the throwing txn must not be visible.
-    const row = await store.get(id, "agent-sandbox");
+    const row = await store.get(id);
     expect(row).toBeNull();
   });
 
@@ -181,19 +172,19 @@ describe("KyselySandboxProviderStateStore", () => {
   // WASM Postgres without multi-connection lock contention, so this path
   // can only be verified against real Postgres. Real-Postgres coverage is
   // out of scope for this unit test file.
-  it.skip("withLock serializes concurrent calls for the same (id, kind) [PGlite does not support pg_advisory_xact_lock]", async () => {
+  it.skip("withLock serializes concurrent calls for the same id [PGlite does not support pg_advisory_xact_lock]", async () => {
     const id = mkId("withlock-serialize");
     const firstStarted = Promise.withResolvers<void>();
     let secondSawHandle: string | undefined;
 
-    const first = store.withLock(id, "agent-sandbox", async (scoped) => {
+    const first = store.withLock(id, async (scoped) => {
       firstStarted.resolve();
-      await scoped.put(id, "agent-sandbox", {
+      await scoped.put(id, {
         handle: "serialize-handleA",
         state: { step: "A" },
       });
       await new Promise((r) => setTimeout(r, 50));
-      await scoped.put(id, "agent-sandbox", {
+      await scoped.put(id, {
         handle: "serialize-handleB",
         state: { step: "B" },
       });
@@ -202,8 +193,8 @@ describe("KyselySandboxProviderStateStore", () => {
 
     const second = (async () => {
       await firstStarted.promise;
-      return store.withLock(id, "agent-sandbox", async (scoped) => {
-        const row = await scoped.get(id, "agent-sandbox");
+      return store.withLock(id, async (scoped) => {
+        const row = await scoped.get(id);
         secondSawHandle = row?.handle;
         return "second-done";
       });

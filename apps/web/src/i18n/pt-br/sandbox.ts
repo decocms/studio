@@ -103,6 +103,10 @@ export const sandbox = {
   "sandbox.blogContext.tabFormats": "Formatos",
   "sandbox.blogContext.tabPillars": "Pilares de conteúdo",
   "sandbox.blogContext.title": "Contexto",
+  "sandbox.bootingVisual.phaseCloning": "Clonando seu repositório",
+  "sandbox.bootingVisual.phaseDev": "Iniciando seu preview",
+  "sandbox.bootingVisual.phaseInstall": "Instalando pacotes",
+  "sandbox.bootingVisual.phaseProvision": "Reservando sandbox",
   "sandbox.categoryEditor.addPostsButton": "Adicionar posts",
   "sandbox.categoryEditor.cancelButton": "Cancelar",
   "sandbox.categoryEditor.categoryNamePlaceholder": "Nome da categoria",
@@ -133,6 +137,18 @@ export const sandbox = {
   "sandbox.categoryEditor.slugPlaceholder": "minha-categoria",
   "sandbox.categoryEditor.untitledCategory": "Categoria sem título",
   "sandbox.categoryEditor.untitledPost": "Post sem título",
+  "sandbox.cmsSettings.contentEditing.auto": "Automático",
+  "sandbox.cmsSettings.contentEditing.autoDescription":
+    "O preview abre o CMS assim que for possível editar o conteúdo.",
+  "sandbox.cmsSettings.contentEditing.description":
+    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
+  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
+  "sandbox.cmsSettings.contentEditing.manualDescription":
+    "Quem edita abre o CMS pelo preview quando precisa.",
+  "sandbox.cmsSettings.contentEditing.off": "Desativado",
+  "sandbox.cmsSettings.contentEditing.offDescription":
+    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
+  "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.collectionsSidebar.actions": "Ações",
   "sandbox.collectionsSidebar.apps": "Apps",
   "sandbox.collectionsSidebar.blog": "Blog",
@@ -147,6 +163,12 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
+  "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
+  "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
+  "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',
+  "sandbox.contentBrowser.renameFailed": "Falha ao renomear",
+  "sandbox.contentBrowser.sectionNotFound": "Seção não encontrada.",
+  "sandbox.contentBrowser.sectionRenamed": "Seção renomeada",
   "sandbox.drawer.failedToRestart": "Falha ao reiniciar {name}",
   "sandbox.drawer.failedToRun": "Falha ao executar {name}",
   "sandbox.drawer.failedToStop": "Falha ao parar {name}",
@@ -536,9 +558,14 @@ export const sandbox = {
   "sandbox.postBoard.viewBoard": "Quadro",
   "sandbox.postBoard.viewList": "Lista",
   "sandbox.postBoard.writeFromIdea": "Escrever um post",
+  "sandbox.postCalendar.couldNotCreate": "Não foi possível criar",
+  "sandbox.postCalendar.couldNotReschedule": "Não foi possível reagendar",
+  "sandbox.postCalendar.createdScheduledPost": "Post agendado criado",
   "sandbox.postCalendar.legendScheduled": "Agendado",
   "sandbox.postCalendar.legendUnscheduled": "Não agendado",
   "sandbox.postCalendar.next": "Próximo mês",
+  "sandbox.postCalendar.onlyScheduledCanMove":
+    "Apenas posts agendados podem ser movidos.",
   "sandbox.postCalendar.outdatedAppsDescription":
     "Agendamento precisa do deco apps {required} ou mais novo. Atualize o pin deste site rodando:",
   "sandbox.postCalendar.outdatedAppsTitle":

@@ -26,15 +26,6 @@ async function run(body: string): Promise<Record<string, unknown>> {
 }
 
 describe("harness-runner wire", () => {
-  test("an unknown harness is a result with an error, not a crash", async () => {
-    expect(
-      await run(JSON.stringify({ harnessId: "codex", input: {} })),
-    ).toEqual({
-      chunks: [],
-      error: { code: "unknown_harness", message: expect.any(String) },
-    });
-  });
-
   test("malformed stdin is bad_input", async () => {
     const result = await run("{not json");
     expect(result.chunks).toEqual([]);
@@ -42,7 +33,7 @@ describe("harness-runner wire", () => {
   });
 
   test("a missing input is bad_input", async () => {
-    const result = await run(JSON.stringify({ harnessId: "claude-code" }));
+    const result = await run("{}");
     expect(result.error).toMatchObject({ code: "bad_input" });
   });
 });

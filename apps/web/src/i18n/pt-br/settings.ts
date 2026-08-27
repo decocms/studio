@@ -41,7 +41,7 @@ export const settings = {
   "settings.jira.cancel": "Cancelar",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
-    "Os cards visíveis do board são espelhados — a aba Backlog, epics e sub-tasks não.",
+    "Tudo o que o board abrange é espelhado, incluindo o backlog. Epics e sub-tasks não, e os cards mostram em qual sprint estão.",
   "settings.jira.boardPlaceholder": "Selecione um board",
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
@@ -50,14 +50,6 @@ export const settings = {
   "settings.jira.mappingDescription":
     "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",
   "settings.jira.dontSync": "Não sincronizar",
-  "settings.jira.jqlLabel": "Filtro JQL (opcional)",
-  "settings.jira.jqlDescription":
-    "JQL extra pra restringir o que sincroniza — útil pra casar com o filtro salvo do seu board no Jira. Epics e sub-tasks são sempre excluídos.",
-  "settings.jira.jqlPlaceholder":
-    "ex.: labels = storefront AND sprint in openSprints()",
-  "settings.jira.jqlSave": "Salvar filtro",
-  "settings.jira.jqlSaved":
-    "Filtro salvo — vale a partir da próxima sincronização",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
   "settings.jira.autoDelegateLabel": "Delegar automaticamente pro agente",
@@ -67,11 +59,19 @@ export const settings = {
   "settings.jira.enableRequirements":
     "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
   "settings.jira.lastSynced": "Última sincronização {ago}",
-  "settings.jira.waitingFirstSync": "Aguardando a primeira sincronização",
+  "settings.jira.waitingFirstSync": "Aguardando a próxima sincronização",
+  "settings.jira.resyncAll": "Resincronizar tudo",
+  "settings.jira.resyncAllTitle": "Reler o board inteiro?",
+  "settings.jira.resyncAllQueued":
+    "Releitura solicitada — a próxima sincronização vai começá-la.",
+  "settings.jira.resyncAllDescription":
+    'O "Sincronizar agora" só puxa issues alteradas desde a última execução. Esta opção marca todas as issues do board para serem relidas — é o que você quer depois de mudar o mapeamento de status, ou quando os cards estão errados. Ela começa na próxima sincronização agendada, não agora, pode se estender por várias execuções num board grande, e nunca delega um card para um agente.',
   "settings.jira.syncNow": "Sincronizar agora",
   "settings.jira.syncing": "Sincronizando…",
   "settings.jira.syncDone":
-    "Sincronizado: {created} criados, {updated} atualizados",
+    "Sincronizado: {created} criados, {updated} atualizados, {archived} arquivados",
+  "settings.jira.unmappedWarning":
+    "Ainda sem mapeamento: {columns}. Issue que entra numa dessas colunas \u00e9 ignorada, e o card fica parado na lane que tinha antes \u2014 escolha uma lane, ou \u201cN\u00e3o sincronizar\u201d pra dizer que \u00e9 de prop\u00f3sito.",
   "settings.jira.syncFailed": "Falha na sincronização",
   "settings.jira.saveFailed":
     "Não foi possível salvar as configurações do Jira",
@@ -146,6 +146,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Reproduza sons para ações de agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
+  "settings.preferences.projectSettingsGear": "Atalho de configurações",
+  "settings.preferences.projectSettingsGearDescription":
+    "Mostrar um atalho de configurações ao passar o mouse sobre um projeto na barra lateral.",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",
@@ -456,14 +459,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.navigation.title": "Navegação",
-  "settings.navigation.description":
-    "Como esta organização circula pelo Studio.",
-  "settings.navigation.updateError":
-    "Não foi possível atualizar as configurações de navegação",
-  "settings.navigation.navV2Title": "Navegação de primeira classe",
-  "settings.navigation.navV2Description":
-    "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações novas e em organizações de relatório.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":
@@ -478,26 +473,53 @@ export const settings = {
     "N\u00e3o foi poss\u00edvel atualizar o agente principal",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "Revisores autom\u00e1ticos rodam no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ambos aparecem como sess\u00f5es no card da tarefa.",
-  "settings.review.qaAgentTitle": "Ativar QA Agent",
-  "settings.review.qaAgentDescription":
-    "Garante que a tarefa realmente resolveu o problema \u2014 testa a feature, n\u00e3o s\u00f3 o diff.",
-  "settings.review.codeReviewerTitle": "Ativar Code Reviewer",
-  "settings.review.codeReviewerDescription":
-    "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
+    "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
+  "settings.review.reviewerTitle": "Ativar Reviewer",
+  "settings.review.reviewerDescription":
+    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para voc\u00ea quando n\u00e3o consegue resolver algo.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
-    "O QA Agent e o Code Reviewer leem um diff e chegam a um veredito, então rodam em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
+    "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
+  "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
+  "settings.review.deliveryLanesDescription":
+    "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
   "settings.review.autoAssignReportTasksTitle":
     "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.agentTools.title": "Ferramentas do agente",
+  "settings.agentTools.description":
+    "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",
+  "settings.agentTools.orgMcpsTitle":
+    "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
+  "settings.agentTools.orgMcpsDescription":
+    "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
+  "settings.agentTools.codingAgentsClaudeCodeTitle":
+    "Rodar chats de Code Agent com o Claude Code",
+  "settings.agentTools.codingAgentsClaudeCodeDescription":
+    "Chats em um agente importado de um reposit\u00f3rio do GitHub rodam dentro do sandbox desse agente, ao lado do checkout, em vez de rodarem no Decopilot. As respostas chegam de turno inteiro, e n\u00e3o palavra por palavra. S\u00f3 vale para chats novos \u2014 um chat existente mant\u00e9m o runtime em que come\u00e7ou.",
+  "settings.sprints.title": "Sprints",
+  "settings.sprints.description":
+    "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",
+  "settings.sprints.enabledTitle": "Ativar sprints",
+  "settings.sprints.enabledDescription":
+    "Adiciona uma propriedade de sprint em cada tarefa e um filtro de sprint no board.",
+  "settings.sprints.cadenceTitle": "Cad\u00eancia",
+  "settings.sprints.cadenceDescription":
+    "Quanto tempo dura uma sprint e o dia em que a sprint 1 come\u00e7ou.",
+  "settings.sprints.cadenceCurrent":
+    "A sprint {number} est\u00e1 em andamento ({start} a {end}).",
+  "settings.sprints.weeksValue": "{count} semanas",
+  "settings.sprints.weeksValueOne": "1 semana",
+  "settings.sprints.startDateLabel": "Dia inicial da sprint 1",
+  "settings.sprints.updateError":
+    "N\u00e3o foi poss\u00edvel atualizar as configura\u00e7\u00f5es de sprint",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",

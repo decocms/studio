@@ -5,7 +5,7 @@ package dispatch
 // keep the two in step:
 //
 //	spawn   argv from HARNESS_RUNNER_CMD, in its own process group
-//	input   {harnessId, input} as JSON on stdin
+//	input   {input} as JSON on stdin
 //	output  a stream of HarnessRunResult frames on stdout, one JSON line each;
 //	        stderr is the pod's log
 //	cancel  cancel ctx — the process group is killed, the CLI with it
@@ -40,12 +40,11 @@ import (
 func RunHarness(
 	ctx context.Context,
 	argv []string,
-	harnessId string,
 	input json.RawMessage,
 	env map[string]string,
 	emit func([]byte) bool,
 ) (int, error) {
-	payload, err := json.Marshal(map[string]any{"harnessId": harnessId, "input": input})
+	payload, err := json.Marshal(map[string]any{"input": input})
 	if err != nil {
 		return 0, err
 	}

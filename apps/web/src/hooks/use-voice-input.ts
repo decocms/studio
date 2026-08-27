@@ -123,6 +123,8 @@ export function useVoiceInput(): UseVoiceInputReturn {
     recognition.lang = navigator.language || "en-US";
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Ignore a stale instance's async result once a newer one took over.
+      if (recognitionRef.current !== recognition) return;
       let interim = "";
       let newFinal = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -142,7 +144,20 @@ export function useVoiceInput(): UseVoiceInputReturn {
       setInterimTranscript(interim);
     };
 
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // Ignore a stale instance's async error once a newer one took over.
+      if (recognitionRef.current !== recognition) return;
+      // "no-speech" is routine in continuous mode; onend restarts it below.
+      if (event.error === "no-speech") return;
+      // Fatal error (network/mic/permission) — stop, don't let onend restart it.
+      isRecordingRef.current = false;
+      recognitionRef.current = null;
+      stopVisualizer();
+      setStatus(event.error === "not-allowed" ? "permission-denied" : "idle");
+    };
+
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
       if (isRecordingRef.current) {
         try {
           recognition.start();

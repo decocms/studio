@@ -15,6 +15,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { SidebarTopActions } from "@/components/sidebar/top-actions";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t";
+import { InboxFullButton, InboxIconButton } from "./inbox";
 
 function SettingsFullButton() {
   const t = useT();
@@ -136,6 +137,9 @@ export function SidebarAccountFooter() {
         )}
         <SidebarMenu>
           <SidebarMenuItem>
+            <InboxFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
             <SettingsFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -156,6 +160,7 @@ export function SidebarAccountFooter() {
             <div className="flex-1 min-w-0">
               <AccountPopover />
             </div>
+            <InboxIconButton />
             <SettingsIconButton />
           </div>
         </SidebarMenuItem>

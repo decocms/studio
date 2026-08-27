@@ -1,6 +1,7 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { GridLoader } from "@/components/grid-loader";
+import { useT } from "@/i18n/use-t.ts";
 import type { ClaimPhase } from "../hooks/sandbox-events-context";
 import { CLAIM_PHASE_COPY } from "../claim-phase-copy";
 import type { PhaseKey, PhaseProgress } from "./derive-phase-progress";
@@ -27,16 +28,19 @@ export interface BootingVisualProps {
   claimPhase: ClaimPhase | null;
 }
 
-const PHASE_LABELS: Record<PhaseKey, string> = {
-  provision: "Reserving sandbox",
-  cloning: "Cloning your repo",
-  install: "Installing packages",
-  dev: "Starting your preview",
-};
+function phaseLabels(t: ReturnType<typeof useT>): Record<PhaseKey, string> {
+  return {
+    provision: t("sandbox.bootingVisual.phaseProvision"),
+    cloning: t("sandbox.bootingVisual.phaseCloning"),
+    install: t("sandbox.bootingVisual.phaseInstall"),
+    dev: t("sandbox.bootingVisual.phaseDev"),
+  };
+}
 
 function pillHeadline(
   progress: PhaseProgress,
   claimPhase: ClaimPhase | null,
+  labels: Record<PhaseKey, string>,
 ): string {
   if (
     progress.step === "provision" &&
@@ -46,7 +50,7 @@ function pillHeadline(
   ) {
     return CLAIM_PHASE_COPY[claimPhase.kind].long;
   }
-  return PHASE_LABELS[progress.step];
+  return labels[progress.step];
 }
 
 /**
@@ -68,8 +72,9 @@ const PACKAGE_TILE_COLORED = Array.from(
 );
 
 export function BootingVisual({ progress, claimPhase }: BootingVisualProps) {
+  const t = useT();
   const activeIndex = activePhaseIndex(progress);
-  const headline = pillHeadline(progress, claimPhase);
+  const headline = pillHeadline(progress, claimPhase, phaseLabels(t));
 
   return (
     <div className="relative flex w-full flex-col items-center justify-center gap-12 select-none [clip-path:inset(-24px_0_-200px_0)]">

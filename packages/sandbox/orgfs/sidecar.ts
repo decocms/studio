@@ -3,10 +3,10 @@
  *
  * Hosted sandboxes can't mount in the main container (locked-down
  * securityContext), so a privileged sidecar does it: this loop waits for the
- * daemon to relay the mount config onto the shared control volume (see
- * routes/orgfs-config.ts — the config arrives post-bind, after this container
- * is already running), mounts the volumes with the SAME MountManager the
- * desktop daemon uses (FUSE + --allow-other), and lets Bidirectional mount
+ * daemon to relay the mount config onto the shared control volume (the config
+ * arrives through `POST /_sandbox/orgfs-config` after this container is
+ * already running), mounts the volumes with the shared MountManager (FUSE +
+ * --allow-other), and lets Bidirectional mount
  * propagation surface them in the unprivileged main container.
  *
  * After mounting it writes a status file so the daemon (a different
@@ -30,7 +30,7 @@ export interface SidecarMountManager {
 }
 
 export interface SidecarOpts {
-  /** Config file the daemon relays ORGFS_CONFIG into (shared volume). */
+  /** Config file the daemon writes into the shared control volume. */
   configPath: string;
   /** Status file this writes once mounted (read by the daemon container). */
   statusPath: string;

@@ -149,10 +149,11 @@ a no-op success, matching the tool's idempotent contract.
 
 ```ts
 removeWorktree: z.boolean().optional().default(false)
-  .describe("Also reclaim the sandbox's workspace (local worktree + disk). Ignored by providers whose teardown already destroys the filesystem."),
+  .describe("Also reclaim the sandbox's workspace (local worktree + disk). Ignored by hosted teardown, whose filesystem is already destroyed."),
 ```
 
-Handler untouched.
+The hosted handler ignores the flag; the native interceptor consumes it before
+the request can reach that handler.
 
 **`apps/native/.../thread_tools.rs`** `list()` — answer the thread list in FULL,
 ignoring a caller's `limit`/`offset` (still parsed, so a malformed value is
@@ -191,7 +192,6 @@ handleArchive(task):
       cancel  → return                           (thread stays open)
       confirm → archiveNow(task)
                 SANDBOX_DELETE { virtualMcpId, branch,
-                                 sandboxProviderKind: "user-desktop",
                                  removeWorktree: true }
 ```
 
@@ -215,10 +215,10 @@ rejection, abort the sequence and delete nothing.
 A failed *delete*, by contrast, is fine: an archived thread plus a live
 worktree is a recoverable leak, and the toast says so.
 
-**`sandboxProviderKind` is hardcoded `"user-desktop"`.** `stop()` reads it off
-`vmEntry` (`sandbox-lifecycle-context.tsx:645`), but the sidebar has no
-`vmEntry` for an arbitrary thread; this path is desktop-gated, where that is
-the only possible value.
+**The receiving surface owns the runtime.** The tool request carries no provider
+selector. This path is desktop-gated, so the native interceptor applies
+`local-api` behavior and the hosted implementation remains fixed to
+`agent-sandbox`.
 
 **The dialog is static.** It names the branch, states the two consequences
 (processes stopped, local files deleted), and asks. It does NOT inspect the

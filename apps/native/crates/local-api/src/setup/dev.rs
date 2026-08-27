@@ -1,6 +1,7 @@
 //! Start step — spawns the discovered `dev`/`start` script, sniffs its bind
-//! announcement from stdout, confirms with one HTTP probe, then transitions
-//! `lifecycle` to `running` and emits `reload:{}`. Byte-parity in spirit
+//! announcement from stdout, confirms with one HTTP probe across both
+//! loopback families ([`LOOPBACK_HOSTS`]), then transitions `lifecycle` to
+//! `running` and emits `reload:{}`. Byte-parity in spirit
 //! with `daemon/entry.ts`'s port-sniffer + probe wiring
 //! (`process/port-sniffer.ts` + `probe.ts`), collapsed into a single-shot
 //! "spawn, sniff, confirm-once, done" sequence rather than a standing
@@ -64,17 +65,54 @@ const PROBE_ATTEMPTS: u32 = 40;
 /// [`PROBE_ATTEMPTS`] is sized for the window after a listener exists and is
 /// far too short here: this one has to outlast the whole build, and a starter
 /// like `bun run generate && next dev` spends minutes there before it binds
-/// anything. It is not really a timeout at all — [`confirm_running`] rechecks
+/// anything. It rarely elapses — [`confirm_running`] rechecks
 /// `is_current_dev_task` every iteration, so it stops the moment the dev task
 /// exits or is replaced. The count only bounds a process that stays alive
-/// forever without ever listening.
+/// forever without ever listening; reaching it under
+/// [`OnExhausted::FailStart`] is what turns that hang into a `start-failed`
+/// the UI can offer a retry on.
 pub(crate) const BOOT_PROBE_ATTEMPTS: u32 = 4 * 60 * 20;
 const PROBE_INTERVAL: Duration = Duration::from_millis(250);
+/// Loopback addresses a dev server might have bound, in probe order.
+///
+/// A dev server that does not honour the `HOST` we export binds whatever its
+/// framework defaults to, and `localhost` resolves to `::1` first on macOS —
+/// so a Vite-style server ends up reachable ONLY over IPv6 while an older
+/// Node server is reachable ONLY over IPv4. Probing a single family left the
+/// other stuck on `starting` forever, with a perfectly healthy server on the
+/// other address. Same order and rationale as `routes/proxy.rs`'s
+/// `send_to_loopback` and the Go daemon's `probe.DialLoopback`
+/// (`daemon-go/internal/probe/probe.go`) — this was the one loopback consumer
+/// in the crate that never got the dual-stack treatment.
+const LOOPBACK_HOSTS: [&str; 2] = ["[::1]", "127.0.0.1"];
 const IDENTITY_CAPTURE_ATTEMPTS: u32 = 20;
 const IDENTITY_CAPTURE_INTERVAL: Duration = Duration::from_millis(25);
 const IDENTITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const STALE_TERM_GRACE: Duration = Duration::from_millis(800);
 const STALE_KILL_GRACE: Duration = Duration::from_secs(1);
+
+/// What a [`confirm_running`] whose whole budget elapsed should do to the
+/// lifecycle.
+///
+/// Exhaustion is only *evidence of failure* for a probe that owns the boot.
+/// For every other probe the budget elapsing just means "not my call" —
+/// something else is still watching, and writing a terminal phase from here
+/// would drag a sandbox that is about to work into an error card.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum OnExhausted {
+    /// Leave the phase untouched. Used by the stdout-sniffer's short confirm
+    /// ([`PROBE_ATTEMPTS`] — the eager boot probe is still running and has
+    /// minutes of budget left) and by `routes/scripts.rs`'s adopt path, whose
+    /// documented contract is that its only possible write is `running`, so
+    /// clicking run can never drag a working preview back under the overlay.
+    Ignore,
+    /// Surface a terminal `start-failed`. Only the pipeline's eager boot
+    /// probe does this: it owns the boot, so its budget elapsing is the last
+    /// word on whether this dev server ever served. Without it the phase sat
+    /// on `starting` with no error and no retry affordance — a 20-minute
+    /// timeout the user can only read as permanent.
+    FailStart,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum GroupIdentityMatch {
@@ -98,6 +136,47 @@ fn match_group_identity(
     } else {
         GroupIdentityMatch::Unverifiable
     }
+}
+
+/// Whether a persisted dev-process record still describes a live process.
+///
+/// `persist::is_valid_dev_process_record` answers a different question —
+/// whether the record is well *formed*. A record for a
+/// process that exited days ago passes every one of its checks, so a caller
+/// that treats `read_dev_process` as "this sandbox has a dev server" is
+/// reading fiction.
+///
+/// `Unverifiable` carries the same discipline as the sandbox-claim liveness
+/// probe: the pgid is occupied by processes that do not match the recorded
+/// identities (the kernel reused it), so nothing may be concluded and
+/// nothing may be signalled. Never act on it.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PersistedDevLiveness {
+    Alive,
+    Gone,
+    Unverifiable,
+}
+
+/// The pure half of [`persisted_dev_liveness`], split out so the mapping is
+/// exhaustively unit-tested without a live process table.
+fn liveness_from_match(matched: GroupIdentityMatch) -> PersistedDevLiveness {
+    match matched {
+        GroupIdentityMatch::Gone => PersistedDevLiveness::Gone,
+        GroupIdentityMatch::Verified(_) => PersistedDevLiveness::Alive,
+        GroupIdentityMatch::Unverifiable => PersistedDevLiveness::Unverifiable,
+    }
+}
+
+/// Judge a persisted record against the live process table, reusing the same
+/// observation and identity matching [`reap_persisted_dev_group`] signals on.
+///
+/// An observation that fails is `Unverifiable`, never `Gone` — a platform
+/// that cannot enumerate a process group must not be read as proof of death.
+pub(crate) async fn persisted_dev_liveness(record: &DevProcessRecord) -> PersistedDevLiveness {
+    let Ok(current) = observe_process_group(record.pgid).await else {
+        return PersistedDevLiveness::Unverifiable;
+    };
+    liveness_from_match(match_group_identity(&record.identities, current))
 }
 
 fn port_pattern() -> &'static Regex {
@@ -326,12 +405,22 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
     // dev server's address from the lifecycle, and this is what puts it there
     // — so a sandbox becomes previewable as soon as its server answers,
     // whether or not it ever prints a recognizable line.
+    //
+    // This is the probe that OWNS the boot, so it is also the one allowed to
+    // call the boot a failure when its budget runs out (`FailStart`).
     if let Some(port) = allocated_port {
         let attempts = BOOT_PROBE_ATTEMPTS;
         let confirm_orch = orch.clone();
         let confirm_task_id = id.clone();
         tokio::spawn(async move {
-            confirm_running(confirm_orch, confirm_task_id, port, attempts).await;
+            confirm_running(
+                confirm_orch,
+                confirm_task_id,
+                port,
+                attempts,
+                OnExhausted::FailStart,
+            )
+            .await;
         });
     }
 
@@ -477,8 +566,18 @@ async fn drain_and_watch(
                                 let probe_orch = orch.clone();
                                 let probe_task_id = id.clone();
                                 tokio::spawn(async move {
-                                    confirm_running(probe_orch, probe_task_id, port, PROBE_ATTEMPTS)
-                                        .await;
+                                    // `Ignore`: this budget is 10s of slack
+                                    // after an announcement, not the boot's
+                                    // verdict — the eager probe still has
+                                    // minutes left to reach the same server.
+                                    confirm_running(
+                                        probe_orch,
+                                        probe_task_id,
+                                        port,
+                                        PROBE_ATTEMPTS,
+                                        OnExhausted::Ignore,
+                                    )
+                                    .await;
                                 });
                             }
                         }
@@ -547,16 +646,41 @@ fn sniff_port(text: &str) -> Option<u16> {
     caps.get(1)?.as_str().parse::<u16>().ok()
 }
 
-/// One-shot confirm: HEAD/GET the sniffed port until it answers (or attempts
-/// run out), then transition `lifecycle` to `running` and emit `reload:{}`
-/// if the pipeline wasn't already there — byte-parity in spirit with
-/// `probe.ts`'s booting -> online transition + `entry.ts`'s
+/// One probe round: the first loopback host that answers wins.
+///
+/// A non-connect error — a timeout part-way through a response, say — means
+/// a server IS there and simply is not ready yet, so it ends the round
+/// instead of falling through to the other family. Same rule, and the same
+/// host order, as `routes/proxy.rs`'s `send_to_loopback`.
+async fn probe_loopback(client: &reqwest::Client, port: u16) -> Option<reqwest::Response> {
+    for (idx, host) in LOOPBACK_HOSTS.iter().enumerate() {
+        match client.get(format!("http://{host}:{port}/")).send().await {
+            Ok(res) => return Some(res),
+            Err(error) => {
+                let is_last = idx == LOOPBACK_HOSTS.len() - 1;
+                if !is_last && error.is_connect() {
+                    continue;
+                }
+                return None;
+            }
+        }
+    }
+    None
+}
+
+/// One-shot confirm: GET the sniffed port on every loopback family until one
+/// answers (or attempts run out), then transition `lifecycle` to `running`
+/// and emit `reload:{}` if the pipeline wasn't already there — byte-parity in
+/// spirit with `probe.ts`'s booting -> online transition + `entry.ts`'s
 /// `if (wasDown) broadcaster.emit("reload", {})`.
+///
+/// `on_exhausted` decides what an elapsed budget means; see [`OnExhausted`].
 pub(crate) async fn confirm_running(
     orch: Arc<SetupOrchestrator>,
     task_id: String,
     port: u16,
     attempts: u32,
+    on_exhausted: OnExhausted,
 ) {
     if orch.is_closed() || !orch.is_current_dev_task(&task_id) {
         return;
@@ -571,8 +695,8 @@ pub(crate) async fn confirm_running(
         if orch.is_closed() || !orch.is_current_dev_task(&task_id) {
             return;
         }
-        match client.get(format!("http://127.0.0.1:{port}/")).send().await {
-            Ok(res) => {
+        match probe_loopback(&client, port).await {
+            Some(res) => {
                 if orch.is_closed() || !orch.is_current_dev_task(&task_id) {
                     return;
                 }
@@ -598,7 +722,7 @@ pub(crate) async fn confirm_running(
                 }
                 return;
             }
-            Err(_) => {
+            None => {
                 if orch.is_closed() || !orch.is_current_dev_task(&task_id) {
                     return;
                 }
@@ -606,6 +730,30 @@ pub(crate) async fn confirm_running(
             }
         }
     }
+
+    if on_exhausted == OnExhausted::Ignore {
+        return;
+    }
+    let waited = PROBE_INTERVAL * attempts;
+    tracing::warn!(
+        port,
+        attempts,
+        waited_secs = waited.as_secs(),
+        "dev server never answered on loopback; surfacing start-failed"
+    );
+    // Fenced by the dev-task token, so a probe whose spawn was replaced
+    // mid-budget cannot stamp its failure over its successor's phase. The
+    // token is deliberately NOT released: the process is still alive and
+    // still owns the dev slot, it just never served.
+    orch.transition_dev_lifecycle(
+        &task_id,
+        super::start_failed(format!(
+            "dev server never answered on {} port {port} after {}s — it may be listening on \
+             a non-loopback address, or on a port other than the one it was given",
+            LOOPBACK_HOSTS.join(" or "),
+            waited.as_secs()
+        )),
+    );
 }
 
 async fn reap_persisted_dev_group(record: &DevProcessRecord) -> Result<(), String> {
@@ -850,6 +998,52 @@ mod tests {
     }
 
     #[test]
+    fn liveness_reads_an_empty_group_as_gone() {
+        assert_eq!(
+            liveness_from_match(GroupIdentityMatch::Gone),
+            PersistedDevLiveness::Gone
+        );
+    }
+
+    #[test]
+    fn liveness_reads_a_matching_member_as_alive() {
+        assert_eq!(
+            liveness_from_match(GroupIdentityMatch::Verified(vec![identity(
+                7, "birth", "bun"
+            )])),
+            PersistedDevLiveness::Alive
+        );
+    }
+
+    #[test]
+    fn liveness_never_reads_a_reused_pgid_as_gone() {
+        // A pgid the kernel handed to an unrelated group must not be cleared:
+        // that is the case where acting on a guess disowns a live process.
+        assert_eq!(
+            liveness_from_match(GroupIdentityMatch::Unverifiable),
+            PersistedDevLiveness::Unverifiable
+        );
+    }
+
+    #[tokio::test]
+    async fn a_well_formed_record_for_a_dead_process_is_not_alive() {
+        // The regression this exists for: `is_valid_dev_process_record` passes
+        // a record forever, so shape must never be mistaken for liveness.
+        let record = DevProcessRecord {
+            pid: 999_999,
+            pgid: 999_999,
+            command: "bun run dev".to_string(),
+            started_at: 1,
+            port: Some(54083),
+            identities: vec![identity(999_999, "long ago", "bun")],
+        };
+        assert_ne!(
+            persisted_dev_liveness(&record).await,
+            PersistedDevLiveness::Alive
+        );
+    }
+
+    #[test]
     fn sniff_port_matches_local_announcement() {
         let text = "Local:   http://localhost:5174/\n";
         assert_eq!(sniff_port(text), Some(5174));
@@ -1086,6 +1280,137 @@ mod tests {
         assert!(observe_process_group(pgid).await.unwrap().is_empty());
     }
 
+    /// A real listener on `bind`, answering any request with a minimal HTML
+    /// response. `confirm_running` accepts any HTTP response, so this is
+    /// exactly as much server as a dev server needs to be to count as "up" —
+    /// no mock, no injected client, and crucially a real address family.
+    ///
+    /// `None` when the family is unavailable on this host (a box with IPv6
+    /// loopback disabled), which the caller reports as a skip rather than a
+    /// failure.
+    async fn serve_on(bind: &str) -> Option<(u16, tokio::task::JoinHandle<()>)> {
+        let listener = tokio::net::TcpListener::bind(bind).await.ok()?;
+        let port = listener.local_addr().ok()?.port();
+        let handle = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                use tokio::io::AsyncWriteExt;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 2\r\n\r\nhi",
+                    )
+                    .await;
+                let _ = stream.shutdown().await;
+            }
+        });
+        Some((port, handle))
+    }
+
+    fn test_orchestrator(dir: &tempfile::TempDir) -> Arc<SetupOrchestrator> {
+        let logs = Arc::new(crate::log_store::LogStore::new(dir.path().join("logs")));
+        SetupOrchestrator::new(
+            dir.path().join("repo"),
+            dir.path().join("repo"),
+            Arc::new(crate::config::ConfigStore::new()),
+            Arc::new(crate::tasks::TaskRegistry::new(logs)),
+            Arc::new(crate::events::Broadcaster::new()),
+        )
+    }
+
+    /// THE regression test for the reported bug. Vite binds `localhost`,
+    /// which resolves to `::1` first on macOS, so the dev server was only
+    /// ever reachable over IPv6 while the probe dialled `127.0.0.1` — a
+    /// healthy storefront serving happily behind a preview pinned on
+    /// "Starting your preview" forever.
+    ///
+    /// Both families are asserted from one body: whichever one a future edit
+    /// drops from `LOOPBACK_HOSTS` fails here.
+    #[tokio::test]
+    async fn a_server_on_either_loopback_family_confirms_running() {
+        for bind in ["[::1]:0", "127.0.0.1:0"] {
+            let Some((port, server)) = serve_on(bind).await else {
+                eprintln!("skipping {bind}: address family unavailable on this host");
+                continue;
+            };
+            let dir = tempfile::tempdir().unwrap();
+            let orch = test_orchestrator(&dir);
+            orch.claim_dev_task("dev-task");
+            orch.transition_lifecycle(json!({ "phase": "starting" }));
+
+            confirm_running(
+                orch.clone(),
+                "dev-task".to_string(),
+                port,
+                PROBE_ATTEMPTS,
+                OnExhausted::FailStart,
+            )
+            .await;
+
+            assert_eq!(
+                orch.lifecycle_snapshot(),
+                json!({ "phase": "running", "port": port, "htmlSupport": true }),
+                "a dev server bound to {bind} must confirm running"
+            );
+            server.abort();
+        }
+    }
+
+    /// The other half of the hang: when nothing ever answers, the boot probe
+    /// has to say so. Leaving `starting` in place gave the UI no error card
+    /// and no retry affordance, which reads as permanent.
+    #[tokio::test]
+    async fn an_exhausted_boot_probe_surfaces_start_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let orch = test_orchestrator(&dir);
+        orch.claim_dev_task("dev-task");
+        orch.transition_lifecycle(json!({ "phase": "starting" }));
+
+        // Port 1 is privileged and unbound: every attempt connect-refuses on
+        // both families, so the budget genuinely elapses.
+        confirm_running(
+            orch.clone(),
+            "dev-task".to_string(),
+            1,
+            1,
+            OnExhausted::FailStart,
+        )
+        .await;
+
+        let snapshot = orch.lifecycle_snapshot();
+        assert_eq!(snapshot["phase"], json!("start-failed"));
+        let error = snapshot["error"].as_str().unwrap();
+        assert!(
+            error.contains("[::1]") && error.contains("127.0.0.1"),
+            "the error must name both addresses that were tried: {error}"
+        );
+        assert!(
+            orch.is_current_dev_task("dev-task"),
+            "the process is still alive and still owns the dev slot"
+        );
+    }
+
+    /// A probe that does not own the boot must stay additive. The sniffer's
+    /// 10s confirm and the run button's adopt path both run while something
+    /// else is still watching; a terminal write from either would drag a
+    /// sandbox that is seconds from working into an error card.
+    #[tokio::test]
+    async fn an_exhausted_non_owning_probe_leaves_the_phase_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let orch = test_orchestrator(&dir);
+        orch.claim_dev_task("dev-task");
+        orch.transition_lifecycle(json!({ "phase": "starting" }));
+
+        confirm_running(
+            orch.clone(),
+            "dev-task".to_string(),
+            1,
+            1,
+            OnExhausted::Ignore,
+        )
+        .await;
+
+        assert_eq!(orch.lifecycle_snapshot(), json!({ "phase": "starting" }));
+    }
+
     #[tokio::test]
     async fn closed_orchestrator_rejects_late_probe_transition() {
         let dir = tempfile::tempdir().unwrap();
@@ -1100,7 +1425,16 @@ mod tests {
         orch.claim_dev_task("dev-task");
         orch.close();
 
-        confirm_running(orch.clone(), "dev-task".to_string(), 1, PROBE_ATTEMPTS).await;
+        // `FailStart`: a closed orchestrator must silence the terminal write
+        // too, not just the `running` one.
+        confirm_running(
+            orch.clone(),
+            "dev-task".to_string(),
+            1,
+            PROBE_ATTEMPTS,
+            OnExhausted::FailStart,
+        )
+        .await;
 
         assert_eq!(orch.lifecycle_snapshot(), json!({ "phase": "idle" }));
     }
@@ -1120,12 +1454,21 @@ mod tests {
         orch.transition_lifecycle(json!({ "phase": "starting" }));
         orch.claim_dev_task("replacement-dev-task");
 
-        confirm_running(orch.clone(), "old-dev-task".to_string(), 1, PROBE_ATTEMPTS).await;
+        // `FailStart`: a replaced spawn must not be able to stamp its own
+        // failure over its successor's phase either.
+        confirm_running(
+            orch.clone(),
+            "old-dev-task".to_string(),
+            1,
+            PROBE_ATTEMPTS,
+            OnExhausted::FailStart,
+        )
+        .await;
 
         assert_eq!(
             orch.lifecycle_snapshot(),
             json!({ "phase": "starting" }),
-            "a probe owned by the replaced spawn must not publish running"
+            "a probe owned by the replaced spawn must not publish running or start-failed"
         );
         assert!(
             !orch.finish_dev_task("old-dev-task"),

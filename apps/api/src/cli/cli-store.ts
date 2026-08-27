@@ -14,12 +14,16 @@ interface CliState {
   logs: LogEntry[];
 }
 
+function initialServices(): ServiceStatus[] {
+  return [
+    { name: "Postgres", status: "pending", port: 0 },
+    { name: "NATS", status: "pending", port: 0 },
+  ];
+}
+
 function createInitialState(): CliState {
   return {
-    services: [
-      { name: "Postgres", status: "pending", port: 0 },
-      { name: "NATS", status: "pending", port: 0 },
-    ],
+    services: initialServices(),
     migrationsStatus: "pending",
     serverUrl: null,
     logs: [],
@@ -30,13 +34,6 @@ let state: CliState = createInitialState();
 
 export function resetCliStateForTests() {
   state = createInitialState();
-}
-
-function initialServices(): ServiceStatus[] {
-  return [
-    { name: "Postgres", status: "pending", port: 0 },
-    { name: "NATS", status: "pending", port: 0 },
-  ];
 }
 
 const listeners = new Set<() => void>();

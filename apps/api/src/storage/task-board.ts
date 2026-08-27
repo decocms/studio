@@ -17,11 +17,28 @@ import type {
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
   TaskBoardItemTagRef,
+  TaskBoardItemType,
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { DEFAULT_TASK_TYPE, DELIVERY_LANES } from "@decocms/shared/task-board";
+import {
+  type ReviewCycleActivity,
+  REVIEWER_KINDS,
+  reviewCycleVerdicts,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
+import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
+import type { NotificationType } from "@decocms/shared/notification-types";
+import { notify } from "../notifications/notify";
+
+/** Activity actions that also earn an inbox row and an email. */
+const NOTIFIED_ACTIONS = new Set<string>(NOTIFICATION_TYPES);
+
+function notifiedType(action: string): NotificationType | null {
+  return NOTIFIED_ACTIONS.has(action) ? (action as NotificationType) : null;
+}
 
 /** One comment on a task, as the tools return it. `parentId` null = thread root;
  *  `resolved` only means anything on a root. */
@@ -30,6 +47,10 @@ export interface TaskBoardComment {
   taskBoardItemId: string;
   parentId: string | null;
   authorId: string;
+  /** The agent run that wrote it; null for a human's comment. It is what tells
+   *  one agent's comments from another's — every agent comment shares the same
+   *  synthetic author id. */
+  threadId: string | null;
   body: string;
   resolved: boolean;
   createdAt: string;
@@ -49,6 +70,7 @@ function commentFromDbRow(row: {
   task_board_item_id: string;
   parent_id: string | null;
   author_id: string;
+  thread_id: string | null;
   body: string;
   resolved: boolean;
   created_at: Date | string;
@@ -60,6 +82,7 @@ function commentFromDbRow(row: {
     taskBoardItemId: row.task_board_item_id,
     parentId: row.parent_id,
     authorId: row.author_id,
+    threadId: row.thread_id,
     body: row.body,
     resolved: row.resolved,
     createdAt: iso(row.created_at),
@@ -70,7 +93,7 @@ function commentFromDbRow(row: {
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
 /** Actions that describe editing prose, where a burst of saves is one edit.
  *  A repeat inside the window moves the existing entry instead of adding one. */
-const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
+export const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
   "description_changed",
   "title_changed",
 ]);
@@ -189,6 +212,14 @@ function newestIso(
   return new Date(Math.max(a, b)).toISOString();
 }
 
+/** Lanes a merged PR can leave a card on, and therefore where the merged-tag
+ *  sweep has to look. `archived` is deliberately absent: a card that far along
+ *  is history, and tagging it moves nothing. */
+const TAGGABLE_MERGED_STATUSES: TaskBoardItemStatus[] = [
+  ...DELIVERY_LANES,
+  "done",
+];
+
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
 
@@ -245,11 +276,14 @@ export class TaskBoardStorage {
     description?: string | null;
     status?: TaskBoardItemStatus;
     priority?: TaskBoardItemPriority;
+    type?: TaskBoardItemType;
     assigneeId?: string | null;
     assignedBy?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
     dueDate?: string | null;
+    /** Sprint the card belongs to (`TaskBoardSprint.id`); null/absent = backlog. */
+    sprintId?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
     by: string;
@@ -275,10 +309,12 @@ export class TaskBoardStorage {
           description: params.description ?? null,
           status,
           priority: params.priority ?? "medium",
+          type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
           due_date: params.dueDate ?? null,
+          sprint_id: params.sprintId ?? null,
           external_key: params.externalKey ?? null,
           sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
@@ -320,10 +356,12 @@ export class TaskBoardStorage {
       description?: string | null;
       status?: TaskBoardItemStatus;
       priority?: TaskBoardItemPriority;
+      type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
       dueDate?: string | null;
+      sprintId?: string | null;
       sortOrder?: number;
     },
     by: string,
@@ -337,6 +375,7 @@ export class TaskBoardStorage {
           : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
         ...(data.assigneeId !== undefined
           ? { assignee_id: data.assigneeId }
           : {}),
@@ -345,6 +384,7 @@ export class TaskBoardStorage {
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
+        ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
@@ -720,7 +760,11 @@ export class TaskBoardStorage {
     const rows = await this.db
       .selectFrom("task_board_items as i")
       .select(["i.id", "i.organization_id as organizationId"])
-      .where("i.status", "=", "done")
+      // Not just Done: with the delivery lanes on a merge lands the card on
+      // `merged`, and gating on Done alone would mean no card is ever tagged
+      // until a human drags it the rest of the way — days after the tag was
+      // worth seeing, which is the whole reason this sweep is not the archive's.
+      .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
       .where((eb) =>
         eb.exists(
@@ -1402,29 +1446,7 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Atomically claim a task for a reviewer's `request_changes` bounce: move it
-   * from In Review to In Progress ONLY if it's still In Review AND still
-   * assigned to the Super Agent, returning the updated item to the single
-   * winner and null to everyone else. QA and Code Reviewer run concurrently,
-   * and either can independently decide changes are needed — without this
-   * fence both would bounce the task and each enqueue its own Super Agent run
-   * on the SAME PR, racing to push conflicting commits. The assignee re-check
-   * closes a second race: a human can reassign the task away from the Super
-   * Agent while a reviewer run is still in flight, and that reviewer's later
-   * `request_changes` must not yank the task back and re-enqueue the Super
-   * Agent out from under the new owner. Same atomic-conditional-UPDATE pattern
-   * as `claimConflictResolution`.
-   */
-  claimReviewChangesBounce(
-    id: string,
-    organizationId: string,
-    by: string,
-  ): Promise<TaskBoardItem | null> {
-    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
-  }
-
-  /**
-   * Shared fence behind both claim methods above: move a task from In Review
+   * The fence behind `claimConflictResolution`: move a task from In Review
    * to In Progress ONLY if it's still In Review AND still assigned to the
    * Super Agent, returning the updated item to the single winner and null to
    * everyone else. A single conditional UPDATE is atomic under READ
@@ -1527,9 +1549,9 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Populate each item's `threads` and `tags` — one transaction, so a card
-   * can't read its threads from before a concurrent edit and its tags from
-   * after.
+   * Populate each item's `threads`, `tags` and `reviewVerdicts` — one
+   * transaction, so a card can't read one of them from before a concurrent
+   * edit and another from after.
    */
   private async attachRefs(
     items: TaskBoardItem[],
@@ -1539,6 +1561,8 @@ export class TaskBoardStorage {
     await this.inTransaction(async (db) => {
       await this.attachThreads(db, items, organizationId);
       await this.attachTags(db, items);
+      await this.attachJiraKeys(db, items);
+      await this.attachReviewVerdicts(db, items);
     });
   }
 
@@ -1664,6 +1688,32 @@ export class TaskBoardStorage {
 
   /** Populate each item's `tags`, name ascending. One batched query. Items are
    *  already org-scoped by the caller, so the join needs no org filter. */
+  /**
+   * Populate each item's `jiraIssueKey` — the key the issue wears in the
+   * tracker, which is what people say out loud about a synced card.
+   *
+   * One batched query, not a join on the item read: the link is one-to-one but
+   * lives in its own table, and every other ref on a card is attached here for
+   * the same reason. Cards Studio owns have no row and stay null.
+   */
+  private async attachJiraKeys(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_item_jira_links")
+      .select(["item_id as itemId", "jira_issue_key as jiraIssueKey"])
+      .where("item_id", "in", ids)
+      .execute();
+
+    const byItem = new Map(rows.map((row) => [row.itemId, row.jiraIssueKey]));
+    for (const item of items) {
+      item.jiraIssueKey = byItem.get(item.id) ?? null;
+    }
+  }
+
   private async attachTags(
     db: Kysely<Database>,
     items: TaskBoardItem[],
@@ -1705,6 +1755,69 @@ export class TaskBoardStorage {
     for (const item of items) item.tags = byItem.get(item.id) ?? [];
   }
 
+  /**
+   * Populate each item's `reviewVerdicts` — every reviewer's standing decision
+   * in the task's current review cycle. One batched query for the whole board,
+   * served by `idx_task_board_activity_item`.
+   *
+   * Reduced by `reviewCycleVerdicts`, the same reducer the auto-merge gate runs,
+   * so the card's `1/2` can never disagree with the gate that ships the PR.
+   * `status_changed` rows come along because that reducer needs the cycle
+   * boundary — without them a stale approval reads as current forever.
+   */
+  private async attachReviewVerdicts(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_activity")
+      .select(["task_board_item_id as taskId", "action", "data", "occurred_at"])
+      .where("task_board_item_id", "in", ids)
+      .where("action", "in", [
+        "status_changed",
+        "review_approved",
+        "review_changes_requested",
+      ])
+      .orderBy("occurred_at", "asc")
+      .execute();
+
+    const byItem = new Map<string, ReviewCycleActivity[]>();
+    for (const row of rows) {
+      const entry: ReviewCycleActivity = {
+        action: row.action,
+        data: (row.data ?? null) as Record<string, unknown> | null,
+        occurredAt:
+          row.occurred_at instanceof Date
+            ? row.occurred_at.toISOString()
+            : (row.occurred_at as unknown as string),
+      };
+      const list = byItem.get(row.taskId);
+      if (list) list.push(entry);
+      else byItem.set(row.taskId, [entry]);
+    }
+
+    for (const item of items) {
+      const activity = byItem.get(item.id) ?? [];
+      const verdicts = reviewCycleVerdicts(activity);
+      const verifiedApprovals = reviewCycleVerdicts(activity, {
+        verifiedOnly: true,
+      });
+      item.reviewVerdicts = REVIEWER_KINDS.flatMap((reviewer) => {
+        const verdict = verdicts.get(reviewer);
+        if (!verdict) return [];
+        return [
+          {
+            reviewer,
+            verdict,
+            verified: verifiedApprovals.get(reviewer) === "approved",
+          },
+        ];
+      });
+    }
+  }
+
   // --------------------------------------------------------------------------
   // Activity log (the card's change timeline)
   // --------------------------------------------------------------------------
@@ -1717,6 +1830,8 @@ export class TaskBoardStorage {
     action: TaskBoardActivityAction;
     actorId: string | null;
     data?: Record<string, unknown>;
+    /** Users this event enrolls as followers (see `notify`). */
+    alsoSubscribe?: (string | null | undefined)[];
   }): Promise<void> {
     await this.db
       .insertInto("task_board_activity")
@@ -1729,6 +1844,30 @@ export class TaskBoardStorage {
         occurred_at: new Date().toISOString(),
       })
       .execute();
+    await this.fanOut([params]);
+  }
+
+  /** Inbox + digest fan-out for the entries that earn one. Never throws — the
+   *  activity row has already committed. */
+  private async fanOut(
+    entries: {
+      taskBoardItemId: string;
+      action: string;
+      actorId: string | null;
+      alsoSubscribe?: (string | null | undefined)[];
+    }[],
+  ): Promise<void> {
+    for (const entry of entries) {
+      const type = notifiedType(entry.action);
+      if (!type) continue;
+      await notify({
+        db: this.db,
+        taskBoardItemId: entry.taskBoardItemId,
+        type,
+        actorId: entry.actorId,
+        alsoSubscribe: entry.alsoSubscribe,
+      });
+    }
   }
 
   /** Resolve a legacy review token to its claim for a task. Null when the token
@@ -1760,6 +1899,8 @@ export class TaskBoardStorage {
       action: TaskBoardActivityAction;
       actorId: string | null;
       data?: Record<string, unknown>;
+      /** Users this event enrolls as followers (see `notify`). */
+      alsoSubscribe?: (string | null | undefined)[];
     }[],
   ): Promise<void> {
     if (entries.length === 0) return;
@@ -1785,6 +1926,7 @@ export class TaskBoardStorage {
         })),
       )
       .execute();
+    await this.fanOut(fresh);
   }
 
   /**
@@ -1855,7 +1997,9 @@ export class TaskBoardStorage {
   }
 
   /** A null actor is a machine path; a `reason` marks a move that meant something
-   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`). */
+   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`).
+   *  `merged` counts as leaving Done — with the delivery lanes on, that is
+   *  where a merged PR lands. */
   async hasHumanRejectedDone(
     taskBoardItemId: string,
     organizationId: string,
@@ -1872,7 +2016,7 @@ export class TaskBoardStorage {
       .where("a.task_board_item_id", "=", taskBoardItemId)
       .where("a.action", "=", "status_changed")
       .where(byMember, "is not", null)
-      .where(laneLeft, "=", "done")
+      .where(laneLeft, "in", ["done", "merged"])
       .where(moveReason, "is", null)
       .limit(1)
       .executeTakeFirst();
@@ -1904,6 +2048,8 @@ export class TaskBoardStorage {
     organizationId: string;
     parentId?: string | null;
     authorId: string;
+    /** The agent run writing it, when one is. */
+    threadId?: string | null;
     body: string;
   }): Promise<TaskBoardComment | null> {
     const task = await this.db
@@ -1935,6 +2081,7 @@ export class TaskBoardStorage {
         task_board_item_id: params.taskBoardItemId,
         parent_id: parentId,
         author_id: params.authorId,
+        thread_id: params.threadId ?? null,
         body: params.body,
       })
       .returningAll()
@@ -2002,6 +2149,20 @@ export class TaskBoardStorage {
     return true;
   }
 
+  async getComment(
+    id: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment | null> {
+    const row = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .selectAll("c")
+      .where("c.id", "=", id)
+      .where("item.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row ? commentFromDbRow(row) : null;
+  }
+
   private async commentInOrg(
     id: string,
     organizationId: string,
@@ -2023,10 +2184,12 @@ export class TaskBoardStorage {
     description: string | null;
     status: string;
     priority: string;
+    type?: string;
     assignee_id: string | null;
     assigned_by: string | null;
     repo: string | null;
     due_date: string | Date | null;
+    sprint_id?: string | null;
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
@@ -2042,6 +2205,7 @@ export class TaskBoardStorage {
       description: row.description,
       status: row.status as TaskBoardItemStatus,
       priority: row.priority as TaskBoardItemPriority,
+      type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
       repo: row.repo,
@@ -2049,12 +2213,15 @@ export class TaskBoardStorage {
         row.due_date instanceof Date
           ? row.due_date.toISOString()
           : row.due_date,
+      sprintId: row.sprint_id ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
-      // Populated by attachThreads/attachTags for reads; empty for a fresh create.
+      // Populated by attachRefs for reads; null/empty for a fresh create.
+      jiraIssueKey: null,
       threads: [],
       tags: [],
+      reviewVerdicts: [],
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

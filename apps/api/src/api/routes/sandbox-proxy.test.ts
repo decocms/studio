@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { delay } from "@decocms/shared/std";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
 import {
   readBoundedText,
   UpstreamPayloadTooLargeError,
@@ -98,17 +97,11 @@ describe("withClaimGitLock", () => {
   });
 });
 
-function fakeRunner(response: Response): SandboxProvider {
+function fakeRunner(response: Response): Parameters<typeof fetchDaemonJson>[0] {
   return {
-    kind: "agent-sandbox",
-    ensure: async () => {
-      throw new Error("unused");
-    },
-    delete: async () => {},
-    alive: async () => true,
-    getPreviewUrl: async () => null,
     proxyDaemonRequest: async () => response,
-  } as unknown as SandboxProvider;
+    adoptLiveClaim: async () => false,
+  };
 }
 
 describe("fetchDaemonJson", () => {
@@ -130,7 +123,7 @@ describe("fetchDaemonJson", () => {
     ).rejects.toThrow("Daemon error (502)");
   });
 
-  it("throws SANDBOX_GONE on a 404 with no adoptLiveClaim to retry", async () => {
+  it("throws SANDBOX_GONE when a 404 cannot be adopted", async () => {
     const runner = fakeRunner(new Response("not found", { status: 404 }));
     await expect(
       fetchDaemonJson(runner, "claim-a", "/_sandbox/git/status"),

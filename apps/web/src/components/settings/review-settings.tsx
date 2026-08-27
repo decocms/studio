@@ -2,9 +2,11 @@ import { toast } from "sonner";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Coins01,
+  Cube01,
   FileSearch02,
   GitMerge,
-  ShieldTick,
+  Rocket01,
+  Terminal,
   UserSquare,
 } from "@untitledui/icons";
 import {
@@ -31,16 +33,10 @@ export function ReviewSettings() {
     >
       <SettingsCard>
         <FlagToggle
-          flag="qa_agent_enabled"
-          icon={<ShieldTick size={16} />}
-          titleKey="settings.review.qaAgentTitle"
-          descriptionKey="settings.review.qaAgentDescription"
-        />
-        <FlagToggle
-          flag="code_reviewer_enabled"
+          flag="reviewer_enabled"
           icon={<FileSearch02 size={16} />}
-          titleKey="settings.review.codeReviewerTitle"
-          descriptionKey="settings.review.codeReviewerDescription"
+          titleKey="settings.review.reviewerTitle"
+          descriptionKey="settings.review.reviewerDescription"
         />
         <FlagToggle
           flag="cheap_reviewer_model"
@@ -55,10 +51,60 @@ export function ReviewSettings() {
           descriptionKey="settings.review.autoMergeDescription"
         />
         <FlagToggle
+          flag="delivery_lanes_enabled"
+          icon={<Rocket01 size={16} />}
+          titleKey="settings.review.deliveryLanesTitle"
+          descriptionKey="settings.review.deliveryLanesDescription"
+        />
+        <FlagToggle
           flag="auto_assign_report_tasks_to_super_agent"
           icon={<UserSquare size={16} />}
           titleKey="settings.review.autoAssignReportTasksTitle"
           descriptionKey="settings.review.autoAssignReportTasksDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * What a coding-agent run (the Super Agent, the reviewers) can reach beyond its
+ * own checkout. Its own section, not part of the reviewer card above: this is
+ * about the tools a run holds, not about who reviews its work.
+ */
+export function AgentToolsSettings() {
+  const t = useT();
+  return (
+    <SettingsSection
+      title={t("settings.agentTools.title")}
+      description={t("settings.agentTools.description")}
+    >
+      <SettingsCard>
+        <FlagToggle
+          flag="coding_agent_org_mcps"
+          icon={<Cube01 size={16} />}
+          titleKey="settings.agentTools.orgMcpsTitle"
+          descriptionKey="settings.agentTools.orgMcpsDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Which coding agent backs Code Agent chats. Lives on General, not the board
+ * settings: it's about the org's agents, not about how tasks get reviewed.
+ */
+export function CodeAgentsSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("sidebar.agentsSection.codeAgents")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="coding_agents_claude_code"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
+          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
         />
       </SettingsCard>
     </SettingsSection>

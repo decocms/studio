@@ -12,6 +12,8 @@ import {
   closesOwnReview,
   delegatesToSuperAgent,
   diffTaskActivityEntries,
+  rejectsUngatedDeliveryLane,
+  updatesAnyField,
 } from "./update";
 
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
@@ -22,15 +24,19 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     description: null,
     status: "todo",
     priority: "medium",
+    type: "chore",
+    sprintId: null,
     assigneeId: null,
     assignedBy: null,
     repo: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
+    jiraIssueKey: null,
     retryAttempts: 0,
     threads: [],
     tags: [],
+    reviewVerdicts: [],
     createdBy: "user_1",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedBy: "user_1",
@@ -65,6 +71,28 @@ describe("diffTaskActivityEntries", () => {
     ]);
   });
 
+  // Type is mandatory, so every change is a move between two types — there is
+  // no "set from nothing" or "clear" any more.
+  it("logs a type change as a move between two types", () => {
+    expect(
+      diffTaskActivityEntries(item({ type: "chore" }), item({ type: "bug" })),
+    ).toEqual([{ action: "type_changed", data: { from: "chore", to: "bug" } }]);
+  });
+
+  it("logs a move off the default like any other", () => {
+    expect(
+      diffTaskActivityEntries(item({ type: "chore" }), item({ type: "spike" })),
+    ).toEqual([
+      { action: "type_changed", data: { from: "chore", to: "spike" } },
+    ]);
+  });
+
+  it("does not log a type that did not move", () => {
+    expect(
+      diffTaskActivityEntries(item({ type: "chore" }), item({ type: "chore" })),
+    ).toEqual([]);
+  });
+
   it("logs a description change without copying its value", () => {
     const previous = item({ description: "old" });
     const next = item({ description: "new" });
@@ -95,6 +123,41 @@ describe("diffTaskActivityEntries", () => {
     const previous = item({ sortOrder: 0 });
     const next = item({ sortOrder: 5 });
     expect(diffTaskActivityEntries(previous, next)).toEqual([]);
+  });
+});
+
+describe("updatesAnyField", () => {
+  // The board's type picker sends this and nothing else; it used to skip the write and still answer 200.
+  it("counts a type-only update", () => {
+    expect(updatesAnyField({ type: "bug" })).toBe(true);
+  });
+
+  it("counts every field that reaches a write, one at a time", () => {
+    const oneOf = [
+      { title: "t" },
+      { description: "d" },
+      { status: "todo" },
+      { priority: "high" },
+      { type: "bug" },
+      { assigneeId: "user_1" },
+      { repo: "owner/name" },
+      { dueDate: "2026-01-01T00:00:00.000Z" },
+      { sortOrder: 5 },
+      { tagIds: [] },
+    ];
+    for (const input of oneOf) {
+      expect(updatesAnyField(input)).toBe(true);
+    }
+  });
+
+  it("counts a field explicitly cleared to null", () => {
+    expect(updatesAnyField({ assigneeId: null })).toBe(true);
+    expect(updatesAnyField({ dueDate: null })).toBe(true);
+  });
+
+  it("does not count a link-only update, which must not bump updated_at", () => {
+    expect(updatesAnyField({})).toBe(false);
+    expect(updatesAnyField({ title: undefined, type: undefined })).toBe(false);
   });
 });
 
@@ -152,16 +215,52 @@ describe("closesOwnReview", () => {
     expect(closesOwnReview("archived", "in_review", true)).toBe(true);
   });
 
+  // Shipping yourself past review also drops the card out of the review sweep.
+  it("catches a run shipping a task under review into a delivery lane", () => {
+    expect(closesOwnReview("approved", "in_review", true)).toBe(true);
+    expect(closesOwnReview("merged", "in_review", true)).toBe(true);
+    expect(closesOwnReview("post_deploy_validation", "in_review", true)).toBe(
+      true,
+    );
+  });
+
   it("allows a run to complete a task that needed no code change", () => {
     expect(closesOwnReview("done", "in_progress", true)).toBe(false);
   });
 
-  it("allows a run to move a task under review anywhere but Done/Archived", () => {
+  it("allows a run to move a task under review BACKWARD, or not at all", () => {
     expect(closesOwnReview("in_progress", "in_review", true)).toBe(false);
     expect(closesOwnReview(undefined, "in_review", true)).toBe(false);
   });
 
   it("never catches a person", () => {
     expect(closesOwnReview("done", "in_review", false)).toBe(false);
+  });
+});
+
+describe("rejectsUngatedDeliveryLane", () => {
+  it("refuses a direct write into a delivery lane when the flag is off", () => {
+    expect(rejectsUngatedDeliveryLane("approved", false)).toBe(true);
+    expect(rejectsUngatedDeliveryLane("merged", false)).toBe(true);
+    expect(rejectsUngatedDeliveryLane("post_deploy_validation", false)).toBe(
+      true,
+    );
+  });
+
+  it("allows it once the org runs the delivery lanes", () => {
+    expect(rejectsUngatedDeliveryLane("approved", true)).toBe(false);
+    expect(rejectsUngatedDeliveryLane("merged", true)).toBe(false);
+  });
+
+  it("leaves every other status alone regardless of the flag", () => {
+    for (const status of [
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+    ] as const) {
+      expect(rejectsUngatedDeliveryLane(status, false)).toBe(false);
+    }
+    expect(rejectsUngatedDeliveryLane(undefined, false)).toBe(false);
   });
 });

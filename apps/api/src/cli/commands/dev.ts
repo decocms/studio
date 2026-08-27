@@ -15,7 +15,6 @@ import {
   updateService,
 } from "../cli-store";
 import { findAvailablePort } from "../find-available-port";
-import { stripAnsi } from "../strip-ansi";
 
 export interface DevOptions {
   port: string;
@@ -31,7 +30,7 @@ export interface DevOptions {
  * Pipe a readable stream line-by-line into the CLI store log entries.
  * Lines are stripped of ANSI codes and concurrently prefixes like "[0] " / "[1] ".
  */
-function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
+export function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -40,7 +39,7 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
     for (const raw of lines) {
-      const stripped = stripAnsi(raw)
+      const stripped = Bun.stripANSI(raw)
         .replace(/^\[\d+\]\s*/, "")
         .trim();
       if (!stripped) continue;
@@ -56,14 +55,18 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
   }
 
   (async () => {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      processLines();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        processLines();
+      }
+    } catch {
+      // A pipe read error shouldn't crash the whole dev CLI.
     }
     if (buffer.trim()) {
-      const stripped = stripAnsi(buffer)
+      const stripped = Bun.stripANSI(buffer)
         .replace(/^\[\d+\]\s*/, "")
         .trim();
       if (stripped) {
@@ -147,8 +150,8 @@ export async function startDevServer(
         ? { BETTER_AUTH_SECRET: settings.betterAuthSecret }
         : {}),
       // Object storage (managed MinIO or external S3). Pass from frozen
-      // settings so the child server resolves the real S3Service for the
-      // message-offload path instead of the DevObjectStorage fallback.
+      // settings so the child server resolves the real S3Service instead of
+      // the DevObjectStorage fallback.
       ...(settings.s3Endpoint
         ? {
             S3_ENDPOINT: settings.s3Endpoint,
@@ -158,24 +161,9 @@ export async function startDevServer(
             S3_FORCE_PATH_STYLE: String(settings.s3ForcePathStyle),
           }
         : {}),
-      // Dev NATS operator/JWT config (managed operator-mode NATS). Pass from
-      // frozen settings so the child server (which re-derives Settings from
-      // env) mints real link-session creds and the cluster authenticates with
-      // its creds file — the SAME auth path as production.
-      ...(settings.natsPublicUrl &&
-      settings.natsAccountJwt &&
-      settings.natsAccountSigningKey
-        ? {
-            NATS_PUBLIC_URL: settings.natsPublicUrl,
-            NATS_ACCOUNT_JWT: settings.natsAccountJwt,
-            NATS_ACCOUNT_SIGNING_KEY: settings.natsAccountSigningKey,
-            NATS_OPERATOR_JWT: settings.natsOperatorJwt ?? "",
-            NATS_TUNNEL_PUBLIC_ENABLED: "true",
-            ...(settings.natsCredsPath
-              ? { NATS_CREDS: settings.natsCredsPath }
-              : {}),
-          }
-        : {}),
+      // Preserve credentials for externally configured NATS. Managed local
+      // NATS accepts the loopback connection without a creds file.
+      ...(settings.natsCredsPath ? { NATS_CREDS: settings.natsCredsPath } : {}),
     },
     stdio: [
       "inherit",

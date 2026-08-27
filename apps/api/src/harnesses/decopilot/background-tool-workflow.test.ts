@@ -4,34 +4,24 @@ import { join } from "node:path";
 import { isHostedDecopilotThread } from "./background-tool-workflow";
 
 describe("isHostedDecopilotThread", () => {
-  test("accepts current and legacy hosted Decopilot pins", () => {
-    expect(
-      isHostedDecopilotThread({
-        harness_id: "decopilot",
-        sandbox_provider_kind: "agent-sandbox",
-      }),
-    ).toBe(true);
-    expect(
-      isHostedDecopilotThread({
-        harness_id: "decopilot",
-        sandbox_provider_kind: null,
-      }),
-    ).toBe(true);
-    expect(
-      isHostedDecopilotThread({
-        harness_id: "decopilot",
-        sandbox_provider_kind: "user-desktop",
-      }),
-    ).toBe(true);
+  test("accepts the hosted Decopilot runtime pin", () => {
+    expect(isHostedDecopilotThread({ harness_id: "decopilot" })).toBe(true);
   });
 
-  test("rejects unpinned, native, incomplete, and unknown runtimes", () => {
+  test("ignores retired provider values", () => {
+    const dirtyThread = {
+      harness_id: "decopilot",
+      sandbox_provider_kind: "local-api",
+    };
+    expect(isHostedDecopilotThread(dirtyThread)).toBe(true);
+  });
+
+  test("rejects unpinned, native, and unknown harnesses", () => {
     for (const thread of [
       null,
-      { harness_id: null, sandbox_provider_kind: null },
-      { harness_id: "codex", sandbox_provider_kind: "user-desktop" },
-      { harness_id: "future", sandbox_provider_kind: null },
-      { harness_id: "decopilot" },
+      { harness_id: null },
+      { harness_id: "codex" },
+      { harness_id: "future" },
     ]) {
       expect(isHostedDecopilotThread(thread)).toBe(false);
     }

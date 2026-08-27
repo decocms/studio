@@ -1,9 +1,5 @@
 import { expect, test } from "../fixtures/test";
-import {
-  callSelfMcpTool,
-  createHttpConnection,
-  setOrgFlags,
-} from "../fixtures/mcp-tools";
+import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
 async function createClonableAgent(
   api: Parameters<typeof createHttpConnection>[0],
@@ -91,10 +87,8 @@ test.describe("Blocks preview mode", () => {
       page.context().request,
       orgSlug,
     );
-    // The View dropdown drops its Settings option under the new nav.
-    await setOrgFlags(page.context().request, orgSlug, { nav_v2: false });
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=0&main=settings`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=0&main=preview`,
     );
 
     // Mobile has no side-by-side split and no standalone Chat toggle: every
@@ -102,7 +96,7 @@ test.describe("Blocks preview mode", () => {
     // "View" dropdown, and only one surface shows at a time.
     const viewSelect = page.getByRole("combobox", { name: "View" });
     await expect(viewSelect).toBeVisible({ timeout: 30_000 });
-    // main=settings is the single visible surface to start.
+    // main=preview is the single visible surface to start.
     await expect(page.getByTestId("main-panel")).toBeVisible();
 
     // Pick Chat: the main panel closes and chat becomes the only surface.
@@ -113,11 +107,11 @@ test.describe("Blocks preview mode", () => {
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
 
-    // Pick Settings again: chat closes, the main panel returns.
+    // Pick Preview again: chat closes, the main panel returns.
     await viewSelect.click();
-    await page.getByRole("option", { name: "Settings" }).click();
+    await page.getByRole("option", { name: "Preview" }).click();
     await expect(page).toHaveURL(/sidepanel=0/);
-    await expect(page).toHaveURL(/main=settings/);
+    await expect(page).toHaveURL(/main=preview/);
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });

@@ -43,8 +43,8 @@ import { useT } from "@/i18n/use-t.ts";
 import {
   ThreadSheetBody,
   type ThreadEntity,
-  type ThreadUsage,
-} from "@/routes/orgs/monitoring/threads.tsx";
+} from "@/components/thread/thread-sheet-body.tsx";
+import type { ThreadUsage } from "@/routes/orgs/monitoring/threads.tsx";
 import {
   formatCompactNumber,
   formatUsd,
@@ -379,10 +379,12 @@ export function AutomationRunsView({
               connections={allConnections}
               virtualMcps={allVirtualMcps}
               members={membersData}
-              selectedIndex={selectedRunIndex}
-              total={runs.length}
-              onPrev={handlePrev}
-              onNext={handleNext}
+              nav={{
+                index: selectedRunIndex,
+                total: runs.length,
+                onPrev: handlePrev,
+                onNext: handleNext,
+              }}
             />
           )}
         </SheetContent>

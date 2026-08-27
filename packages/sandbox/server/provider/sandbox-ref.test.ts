@@ -12,10 +12,6 @@ describe("composeSandboxRef", () => {
     ).toBe("agent:org_123:vm_abc:deco/silver-fox");
   });
 
-  it("composes thread ref from threadId", () => {
-    expect(composeSandboxRef({ threadId: "thr_xyz" })).toBe("thread:thr_xyz");
-  });
-
   it("preserves slashes and special chars in branch (no encoding)", () => {
     // refs are opaque routing keys, not URLs — encoding is the runner's job.
     expect(
@@ -38,10 +34,6 @@ describe("composeSandboxRef", () => {
       composeSandboxRef({ orgId: "o", virtualMcpId: "v", branch: "" }),
     ).toThrow();
   });
-
-  it("rejects empty threadId", () => {
-    expect(() => composeSandboxRef({ threadId: "" })).toThrow();
-  });
 });
 
 describe("refSlugSource", () => {
@@ -59,10 +51,6 @@ describe("refSlugSource", () => {
     );
   });
 
-  it("returns the threadId of a thread ref", () => {
-    expect(refSlugSource("thread:thr_xyz")).toBe("thr_xyz");
-  });
-
   it("returns '' for a ref in neither encoding", () => {
     expect(refSlugSource("legacy-opaque")).toBe("");
   });
@@ -71,13 +59,12 @@ describe("refSlugSource", () => {
     expect(refSlugSource("agent:org:vmcp")).toBe("");
   });
 
-  it("round-trips composeSandboxRef for both encodings", () => {
+  it("round-trips composeSandboxRef", () => {
     const branch = "thread:thrd_1/conn_2";
     expect(
       refSlugSource(
         composeSandboxRef({ orgId: "o", virtualMcpId: "v", branch }),
       ),
     ).toBe(branch);
-    expect(refSlugSource(composeSandboxRef({ threadId: "t_1" }))).toBe("t_1");
   });
 });

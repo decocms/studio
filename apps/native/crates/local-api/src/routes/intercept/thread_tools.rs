@@ -254,6 +254,11 @@ fn optional_runtime<'a>(
 
 fn validate_thread_metadata(value: &Value) -> Result<(), ApiError> {
     let metadata = expect_object(value, "data.metadata")?;
+    if metadata.contains_key("sandboxMap") {
+        return Err(ApiError::bad_request(
+            "data.metadata.sandboxMap is managed by the sandbox lifecycle",
+        ));
+    }
     let Some(expanded_tools) = metadata.get("expanded_tools") else {
         return Ok(());
     };
@@ -1071,6 +1076,7 @@ mod tests {
             json!({"id": "t", "data": {"status": "expired"}}),
             json!({"id": "t", "data": {"metadata": null}}),
             json!({"id": "t", "data": {"metadata": []}}),
+            json!({"id": "t", "data": {"metadata": {"sandboxMap": {}}}}),
             json!({"id": "t", "data": {"metadata": {"expanded_tools": {}}}}),
             json!({
                 "id": "t",

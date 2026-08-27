@@ -792,7 +792,7 @@ function withHomeTiles(
   tiles: VirtualMcpHomeTile[],
 ): VirtualMCPEntity["metadata"] {
   return {
-    ...(agent.metadata ?? {}),
+    instructions: agent.metadata.instructions,
     ui: {
       ...(agent.metadata?.ui ?? {}),
       homeTile: null,

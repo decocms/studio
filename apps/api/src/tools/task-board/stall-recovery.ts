@@ -32,15 +32,10 @@
  * the read.
  */
 
-import { taskRunMetadata } from "../../billing/subsidized-runs";
-import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { resolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
-import { enqueueThreadRun } from "@/dispatch-queue";
-import { isNudgeableRuntime } from "@/harnesses/decopilot/hosted-runtime";
+import { nudgeThreadTurn } from "./nudge-thread";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, Thread } from "@/storage/types";
-import { getDecopilotId } from "@decocms/shared/sdk";
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 
@@ -55,7 +50,6 @@ export function decideStallAction(thread: {
   status: string | null;
   messageStorageVersion: number;
   harnessId: string | null;
-  sandboxProviderKind: string | null;
 }): StallAction {
   if (thread.status === "completed") return "advance";
   // Only v2 threads can take a new turn: dispatch nulls the part emitter for v1
@@ -65,7 +59,7 @@ export function decideStallAction(thread: {
   if (
     thread.status === "failed" &&
     thread.messageStorageVersion === 2 &&
-    isNudgeableRuntime(thread)
+    (thread.harnessId === "decopilot" || thread.harnessId === "claude-code")
   ) {
     return "nudge";
   }
@@ -93,73 +87,18 @@ export function nudgePrompt(harnessId: string | null): string {
   ].join("\n");
 }
 
-/**
- * Send one user turn onto a failed run's thread. Everything here is keyed off
- * (task, thread) rather than a fresh id: the message id makes the part write
- * idempotent, and the workflowID makes the enqueue collapse — so two board
- * opens racing each other, or one every 30s for a week, still produce exactly
- * one nudge run. That is also why there's no separate "already nudged" marker.
- */
+/** One user turn onto a failed run's thread, at most once ever — the ids below
+ *  are the fence (see `nudgeThreadTurn`). */
 async function nudgeThread(
   ctx: StudioContext,
   item: TaskBoardItem,
   thread: Thread,
 ): Promise<void> {
-  const organizationId = item.organizationId;
-  const model = await resolveTier(ctx, "smart");
-  const agentId = thread.virtual_mcp_id ?? getDecopilotId(organizationId);
-
-  const requestMessage = {
-    id: `stall-nudge-${item.id}-${thread.id}`,
-    role: "user" as const,
-    parts: [{ type: "text" as const, text: nudgePrompt(thread.harness_id) }],
-  };
-
-  // Persist the user turn before dispatch, for the same ordering reason as
-  // enqueueSuperAgentForTask: the projector can otherwise land the reply first
-  // and invert the two in the UI.
-  await new PartEmitter({
-    storage: ctx.storage.threads.messageParts(),
-    orgId: organizationId,
-    threadId: thread.id,
-    runId: thread.id,
-  }).emitRequestMessage(requestMessage);
-
-  await enqueueThreadRun(
-    {
-      threadId: thread.id,
-      source: "background-tool",
-      request: {
-        messages: [requestMessage],
-        models: {
-          credentialId: model.credentialId,
-          thinking: { id: model.modelId, title: model.modelMeta.title },
-        },
-        agent: { id: agentId },
-        temperature: 0.5,
-        toolApprovalLevel: "auto",
-        mode: "default",
-        organizationId,
-        userId: item.assignedBy ?? item.createdBy,
-        // The thread's OWN runtime, not a hardcoded Decopilot: a Super Agent
-        // task on an org with a repo runs `claude-code`, and dispatching it as
-        // Decopilot would answer the nudge with a different agent than the one
-        // that did the work.
-        harnessId:
-          thread.harness_id === "claude-code" ? "claude-code" : "decopilot",
-        sandboxProviderKind: "agent-sandbox",
-        // The branch the failed run was dispatched on, so the re-prompt lands
-        // in a sandbox on the SAME checkout (`resolveSandboxBranch` needs the
-        // explicit bare `thread:<id>` key for a run that started repo-less and
-        // bound one mid-run with `TASK_ADD_REPO`; every other case re-derives
-        // to the same value).
-        ...(thread.branch ? { branch: thread.branch } : {}),
-        taskId: thread.id,
-        runMetadata: taskRunMetadata(item),
-      },
-    },
-    { workflowID: `stall-nudge:${item.id}:${thread.id}` },
-  );
+  await nudgeThreadTurn(ctx, item, thread, {
+    messageId: `stall-nudge-${item.id}-${thread.id}`,
+    prompt: nudgePrompt(thread.harness_id),
+    workflowID: `stall-nudge:${item.id}:${thread.id}`,
+  });
 }
 
 /**
@@ -178,7 +117,6 @@ async function resolveStallAction(
       status: thread.status,
       messageStorageVersion: thread.message_storage_version,
       harnessId: thread.harness_id,
-      sandboxProviderKind: thread.sandbox_provider_kind,
     }),
     thread,
   };

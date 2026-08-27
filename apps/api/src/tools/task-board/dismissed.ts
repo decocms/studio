@@ -64,7 +64,7 @@ export const TASK_BOARD_DISMISSED_RESTORE = defineTool({
   inputSchema: z.object({
     /** Omitted restores everything; an empty array restores nothing, so a
      *  caller filtering a list down to zero can't accidentally clear the lot. */
-    externalKeys: z.array(z.string()).optional(),
+    externalKeys: z.array(z.string()).max(1000).optional(),
   }),
   outputSchema: z.object({ restored: z.number() }),
   handler: async (input, ctx) => {

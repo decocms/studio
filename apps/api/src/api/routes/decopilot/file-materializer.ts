@@ -596,10 +596,23 @@ export async function resolveArgsStorageRefs(
   return substituteValues(args, keyToPresigned) as Record<string, unknown>;
 }
 
-function collectStudioStorageKeys(value: unknown, out: Set<string>): void {
+/**
+ * No real tool call references this many distinct storage objects. Caps the
+ * work `resolveArgsStorageRefs` fans out per call (one presign per key) so
+ * args padded with thousands of fake `studio-storage://` refs can't blow it
+ * up — the same bound `parseMentions` applies to a comment body.
+ */
+export const MAX_STORAGE_KEYS = 200;
+
+export function collectStudioStorageKeys(
+  value: unknown,
+  out: Set<string>,
+): void {
+  if (out.size >= MAX_STORAGE_KEYS) return;
   if (typeof value === "string") {
     for (const match of value.matchAll(studioStorageRegex())) {
       out.add(match[1]!);
+      if (out.size >= MAX_STORAGE_KEYS) break;
     }
   } else if (Array.isArray(value)) {
     for (const item of value) collectStudioStorageKeys(item, out);

@@ -11,7 +11,7 @@
  * tell the model to call them by these names.
  *
  * `TASK_BOARD_REVIEW_DECISION` is deliberately NOT here: recording a QA /
- * Code Reviewer verdict belongs to those reviewers, which reach the tool over
+ * reviewer verdict belongs to the reviewer, which reaches the tool over
  * their run-scoped MCP endpoint. The Super Agent is the reviewed party.
  *
  * Imported from the concrete tool files to keep this built-in set explicit.

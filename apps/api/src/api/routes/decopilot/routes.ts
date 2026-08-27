@@ -12,13 +12,15 @@ import {
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
-import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import {
+  orgFlagEnabled,
+  type SimpleModeTier,
+} from "@decocms/shared/organization/schema";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { harnessRunsInSandbox } from "@/harnesses/sandbox-dispatch-client";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 import { splitRequestMessages } from "./conversation";
 import {
@@ -38,18 +40,19 @@ import {
 } from "./model-permissions";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import type { DispatchRunInput } from "./dispatch-run";
-import { buildDurableDispatchInput } from "./dispatch-run";
+import type { DispatchRunInput, HostedHarnessId } from "./dispatch-run";
+import {
+  assertHostedDispatchHarness,
+  buildDurableDispatchInput,
+} from "./dispatch-run";
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,
-  shouldPublishClusterRunStatus,
+  shouldPublishRunStatus,
 } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@/harnesses";
-import { isRetiredLinkedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
+import type { HarnessId } from "@/harnesses/lib/types";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
@@ -236,16 +239,15 @@ async function resolvePerRequestModels(
 // ============================================================================
 
 /**
- * Resolve the effective (harnessId, sandboxProviderKind, branch) for a
- * dispatch, given the values the client supplied and the (possibly
- * locked) thread row.
+ * Resolve the effective (harnessId, branch) for a dispatch from the
+ * client-supplied branch and the (possibly locked) thread row.
  *
  * Once a thread row carries a non-null `harness_id`, the thread's
- * runtime is pinned for life: the row's values win and any
- * client-provided override is silently dropped. If the row is unlocked
+ * runtime is pinned for life: the row's values win and a client-provided
+ * branch override is silently dropped. If the row is unlocked
  * (`harness_id == null`) or there's no thread at all (first message of
- * a freshly-created thread, or `taskIdInput === undefined`) we fall
- * back to the client values.
+ * a freshly-created thread, or `taskIdInput === undefined`) the hosted route
+ * selects Decopilot and falls back to the client branch.
  *
  * Exported so the guard can be unit-tested without standing up the rest
  * of `validate()` (model resolution, permission checks, Hono context).
@@ -255,31 +257,22 @@ async function resolvePerRequestModels(
  */
 export function applyThreadLock(args: {
   taskIdInput: string | undefined;
-  thread: Pick<
-    Thread,
-    "harness_id" | "sandbox_provider_kind" | "branch"
-  > | null;
-  requestedHarnessId: HarnessId | null | undefined;
-  requestedSandboxProviderKind: SandboxProviderKind | null | undefined;
+  thread: Pick<Thread, "harness_id" | "branch"> | null;
   requestedBranch: string | null | undefined;
 }): {
   harnessId: HarnessId | null | undefined;
-  sandboxProviderKind: SandboxProviderKind | null | undefined;
   branch: string | null | undefined;
   locked: boolean;
 } {
-  const {
-    taskIdInput,
-    thread,
-    requestedHarnessId,
-    requestedSandboxProviderKind,
-    requestedBranch,
-  } = args;
+  const { taskIdInput, thread, requestedBranch } = args;
 
-  if (!taskIdInput || !thread?.harness_id) {
+  if (
+    !taskIdInput ||
+    thread?.harness_id === null ||
+    thread?.harness_id === undefined
+  ) {
     return {
-      harnessId: requestedHarnessId,
-      sandboxProviderKind: requestedSandboxProviderKind,
+      harnessId: "decopilot",
       // Prefer the thread's own branch even while the thread is still
       // unlocked (harness_id null = this is the first message). The branch is
       // assigned at COLLECTION_THREADS_CREATE time, so it exists before the
@@ -291,7 +284,7 @@ export function applyThreadLock(args: {
       //
       // Only consult the thread row when there is a real `taskIdInput`;
       // legacy callers with no thread id must ignore the row entirely (the
-      // `!taskIdInput` half of the guard above), same as harness/sandbox.
+      // `!taskIdInput` half of the guard above), same as the harness.
       branch: taskIdInput
         ? (thread?.branch ?? requestedBranch)
         : requestedBranch,
@@ -299,24 +292,63 @@ export function applyThreadLock(args: {
     };
   }
 
-  if (requestedHarnessId && requestedHarnessId !== thread.harness_id) {
-    console.warn(
-      "decopilot.submit: ignored harness override on locked thread",
-      {
-        threadId: taskIdInput,
-        requested: requestedHarnessId,
-        locked: thread.harness_id,
-      },
-    );
-  }
-
   return {
     harnessId: thread.harness_id as HarnessId,
-    sandboxProviderKind:
-      (thread.sandbox_provider_kind as SandboxProviderKind | null) ?? undefined,
     branch: thread.branch ?? null,
     locked: true,
   };
+}
+
+/**
+ * The harness a thread's FIRST message pins, for an agent that has never run.
+ *
+ * A Code Agent — an agent imported from a GitHub repo (`metadata.githubRepo`) —
+ * is a coding agent whose whole point is the checkout, so it runs `claude-code`
+ * inside its sandbox rather than hosted Decopilot. Everything else stays on
+ * Decopilot. Behind a default-off org flag: this swaps the runtime of every
+ * chat on those agents, and claude-code emits a block at a time rather than
+ * token deltas.
+ *
+ * Pure so the decision is testable without a DB; the I/O lives in
+ * `resolveDefaultHarness`.
+ */
+export function defaultHarnessForAgent(args: {
+  flagEnabled: boolean;
+  agentMetadata: unknown;
+}): HostedHarnessId {
+  if (!args.flagEnabled) return "decopilot";
+  const meta = args.agentMetadata as
+    | { githubRepo?: { url?: unknown } | null }
+    | null
+    | undefined;
+  const url = meta?.githubRepo?.url;
+  return typeof url === "string" && url.length > 0
+    ? "claude-code"
+    : "decopilot";
+}
+
+/** {@link defaultHarnessForAgent} with its two reads. Never throws: an agent or
+ *  settings row we can't read falls back to Decopilot, which is what every
+ *  thread got before this existed. */
+async function resolveDefaultHarness(
+  ctx: StudioContext,
+  organizationId: string,
+  agentId: string,
+): Promise<HostedHarnessId> {
+  try {
+    const settings = await ctx.storage.organizationSettings.get(organizationId);
+    if (!orgFlagEnabled(settings?.flags, "coding_agents_claude_code")) {
+      return "decopilot";
+    }
+    const agent = await ctx.storage.virtualMcps.findById(agentId);
+    return defaultHarnessForAgent({
+      flagEnabled: true,
+      agentMetadata: agent?.metadata,
+    });
+  } catch (err) {
+    console.warn("[decopilot:messages] harness resolution failed", err);
+    return "decopilot";
+  }
 }
 
 /**
@@ -324,97 +356,67 @@ export function applyThreadLock(args: {
  * remain on persisted thread rows so the desktop app can resume them, but the
  * cloud route must reject those rows before model resolution or any write.
  */
-export function assertHostedDecopilotHarness(
-  harnessId: string | null | undefined,
-): asserts harnessId is "decopilot" | null | undefined {
-  if (
-    harnessId !== null &&
-    harnessId !== undefined &&
-    harnessId !== "decopilot"
-  ) {
+function assertHostedRuntime(harnessId: string | null | undefined): void {
+  assertHostedHarness(harnessId);
+  if (harnessId !== "decopilot") {
     throw new HTTPException(409, {
       message: "This coding-agent chat can only run in the Studio desktop app",
     });
   }
 }
 
-export function assertHostedSandboxProvider(
-  sandboxProviderKind: string | null | undefined,
-): asserts sandboxProviderKind is "agent-sandbox" | null | undefined {
-  if (
-    sandboxProviderKind !== null &&
-    sandboxProviderKind !== undefined &&
-    sandboxProviderKind !== "agent-sandbox"
-  ) {
-    throw new HTTPException(409, {
-      message: "This chat is pinned to an unsupported desktop runtime",
-    });
-  }
-}
-
-function assertHostedRuntime(
-  harnessId: string | null | undefined,
-  sandboxProviderKind: string | null | undefined,
-): void {
-  normalizeHostedSandboxProviderKind(harnessId, sandboxProviderKind);
-}
-
 /**
- * The queue list for a thread that ALREADY ran on a sandbox-hosted harness.
+ * Runtimes this API both reads and dispatches: hosted Decopilot, plus
+ * `claude-code` on the hosted sandbox.
  *
- * Wider than `assertHostedRuntime` on purpose: a `claude-code` run happens in
- * the sandbox pod, so its queue is hosted data this API owns and the web chat
- * reads it on every thread mount. Gating it like a dispatch 409'd that read.
+ * Wider than `assertHostedRuntime` on purpose. A `claude-code` run happens in
+ * the sandbox pod, which makes it hosted data this API owns — its queue is read
+ * on every thread mount, and (since a claude-code thread accepts follow-up
+ * messages) its dispatch is ours to accept too. Gating either like a native
+ * desktop runtime 409'd them both.
  *
- * Deliberately NOT used on the STREAM routes. A sandbox-hosted harness is a
- * batch job — the web opens no SSE for it (see `isBatchHarness`) — so leaving
- * `/stream` reachable would only let a regression quietly hold one SSE per
- * claude-code thread. The 409 there is the louder failure.
+ * `/stream` uses it unmodified: a sandbox-hosted turn's chunks reach the
+ * thread's JetStream subject through the same ingest path as Decopilot's, so
+ * there is one live tail for both.
  *
- * Also NOT used on any write path: `assertHostedRuntime` (messages POST) and
- * `assertPersistedHostedRuntime` (cancel/flip/queue-cancel) stay Decopilot-only.
+ * Also the body of `assertPersistedHostedRuntime` (cancel/flip/queue-cancel),
+ * which adds the "has this thread started a run at all" check on top: a
+ * sandbox-hosted turn is cancellable through the same abort path, so refusing
+ * there would leave a turn the user can start and cannot stop.
  */
-export function assertReadableHostedRuntime(
+export function assertHostedHarness(
   harnessId: string | null | undefined,
-  sandboxProviderKind: string | null | undefined,
 ): void {
-  if (harnessId === "claude-code") {
-    assertHostedSandboxProvider(sandboxProviderKind);
+  if (harnessId == null) {
     return;
   }
-  assertHostedRuntime(harnessId, sandboxProviderKind);
-}
-
-/**
- * `decopilot + user-desktop` is a readable legacy tuple from the retired link
- * runtime. It now executes as hosted Decopilot, while every coding-agent
- * harness remains native-only.
- */
-export function normalizeHostedSandboxProviderKind(
-  harnessId: string | null | undefined,
-  sandboxProviderKind: string | null | undefined,
-): "agent-sandbox" | null | undefined {
-  assertHostedDecopilotHarness(harnessId);
-  if (isRetiredLinkedDecopilotRuntime({ harnessId, sandboxProviderKind })) {
-    return "agent-sandbox";
+  if (harnessId === "decopilot" || harnessId === "claude-code") {
+    return;
   }
-  assertHostedSandboxProvider(sandboxProviderKind);
-  return sandboxProviderKind;
+  throw new HTTPException(409, {
+    message: "This coding-agent chat can only run in the Studio desktop app",
+  });
 }
 
 /**
- * Mutating control routes operate only on a thread that has already been
- * claimed by hosted Decopilot. Unlike the message and stream routes, they do
- * not need to support an unpinned thread: accepting one would leave a race in
- * which native startup could claim the row after validation but before the
- * hosted mutation landed.
+ * Mutating control routes operate only on a thread that has already STARTED a
+ * hosted run — either harness. Unlike the message and stream routes, they do
+ * not support an unpinned thread: accepting one would leave a race in which
+ * native startup could claim the row after validation but before the hosted
+ * mutation landed.
+ *
+ * `claude-code` belongs here now that its thread takes follow-ups. Cancel
+ * reaches it by the same route Decopilot uses: the abort travels to whichever
+ * pod owns the turn, aborts the dispatch HTTP request, and the daemon's harness
+ * child is spawned on that request's context (`exec.CommandContext`), so the
+ * disconnect kills the agent. A turn a user can start and cannot stop is not a
+ * boundary, it is a bug.
  */
 export function assertPersistedHostedRuntime(
   harnessId: string | null | undefined,
-  sandboxProviderKind: string | null | undefined,
-): asserts harnessId is "decopilot" {
-  assertHostedRuntime(harnessId, sandboxProviderKind);
-  if (harnessId !== "decopilot") {
+): asserts harnessId is HostedHarnessId {
+  assertHostedHarness(harnessId);
+  if (harnessId !== "decopilot" && harnessId !== "claude-code") {
     throw new HTTPException(409, {
       message: "This chat has not started a hosted run",
     });
@@ -437,12 +439,7 @@ export function assertPersistedHostedRuntime(
 async function validate(
   c: Context<{ Variables: { studioContext: StudioContext } }>,
   threadIdParam: string | undefined,
-): Promise<
-  DispatchRunInput & {
-    sandboxProviderKind?: SandboxProviderKind | null;
-    harnessId?: HarnessId | null;
-  }
-> {
+): Promise<DispatchRunInput> {
   const ctx = c.get("studioContext");
 
   const {
@@ -457,8 +454,6 @@ async function validate(
     branch,
     toolApprovalLevel,
     mode,
-    sandboxProviderKind,
-    harnessId,
   } = await validateRequest(c);
 
   const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
@@ -478,30 +473,28 @@ async function validate(
   }
 
   // Lock guard: once a thread row carries a non-null `harness_id`, the
-  // thread's runtime (harness, sandbox provider, branch) is pinned for
-  // life. Any client-provided override is silently dropped. Native harnesses
-  // are then rejected before model resolution or any message/pin write.
+  // thread's persisted harness and branch are pinned for life. Client-provided
+  // branch overrides are silently dropped. Native harnesses are then rejected
+  // before model resolution or any message/pin write.
   //
   // See spec:
   // docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
   const lockedThread = taskIdInput
     ? await ctx.storage.threads.get(taskIdInput)
     : null;
-  const {
-    harnessId: effectiveHarnessId,
-    sandboxProviderKind: effectiveSandboxProviderKind,
-    branch: effectiveBranch,
-  } = applyThreadLock({
-    taskIdInput,
-    thread: lockedThread,
-    requestedHarnessId: harnessId,
-    requestedSandboxProviderKind: sandboxProviderKind,
-    requestedBranch: branch,
-  });
+  const { harnessId: effectiveHarnessId, branch: effectiveBranch } =
+    applyThreadLock({
+      taskIdInput,
+      thread: lockedThread,
+      requestedBranch: branch,
+    });
 
-  // Autonomous runs take no follow-up. Checked HERE — before the hosted-runtime
-  // assert — because an autonomous run is pinned to `claude-code`, which that
-  // assert refuses first with the (wrong, for this row) desktop-app message.
+  // A thread explicitly marked read-only takes no follow-up. Nothing sets the
+  // flag any more — sandbox-hosted task runs did, back when a follow-up had
+  // nowhere to go — but rows carrying it from then are still honoured. Checked
+  // HERE, before the runtime assert, so such a row reports why it is closed
+  // rather than the (wrong, for a claude-code row) desktop-app message.
+  //
   // Enforced in `validate()`, which only the messages POST calls, and NOT in
   // `prepareRun`: the run's own dispatch goes through `enqueueThreadRun`, so a
   // gate on the shared path would reject the very turn that created the thread.
@@ -513,7 +506,7 @@ async function validate(
     });
   }
 
-  assertHostedRuntime(effectiveHarnessId, effectiveSandboxProviderKind);
+  assertHostedHarness(effectiveHarnessId);
 
   const resolvedModels = await resolvePerRequestModels(ctx, tier);
 
@@ -555,7 +548,6 @@ async function validate(
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
     branch: effectiveBranch ?? null,
-    sandboxProviderKind: "agent-sandbox",
     harnessId: "decopilot",
   };
 }
@@ -654,29 +646,24 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // isolation key.
       let branch = existingThread?.branch ?? input.branch ?? "ephemeral";
 
-      // Determine the pinned (kind, harness). If the thread row has them,
-      // use those. Otherwise this is the first message — derive defaults and
-      // persist to the thread row.
-      let pinnedKind = (existingThread?.sandbox_provider_kind ??
-        null) as SandboxProviderKind | null;
-
+      // Determine the pinned harness. If the thread row has one, use it.
+      // Otherwise this is the first message — derive the hosted default and
+      // persist it to the thread row.
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
       let messageStorageVersion = existingThread?.message_storage_version ?? 2;
 
-      // The row may have changed between validate() and this canonical re-read.
-      // Re-assert before the initial-pin branch so a persisted non-hosted
-      // runtime cannot be mutated by this route before it returns 409.
-      pinnedKind =
-        normalizeHostedSandboxProviderKind(pinnedHarness, pinnedKind) ?? null;
-
-      // A non-null harness is the runtime lock. Legacy Decopilot rows may have
-      // either a null or retired user-desktop sandbox kind; both execute as the
-      // hosted agent sandbox without rewriting the historical row.
-      if (!pinnedHarness) {
-        pinnedKind = pinnedKind ?? input.sandboxProviderKind ?? "agent-sandbox";
-        pinnedHarness = pinnedHarness ?? input.harnessId ?? "decopilot";
-        assertHostedRuntime(pinnedHarness, pinnedKind);
+      // A non-null harness is the runtime lock. An unlocked thread is claimed
+      // by the hosted dispatcher.
+      if (pinnedHarness === null) {
+        // First message: the agent decides the runtime. `input.harnessId` is
+        // `validate()`'s fixed "decopilot", so it cannot carry this.
+        pinnedHarness = await resolveDefaultHarness(
+          ctx,
+          input.organizationId,
+          input.agent.id,
+        );
+        assertHostedHarness(pinnedHarness);
 
         if (existingThread) {
           // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
@@ -702,7 +689,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           // overwrite a runtime that became native after our preceding read.
           const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
             harnessId: pinnedHarness,
-            sandboxProviderKind: pinnedKind,
             branch,
             ...(pinV2 ? { messageStorageVersion: 2 } : {}),
           });
@@ -710,14 +696,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             throw new HTTPException(404, { message: "Thread not found" });
           }
           pinnedHarness = claimed.thread.harness_id as HarnessId | null;
-          pinnedKind = claimed.thread
-            .sandbox_provider_kind as SandboxProviderKind | null;
           branch = claimed.thread.branch ?? "ephemeral";
           messageStorageVersion = claimed.thread.message_storage_version;
         }
       }
-      pinnedKind =
-        normalizeHostedSandboxProviderKind(pinnedHarness, pinnedKind) ?? null;
+      // Reject a persisted non-hosted runtime before mutating it.
+      assertHostedHarness(pinnedHarness);
 
       if (messageStorageVersion !== 2) {
         throw new HTTPException(409, {
@@ -790,21 +774,32 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         await emitter.emitRequestMessage(persistedRequestMessage);
       }
 
-      const serializableRequest = buildDurableDispatchInput(input, {
-        messageId,
-        branch,
-      });
+      // The RUN's harness is the row's pin, not `validate()`'s default. This is
+      // the whole difference between accepting a follow-up and answering it: the
+      // gate above opens for `claude-code`, but `validate()` returns a fixed
+      // `harnessId: "decopilot"`, and that value is the only one that reaches
+      // `prepareRun` (nothing downstream re-reads `threads.harness_id`). Passing
+      // it through would run the in-process Decopilot loop behind a claude-code
+      // pin — no pod, no checkout, no resumed session — which reads as a working
+      // reply while being a different agent entirely.
+      assertHostedDispatchHarness(pinnedHarness);
+      const serializableRequest = buildDurableDispatchInput(
+        { ...input, harnessId: pinnedHarness },
+        { messageId, branch },
+      );
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
       if (
         existingThread?.status !== "in_progress" &&
-        shouldPublishClusterRunStatus({
-          harnessId: pinnedHarness,
-          sandboxProviderKind: pinnedKind,
-        })
+        shouldPublishRunStatus(pinnedHarness)
       ) {
-        await publishRunStatusStage(streamBuffer, taskId, "waiting-runner");
+        await publishRunStatusStage({
+          streamBuffer,
+          harnessId: pinnedHarness,
+          taskId,
+          stage: "waiting-runner",
+        });
       }
       await enqueueThreadRun(
         {
@@ -844,13 +839,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     taskId: string;
     thread: Thread;
     organization: { id: string };
-    userId: string;
   }): Promise<void> {
-    const { ctx, taskId, thread, organization, userId } = args;
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
+    const { ctx, taskId, thread, organization } = args;
+    assertPersistedHostedRuntime(thread.harness_id);
 
     // Persist durable cancel flag so the ingest backstop rejects 409.
     await ctx.storage.threads.setCancelRequested(taskId, organization.id);
@@ -934,10 +925,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       type: "CANCEL",
       taskId,
     });
-    cancelBroadcast.publishControlFrame(userId, {
-      type: "cancel",
-      runId: taskId,
-    });
     const producedRunFailed = cancelTransitions.some(
       (t) => t.event.type === "RUN_FAILED",
     );
@@ -977,13 +964,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   }
 
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { ctx, taskId, thread, organization, userId } =
+    const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
-    await cancelActiveThreadRun({ ctx, taskId, thread, organization, userId });
+    assertPersistedHostedRuntime(thread.harness_id);
+    await cancelActiveThreadRun({ ctx, taskId, thread, organization });
     return c.json({ cancelled: true, async: true }, 202);
   });
 
@@ -993,10 +977,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // its inline run and re-runs it as a durable background job. Owner-only.
   app.post("/:org/decopilot/flip/:threadId", async (c) => {
     const { taskId, thread } = await validateThreadOwnership(c);
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
+    assertPersistedHostedRuntime(thread.harness_id);
     const body = (await c.req.json().catch(() => null)) as {
       toolCallId?: unknown;
     } | null;
@@ -1016,10 +997,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/queue/:threadId", async (c) => {
     const { ctx, taskId, thread } = await validateThreadOwnership(c);
-    assertReadableHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
+    assertHostedHarness(thread.harness_id);
     const items = await listThreadGateQueue(taskId);
     if (items.length === 0) return c.json({ items: [] });
     // Hydrate tray display text + attachment presence from the persisted
@@ -1045,12 +1023,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
-    const { ctx, taskId, thread, organization, userId } =
+    const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
+    assertPersistedHostedRuntime(thread.harness_id);
     const workflowId = c.req.param("workflowId");
 
     // The item must currently be pending for THIS thread (prefix-scoped list).
@@ -1070,7 +1045,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         taskId,
         thread,
         organization,
-        userId,
       });
     } else {
       // Removed a QUEUED turn: its request message was already persisted at
@@ -1125,21 +1099,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
-      assertReadableHostedRuntime(
-        thread.harness_id,
-        thread.sandbox_provider_kind,
-      );
-      // A batch harness has no live tail: it runs in the pod and writes whole
-      // turns. Answer 204 — the same "nothing to tail" reply this route already
-      // gives below — instead of holding an SSE open or 409ing. The decision
-      // has to be made HERE to be race-free: the client cannot always know the
-      // harness before it opens this, because the thread row may still be
-      // loading. `isBatchHarness` in the web store skips the request whenever
-      // the row IS known; this is the backstop for when it isn't.
-      if (harnessRunsInSandbox(thread.harness_id)) {
-        return c.body(null, 204);
-      }
-
+      assertHostedHarness(thread.harness_id);
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
       // and after a DBOS replay rehome) needs `"all"` to catch chunks the
@@ -1218,7 +1178,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.get("/:org/decopilot/threads/:threadId/jobs/:jobId/stream", async (c) => {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
-      assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
+      assertHostedRuntime(thread.harness_id);
       const jobId = c.req.param("jobId");
       if (!jobId || !jobId.startsWith(`bgtool:${taskId}:`)) {
         return c.body(null, 404);

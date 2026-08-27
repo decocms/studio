@@ -14,7 +14,6 @@ import {
   updateService,
 } from "../cli-store";
 import { findAvailablePort } from "../find-available-port";
-import { stripAnsi } from "../strip-ansi";
 
 export interface ServeOptions {
   port: string;
@@ -43,7 +42,7 @@ export function interceptConsoleForTui() {
       .join(" ");
 
     for (const raw of text.split("\n")) {
-      const stripped = stripAnsi(raw).trim();
+      const stripped = Bun.stripANSI(raw).trim();
       if (!stripped) continue;
       addLogEntry({
         method: "",

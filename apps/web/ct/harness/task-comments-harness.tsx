@@ -1,5 +1,10 @@
 import { useState } from "react";
 import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
+import {
   CommentThreadCard,
   NewCommentComposer,
   type CommentAuthor,
@@ -89,5 +94,33 @@ export function TaskCommentsHarness() {
       />
       <pre data-testid="posted">{JSON.stringify(posted)}</pre>
     </div>
+  );
+}
+
+/**
+ * The same composer, inside a real modal dialog — which is where it actually
+ * lives (the task dialog).
+ *
+ * Worth its own harness because a modal changes the rules around it: Radix
+ * puts `pointer-events: none` on the body while it's open and traps focus, so
+ * anything the composer portals out to the body is unclickable and unscrollable
+ * even though it renders. The bare mount above cannot show that.
+ */
+export function TaskCommentsDialogHarness() {
+  const [posted, setPosted] = useState<string[]>([]);
+
+  return (
+    <Dialog open>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[90vh] sm:max-w-[1040px]">
+        <DialogTitle className="sr-only">Task</DialogTitle>
+        <div className="flex flex-1 flex-col justify-end overflow-y-auto p-6">
+          <NewCommentComposer
+            me={ME}
+            onSubmit={(body) => setPosted((prev) => [...prev, body])}
+          />
+        </div>
+        <pre data-testid="posted">{JSON.stringify(posted)}</pre>
+      </DialogContent>
+    </Dialog>
   );
 }

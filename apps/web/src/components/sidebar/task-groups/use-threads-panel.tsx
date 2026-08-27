@@ -1,11 +1,9 @@
 /**
  * The thread list's data + actions, independent of where it renders.
  *
- * Two surfaces consume this: the classic sidebar list (TaskGroupsList) and the
- * chat panel's threads menu (ThreadsMenu, used when the org is on the
- * first-class navigation — see `useNavV2`). Both need the same filters,
- * archive/reclaim flow and new-thread semantics, so the wiring lives here once
- * and each surface only owns its layout.
+ * The chat panel's threads menu (ThreadsMenu) consumes this: filters,
+ * archive/reclaim flow and new-thread semantics live here once, and the surface
+ * only owns its layout.
  */
 
 import { useState } from "react";
@@ -232,8 +230,6 @@ export function useThreadsPanel({
       await studio.call("SANDBOX_DELETE", {
         virtualMcpId: target.virtualMcpId,
         branch: target.branch,
-        // Desktop-gated path; this is the only possible provider here.
-        sandboxProviderKind: "user-desktop",
         removeWorktree: true,
       });
     } catch {

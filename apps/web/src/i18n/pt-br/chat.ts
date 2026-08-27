@@ -253,7 +253,7 @@ export const chat = {
   "chat.input.readOnlyOthersChatNamed":
     "Apenas leitura - você está visualizando o chat de {name}",
   "chat.input.readOnlyThread":
-    "Apenas leitura - este chat rodou de forma autônoma e não aceita respostas",
+    "Apenas leitura - este chat não aceita respostas",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":
@@ -363,6 +363,12 @@ export const chat = {
   "chat.runStatus.analyzingScopeLabel": "Pensando",
   "chat.runStatus.choosingNextStepsDetail": "Decidindo o que fazer a seguir",
   "chat.runStatus.choosingNextStepsLabel": "Pensando",
+  "chat.runStatus.startingSandboxDetail":
+    "Ligando a m\u00e1quina e fazendo checkout do reposit\u00f3rio",
+  "chat.runStatus.retryingProviderDetail":
+    "O provedor do modelo estava indisponível — tentando outro",
+  "chat.runStatus.retryingProviderLabel": "Aguardando o provedor do modelo",
+  "chat.runStatus.startingSandboxLabel": "Iniciando o sandbox",
   "chat.runStatus.gatheringContextDetail":
     "Analisando o histórico, arquivos e notas",
   "chat.runStatus.gatheringContextLabel": "Lendo o chat",

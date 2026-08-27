@@ -10,7 +10,14 @@ export const RUN_STATUS_STAGE_ORDER = [
   "preparing-tools",
   "starting-assistant",
   "analyzing-scope",
+  // Sandbox-hosted runs only, and last of the pre-content stages: the pod boots
+  // after the run is prepared, and the ranking here is what keeps the display
+  // monotonic.
+  "starting-sandbox",
   "choosing-next-steps",
+  // Last on purpose: the harness retries a provider rejection only before the
+  // turn produces content, so this always supersedes the stage it interrupts.
+  "retrying-provider",
 ] as const;
 
 export type RunStatusStage = (typeof RUN_STATUS_STAGE_ORDER)[number];
@@ -60,9 +67,17 @@ const RUN_STATUS_I18N_KEYS: Record<
     label: "chat.runStatus.analyzingScopeLabel",
     detail: "chat.runStatus.analyzingScopeDetail",
   },
+  "starting-sandbox": {
+    label: "chat.runStatus.startingSandboxLabel",
+    detail: "chat.runStatus.startingSandboxDetail",
+  },
   "choosing-next-steps": {
     label: "chat.runStatus.choosingNextStepsLabel",
     detail: "chat.runStatus.choosingNextStepsDetail",
+  },
+  "retrying-provider": {
+    label: "chat.runStatus.retryingProviderLabel",
+    detail: "chat.runStatus.retryingProviderDetail",
   },
 };
 

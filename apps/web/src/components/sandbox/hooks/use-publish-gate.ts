@@ -22,6 +22,7 @@ export function useResolvedPublishGate(args: {
   virtualMcpId: string;
   branch: string;
   threadId: string | null;
+  fastPreview?: boolean;
   status: GitStatus | null;
   diff: GitDiffResult | null;
   policy: PublishPolicy;
@@ -39,6 +40,7 @@ export function useResolvedPublishGate(args: {
     virtualMcpId,
     branch,
     threadId,
+    fastPreview,
     status,
     diff,
     policy,
@@ -55,6 +57,7 @@ export function useResolvedPublishGate(args: {
     virtualMcpId,
     branch,
     threadId,
+    fastPreview,
     status,
     diff,
     enabled: needsJudge,

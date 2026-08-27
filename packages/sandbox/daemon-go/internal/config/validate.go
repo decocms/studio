@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -10,6 +11,11 @@ var validRuntimes = map[string]bool{"node": true, "bun": true, "deno": true}
 var validPms = map[string]bool{"npm": true, "pnpm": true, "yarn": true, "bun": true, "deno": true}
 
 var branchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+
+// repoNameRe bounds a secondary checkout's directory name: no slash, and it
+// must open on an alphanumeric. That rules out `.`, `..` and `.git`, so the
+// name can neither climb out of the secondary root nor land on a git dir.
+var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const envValueMax = 32 * 1024
@@ -75,6 +81,21 @@ func validateGit(git *GitConfig) string {
 			return fmt.Sprintf("git.repository.branch invalid: %s", b)
 		}
 	}
+	for i, repo := range git.Repositories {
+		if repo.CloneUrl == nil || *repo.CloneUrl == "" {
+			return fmt.Sprintf("git.repositories[%d].cloneUrl is required", i)
+		}
+		// The name becomes a directory, so it is a path input from off-pod.
+		if repo.RepoName == nil || !repoNameRe.MatchString(*repo.RepoName) {
+			return fmt.Sprintf("git.repositories[%d].repoName invalid", i)
+		}
+		if repo.Branch != nil {
+			b := *repo.Branch
+			if !IsSyntheticBranch(b) && (!branchRe.MatchString(b) || strings.HasPrefix(b, "-")) {
+				return fmt.Sprintf("git.repositories[%d].branch invalid: %s", i, b)
+			}
+		}
+	}
 	if git.Identity != nil {
 		if git.Identity.UserName == nil || *git.Identity.UserName == "" {
 			return "git.identity.userName is required"
@@ -94,8 +115,10 @@ func validateApplication(app *Application) string {
 		if app.PackageManager.Name != nil && !validPms[*app.PackageManager.Name] {
 			return fmt.Sprintf("packageManager invalid: %s", *app.PackageManager.Name)
 		}
-		if app.PackageManager.Path != nil && *app.PackageManager.Path == "" {
-			return "packageManager.path must be non-empty"
+		if app.PackageManager.Path != nil {
+			if reason := validatePmPath(*app.PackageManager.Path); reason != "" {
+				return reason
+			}
 		}
 	}
 	if app.Port != nil {
@@ -103,6 +126,22 @@ func validateApplication(app *Application) string {
 		if p != float64(int(p)) || p <= 0 || p > 65535 {
 			return fmt.Sprintf("port invalid: %v", p)
 		}
+	}
+	return ""
+}
+
+// validatePmPath rejects a packageManager.path that would let
+// paths.ResolvePmRoot (internal/paths/paths.go) run install/dev commands
+// outside the repo checkout: an absolute path is used verbatim, and a
+// relative path is joined onto the repo dir without a containment check, so
+// "../.." segments walk out of it.
+func validatePmPath(p string) string {
+	if p == "" {
+		return "packageManager.path must be non-empty"
+	}
+	clean := filepath.Clean(p)
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Sprintf("packageManager.path must be a relative path within the repo: %s", p)
 	}
 	return ""
 }

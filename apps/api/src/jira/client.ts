@@ -1,14 +1,27 @@
 /**
  * Thin Jira Cloud client (Basic auth: email + API token).
  *
- * Deliberately not an SDK: the integration needs six endpoints. The sync is
- * board-centric, so issue reads go through the Agile API — a board's visible
- * cards are `/board/{id}/issue` minus `/board/{id}/backlog`, a membership
- * that no JQL over the project can express.
+ * Deliberately not an SDK: the integration needs a handful of endpoints.
+ *
+ * Issue reads go through JQL search over the board's SAVED FILTER
+ * ({@link JiraClient.getBoardScopeJql}), not through the Agile API's
+ * `/board/{id}/issue`. That endpoint answers "what is on the board", which
+ * silently excludes whatever sits in the board's Backlog tab — so an issue a
+ * team files and leaves in the backlog (the normal way work arrives) was
+ * invisible to the sync, and the watermark moved straight past it. The filter
+ * is the board's own definition of its scope, backlog included; which sprint an
+ * issue is in is data on the issue, and belongs on the card rather than
+ * deciding whether the card exists.
  */
 
 import { retry } from "@decocms/shared/std";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
+import {
+  findSprintFieldIds,
+  type JiraSprintRef,
+  parseSprintRefs,
+  stripOrderBy,
+} from "./sprint-field";
 import {
   collectWikiMentionAccountIds,
   escapeMentionName,
@@ -50,21 +63,26 @@ export interface JiraBoardColumn {
   statuses: string[];
 }
 
+export interface JiraIssueFields {
+  summary: string;
+  status: { name: string };
+  priority: { name: string } | null;
+  issuetype: { name: string; hierarchyLevel?: number } | null;
+  /** ISO-ish timestamp, e.g. "2026-08-18T11:15:00.000-0300". */
+  updated: string;
+  /** Atlassian Document Format tree, or null. */
+  description: unknown;
+  /** Embedded comment page — may be partial; check `total`. */
+  comment?: { comments: JiraComment[]; total: number } | null;
+}
+
 export interface JiraIssue {
   id: string;
   key: string;
-  fields: {
-    summary: string;
-    status: { name: string };
-    priority: { name: string } | null;
-    issuetype: { name: string; hierarchyLevel?: number } | null;
-    /** ISO-ish timestamp, e.g. "2026-08-18T11:15:00.000-0300". */
-    updated: string;
-    /** Atlassian Document Format tree, or null. */
-    description: unknown;
-    /** Embedded comment page — may be partial; check `total`. */
-    comment?: { comments: JiraComment[]; total: number } | null;
-  };
+  fields: JiraIssueFields;
+  /** Sprints this issue is in, oldest first — parsed out of the site's Sprint
+   *  custom field. Empty when the site has no sprints, or the issue is in none. */
+  sprints: JiraSprintRef[];
 }
 
 export interface JiraComment {
@@ -77,6 +95,24 @@ export interface JiraComment {
 
 const ISSUE_FIELDS =
   "summary,status,priority,issuetype,updated,description,comment";
+
+/** Issues per search page. Jira's own ceiling for a fields-bearing search. */
+const SEARCH_PAGE_SIZE = 100;
+
+/** Sprint fields asked for per search. One per team-managed project, so a big
+ *  site has many; past this the URL grows for fields no synced board uses. */
+const MAX_SPRINT_FIELDS = 20;
+
+/** Sprints read off one board — bounds a decade of history on a busy board. */
+const MAX_BOARD_SPRINTS = 500;
+
+/** Ids per page of the reconciliation sweep. Jira allows far more for an
+ *  id-only search than for one carrying fields. */
+const ID_PAGE_SIZE = 1000;
+
+/** Pages the reconciliation sweep will walk. Past this it refuses to answer
+ *  rather than hand back a partial set that reads as "these cards are gone". */
+const MAX_RECONCILE_PAGES = 20;
 
 /** A non-2xx answer from Jira, carrying the status so a caller can react to a
  *  specific one (a 400 means the request body was refused, not the request). */
@@ -307,42 +343,195 @@ export class JiraClient {
     return columns;
   }
 
-  /** One page of the board's issues (backlog included — subtract it via
-   *  `listBacklogIssueIds`), optionally narrowed by JQL. */
-  async listBoardIssues(params: {
-    boardId: string;
-    jql: string;
-    startAt: number;
-  }): Promise<{ issues: JiraIssue[]; total: number }> {
-    const query = new URLSearchParams({
-      startAt: String(params.startAt),
-      maxResults: "100",
-      jql: params.jql,
-      fields: ISSUE_FIELDS,
-    });
-    const page = await this.request<{ issues?: JiraIssue[]; total: number }>(
-      `/rest/agile/1.0/board/${assertBoardId(params.boardId)}/issue?${query}`,
+  /**
+   * The JQL that defines what a board covers — its saved filter's own query,
+   * with any `ORDER BY` trimmed so the caller can AND onto it.
+   *
+   * The filter, not `project = <the board's project>`: a board scoped to one
+   * team inside a shared project, or spanning several projects, is only
+   * described by its filter, and pulling its whole project instead would put
+   * another team's issues on the customer's board.
+   *
+   * Which is why an unreadable filter FAILS rather than falling back to the
+   * project — a filter can be shared with fewer people than the board it
+   * drives, and the safe answer to "I can't see the scope" is to stop, not to
+   * guess a wider one. The tenant sees it in `last_sync_error` and shares the
+   * filter. Only a board with no filter at all (`/configuration` says so) is
+   * scoped by its project, because then nothing narrower exists.
+   */
+  async getBoardScopeJql(boardId: string): Promise<string> {
+    const id = assertBoardId(boardId);
+    const config = await this.request<{ filter?: { id?: string } | null }>(
+      `/rest/agile/1.0/board/${id}/configuration`,
     );
-    return { issues: page.issues ?? [], total: page.total };
+    const filterId = config.filter?.id;
+    if (filterId && /^\d+$/.test(String(filterId))) {
+      let jql: string;
+      try {
+        const filter = await this.request<{ jql?: string }>(
+          `/rest/api/3/filter/${filterId}`,
+        );
+        jql = stripOrderBy(filter.jql ?? "");
+      } catch (cause) {
+        throw new Error(
+          `Jira board ${id} is driven by filter ${filterId}, which these credentials cannot read — share that filter with the integration's account (syncing the board's project instead would pull in issues that are not on this board)`,
+          { cause },
+        );
+      }
+      if (jql) return jql;
+    }
+    const board = await this.request<{
+      location?: { projectKey?: string } | null;
+    }>(`/rest/agile/1.0/board/${id}`);
+    const projectKey = board.location?.projectKey;
+    if (!projectKey) {
+      throw new Error(
+        `Jira board ${id} exposes neither a filter nor a project — nothing to sync`,
+      );
+    }
+    return `project = ${JSON.stringify(projectKey)}`;
   }
 
-  /** Ids of issues sitting in the board's Backlog tab — they have normal
-   *  statuses but are NOT visible board cards. */
-  async listBacklogIssueIds(boardId: string): Promise<Set<string>> {
+  /**
+   * Every Sprint custom field on the site, resolved once per client.
+   *
+   * Plural because Sprint is per-project on Cloud: each team-managed project
+   * gets its own, so picking one and reading it off every issue would report
+   * "no sprint" for every card on a board driven by a different project's
+   * field. All of them are requested and whichever the issue carries wins.
+   *
+   * Cached as a promise so concurrent callers cost one request. NOT
+   * error-swallowing: an empty list means "this site has no sprints", and
+   * pretending a failed lookup means the same thing would clear the sprint of
+   * every card the run touches.
+   */
+  private sprintFieldsPromise: Promise<string[]> | null = null;
+
+  sprintFieldIds(): Promise<string[]> {
+    this.sprintFieldsPromise ??= this.request<
+      Array<{ id: string; schema?: { custom?: string } | null }>
+    >("/rest/api/3/field").then((fields) => {
+      const ids = findSprintFieldIds(fields);
+      if (ids.length > MAX_SPRINT_FIELDS) {
+        console.warn(
+          `[jira] site has ${ids.length} Sprint fields; reading the first ${MAX_SPRINT_FIELDS}, so cards driven by the rest will sync without a sprint`,
+        );
+      }
+      return ids.slice(0, MAX_SPRINT_FIELDS);
+    });
+    return this.sprintFieldsPromise;
+  }
+
+  /**
+   * Every issue id currently in scope, for the reconciliation pass.
+   *
+   * Ids only, which is why it can ask for far bigger pages than
+   * {@link searchIssues}: this is a set-membership question ("is this card's
+   * issue still on the board?"), and getting it in two requests instead of
+   * thirty is what makes it affordable on every tick.
+   *
+   * An issue Jira has deleted or archived is absent here while
+   * `GET /issue/{key}` still answers 200 for the archived case — so absence
+   * from THIS set, not a 404 probe per card, is the signal.
+   */
+  async searchIssueIds(jql: string): Promise<Set<string>> {
     const ids = new Set<string>();
-    let startAt = 0;
-    while (ids.size < 5_000) {
-      const page = await this.request<{
+    let nextPageToken: string | undefined;
+    // Pages, not `ids.size`: a page that repeats ids it already sent grows the
+    // set by nothing and would spin here forever.
+    for (let page = 0; page < MAX_RECONCILE_PAGES; page++) {
+      const query = new URLSearchParams({
+        jql,
+        maxResults: String(ID_PAGE_SIZE),
+        fields: "id",
+      });
+      if (nextPageToken) query.set("nextPageToken", nextPageToken);
+      const result = await this.request<{
         issues?: Array<{ id: string }>;
-        total: number;
-      }>(
-        `/rest/agile/1.0/board/${assertBoardId(boardId)}/backlog?startAt=${startAt}&maxResults=100&fields=id`,
-      );
-      for (const issue of page.issues ?? []) ids.add(issue.id);
-      startAt += page.issues?.length ?? 0;
-      if (startAt >= page.total || (page.issues?.length ?? 0) === 0) break;
+        nextPageToken?: string | null;
+      }>(`/rest/api/3/search/jql?${query}`);
+      for (const issue of result.issues ?? []) ids.add(issue.id);
+      nextPageToken = result.nextPageToken ?? undefined;
+      if (!nextPageToken) return ids;
     }
-    return ids;
+    // Truncated: the caller must not read absence as "deleted" off a partial set.
+    throw new Error(
+      `Jira scope exceeds ${MAX_RECONCILE_PAGES * ID_PAGE_SIZE} issues — refusing to reconcile against a partial list`,
+    );
+  }
+
+  /**
+   * Every sprint the board knows about, so a sprint that closed in Jira reads
+   * as closed here even when no issue in it changed.
+   *
+   * Deriving the mirror from the issues alone cannot do that: a sprint's state
+   * would only refresh when one of its issues happened to land in the
+   * watermark window, leaving a finished sprint labelled "current" forever.
+   *
+   * Empty for a board with no sprint support — Jira answers 400 to
+   * `/board/{id}/sprint` on a Kanban board, which is an answer, not a failure.
+   */
+  async listBoardSprints(boardId: string): Promise<JiraSprintRef[]> {
+    const id = assertBoardId(boardId);
+    const sprints: JiraSprintRef[] = [];
+    let startAt = 0;
+    while (sprints.length < MAX_BOARD_SPRINTS) {
+      let page: { values?: unknown[]; isLast?: boolean };
+      try {
+        page = await this.request<{ values?: unknown[]; isLast?: boolean }>(
+          `/rest/agile/1.0/board/${id}/sprint?startAt=${startAt}&maxResults=50`,
+        );
+      } catch (err) {
+        if (err instanceof JiraRequestError && err.status === 400) return [];
+        throw err;
+      }
+      const values = page.values ?? [];
+      sprints.push(...parseSprintRefs(values));
+      startAt += values.length;
+      if (page.isLast !== false || values.length === 0) break;
+    }
+    return sprints;
+  }
+
+  /**
+   * One page of a JQL search, newest pagination (`nextPageToken`).
+   *
+   * `/rest/api/3/search/jql` has no `total` and no `startAt` — it walks a
+   * cursor, which is also what makes it safe under a query ordered by `updated`
+   * while issues are being updated: an offset would skip or repeat rows as the
+   * result set shifts under it.
+   */
+  async searchIssues(params: {
+    jql: string;
+    nextPageToken?: string;
+  }): Promise<{ issues: JiraIssue[]; nextPageToken: string | null }> {
+    const sprintFields = await this.sprintFieldIds();
+    const query = new URLSearchParams({
+      jql: params.jql,
+      maxResults: String(SEARCH_PAGE_SIZE),
+      fields: [ISSUE_FIELDS, ...sprintFields].join(","),
+    });
+    if (params.nextPageToken) query.set("nextPageToken", params.nextPageToken);
+    const page = await this.request<{
+      issues?: Array<{
+        id: string;
+        key: string;
+        fields: JiraIssueFields & Record<string, unknown>;
+      }>;
+      nextPageToken?: string | null;
+    }>(`/rest/api/3/search/jql?${query}`);
+    return {
+      issues: (page.issues ?? []).map((issue) => ({
+        ...issue,
+        // First field that carries any sprint: only the issue's own project's
+        // Sprint field is populated, the rest come back null.
+        sprints:
+          sprintFields
+            .map((field) => parseSprintRefs(issue.fields[field]))
+            .find((refs) => refs.length > 0) ?? [],
+      })),
+      nextPageToken: page.nextPageToken ?? null,
+    };
   }
 
   /** Transitions available from the issue's CURRENT status — Jira never sets
@@ -607,33 +796,232 @@ function collectMentions(body: unknown, ids: Set<string>): void {
   }
 }
 
-/** Jira rich body → text the cards can render. The Agile API returns
- *  v2-style STRING bodies (wiki markup — converted to markdown); REST v3
- *  returns an ADF tree, which is flattened: text nodes concatenated,
- *  doc-level blocks separated by blank lines. ADF marks, tables, and media
- *  are dropped — the card links back to the issue for full fidelity. */
+interface AdfNode {
+  type?: string;
+  text?: string;
+  attrs?: Record<string, unknown> & MentionAttrs;
+  content?: unknown[];
+}
+
+function adfNode(value: unknown): AdfNode | null {
+  return value && typeof value === "object" ? (value as AdfNode) : null;
+}
+
+function adfChildren(node: AdfNode): unknown[] {
+  return Array.isArray(node.content) ? node.content : [];
+}
+
+function attrText(node: AdfNode, key: string): string {
+  const value = node.attrs?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * The inline run of a node: text, breaks, mentions, and the small widgets ADF
+ * uses for links, emoji and dates.
+ *
+ * Marks (bold, links, code) are dropped: the card is a summary that links back
+ * to the issue, and re-deriving `[text](href)` from mark ranges is a different
+ * job from keeping the body readable. Anything unrecognized recurses, so a node
+ * type Atlassian adds later still contributes its text instead of vanishing.
+ */
+function inlineText(
+  value: unknown,
+  names: ReadonlyMap<string, string>,
+): string {
+  const node = adfNode(value);
+  if (!node) return "";
+  switch (node.type) {
+    case "text":
+      return node.text ?? "";
+    case "hardBreak":
+      return "\n";
+    case "mention":
+      return mentionText(node.attrs, names);
+    case "emoji":
+      return attrText(node, "text") || attrText(node, "shortName");
+    case "inlineCard":
+    case "blockCard":
+      return attrText(node, "url");
+    case "date":
+      return attrText(node, "timestamp");
+    case "status":
+      return attrText(node, "text");
+    default:
+      return adfChildren(node)
+        .map((child) => inlineText(child, names))
+        .join("");
+  }
+}
+
+/** Indent every line but the first, so a list item's second paragraph stays
+ *  inside the item instead of ending it. Blank lines are left blank rather than
+ *  padded — the separator between an item's paragraphs must not carry trailing
+ *  whitespace. */
+function hangingIndent(text: string, width: number): string {
+  const pad = " ".repeat(width);
+  return text
+    .split("\n")
+    .map((line, index) => (index === 0 || line === "" ? line : pad + line))
+    .join("\n");
+}
+
+function prefixLines(text: string, prefix: string): string {
+  return text
+    .split("\n")
+    .map((line) => (line === "" ? prefix.trimEnd() : prefix + line))
+    .join("\n");
+}
+
+/** One list, its items marked and their continuation lines indented under the
+ *  marker. `marker` decides bullet vs number vs checkbox. */
+function listText(
+  node: AdfNode,
+  names: ReadonlyMap<string, string>,
+  marker: (item: AdfNode, index: number) => string,
+): string {
+  const items = adfChildren(node)
+    .map(adfNode)
+    .filter((item): item is AdfNode => item !== null);
+  return items
+    .map((item, index) => {
+      const bullet = marker(item, index);
+      const body = blockTexts(adfChildren(item), names).join("\n\n");
+      return bullet + hangingIndent(body, bullet.length);
+    })
+    .join("\n");
+}
+
+/**
+ * A table cell flattened to one line: a newline or a bare pipe would each break
+ * the row apart, so they are folded and escaped rather than emitted.
+ *
+ * Backslashes are escaped BEFORE pipes, and the order is load-bearing. A cell
+ * reading `a\|b` would otherwise come out as `a\\|b`, where markdown reads the
+ * pair as one literal backslash and the pipe as a live column separator — the
+ * exact break the escape exists to prevent.
+ */
+function cellText(value: unknown, names: ReadonlyMap<string, string>): string {
+  const node = adfNode(value);
+  if (!node) return "";
+  return blockTexts(adfChildren(node), names)
+    .join(" ")
+    .replace(/\s*\n\s*/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .trim();
+}
+
+/**
+ * An ADF table as a markdown one.
+ *
+ * The delimiter row goes under the first row whether or not it is made of
+ * header cells: markdown has no way to render a table without one, and a body
+ * row promoted to a header reads far better than a table that does not render.
+ */
+function tableText(node: AdfNode, names: ReadonlyMap<string, string>): string {
+  const rows = adfChildren(node)
+    .map(adfNode)
+    .filter((row): row is AdfNode => row?.type === "tableRow")
+    .map((row) => adfChildren(row).map((cell) => cellText(cell, names)));
+  if (rows.length === 0) return "";
+  const width = Math.max(...rows.map((row) => row.length));
+  const line = (cells: string[]) =>
+    `| ${[...cells, ...Array(width - cells.length).fill("")].join(" | ")} |`;
+  const [header, ...body] = rows as [string[], ...string[][]];
+  return [
+    line(header),
+    `| ${Array(width).fill("---").join(" | ")} |`,
+    ...body.map(line),
+  ].join("\n");
+}
+
+/** The block-level nodes of one container, each rendered whole, with the empty
+ *  ones dropped so a stray media node does not leave a blank paragraph. */
+function blockTexts(
+  values: unknown[],
+  names: ReadonlyMap<string, string>,
+): string[] {
+  return values
+    .map((value) => blockText(value, names))
+    .filter((text) => text.trim() !== "");
+}
+
+/**
+ * One block, rendered as the markdown the card's description field is written
+ * in (that is already the contract — a v2 wiki body goes through
+ * {@link wikiToMarkdown}).
+ *
+ * Every container that holds siblings has to say how they are separated. The
+ * previous version answered that only for `doc` and concatenated everywhere
+ * else, so a table came out as its cells run together and a list as its items
+ * run together — the text was all present and none of it was readable.
+ */
+function blockText(value: unknown, names: ReadonlyMap<string, string>): string {
+  const node = adfNode(value);
+  if (!node) return "";
+  switch (node.type) {
+    case "doc":
+      return blockTexts(adfChildren(node), names).join("\n\n");
+    case "heading": {
+      const level = Number(node.attrs?.level);
+      const depth = Number.isInteger(level)
+        ? Math.min(Math.max(level, 1), 6)
+        : 1;
+      return `${"#".repeat(depth)} ${inlineText(node, names)}`;
+    }
+    case "bulletList":
+      return listText(node, names, () => "- ");
+    case "orderedList": {
+      const start = Number(node.attrs?.order);
+      const first = Number.isInteger(start) && start > 0 ? start : 1;
+      return listText(node, names, (_item, index) => `${first + index}. `);
+    }
+    case "taskList":
+      return listText(node, names, (item) =>
+        attrText(item, "state") === "DONE" ? "- [x] " : "- [ ] ",
+      );
+    case "codeBlock":
+      return `\`\`\`${attrText(node, "language")}\n${inlineText(node, names)}\n\`\`\``;
+    case "blockquote":
+    case "panel":
+      return prefixLines(
+        blockTexts(adfChildren(node), names).join("\n\n"),
+        "> ",
+      );
+    case "rule":
+      return "---";
+    case "table":
+      return tableText(node, names);
+    case "expand":
+    case "nestedExpand": {
+      const title = attrText(node, "title").trim();
+      const body = blockTexts(adfChildren(node), names).join("\n\n");
+      return title ? `**${title}**\n\n${body}` : body;
+    }
+    case "media":
+      return "";
+    case "mediaSingle":
+    case "mediaGroup":
+      return blockTexts(adfChildren(node), names).join("\n\n");
+    default:
+      return inlineText(node, names);
+  }
+}
+
+/** Jira rich body → the markdown a card's description is written in. The Agile
+ *  API returns v2-style STRING bodies (wiki markup — converted by
+ *  {@link wikiToMarkdown}); REST v3 returns an ADF tree, rendered block by
+ *  block: headings, lists, task lists, code blocks, quotes and tables all keep
+ *  their shape. ADF marks and media are dropped — the card links back to the
+ *  issue for full fidelity. */
 export function jiraBodyToText(
   adf: unknown,
   names: ReadonlyMap<string, string> = new Map(),
 ): string {
   if (typeof adf === "string") return wikiToMarkdown(adf, names);
   if (!adf || typeof adf !== "object") return "";
-  const node = adf as {
-    type?: string;
-    text?: string;
-    attrs?: MentionAttrs;
-    content?: unknown[];
-  };
-  if (node.type === "text") return node.text ?? "";
-  if (node.type === "hardBreak") return "\n";
-  if (node.type === "mention") return mentionText(node.attrs, names);
-  const inner = (Array.isArray(node.content) ? node.content : []).map((child) =>
-    jiraBodyToText(child, names),
-  );
-  if (node.type === "doc") {
-    return inner.filter((text) => text.trim() !== "").join("\n\n");
-  }
-  return inner.join("");
+  return blockText(adf, names);
 }
 
 /**

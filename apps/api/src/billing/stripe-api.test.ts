@@ -42,15 +42,33 @@ describe("toStripeForm", () => {
 });
 
 describe("taxAndAddressParams", () => {
-  test("collects address + tax ID, and writes back only for a saved customer", () => {
+  test("collects address + a required CPF/CNPJ custom field", () => {
     const guest = toStripeForm(taxAndAddressParams(null));
     expect(guest.get("billing_address_collection")).toBe("required");
-    expect(guest.get("tax_id_collection[enabled]")).toBe("true");
+
+    // A no-op for BR buyers: the country isn't in Checkout's supported list.
+    expect(guest.has("tax_id_collection[enabled]")).toBe(false);
+    expect(guest.has("tax_id_collection[required]")).toBe(false);
+
+    expect(guest.get("custom_fields[0][key]")).toBe("taxid");
+    expect(guest.get("custom_fields[0][type]")).toBe("text");
+    expect(guest.get("custom_fields[0][label][type]")).toBe("custom");
+    expect(guest.get("custom_fields[0][label][custom]")).toBe("CPF / CNPJ");
+    // Pinned rather than left to Stripe's `false` default — it gates payment.
+    expect(guest.get("custom_fields[0][optional]")).toBe("false");
+    // Bare CPF (11 digits) through formatted CNPJ (18 chars).
+    expect(guest.get("custom_fields[0][text][minimum_length]")).toBe("11");
+    expect(guest.get("custom_fields[0][text][maximum_length]")).toBe("18");
+
     // Stripe rejects customer_update without a `customer` on the session.
     expect(guest.has("customer_update[address]")).toBe(false);
+  });
 
+  test("writes back to the customer only when one is saved", () => {
     const saved = toStripeForm(taxAndAddressParams("cus_1"));
     expect(saved.get("billing_address_collection")).toBe("required");
+    expect(saved.get("custom_fields[0][key]")).toBe("taxid");
+    expect(saved.get("custom_fields[0][optional]")).toBe("false");
     // Required by Stripe once a saved customer meets address collection.
     expect(saved.get("customer_update[address]")).toBe("auto");
     expect(saved.get("customer_update[name]")).toBe("auto");

@@ -60,6 +60,22 @@ export function isManifestRunnableResolveType(
 }
 
 /**
+ * Whether a decofile key is a module resolveType rather than a user-given block
+ * name — i.e. a system default resolvable (`site/loaders/products.ts`) or a
+ * Tanstack bare invoke-by-key alias (`site/loaders/CheckStock`). These are not
+ * saved blocks the user created, so the catalog skips them. Arbitrary display
+ * names — even ones containing "/" like `Estampas / Flags` — return false.
+ */
+function isModuleResolveTypeKey(
+  meta: LiveMeta,
+  key: string,
+  kind: RunnableKind,
+): boolean {
+  if (/\.tsx?$/.test(key)) return true;
+  return isManifestRunnableResolveType(meta, key, kind);
+}
+
+/**
  * All manifest resolveTypes of the given runnable kind (loaders/actions). Unlike
  * {@link listAvailableRunnables} this is the raw set — no hidden/preview
  * filtering — for callers that need to pattern-match against every registered
@@ -197,7 +213,8 @@ export function listSavedRunnables(
   const entries: SavedRunnableEntry[] = [];
 
   for (const [key, val] of Object.entries(decofile)) {
-    if (key.includes("/")) continue;
+    // Skip module-key defaults/aliases; keep user names with "/" ("Estampas / Flags").
+    if (isModuleResolveTypeKey(meta, key, kind)) continue;
     if (isAutoPreviewBlockKey(key)) continue;
     if (!val || typeof val !== "object" || Array.isArray(val)) continue;
 

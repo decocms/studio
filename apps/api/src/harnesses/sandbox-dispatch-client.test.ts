@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { withModelMetadata } from "./with-model-metadata";
 import {
   describeTermination,
@@ -8,6 +9,8 @@ import {
   errorForTerminal,
   harnessRunsInSandbox,
   isRunSuperseded,
+  isStudioOwnedConnection,
+  selectRunConnections,
   isUnreachableStatus,
   ndjsonLines,
   pushSandboxEnv,
@@ -39,6 +42,67 @@ const collect = async (it: AsyncIterable<UIMessageChunk>) => {
   for await (const c of it) out.push(c);
   return out;
 };
+
+describe("isStudioOwnedConnection", () => {
+  const orgId = "org_1";
+
+  test.each([
+    ["self", WellKnownOrgMCPId.SELF],
+    ["registry", WellKnownOrgMCPId.REGISTRY],
+    ["community registry", WellKnownOrgMCPId.COMMUNITY_REGISTRY],
+    ["dev assets", WellKnownOrgMCPId.DEV_ASSETS],
+    ["commerce discovery", WellKnownOrgMCPId.COMMERCE_DISCOVERY],
+  ])("excludes the %s connection", (_name, wellKnownId) => {
+    expect(isStudioOwnedConnection(orgId, wellKnownId(orgId))).toBe(true);
+  });
+
+  test("does not exclude a real user-configured connection", () => {
+    expect(isStudioOwnedConnection(orgId, "conn_abc123")).toBe(false);
+  });
+});
+
+describe("selectRunConnections", () => {
+  const organizationId = "org_1";
+  const connections = [
+    { id: "conn_github", status: "active" },
+    { id: "conn_vtex", status: "active" },
+    { id: "conn_broken", status: "error" },
+    { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
+  ];
+
+  test("mounts the agent's own connections without the org-wide flag", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set(["conn_github", "conn_broken"]),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_github"]);
+  });
+
+  test("mounts nothing when the agent aggregates nothing and the org opted out", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set<string>(),
+        connections,
+      }),
+    ).toEqual([]);
+  });
+
+  test("the org-wide flag adds the rest, minus Studio's own and erroring ones", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: true,
+        ownIds: new Set<string>(),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_github", "conn_vtex"]);
+  });
+});
 
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
@@ -156,6 +220,26 @@ describe("ndjsonLines", () => {
     const seen: unknown[] = [];
     for await (const line of ndjsonLines(body)) seen.push(line);
     expect(seen).toEqual([{ chunks: [], note: "日本語" }]);
+  });
+
+  test("a runaway line without a newline is refused instead of buffered forever", async () => {
+    // No trailing newline — the whole thing is one buffered, unterminated tail.
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(`{"x":"${"a".repeat(70_000_000)}`),
+        );
+        controller.close();
+      },
+    });
+    let thrown: unknown;
+    try {
+      for await (const _ of ndjsonLines(body)) void _;
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toMatch(/without a newline/);
   });
 
   test("a non-transport read failure stays terminal", async () => {

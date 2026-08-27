@@ -30,6 +30,17 @@ interface ItemCrumb {
   arrayLabel?: string;
   /** The array's own property key, recorded at drill-in for exact ownership resolution (no label guessing). */
   fieldKey?: string;
+  /**
+   * The chain of block-ref (section/loader) CONTAINER keys this item lives
+   * inside, outermost first — recorded as the trail bubbles up through each
+   * confusable container ({@link recordContainerOwner}). It's the block-ref
+   * analogue of {@link arrayLabel}: an INVISIBLE structural disambiguator that
+   * rides on the item crumb instead of a standalone "Children"-style crumb, so
+   * two sibling sections (e.g. `children` = MountedPDP vs `fallback` = NotFound)
+   * resolve deterministically by KEY — no schema-title/value guessing — and
+   * WITHOUT an extra navigation stop the user must click back through.
+   */
+  ownerPath?: string[];
 }
 
 export type Crumb = string | ItemCrumb;
@@ -52,6 +63,11 @@ function crumbArrayLabel(crumb: Crumb): string | undefined {
 /** The array's own property key recorded on an item crumb at drill-in, if any. */
 function crumbFieldKey(crumb: Crumb): string | undefined {
   return isItemCrumb(crumb) ? crumb.fieldKey : undefined;
+}
+
+/** The block-ref container ownership chain recorded on an item crumb, if any. */
+function crumbOwnerPath(crumb: Crumb): string[] | undefined {
+  return isItemCrumb(crumb) ? crumb.ownerPath : undefined;
 }
 
 /**
@@ -97,6 +113,33 @@ export function prependCrumbIfAbsent(label: string, trail: Crumb[]): Crumb[] {
     return trail;
   }
   return [label, ...trail];
+}
+
+/**
+ * Record `containerKey` as the block-ref CONTAINER that owns every array item in
+ * `trail`, by prepending it to each item crumb's {@link ItemCrumb.ownerPath}. Used
+ * in place of {@link prependCrumbIfAbsent} for block-ref (section/loader) fields:
+ * where {@link prependCrumbIfAbsent} stamps a VISIBLE ancestor crumb the user has
+ * to click back through, this hangs the same ownership signal on the item crumb
+ * INVISIBLY (like `arrayLabel`), so the trail flattens to `[section, item]` and
+ * back from the item lands on the parent section, never on a bare nested-section
+ * stop.
+ *
+ * Prepend keeps the chain outermost-first as the trail bubbles up through nested
+ * containers; it's idempotent per key (re-stamping on a maintenance render — the
+ * item crumb already names this container at the head — is a no-op), so it never
+ * duplicates. Plain string crumbs pass through untouched.
+ */
+export function recordContainerOwner(
+  containerKey: string,
+  trail: Crumb[],
+): Crumb[] {
+  return trail.map((crumb) => {
+    if (!isItemCrumb(crumb)) return crumb;
+    const owner = crumb.ownerPath ?? [];
+    if (owner[0] === containerKey) return crumb;
+    return { ...crumb, ownerPath: [containerKey, ...owner] };
+  });
 }
 
 function labelsMatch(a: string, b: string): boolean {
@@ -551,12 +594,23 @@ function resolveActiveFieldKeyInScope(
   if (breadcrumbPath.length === 0) return null;
   const head = crumbLabel(breadcrumbPath[0]!);
 
-  // Structural fast-path: an item crumb records the array's own key at drill-in, so a drill-down field it names resolves by exact key match — no label/title/arrayLabel guessing. Label matching below stays the fallback for older/context crumbs.
-  for (const key of keys) {
-    const schema = properties[key];
-    if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
-    if (breadcrumbPath.some((crumb) => crumbFieldKey(crumb) === key))
-      return key;
+  // Structural fast-path: an item crumb records the array's own key at drill-in, so a drill-down field it names resolves by exact key match — no label/title/arrayLabel guessing. Only the OUTERMOST crumb owns this scope; a deeper crumb (a nested array with the SAME key name, e.g. `tabs[].cards` vs a top-level `cards`) belongs to a nested scope and must not hijack the match. Label matching below stays the fallback for older/context crumbs.
+  const headFieldKey = crumbFieldKey(breadcrumbPath[0]!);
+  if (headFieldKey != null) {
+    for (const key of keys) {
+      const schema = properties[key];
+      if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
+      if (key === headFieldKey) return key;
+    }
+  }
+
+  // Structural block-ref fast-path: an item carries its section container's key in `ownerPath` (see recordContainerOwner), so the owning block-ref resolves by exact key — the invisible replacement for the old standalone ancestor crumb. Only ONE of this scope's block-refs can legitimately be an owner (an item lives in one container); if a deeper container's key collides with a sibling's here, resolution is ambiguous, so fall through to the heuristics rather than guess by key order. Older crumbs without ownerPath fall through too.
+  const owners = breadcrumbPath.flatMap((crumb) => crumbOwnerPath(crumb) ?? []);
+  if (owners.length > 0) {
+    const ownedHere = keys.filter(
+      (key) => properties[key]?.type === "block-ref" && owners.includes(key),
+    );
+    if (ownedHere.length === 1) return ownedHere[0]!;
   }
 
   for (const key of keys) {

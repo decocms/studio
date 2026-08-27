@@ -5,7 +5,10 @@ import {
   type LiveMeta,
 } from "./resolve-schema";
 import { normalizePagePath } from "./page-path-utils";
-import { listSavedSectionBlocks } from "./section-catalog";
+import {
+  listSavedSectionBlocks,
+  underlyingSectionResolveType,
+} from "./section-catalog";
 import { extractRedirects } from "@/components/sandbox/content/redirect-data";
 
 export interface PageEntry {
@@ -288,8 +291,7 @@ export function extractGlobalSections(
   return listSavedSectionBlocks(meta, decofile)
     .map((entry) => {
       const block = decofile[entry.resolveType] as Record<string, unknown>;
-      const resolveType =
-        typeof block.__resolveType === "string" ? block.__resolveType : "";
+      const resolveType = underlyingSectionResolveType(meta, block);
       return {
         key: entry.resolveType,
         name: entry.description ?? globalSectionLabel(entry.resolveType, block),

@@ -3,19 +3,21 @@
 //! the REAL production web shell (`apps/web/src`), and this module is
 //! where local-api answers, LOCALLY, the specific narrow set of routes that
 //! shell's thread, native-terminal, and sandbox surfaces need served from local
-//! SQLite + the native runtime instead of the (unmodified,
-//! possibly-production) upstream mesh. Every route below cites
+//! SQLite + the native runtime instead of upstream.
+//!
+//! Every route below cites
 //! the native interception contract (the wire-contract recon)
 //! for the exact shape it emulates — this module is that recon turned into
 //! code, not a reinterpretation of it.
 //!
 //! [`try_intercept`] is [`crate::routes::upstream::proxy`]'s FIRST decision,
 //! before the `/api/auth/*` cookie-relay branch or the ordinary
-//! bearer-forwarding branch ever run: intercepted routes need neither — they
-//! never talk to upstream at all. Anything this module doesn't recognize
-//! returns `None`, and the caller falls through to the unmodified proxy
-//! behavior (bearer + persisted-cookie forwarding). See each submodule's own
-//! doc comment for its slice of the table:
+//! bearer-forwarding branch ever runs. Most intercepted routes are local-only;
+//! sandbox lifecycle interception deliberately makes authenticated upstream
+//! tool calls for virtual-MCP configuration while keeping lifecycle ownership
+//! local. Anything this module doesn't recognize returns `None`, and the caller
+//! falls through to the unmodified proxy behavior (bearer + persisted-cookie
+//! forwarding). See each submodule's own doc comment for its slice of the table:
 //!
 //! | Route(s) | Map section | Submodule |
 //! | --- | --- | --- |
@@ -25,8 +27,11 @@
 //! | `POST /api/:org/tools/COLLECTION_THREADS_UPDATE` | §3.1 | [`thread_tools`] |
 //! | `POST /api/:org/tools/COLLECTION_THREADS_DELETE` | §3.1 | [`thread_tools`] |
 //! | `POST /api/:org/tools/COLLECTION_THREAD_MESSAGES_LIST` | §3.1 | [`thread_tools`] |
+//! | `POST /api/:org/tools/{SANDBOX_START,SANDBOX_DELETE}` | native sandbox lifecycle | [`sandbox_lifecycle`] |
+//! | `POST /api/:org/tools/{COLLECTION_VIRTUAL_MCP_GET,COLLECTION_VIRTUAL_MCP_LIST}` | upstream virtual MCP enriched with native sandbox state | [`sandbox_lifecycle`] |
 //! | `GET /api/:org/watch` | local thread lifecycle SSE | [`watch`] |
 //! | `POST /api/:org/sandbox/:virtualMcpId/:branch/{read,write,unlink,mkdir,rename,glob,grep}` | native sandbox filesystem bridge | [`sandbox_fs`] |
+//! | any `/api/:org/sandbox/*` carrying [`FAST_PREVIEW_HEADER`] | sandbox-less by definition | never intercepted (`None`) |
 //! | any `/api/:org/decopilot/*` | retired native chat transport | local `410`, never forwarded |
 //! | any other `/api/:org/tools/:toolName` | — | not intercepted (`None`) |
 //!
@@ -56,7 +61,6 @@
 //! point about `virtual_mcp_id`: these are opaque strings scoping purely
 //! local data, never round-tripped against upstream.
 
-mod agent_sessions;
 mod dev_server;
 mod git_assist;
 mod preview_invoke;
@@ -74,21 +78,27 @@ pub(crate) use sandbox_lifecycle::{
 pub(crate) mod watch;
 
 use axum::body::Bytes;
-use axum::http::Method;
+use axum::http::{HeaderMap, Method};
 use axum::response::{IntoResponse, Response};
 
 use crate::error::ApiError;
 use crate::state::AppState;
 
-/// The single entry point `routes/upstream.rs::proxy` calls before its
-/// ordinary `/api/auth/*` / bearer-forwarding branches. `path` is the bare
-/// request path (e.g. `/api/acme/tools/COLLECTION_THREADS_LIST` or
-/// `/api/acme/decopilot/threads/t1/messages` — no `/upstream` prefix to
-/// strip anymore) with its query string supplied separately for `/watch`'s
-/// optional `types` filter. Other intercepted routes do not read query
-/// parameters — `COLLECTION_THREADS_LIST`'s pagination/filter fields all ride
-/// in the POST body, per `tools-rest.ts`'s "body = tool arguments verbatim"
-/// contract, map §3.1.
+/// Header the webview sets when the project it is acting for is Fast Preview.
+///
+/// A routing hint, not a trust boundary: it only decides whether to answer
+/// LOCALLY, and upstream re-derives the flag from the vMCP's own metadata
+/// before serving anything. A wrong value can therefore only send the request
+/// to the authority, never around it.
+pub const FAST_PREVIEW_HEADER: &str = "x-deco-fast-preview";
+
+fn declares_fast_preview(headers: &HeaderMap) -> bool {
+    headers
+        .get(FAST_PREVIEW_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+}
+
 /// Whether `<segment>` in `/api/<segment>/<rest…>` is really an organization.
 ///
 /// NOT every second path segment is one: `/api/config`, `/api/auth/*` and the
@@ -104,12 +114,22 @@ fn is_org_scoped(segment: &str, rest: &[&str]) -> bool {
     !segment.starts_with('_') && rest.first() == Some(&"tools")
 }
 
+/// The single entry point `routes/upstream.rs::proxy` calls before its
+/// ordinary `/api/auth/*` / bearer-forwarding branches. `path` is the bare
+/// request path (e.g. `/api/acme/tools/COLLECTION_THREADS_LIST` or
+/// `/api/acme/decopilot/threads/t1/messages` — no `/upstream` prefix to
+/// strip anymore) with its query string supplied separately for `/watch`'s
+/// optional `types` filter. Other intercepted routes do not read query
+/// parameters — `COLLECTION_THREADS_LIST`'s pagination/filter fields all ride
+/// in the POST body, per `tools-rest.ts`'s "body = tool arguments verbatim"
+/// contract, map §3.1.
 pub async fn try_intercept(
     state: &AppState,
     method: &Method,
     path: &str,
     query: Option<&str>,
     body: &Bytes,
+    headers: &HeaderMap,
 ) -> Option<Response> {
     let mut segs = path.trim_start_matches('/').split('/');
     if segs.next()? != "api" {
@@ -117,6 +137,17 @@ pub async fn try_intercept(
     }
     let org = segs.next().filter(|s| !s.is_empty())?;
     let rest: Vec<&str> = segs.collect();
+
+    // Fast Preview is sandbox-less by definition, so nothing under
+    // `/sandbox/*` can be answered from this machine — upstream serves those
+    // routes from the GitHub API. Declining here rather than letting each
+    // sandbox interceptor decide is what makes the flag authoritative: the
+    // worktree handle is derived from the REPOSITORY, so a desktop sandbox
+    // left over from vibecoding on the same repo otherwise claims the route
+    // for a branch it has never checked out.
+    if rest.first().copied() == Some("sandbox") && declares_fast_preview(headers) {
+        return None;
+    }
 
     // Start warming this organization's filesystem. A genuinely org-scoped
     // request here is exactly "the app booted into this org" or "the user
@@ -141,10 +172,6 @@ pub async fn try_intercept(
     }
 
     if let Some(response) = sandbox_ops::try_dispatch(state, method, &rest, query, body).await {
-        return Some(response);
-    }
-
-    if let Some(response) = agent_sessions::try_dispatch(state, method, &rest, query).await {
         return Some(response);
     }
 
@@ -255,6 +282,30 @@ mod tests {
         assert!(is_org_scoped("gimenes-guarana-works", &["tools", "X"]));
     }
 
+    /// The regression: the worktree handle is derived from the REPOSITORY, so
+    /// a desktop sandbox left over from vibecoding on the same repo claimed
+    /// `/sandbox/*/git/*` for a Fast Preview branch it had never checked out
+    /// and answered `repository not initialized` — forever, since the query
+    /// stopped retrying.
+    #[test]
+    fn fast_preview_is_declared_by_the_header_only_when_set() {
+        use axum::http::{HeaderMap, HeaderValue};
+
+        let mut on = HeaderMap::new();
+        on.insert(super::FAST_PREVIEW_HEADER, HeaderValue::from_static("1"));
+        assert!(super::declares_fast_preview(&on));
+
+        let mut worded = HeaderMap::new();
+        worded.insert(super::FAST_PREVIEW_HEADER, HeaderValue::from_static("TRUE"));
+        assert!(super::declares_fast_preview(&worded));
+
+        let mut off = HeaderMap::new();
+        off.insert(super::FAST_PREVIEW_HEADER, HeaderValue::from_static("0"));
+        assert!(!super::declares_fast_preview(&off));
+
+        assert!(!super::declares_fast_preview(&HeaderMap::new()));
+    }
+
     use super::*;
 
     #[tokio::test]
@@ -267,6 +318,7 @@ mod tests {
             "/api/acme/tools/SOME_OTHER_TOOL",
             None,
             &Bytes::from_static(b"{}"),
+            &HeaderMap::new(),
         )
         .await;
         assert!(res.is_none());
@@ -276,17 +328,23 @@ mod tests {
     async fn non_org_scoped_paths_are_not_intercepted() {
         let dir = tempfile::tempdir().unwrap();
         let state = test_state(dir.path());
-        assert!(
-            try_intercept(&state, &Method::GET, "/api/config", None, &Bytes::new(),)
-                .await
-                .is_none()
-        );
+        assert!(try_intercept(
+            &state,
+            &Method::GET,
+            "/api/config",
+            None,
+            &Bytes::new(),
+            &HeaderMap::new(),
+        )
+        .await
+        .is_none());
         assert!(try_intercept(
             &state,
             &Method::GET,
             "/api/auth/get-session",
             None,
             &Bytes::new(),
+            &HeaderMap::new(),
         )
         .await
         .is_none());
@@ -302,6 +360,7 @@ mod tests {
             "/api/acme/decopilot/some-future-route",
             None,
             &Bytes::new(),
+            &HeaderMap::new(),
         )
         .await;
         let res = res

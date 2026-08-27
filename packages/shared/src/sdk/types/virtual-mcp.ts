@@ -76,6 +76,18 @@ export const VirtualMcpUILayoutTabSchema = z.object({
 export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
 
 /**
+ * How an agent offers content editing:
+ * - `off` — no CMS. The Content tab and the Preview toolbar's CMS toggle, the
+ *   two entry points, are not rendered. A UI gate only: the decofile stays
+ *   readable and the agent still edits content through its tools.
+ * - `manual` — the default. Editors open the CMS from Preview when they want it.
+ * - `auto` — Preview opens the CMS as soon as its metadata is ready to render.
+ */
+export const CmsModeSchema = z.enum(["off", "manual", "auto"]);
+
+export type CmsMode = z.infer<typeof CmsModeSchema>;
+
+/**
  * Layout-specific settings stored under `metadata.ui.layout`. Controls which
  * main view opens by default and which additional right-panel tabs are
  * permanently available for the agent.
@@ -97,16 +109,57 @@ export const VirtualMcpUILayoutSchema = z.object({
    */
   chatDefaultOpen: z.boolean().nullable().optional(),
   /**
-   * When true, the CMS (Blocks) panel auto-opens in the Preview as soon as its
-   * metadata is ready to render content. Off by default: absent / null / false
-   * → Preview stays on the site until the user opens the CMS manually. Only
-   * relevant for agents with a preview.
+   * @deprecated Superseded by `cms`. Still read as the fallback for agents
+   * configured before the tri-state existed — see `resolveCmsMode`. Writers
+   * set `cms` and null this out.
    */
   cmsDefaultOpen: z.boolean().nullable().optional(),
+  cms: CmsModeSchema.nullable()
+    .optional()
+    .describe(
+      "How this agent offers content editing. Absent falls back to cmsDefaultOpen.",
+    ),
   tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
 });
 
 export type VirtualMcpUILayout = z.infer<typeof VirtualMcpUILayoutSchema>;
+
+/**
+ * The CMS mode for an agent, resolving the legacy `cmsDefaultOpen` boolean the
+ * tri-state replaced. Every reader goes through this: `layout.cms` alone is
+ * wrong for agents configured before the enum, and reading both at a call site
+ * is how the two drift apart.
+ */
+export function resolveCmsMode(
+  layout:
+    | { cms?: CmsMode | null; cmsDefaultOpen?: boolean | null }
+    | null
+    | undefined,
+): CmsMode {
+  if (layout?.cms) return layout.cms;
+  return layout?.cmsDefaultOpen ? "auto" : "manual";
+}
+
+/**
+ * The layout that writing `mode` produces. Two settings can't survive the
+ * write: `cmsDefaultOpen`, which the mode supersedes, and a `defaultMainView`
+ * of Content, which `off` takes off the tab bar — an agent left pointing at it
+ * would land on a view with no way back to it. Every writer goes through this
+ * so the three can't drift.
+ */
+export function withCmsMode(
+  layout: VirtualMcpUILayout | null | undefined,
+  mode: CmsMode,
+): VirtualMcpUILayout {
+  const dropsContentView =
+    mode === "off" && layout?.defaultMainView?.type === "content";
+  return {
+    ...layout,
+    cms: mode,
+    cmsDefaultOpen: null,
+    ...(dropsContentView ? { defaultMainView: { type: "preview" } } : {}),
+  };
+}
 
 /**
  * Tile UI declared by a home agent. When present, the `/$org` home page
@@ -346,31 +399,20 @@ const GithubRepoSchema = z.object({
 
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
-/** The active sandbox provider kinds. */
-export type SandboxProviderKind = "agent-sandbox" | "user-desktop";
-export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
+/** The app surfaces that can own a sandbox-map entry. */
+type SandboxMapOwnerKind = "agent-sandbox" | "local-api";
 
-const sandboxProviderKindSchema = z.enum(["agent-sandbox", "user-desktop"]);
-const legacySandboxProviderKindSchema = z.enum([
-  "agent-sandbox",
-  "user-desktop",
-  "cluster",
-]);
-
-export function normalizeSandboxProviderKind(
-  kind: LegacySandboxProviderKind,
-): SandboxProviderKind {
-  return kind === "cluster" ? "agent-sandbox" : kind;
-}
-
+const SandboxMapOwnerKindSchema = z.enum(["agent-sandbox", "local-api"]);
 /**
  * A single sandbox record in the per-(user, branch, kind) sandbox map — the
  * provider-issued handle plus the preview URL the UI renders.
  *
- * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
- *  - agent-sandbox: daemon is reached via the Studio proxy; preview URL is the
- *    per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
- *  - user-desktop: daemon is reached directly via the user's link binary.
+ * The record's outer `sandboxMap` key identifies which app surface owns it:
+ *  - agent-sandbox: hosted Studio reaches the daemon through its proxy; the
+ *    preview URL is a per-claim HTTPRoute host or a local-development
+ *    port-forward.
+ *  - local-api: the native app's local-api owns lifecycle, filesystem, and
+ *    preview routing on the user's machine.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
  * server) have nothing to render. UI code MUST check before constructing
@@ -389,9 +431,8 @@ const SandboxRecordShape = {
     .nullable()
     .optional()
     .describe(
-      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for the agent-sandbox provider (routes through hosted ingress).",
+      "Direct sandbox API URL for runtimes that expose one. Equal to previewUrl for local-api; null/absent for AgentSandbox, which routes control traffic through hosted Studio.",
     ),
-  sandboxProviderKind: sandboxProviderKindSchema.optional(),
   createdAt: z
     .number()
     .optional()
@@ -424,54 +465,27 @@ const SandboxRecordShape = {
 
 export const SandboxRecordSchema = z.object(SandboxRecordShape);
 
-const LegacySandboxRecordSchema = z.object({
-  ...SandboxRecordShape,
-  sandboxProviderKind: legacySandboxProviderKindSchema.optional(),
-});
-
 export type SandboxRecord = z.infer<typeof SandboxRecordSchema>;
-
-/**
- * Parser for a single sandbox record. The public schema stays JSON-schema-safe
- * for MCP tools/list, so legacy provider values are normalized here instead of
- * with Zod transforms.
- */
-export function parseSandboxRecord(raw: unknown): SandboxRecord {
-  const parsed = LegacySandboxRecordSchema.parse(raw);
-  return SandboxRecordSchema.parse({
-    ...parsed,
-    sandboxProviderKind: parsed.sandboxProviderKind
-      ? normalizeSandboxProviderKind(parsed.sandboxProviderKind)
-      : undefined,
-  });
-}
 
 /**
  * Parse a `sandboxMap[user][branch]` cell into the kind-keyed v2 shape.
  *
- * Migration 087 rewrote every cell to the 3-level layout
- * (`sandboxProviderKind → SandboxRecord`) and migration 091 rewrote every
- * legacy kind value; this reader remains strict about retired values, while
- * still normalizing the legacy "cluster" key/value to "agent-sandbox".
+ * The only accepted outer keys are the two current app-surface owners.
  */
 export function parseBranchMap(
   raw: unknown,
-): Partial<Record<SandboxProviderKind, SandboxRecord>> {
+): Partial<Record<SandboxMapOwnerKind, SandboxRecord>> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const obj = raw as Record<string, unknown>;
 
-  const out: Partial<Record<SandboxProviderKind, SandboxRecord>> = {};
+  const out: Partial<Record<SandboxMapOwnerKind, SandboxRecord>> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!v || typeof v !== "object") continue;
-    if (k !== "cluster" && k !== "agent-sandbox" && k !== "user-desktop") {
+    if (k !== "agent-sandbox" && k !== "local-api") {
       continue;
     }
-    const kind = normalizeSandboxProviderKind(k);
     try {
-      if (k === "cluster" && out[kind]) {
-        continue;
-      }
-      out[kind] = parseSandboxRecord(v);
+      out[k] = SandboxRecordSchema.parse(v);
     } catch {
       // Skip malformed entries rather than throw — readers stay forgiving
       // about unexpected shapes within a known-key cell.
@@ -485,17 +499,17 @@ export function parseBranchMap(
  * Lookup: sandboxMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
  * Multiple threads on the same (userId, branch, kind) share one sandbox.
- * Hosted and desktop sandboxes can coexist on the same branch as siblings.
+ * Hosted and native sandboxes can coexist on the same branch as siblings.
  *
  * This exported schema intentionally has no transforms so it can be represented
  * in JSON Schema for MCP tools/list. Use `normalizeSandboxMap` when reading
- * persisted or legacy-shaped sandbox maps.
+ * persisted or otherwise untrusted sandbox maps.
  */
 export const SandboxMapSchema = z.record(
   z.string().describe("userId"),
   z.record(
     z.string().describe("branch"),
-    z.record(z.string().describe("sandboxProviderKind"), SandboxRecordSchema),
+    z.partialRecord(SandboxMapOwnerKindSchema, SandboxRecordSchema),
   ),
 );
 
@@ -819,9 +833,6 @@ export const VirtualMCPCreateDataSchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      sandboxMap: SandboxMapSchema.optional().describe(
-        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
-      ),
       knowledge: knowledgeMetadataField,
       siteSlug: z
         .string()
@@ -847,6 +858,15 @@ export const VirtualMCPCreateDataSchema = z.object({
       fastPreview: fastPreviewMetadataField,
     })
     .loose()
+    .superRefine((metadata, ctx) => {
+      if ("sandboxMap" in metadata) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["sandboxMap"],
+          message: "sandboxMap is managed by the sandbox lifecycle",
+        });
+      }
+    })
     .nullable()
     .optional()
     .describe("Additional metadata including MCP server instructions"),
@@ -915,9 +935,6 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      sandboxMap: SandboxMapSchema.optional().describe(
-        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
-      ),
       knowledge: knowledgeMetadataField,
       siteSlug: z
         .string()
@@ -943,6 +960,15 @@ export const VirtualMCPUpdateDataSchema = z.object({
       fastPreview: fastPreviewMetadataField,
     })
     .loose()
+    .superRefine((metadata, ctx) => {
+      if ("sandboxMap" in metadata) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["sandboxMap"],
+          message: "sandboxMap is managed by the sandbox lifecycle",
+        });
+      }
+    })
     .nullable()
     .optional()
     .describe("Additional metadata including MCP server instructions"),

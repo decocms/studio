@@ -28,12 +28,6 @@ const sample: Session = {
   createdAt: "2026-05-04T12:00:00.000Z",
 };
 
-describe("sessionPath", () => {
-  it("places session.json directly in the given data dir", () => {
-    expect(sessionPath("/tmp/x")).toBe("/tmp/x/session.json");
-  });
-});
-
 describe("writeSession + readSession", () => {
   it("round-trips a session object", async () => {
     await writeSession(dir, sample);
@@ -84,12 +78,6 @@ describe("per-studio session keying", () => {
     expect(await readSession(dir, stg.target)).toEqual(stg);
   });
 
-  it("falls back to the legacy session.json when no host-keyed file exists", async () => {
-    // The dev-link bootstrap writes the legacy single-file form.
-    await writeFile(sessionPath(dir), JSON.stringify(prod), { mode: 0o600 });
-    expect(await readSession(dir, prod.target)).toEqual(prod);
-  });
-
   it("clears every studio's session when no target is given", async () => {
     await writeSession(dir, prod);
     await writeSession(dir, stg);
@@ -113,14 +101,18 @@ describe("readSession", () => {
   });
 
   it("returns null and does not throw when the file is malformed JSON", async () => {
-    await writeFile(sessionPath(dir), "not-json", { mode: 0o600 });
+    await writeFile(sessionPath(dir, sample.target), "not-json", {
+      mode: 0o600,
+    });
     expect(await readSession(dir)).toBeNull();
   });
 
   it("returns null when the file is missing required fields", async () => {
-    await writeFile(sessionPath(dir), JSON.stringify({ target: "x" }), {
-      mode: 0o600,
-    });
+    await writeFile(
+      sessionPath(dir, sample.target),
+      JSON.stringify({ target: "x" }),
+      { mode: 0o600 },
+    );
     expect(await readSession(dir)).toBeNull();
   });
 

@@ -114,4 +114,239 @@ describe("useVoiceInput.startRecording", () => {
       configurable: true,
     });
   });
+
+  it("stops recording instead of busy-looping restarts on a fatal recognition error", async () => {
+    let startCalls = 0;
+    let recognition: {
+      start: () => void;
+      stop: () => void;
+      abort: () => void;
+      onerror?: (event: { error: string }) => void;
+      onend?: () => void;
+    };
+    win.SpeechRecognition = function () {
+      recognition = {
+        start() {
+          startCalls++;
+        },
+        stop() {},
+        abort() {},
+      };
+      return recognition;
+    } as unknown as typeof SpeechRecognition;
+
+    const originalAudioContext = win.AudioContext;
+    win.AudioContext = function () {
+      return {
+        createMediaStreamSource: () => ({ connect: () => {} }),
+        createAnalyser: () => ({
+          fftSize: 0,
+          smoothingTimeConstant: 0,
+          frequencyBinCount: 0,
+          getByteFrequencyData: () => {},
+        }),
+        close: () => Promise.resolve(),
+      };
+    };
+
+    const track = { stop: () => {} };
+    const originalGetUserMedia = navigator.mediaDevices?.getUserMedia;
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: () =>
+          Promise.resolve({
+            getTracks: () => [track],
+          } as unknown as MediaStream),
+      },
+      configurable: true,
+    });
+
+    // Stub the visualizer's rAF loop so it doesn't outlive the test.
+    const originalRaf = win.requestAnimationFrame;
+    const originalCaf = win.cancelAnimationFrame;
+    win.requestAnimationFrame = (() =>
+      1) as unknown as typeof win.requestAnimationFrame;
+    win.cancelAnimationFrame =
+      (() => {}) as unknown as typeof win.cancelAnimationFrame;
+
+    const { result } = renderHook(() => useVoiceInput());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(startCalls).toBe(1);
+
+    await act(async () => {
+      recognition.onerror?.({ error: "network" });
+      recognition.onend?.();
+    });
+
+    expect(result.current.status).toBe("idle");
+    // onend must not restart a recognizer that just fatally errored.
+    expect(startCalls).toBe(1);
+
+    win.AudioContext = originalAudioContext;
+    win.requestAnimationFrame = originalRaf;
+    win.cancelAnimationFrame = originalCaf;
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: { getUserMedia: originalGetUserMedia },
+      configurable: true,
+    });
+  });
+
+  it("ignores a cancelled recognizer's late error once a newer one has started", async () => {
+    const instances: Array<{
+      onerror?: (event: { error: string }) => void;
+      onend?: () => void;
+    }> = [];
+    win.SpeechRecognition = function () {
+      const instance: {
+        start: () => void;
+        stop: () => void;
+        abort: () => void;
+        onerror?: (event: { error: string }) => void;
+        onend?: () => void;
+      } = { start() {}, stop() {}, abort() {} };
+      instances.push(instance);
+      return instance;
+    } as unknown as typeof SpeechRecognition;
+
+    const originalAudioContext = win.AudioContext;
+    win.AudioContext = function () {
+      return {
+        createMediaStreamSource: () => ({ connect: () => {} }),
+        createAnalyser: () => ({
+          fftSize: 0,
+          smoothingTimeConstant: 0,
+          frequencyBinCount: 0,
+          getByteFrequencyData: () => {},
+        }),
+        close: () => Promise.resolve(),
+      };
+    };
+
+    const track = { stop: () => {} };
+    const originalGetUserMedia = navigator.mediaDevices?.getUserMedia;
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: () =>
+          Promise.resolve({
+            getTracks: () => [track],
+          } as unknown as MediaStream),
+      },
+      configurable: true,
+    });
+
+    const originalRaf = win.requestAnimationFrame;
+    const originalCaf = win.cancelAnimationFrame;
+    win.requestAnimationFrame = (() =>
+      1) as unknown as typeof win.requestAnimationFrame;
+    win.cancelAnimationFrame =
+      (() => {}) as unknown as typeof win.cancelAnimationFrame;
+
+    const { result } = renderHook(() => useVoiceInput());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    act(() => result.current.cancelRecording());
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(instances.length).toBe(2);
+    expect(result.current.status).toBe("recording");
+
+    // The cancelled recognizer's abort() resolves late as an "aborted" error.
+    act(() => instances[0]?.onerror?.({ error: "aborted" }));
+
+    expect(result.current.status).toBe("recording");
+
+    win.AudioContext = originalAudioContext;
+    win.requestAnimationFrame = originalRaf;
+    win.cancelAnimationFrame = originalCaf;
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: { getUserMedia: originalGetUserMedia },
+      configurable: true,
+    });
+  });
+
+  it("ignores a stale recognizer's late result once a newer one has started", async () => {
+    const instances: Array<{
+      onresult?: (event: unknown) => void;
+    }> = [];
+    win.SpeechRecognition = function () {
+      const instance: {
+        start: () => void;
+        stop: () => void;
+        abort: () => void;
+        onresult?: (event: unknown) => void;
+      } = { start() {}, stop() {}, abort() {} };
+      instances.push(instance);
+      return instance;
+    } as unknown as typeof SpeechRecognition;
+
+    const originalAudioContext = win.AudioContext;
+    win.AudioContext = function () {
+      return {
+        createMediaStreamSource: () => ({ connect: () => {} }),
+        createAnalyser: () => ({
+          fftSize: 0,
+          smoothingTimeConstant: 0,
+          frequencyBinCount: 0,
+          getByteFrequencyData: () => {},
+        }),
+        close: () => Promise.resolve(),
+      };
+    };
+
+    const track = { stop: () => {} };
+    const originalGetUserMedia = navigator.mediaDevices?.getUserMedia;
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: () =>
+          Promise.resolve({
+            getTracks: () => [track],
+          } as unknown as MediaStream),
+      },
+      configurable: true,
+    });
+
+    const originalRaf = win.requestAnimationFrame;
+    const originalCaf = win.cancelAnimationFrame;
+    win.requestAnimationFrame = (() =>
+      1) as unknown as typeof win.requestAnimationFrame;
+    win.cancelAnimationFrame =
+      (() => {}) as unknown as typeof win.cancelAnimationFrame;
+
+    const { result } = renderHook(() => useVoiceInput());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    act(() => result.current.cancelRecording());
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(instances.length).toBe(2);
+
+    // The stale (cancelled) recognizer's result arrives after the new one started.
+    act(() =>
+      instances[0]?.onresult?.({
+        resultIndex: 0,
+        results: [
+          Object.assign([{ transcript: "stale words" }], { isFinal: true }),
+        ],
+      }),
+    );
+
+    expect(result.current.transcript).toBe("");
+
+    win.AudioContext = originalAudioContext;
+    win.requestAnimationFrame = originalRaf;
+    win.cancelAnimationFrame = originalCaf;
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: { getUserMedia: originalGetUserMedia },
+      configurable: true,
+    });
+  });
 });

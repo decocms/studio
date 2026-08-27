@@ -32,7 +32,7 @@
     "check:readmes": "bun run scripts/check-workspace-readmes.ts",
     "check:web-bundle": "bun run scripts/check-web-bundle-desktop-free.ts",
     "fmt:check": "biome format",
-    "test": "bun run scripts/test-unit.ts",
+    "test": "bun test --parallel --path-ignore-patterns='{**/*.{integration,e2e}.test.*,**/*{.spec,_spec,_test}.*,**/*.test.{js,jsx,mjs,cjs,mts,cts},**/dist/**}' ./apps/api/src ./apps/api/migrations ./apps/native/scripts ./apps/web/src ./packages ./plugins ./scripts",
     "docs:dev": "bun run --cwd=apps/docs dev",
     "docs:deploy": "bun run --cwd=apps/docs deploy",
     "build:runtime": "bun run --filter=@decocms/runtime build",
@@ -57,6 +57,8 @@
     "@duckdb/node-bindings"
   ],
   "overrides": {
-    "fast-xml-parser": "5.4.2"
+    "fast-xml-parser": "5.4.2",
+    "prosemirror-model": "1.25.11",
+    "@types/bun": "1.3.14"
   }
 }

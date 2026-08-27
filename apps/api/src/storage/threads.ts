@@ -8,8 +8,10 @@
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { GithubRepo } from "@decocms/shared/sdk";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type {
+  ThreadCreateData,
   ThreadRuntimePin,
   ThreadRuntimePinResult,
   ThreadStoragePort,
@@ -81,7 +83,7 @@ export class OrgScopedThreadStorage {
     return this.organizationId;
   }
 
-  create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }> {
+  create(data: ThreadCreateData): Promise<Thread & { isNew: boolean }> {
     const orgId = this.requireOrg();
     return this.inner.create({ ...data, organization_id: orgId });
   }
@@ -92,6 +94,10 @@ export class OrgScopedThreadStorage {
 
   update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
+  }
+
+  appendThreadGithubRepo(id: string, repo: GithubRepo): Promise<GithubRepo[]> {
+    return this.inner.appendThreadGithubRepo(id, this.requireOrg(), repo);
   }
 
   pinRuntimeIfUnset(
@@ -219,21 +225,13 @@ export class OrgScopedThreadStorage {
     return this.inner.messageParts();
   }
 
-  /**
-   * Current fence token for a run (thread id == run id today). Returns null
-   * if no fence has been minted, which means any token (including null) is
-   * accepted by `fenceMatches`.
-   */
+  /** Current fence token for a run (thread id == run id today). */
   getRunFence(threadId: string): Promise<string | null> {
     return this.inner.getRunFence(threadId);
   }
 
-  /**
-   * Set (or clear) the fence token for a run. Minted by `prepareRun` after
-   * the run is claimed (Phase B). Cleared by the ingest finish handler so
-   * late-arriving duplicate appends are rejected with 409.
-   */
-  setRunFence(threadId: string, token: string | null): Promise<void> {
+  /** Claim a new fence epoch for a run. */
+  setRunFence(threadId: string, token: string): Promise<void> {
     return this.inner.setRunFence(threadId, token);
   }
 
@@ -298,7 +296,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
   // Thread Operations
   // ==========================================================================
 
-  async create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }> {
+  async create(data: ThreadCreateData): Promise<Thread & { isNew: boolean }> {
     const id = data.id ?? generatePrefixedId("thrd");
     const now = new Date().toISOString();
 
@@ -321,7 +319,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       trigger_id: data.trigger_id ?? null,
       virtual_mcp_id: data.virtual_mcp_id ?? "",
       branch: data.branch ?? null,
-      sandbox_provider_kind: data.sandbox_provider_kind ?? null,
       harness_id: data.harness_id ?? null,
       created_at: now,
       updated_at: now,
@@ -426,12 +423,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.virtual_mcp_id !== undefined) {
       updateData.virtual_mcp_id = data.virtual_mcp_id;
     }
-    if (data.sandbox_provider_kind !== undefined) {
-      updateData.sandbox_provider_kind = data.sandbox_provider_kind;
-    }
-    if (data.harness_id !== undefined) {
-      updateData.harness_id = data.harness_id;
-    }
     if (data.message_storage_version !== undefined) {
       updateData.message_storage_version = data.message_storage_version;
     }
@@ -450,6 +441,54 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return thread;
   }
 
+  /**
+   * Append a repo to `metadata.githubRepos`, in SQL, returning the whole list.
+   *
+   * The append happens inside one UPDATE rather than as a read in JS followed
+   * by a write: the model can fire two `TASK_ADD_REPO` calls at once, and a
+   * read-modify-write loses the slower one — with the pod already holding the
+   * checkout the lost entry describes, so nothing looks wrong until the pod is
+   * recreated without it.
+   *
+   * Keyed on `owner/name`, so re-adding a repo the thread already has is a
+   * no-op instead of a duplicate directory.
+   */
+  async appendThreadGithubRepo(
+    id: string,
+    organizationId: string,
+    repo: GithubRepo,
+  ): Promise<GithubRepo[]> {
+    const key = `${repo.owner}/${repo.name}`.toLowerCase();
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        metadata: sql`
+          jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{githubRepos}',
+            coalesce(
+              (
+                SELECT jsonb_agg(entry)
+                  FROM jsonb_array_elements(
+                         coalesce(metadata->'githubRepos', '[]'::jsonb)
+                       ) AS entry
+                 WHERE lower(
+                         (entry->>'owner') || '/' || (entry->>'name')
+                       ) <> ${key}
+              ),
+              '[]'::jsonb
+            ) || ${JSON.stringify([repo])}::jsonb
+          )
+        `,
+        updated_at: new Date(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returning(sql<GithubRepo[]>`metadata->'githubRepos'`.as("repos"))
+      .executeTakeFirst();
+    return row?.repos ?? [];
+  }
+
   async pinRuntimeIfUnset(
     id: string,
     organizationId: string,
@@ -459,9 +498,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .updateTable("threads")
       .set({
         harness_id: pin.harnessId,
-        sandbox_provider_kind: sql<string | null>`coalesce(${sql.ref(
-          "sandbox_provider_kind",
-        )}, ${pin.sandboxProviderKind})`,
         branch: sql<string | null>`coalesce(${sql.ref("branch")}, ${
           pin.branch
         })`,
@@ -473,14 +509,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("harness_id", "is", null)
-      .where((eb) =>
-        pin.sandboxProviderKind === null
-          ? eb("sandbox_provider_kind", "is", null)
-          : eb.or([
-              eb("sandbox_provider_kind", "is", null),
-              eb("sandbox_provider_kind", "=", pin.sandboxProviderKind),
-            ]),
-      )
       .returningAll()
       .executeTakeFirst();
 
@@ -1044,11 +1072,10 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   /**
-   * Set (or clear) the fence token. Called exactly once per turn-start, before
+   * Set the fence token. Called exactly once per turn-start, before
    * any chunks are ingested. Atomically resets `run_acked_seq` to NULL so the
-   * new fence epoch always starts with a clean floor — preventing a prior
-   * turn's ack high-water mark from causing `RelaySessionImpl.push()` to drop
-   * the new turn's early chunks (cross-turn chunk loss bug).
+   * new fence epoch always starts with a clean floor, preventing a prior turn's
+   * ack high-water mark from dropping the new turn's early chunks.
    *
    * When CLAIMING a turn (token non-null), also resets `status` to
    * `in_progress`. `runId === threadId`, so the run row is shared across every
@@ -1059,20 +1086,15 @@ export class SqlThreadStorage implements ThreadStoragePort {
    * "No response was generated". Resetting here — atomically with the new fence
    * — re-arms the run for this turn (mirrors the per-turn `(runId,fenceToken)`
    * message-id namespacing: turn-stable runId needs an explicit per-turn reset).
-   * Clearing the fence (token null, teardown) leaves status untouched.
    */
-  async setRunFence(threadId: string, token: string | null): Promise<void> {
+  async setRunFence(threadId: string, token: string): Promise<void> {
     await this.db
       .updateTable("threads")
-      .set(
-        token === null
-          ? { run_fence_token: null, run_acked_seq: null }
-          : {
-              run_fence_token: token,
-              run_acked_seq: null,
-              status: "in_progress",
-            },
-      )
+      .set({
+        run_fence_token: token,
+        run_acked_seq: null,
+        status: "in_progress",
+      })
       .where("id", "=", threadId)
       .execute();
   }
@@ -1179,7 +1201,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     last_progress_at?: Date | string | null;
     virtual_mcp_id?: string | null;
     branch?: string | null;
-    sandbox_provider_kind?: string | null;
     harness_id?: string | null;
     metadata?: ThreadMetadata | string | null;
     created_at: Date | string;
@@ -1188,7 +1209,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     updated_by: string | null;
     hidden: boolean | number | null;
     message_storage_version?: number | null;
-    link_transport?: string | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -1225,7 +1245,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
         : null,
       virtual_mcp_id: row.virtual_mcp_id ?? "",
       branch: row.branch ?? null,
-      sandbox_provider_kind: row.sandbox_provider_kind ?? null,
       harness_id: row.harness_id ?? null,
       metadata,
       created_at: toIsoString(row.created_at),
@@ -1236,7 +1255,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       // Defaults to 1 (legacy) when the column is absent/null so existing
       // threads keep reading from `thread_messages`.
       message_storage_version: row.message_storage_version ?? 1,
-      link_transport: row.link_transport ?? null,
     };
   }
 

@@ -30,7 +30,7 @@ describe("benignSandbox4xx", () => {
   });
 
   it("does not suppress 409 outside the daemon", () => {
-    expect(benignSandbox4xx(409, "/api/links/work")).toBeNull();
+    expect(benignSandbox4xx(409, "/api/unrelated/work")).toBeNull();
   });
 
   it("does not suppress a claim-path 409 (only 404 is benign there)", () => {
@@ -53,7 +53,7 @@ describe("benignPreview404", () => {
 
   it("does not suppress 404 on unrelated paths", () => {
     expect(benignPreview404(404, "/live/_meta/extra")).toBeNull();
-    expect(benignPreview404(404, "/api/links/work")).toBeNull();
+    expect(benignPreview404(404, "/api/unrelated/work")).toBeNull();
   });
 });
 

@@ -36,7 +36,7 @@ describe("retryAutoMergeIfApproved", () => {
       by: USER,
       status: "in_review",
     });
-    for (const reviewer of ["qa", "code_review"]) {
+    for (const reviewer of ["reviewer"]) {
       await taskBoard.recordActivity({
         taskBoardItemId: item.id,
         action: "review_approved",
@@ -69,8 +69,7 @@ describe("retryAutoMergeIfApproved", () => {
     await organizationSettings.upsert(ORG, {
       flags: {
         auto_merge: true,
-        qa_agent_enabled: true,
-        code_reviewer_enabled: true,
+        reviewer_enabled: true,
       },
     });
     ctx = {

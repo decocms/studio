@@ -252,6 +252,12 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.viewJson": "Ver JSON",
   "sectionsEditor.sectionsEditorPanels.addVariant": "Adicionar variante",
   "sectionsEditor.sectionsEditorPanels.backToRule": "Voltar para regra",
+  "sectionsEditor.sectionsEditorPanels.changePathTitle":
+    "Alterar o caminho desta página?",
+  "sectionsEditor.sectionsEditorPanels.changePathDescription":
+    'A URL da página muda de "{from}" para "{to}". A URL antiga deixa de funcionar e links de entrada ou SEO podem quebrar.',
+  "sectionsEditor.sectionsEditorPanels.changePathCancel": "Cancelar",
+  "sectionsEditor.sectionsEditorPanels.changePathConfirm": "Alterar caminho",
   "sectionsEditor.sectionsEditorPanels.pageNamePlaceholder": "Nome da página",
   "sectionsEditor.sectionsEditorPanels.pathPlaceholder": "/caminho",
   "sectionsEditor.sectionsEditorPanels.variantRuleBreadcrumb":

@@ -181,6 +181,50 @@ describe("section-catalog", () => {
     expect(resolveTypes).not.toContain("Preview /sections/Footer.tsx");
   });
 
+  it("extractSectionCatalog includes saved multivariate section blocks", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          pages: {
+            "website/pages/Page.tsx": { $ref: "#/definitions/Page" },
+          },
+          sections: {
+            "site/sections/Content/Alert.tsx": { $ref: "#/definitions/Alert" },
+          },
+        },
+      },
+      schema: { definitions: { Page: {}, Alert: {} } },
+    };
+
+    const decofile = {
+      Alerta: {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            value: { __resolveType: "site/sections/Content/Alert.tsx" },
+            rule: { __resolveType: "website/matchers/always.ts" },
+          },
+        ],
+      },
+      // Non-section variants must not be offered as an insertable section.
+      "Loader Flag": {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          { value: { __resolveType: "vtex/loaders/legacy/productList.ts" } },
+        ],
+      },
+    };
+
+    const catalog = extractSectionCatalog(meta, decofile);
+    const resolveTypes = catalog.map((entry) => entry.resolveType);
+
+    expect(resolveTypes).toContain("Alerta");
+    expect(resolveTypes).not.toContain("Loader Flag");
+    expect(catalog.find((e) => e.resolveType === "Alerta")?.isSavedBlock).toBe(
+      true,
+    );
+  });
+
   it("extractSectionCatalog includes manifest sections even when page anyOf is populated", () => {
     const meta: LiveMeta = {
       manifest: {
@@ -256,6 +300,29 @@ describe("section-catalog", () => {
     expect(
       available.find((e) => e.resolveType === "site/sections/Hero.tsx")?.title,
     ).toBeTruthy();
+  });
+
+  it("listAvailableSections dedupes a resolveType listed under multiple sections block groups", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Hero.tsx": { $ref: "#/definitions/Hero" },
+          },
+          "website/sections": {
+            "site/sections/Hero.tsx": { $ref: "#/definitions/Hero" },
+          },
+        },
+      },
+      schema: { definitions: {} },
+    };
+
+    const available = listAvailableSections(meta);
+    const matches = available.filter(
+      (entry) => entry.resolveType === "site/sections/Hero.tsx",
+    );
+
+    expect(matches).toHaveLength(1);
   });
 
   it("extractSectionCatalog excludes Theme sections", () => {

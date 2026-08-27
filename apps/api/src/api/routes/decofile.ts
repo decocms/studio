@@ -24,6 +24,7 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import type { GithubRepo } from "@decocms/shared/sdk/types";
 import { assertSafeDecoBlockKey } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
@@ -66,7 +67,24 @@ function isValidBranch(branch: string): boolean {
   );
 }
 
-const patchBodySchema = z
+// Bounds the tree write GitHub does for one commit.
+const MAX_PATCH_KEYS = 500;
+
+// Bounds one block's own size — fits real multivariate page blocks that inline a section tree per variant.
+const MAX_BLOCK_BYTES = 1024 * 1024;
+
+// Bounds one block key's length — a key becomes a GitHub tree path.
+const MAX_BLOCK_KEY_LENGTH = 1024;
+
+// Bounds the raw request body, before it's parsed into memory.
+const MAX_PATCH_BODY_BYTES = 8 * 1024 * 1024;
+
+export const patchBodyLimit = bodyLimit({
+  maxSize: MAX_PATCH_BODY_BYTES,
+  onError: (c) => c.json({ error: "Payload too large" }, 413),
+});
+
+export const patchBodySchema = z
   .object({
     set: z.record(z.string(), z.unknown()).optional(),
     delete: z.array(z.string()).optional(),
@@ -74,6 +92,28 @@ const patchBodySchema = z
   .refine(
     (b) => Object.keys(b.set ?? {}).length > 0 || (b.delete?.length ?? 0) > 0,
     { message: "Patch must set or delete at least one block" },
+  )
+  .refine(
+    (b) =>
+      Object.keys(b.set ?? {}).length + (b.delete?.length ?? 0) <=
+      MAX_PATCH_KEYS,
+    { message: `Patch cannot touch more than ${MAX_PATCH_KEYS} blocks` },
+  )
+  .refine(
+    (b) =>
+      Object.values(b.set ?? {}).every(
+        (value) => JSON.stringify(value).length <= MAX_BLOCK_BYTES,
+      ),
+    { message: `Each block must be at most ${MAX_BLOCK_BYTES} bytes` },
+  )
+  .refine(
+    (b) =>
+      [...Object.keys(b.set ?? {}), ...(b.delete ?? [])].every(
+        (key) => key.length <= MAX_BLOCK_KEY_LENGTH,
+      ),
+    {
+      message: `Each block key must be at most ${MAX_BLOCK_KEY_LENGTH} characters`,
+    },
   );
 
 /**
@@ -248,7 +288,38 @@ export function createDecofileRoutes() {
     }
   });
 
-  app.patch("/:virtualMcpId/:branch", async (c) => {
+  app.get("/:virtualMcpId/:branch/meta", async (c) => {
+    const scope = c.get("decofileScope");
+    const metaPath = scope.packagePath
+      ? `${scope.packagePath}/.deco/meta.gen.json`
+      : ".deco/meta.gen.json";
+    try {
+      const client = await gitDataClientForScope(c);
+      /** The thread branch may not be materialized on GitHub yet (it forks
+       *  from default at first CMS touch), so fall back to the default branch —
+       *  meta.gen.json is a code artifact the CMS never edits, so the default's
+       *  copy is the schema the forked branch would carry anyway. */
+      let text = await client.getFileTextAtRef(scope.branch, metaPath);
+      if (text === null) {
+        const defaultBranch = await client.getDefaultBranch();
+        if (defaultBranch !== scope.branch) {
+          text = await client.getFileTextAtRef(defaultBranch, metaPath);
+        }
+      }
+      if (text === null) {
+        return c.json({ error: "meta.gen.json not committed" }, 404);
+      }
+      return c.body(text, 200, {
+        "content-type": "application/json",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+      });
+    } catch (err) {
+      return errorResponse(c, err);
+    }
+  });
+
+  app.patch("/:virtualMcpId/:branch", patchBodyLimit, async (c) => {
     const scope = c.get("decofileScope");
     const ctx = c.var.studioContext;
 

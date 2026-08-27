@@ -1,5 +1,5 @@
 //! Filesystem routes — `POST /_sandbox/{read,write,unlink,mkdir,rename,
-//! edit,grep,glob,write_from_url,upload_to_url,tools/sync}` (grouped here
+//! edit,grep,glob,tools/sync}` (grouped here
 //! because the daemon's own `fsH` dispatch table does the same, see
 //! `entry.ts`).
 //!
@@ -37,7 +37,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use futures_util::FutureExt;
-use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -61,10 +60,6 @@ use safe_path::{resolve_read_path, safe_path};
 /// Cap on bytes returned for image responses. ~5MB matches Anthropic's
 /// vision input ceiling and keeps tool result payloads bounded.
 const MAX_IMAGE_BYTES: u64 = 5 * 1024 * 1024;
-/// Cap on bytes for write_from_url / upload_to_url.
-const MAX_TRANSFER_BYTES: u64 = 500 * 1024 * 1024;
-/// Wall-clock cap for fetches in write_from_url / upload_to_url.
-const TRANSFER_DEADLINE: Duration = Duration::from_secs(5 * 60);
 
 static TOOLS_CATALOG_COMMIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -1057,212 +1052,6 @@ pub async fn glob(State(state): State<AppState>, body: Bytes) -> Response {
         out["truncated"] = json!(true);
     }
     Json(out).into_response()
-}
-
-// --- write_from_url / upload_to_url ------------------------------------------
-
-#[derive(Deserialize, Default)]
-struct WriteFromUrlBody {
-    path: Option<String>,
-    url: Option<String>,
-}
-
-fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(TRANSFER_DEADLINE)
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
-}
-
-pub async fn write_from_url(State(state): State<AppState>, body: Bytes) -> Response {
-    let body: WriteFromUrlBody = match parse_body(&body) {
-        Ok(b) => b,
-        Err(e) => return e.into_response(),
-    };
-    let Some(url) = body.url.filter(|u| !u.is_empty()) else {
-        return ApiError::bad_request("url is required").into_response();
-    };
-    let user_path = body.path.clone().unwrap_or_default();
-    let Some(file_path) = safe_path(&state.app_root, &state.repo_dir, &user_path) else {
-        return ApiError::bad_request("Path escapes app root").into_response();
-    };
-
-    let mutations = state.shutdown.mutations();
-    let result = mutations
-        .run_owned(move |cancellation| async move {
-            write_from_url_owned(state, user_path, file_path, url, cancellation).await
-        })
-        .await;
-    match result {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => map_owner_error(error).into_response(),
-    }
-}
-
-async fn write_from_url_owned(
-    state: AppState,
-    user_path: String,
-    file_path: PathBuf,
-    url: String,
-    mut cancellation: MutationCancellation,
-) -> Result<Value, ApiError> {
-    let stage_dir = new_stage_dir(&state.app_root).await?;
-    let staged = stage_dir.join("download");
-    let prepared = async {
-        let client = http_client();
-        let request = tokio::time::timeout(TRANSFER_DEADLINE, client.get(&url).send());
-        let resp = tokio::select! {
-            _ = cancellation.cancelled() => return Err(shutting_down()),
-            result = request => match result {
-                Ok(Ok(response)) => response,
-                Ok(Err(error)) => return Err(ApiError::bad_gateway(format!("fetch failed: {error}"))),
-                Err(_) => return Err(ApiError::bad_gateway(format!(
-                    "fetch deadline exceeded ({}ms)",
-                    TRANSFER_DEADLINE.as_millis()
-                ))),
-            }
-        };
-        if !resp.status().is_success() {
-            return Err(ApiError::bad_gateway(format!(
-                "upstream returned HTTP {}",
-                resp.status()
-            )));
-        }
-        if let Some(len) = resp.content_length() {
-            if len > MAX_TRANSFER_BYTES {
-                return Err(ApiError::payload_too_large(format!(
-                    "Payload too large ({len} > {MAX_TRANSFER_BYTES})"
-                )));
-            }
-        }
-
-        let mut out_file = tokio::fs::File::create(&staged)
-            .await
-            .map_err(|error| ApiError::internal(error.to_string()))?;
-        let mut written: u64 = 0;
-        let mut stream = resp.bytes_stream();
-        loop {
-            let next = tokio::select! {
-                _ = cancellation.cancelled() => return Err(shutting_down()),
-                result = tokio::time::timeout(TRANSFER_DEADLINE, stream.next()) => result,
-            };
-            let chunk = match next {
-                Ok(Some(Ok(chunk))) => chunk,
-                Ok(Some(Err(error))) => {
-                    return Err(ApiError::bad_gateway(format!("stream failed: {error}")))
-                }
-                Ok(None) => break,
-                Err(_) => {
-                    return Err(ApiError::bad_gateway(format!(
-                        "fetch deadline exceeded ({}ms)",
-                        TRANSFER_DEADLINE.as_millis()
-                    )))
-                }
-            };
-            written += chunk.len() as u64;
-            if written > MAX_TRANSFER_BYTES {
-                return Err(ApiError::bad_gateway(format!(
-                    "Stream exceeded {MAX_TRANSFER_BYTES} bytes"
-                )));
-            }
-            out_file
-                .write_all(&chunk)
-                .await
-                .map_err(|error| ApiError::internal(error.to_string()))?;
-        }
-        out_file
-            .flush()
-            .await
-            .map_err(|error| ApiError::internal(error.to_string()))?;
-        drop(out_file);
-        Ok(written)
-    }
-    .await;
-
-    let written = match prepared {
-        Ok(written) => written,
-        Err(error) => {
-            remove_staged_path(&stage_dir).await;
-            return Err(error);
-        }
-    };
-    if let Err(error) = commit_staged_file_owned(&state, staged, file_path).await {
-        remove_staged_path(&stage_dir).await;
-        return Err(error);
-    }
-    remove_staged_path(&stage_dir).await;
-    Ok(json!({ "ok": true, "path": user_path, "size": written }))
-}
-
-#[derive(Deserialize, Default)]
-struct UploadToUrlBody {
-    path: Option<String>,
-    url: Option<String>,
-    #[serde(rename = "contentType")]
-    content_type: Option<String>,
-}
-
-pub async fn upload_to_url(State(state): State<AppState>, body: Bytes) -> Response {
-    let body: UploadToUrlBody = match parse_body(&body) {
-        Ok(b) => b,
-        Err(e) => return e.into_response(),
-    };
-    let Some(url) = body.url.filter(|u| !u.is_empty()) else {
-        return ApiError::bad_request("url is required").into_response();
-    };
-    let user_path = body.path.clone().unwrap_or_default();
-    let Some(file_path) = resolve_read_path(&state.app_root, &state.repo_dir, &user_path) else {
-        return ApiError::bad_request("Path escapes project root").into_response();
-    };
-    let meta = match tokio::fs::metadata(&file_path).await {
-        Ok(m) => m,
-        Err(_) => {
-            return ApiError::bad_request(format!("File not found: {user_path}")).into_response()
-        }
-    };
-    if meta.is_dir() {
-        return ApiError::bad_request("Path is a directory").into_response();
-    }
-    if meta.len() > MAX_TRANSFER_BYTES {
-        return ApiError::payload_too_large(format!(
-            "File too large ({} > {MAX_TRANSFER_BYTES})",
-            meta.len()
-        ))
-        .into_response();
-    }
-
-    let data = match tokio::fs::read(&file_path).await {
-        Ok(d) => d,
-        Err(e) => return ApiError::internal(e.to_string()).into_response(),
-    };
-    let client = http_client();
-    let mut req = client
-        .put(&url)
-        .header("Content-Length", data.len().to_string())
-        .body(data.clone());
-    if let Some(ct) = &body.content_type {
-        req = req.header("Content-Type", ct.clone());
-    }
-    let resp = match tokio::time::timeout(TRANSFER_DEADLINE, req.send()).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => return ApiError::bad_gateway(format!("upload failed: {e}")).into_response(),
-        Err(_) => {
-            return ApiError::bad_gateway(format!(
-                "upload deadline exceeded ({}ms)",
-                TRANSFER_DEADLINE.as_millis()
-            ))
-            .into_response()
-        }
-    };
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        let snippet: String = text.chars().take(500).collect();
-        return ApiError::bad_gateway(format!("upstream returned HTTP {status}: {snippet}"))
-            .into_response();
-    }
-    Json(json!({ "ok": true, "size": data.len() })).into_response()
 }
 
 // --- tools/sync ----------------------------------------------------------------

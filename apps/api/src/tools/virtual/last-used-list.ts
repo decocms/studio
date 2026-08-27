@@ -11,7 +11,7 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 
 const InputSchema = z.object({
-  ids: z.array(z.string()).describe("Virtual MCP ids to look up"),
+  ids: z.array(z.string()).max(1000).describe("Virtual MCP ids to look up"),
 });
 
 const OutputSchema = z.object({

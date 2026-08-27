@@ -100,6 +100,7 @@ export const thread = {
   "thread.headerActions.markReady": "Mark ready",
   "thread.headerActions.markDraftReadyTooltip":
     "Mark draft PR ready for review",
+  "thread.headerActions.moreActionsAriaLabel": "More actions",
   "thread.headerActions.openNewPrTooltip":
     "Open a new PR with the latest commits",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
@@ -117,7 +118,7 @@ export const thread = {
     "Squash-merge PR #{prNumber} into {base}",
   "thread.headerActions.startingApp": "Starting app…",
   "thread.headerActions.startingAppTooltip":
-    "Starting the dev server — nothing to review or publish yet",
+    "Starting the dev server — no committed work to review or publish yet",
   "thread.headerActions.startingSandbox": "Preparing sandbox…",
   "thread.headerActions.submitForReview": "Submit for review",
   "thread.headerActions.switchingTo": "Switching to {branch}…",
@@ -132,8 +133,6 @@ export const thread = {
     "Getting your environment ready — this only takes a moment",
   "thread.headerActions.waitingForSandboxBranchTooltip":
     "Getting your environment ready — this only takes a moment",
-  "thread.openInBoardButton.openTaskAriaLabel": "Open task in board",
-  "thread.openInBoardButton.openTaskInBoard": "Open task in board",
   "thread.publishDialog.allChangesDiscarded": "All changes discarded",
   "thread.publishDialog.branchLabel": "Branch:",
   "thread.publishDialog.cancel": "Cancel",

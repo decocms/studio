@@ -47,9 +47,6 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/hooks/use-preferences";
 import type { SimpleModeTier } from "@decocms/shared/organization/schema";
-import { DECOPILOT_EVENTS } from "@decocms/shared/sdk";
-import { decopilotSSE } from "@/hooks/decopilot-sse-pool";
-import type { SSESubscription } from "@/hooks/create-sse-subscription";
 import { Store } from "./store-primitive";
 import { extractToolErrorMessage } from "./mcp-utils";
 import { guardToolInvariant } from "./tool-invariant-guard";
@@ -75,12 +72,6 @@ export interface RequestOptions {
   agent?: { id: string };
   branch?: string | null;
   thread_id?: string;
-  /**
-   * Optional pins sent on first message. The server persists them onto the
-   * thread row and ignores them on subsequent messages.
-   */
-  sandboxProviderKind?: "agent-sandbox";
-  harnessId?: "decopilot";
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────
@@ -173,8 +164,17 @@ function applyLocally(
     // that earlier assistant. A persisted refetch (incoming carries the DB
     // `created_at`) overwrites this via `preserveCreatedAt`. No-op if a
     // `created_at` is already present.
-    const msg = action.message as UIMessage & { created_at?: string };
+    const msg = action.message as UIMessage & {
+      created_at?: string;
+      metadata?: { created_at?: string };
+    };
     if (msg.created_at != null) return [...prev, msg];
+    // A server-dispatched turn (task board, nudge) carries its timestamp in
+    // `metadata` — promote it rather than stamping arrival time.
+    const fromMetadata = msg.metadata?.created_at;
+    if (fromMetadata != null) {
+      return [...prev, { ...msg, created_at: fromMetadata } as UIMessage];
+    }
     let maxMs = 0;
     for (const m of prev) {
       const ts = (m as { created_at?: string | number | Date }).created_at;
@@ -269,23 +269,6 @@ function describe(action: SubmitAction): string {
 
 interface ThreadConnectionOptions {
   client?: MCPClient | null;
-  /**
-   * Skip the per-thread SSE and render from persisted parts only.
-   *
-   * A sandbox-hosted harness (`claude-code`) is a batch job: it runs its loop in
-   * the pod and flushes whole turns on the SDK's `result`, so there is no
-   * token-by-token stream to follow. Holding an SSE open per thread to watch for
-   * one terminal write buys nothing — the org-level `/watch` already reports the
-   * thread's status change, and the transcript comes from
-   * COLLECTION_THREAD_MESSAGES_LIST like any other page load.
-   *
-   * The org-level `/watch` is also how a batch thread stays live: each step the
-   * harness finishes emits `decopilot.step` (run-reactor), so the connection
-   * refetches the latest page on it instead of leaving the user to reload.
-   */
-  batch?: boolean;
-  /** Org-level `/watch` pool. Injectable for tests; defaults to the shared one. */
-  sse?: SSESubscription;
 }
 
 export class ThreadConnection {
@@ -323,13 +306,6 @@ export class ThreadConnection {
   /** `start` chunk opened a new assistant turn — don't seed the prior one. */
   private freshRunSubstream = false;
   private client: MCPClient | null;
-  /** See `ThreadConnectionOptions.batch` — no SSE, persisted parts only.
-   *  Not readonly: `enableBatch` flips it when the harness is pinned after
-   *  this connection was already opened. */
-  private batch = false;
-  private readonly sse: SSESubscription;
-  /** Batch mode only: org-`/watch` unsubscribe, dropped on dispose. */
-  private watchUnsubscribe: (() => void) | null = null;
   private serverFetchedCount = 0;
   private readonly pageSize = 5;
   /**
@@ -358,67 +334,14 @@ export class ThreadConnection {
   ) {
     this.key = `${orgSlug}::${threadId}`;
     this.client = opts.client ?? null;
-    this.sse = opts.sse ?? decopilotSSE;
-    if (opts.batch) this.enableBatch();
     this.ready = new Promise<void>((res) => {
       this.resolveReady = res;
     });
     void this.bootstrap();
   }
 
-  /**
-   * Switch a live connection into batch mode.
-   *
-   * A thread's `harness_id` is NULL until its first run pins it, so a chat
-   * opened before that — a new thread, or one whose first run is still
-   * dispatching — builds its connection in streaming mode and only learns it
-   * is batch afterwards. Since `getOrOpenStream` is idempotent by key, the
-   * corrected `batch: true` from the next render would otherwise be dropped
-   * and the transcript would sit frozen (a sandbox harness writes nothing to
-   * the per-thread `/stream`) until the user reloads the page.
-   *
-   * Idempotent — a second subscribe would double every refetch. The already
-   * running `/stream` loop is left alone: it costs one idle SSE and closes on
-   * dispose, which is cheaper than plumbing a cancel through the loop.
-   */
-  enableBatch(): void {
-    if (this.batch) return;
-    this.batch = true;
-    this.watchUnsubscribe = this.sse.subscribe(this.orgSlug, (e) =>
-      this.handleWatchEvent(e),
-    );
-  }
-
   dispose(): void {
-    this.watchUnsubscribe?.();
-    this.watchUnsubscribe = null;
     this.abort.abort();
-  }
-
-  /**
-   * Batch mode's only live signal: a step this thread's harness just persisted
-   * (`decopilot.step`), or its terminal status flip. Both mean "there are more
-   * parts in the DB than on screen" — refetch, don't reload the page.
-   *
-   * `refetchLatestPage` merges upsert-by-id, so an event that arrives while a
-   * fetch is in flight (or twice for the same step) costs a request, not a
-   * duplicated turn.
-   */
-  private handleWatchEvent(e: MessageEvent): void {
-    if (
-      e.type !== DECOPILOT_EVENTS.STEP &&
-      e.type !== DECOPILOT_EVENTS.THREAD_STATUS
-    ) {
-      return;
-    }
-    let subject: unknown;
-    try {
-      subject = (JSON.parse(e.data) as { subject?: unknown }).subject;
-    } catch {
-      return;
-    }
-    if (subject !== this.threadId) return;
-    void this.refetchLatestPage();
   }
 
   // ── Public mutator (single entry point) ─────────────────────────────────
@@ -551,13 +474,6 @@ export class ThreadConnection {
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
-    // Batch threads have no stream to follow: load the transcript and stop.
-    // `loadInitialPage` resolves `ready` on every terminal path, so the chat
-    // unsuspends exactly as it does for a streaming thread.
-    if (this.batch) {
-      await this.loadInitialPage();
-      return;
-    }
     // Initial-page fetch and SSE loop run concurrently. Chunks arriving
     // before the page resolves are queued via `chunkBuffer` and drained
     // through `handleChunk` after the page lands.
@@ -1637,10 +1553,6 @@ export function getOrOpenStream(
 ): ThreadConnection {
   const key = `${orgSlug}::${threadId}`;
   if (current?.key === key) {
-    // The only option worth re-reading: `batch` is derived from the thread
-    // row's `harness_id`, which lands after the connection is opened (see
-    // `enableBatch`). Re-opening instead would throw away the transcript.
-    if (opts.batch) current.enableBatch();
     return current;
   }
   current?.dispose();

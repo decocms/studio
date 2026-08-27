@@ -32,6 +32,7 @@ import {
   type NatsConnection,
 } from "@nats-io/nats-core";
 import { retry } from "@decocms/shared/std";
+import { isTransientJsApiError } from "./transient-js-error";
 import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import { natsChunkSource } from "./nats-chunk-source";
@@ -69,18 +70,37 @@ const publishErrorsCounter = lazyInstrument(() =>
   }),
 );
 
-// encode_ms + published_chunks live in ./stream-metrics so the link-daemon's
-// direct-nats-publisher (the path agent-sandbox runs actually take) feeds the
-// same instruments instead of double-registering them.
+// encode_ms + published_chunks live in ./stream-metrics so instrumentation is
+// defined once instead of being registered by each buffer instance.
 
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
 // so retention must outlast a projector outage long enough to catch up. Tune later.
-const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long desktop runs
+const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long runs
 // Time-based Nats-Msg-Id dedup window (spec §10.2): a republished chunk within
-// this window is dropped by JetStream, so an at-least-once producer (outbox
-// retry) can't double-write the same UI part.
+// this window is dropped by JetStream, so a producer retry can't double-write
+// the same UI part.
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
+/**
+ * RAFT replicas for `DECOPILOT_STREAMS`. At 1 the stream has no failover: the
+ * node holding it going down takes every live run's stream with it, which is
+ * how one NATS pod restart darkened chat cluster-wide on 2026-08-26. 3 matches
+ * the cluster size so a single node loss keeps quorum.
+ *
+ * This is the *requested* count, not a guarantee: a single-node JetStream
+ * rejects anything above 1 outright, and `init()` then falls back to an
+ * unreplicated stream — see `isReplicaUnsupportedError`. Local `bun run dev`,
+ * self-hosts and the multi-pod/resilience test clusters all run one NATS node,
+ * so without that fallback a replicated default darkens streaming there.
+ *
+ * Env-overridable for rollback without a deploy — `init()` applies the value
+ * through `streams.update`, and JetStream scales replicas online, so setting
+ * `DECOPILOT_STREAM_REPLICAS=1` reverts on the next pod start.
+ */
+const STREAM_REPLICAS = Math.max(
+  1,
+  Number(process.env.DECOPILOT_STREAM_REPLICAS ?? 3) || 3,
+);
 const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams
 
 /**
@@ -88,7 +108,7 @@ const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop stream
  * stream survives a NATS restart, with a retention SLA and a time-based dedup
  * window. Extracted from `init()` so it can be unit-tested without a connection.
  */
-export function decopilotStreamConfig() {
+export function decopilotStreamConfig(replicas: number = STREAM_REPLICAS) {
   return {
     name: DECOPILOT_STREAM_NAME,
     subjects: [`${DECOPILOT_STREAM_SUBJECT_PREFIX}.>`],
@@ -99,7 +119,7 @@ export function decopilotStreamConfig() {
     discard: DiscardPolicy.Old,
     retention: RetentionPolicy.Limits,
     duplicate_window: DUPLICATE_WINDOW_NS, // time-based Nats-Msg-Id dedup (spec §10.2)
-    num_replicas: 1,
+    num_replicas: replicas,
   };
 }
 
@@ -216,15 +236,20 @@ export interface NatsStreamBufferOptions {
 }
 
 /**
- * A JetStream management round-trip that failed transiently (server briefly
- * slow / mid-election / no responders yet) rather than because the request is
- * semantically wrong. Only these are worth retrying — a bad stream config would
- * fail identically every attempt.
+ * The server cannot satisfy the requested replica count. A single-node
+ * (non-clustered) JetStream rejects `replicas > 1` outright; a cluster with
+ * fewer peers than requested rejects it as insufficient resources. Both are
+ * legitimate deployments — local dev, self-hosts and the test clusters all run
+ * one NATS node — so the stream must still be created there, just unreplicated.
+ * Anything else is a real config error and has to surface.
  */
-function isTransientJsApiError(err: unknown): boolean {
+function isReplicaUnsupportedError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  if (err.name === "TimeoutError") return true;
-  return /timeout|no responders|503/i.test(err.message);
+  if (/non-clustered/i.test(err.message)) return true;
+  return (
+    /replicas?\b/i.test(err.message) &&
+    /not supported|can ?not|exceed|insufficient|greater than/i.test(err.message)
+  );
 }
 
 export class NatsStreamBuffer implements StreamBuffer {
@@ -244,43 +269,62 @@ export class NatsStreamBuffer implements StreamBuffer {
       );
       return;
     }
-    const config = decopilotStreamConfig();
-
     // The JS-API round-trips below (manager handshake + stream ensure) can time
     // out transiently if JetStream is briefly slow at boot. Init only re-runs on
     // a NATS `onReady` (reconnect); when the connection stays up, a single
     // startup timeout would otherwise leave `this.js` null for the pod's whole
     // life — every run then fails at `publishRawChunk`. Retry the transient
     // failures in place instead of relying on a reconnect that may never come.
+    const ensureStream = async (
+      mgr: JetStreamManager,
+      replicas: number,
+    ): Promise<void> => {
+      const config = decopilotStreamConfig(replicas);
+      try {
+        await mgr.streams.info(DECOPILOT_STREAM_NAME);
+        await mgr.streams.update(DECOPILOT_STREAM_NAME, config);
+      } catch (err: unknown) {
+        const isNotFound =
+          err instanceof Error && err.message.includes("stream not found");
+        if (isNotFound) {
+          await mgr.streams.add(config);
+        } else {
+          // JetStream cannot change a stream's `storage` in place, so flipping
+          // the legacy Memory stream to File makes `update` reject. The stream
+          // is ephemeral run-scratch (it only holds in-flight chunks), so a
+          // one-time delete + add at deploy is safe: drop the old stream and
+          // recreate it file-backed. Any other error is real — rethrow.
+          const isStorageMismatch =
+            err instanceof Error &&
+            /can ?not change.*storage|storage type/i.test(err.message);
+          if (isStorageMismatch) {
+            await mgr.streams.delete(DECOPILOT_STREAM_NAME);
+            await mgr.streams.add(config);
+          } else {
+            throw err;
+          }
+        }
+      }
+    };
+
     const jsm = await retry(
       async () => {
         const mgr = this.options.getJetStreamManager
           ? await this.options.getJetStreamManager()
           : await jetstreamManager(nc);
         try {
-          await mgr.streams.info(DECOPILOT_STREAM_NAME);
-          await mgr.streams.update(DECOPILOT_STREAM_NAME, config);
+          await ensureStream(mgr, STREAM_REPLICAS);
         } catch (err: unknown) {
-          const isNotFound =
-            err instanceof Error && err.message.includes("stream not found");
-          if (isNotFound) {
-            await mgr.streams.add(config);
-          } else {
-            // JetStream cannot change a stream's `storage` in place, so flipping
-            // the legacy Memory stream to File makes `update` reject. The stream
-            // is ephemeral run-scratch (it only holds in-flight chunks), so a
-            // one-time delete + add at deploy is safe: drop the old stream and
-            // recreate it file-backed. Any other error is real — rethrow.
-            const isStorageMismatch =
-              err instanceof Error &&
-              /can ?not change.*storage|storage type/i.test(err.message);
-            if (isStorageMismatch) {
-              await mgr.streams.delete(DECOPILOT_STREAM_NAME);
-              await mgr.streams.add(config);
-            } else {
-              throw err;
-            }
-          }
+          // A single-node NATS can't hold a replicated stream. Streaming at all
+          // beats streaming with failover: retry unreplicated rather than leave
+          // `js` null, which silently drops every chunk of every run.
+          if (STREAM_REPLICAS <= 1 || !isReplicaUnsupportedError(err))
+            throw err;
+          console.warn(
+            `[Decopilot] StreamBuffer: NATS rejected num_replicas=${STREAM_REPLICAS} ` +
+              `(${(err as Error).message}); falling back to an unreplicated stream`,
+          );
+          await ensureStream(mgr, 1);
         }
         return mgr;
       },
@@ -357,12 +401,6 @@ export class NatsStreamBuffer implements StreamBuffer {
         encodeMs,
         msgs.reduce((n, m) => n + m.data.length, 0),
       );
-      if (msgs.length === 0) {
-        console.warn(
-          `[Decopilot] dropping oversized stream chunk for thread ${taskId}`,
-        );
-        return;
-      }
       for (const m of msgs) {
         tracker.publish(
           js,
@@ -434,6 +472,54 @@ export class NatsStreamBuffer implements StreamBuffer {
    * caller knows the publish is confirmed. Returns `false` when JetStream is
    * unavailable so the caller does NOT advance its cursor.
    */
+  /**
+   * Publish ONE already-serialized message, riding out a transient JetStream
+   * outage (leader election, brief no-responders, the node holding the stream
+   * restarting) instead of failing the run. Retried PER MESSAGE, not per
+   * fragment set, so a multi-fragment chunk keeps its order and a mid-loop
+   * failure never republishes the fragments already acked.
+   *
+   * Safe to retry: every publish on the ingest path carries a `msgId` keyed by
+   * `(fenceToken, seq)` and the stream's `duplicate_window` is 2 min, so a
+   * republish inside that window is dropped server-side rather than
+   * double-writing a UI part. Returns `false` once the transient window is
+   * exhausted, preserving this class's "never advance the caller's cursor on a
+   * failed publish" contract rather than throwing a new error shape at callers.
+   */
+  private async publishSerialized(
+    js: JetStreamClient,
+    m: {
+      subject: string;
+      data: Uint8Array;
+      headers?: Record<string, string>;
+      msgId?: string;
+    },
+  ): Promise<boolean> {
+    try {
+      await retry(
+        () =>
+          js.publish(m.subject, m.data, {
+            ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
+            ...(m.msgId ? { msgID: m.msgId } : {}),
+          }),
+        {
+          maxAttempts: 6,
+          minTimeout: 250,
+          maxTimeout: 5000,
+          jitter: 0.5,
+          isRetriable: isTransientJsApiError,
+        },
+      );
+      return true;
+    } catch (err) {
+      console.error(
+        `[Decopilot] publish failed after retries subject=${m.subject}`,
+        err,
+      );
+      return false;
+    }
+  }
+
   async publishRawChunk(
     taskId: string,
     chunk: unknown,
@@ -448,20 +534,8 @@ export class NatsStreamBuffer implements StreamBuffer {
     // recorded on this path or they stay flat zero while streaming works.
     encodeMsHistogram().record(performance.now() - t0);
     publishedChunksCounter().add(1);
-    if (msgs.length === 0) {
-      console.warn(
-        `[Decopilot] dropping oversized raw chunk for thread ${taskId} (> MAX_CHUNKED_BYTES)`,
-      );
-      // Dropped, but the publish "succeeded" as far as the ack cursor is
-      // concerned — refusing to advance would wedge the run on a pathological
-      // chunk (loud-fail is the daemon-outbox cap's job, not ingest's).
-      return true;
-    }
     for (const m of msgs) {
-      await js.publish(m.subject, m.data, {
-        ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
-        ...(m.msgId ? { msgID: m.msgId } : {}),
-      });
+      if (!(await this.publishSerialized(js, m))) return false;
     }
     return true;
   }
@@ -474,8 +548,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     const js = this.js;
     if (!js) return false;
     const m = serializeDone({ runId: taskId, fenceToken, finalSeq });
-    await js.publish(m.subject, m.data, { msgID: m.msgId });
-    return true;
+    return await this.publishSerialized(js, m);
   }
 
   async createTailStream(
@@ -504,14 +577,23 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     let sub;
     try {
-      // v3 ordered (ephemeral, no-ack) consumer over this run's subject. The
-      // replacement for v2's removed `js.subscribe(..., {ordered:true})` push
-      // consumer: same delivery semantics, but driven via the consumer API.
-      const consumer = await js.consumers.get(DECOPILOT_STREAM_NAME, {
-        filter_subjects: subj,
-        deliver_policy: deliverPolicy,
-      });
-      sub = await consumer.consume();
+      // v3 ordered consumer, retried across a transient leader-election window.
+      sub = await retry(
+        async () => {
+          const consumer = await js.consumers.get(DECOPILOT_STREAM_NAME, {
+            filter_subjects: subj,
+            deliver_policy: deliverPolicy,
+          });
+          return consumer.consume();
+        },
+        {
+          maxAttempts: 6,
+          minTimeout: 250,
+          maxTimeout: 5000,
+          jitter: 0.5,
+          isRetriable: isTransientJsApiError,
+        },
+      );
     } catch (err) {
       console.warn(
         "[Decopilot] JetStream tail unavailable (non-critical):",

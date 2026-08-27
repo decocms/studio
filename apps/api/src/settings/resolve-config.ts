@@ -7,8 +7,6 @@
 import { homedir } from "os";
 import type { CliFlags, DispatchRole, Settings } from "./types";
 
-type SandboxProviderKind = Settings["sandboxProviderKind"];
-
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
 
 /** Normalize `STUDIO_DISPATCH_ROLE`; anything unknown coerces to safe "all". */
@@ -72,11 +70,6 @@ export function describeEncryptionKeyForLog(ek: string): string {
 
 function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
-}
-
-function toBoolOrUndefined(value: string | undefined): boolean | undefined {
-  if (value === undefined || value === "") return undefined;
-  return toBool(value);
 }
 
 function toPositiveIntegerOrUndefined(
@@ -178,28 +171,6 @@ function resolveAliasedEnv(
   return value || legacyValue;
 }
 
-const SANDBOX_PROVIDER_KINDS = new Set<SandboxProviderKind>([
-  "agent-sandbox",
-  "user-desktop",
-]);
-type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
-
-function resolveSandboxProviderKind(
-  raw: string | undefined,
-): SandboxProviderKind {
-  const trimmed = (raw ?? "").trim();
-  const kind = (trimmed.length > 0 ? trimmed : "user-desktop") as
-    | LegacySandboxProviderKind
-    | string;
-  if (kind === "cluster") return "agent-sandbox";
-  if (!SANDBOX_PROVIDER_KINDS.has(kind as SandboxProviderKind)) {
-    throw new Error(
-      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "agent-sandbox", legacy "cluster", or "user-desktop".`,
-    );
-  }
-  return kind as SandboxProviderKind;
-}
-
 export interface ResolvedConfig {
   settings: Omit<Settings, "databaseUrl" | "natsUrls">;
   externalDatabaseUrl: string | null;
@@ -222,9 +193,6 @@ export function resolveConfig(
     flags.nodeEnv || resolveNodeEnv(envVars.NODE_ENV);
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
-  const natsTunnelPublicEnabled =
-    toBoolOrUndefined(envVars.NATS_TUNNEL_PUBLIC_ENABLED) ??
-    !!envVars.NATS_PUBLIC_URL;
 
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
@@ -283,16 +251,6 @@ export function resolveConfig(
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
     // Event Bus & Networking
-    natsPublicUrl: envVars.NATS_PUBLIC_URL,
-    natsTunnelPublicEnabled,
-    natsTunnelSessionTtlSeconds: toPositiveIntegerOrDefault(
-      "NATS_TUNNEL_SESSION_TTL_SECONDS",
-      envVars.NATS_TUNNEL_SESSION_TTL_SECONDS,
-      900,
-    ),
-    natsOperatorJwt: envVars.NATS_OPERATOR_JWT,
-    natsAccountJwt: envVars.NATS_ACCOUNT_JWT,
-    natsAccountSigningKey: envVars.NATS_ACCOUNT_SIGNING_KEY,
     natsCredsPath: envVars.NATS_CREDS,
 
     // Config files
@@ -399,9 +357,7 @@ export function resolveConfig(
         envVars.MESH_DISPATCH_ROLE,
       ),
     ),
-    sandboxProviderKind: resolveSandboxProviderKind(
-      envVars.STUDIO_SANDBOX_PROVIDER,
-    ),
+    agentSandboxEnabled: toBool(envVars.STUDIO_AGENT_SANDBOX_ENABLED),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
     taskBoardRerunReusesPrBranch: toBoolWithDefault(
       envVars.TASK_BOARD_RERUN_REUSES_PR_BRANCH,

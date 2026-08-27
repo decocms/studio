@@ -349,6 +349,7 @@ function PublishDialogBody({
     headBranch: githubHeadBranch,
     coAuthor,
     existingOpenPr,
+    expectedHeadSha: headSha ?? undefined,
   };
 
   const messageParts = () =>

@@ -2,7 +2,10 @@ import { type Query, useQuery } from "@tanstack/react-query";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
-import { readCommittedJson } from "./read-committed-file";
+import {
+  readCommittedJson,
+  readCommittedMetaViaGit,
+} from "./read-committed-file";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { usePackagePath } from "./use-package-path";
 import type { LiveMeta } from "./resolve-schema";
@@ -35,9 +38,8 @@ export type MetaSource =
  * last resort — it only matters for sites with no committed `meta.gen.json`
  * (e.g. Fresh/Deco sites), unblocking the CMS before the runtime boots.
  *
- * Sandbox-less Fast Preview drops both sandbox-backed sources: there is no dev
- * server, and no daemon to read the working tree through, so production is the
- * only source that can answer.
+ * Sandbox-less Fast Preview reads `committed` from the branch via the GitHub
+ * API (`readCommittedMetaViaGit`), not a dev server/daemon.
  */
 export function metaSourceOrder(input: {
   fetchEnabled: boolean;
@@ -46,7 +48,9 @@ export function metaSourceOrder(input: {
   fastPreviewActive: boolean;
 }): MetaSource[] {
   const sources: MetaSource[] = [];
-  if (!input.fastPreviewActive) {
+  if (input.fastPreviewActive) {
+    sources.push({ kind: "committed" });
+  } else {
     if (input.fetchEnabled && input.previewUrl) {
       sources.push({ kind: "live", baseUrl: input.previewUrl });
     }
@@ -56,6 +60,29 @@ export function metaSourceOrder(input: {
     sources.push({ kind: "production", baseUrl: input.productionUrl });
   }
   return sources;
+}
+
+/**
+ * Cache key for one meta read. The `(orgSlug, virtualMcpId, branch)` head is
+ * the invalidation scope — `KEYS.liveMeta(org, vmid, branch)` must stay a
+ * prefix of it, since that is how the sandbox lifecycle swaps the CMS off the
+ * committed/production schema once the dev server is up. The URL tail is what
+ * makes a settings edit re-fetch.
+ */
+export function liveMetaQueryKey(params: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  previewUrl?: string | null;
+  productionUrl?: string | null;
+}) {
+  return KEYS.liveMeta(
+    params.orgSlug,
+    params.virtualMcpId,
+    params.branch,
+    params.previewUrl ?? "",
+    params.productionUrl ?? "",
+  );
 }
 
 export function useLiveMeta(
@@ -79,16 +106,8 @@ export function useLiveMeta(
   );
   const fastPreviewActive = runtime === "cms";
   return useQuery({
-    // productionUrl is appended so a settings edit re-fetches; invalidators key
-    // on the (org, vm, branch) prefix, which still matches (variadic key).
     queryKey: params
-      ? KEYS.liveMeta(
-          params.orgSlug,
-          params.virtualMcpId,
-          params.branch,
-          previewUrl ?? "",
-          productionUrl ?? "",
-        )
+      ? liveMetaQueryKey({ ...params, previewUrl, productionUrl })
       : KEYS.liveMeta(""),
     queryFn: async () => {
       const fetchMeta = async (baseUrl: string): Promise<LiveMeta | null> => {
@@ -108,10 +127,12 @@ export function useLiveMeta(
         }
       };
       const readCommitted = () =>
-        readCommittedJson<LiveMeta>(
-          params!,
-          decoRepoPath(packagePath, ".deco/meta.gen.json"),
-        );
+        fastPreviewActive
+          ? readCommittedMetaViaGit<LiveMeta>(params!)
+          : readCommittedJson<LiveMeta>(
+              params!,
+              decoRepoPath(packagePath, ".deco/meta.gen.json"),
+            );
 
       // Walk the sources in priority order; first hit wins. Falling all the way
       // through means neither a live/production runtime nor a committed snapshot

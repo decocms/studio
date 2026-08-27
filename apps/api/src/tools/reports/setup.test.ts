@@ -39,10 +39,8 @@ function makeCtx(opts: {
   connectionUpdate?: (id: string, data: Record<string, unknown>) => void;
   /** Stored flags.reports_only value; undefined = settings row never created. */
   reportsOnly?: boolean | null;
-  /** Stored flags.qa_agent_enabled value; undefined = never set. */
-  qaAgentEnabled?: boolean | null;
-  /** Stored flags.code_reviewer_enabled value; undefined = never set. */
-  codeReviewerEnabled?: boolean | null;
+  /** Stored flags.reviewer_enabled value; undefined = never set. */
+  reviewerEnabled?: boolean | null;
   settingsUpsert?: (orgId: string, data: Record<string, unknown>) => void;
   /** Org row createdAt; defaults to "just now" (fresh onboarding-made org). */
   orgCreatedAt?: Date;
@@ -97,16 +95,13 @@ function makeCtx(opts: {
       },
       organizationSettings: {
         get: async () =>
-          opts.reportsOnly === undefined &&
-          opts.qaAgentEnabled === undefined &&
-          opts.codeReviewerEnabled === undefined
+          opts.reportsOnly === undefined && opts.reviewerEnabled === undefined
             ? null
             : {
                 organizationId: ORG_ID,
                 flags: {
                   reports_only: opts.reportsOnly,
-                  qa_agent_enabled: opts.qaAgentEnabled,
-                  code_reviewer_enabled: opts.codeReviewerEnabled,
+                  reviewer_enabled: opts.reviewerEnabled,
                 },
               },
         upsert: async (orgId: string, data: Record<string, unknown>) => {
@@ -221,11 +216,11 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     ]);
   });
 
-  test("defaults reports_only on without touching the default-on reviewer flags", async () => {
+  test("defaults reports_only on without touching the default-on reviewer flag", async () => {
     const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
     const ctx = makeCtx({
-      // Org opted code review off by hand; setup only defaults reports_only.
-      codeReviewerEnabled: false,
+      // Org opted review off by hand; setup only defaults reports_only.
+      reviewerEnabled: false,
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 

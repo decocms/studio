@@ -9,7 +9,7 @@ interface ResolveTuiInput {
 
 /**
  * Whether to render the Ink TUI. Off when `--no-tui` is passed or stdout is
- * not a TTY (CI, pipes). Shared by `serve`, `dev`, and `link`.
+ * not a TTY (CI, pipes). Shared by `serve` and `dev`.
  */
 export function resolveTui(input: ResolveTuiInput): boolean {
   if (input.noTui) return false;

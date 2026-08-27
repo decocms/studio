@@ -233,16 +233,15 @@ configMap:
     AUTH_EMAIL_PASSWORD_ENABLED: "true"
     # Several reviewers behind one office IP trip the auth limiter otherwise.
     DISABLE_RATE_LIMIT: "true"
-    # No hosted sandboxes by default. Agent dispatch returns 409 link_offline
-    # with no local daemon attached — a documented limitation, not a bug.
+    # No hosted sandboxes by default. Hosted agent execution and its sandbox
+    # lifecycle UI are unavailable in a standard preview.
     #
     # To test agent behaviour in a preview, set preview.sandbox.enabled=true
     # (see values.yaml — it grants reach over a shared production namespace) and
     # replace this block with the settings below, pointed at an existing
     # environment whose templates and warm pool the preview borrows:
     #
-    #   STUDIO_SANDBOX_PROVIDER: "cluster"
-    #   STUDIO_SANDBOX_RUNNER: "agent-sandbox"
+    #   STUDIO_AGENT_SANDBOX_ENABLED: "true"
     #   STUDIO_SANDBOX_TEMPLATE_NAME: "<existing template, e.g. studio-sandbox-stg>"
     #   STUDIO_ENV: "<matching env suffix, e.g. stg>"
     #   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "<that env's sandbox gateway>"
@@ -252,7 +251,7 @@ configMap:
     # Without STUDIO_SANDBOX_SENTINEL_TOKEN the claim takes the cold-start path
     # instead of the warm pool — slower per sandbox, and it borrows no capacity
     # from the environment being shared.
-    STUDIO_SANDBOX_PROVIDER: "user-desktop"
+    STUDIO_AGENT_SANDBOX_ENABLED: "false"
     DISABLE_ORGFS_MOUNTS: "true"
     # Never let a preview provision real gateway keys. STUDIO_PROVISION_SECRET_KEY
     # is deliberately left unset, which is the other half of this gate.

@@ -11,7 +11,6 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { callSandboxTool } from "./call-sandbox-tool";
@@ -30,12 +29,6 @@ export interface SandboxStartArgs {
   /** Optional — SANDBOX_START generates one when omitted. */
   branch?: string;
   /**
-   * Optional explicit sandbox provider kind. When omitted the server picks
-   * via resolveDefaultSandboxProviderKind (link-online ⇒ user-desktop, else
-   * the env kind). Used by the v2 RunnerPill to materialize a specific kind.
-   */
-  sandboxProviderKind?: SandboxProviderKind;
-  /**
    * The session asking for a sandbox. The server refuses to provision for a
    * thread stamped `cms` — without it that guard is unreachable from the web.
    */
@@ -47,7 +40,6 @@ export interface SandboxStartResult {
   sandboxHandle: string;
   branch: string;
   isNewVm: boolean;
-  sandboxProviderKind?: SandboxProviderKind;
 }
 
 const inflightStarts = new Map<string, Promise<SandboxStartResult>>();
@@ -55,8 +47,8 @@ const startKey = (args: SandboxStartArgs) =>
   `${args.virtualMcpId}::${args.branch ?? ""}`;
 
 // Concurrency-transient failures the server tags with a "retry shortly" marker
-// (lifecycle-transition-in-progress + advisory-lock-busy in
-// agent-sandbox-sessions.ts / *-runner-state.ts). These resolve within a beat
+// (lifecycle-transition-in-progress + advisory-lock-busy in the lifecycle and
+// runner-state stores). These resolve within a beat
 // once the racing lifecycle transition finishes, so we retry them in-place
 // rather than surfacing an error the user would have to clear by hand. The
 // mutation stays `isPending` across retries, so the booting overlay holds

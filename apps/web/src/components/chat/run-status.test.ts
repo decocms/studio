@@ -95,3 +95,31 @@ describe("advanceRunStatusStage", () => {
     );
   });
 });
+
+describe("starting-sandbox", () => {
+  test("ranks after the prepare stages so a booting pod is not hidden", () => {
+    expect(advanceRunStatusStage("analyzing-scope", "starting-sandbox")).toBe(
+      "starting-sandbox",
+    );
+  });
+});
+
+describe("retrying-provider", () => {
+  test("supersedes every other stage, so the retry is never hidden", () => {
+    for (const stage of RUN_STATUS_STAGE_ORDER) {
+      expect(advanceRunStatusStage(stage, "retrying-provider")).toBe(
+        "retrying-provider",
+      );
+    }
+  });
+
+  test("parses the chunk the in-sandbox harness runner emits", () => {
+    expect(
+      parseRunStatusStageChunk({
+        type: "data-run-status",
+        id: "run-status",
+        data: { stage: "retrying-provider" },
+      }),
+    ).toBe("retrying-provider");
+  });
+});

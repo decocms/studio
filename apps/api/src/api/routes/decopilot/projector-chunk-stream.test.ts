@@ -1,7 +1,11 @@
 import type { UIMessageChunk } from "ai";
 import { describe, expect, test } from "bun:test";
 import { sleep } from "@decocms/shared/std";
-import { createProjectorChunkStreamFromMessages } from "./projector-chunk-stream";
+import type { JetStreamClient } from "@nats-io/jetstream";
+import {
+  createProjectorChunkStream,
+  createProjectorChunkStreamFromMessages,
+} from "./projector-chunk-stream";
 import { StreamIdleTimeoutError } from "./nats-chunk-source";
 
 const enc = new TextEncoder();
@@ -241,5 +245,62 @@ describe("createProjectorChunkStreamFromMessages", () => {
 
       expect((await readAll(stream)).map((c) => c.type)).toEqual(["finish"]);
     });
+  });
+});
+
+describe("createProjectorChunkStream — transient consumer open", () => {
+  /** Minimal JetStreamClient stand-in: only `consumers.get` is exercised. */
+  function fakeJs(open: () => Promise<unknown>) {
+    let attempts = 0;
+    return {
+      js: {
+        consumers: {
+          get: async () => {
+            attempts++;
+            await open();
+            return {
+              consume: async () => ({
+                [Symbol.asyncIterator]: () => ({
+                  next: async () => ({ done: true, value: undefined }),
+                }),
+                stop() {},
+              }),
+            };
+          },
+        },
+      } as unknown as JetStreamClient,
+      attempts: () => attempts,
+    };
+  }
+
+  test("retries a leaderless stream and succeeds once it comes back", async () => {
+    let failures = 2;
+    const { js, attempts } = fakeJs(async () => {
+      if (failures-- > 0) throw new Error("stream is offline");
+    });
+
+    await createProjectorChunkStream({
+      js,
+      runId: "run_1",
+      fenceToken: "fence_a",
+    });
+
+    expect(attempts()).toBe(3);
+  });
+
+  test("a permanent error is not retried", async () => {
+    const { js, attempts } = fakeJs(async () => {
+      throw new Error("stream not found");
+    });
+
+    await expect(
+      createProjectorChunkStream({
+        js,
+        runId: "run_1",
+        fenceToken: "fence_a",
+      }),
+    ).rejects.toThrow();
+
+    expect(attempts()).toBe(1);
   });
 });

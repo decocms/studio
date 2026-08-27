@@ -41,7 +41,7 @@ import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
-import { seedOrgDb, seedOrgDefaultFlags } from "./org";
+import { seedOrgDb } from "./org";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "@decocms/shared/auth/roles";
@@ -240,8 +240,6 @@ const plugins = [
   organization({
     organizationCreation: {
       afterCreate: async (data) => {
-        // Before seedOrgDb: the client reads settings as soon as the org exists.
-        await seedOrgDefaultFlags(data.organization.id);
         await seedOrgDb(data.organization.id, data.member.userId);
       },
     },
@@ -629,6 +627,23 @@ export const auth = betterAuth({
                   email_domain: result.domain,
                 },
               });
+            }
+
+            if (result.status === "joined_via_invitation") {
+              for (const organization of result.organizations) {
+                posthog.capture({
+                  distinctId: user.id,
+                  event: "organization_invitation_auto_accepted",
+                  groups: { organization: organization.id },
+                  properties: {
+                    organization_id: organization.id,
+                    organization_slug: organization.slug,
+                    email_domain: result.domain,
+                    joined_via: result.createdVia,
+                    invitation_count: result.organizations.length,
+                  },
+                });
+              }
             }
 
             if (result.status === "joined") {

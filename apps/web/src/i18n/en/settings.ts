@@ -39,7 +39,7 @@ export const settings = {
   "settings.jira.cancel": "Cancel",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
-    "The board's visible cards are mirrored — its Backlog tab, epics and sub-tasks are not.",
+    "Everything the board covers is mirrored, its backlog included. Epics and sub-tasks are not, and cards show which sprint they are in.",
   "settings.jira.boardPlaceholder": "Select a board",
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
@@ -48,13 +48,6 @@ export const settings = {
   "settings.jira.mappingDescription":
     "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
   "settings.jira.dontSync": "Don't sync",
-  "settings.jira.jqlLabel": "JQL filter (optional)",
-  "settings.jira.jqlDescription":
-    "Extra JQL to narrow what syncs — useful to match your Jira board's saved filter. Epics and sub-tasks are always excluded.",
-  "settings.jira.jqlPlaceholder":
-    "e.g. labels = storefront AND sprint in openSprints()",
-  "settings.jira.jqlSave": "Save filter",
-  "settings.jira.jqlSaved": "Filter saved — it applies from the next sync",
   "settings.jira.columnsFailed": "Could not load the board's columns",
   "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
   "settings.jira.autoDelegateDescription":
@@ -63,10 +56,19 @@ export const settings = {
   "settings.jira.enableRequirements":
     "Pick a project and map at least one status before enabling the sync",
   "settings.jira.lastSynced": "Last synced {ago}",
-  "settings.jira.waitingFirstSync": "Waiting for the first sync",
+  "settings.jira.waitingFirstSync": "Waiting for the next sync",
+  "settings.jira.resyncAll": "Resync everything",
+  "settings.jira.resyncAllTitle": "Re-scan the whole board?",
+  "settings.jira.resyncAllQueued":
+    "Re-scan requested — the next sync will start it.",
+  "settings.jira.resyncAllDescription":
+    '"Sync now" only pulls issues changed since the last run. This marks every issue on the board to be re-read \u2014 what you want after changing the status mapping, or when cards look wrong. It starts on the next scheduled sync rather than now, can span several runs on a large board, and never assigns an agent to a card.',
   "settings.jira.syncNow": "Sync now",
   "settings.jira.syncing": "Syncing…",
-  "settings.jira.syncDone": "Synced: {created} created, {updated} updated",
+  "settings.jira.syncDone":
+    "Synced: {created} created, {updated} updated, {archived} archived",
+  "settings.jira.unmappedWarning":
+    "Not mapped yet: {columns}. An issue moving into one of these columns is skipped, and its card stays in whatever lane it last had — pick a lane, or \u201cDon't sync\u201d to say so on purpose.",
   "settings.jira.syncFailed": "Sync failed",
   "settings.jira.saveFailed": "Could not save the Jira settings",
   "settings.jira.createTokenLink": "Create an API token",
@@ -140,6 +142,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Play sounds for agent actions and notifications.",
   "settings.preferences.soundsPreview": "Preview notification sound",
+  "settings.preferences.projectSettingsGear": "Project settings shortcut",
+  "settings.preferences.projectSettingsGearDescription":
+    "Reveal a settings shortcut when you hover a project in the sidebar.",
   "settings.preferences.toolApproval": "Tool Approval",
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",
@@ -441,13 +446,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
-  "settings.navigation.title": "Navigation",
-  "settings.navigation.description":
-    "How this organization gets around Studio.",
-  "settings.navigation.updateError": "Couldn't update navigation settings",
-  "settings.navigation.navV2Title": "First-class navigation",
-  "settings.navigation.navV2Description":
-    "The sidebar lists destinations (Reports, Library, Tasks) instead of chats, and the chat list moves to the top of the chat panel. On by default for new organizations and report organizations.",
   "settings.orgGeneral.organization": "Organization",
   "settings.mainAgent.title": "Main agent",
   "settings.mainAgent.description":
@@ -461,24 +459,49 @@ export const settings = {
   "settings.mainAgent.errorToast": "Couldn't update the main agent",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
-    "Automated reviewers run on a task's pull request once it's In Review (checks passing or none). Both appear as sessions on the task card.",
-  "settings.review.qaAgentTitle": "Enable QA Agent",
-  "settings.review.qaAgentDescription":
-    "Verifies the task actually solved the problem — exercises the feature, not just the diff.",
-  "settings.review.codeReviewerTitle": "Enable Code Reviewer",
-  "settings.review.codeReviewerDescription":
-    "Reviews the code using the repository's stack-appropriate review skills.",
+    "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
+  "settings.review.reviewerTitle": "Enable Reviewer",
+  "settings.review.reviewerDescription":
+    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
-    "The QA Agent and Code Reviewer read a diff and reach a verdict, so they run on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
+    "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
+  "settings.review.deliveryLanesTitle": "Show delivery lanes",
+  "settings.review.deliveryLanesDescription":
+    "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
   "settings.review.autoAssignReportTasksTitle":
     "Auto-assign report tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.agentTools.title": "Agent tools",
+  "settings.agentTools.description":
+    "What a coding-agent run reaches beyond the repository it is working in.",
+  "settings.agentTools.orgMcpsTitle": "Give runs this org's MCP connections",
+  "settings.agentTools.orgMcpsDescription":
+    "Every MCP you have connected becomes available to the Super Agent and the reviewers, on top of the task tools they always get. Tools load only when the agent looks for one, so connecting more does not crowd its context.",
+  "settings.agentTools.codingAgentsClaudeCodeTitle":
+    "Run Code Agent chats with Claude Code",
+  "settings.agentTools.codingAgentsClaudeCodeDescription":
+    "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
+  "settings.sprints.title": "Sprints",
+  "settings.sprints.description":
+    "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
+  "settings.sprints.enabledTitle": "Enable sprints",
+  "settings.sprints.enabledDescription":
+    "Adds a sprint property to every task and a sprint filter to the board.",
+  "settings.sprints.cadenceTitle": "Cadence",
+  "settings.sprints.cadenceDescription":
+    "How long a sprint lasts, and the day sprint 1 started.",
+  "settings.sprints.cadenceCurrent":
+    "Sprint {number} is running now ({start} to {end}).",
+  "settings.sprints.weeksValue": "{count} weeks",
+  "settings.sprints.weeksValueOne": "1 week",
+  "settings.sprints.startDateLabel": "Sprint 1 start day",
+  "settings.sprints.updateError": "Couldn't update the sprint settings",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

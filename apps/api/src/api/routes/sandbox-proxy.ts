@@ -16,8 +16,10 @@ import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type {
+  AgentSandboxProvider,
+  ClaimPhase,
+} from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
   loadBranchThread,
@@ -32,7 +34,7 @@ import {
 } from "@decocms/shared/thread/session-runtime";
 import { liveSandboxForBranch } from "../../tools/sandbox/live-sandbox-for-branch";
 import { stampRuntimeIfAbsent } from "../../tools/thread/stamp-runtime-if-absent";
-import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
 import {
   getUserId,
   requireAuth,
@@ -65,7 +67,6 @@ import {
   buildLoaderInvokeUrl,
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
-import { loopbackPreviewTarget } from "../../lib/loopback-preview";
 import {
   GitPushAuthError,
   parseGithubRepoFromMetadata,
@@ -82,7 +83,7 @@ interface VmClaim {
   callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance — or
    *  when the session is sandbox-less (`runtime` below). */
-  runner: SandboxProvider | null;
+  runner: AgentSandboxProvider | null;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -129,14 +130,10 @@ const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
- * FAST when the daemon link is partitioned. Without an explicit bound they
- * inherit the tunnel dispatch's 30s first-frame timeout (see
- * `links/tunnel-dispatch.ts`), so a read against a severed link hangs ~30s
- * before erroring. These ops answer in well under a second on a healthy link,
- * so a 10s ceiling never trips when the daemon is reachable but turns a
- * partition into a prompt 502 instead of a 30s stall. Streaming/long ops
- * (exec, events, git/*) are intentionally NOT bounded here - the daemon itself
- * allows up to 60s for upstream headers (see `daemon/proxy.ts`).
+ * fast when the hosted daemon is unreachable. These ops answer in well under
+ * a second on a healthy sandbox, so a 10s ceiling turns a broken pod/network
+ * path into a prompt 502. Streaming/long ops (exec, events, git/*) retain their
+ * operation-specific lifetimes.
  */
 const QUICK_FILE_OP_TIMEOUT_MS = 10_000;
 const GIT_STATUS_TIMEOUT_MS = 2_000;
@@ -214,18 +211,6 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
-  // Source of truth: sandboxMap. If an entry exists for (user, branch) we use
-  // that recorded kind — a sandbox provisioned via `desktop` must
-  // remain addressable via `desktop` even on a cluster whose env kind
-  // is `agent-sandbox` / `docker`. Pre-provision callers fall through to
-  // the link-or-env default policy inside `resolveSandboxProvider`.
-  //
-  // On failure (e.g. the recorded kind is `desktop` but the user's
-  // link daemon is offline) we surface `null` rather than falling back
-  // to the env singleton: rebinding a `desktop`-provisioned VM onto
-  // a different provider kind (say `agent-sandbox`) would forward traffic
-  // to a sandbox that doesn't host this VM. The events handler streams a
-  // `failed` phase from null; other handlers 503 via `requireRunner`.
   // Sandbox-less Fast Preview: there is no runner by design. Claim the route
   // with runner:null + the flag so the `/git/*` handlers serve their
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
@@ -255,14 +240,9 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     return next();
   }
 
-  let runner: SandboxProvider | null;
+  let runner: AgentSandboxProvider | null;
   try {
-    const resolved = await resolveSandboxProvider(ctx, {
-      userId: sandboxUserId,
-      branch,
-      virtualMcpMetadata,
-    });
-    runner = resolved.provider;
+    runner = await getAgentSandboxProvider(ctx);
   } catch {
     runner = null;
   }
@@ -334,9 +314,6 @@ async function resolveClaimRuntime(
     projectDefault === "cms"
       ? await liveSandboxForBranch(ctx, {
           claimName: claim.claimName,
-          userId: claim.sandboxUserId,
-          branch: claim.branch,
-          virtualMcpMetadata: claim.virtualMcpMetadata,
         })
       : "alive";
   const runtime: ThreadRuntime =
@@ -373,23 +350,18 @@ async function resolveClaimRuntime(
  */
 async function resolveBranchRunner(
   c: Context<VmEnv>,
-): Promise<SandboxProvider | null> {
+): Promise<AgentSandboxProvider | null> {
   const claim = c.get("vmClaim");
   if (claim.runner) return claim.runner;
   try {
-    const { provider } = await resolveSandboxProvider(c.var.studioContext, {
-      userId: claim.userId,
-      branch: claim.branch,
-      virtualMcpMetadata: claim.virtualMcpMetadata,
-    });
-    return provider;
+    return await getAgentSandboxProvider(c.var.studioContext);
   } catch {
     return null;
   }
 }
 
 /** Guard for routes that need a non-null runner. Returns the runner or a 503. */
-function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
+function requireRunner(c: Context<VmEnv>): AgentSandboxProvider | Response {
   const { runner } = c.get("vmClaim");
   if (!runner) {
     return c.json({ error: "No sandbox runner configured" }, 503);
@@ -537,18 +509,10 @@ async function proxyDaemon(
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
-    /**
-     * Null out `repoDir` in the JSON response unless the resolved runner is
-     * `user-desktop`. Every daemon reports `repoDir` as its own
-     * container-internal path (`/app/repo` on agent-sandbox); only a desktop
-     * link daemon's path exists on the user's machine. The frontend uses this
-     * to build `vscode://file<repoDir>` deep links — surfacing a container path
-     * pops a "Path does not exist" error. Authoritative because it keys off the
-     * resolved runner, immune to a stale/racing frontend provider-kind.
-     */
-    redactRepoDirUnlessDesktop?: boolean;
+    /** Null out the hosted daemon's container-internal `repoDir`. */
+    redactRepoDir?: boolean;
     /** Pod-addressed route: act on this runner whatever the session's runtime is. */
-    runner?: SandboxProvider;
+    runner?: AgentSandboxProvider;
   },
 ) {
   // Sandbox-less Fast Preview: daemon-backed routes have no daemon, ever.
@@ -609,7 +573,7 @@ async function proxyDaemon(
       } catch {
         /* ignore */
       }
-      const adopted = await runner.adoptLiveClaim?.(
+      const adopted = await runner.adoptLiveClaim(
         { userId, projectRef },
         claimName,
       );
@@ -643,10 +607,7 @@ async function proxyDaemon(
     }
 
     const rawText = await upstream.text();
-    const text =
-      opts?.redactRepoDirUnlessDesktop && runner.kind !== "user-desktop"
-        ? redactRepoDir(rawText)
-        : rawText;
+    const text = opts?.redactRepoDir ? redactRepoDir(rawText) : rawText;
     const contentType =
       upstream.headers.get("content-type") ?? "application/json";
     return new Response(text, {
@@ -709,7 +670,10 @@ export function redactRepoDir(text: string): string {
 }
 
 export async function fetchDaemonJson<T>(
-  runner: SandboxProvider,
+  runner: {
+    proxyDaemonRequest: AgentSandboxProvider["proxyDaemonRequest"];
+    adoptLiveClaim: AgentSandboxProvider["adoptLiveClaim"];
+  },
   claimName: string,
   daemonPath: string,
   method: "GET" | "POST" = "GET",
@@ -727,7 +691,7 @@ export async function fetchDaemonJson<T>(
     } catch {
       /* ignore */
     }
-    const adopted = await runner.adoptLiveClaim?.(sandboxId, claimName);
+    const adopted = await runner.adoptLiveClaim(sandboxId, claimName);
     if (adopted) {
       upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
         method,
@@ -840,9 +804,8 @@ export const createSandboxRoutes = () => {
     proxyDaemon(c, "/_sandbox/config", {
       method: "GET",
       map404to410: true,
-      // A container path (`/app/repo`) is never openable on the user's
-      // machine — only surface `repoDir` for the desktop link daemon.
-      redactRepoDirUnlessDesktop: true,
+      // A hosted container path (`/app/repo`) is never openable locally.
+      redactRepoDir: true,
     }),
   );
   app.put("/:virtualMcpId/:branch/config", (c) =>
@@ -850,7 +813,7 @@ export const createSandboxRoutes = () => {
       method: "PUT",
       forwardJsonBody: true,
       map404to410: true,
-      // No `redactRepoDirUnlessDesktop` here: the PUT response echoes the
+      // No `redactRepoDir` here: the PUT response echoes the
       // written TenantConfig (git/operator/application), which carries no
       // `repoDir` — only the GET read handler surfaces it.
     }),
@@ -871,17 +834,13 @@ export const createSandboxRoutes = () => {
         400,
       );
     }
-    // Pod-addressed means a pod that EXISTS. `resolveSandboxProvider` hands
-    // back the env-default provider for any caller, so without the liveness
+    // Pod-addressed means a pod that EXISTS. Without the liveness
     // check a sandbox-less session would proxy to a daemon that was never
     // provisioned and get a 410 where it used to get a clean 404.
     const claim = c.get("vmClaim");
     const podRunner =
       (await liveSandboxForBranch(c.var.studioContext, {
         claimName: claim.claimName,
-        userId: claim.userId,
-        branch: claim.branch,
-        virtualMcpMetadata: claim.virtualMcpMetadata,
       })) === "gone"
         ? null
         : await resolveBranchRunner(c);
@@ -1149,7 +1108,7 @@ export const createSandboxRoutes = () => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (the claim middleware
       // only admits a null runner for that mode).
-      let runner: SandboxProvider | null = null;
+      let runner: AgentSandboxProvider | null = null;
       if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;
@@ -1239,7 +1198,7 @@ export const createSandboxRoutes = () => {
     async (c) => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (see suggest-commit).
-      let runner: SandboxProvider | null = null;
+      let runner: AgentSandboxProvider | null = null;
       if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;
@@ -1354,10 +1313,7 @@ export const createSandboxRoutes = () => {
     }
 
     const base = previewUrl.replace(/\/+$/, "");
-    const loopback = loopbackPreviewTarget(`${base}${path}`);
-    return proxyPreviewUpstream(c, loopback?.url ?? `${base}${path}`, {
-      ...(loopback ? { headers: { host: loopback.hostHeader } } : {}),
-    });
+    return proxyPreviewUpstream(c, `${base}${path}`);
   });
 
   // -- Preview invoke (loader/action resolution) ------------------------------
@@ -1399,12 +1355,10 @@ export const createSandboxRoutes = () => {
       }
 
       const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);
-      const loopback = loopbackPreviewTarget(invokeUrl);
-      return proxyPreviewUpstream(c, loopback?.url ?? invokeUrl, {
+      return proxyPreviewUpstream(c, invokeUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...(loopback ? { host: loopback.hostHeader } : {}),
         },
         body: JSON.stringify(invoke.payload),
         signal: AbortSignal.timeout(30_000),

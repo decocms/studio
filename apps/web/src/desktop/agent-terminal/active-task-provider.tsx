@@ -14,7 +14,7 @@ import {
   type ChatStreamContextValue,
 } from "@/components/chat/context";
 import {
-  AGENT_OPTION_PINS,
+  AGENT_OPTION_HARNESSES,
   type LocalAgentOption,
 } from "@/components/chat/pills/agent-options";
 import { useThreadManager } from "@/components/chat/store/hooks";
@@ -155,7 +155,6 @@ export function NativeAgentTerminalProvider({
       ...(studioHarness
         ? {
             harness_id: studioHarness,
-            sandbox_provider_kind: "user-desktop",
           }
         : {}),
       ...(snapshot.threadStatus ? { status: snapshot.threadStatus } : {}),
@@ -349,7 +348,7 @@ export function NativeAgentTerminalProvider({
     isReadOnly,
     startAgent: async (option) => {
       if (isReadOnly) throw new Error(t("chat.nativeTerminal.readOnly"));
-      const harness = toTerminalHarnessId(AGENT_OPTION_PINS[option].harness);
+      const harness = toTerminalHarnessId(AGENT_OPTION_HARNESSES[option]);
       if (!harness) {
         throw new Error(t("chat.nativeTerminal.unsupportedHarness"));
       }

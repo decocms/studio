@@ -83,10 +83,31 @@ async function stripeRequest<T>(
   return parsed as T;
 }
 
+/** Custom-field key carrying the buyer's CPF/CNPJ. Stripe requires the key to
+ *  be alphanumeric, hence no separator. */
+const TAX_ID_FIELD_KEY = "taxid";
+
+/** A bare CPF is the shortest accepted value (11 digits), a formatted CNPJ the
+ *  longest (`00.000.000/0000-00`). */
+const TAX_ID_MIN_LENGTH = 11;
+const TAX_ID_MAX_LENGTH = 18;
+
 /**
- * Collect the buyer's billing address + tax ID (CPF/CNPJ, VAT, …) on every
- * Checkout — both are API-only params with no Dashboard fallback, so omitting
- * them means we never see either.
+ * Collect the buyer's billing address + CPF/CNPJ on every Checkout — both are
+ * API-only params with no Dashboard fallback, so omitting them means we never
+ * see either.
+ *
+ * The tax ID rides a required `custom_fields` entry rather than
+ * `tax_id_collection`, because Brazil is absent from Checkout's supported
+ * billing countries: `br_cnpj`/`br_cpf` exist on the Customer Tax ID API but
+ * not in Checkout, so `tax_id_collection[required]=if_supported` resolves to
+ * "not supported, therefore not required" for a BR buyer and the field never
+ * renders. The submitted value lands on `session.custom_fields[].text.value`,
+ * on `checkout.session.completed`, and in the Dashboard payment export.
+ *
+ * Required unconditionally: Checkout can't vary a custom field by country, and
+ * `adaptive_pricing` means a USD session doesn't imply a foreign buyer — every
+ * completed session on this account bills to a BR address, USD ones included.
  *
  * `customer_update` is mandatory, not cosmetic: with a saved `customer` and
  * address collection on, Stripe 400s the session unless we explicitly allow
@@ -98,7 +119,18 @@ export function taxAndAddressParams(
 ): Record<string, unknown> {
   return {
     billing_address_collection: "required",
-    tax_id_collection: { enabled: true },
+    custom_fields: [
+      {
+        key: TAX_ID_FIELD_KEY,
+        label: { type: "custom", custom: "CPF / CNPJ" },
+        type: "text",
+        optional: false,
+        text: {
+          minimum_length: TAX_ID_MIN_LENGTH,
+          maximum_length: TAX_ID_MAX_LENGTH,
+        },
+      },
+    ],
     ...(customerId && { customer_update: { address: "auto", name: "auto" } }),
   };
 }

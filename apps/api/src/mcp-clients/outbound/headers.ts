@@ -20,26 +20,24 @@ import { writeStudioHeader } from "@/core/studio-headers";
  * Strip `__binding` from configuration state values before embedding in JWTs.
  * `__binding` contains tool schemas used only by the UI for connection filtering —
  * it can be very large and causes 431 (header too large) errors when included.
+ *
+ * Recurses into arrays and nested objects: a downstream MCP's config schema is
+ * arbitrary (Studio doesn't control it), so a binding field can legitimately sit
+ * inside a multi-value array or a grouped/nested object, not just at the top level.
  */
-function stripBindingMetadata(
-  state: Record<string, unknown> | null | undefined,
-): Record<string, unknown> | undefined {
-  if (!state) return undefined;
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(state)) {
-    if (
-      val &&
-      typeof val === "object" &&
-      !Array.isArray(val) &&
-      "__binding" in val
-    ) {
-      const { __binding, ...rest } = val as Record<string, unknown>;
-      cleaned[key] = rest;
-    } else {
-      cleaned[key] = val;
-    }
+export function stripBindingMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stripBindingMetadata);
   }
-  return cleaned;
+  if (value && typeof value === "object") {
+    const { __binding, ...rest } = value as Record<string, unknown>;
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(rest)) {
+      cleaned[key] = stripBindingMetadata(val);
+    }
+    return cleaned;
+  }
+  return value;
 }
 
 /**
@@ -118,9 +116,12 @@ async function _buildRequestHeaders(
           role: ctxUser?.role,
         },
         metadata: {
-          state: stripBindingMetadata(
-            connection.configuration_state as Record<string, unknown> | null,
-          ),
+          state: connection.configuration_state
+            ? (stripBindingMetadata(connection.configuration_state) as Record<
+                string,
+                unknown
+              >)
+            : undefined,
           studioUrl: ctx.baseUrl,
           meshUrl: ctx.baseUrl,
           connectionId,

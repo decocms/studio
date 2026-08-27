@@ -7,6 +7,7 @@ export const admin = {
     "Verifique seu endereço de e-mail para acessar o painel de administração.",
   "admin.layout.goHome": "Voltar para início",
   "admin.layout.organizationsTab": "Organizações",
+  "admin.layout.promptsTab": "Prompts dos agentes",
   "admin.layout.restrictedToDashboard":
     "Este painel é restrito a administradores de implantação.",
   "admin.layout.usersTab": "Usuários",
@@ -29,6 +30,22 @@ export const admin = {
   "admin.orgs.noOrgsYet": "Nenhuma organização existe ainda.",
   "admin.orgs.organization": "Organização",
   "admin.orgs.searchPlaceholder": "Procure organizações por nome ou slug...",
+  "admin.prompts.description":
+    "Estes prompts são fixos no código em {repo}. As edições aqui são lidas de {branch} e enviadas de volta como um pull request, usando a conexão do GitHub da sua organização {org}.",
+  "admin.prompts.failedToLoadDescription":
+    "Verifique se o GitHub está conectado na sua organização ativa e tente novamente.",
+  "admin.prompts.failedToLoadTitle": "Falha ao carregar os prompts",
+  "admin.prompts.markerMissing":
+    'Os marcadores prompt-region de "{id}" não estão neste arquivo — corrija os marcadores no repositório antes de editar aqui.',
+  "admin.prompts.openPr": "Abrir pull request ({count})",
+  "admin.prompts.opening": "Abrindo...",
+  "admin.prompts.prFailed": "Falha ao abrir o pull request",
+  "admin.prompts.prOpened": "Pull request #{number} aberto",
+  "admin.prompts.prTitleLabel": "Título do pull request",
+  "admin.prompts.prTitlePlaceholder":
+    "chore(prompts): ajustar a persona do QA Agent",
+  "admin.prompts.retry": "Tentar novamente",
+  "admin.prompts.viewPr": "Ver",
   "admin.users.columnCreated": "Criado",
   "admin.users.columnEmail": "E-mail",
   "admin.users.columnUser": "Usuário",

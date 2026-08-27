@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import {
   blockRefLoaderConfigHasData,
+  blockRefOptionLabel,
   detectBlockRefType,
   enrichBlockRefOptions,
   lazyWrappedInner,
@@ -146,6 +147,33 @@ describe("detectBlockRefType", () => {
         cardRefs,
       ),
     ).toBe("image-card");
+  });
+});
+
+describe("blockRefOptionLabel", () => {
+  test("keeps a saved-block name containing '/' (from the #module@name title)", () => {
+    // Regression: labelFromResolveType split "Estampas / Flags" into " Flags".
+    expect(
+      blockRefOptionLabel({
+        resolveType: "Estampas / Flags",
+        title: "#site/loaders/Layouts/Stamps.tsx@Estampas / Flags",
+      }),
+    ).toBe("Estampas / Flags");
+  });
+
+  test("uses a plain title verbatim (module option)", () => {
+    expect(
+      blockRefOptionLabel({
+        resolveType: "site/loaders/Layouts/Stamps.tsx",
+        title: "Estampas",
+      }),
+    ).toBe("Estampas");
+  });
+
+  test("falls back to the path-derived label when there is no title", () => {
+    expect(
+      blockRefOptionLabel({ resolveType: "site/loaders/products.ts" }),
+    ).toBe("Products");
   });
 });
 

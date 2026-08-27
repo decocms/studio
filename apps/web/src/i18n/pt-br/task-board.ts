@@ -6,15 +6,25 @@ export const taskBoard = {
   "taskBoard.config.priorityMedium": "Média",
   "taskBoard.config.priorityNone": "Sem prioridade",
   "taskBoard.config.priorityUrgent": "Urgente",
+  "taskBoard.config.statusApproved": "Aprovado",
   "taskBoard.config.statusArchived": "Arquivado",
   "taskBoard.config.statusBacklog": "Backlog",
+  "taskBoard.config.statusMerged": "Implantado",
   "taskBoard.config.statusDone": "Concluído",
   "taskBoard.config.statusInProgress": "Em Progresso",
   "taskBoard.config.statusInReview": "Em Revisão",
+  "taskBoard.config.statusPostDeployValidation": "Validação Pós Deploy",
   "taskBoard.config.statusTodo": "A Fazer",
   "taskBoard.taskBoard.assignedToSuperAgent": "Atribuído ao Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Atribuído ao Super Agent por {name}",
+  "taskBoard.taskBoard.agentFailed": "A execução do agente nesta tarefa falhou",
+  "taskBoard.taskBoard.agentRunning": "Um agente está trabalhando nesta tarefa",
+  "taskBoard.taskBoard.checksApproved": "aprovado",
+  "taskBoard.taskBoard.checksChangesRequested": "mudanças solicitadas",
+  "taskBoard.taskBoard.checksLabel": "{passed} de {total} revisões aprovadas",
+  "taskBoard.taskBoard.checksPending": "ainda não revisado",
+  "taskBoard.taskBoard.checksUnverified": "aprovado (não verificado)",
   "taskBoard.taskBoard.autoFix": "Auto-correção",
   "taskBoard.taskBoard.rerun": "Executar de novo",
   "taskBoard.taskBoard.blockedBadgeTitle":
@@ -89,6 +99,8 @@ export const taskBoard = {
     "{reviewer} pediu alterações e devolveu a tarefa ao Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} pediu alterações: {notes}",
+  "taskBoard.taskDialog.subscribe": "Seguir",
+  "taskBoard.taskDialog.unsubscribe": "Deixar de seguir",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "não conseguiu mesclar o pull request — resolvendo um conflito de merge",
   "taskBoard.taskDialog.activityMergeFailed":
@@ -142,7 +154,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.descriptionPlaceholder":
     "Descreva uma tarefa para um agente...",
   "taskBoard.taskDialog.dueDateLabel": "Data de vencimento",
-  "taskBoard.taskDialog.editTaskTitle": "Editar tarefa",
+  "taskBoard.taskDialog.sprintCurrent": "atual",
+  "taskBoard.taskDetail.breadcrumbTasks": "Tarefas",
+  "taskBoard.taskDetail.breadcrumbTask": "Tarefa",
   "taskBoard.taskDialog.membersGroupHeading": "Membros",
   "taskBoard.taskDialog.newChatButton": "Novo chat",
   "taskBoard.taskDialog.newTaskTitle": "Nova tarefa",
@@ -168,10 +182,7 @@ export const taskBoard = {
     "Agente acionado para resolver os conflitos",
   "taskBoard.taskDialog.resolveConflictError":
     "Não foi possível acionar o agente",
-  "taskBoard.taskDialog.costRunCountSingular": "em {runs} execução",
-  "taskBoard.taskDialog.costRunCountPlural": "em {runs} execuções",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
-  "taskBoard.taskDialog.costOnSubscription": "· no seu plano Claude",
   "taskBoard.taskDialog.costTooltipSingular":
     "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
   "taskBoard.taskDialog.costTooltipPlural":
@@ -206,6 +217,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.setPriorityButton": "Definir prioridade",
   "taskBoard.taskDialog.someoneLabel": "alguém",
   "taskBoard.taskDialog.startedByLabel": "iniciado por",
+  "taskBoard.taskDialog.reviewerLabel": "Reviewer",
   "taskBoard.taskDialog.qaAgentLabel": "QA Agent",
   "taskBoard.taskDialog.codeReviewerLabel": "Code Reviewer",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",
@@ -244,6 +256,10 @@ export const taskBoard = {
   "taskBoard.taskFilters.repoAnyRepo": "Qualquer repositório",
   "taskBoard.taskFilters.repoFilterPlaceholder": "Filtrar por repositório…",
   "taskBoard.taskFilters.repoLabel": "Repositório",
+  "taskBoard.taskFilters.sprintLabel": "Sprint",
+  "taskBoard.taskFilters.sprintAnySprint": "Qualquer sprint",
+  "taskBoard.taskFilters.sprintBacklog": "Sem sprint",
+  "taskBoard.taskFilters.sprintCurrent": "atual",
   "taskBoard.taskFilters.repoNoRepo": "Sem repositório",
   "taskBoard.taskFilters.repoNoReposFound": "Nenhum repositório encontrado.",
   "taskBoard.taskFilters.searchLabel": "Buscar tarefas",
@@ -285,4 +301,12 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.dismissButton": "Fechar",
   "taskBoard.subscriptionPaywall.checkoutError":
     "Não foi possível iniciar o checkout: {message}",
+  "taskBoard.config.typeBug": "Bug",
+  "taskBoard.config.typeChore": "Manutenção",
+  "taskBoard.config.typeFeature": "Funcionalidade",
+  "taskBoard.config.typeSecurity": "Segurança",
+  "taskBoard.config.typeSpike": "Spike",
+  "taskBoard.taskBoard.typeLabel": "Tipo",
+  "taskBoard.taskDialog.activityTypeFromTo": "mudou o tipo de {from} para {to}",
+  "taskBoard.taskDialog.activityTypeSet": "definiu o tipo como {to}",
 } satisfies Record<keyof typeof taskBoardEn, string>;

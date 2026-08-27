@@ -46,6 +46,16 @@ export interface GitRepository {
 
 export interface GitConfig {
   readonly repository: GitRepository;
+  /**
+   * Extra checkouts placed beside the primary, one directory each, for an org
+   * whose work spans repositories. The primary stays the only one the dev
+   * server, the package-manager probe and the preview come from, so adding one
+   * cannot change what the sandbox serves.
+   *
+   * `repoName` is required here — it names the directory. Unlike `repository`,
+   * a patch carrying this key replaces the whole list.
+   */
+  readonly repositories?: readonly GitRepository[];
   readonly identity?: GitIdentity;
 }
 

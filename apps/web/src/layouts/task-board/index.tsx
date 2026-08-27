@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -34,7 +34,14 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
+  AlertTriangle,
   Calendar,
+  CheckCircle,
   ChevronRight,
   Columns03,
   DotsHorizontal,
@@ -44,6 +51,7 @@ import {
   Loading01,
   Plus,
   RefreshCw01,
+  Repeat04,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -63,8 +71,8 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { QaAgentIcon } from "@/components/qa-agent-icon";
-import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
+import { LoaderCircle } from "lucide-react";
+import { ReviewerIcon } from "@/components/reviewer-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   Dialog,
@@ -88,17 +96,22 @@ import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
+  useBoardSprintIndex,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
+  agentRunState,
+  cardNeedsAttention,
+  TASK_TYPE_CONFIG,
+  type TaskBoardItemType,
+  dueDateUrgency,
   insertSortOrder,
-  isReviewerThreadTitle,
   isTaskBlocked,
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
-  primaryThread,
-  reviewerThreads,
+  laneVisibility,
+  moveTargets,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
@@ -107,18 +120,23 @@ import {
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
+  TASK_TYPES,
   type TaskBoardItem,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
   type TaskBoardItemTag,
-  type TaskBoardItemThread,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
+import {
+  useOrgFlag,
+  useReviewerEnabled,
+} from "@/hooks/use-organization-settings";
+import type { Sprint } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {
+  TaskBoardItemDetail,
   TaskBoardItemDialog,
-  threadStatusStyle,
   toEndOfDayIso,
 } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -126,7 +144,12 @@ import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
-import { isResolvedRunFailure } from "@decocms/shared/entities";
+import {
+  type ChecksSummary,
+  checksSummary,
+  enabledReviewers,
+} from "./review-status";
+import { taskKey } from "@decocms/shared/task-key";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
@@ -134,6 +157,7 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
+  resolveSprintFilter,
   TaskFiltersBar,
   TaskFiltersDrawer,
   taskMatchesFilters,
@@ -141,7 +165,7 @@ import {
 } from "./task-filters";
 import { useBoardSearch } from "./filters-search";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
 import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
@@ -162,22 +186,35 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   return { label: DATE_FMT.format(d), overdue };
 }
 
-/**
- * Shared meta chip: outlined (border, no fill), lightly rounded (not a full
- * pill), with room for a larger leading icon.
- */
+/** Shared meta chip: an outlined pill, neutral border by default. */
 const PILL =
-  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground";
+  "inline-flex items-center gap-1 rounded-full border-[length:var(--border-hairline)] border-border px-2 py-0.5 text-xs font-medium text-muted-foreground";
+
+/**
+ * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
+ * 12 is exactly half, so strokes land on whole device pixels. At 14 the scale
+ * is 7/12 and a two-line glyph like `Equal` straddles pixel boundaries in
+ * mirrored proportions — one line smears up, the other down, and the pair reads
+ * as a pixel out of true.
+ */
+const FOOTER_GLYPH = 12;
+
+/** A footer property glyph. 14, not 16: the footer's text is 12, and a glyph that outweighs its own label reads as the subject rather than the annotation. */
+const PROPERTY_GLYPH_CLASS = "size-3.5";
+
+/** Tags a card shows before collapsing the rest into `+N`. Matches the list
+ *  view's existing cap; the full set is in the task dialog. */
+const CARD_TAG_LIMIT = 2;
 
 /** Card flag for a task whose agent is paused waiting on human input. */
 function BlockedBadge() {
   const t = useT();
   return (
     <span
-      className={cn(PILL, "border-warning/30 text-warning")}
+      className={cn(PILL, "border-warning/50 text-warning")}
       title={t("taskBoard.taskBoard.blockedBadgeTitle")}
     >
-      <HelpCircle size={14} />
+      <HelpCircle size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.needsInput")}
     </span>
   );
@@ -187,48 +224,490 @@ function HandedToHumanBadge() {
   const t = useT();
   return (
     <span
-      className={cn(PILL, "border-warning/30 text-warning")}
+      className={cn(PILL, "border-warning/50 text-warning")}
       title={t("taskBoard.taskBoard.handedToHumanBadgeTitle")}
     >
-      <HelpCircle size={14} />
+      <HelpCircle size={FOOTER_GLYPH} />
       {t("taskBoard.taskBoard.needsYou")}
     </span>
   );
 }
 
-function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+/** Priority as a single glyph: a tooltip when read-only, a picker when `onChange` is given. */
+function PriorityIcon({
+  priority,
+  onChange,
+}: {
+  priority: TaskBoardItemPriority;
+  onChange?: (priority: TaskBoardItemPriority) => void;
+}) {
   const t = useT();
   const config = PRIORITY_CONFIG[priority];
+  const label = t(config.labelKey);
+  // Sized by class, not by `size`: inside a Button, `[&_svg]:size-4` beats the attribute.
+  const glyph = (
+    <config.icon
+      className={cn(PROPERTY_GLYPH_CLASS, "shrink-0", config.iconClassName)}
+      aria-label={label}
+    />
+  );
+  if (!onChange) return <GlyphTooltip label={label}>{glyph}</GlyphTooltip>;
   return (
-    <span className={PILL}>
-      <span className={cn("size-2 rounded-full", config.dotClassName)} />
-      {t(config.labelKey)}
-    </span>
+    <FooterGlyphMenu label={label} glyph={glyph}>
+      {PRIORITIES.map((p) => {
+        const Icon = PRIORITY_CONFIG[p].icon;
+        return (
+          <DropdownMenuItem
+            key={p}
+            onSelect={() => onChange(p)}
+            className={cn("gap-2", p === priority && "bg-accent")}
+          >
+            <Icon
+              size={FOOTER_GLYPH}
+              className={cn("shrink-0", PRIORITY_CONFIG[p].iconClassName)}
+            />
+            {t(PRIORITY_CONFIG[p].labelKey)}
+          </DropdownMenuItem>
+        );
+      })}
+    </FooterGlyphMenu>
   );
 }
 
-function DueDatePill({ iso }: { iso: string }) {
-  const { label, overdue } = formatDueDate(iso);
+/**
+ * Turns a footer glyph into a Jira-style property picker: click the glyph,
+ * pick a new value from the dropdown, stopping the click from also opening
+ * the card (it's already a button) or starting a drag.
+ */
+function FooterGlyphMenu({
+  label,
+  glyph,
+  children,
+}: {
+  label: string;
+  glyph: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <span
-      className={cn(PILL, overdue && "border-destructive/30 text-destructive")}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={label}
+          aria-label={label}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          // Cancels the button's 6px padding in the layout so it takes only its glyph's width: the row spaces itself off the glyph, and the leftover 6px is what the hover surface bleeds into.
+          className="-m-1.5"
+        >
+          {glyph}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-36"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Hover label for a footer glyph.
+ *
+ * `asChild` over a span on purpose: `TooltipTrigger` renders a button by
+ * default, and the card is already a button — nesting one inside it is a
+ * hydration error. The span isn't focusable, so the glyph keeps its
+ * `aria-label` for anyone not using a pointer.
+ */
+function GlyphTooltip({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex shrink-0 items-center">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The card's kind, as one glyph. Shape carries it; the name is on hover. */
+function TaskTypeIcon({
+  type,
+  onChange,
+}: {
+  type: TaskBoardItemType;
+  onChange?: (type: TaskBoardItemType) => void;
+}) {
+  const t = useT();
+  const config = TASK_TYPE_CONFIG[type];
+  const label = t(config.labelKey);
+  const glyph = (
+    <config.icon
+      className={cn(PROPERTY_GLYPH_CLASS, "shrink-0", config.iconClassName)}
+      aria-label={label}
+    />
+  );
+  if (!onChange) return <GlyphTooltip label={label}>{glyph}</GlyphTooltip>;
+  return (
+    <FooterGlyphMenu label={label} glyph={glyph}>
+      {TASK_TYPES.map((tp) => {
+        const Icon = TASK_TYPE_CONFIG[tp].icon;
+        return (
+          <DropdownMenuItem
+            key={tp}
+            onSelect={() => onChange(tp)}
+            className={cn("gap-2", tp === type && "bg-accent")}
+          >
+            <Icon
+              size={FOOTER_GLYPH}
+              className={cn("shrink-0", TASK_TYPE_CONFIG[tp].iconClassName)}
+            />
+            {t(TASK_TYPE_CONFIG[tp].labelKey)}
+          </DropdownMenuItem>
+        );
+      })}
+    </FooterGlyphMenu>
+  );
+}
+
+/**
+ * A card's due date, in the footer. Shown whenever the card has one — the
+ * footer is the row of fixed facts — but only coloured once it is close enough
+ * to act on, so a date months out sits quiet instead of competing with the
+ * overdue ones.
+ */
+function FooterDueDate({
+  iso,
+  onChange,
+}: {
+  iso: string;
+  onChange?: (iso: string) => void;
+}) {
+  const urgency = dueDateUrgency(iso);
+  const { label } = formatDueDate(iso);
+  const content = (
+    <>
+      <Calendar className={PROPERTY_GLYPH_CLASS} />
+      {label}
+    </>
+  );
+  const tone = cn(
+    "shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums text-muted-foreground/70",
+    urgency === "overdue" && "text-destructive",
+    urgency === "soon" && "text-warning",
+  );
+  if (!onChange) return <span className={cn("flex", tone)}>{content}</span>;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          // Matches the glyph buttons: the padding is hover surface only, so the row still spaces itself off the content.
+          className={cn("-mx-1.5 h-auto px-1.5 py-1 font-medium", tone)}
+        >
+          {content}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-auto p-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DayPickerCalendar
+          mode="single"
+          selected={new Date(iso)}
+          defaultMonth={new Date(iso)}
+          onSelect={(date) => date && onChange(toEndOfDayIso(date))}
+          initialFocus
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The card's one run action, as a footer glyph. Its slot is always reserved, so revealing it on hover shifts nothing and covers nothing. */
+function CardActionGlyph({
+  action,
+}: {
+  action: { icon: typeof RefreshCw01; label: string; onClick: () => void };
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      title={action.label}
+      aria-label={action.label}
+      onClick={(e) => {
+        e.stopPropagation();
+        action.onClick();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="-m-1.5 pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
-      <Calendar size={14} />
+      <action.icon className={PROPERTY_GLYPH_CLASS} />
+    </Button>
+  );
+}
+
+/**
+ * The card's baseline: its key, its priority, how far review got. Fixed height
+ * and always present, so the eye finds the same three facts at the same offset
+ * on every card in a lane — which is the whole point of the redesign.
+ */
+function CardFooter({
+  item,
+  checks,
+  assignee,
+  assignedBy,
+  members,
+  onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
+  action,
+}: {
+  item: TaskBoardItem;
+  checks: { summary: ChecksSummary; enabled: ReviewerKind[] } | null;
+  action?: { icon: typeof RefreshCw01; label: string; onClick: () => void };
+  assignee?: Member;
+  assignedBy?: Member;
+  members?: Member[];
+  onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
+}) {
+  const { org } = useProjectContext();
+  const key = taskKey(org.slug, item.keySeq, item.jiraIssueKey);
+  return (
+    // No inset of its own: the footer shares the card's padding, so the type glyph starts on the same left edge as the title and the labels.
+    <div className="mt-auto flex shrink-0 items-center justify-between gap-2 pt-1">
+      {/* Each glyph binds to its own label at `gap-1.5`, and the pairs stand apart at `gap-3` — an icon spaced the same as its neighbours belongs to neither. */}
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex shrink-0 items-center gap-1.5">
+          <TaskTypeIcon type={item.type} onChange={onTypeChange} />
+          <span className="text-xs font-medium tabular-nums text-muted-foreground/70">
+            {key}
+          </span>
+        </span>
+        {item.dueDate && (
+          <FooterDueDate iso={item.dueDate} onChange={onDueDateChange} />
+        )}
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        {action && <CardActionGlyph action={action} />}
+        {(item.priority !== "none" || onPriorityChange) && (
+          <PriorityIcon priority={item.priority} onChange={onPriorityChange} />
+        )}
+        {checks && (
+          <ChecksChip
+            summary={checks.summary}
+            verdicts={item.reviewVerdicts}
+            enabled={checks.enabled}
+          />
+        )}
+        <AssigneeDisplay
+          item={item}
+          assignee={assignee}
+          assignedBy={assignedBy}
+          members={members}
+          onAssign={onAssign}
+          showDelegation={false}
+        />
+      </span>
+    </div>
+  );
+}
+
+/** List-row priority: dot + name. Cards use {@link PriorityIcon} instead. */
+function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+  const t = useT();
+  const config = PRIORITY_CONFIG[priority];
+  const label = t(config.labelKey);
+  return (
+    <span className={PILL} title={label}>
+      <span
+        className={cn("size-2 shrink-0 rounded-full", config.dotClassName)}
+      />
       {label}
     </span>
   );
 }
 
-function TagPill({ tag }: { tag: TaskBoardItemTag }) {
+/** List-row due date. Cards use {@link FooterDueDate} instead. */
+function DueDatePill({ iso }: { iso: string }) {
+  const { label, overdue } = formatDueDate(iso);
+  return (
+    <span
+      className={cn(PILL, overdue && "border-destructive/50 text-destructive")}
+    >
+      <Calendar size={FOOTER_GLYPH} />
+      {label}
+    </span>
+  );
+}
+
+/** The sprint a card belongs to, named the way its tracker names it. */
+function SprintPill({ sprint }: { sprint: Sprint }) {
   return (
     <span className={PILL}>
-      <span
-        className="size-2 rounded-full"
-        style={{ backgroundColor: tagDotColor(tag.color) }}
-      />
+      <Repeat04 size={FOOTER_GLYPH} />
+      {sprint.name}
+    </span>
+  );
+}
+
+/** The sprint of the card being rendered, or null when it's in the backlog. */
+function useCardSprint(item: TaskBoardItem): Sprint | null {
+  const sprints = useBoardSprintIndex();
+  return item.sprintId ? (sprints.get(item.sprintId) ?? null) : null;
+}
+
+/** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
+function TagPill({ tag }: { tag: TaskBoardItemTag }) {
+  return (
+    <span
+      className={cn(PILL, "text-foreground")}
+      style={{ borderColor: tagDotColor(tag.color) }}
+    >
       {tag.name}
     </span>
   );
+}
+
+/**
+ * How far a card is through review, as one glyph: `1/2`.
+ *
+ * Replaces a footer row that named whichever agent thread ranked highest and
+ * echoed its prose — which agent that was depended on run ordering, so a lane
+ * headlined three different agents and none of them compared.
+ *
+ * Per-reviewer detail lives in the `title`: a card is already a button, so a
+ * hover card here would nest interactive elements.
+ */
+function ChecksChip({
+  summary,
+  verdicts,
+  enabled,
+}: {
+  summary: ChecksSummary;
+  verdicts: TaskBoardItem["reviewVerdicts"];
+  enabled: ReviewerKind[];
+}) {
+  const t = useT();
+  // One row per reviewer, rather than a joined string — the whole point of a
+  // real tooltip over a `title` is that it can be laid out.
+  const detail = (
+    <span className="flex flex-col gap-0.5">
+      {enabled.map((kind) => {
+        const verdict = verdicts.find((v) => v.reviewer === kind);
+        const name = t("taskBoard.taskDialog.reviewerLabel");
+        const state = !verdict
+          ? t("taskBoard.taskBoard.checksPending")
+          : verdict.verdict === "changes_requested"
+            ? t("taskBoard.taskBoard.checksChangesRequested")
+            : t(
+                verdict.verified
+                  ? "taskBoard.taskBoard.checksApproved"
+                  : "taskBoard.taskBoard.checksUnverified",
+              );
+        return (
+          <span
+            key={kind}
+            className="flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <ReviewerIcon size={12} />
+            {name} — {state}
+          </span>
+        );
+      })}
+    </span>
+  );
+
+  return (
+    <GlyphTooltip label={detail}>
+      <span
+        className={cn(
+          // Not a button, but it carries a property like one — so it wears the same glyph and the same 6px inset.
+          "flex shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums",
+          summary.tone === "ok" && "text-success",
+          summary.tone === "pending" && "text-warning",
+          summary.tone === "danger" && "text-destructive",
+        )}
+        aria-label={t("taskBoard.taskBoard.checksLabel", {
+          passed: String(summary.passed),
+          total: String(summary.total),
+        })}
+      >
+        <CheckCircle className={PROPERTY_GLYPH_CLASS} />
+        {summary.passed}/{summary.total}
+      </span>
+    </GlyphTooltip>
+  );
+}
+
+/**
+ * Run state as a single dot: an agent is working, or one died. Small as it is,
+ * the footer this card no longer has was the only place a failed run surfaced.
+ */
+function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
+  const t = useT();
+  const running = state === "running";
+  const label = t(
+    running
+      ? "taskBoard.taskBoard.agentRunning"
+      : "taskBoard.taskBoard.agentFailed",
+  );
+  // LoaderCircle, not the board's `Loading01`: that one is eight evenly-spaced
+  // spokes, so rotating it lands on an identical image every 45° and
+  // `animate-spin` reads as a still frame. An arc has to be asymmetric to look
+  // like it is turning.
+  const Icon = running ? LoaderCircle : AlertTriangle;
+  return (
+    <span className="mt-px flex shrink-0 items-center">
+      <GlyphTooltip label={label}>
+        <Icon
+          size={14}
+          className={cn(
+            "shrink-0",
+            running ? "animate-spin text-primary" : "text-destructive",
+          )}
+          aria-label={label}
+        />
+      </GlyphTooltip>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * The card's checks indicator, or null when there is nothing to say: this org
+ * runs no reviewers, or the task has not reached review yet (a To Do card with
+ * `0/1` would be reporting a failure that hasn't had a chance to happen).
+ */
+function useCardChecks(item: TaskBoardItem): {
+  summary: ChecksSummary;
+  enabled: ReviewerKind[];
+} | null {
+  const enabled = enabledReviewers(useReviewerEnabled());
+  if (item.reviewVerdicts.length === 0 && item.status !== "in_review") {
+    return null;
+  }
+  const summary = checksSummary(item.reviewVerdicts, enabled);
+  return summary ? { summary, enabled } : null;
 }
 
 /**
@@ -236,6 +715,9 @@ function TagPill({ tag }: { tag: TaskBoardItemTag }) {
  * delegation as overlapping avatars — the assigner's avatar eclipsed by the
  * Super Agent capybara — so it's clear a human handed the task off. Otherwise a
  * plain member avatar.
+ *
+ * `showDelegation` is off on board cards — repeated down a lane the capybara says
+ * nothing the pulse dot and checks don't. A list row has no lane, so it keeps it.
  */
 function AssigneeDisplay({
   item,
@@ -243,28 +725,37 @@ function AssigneeDisplay({
   assignedBy,
   members,
   onAssign,
+  showDelegation = true,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
   onAssign?: (userId: string | null) => void;
+  showDelegation?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
+    const title = assignedBy?.user?.name
+      ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
+          name: assignedBy.user.name,
+        })
+      : t("taskBoard.taskBoard.assignedToSuperAgent");
+    if (!showDelegation) {
+      return assignedBy ? (
+        <Avatar
+          url={assignedBy.user?.image ?? undefined}
+          fallback={getInitials(assignedBy.user?.name)}
+          shape="circle"
+          size="xs"
+          title={title}
+        />
+      ) : null;
+    }
     return (
-      <span
-        className="inline-flex items-center"
-        title={
-          assignedBy?.user?.name
-            ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
-                name: assignedBy.user.name,
-              })
-            : t("taskBoard.taskBoard.assignedToSuperAgent")
-        }
-      >
+      <span className="inline-flex items-center" title={title}>
         {assignedBy && (
           <Avatar
             url={assignedBy.user?.image ?? undefined}
@@ -325,7 +816,7 @@ function AssigneeDisplay({
 
 export function TaskBoardPage() {
   const t = useT();
-  const { items, isLoading } = useTaskBoardItems();
+  const { items, sprints, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -411,7 +902,20 @@ export function TaskBoardPage() {
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
-  const { filters, setFilters, layout, setLayout } = useBoardSearch();
+  const {
+    filters: urlFilters,
+    setFilters,
+    layout,
+    setLayout,
+  } = useBoardSearch();
+  // A URL outlives the sprint it names, so an unknown one is dropped rather
+  // than left hiding every card behind a chip that reads like "no filter".
+  const filters = isLoading
+    ? urlFilters
+    : {
+        ...urlFilters,
+        sprint: resolveSprintFilter(urlFilters.sprint, sprints),
+      };
   const [preferences] = usePreferences();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -434,8 +938,8 @@ export function TaskBoardPage() {
     setFilters(next);
     clearSelection();
   };
+  // Create only: an existing card is addressed by `?task=`, not by state.
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
   // Status a newly-created task should start in (set by a lane's "+"); null for
   // the generic "New task" button.
   const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
@@ -446,18 +950,33 @@ export function TaskBoardPage() {
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
-  // Deep link: `?main=board&task=<id>` opens that task's modal (from a linked
-  // chat's "open in board" button). Derived, so it opens as soon as the item
-  // loads without an effect.
-  const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
+  /**
+   * `?main=board&task=<id>` renders that task in place of the lanes — the one
+   * address a task has, whether it was reached by clicking its card or by the
+   * short `/$org/t/DECO-01` link.
+   *
+   * It is the whole of the open-task state: reading the row out of the
+   * SSE-patched list on every render is what lets a thread or status linked
+   * while the task is on screen flow straight in.
+   */
+  const { task: openTaskId } = useSearch({ strict: false }) as {
     task?: string;
   };
-  const deepLinkItem = deepLinkTaskId
-    ? (items.find((i) => i.id === deepLinkTaskId) ?? null)
+  const openItem = openTaskId
+    ? (items.find((i) => i.id === openTaskId) ?? null)
     : null;
+  /** A deleted (or never-visible) card leaves the id dangling; land on the
+   *  board rather than an empty pane, the way the short link does. */
+  const staleTaskId = !!openTaskId && !openItem && !isLoading;
 
-  const clearDeepLink = () => {
-    if (deepLinkTaskId)
+  /**
+   * Leaving a task replaces its entry rather than stacking a second one.
+   * Opening pushes, so back from a task lands on the board; if closing pushed
+   * too, back from the board would re-open the task just closed, and a cycle
+   * of opens would bury the page the board was reached from.
+   */
+  const closeTask = () => {
+    if (openTaskId)
       navigate({
         to: ".",
         search: ({ task: _task, ...rest }: Record<string, unknown>) => rest,
@@ -504,7 +1023,6 @@ export function TaskBoardPage() {
       ],
     };
     writeChatDraft(sessionStorage, locator, newId, doc);
-    setDialogOpen(false);
     try {
       await create({ id: newId, virtual_mcp_id: agentId });
       // Best-effort — a link failure shouldn't block navigating into the chat.
@@ -527,49 +1045,29 @@ export function TaskBoardPage() {
   );
 
   const openCreate = () => {
-    setEditingItem(null);
     setCreateStatus(null);
     setDialogOpen(true);
   };
 
   const openCreateInLane = (status: TaskBoardItemStatus) => {
-    setEditingItem(null);
     setCreateStatus(status);
     setDialogOpen(true);
   };
 
-  const openEdit = (item: TaskBoardItem) => {
-    setEditingItem(item);
-    setDialogOpen(true);
-    // Keep the URL shareable regardless of how the modal was opened.
+  /**
+   * Open a card: a navigation, not a modal. Pushed rather than replaced so
+   * browser back lands on the board the card was clicked from.
+   */
+  const openTask = (item: TaskBoardItem) => {
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({ ...prev, task: item.id }),
-      replace: true,
     });
   };
 
-  // Opening a card always opens the task modal. The modal's activity area is
-  // what navigates into the run's chat (see onOpenThread below).
-  const openTask = openEdit;
-
-  // The task the modal is editing — a locally-opened card, or the deep-linked
-  // one. Resolve the LIVE row from the SSE-patched list by id (falling back to
-  // the click-time snapshot if it's momentarily absent) so threads/status
-  // linked while the modal is open — e.g. the QA Agent session handed off
-  // mid-view — flow in without reopening. The snapshot alone would freeze the
-  // item at open time.
-  const activeItem =
-    (editingItem && items.find((i) => i.id === editingItem.id)) ??
-    editingItem ??
-    deepLinkItem;
-  const modalOpen = dialogOpen || !!deepLinkItem;
-
-  const closeDialog = () => {
+  const closeCreate = () => {
     setDialogOpen(false);
-    setEditingItem(null);
     setCreateStatus(null);
-    clearDeepLink();
   };
 
   if (isLoading && items.length === 0) {
@@ -580,26 +1078,32 @@ export function TaskBoardPage() {
     );
   }
 
-  return (
-    // Full-width so each region's scroll container spans the whole panel — the
-    // max-width lives on the *content* inside (header + lanes), so the mouse can
-    // sit in the empty margins on wide monitors and still scroll the board.
-    <div
-      ref={trackBoardOpenRef}
-      className="relative flex min-h-0 flex-1 flex-col"
-    >
+  if (staleTaskId) {
+    return (
+      <Navigate
+        to="."
+        search={({ task: _task, ...rest }: Record<string, unknown>) => rest}
+        replace
+      />
+    );
+  }
+
+  /** The board itself — header, toolbar, lanes. Hoisted so wrapping it
+   *  below does not reindent every line of it. */
+  const boardContent = (
+    <>
       {/* Header — capped + centered to the same width as the board content so
-          they line up; content-capped, not scroll-capped. */}
+        they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
         <h1 className="text-xl font-medium text-foreground">
           {t("taskBoard.taskBoard.tasksTitle")}
         </h1>
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
-            diagnostic is paid. The board stays usable in the meantime. */}
+          diagnostic is paid. The board stays usable in the meantime. */}
 
         {/* Toolbar — filters on the left (inline bar on desktop, a single
-            drawer button on mobile), view toggle + New task on the right. */}
+          drawer button on mobile), view toggle + New task on the right. */}
         <div className="flex flex-wrap items-center gap-2">
           {items.length > 0 && (
             <>
@@ -609,6 +1113,7 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
+                  sprints={sprints}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -618,6 +1123,7 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
+                  sprints={sprints}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -676,6 +1182,7 @@ export function TaskBoardPage() {
         </div>
       ) : layout === "board" ? (
         <Lanes
+          visible={!openItem}
           items={visibleItems}
           members={members}
           memberByUserId={memberByUserId}
@@ -708,6 +1215,13 @@ export function TaskBoardPage() {
               { onError: onDelegateError },
             );
           }}
+          onPriorityChange={(id, priority) =>
+            actions.update.mutate({ id, priority })
+          }
+          onTypeChange={(id, type) => actions.update.mutate({ id, type })}
+          onDueDateChange={(id, dueDate) =>
+            actions.update.mutate({ id, dueDate })
+          }
           onAutoFix={(item) => {
             if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
             actions.update.mutate(
@@ -743,120 +1257,118 @@ export function TaskBoardPage() {
           </div>
         </div>
       )}
+    </>
+  );
 
-      <TaskBoardItemDialog
-        key={
-          modalOpen
-            ? (activeItem?.id ?? `new-${createStatus ?? "default"}`)
-            : "closed"
-        }
-        open={modalOpen}
-        onClose={closeDialog}
-        item={activeItem ?? undefined}
-        defaultStatus={createStatus ?? undefined}
-        isSaving={actions.create.isPending || actions.update.isPending}
-        onSubmit={(input) => {
-          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
-            closeDialog();
-            return;
-          }
-          if (activeItem) {
-            // Reports-generated tasks reject a write touching title/
-            // description/priority (their content is owned by the reports
-            // sync) — the dialog locks those fields, but still round-trips
-            // their unchanged values here, so drop them instead of sending a
-            // payload the server would 500 on. Board interactions
-            // (status/assignee/dueDate/tagIds) always go through.
+  /** Full-width so each region's scroll container spans the whole panel — the
+   *  max-width lives on the *content* inside (header + lanes), so the mouse can
+   *  sit in the empty margins on wide monitors and still scroll the board. */
+  return (
+    <div
+      ref={trackBoardOpenRef}
+      className="relative flex min-h-0 flex-1 flex-col"
+    >
+      {/* Hidden rather than unmounted while a task is open: lane scroll, the
+          horizontal board scroll and dnd-kit's state all survive the trip into
+          a card and back. `useFlipLanes` is told to stop measuring — a
+          display:none board reports every card at 0×0. */}
+      <div className={cn("flex min-h-0 flex-1 flex-col", openItem && "hidden")}>
+        {boardContent}
+      </div>
+
+      {/* Keyed by id so switching cards (a deep link changing under us) starts
+          the editor's form over rather than carrying the last one's fields. */}
+      {openItem && (
+        <TaskBoardItemDetail
+          key={openItem.id}
+          item={openItem}
+          onClose={() => closeTask()}
+          isSaving={actions.update.isPending}
+          onSubmit={(input) => {
+            if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+              closeTask();
+              return;
+            }
+            /* Reports tasks own their title/description/priority in the
+               reports sync, and TASK_BOARD_ITEM_UPDATE 500s on a write that
+               touches them. The editor locks those fields but still
+               round-trips their values, so drop them here; board fields
+               (status/assignee/dueDate/tagIds) always go through. */
             const { title, description, priority, ...boardFields } = input;
-            const contentFields = isReportsTask(activeItem)
+            const contentFields = isReportsTask(openItem)
               ? {}
               : { title, description, priority };
             actions.update.mutate(
-              { id: activeItem.id, ...boardFields, ...contentFields },
+              { id: openItem.id, ...boardFields, ...contentFields },
               { onError: onDelegateError },
             );
-            // Autosave: the dialog stays open.
+          }}
+          onDelete={() => {
+            actions.remove.mutate(openItem.id);
+            closeTask();
+          }}
+          onClone={() => {
+            // A copy starts fresh and undelegated: no assignee, no threads.
+            actions.create.mutate({
+              title: t("taskBoard.taskDialog.cloneTitle", {
+                title: openItem.title,
+              }),
+              description: openItem.description,
+              status: openItem.status,
+              priority: openItem.priority,
+              repo: openItem.repo,
+              dueDate: openItem.dueDate,
+              tagIds: openItem.tags.map((tag) => tag.id),
+            });
+            toast.success(t("taskBoard.taskDialog.cloneSuccess"));
+            closeTask();
+          }}
+          onArchive={() => {
+            actions.update.mutate({ id: openItem.id, status: "archived" });
+            toast.success(t("taskBoard.taskDialog.archiveSuccess"));
+            closeTask();
+          }}
+          onNewChat={() => void startChatFromTask(openItem)}
+          onAutoFix={() => {
+            if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+            actions.update.mutate(
+              { id: openItem.id, assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+              { onError: onDelegateError },
+            );
+            closeTask();
+          }}
+          onRerun={() => {
+            /* Confirm in the shared dialog rather than firing from here — the
+               card path does the same, so the takeover warning has one home. */
+            closeTask();
+            setRerunTargets([openItem]);
+          }}
+          /* Only the PR card's "Edit" reaches this now — it opens the branch's
+             live dev server, which is a place. A run's transcript opens in a
+             sheet on the page instead. `setTaskId` builds a fresh search, so
+             `task` falls away with it. */
+          onOpenPreview={(thread) => {
+            if (!thread.virtualMcpId) return;
+            setTaskId(thread.threadId, thread.virtualMcpId, {
+              main: "preview",
+            });
+          }}
+        />
+      )}
+
+      <TaskBoardItemDialog
+        key={dialogOpen ? `new-${createStatus ?? "default"}` : "closed"}
+        open={dialogOpen}
+        onClose={closeCreate}
+        defaultStatus={createStatus ?? undefined}
+        isSaving={actions.create.isPending}
+        onSubmit={(input) => {
+          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+            closeCreate();
             return;
           }
           actions.create.mutate(input);
-          closeDialog();
-        }}
-        onDelete={
-          activeItem
-            ? () => {
-                actions.remove.mutate(activeItem.id);
-                closeDialog();
-              }
-            : undefined
-        }
-        onClone={
-          activeItem
-            ? () => {
-                // A copy starts fresh and undelegated: no assignee, no threads.
-                actions.create.mutate({
-                  title: t("taskBoard.taskDialog.cloneTitle", {
-                    title: activeItem.title,
-                  }),
-                  description: activeItem.description,
-                  status: activeItem.status,
-                  priority: activeItem.priority,
-                  repo: activeItem.repo,
-                  dueDate: activeItem.dueDate,
-                  tagIds: activeItem.tags.map((tag) => tag.id),
-                });
-                toast.success(t("taskBoard.taskDialog.cloneSuccess"));
-                closeDialog();
-              }
-            : undefined
-        }
-        onArchive={
-          activeItem
-            ? () => {
-                actions.update.mutate({
-                  id: activeItem.id,
-                  status: "archived",
-                });
-                toast.success(t("taskBoard.taskDialog.archiveSuccess"));
-                closeDialog();
-              }
-            : undefined
-        }
-        onNewChat={
-          activeItem ? () => void startChatFromTask(activeItem) : undefined
-        }
-        onAutoFix={
-          activeItem
-            ? () => {
-                if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
-                  return;
-                actions.update.mutate(
-                  {
-                    id: activeItem.id,
-                    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                  },
-                  { onError: onDelegateError },
-                );
-                closeDialog();
-              }
-            : undefined
-        }
-        onRerun={
-          activeItem
-            ? () => {
-                // Confirm in the shared dialog rather than firing from here —
-                // the card path does the same, so the takeover warning has one
-                // home. Closing the task dialog first keeps them unstacked.
-                closeDialog();
-                setRerunTargets([activeItem]);
-              }
-            : undefined
-        }
-        onOpenThread={(thread) => {
-          if (!thread.virtualMcpId) return;
-          closeDialog();
-          setTaskId(thread.threadId, thread.virtualMcpId, {
-            main: thread.hasPreview ? "preview" : "board",
-          });
+          closeCreate();
         }}
       />
 
@@ -883,7 +1395,9 @@ export function TaskBoardPage() {
         onConfirm={confirmRerun}
       />
 
-      {selectedIds.size > 0 && (
+      {/* Acts on the lanes, so it follows them out of view — the selection is
+          kept, not cleared, and comes back with the board. */}
+      {selectedIds.size > 0 && !openItem && (
         <SelectionBar
           count={selectedIds.size}
           members={members}
@@ -1068,6 +1582,7 @@ function SelectionBar({
 }) {
   const t = useT();
   const { data: orgTags = [] } = useTags();
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
@@ -1090,7 +1605,7 @@ function SelectionBar({
                 {t("taskBoard.taskBoard.moveToButton")}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {STATUSES.map((status) => (
+                {moveTargets(deliveryEnabled).map((status) => (
                   <DropdownMenuItem
                     key={status}
                     onClick={() => onMoveTo(status)}
@@ -1270,6 +1785,10 @@ function Lanes({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
+  visible,
 }: {
   items: TaskBoardItem[];
   members: Member[];
@@ -1287,7 +1806,13 @@ function Lanes({
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
+  onPriorityChange?: (id: string, priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (id: string, type: TaskBoardItemType) => void;
+  onDueDateChange?: (id: string, iso: string) => void;
+  /** False while the task detail has the panel — see `useFlipLanes`. */
+  visible: boolean;
 }) {
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
   // on drag start so dropping the same card twice replays it (a CSS animation
@@ -1371,17 +1896,23 @@ function Lanes({
     boardRef,
     placed.map((item) => `${item.id}:${item.status}`).join(","),
     activeId === null,
+    visible,
   );
 
   const laneItems = (status: TaskBoardItemStatus) =>
     placed.filter((item) => item.status === status).sort(bySortOrder);
 
-  /** Shown-again lanes persist per person (localStorage), so pulling Archived
-   *  onto the board survives a reload. */
-  const hiddenLanes = HIDDEN_STATUSES.filter(
-    (status) => !preferences.shownTaskBoardLanes.includes(status),
-  );
-  const boardLanes = STATUSES.filter((status) => !hiddenLanes.includes(status));
+  /** Shown-again lanes persist per person, so pulling one onto the board
+   *  survives a reload. */
+  const {
+    lanes: boardLanes,
+    hidden: hiddenLanes,
+    hideable: hideableLanes,
+  } = laneVisibility({
+    deliveryEnabled,
+    shownLanes: preferences.shownTaskBoardLanes,
+    occupied: placed.map((item) => item.status),
+  });
   const setLaneShown = (status: TaskBoardItemStatus, shown: boolean) =>
     setPreferences((prev) => ({
       ...prev,
@@ -1552,8 +2083,11 @@ function Lanes({
               onAutoFix={onAutoFix}
               onRerun={onRerun}
               onAssign={onAssign}
+              onPriorityChange={onPriorityChange}
+              onTypeChange={onTypeChange}
+              onDueDateChange={onDueDateChange}
               onHide={
-                HIDDEN_STATUSES.includes(status)
+                hideableLanes.includes(status)
                   ? () => setLaneShown(status, false)
                   : undefined
               }
@@ -1696,6 +2230,9 @@ function Lane({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
   onHide,
 }: {
   status: TaskBoardItemStatus;
@@ -1715,6 +2252,9 @@ function Lane({
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
+  onPriorityChange?: (id: string, priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (id: string, type: TaskBoardItemType) => void;
+  onDueDateChange?: (id: string, iso: string) => void;
   /** Present only for a hidden-by-default lane, which can be put back away. */
   onHide?: () => void;
 }) {
@@ -1808,7 +2348,7 @@ function Lane({
       <div
         ref={setNodeRef}
         data-lane-scroll={status}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
       >
         <SortableContext
           items={items.map((item) => item.id)}
@@ -1839,6 +2379,19 @@ function Lane({
               onAssign={
                 onAssign ? (userId) => onAssign(item.id, userId) : undefined
               }
+              onPriorityChange={
+                onPriorityChange
+                  ? (priority) => onPriorityChange(item.id, priority)
+                  : undefined
+              }
+              onTypeChange={
+                onTypeChange ? (type) => onTypeChange(item.id, type) : undefined
+              }
+              onDueDateChange={
+                onDueDateChange
+                  ? (iso) => onDueDateChange(item.id, iso)
+                  : undefined
+              }
             />
           ))}
         </SortableContext>
@@ -1867,6 +2420,9 @@ function SortableTaskCard({
   onAutoFix?: () => void;
   onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
 }) {
   const {
     attributes,
@@ -1917,6 +2473,9 @@ function TaskCard({
   onAutoFix,
   onRerun,
   onAssign,
+  onPriorityChange,
+  onTypeChange,
+  onDueDateChange,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
@@ -1933,19 +2492,18 @@ function TaskCard({
   onAutoFix?: () => void;
   onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
+  onPriorityChange?: (priority: TaskBoardItemPriority) => void;
+  onTypeChange?: (type: TaskBoardItemType) => void;
+  onDueDateChange?: (iso: string) => void;
 }) {
   const t = useT();
-  const StatusIcon = STATUS_CONFIG[item.status].icon;
-  // The Super Agent's own thread, not one of its reviewers' — falls back to
-  // the most recent thread overall so a card still shows something before the
-  // reviewer/main distinction exists (e.g. mid-migration data).
-  const mainThread =
-    item.threads.find(
-      (thr) =>
-        !isReviewerThreadTitle(thr.title, "qa") &&
-        !isReviewerThreadTitle(thr.title, "code_review"),
-    ) ?? primaryThread(item);
-  const reviewThreads = reviewerThreads(item);
+  const sprint = useCardSprint(item);
+  const checks = useCardChecks(item);
+  const runState = agentRunState(item);
+  // A state of the card, not a label on it — hence the colour, not a chip.
+  const attentionLabel = cardNeedsAttention(item)
+    ? t("taskBoard.taskBoard.blockedBadgeTitle")
+    : null;
 
   const showAutoFix =
     onAutoFix &&
@@ -1979,208 +2537,66 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
+        attentionLabel
+          ? "bg-warning/10 hover:bg-warning/15"
+          : "bg-card hover:bg-accent/60",
+        // A dead run outranks a question: both want a person, but only one is already broken.
+        runState === "failed"
+          ? "card-ring-destructive"
+          : attentionLabel && "card-ring-warning",
         selected && "bg-accent",
         className,
       )}
-      title={item.title}
     >
       <div className="flex items-start gap-2">
-        <StatusIcon
-          size={16}
-          className={cn("mt-px shrink-0", statusIconClassName(item))}
-        />
-        <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground line-clamp-2">
+        {/* 14px: one step over the design system's `text-sm`, which is 13 here, not Tailwind's 14. */}
+        <span className="min-w-0 flex-1 text-[14px] font-[450] leading-snug text-foreground line-clamp-2">
           {item.title}
         </span>
-        <AssigneeDisplay
-          item={item}
-          assignee={assignee}
-          assignedBy={assignedBy}
-          members={members}
-          onAssign={onAssign}
-        />
+        {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
+        {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {(isTaskBlocked(item) ||
-        isTaskHandedToHuman(item) ||
-        item.priority !== "none" ||
-        Boolean(item.dueDate) ||
-        item.tags.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5 pl-6">
-          {isTaskBlocked(item) && <BlockedBadge />}
-          {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
-          {item.priority !== "none" && (
-            <PriorityPill priority={item.priority} />
-          )}
-          {item.dueDate && <DueDatePill iso={item.dueDate} />}
-          {item.tags.map((tag) => (
+      {(sprint != null || item.tags.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          {sprint != null && <SprintPill sprint={sprint} />}
+          {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
+          {item.tags.length > CARD_TAG_LIMIT && (
+            <span className={PILL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+          )}
         </div>
       )}
 
-      {showAutoFix && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAutoFix();
-          }}
-          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-        >
-          <Lightning01 size={12} />
-          {t("taskBoard.taskBoard.autoFix")}
-        </button>
-      )}
-
-      {showRerun && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRerun();
-          }}
-          // Absolutely positioned so it never reserves layout space: every
-          // Super-Agent card qualifies, so a flow-positioned hover button
-          // left a permanent empty gap on every card, and showing it
-          // unconditionally would put a button on nearly the whole board.
-          className="pointer-events-none absolute bottom-2 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
-        >
-          <RefreshCw01 size={12} />
-          {t("taskBoard.taskBoard.rerun")}
-        </button>
-      )}
-
-      {mainThread && (
-        <AgentReviewFooter
-          mainThread={mainThread}
-          reviewThreads={reviewThreads}
-        />
-      )}
+      <CardFooter
+        item={item}
+        checks={checks}
+        assignee={assignee}
+        assignedBy={assignedBy}
+        members={members}
+        onAssign={onAssign}
+        onPriorityChange={onPriorityChange}
+        onTypeChange={onTypeChange}
+        onDueDateChange={onDueDateChange}
+        action={
+          showAutoFix
+            ? {
+                icon: Lightning01,
+                label: t("taskBoard.taskBoard.autoFix"),
+                onClick: onAutoFix,
+              }
+            : showRerun
+              ? {
+                  icon: RefreshCw01,
+                  label: t("taskBoard.taskBoard.rerun"),
+                  onClick: onRerun,
+                }
+              : undefined
+        }
+      />
     </button>
-  );
-}
-
-/** An agent thread paired with its glyph kind and display name, for the card footer. */
-type FooterAgent = {
-  kind: "main" | ReviewerKind;
-  name: string;
-  thread: TaskBoardItemThread;
-};
-
-/** Rank for picking which agent's row the card footer shows — lower wins. A
- *  running/awaiting-input agent is always the most important thing on the
- *  card; once nothing is running, a failure the user can act on is; a clean run
- *  outranks a settled failure (a superseded attempt, or a run that died after
- *  delivering — see `isResolvedRunFailure`), which is history and must not paint
- *  the card red; otherwise the most recently run agent wins. */
-function statusPriority(thread: TaskBoardItemThread): number {
-  if (thread.status === "in_progress" || thread.status === "requires_action") {
-    return 0;
-  }
-  if (thread.status === "failed") {
-    return isResolvedRunFailure(thread.failureKind) ? 3 : 1;
-  }
-  return 2;
-}
-
-/**
- * The card footer shows a single row for whichever agent thread — the Super
- * Agent's own run, or a QA/code-review thread — matters most right now:
- * something running or awaiting input beats everything else, an error beats
- * a clean run, and among equals the most recently run agent wins. Stacking
- * all three threads (one row each, or a row plus a collapsed icon strip)
- * cost more space than it was worth for a card whose job is a quick glance —
- * full activity detail already lives one click away in the task dialog.
- */
-function AgentReviewFooter({
-  mainThread,
-  reviewThreads,
-}: {
-  mainThread: TaskBoardItemThread;
-  reviewThreads: { kind: ReviewerKind; thread: TaskBoardItemThread }[];
-}) {
-  const t = useT();
-  const agents: FooterAgent[] = [
-    {
-      kind: "main",
-      name: t("taskBoard.taskDialog.superAgentDefaultName"),
-      thread: mainThread,
-    },
-    ...reviewThreads.map(({ kind, thread }) => ({
-      kind,
-      name: t(
-        kind === "qa"
-          ? "taskBoard.taskDialog.qaAgentLabel"
-          : "taskBoard.taskDialog.codeReviewerLabel",
-      ),
-      thread,
-    })),
-  ];
-  const featuredAgent = agents.reduce((best, agent) => {
-    const rank = statusPriority(agent.thread);
-    const bestRank = statusPriority(best.thread);
-    if (rank !== bestRank) return rank < bestRank ? agent : best;
-    return agent.thread.createdAt > best.thread.createdAt ? agent : best;
-  });
-
-  return (
-    <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-3">
-      <AgentThreadFooterRow {...featuredAgent} />
-    </div>
-  );
-}
-
-/** An agent's glyph — the Super Agent capybara, or the QA/Code Reviewer badge. */
-function AgentGlyph({
-  kind,
-  size,
-  className,
-}: {
-  kind: FooterAgent["kind"];
-  size: number;
-  className?: string;
-}) {
-  if (kind === "qa") return <QaAgentIcon size={size} className={className} />;
-  if (kind === "code_review") {
-    return <CodeReviewerIcon size={size} className={className} />;
-  }
-  return <SuperAgentIcon size={size} className={className} />;
-}
-
-/**
- * One agent's row in the card footer, all on a single truncated line: glyph,
- * name, its live status — e.g. the red "Error" state — then a preview of the
- * thread's last message. A condensed version of `ThreadActivityItem`'s status
- * row in the task dialog.
- */
-function AgentThreadFooterRow({ kind, name, thread }: FooterAgent) {
-  const t = useT();
-  const state = thread.status
-    ? threadStatusStyle({ ...thread, status: thread.status }, t)
-    : null;
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <AgentGlyph kind={kind} size={16} />
-      <span className="shrink-0 text-xs font-medium text-foreground">
-        {name}
-      </span>
-      {state && (
-        <span
-          className={cn("flex shrink-0 items-center gap-1", state.className)}
-        >
-          <state.icon size={12} className={cn(state.spin && "animate-spin")} />
-          <span className="text-xs">{state.label}</span>
-        </span>
-      )}
-      {thread.lastMessage && (
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {thread.lastMessage}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -2196,6 +2612,7 @@ function ListRow({
   onOpen: () => void;
 }) {
   const StatusIcon = STATUS_CONFIG[item.status].icon;
+  const sprint = useCardSprint(item);
   return (
     <button
       type="button"
@@ -2219,6 +2636,11 @@ function ListRow({
       {item.dueDate && (
         <span className="hidden sm:inline-flex">
           <DueDatePill iso={item.dueDate} />
+        </span>
+      )}
+      {sprint != null && (
+        <span className="hidden sm:inline-flex">
+          <SprintPill sprint={sprint} />
         </span>
       )}
       {item.tags.length > 0 && (

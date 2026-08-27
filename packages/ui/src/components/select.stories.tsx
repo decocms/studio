@@ -34,6 +34,33 @@ export const Default: Story = {
   ),
 };
 
+export const WithDescriptions: Story = {
+  render: () => (
+    <Select defaultValue="manual">
+      <SelectTrigger className="w-44">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-w-80">
+        <SelectItem value="off" description="No CMS button and no Content tab.">
+          Off
+        </SelectItem>
+        <SelectItem
+          value="manual"
+          description="Editors open the CMS when they need it."
+        >
+          On demand
+        </SelectItem>
+        <SelectItem
+          value="auto"
+          description="The preview opens the CMS as soon as it can edit content."
+        >
+          Always open
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  ),
+};
+
 export const WithGroups: Story = {
   render: () => (
     <div className="grid gap-2">
