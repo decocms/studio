@@ -123,10 +123,14 @@ test.describe("task board delivery lanes", () => {
       callSelfMcpTool<T>(request, orgSlug, name, args);
     const orgId = await findOrgId(request, orgSlug);
 
-    // No reviewers enabled, so the readiness gate reduces to the lane alone.
+    // No reviewers enabled, and the flag lets CREATE below land straight in "approved".
     await call("ORGANIZATION_SETTINGS_UPDATE", {
       organizationId: orgId,
-      flags: { qa_agent_enabled: false, code_reviewer_enabled: false },
+      flags: {
+        qa_agent_enabled: false,
+        code_reviewer_enabled: false,
+        delivery_lanes_enabled: true,
+      },
     });
 
     const { item: early } = await call<{ item: TaskBoardItem }>(
