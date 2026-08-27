@@ -105,7 +105,7 @@ export function VisualEditorPrompt({
     if (!input.trim()) return;
 
     const text = formatVisualEditorMessage(element, input);
-    openSidePanel("chat");
+    openSidePanel();
     sendMessage({ parts: [{ type: "text", text }] });
     onDismiss();
   };

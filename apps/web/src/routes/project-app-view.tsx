@@ -105,7 +105,7 @@ function AppRenderer({
     }
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
-      openSidePanel("chat");
+      openSidePanel();
       sendMessage({ tiptapDoc: doc });
     }
   };

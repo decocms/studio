@@ -456,15 +456,13 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await reportCta.click();
 
-    // Report app open in the main panel, chat side panel closed
-    // (sidepanel=0 overrides the report agent's chatDefaultOpen).
+    // The report agent is a project, so the path names it and only the layout (main, sidepanel=false) stays in search.
     await page.waitForURL(
       (url) =>
-        url.pathname.startsWith(`/${user.orgSlug}/`) &&
-        url.searchParams.get("virtualmcpid") === virtualMcpId &&
+        url.pathname === `/${user.orgSlug}/chat/${virtualMcpId}` &&
         url.searchParams.get("main") ===
           `app:${connectionId}:get_my_diagnostic` &&
-        url.searchParams.get("sidepanel") === "0",
+        url.searchParams.get("sidepanel") === "false",
       { timeout: 20_000 },
     );
 

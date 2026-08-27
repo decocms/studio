@@ -15,7 +15,7 @@
  * write is wrapped. A read failure means "no memory", never a crash.
  */
 
-const STORAGE_KEY = "studio:thread-layout:v1";
+const STORAGE_KEY = "studio:thread-layout:v2";
 
 /** LRU cap. Bounds growth within a session; oldest threads evict first. */
 const MAX_THREADS = 50;
@@ -23,8 +23,8 @@ const MAX_THREADS = 50;
 export interface ThreadLayout {
   /** `?main` value: a tab id, or `0` for the closed main panel. */
   main?: string | 0;
-  /** `?sidepanel` value: `"chat"` open, or `0` closed. */
-  sidepanel?: "chat" | 0;
+  /** `?sidepanel` value: whether the chat side panel is open. */
+  sidepanel?: boolean;
 }
 
 /** Most-recent entry last, so `.shift()` evicts the least-recently-saved. */
@@ -40,7 +40,7 @@ export function sanitizeThreadLayout(layout: ThreadLayout): ThreadLayout {
   if (layout.main === 0 || typeof layout.main === "string") {
     clean.main = layout.main;
   }
-  if (layout.sidepanel === 0 || layout.sidepanel === "chat") {
+  if (typeof layout.sidepanel === "boolean") {
     clean.sidepanel = layout.sidepanel;
   }
   return clean;

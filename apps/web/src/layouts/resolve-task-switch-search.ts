@@ -16,6 +16,19 @@
  * resolveDefaultPanelState derives the default from the target agent's layout
  * config (chatDefaultOpen / defaultMainView) — a fresh thread on an agent that
  * opts out of the chat panel must not be forced chat-open.
+ *
+ * PUSH vs REPLACE — the rule for every navigation in the workspace, stated once
+ * here because this module is where a thread switch's URL is decided:
+ *
+ *   PUSH when the person chose to go somewhere. Opening a destination from the
+ *   sidebar, picking a project from a sidebar agent row, switching to another
+ *   thread: each is a place they can reasonably expect Back to return from.
+ *
+ *   REPLACE when the URL is only catching up with where they already are.
+ *   Canonicalization (the `/$org` resolver, the legacy `/$org/$taskId`
+ *   translation) and layout writes (`main`, `sidepanel`, board filters, the
+ *   panel toggles) replace — a Back button that walks a person backwards
+ *   through their own panel toggles or keystrokes is a broken Back button.
  */
 
 import { isPerThreadTab } from "@/layouts/main-panel-tabs/tab-id";
@@ -57,7 +70,7 @@ export function resolveTaskSwitchSearch(
   // Only pin a side-panel value when the target thread remembered one; leaving
   // it undefined omits `sidepanel` from the URL so the agent-configured default
   // (resolveDefaultPanelState) applies instead of forcing chat open.
-  let sidepanel: "chat" | 0 | undefined;
+  let sidepanel: boolean | undefined;
 
   if (opts?.main) {
     // Explicit intent wins outright — ignore saved/carried layout.

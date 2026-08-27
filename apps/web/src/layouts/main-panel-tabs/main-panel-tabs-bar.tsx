@@ -47,7 +47,7 @@ export function MainPanelTabsBar({
   maxVisible = MAX_VISIBLE,
 }: {
   virtualMcpId: string;
-  taskId: string;
+  taskId: string | null;
   disableActiveMainToggle?: boolean;
   /** Space-adaptive cap from the shell; clamped to `MAX_VISIBLE`. */
   maxVisible?: number;

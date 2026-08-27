@@ -1001,7 +1001,7 @@ export function FileExplorer({
       "",
       "Please read the source file, locate the code, and apply the requested change.",
     );
-    openSidePanel("chat");
+    openSidePanel();
     sendMessage({ parts: [{ type: "text", text: lines.join("\n") }] });
     setAskAi(null);
   }

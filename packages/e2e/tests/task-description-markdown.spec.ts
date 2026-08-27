@@ -32,7 +32,7 @@ function editorOf(page: Page) {
   return page.getByTestId("task-description").locator(".ProseMirror");
 }
 
-/** The task rendered in place of the board — `?main=board&task=<id>`. */
+/** The task rendered in place of the board — `/$org/tasks?task=<id>`. */
 function detailOf(page: Page) {
   return page.getByTestId("task-detail");
 }
@@ -64,7 +64,7 @@ async function closeTask(page: Page) {
 }
 
 async function openTask(page: Page, orgSlug: string, title: string) {
-  await page.goto(`/${orgSlug}?main=board`);
+  await page.goto(`/${orgSlug}/tasks`);
   const card = page.getByText(title, { exact: true });
   await card.waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
   await card.click();

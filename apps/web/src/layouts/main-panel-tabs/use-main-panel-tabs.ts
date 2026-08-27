@@ -11,6 +11,7 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement } from "react";
 import {
@@ -101,13 +102,15 @@ export interface MainPanelTabs {
 
 export function useMainPanelTabs(ctx: {
   virtualMcpId: string;
-  taskId: string;
+  /** The open thread, or `null` on a destination route that names none. */
+  taskId: string | null;
 }): MainPanelTabs {
   const t = useT();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
     main?: string | 0;
   };
+  const routeDefaultMain = useRouteDefaultMain();
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
@@ -282,6 +285,7 @@ export function useMainPanelTabs(ctx: {
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
       mainParam: search.main,
+      routeDefaultMain,
       metadata:
         effectiveDefaultMainView || entityLayout
           ? {

@@ -51,11 +51,13 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
   const { org } = useProjectContext();
   const t = useT();
 
-  // Completing the connect step opens the diagnostic report in a fresh thread.
-  // That navigation also drops the `?connect=1` param, which unmounts this modal
-  // and reveals the report. Target end state: the Commerce Discovery report app
-  // open in the main panel, with chat (`sidepanel: 0`, overriding the report
-  // agent's chatDefaultOpen) and the sidebar both closed.
+  /**
+   * Completing the connect step opens the diagnostic report in a fresh thread.
+   * That navigation also drops the `?connect=1` param, which unmounts this modal
+   * and reveals the report. Target end state: the Commerce Discovery report app
+   * open in the main panel, with chat (`sidepanel: false`, overriding the report
+   * agent's chatDefaultOpen) and the sidebar both closed.
+   */
   const goToReport = () => {
     localStorage.setItem(
       LOCALSTORAGE_KEYS.sidebarOpen(),
@@ -70,7 +72,7 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
           WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
           COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
         ),
-        sidepanel: 0,
+        sidepanel: false,
       },
     });
   };

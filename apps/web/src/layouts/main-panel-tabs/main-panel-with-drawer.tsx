@@ -17,7 +17,7 @@ export function MainPanelWithDrawer({
   taskId,
 }: {
   virtualMcpId: string;
-  taskId: string;
+  taskId: string | null;
 }) {
   const inset = useInsetContext();
   const { activeTask } = useChatTask();

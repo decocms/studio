@@ -187,7 +187,7 @@ export function SettingsTab({
         instructions_length: instructionsText.length,
       });
 
-      openSidePanel("chat");
+      openSidePanel();
 
       await sendMessage({
         tiptapDoc: buildImprovePromptDoc({
@@ -367,7 +367,7 @@ export function SettingsTab({
     try {
       const result = await runMutation.mutateAsync(automationId);
       if (result.threadId) {
-        openSidePanel("chat");
+        openSidePanel();
         openTask(result.threadId);
       }
     } catch {

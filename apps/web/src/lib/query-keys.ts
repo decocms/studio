@@ -386,8 +386,9 @@ export const KEYS = {
   monitoringLogDetail: (logId: string) =>
     ["monitoring", "log-detail", logId] as const,
 
-  // Ensure-task query (load-or-create by id)
-  ensureTask: (orgId: string, id: string) =>
+  /** Ensure-task query (load-or-create by id). `null` = the route names no
+   *  thread, which is its own cache entry and never hits the wire. */
+  ensureTask: (orgId: string, id: string | null) =>
     ["ensure-task", orgId, id] as const,
 
   // One-shot refresh of a viewed thread's metadata (read-only teammate threads)
@@ -500,23 +501,9 @@ export const KEYS = {
   ) =>
     ["automation-run-stats", organizationId, automationId, paramsKey] as const,
 
-  // Projects (scoped by organization)
-  projects: (organizationId: string) => ["projects", organizationId] as const,
-  project: (organizationId: string, slug: string) =>
-    ["project", organizationId, slug] as const,
   // Virtual MCP entity (scoped by org + id)
   virtualMcp: (orgId: string, virtualMcpId: string) =>
     ["virtual-mcp", orgId, virtualMcpId] as const,
-
-  // Project plugin configs
-  projectPluginConfigs: (projectId: string) =>
-    ["project-plugin-configs", projectId] as const,
-  projectPluginConfig: (projectId: string, pluginId: string) =>
-    ["project-plugin-config", projectId, pluginId] as const,
-
-  // Project connections (dependencies)
-  projectConnections: (projectId: string) =>
-    ["project-connections", projectId] as const,
 
   // Project connection details (with tools, for sidebar)
   projectConnectionDetails: (projectId: string, connectionIds: string[]) =>

@@ -263,14 +263,21 @@ export function resolveDefaultTabId(
 export function resolveActiveTabAndOpen(ctx: {
   mainParam: string | 0 | undefined;
   metadata: EntityLayoutMetadata | null;
+  /** The destination route's default `?main` (e.g. `board` on `/$org/tasks`).
+   *  Wins over the agent's `defaultMainView`, loses to an explicit `?main=`. */
+  routeDefaultMain?: string | null;
 }): { mainOpen: boolean; activeTab: string } {
   const mainParam = ctx.mainParam === 0 ? "0" : ctx.mainParam;
-  const def = resolveDefaultTabId(ctx.metadata);
+  const def = ctx.routeDefaultMain || resolveDefaultTabId(ctx.metadata);
 
   if (mainParam === "0") {
     return { mainOpen: false, activeTab: def };
   }
   if (mainParam === undefined) {
+    // A route default names a real view, so the panel opens on it.
+    if (ctx.routeDefaultMain) {
+      return { mainOpen: true, activeTab: ctx.routeDefaultMain };
+    }
     // Mirror resolveDefaultPanelState: a chat-default (or absent default)
     // keeps the main panel closed so the header tab bar doesn't highlight
     // a tab while the panel is 0px wide.

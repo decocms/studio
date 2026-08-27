@@ -53,7 +53,7 @@ function TabBody({
 }: {
   activeTab: string;
   virtualMcpId: string;
-  taskId: string;
+  taskId: string | null;
   layoutTabs: ReturnType<typeof useMainPanelTabs>["layoutTabs"];
   expandedTools: ReturnType<typeof useMainPanelTabs>["expandedTools"];
   automationTabParsed: ReturnType<
@@ -182,7 +182,7 @@ export function MainPanelContent({
   taskId,
   virtualMcpId,
 }: {
-  taskId: string;
+  taskId: string | null;
   virtualMcpId: string;
 }) {
   const { activeTab, layoutTabs, expandedTools, automationTabParsed } =

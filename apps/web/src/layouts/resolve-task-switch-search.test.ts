@@ -88,11 +88,11 @@ describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => 
 
 describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
   test("restores the target thread's saved main tab", () => {
-    const savedLayout: ThreadLayout = { main: "preview", sidepanel: "chat" };
+    const savedLayout: ThreadLayout = { main: "preview", sidepanel: true };
     expect(resolve({ prev: { virtualmcpid: "repo-1" }, savedLayout })).toEqual({
       virtualmcpid: "repo-1",
       main: "preview",
-      sidepanel: "chat",
+      sidepanel: true,
     });
   });
 
@@ -105,8 +105,8 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
   });
 
   test("restores a closed side panel", () => {
-    const savedLayout: ThreadLayout = { main: "git", sidepanel: 0 };
-    expect(resolve({ savedLayout })).toEqual({ main: "git", sidepanel: 0 });
+    const savedLayout: ThreadLayout = { main: "git", sidepanel: false };
+    expect(resolve({ savedLayout })).toEqual({ main: "git", sidepanel: false });
   });
 
   test("saved layout overrides carry-forward of the source tab", () => {
@@ -136,7 +136,7 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
   test("opts.main still beats saved layout", () => {
     // opts.main wins the main slot; the saved sidepanel is not consulted, so it
     // is omitted and the agent default applies.
-    const savedLayout: ThreadLayout = { main: "preview", sidepanel: 0 };
+    const savedLayout: ThreadLayout = { main: "preview", sidepanel: false };
     expect(resolve({ opts: { main: "settings" }, savedLayout })).toEqual({
       main: "settings",
     });

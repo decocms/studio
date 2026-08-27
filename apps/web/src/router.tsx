@@ -6,9 +6,11 @@ import {
   lazyRouteComponent,
   Outlet,
   redirect,
+  retainSearchParams,
 } from "@tanstack/react-router";
 import { SplashScreen } from "@/components/splash-screen";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { sidePanelSearchSchema } from "@/layouts/sidepanel-search";
 import { settingsGroupPendingComponent } from "@/components/settings/settings-group-page";
 import { ChunkErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t";
@@ -103,11 +105,14 @@ const oauthCallbackAiProviderRoute = createRoute({
 // DEPLOYMENT ADMIN DASHBOARD (instance-level, not org-scoped)
 // ============================================
 
-// Mounted at `/_admin`, not `/admin`. TanStack ranks the static `/_admin`
-// segment above the `$org` param, so this route wins even if an `_admin`
-// slug were ever minted (ORGANIZATION_CREATE rejects `_`, but the raw
-// better-auth endpoint enforces no charset) — the org gets shadowed, never
-// this surface. A bare `/admin` would shadow a legal, live slug.
+/**
+ * Mounted at `/_admin`, not `/admin`. TanStack ranks the static `/_admin`
+ * segment above the `$org` param, so this route wins even if an `_admin`
+ * slug were ever minted (ORGANIZATION_CREATE rejects `_`, but the raw
+ * better-auth endpoint enforces no charset) — the org gets shadowed, never
+ * this surface. A bare `/admin` would shadow a legal, live slug. The same
+ * ranking rule governs the org tree; see ROUTE GRAMMAR below for the invariant.
+ */
 const adminLayout = createRoute({
   getParentRoute: () => rootRoute,
   path: "/_admin",
@@ -300,9 +305,41 @@ const orgShellLayout = createRoute({
 // AGENT SHELL LAYOUT (pathless — per-task chrome under orgShellLayout)
 // ============================================
 
+/**
+ * Layout search, declared ONCE for every route under the agent shell.
+ *
+ * Path = which page. Search = how that page is laid out. `main`, `sidepanel`
+ * and `thread` describe the layout, never the page, so they live here on the
+ * pathless parent and no destination route re-declares them. `main` in
+ * particular is panel VISIBILITY, not a view id — `main=0` means "closed",
+ * which no path segment can express.
+ */
+const workspaceLayoutSearchSchema = z.object({
+  /** Whether the chat side panel is open. Absent = the route/agent default,
+   *  which is closed on any destination that declares a `defaultMain`. Legacy
+   *  `chat`/`0` links parse to the same boolean (see `sidepanel-search.ts`). */
+  sidepanel: sidePanelSearchSchema,
+  main: z.union([z.string(), z.literal(0)]).optional(),
+  /** The open thread on a destination route. The legacy `/$org/$taskId` carries
+   *  the same id in its path param instead, so nothing reads both. */
+  thread: z.string().optional(),
+});
+
 const agentShellLayout = createRoute({
   getParentRoute: () => orgShellLayout,
   id: "agent-shell",
+  validateSearch: workspaceLayoutSearchSchema,
+  /**
+   * Whether the chat panel is open follows you across the workspace: a
+   * navigation that names no `sidepanel` inherits the current one, so opening
+   * chat on one destination does not close it on the next.
+   *
+   * Deliberately only `sidepanel`. `main` is per-destination (each declares its
+   * own `staticData.defaultMain`, so carrying `board` onto `/library` would be
+   * wrong), and `thread` belongs to one project — retaining it would drag a
+   * conversation across a project switch.
+   */
+  search: { middlewares: [retainSearchParams(["sidepanel"])] },
   // Render the centered panel-area loader (matches the shell's own Suspense
   // fallbacks) while this route loads, instead of the full-screen SplashScreen.
   // The sidebar is already mounted by orgShellLayout, so the pending state
@@ -319,19 +356,12 @@ const agentShellLayout = createRoute({
 
 const unifiedChatSearchSchema = z.object({
   virtualmcpid: z.string().optional(),
-  tab: z.string().optional(),
-  sidepanel: z.union([z.literal("chat"), z.literal(0)]).optional(),
-  main: z.union([z.string(), z.literal(0)]).optional(),
   /** Open the Library file-preview overlay over the chat (browse-grammar path
    *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */
   preview: z.string().optional(),
-  id: z.string().optional(),
-  toolName: z.string().optional(),
   /** Deep-links a task board card's modal open inside the `main=board`
    *  overlay. */
   task: z.string().optional(),
-  tasks: z.number().optional(),
-  mainOpen: z.number().optional(),
   autosend: z.string().optional(),
   /** Commerce onboarding hand-off: `"1"` mounts the blocking connections modal
    *  over this report route until at least one data source is connected. Dropped
@@ -374,6 +404,145 @@ const unifiedChatRoute = createRoute({
     });
   },
   component: () => null,
+});
+
+/**
+ * DESTINATION ROUTES (`/$org/home`, `/chat`, `/tasks`, `/reports`, `/library`)
+ *
+ * ROUTE GRAMMAR — path = which page, search = how that page is laid out.
+ *
+ * A destination (Home, Chat, Tasks, Reports, Library) is a real path segment.
+ * Layout is not: `main`, `sidepanel` and `thread` are declared once on
+ * `agentShellLayout` and inherited by every destination below. Because `main`
+ * is panel visibility (`main=0` = closed), the per-agent views — preview, code,
+ * content, assets, git, settings, automations — stay in `?main=` forever and
+ * are never promoted to segments. Only the extras a single destination reads
+ * (board filters, the library path, the commerce hand-off) are declared on it.
+ *
+ * `{-$project}` is ONE optional path param, not a pair of sibling routes:
+ * `params.project` is `string | undefined` and the segment simply vanishes when
+ * absent. The project is the raw virtual-MCP id (`vir_*`, plus the synthetic
+ * `decopilot_<orgId>` and `<orgId>_commerce-discovery`) — there is no slug and
+ * no new schema. A bare `/$org/chat` or `/$org/tasks` means "all projects", for
+ * everyone: a sidebar link may be scoped, a typed URL never is.
+ *
+ * These routes sit under `agentShellLayout`, which renders no `<Outlet />` —
+ * the page itself comes from the main-panel machinery, keyed on the resolved
+ * `?main` tab. So a destination's whole job is to own its path, own its own
+ * search extras, and declare its default `?main` via `staticData.defaultMain`
+ * (see `useRouteDefaultMain`); an explicit `?main=` always wins over it. Their
+ * components are therefore `() => null` — giving one a real component would
+ * silently render nothing.
+ *
+ * RANKING INVARIANT: TanStack ranks statics above dynamics above optionals at
+ * the same position, so `/$org/home`, `/$org/chat` and `/$org/tasks` beat the
+ * `/$org/$taskId` sibling exactly as `/$org/settings` already does. But
+ * `sortDynamic` returns 0 for two SAME-SHAPE dynamic siblings under one node,
+ * and the winner then silently becomes registration order — so never register a
+ * second `/$org/$something`.
+ *
+ * These destinations are unconditional: the sidebar links straight to them
+ * and `/$org` resolves into them. There is no flag and no alternate chrome.
+ */
+
+/** Overview. */
+const orgHomeRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/home",
+  staticData: { defaultMain: "overview" },
+  validateSearch: z.object({
+    /** Commerce onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
+    connect: z.coerce.string().optional(),
+    siteUrl: z.string().optional(),
+  }),
+  component: () => null,
+});
+
+/** Chat. No project = the Super Agent (Decopilot); with one = that project's
+ *  workspace. The legacy `?virtualmcpid=` search param is this path segment. */
+const chatRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/chat/{-$project}",
+  validateSearch: z.object({
+    /** Library file-preview overlay ("<volume>/<path…>"), set by org-file refs. */
+    preview: z.string().optional(),
+    autosend: z.string().optional(),
+    /** A task board card to open, forwarded from the `/$org` resolver. */
+    task: z.string().optional(),
+    /** Commerce onboarding hand-off (see `/$org/reports`). */
+    connect: z.coerce.string().optional(),
+    siteUrl: z.string().optional(),
+    /** Storefront "." deep-link: preselect a page in the content editor. */
+    contentPageId: z.string().optional(),
+    contentPath: z.string().optional(),
+    contentPathTemplate: z.string().optional(),
+  }),
+  component: () => null,
+});
+
+/** Task board. No project = every task in the org; with one = the tasks on that
+ *  project's repo. */
+const tasksRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/tasks/{-$project}",
+  staticData: { defaultMain: "board" },
+  validateSearch: z.object({
+    /** Deep-links a card's modal open on the board. */
+    task: z.string().optional(),
+    /** Board view state, persisted in the URL. See `filters-search.ts`. */
+    view: z.string().optional(),
+    q: z.string().optional(),
+    assignee: z.string().optional(),
+    priority: z.string().optional(),
+    due: z.string().optional(),
+    tags: z.string().optional(),
+    repo: z.string().optional(),
+    sprint: z.string().optional(),
+  }),
+  component: () => null,
+});
+
+/** The org's Commerce Discovery report. Org-wide, so no project segment. */
+const reportsRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/reports",
+  staticData: { defaultMain: "reports" },
+  validateSearch: z.object({
+    /** `"1"` mounts the blocking connections modal until a data source is
+     *  connected; `siteUrl` is the claimed site it is for. */
+    connect: z.coerce.string().optional(),
+    siteUrl: z.string().optional(),
+  }),
+  component: () => null,
+});
+
+/** Library. Org-wide, so no project segment. */
+const libraryRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/library",
+  staticData: { defaultMain: "files" },
+  validateSearch: z.object({
+    path: z.string().optional(),
+    preview: z.string().optional(),
+    skill: z.string().optional(),
+    brand: z.string().optional(),
+  }),
+  component: () => null,
+});
+
+/**
+ * `/$org/members` — the Stripe return-URL shape. `orgSettingsPath` emits
+ * `/$org/settings/members`, so this only has to keep the shorter link alive.
+ */
+const orgMembersRedirectRoute = createRoute({
+  getParentRoute: () => orgLayout,
+  path: "/members",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/settings/members",
+      params: { org: params.org },
+    });
+  },
 });
 
 // Org index (`/$org`) resolves to the Super Agent's home thread — there's no
@@ -576,12 +745,24 @@ const settingsSyncedReposRoute = createRoute({
   ),
 });
 
-const settingsTasksRoute = createRoute({
+const settingsTaskBoardRoute = createRoute({
   getParentRoute: () => settingsLayout,
-  path: "/tasks",
+  path: "/task-board",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/tasks.tsx"),
   ),
+});
+
+// Redirects old /settings/tasks links to the renamed task board settings.
+const settingsTasksRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/tasks",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/settings/task-board",
+      params: { org: params.org },
+    });
+  },
 });
 
 const settingsMembersRoute = createRoute({
@@ -685,6 +866,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsApiKeysRoute,
   settingsBucketsRoute,
   settingsSyncedReposRoute,
+  settingsTaskBoardRoute,
   settingsTasksRoute,
   settingsMembersRoute,
   settingsRolesRoute,
@@ -695,7 +877,14 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsRegistryRoute,
 ]);
 
-const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
+const agentShellWithChildren = agentShellLayout.addChildren([
+  unifiedChatRoute,
+  orgHomeRoute,
+  chatRoute,
+  tasksRoute,
+  reportsRoute,
+  libraryRoute,
+]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
@@ -705,6 +894,7 @@ const orgShellWithChildren = orgShellLayout.addChildren([
 
 const orgLayoutWithChildren = orgLayout.addChildren([
   orgShellWithChildren,
+  orgMembersRedirectRoute,
   settingsWithChildren,
 ]);
 

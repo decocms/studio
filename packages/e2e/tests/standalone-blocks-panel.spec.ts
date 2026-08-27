@@ -57,7 +57,7 @@ test.describe("Blocks preview mode", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=chat&main=settings`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=true&main=settings`,
     );
 
     const chat = page.getByTestId("chat-panel");
@@ -88,7 +88,7 @@ test.describe("Blocks preview mode", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=0&main=preview`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=false&main=preview`,
     );
 
     // Mobile has no side-by-side split and no standalone Chat toggle: every
@@ -102,7 +102,7 @@ test.describe("Blocks preview mode", () => {
     // Pick Chat: the main panel closes and chat becomes the only surface.
     await viewSelect.click();
     await page.getByRole("option", { name: "Chat" }).click();
-    await expect(page).toHaveURL(/sidepanel=chat/);
+    await expect(page).toHaveURL(/sidepanel=true/);
     await expect(page).toHaveURL(/main=0/);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
@@ -110,7 +110,7 @@ test.describe("Blocks preview mode", () => {
     // Pick Preview again: chat closes, the main panel returns.
     await viewSelect.click();
     await page.getByRole("option", { name: "Preview" }).click();
-    await expect(page).toHaveURL(/sidepanel=0/);
+    await expect(page).toHaveURL(/sidepanel=false/);
     await expect(page).toHaveURL(/main=preview/);
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);

@@ -265,6 +265,36 @@ describe("resolveActiveTabAndOpen", () => {
     ).toEqual({ mainOpen: false, activeTab: "settings" });
   });
 
+  test("?main absent + a route default → open on the route's tab", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        mainParam: undefined,
+        metadata: { defaultMainView: { type: "chat" } },
+        routeDefaultMain: "board",
+      }),
+    ).toEqual({ mainOpen: true, activeTab: "board" });
+  });
+
+  test("?main wins over a route default", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        mainParam: "settings",
+        metadata: meta,
+        routeDefaultMain: "board",
+      }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("?main=0 → closed, with the route default as the resting tab", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        mainParam: 0,
+        metadata: meta,
+        routeDefaultMain: "files",
+      }),
+    ).toEqual({ mainOpen: false, activeTab: "files" });
+  });
+
   test("?main=0 → closed, tab = default", () => {
     expect(resolveActiveTabAndOpen({ mainParam: 0, metadata: meta })).toEqual({
       mainOpen: false,

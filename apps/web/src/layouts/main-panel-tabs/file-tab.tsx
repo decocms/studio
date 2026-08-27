@@ -108,7 +108,7 @@ export function FileTab({
   taskId,
 }: {
   fileKey: string;
-  taskId: string;
+  taskId: string | null;
 }) {
   const t = useT();
   const navigate = useNavigate();

@@ -10,6 +10,9 @@
  * The store subscription matters for rows that land AFTER first render (late
  * snapshot, `manager.create` prepend); the suspense query is the cold-load /
  * archived-thread fallback, and `localHit` always wins over it.
+ *
+ * `taskId: null` — a destination route with no thread open — resolves to `null`
+ * without touching the wire.
  */
 
 import { useSyncExternalStore } from "react";
@@ -21,7 +24,7 @@ import { useThreadManager } from "@/components/chat/store/hooks";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { Task } from "@/components/chat/task/types";
 
-export function useTaskMetadata(taskId: string): ThreadMetadata | null {
+export function useTaskMetadata(taskId: string | null): ThreadMetadata | null {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const manager = useThreadManager();
@@ -29,9 +32,8 @@ export function useTaskMetadata(taskId: string): ThreadMetadata | null {
     manager.threads.subscribe,
     manager.threads.get,
   );
-  const localHit = taskId
-    ? (threads.find((t) => t.id === taskId) ?? null)
-    : null;
+  const localHit =
+    taskId === null ? null : (threads.find((t) => t.id === taskId) ?? null);
   const { data: fetchedMetadata } = useSuspenseQuery<
     Task | null,
     Error,
@@ -39,7 +41,7 @@ export function useTaskMetadata(taskId: string): ThreadMetadata | null {
   >({
     queryKey: KEYS.ensureTask(org.id, taskId),
     queryFn: async () => {
-      if (!taskId) return null;
+      if (taskId === null) return null;
       try {
         const { item } = await studio.call("COLLECTION_THREADS_GET", {
           id: taskId,

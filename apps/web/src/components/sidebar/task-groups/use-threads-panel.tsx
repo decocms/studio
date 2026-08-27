@@ -15,6 +15,7 @@ import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
+import { resolveActiveAgentId, useRouteThreadId } from "@/layouts/thread-route";
 import { track } from "@/lib/posthog-client";
 import type { Task } from "@/components/chat/task/types";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
@@ -105,18 +106,22 @@ export function useThreadsPanel({
   const navigate = useNavigate();
   const studio = useStudioTools();
   const { setTaskId, createNewTask } = usePanelActions();
-  const params = useParams({ strict: false }) as { taskId?: string };
+  const params = useParams({ strict: false }) as { project?: string };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  const activeTaskId = params.taskId ?? null;
+  /** Route-aware: `$taskId` on the legacy route, `?thread=` on a destination. */
+  const activeTaskId = useRouteThreadId();
   /**
-   * The recipient is the URL's `virtualmcpid` (what the composer sends to),
-   * falling back to the thread row's agent. Preferring the param keeps the
-   * active-agent highlight in sync when a new chat is retargeted in place.
+   * The recipient is the agent the ROUTE names — the `{-$project}` segment, then
+   * the legacy `?virtualmcpid=` — falling back to the open thread's own agent.
+   * Reading only the search param made this control hand a new chat to the Super
+   * Agent on every `/$org/chat/<project>`.
    */
-  const activeAgentId =
-    search.virtualmcpid ??
-    allThreads.find((thread) => thread.id === activeTaskId)?.virtual_mcp_id ??
-    null;
+  const activeAgentId = resolveActiveAgentId({
+    projectParam: params.project,
+    virtualMcpIdSearch: search.virtualmcpid,
+    threadVirtualMcpId: allThreads.find((thread) => thread.id === activeTaskId)
+      ?.virtual_mcp_id,
+  });
   const closeAfterNavigation = () => {
     onNavigate?.();
   };

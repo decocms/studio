@@ -1,79 +1,96 @@
 /**
- * Org landing (`/$org`).
+ * Org landing (`/$org`) — a resolver, never a page.
  *
- * There is no bespoke "home" screen — the org landing is just an agent, like
- * every other. By default that's the Super Agent, but an org can pick a "main
- * agent" (org-scoped, see `useMainAgentId`); when set and still present, the
- * landing opens that agent instead. This resolver sends `/$org` to the landing
- * agent's home thread: it reuses the agent's existing empty "New chat" when
- * there is one, otherwise mints a fresh id the agent shell will ensure via
- * `useEnsureTask`. The Super Agent opens on its Overview default view (recent
- * team activity) with chat alongside — driven entirely by its
- * `metadata.ui.layout`, no special-casing here.
+ * It picks a DESTINATION and no thread at all: cold entry must not mint a
+ * conversation nobody asked for. In order: a `?main=` deep link that now has a
+ * real path of its own, then the org's main agent (`useMainAgentId`), then
+ * Home.
  */
-import { useState } from "react";
 import { Navigate, useSearch } from "@tanstack/react-router";
-import {
-  getWellKnownDecopilotVirtualMCP,
-  useProjectContext,
-  useVirtualMCPs,
-} from "@/sdk";
-import { useThreads } from "@/components/chat/store/hooks";
+import { useProjectContext, useVirtualMCPs } from "@/sdk";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useMainAgentId } from "@/hooks/use-organization-settings";
-import { authClient } from "@/lib/auth-client.ts";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
-import { findReusableNewChat } from "@/lib/reusable-new-chat";
-import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
+
+/**
+ * `?main=` values that became destinations of their own. A deep link minted
+ * before the promotion (a shared `/$org?main=board&task=…`, the short card
+ * link) keeps working by landing on the path instead of the overlay — the same
+ * table `translateLegacyThreadRoute` applies to `/$org/$taskId`.
+ */
+const DESTINATION_BY_MAIN_TAB = {
+  board: DESTINATION_ROUTE.tasks,
+  files: DESTINATION_ROUTE.library,
+  reports: DESTINATION_ROUTE.reports,
+  overview: DESTINATION_ROUTE.home,
+} as const;
+
+type PromotedMainTab = keyof typeof DESTINATION_BY_MAIN_TAB;
+
+function isPromotedMainTab(main: string | undefined): main is PromotedMainTab {
+  return !!main && main in DESTINATION_BY_MAIN_TAB;
+}
 
 export default function OrgHome() {
   const { org } = useProjectContext();
-  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-  const { data: session } = authClient.useSession();
-  const { threads, status } = useThreads();
   const { mainAgentId, isPending: settingsPending } = useMainAgentId();
-  // Suspense read (cache-warm from the shell); used to validate the main agent
-  // still exists so a deleted one falls back to the Super Agent.
+  /** Suspense read (cache-warm from the shell), used to validate the main agent
+   *  still exists so a deleted one falls back to the Super Agent. */
   const agents = useVirtualMCPs();
-  // `main` carries a deep link into a main-panel overlay (e.g. `board` =
-  // Tasks, `files` = Library) through the redirect to the landing thread.
+  /** `main` carries a deep link into a main-panel overlay (e.g. `board` =
+   *  Tasks, `files` = Library) through the redirect. */
   const { connect, siteUrl, main, task } = useSearch({ strict: false }) as {
     connect?: string;
     siteUrl?: string;
     main?: string;
     task?: string;
   };
-  // Stable id for this mount, used only when there's no reusable "New chat".
-  const [freshId] = useState(() => crypto.randomUUID());
 
-  // Wait for the open-thread list and org settings before deciding so a cold
-  // load reuses an existing "New chat" instead of minting a duplicate, and
-  // doesn't flash the Super Agent before the main agent resolves.
-  if (settingsPending || status.kind === "loading")
-    return <ShellRouteLoading />;
+  /** Wait for the org settings before deciding, so the landing never flashes
+   *  Home on its way to the main agent. Everything above is a hook, so this
+   *  early return is Rules-of-Hooks clean. */
+  if (settingsPending) return <ShellRouteLoading />;
 
-  // Land on the org's main agent when set and still present; otherwise the
-  // Super Agent. The Super Agent is synthesized (not in the list), so we only
-  // validate real main-agent ids against it.
+  // A promoted `?main=` outranks everything: the URL already says which page.
+  if (isPromotedMainTab(main)) {
+    return (
+      <Navigate
+        to={DESTINATION_BY_MAIN_TAB[main]}
+        params={{ org: org.slug, project: undefined }}
+        search={{ connect, siteUrl, task }}
+        replace
+      />
+    );
+  }
+
+  /** The Super Agent is synthesized (not in the list), so only real main-agent
+   *  ids are validated against it. */
   const mainAgentValid =
     mainAgentId != null && (agents ?? []).some((a) => a.id === mainAgentId);
-  const landingAgentId = mainAgentValid ? mainAgentId : decopilotId;
 
-  // Reuse the landing agent's existing empty "New chat" so revisiting `/$org`
-  // doesn't pile up duplicates (see findReusableNewChat).
-  const landingAgent = (agents ?? []).find((a) => a.id === landingAgentId);
-  const existing = findReusableNewChat(
-    threads,
-    landingAgentId,
-    session?.user?.id,
-    landingAgent ? defaultThreadRuntime(landingAgent.metadata) : undefined,
-  );
-  const taskId = existing?.id ?? freshId;
+  /** The main agent IS a project under the new grammar, so its id moves from
+   *  `?virtualmcpid=` into the path. It creates no thread — with no `?thread=`
+   *  the chat panel opens an empty composer. */
+  const project = mainAgentValid ? mainAgentId : null;
 
+  if (project) {
+    return (
+      <Navigate
+        to={DESTINATION_ROUTE.chat}
+        params={{ org: org.slug, project }}
+        search={{ connect, siteUrl, task }}
+        replace
+      />
+    );
+  }
+
+  /** No project to scope to — Home, which resolves on the Super Agent (the
+   *  absence of a project segment) and opens on its Overview default view. */
   return (
     <Navigate
-      to="/$org/$taskId"
-      params={{ org: org.slug, taskId }}
-      search={{ virtualmcpid: landingAgentId, connect, siteUrl, main, task }}
+      to={DESTINATION_ROUTE.home}
+      params={{ org: org.slug }}
+      search={{ connect, siteUrl }}
       replace
     />
   );

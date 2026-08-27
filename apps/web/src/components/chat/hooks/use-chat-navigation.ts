@@ -1,15 +1,14 @@
-import { useRef } from "react";
-import { getWellKnownDecopilotVirtualMCP } from "@/sdk";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 import { isPerThreadTab } from "@/layouts/main-panel-tabs/tab-id";
+import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
 
 export interface ChatNavigation {
-  /** Resolved vMCP for the current chat — either the URL param or the well-known decopilot. */
+  /** The agent this chat dispatches to: the route's, via {@link useRouteVirtualMcpId}. */
   virtualMcpId: string;
-  /** Always defined — `/$org/$taskId` path param, or a stable fallback for routes that don't have it. */
-  taskId: string;
+  /** The thread the matched route names, or `null` where it names none. */
+  taskId: string | null;
   /** Navigate to a task. `virtualMcpId` becomes `?virtualmcpid=`. `autosend` tells the task route to consume the stored handoff message. */
   navigateToTask: (
     taskId: string,
@@ -20,11 +19,19 @@ export interface ChatNavigation {
 export function useChatNavigation(): ChatNavigation {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  const routeParams = useParams({ strict: false }) as { taskId?: string };
+  /**
+   * The legacy route's `$taskId` path param or a destination's `?thread=`.
+   * Neither exists on a route that names no thread, and inventing one there is
+   * what used to make the workspace stream a thread that does not exist.
+   */
+  const taskId = useRouteThreadId();
 
-  const virtualMcpId =
-    search.virtualmcpid ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+  /**
+   * The same route-aware answer the shell and the breadcrumb use. Reading only
+   * `?virtualmcpid=` made a chat on `/$org/chat/<project>` — where that param
+   * is absent by construction — dispatch its messages to the Super Agent.
+   */
+  const virtualMcpId = useRouteVirtualMcpId();
 
   const navigateToTask = (
     taskId: string,
@@ -44,7 +51,7 @@ export function useChatNavigation(): ChatNavigation {
           !isPerThreadTab(prevMain)
         )
           next.main = prevMain;
-        if (prev.sidepanel === "chat" || prev.sidepanel === 0) {
+        if (typeof prev.sidepanel === "boolean") {
           next.sidepanel = prev.sidepanel;
         }
         if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
@@ -52,13 +59,6 @@ export function useChatNavigation(): ChatNavigation {
       },
     });
   };
-
-  // On unified chat routes the taskId is a path param.
-  // On other routes (e.g. settings) Chat.Provider still mounts but taskId is
-  // absent — fall back to a stable generated ID so the provider works everywhere.
-  const fallbackRef = useRef(crypto.randomUUID());
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  const taskId = routeParams.taskId ?? fallbackRef.current;
 
   return { virtualMcpId, taskId, navigateToTask };
 }

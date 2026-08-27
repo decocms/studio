@@ -6,13 +6,13 @@ import {
 
 describe("sanitizeThreadLayout", () => {
   test("keeps well-shaped values", () => {
-    expect(sanitizeThreadLayout({ main: "git", sidepanel: "chat" })).toEqual({
+    expect(sanitizeThreadLayout({ main: "git", sidepanel: true })).toEqual({
       main: "git",
-      sidepanel: "chat",
+      sidepanel: true,
     });
-    expect(sanitizeThreadLayout({ main: 0, sidepanel: 0 })).toEqual({
+    expect(sanitizeThreadLayout({ main: 0, sidepanel: false })).toEqual({
       main: 0,
-      sidepanel: 0,
+      sidepanel: false,
     });
   });
 
@@ -24,7 +24,7 @@ describe("sanitizeThreadLayout", () => {
   test("drops tampered/unexpected values", () => {
     const dirty = {
       main: 5,
-      sidepanel: "tasks",
+      sidepanel: "chat",
       extra: "x",
     } as unknown as Parameters<typeof sanitizeThreadLayout>[0];
     expect(sanitizeThreadLayout(dirty)).toEqual({});

@@ -319,7 +319,7 @@ export function GenericToolCallPart({
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
-      openSidePanel("chat");
+      openSidePanel();
       chatStream?.sendMessage(doc);
     }
   };

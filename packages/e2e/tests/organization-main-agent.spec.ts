@@ -155,13 +155,13 @@ test.describe("Organization main agent setting", () => {
       main_agent_id: agentId,
     });
 
-    // A fresh entry into `/$org` must redirect to the main agent's thread,
-    // carrying its id in the `virtualmcpid` search param.
+    // The main agent is a project, so `/$org` lands on its id as a path segment, minting no thread.
+    const mainAgentPath = `/${orgSlug}/chat/${agentId}`;
     await page.goto(`/${orgSlug}`);
-    await page.waitForURL(
-      (url) => url.searchParams.get("virtualmcpid") === agentId,
-    );
-    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBe(agentId);
+    await page.waitForURL((url) => url.pathname === mainAgentPath);
+    const landed = new URL(page.url());
+    expect(landed.pathname).toBe(mainAgentPath);
+    expect(landed.searchParams.get("thread")).toBeNull();
   });
 
   test("org landing falls back to the Super Agent when the main agent is missing", async ({
@@ -173,20 +173,17 @@ test.describe("Organization main agent setting", () => {
     const orgId = await lookupOrgId(orgSlug);
     const request = page.context().request;
 
-    // Point at an id that isn't a real agent in this org — the resolver must
-    // ignore it and land on the well-known Super Agent (`decopilot_<orgId>`).
+    // An id that isn't a real agent here: the resolver falls back to the Super Agent, i.e. no project — `/$org/home`.
     await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
       organizationId: orgId,
       main_agent_id: "vmcp-does-not-exist",
     });
 
-    const superAgentId = `decopilot_${orgId}`;
+    const homePath = `/${orgSlug}/home`;
     await page.goto(`/${orgSlug}`);
-    await page.waitForURL(
-      (url) => url.searchParams.get("virtualmcpid") === superAgentId,
-    );
-    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBe(
-      superAgentId,
-    );
+    await page.waitForURL((url) => url.pathname === homePath);
+    const landed = new URL(page.url());
+    expect(landed.pathname).toBe(homePath);
+    expect(landed.searchParams.get("virtualmcpid")).toBeNull();
   });
 });

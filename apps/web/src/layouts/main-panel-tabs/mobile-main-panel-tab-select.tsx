@@ -53,7 +53,7 @@ export function MobileMainPanelTabSelect({
   taskId,
 }: {
   virtualMcpId: string;
-  taskId: string;
+  taskId: string | null;
 }) {
   const t = useT();
   const navigate = useNavigate();
@@ -139,8 +139,8 @@ export function MobileMainPanelTabSelect({
       to: ".",
       search: (prev: Record<string, unknown>) =>
         value === "chat"
-          ? { ...prev, sidepanel: "chat" as const, main: 0 as const }
-          : { ...prev, sidepanel: 0 as const, main: value },
+          ? { ...prev, sidepanel: true, main: 0 as const }
+          : { ...prev, sidepanel: false, main: value },
       replace: true,
     });
   };

@@ -1,5 +1,5 @@
 /**
- * The task detail's "More actions" menu (`/$org?main=board` → card → ⋯).
+ * The task detail's "More actions" menu (`/$org/tasks` → card → ⋯).
  *
  * Opening a card is a navigation, not a modal: `?task=<id>` renders the task
  * in place of the lanes and the breadcrumb leads back out. These tests pin
@@ -38,7 +38,7 @@ async function seedCards(
 
 async function openBoard(page: Page, orgSlug: string) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/${orgSlug}?main=board`);
+  await page.goto(`/${orgSlug}/tasks`);
   // Generous: the board's first paint waits on the shell's route chunks.
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible({
     timeout: 30_000,
