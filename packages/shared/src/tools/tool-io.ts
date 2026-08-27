@@ -361,6 +361,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -428,6 +429,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -527,6 +529,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;

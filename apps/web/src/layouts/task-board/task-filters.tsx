@@ -196,13 +196,35 @@ function isSameDay(a: number, b: number): boolean {
   );
 }
 
-/** True when the term names this card by its human key (see `taskKey`). */
+/** A term written as a bare number — the shorthand both key vocabularies take. */
+const BARE_SEQ = /^0*(\d+)$/;
+
+/**
+ * True when the term names this card by the key it SHOWS (see `taskKey`).
+ *
+ * A card synced from a tracker shows the tracker's key, so that is the only
+ * lettered key it answers to. Falling through to the sequence would be worse
+ * than useless: `parseTaskKeySeq` ignores the prefix, so searching `OS-333`
+ * would quietly match whichever unrelated card happens to hold Studio sequence
+ * 333, and miss the one actually named that.
+ *
+ * A bare number still works either way, since it is ambiguous by construction
+ * and a search returning both readings of it is the honest answer.
+ */
 export function matchesTaskKey(
   search: string,
   keySeq: number | null | undefined,
+  trackerKey?: string | null,
 ): boolean {
-  if (keySeq == null) return false;
-  return parseTaskKeySeq(search) === keySeq;
+  const term = search.trim();
+  if (term === "") return false;
+  const tracker = trackerKey?.trim();
+  if (tracker) {
+    if (term.toLowerCase() === tracker.toLowerCase()) return true;
+    const bare = BARE_SEQ.exec(term)?.[1];
+    return bare !== undefined && Number(bare) === parseTaskKeySeq(tracker);
+  }
+  return keySeq != null && parseTaskKeySeq(term) === keySeq;
 }
 
 export function taskMatchesFilters(
@@ -212,7 +234,10 @@ export function taskMatchesFilters(
   const search = f.search.trim().toLowerCase();
   if (search !== "") {
     const haystack = `${item.title} ${item.description ?? ""}`.toLowerCase();
-    if (!haystack.includes(search) && !matchesTaskKey(search, item.keySeq)) {
+    if (
+      !haystack.includes(search) &&
+      !matchesTaskKey(search, item.keySeq, item.jiraIssueKey)
+    ) {
       return false;
     }
   }

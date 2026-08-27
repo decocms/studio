@@ -223,4 +223,41 @@ describe("linked issues still on the board", () => {
       [],
     );
   });
+
+  /**
+   * The card read has to carry the tracker's key, because that is what the
+   * card shows. Real Postgres rather than a fake: the value is attached by a
+   * batched second query over the link table, not selected off the item row,
+   * so a fake that simply returns the item would agree with a version that
+   * attaches nothing.
+   */
+  it("attaches the tracker key to a synced card, and null to one Studio owns", async () => {
+    const synced = await linkedCard("9100", "todo");
+    const own = await taskBoard.create({
+      organizationId: ORG_R,
+      title: "written in Studio",
+      status: "todo",
+      by: USER_R,
+    });
+
+    expect((await taskBoard.getById(synced.id, ORG_R))?.jiraIssueKey).toBe(
+      "OS-9100",
+    );
+    expect((await taskBoard.getById(own.id, ORG_R))?.jiraIssueKey).toBe(null);
+
+    const listed = await taskBoard.list(ORG_R);
+    const byId = new Map(listed.map((i) => [i.id, i.jiraIssueKey]));
+    expect(byId.get(synced.id)).toBe("OS-9100");
+    expect(byId.get(own.id)).toBe(null);
+  });
+
+  it("leaves a fresh create's key null, before any link exists", async () => {
+    const created = await taskBoard.create({
+      organizationId: ORG_R,
+      title: "fresh",
+      status: "todo",
+      by: USER_R,
+    });
+    expect(created.jiraIssueKey).toBe(null);
+  });
 });
