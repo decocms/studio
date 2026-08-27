@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -106,20 +107,38 @@ func changedPaths(status WorkingTreeStatus) []string {
 // run's MCP bearer token, which a push would leak into the repo's history.
 var NeverCommit = []string{".deco/tools/"}
 
+// dotenvName reports whether a file name is a `.env` variant — `.env` itself or
+// `.env.<anything>` (`.env.local`, `.env.production`). NOT `.envrc`, which repos
+// commit on purpose.
+func dotenvName(base string) bool {
+	return base == ".env" || strings.HasPrefix(base, ".env.")
+}
+
 // dropNeverCommit filters {@link NeverCommit} paths out of a publish's file list.
+//
+// Also drops `.env` files anywhere in the tree. They only reach this list when
+// the repo forgot to ignore them, but then they hold live credentials and the
+// autosave loop (autosave.go) pushes unattended every couple of minutes — so a
+// secret the agent wrote and would have deleted before finishing reaches the
+// branch, and GitHub, first. A push is irreversible (a force-push does not undo
+// a leak), which is what makes dropping them the safe default even though it
+// means a repo that genuinely tracks a `.env` cannot change it from a sandbox.
 func dropNeverCommit(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
 		rel := strings.TrimPrefix(filepath.ToSlash(p), "./")
-		skip := false
+		reason := ""
+		if dotenvName(path.Base(rel)) {
+			reason = "dotenv file"
+		}
 		for _, deny := range NeverCommit {
 			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
-				skip = true
+				reason = "daemon-managed path"
 				break
 			}
 		}
-		if skip {
-			slog.Warn("skipping from sync", "reason", "daemon-managed path", "path", rel)
+		if reason != "" {
+			slog.Warn("skipping from sync", "reason", reason, "path", rel)
 			continue
 		}
 		out = append(out, p)
