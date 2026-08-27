@@ -12,6 +12,7 @@ import {
   closesOwnReview,
   delegatesToSuperAgent,
   diffTaskActivityEntries,
+  rejectsUngatedDeliveryLane,
   updatesAnyField,
 } from "./update";
 
@@ -31,6 +32,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
+    jiraIssueKey: null,
     retryAttempts: 0,
     threads: [],
     tags: [],
@@ -233,5 +235,32 @@ describe("closesOwnReview", () => {
 
   it("never catches a person", () => {
     expect(closesOwnReview("done", "in_review", false)).toBe(false);
+  });
+});
+
+describe("rejectsUngatedDeliveryLane", () => {
+  it("refuses a direct write into a delivery lane when the flag is off", () => {
+    expect(rejectsUngatedDeliveryLane("approved", false)).toBe(true);
+    expect(rejectsUngatedDeliveryLane("merged", false)).toBe(true);
+    expect(rejectsUngatedDeliveryLane("post_deploy_validation", false)).toBe(
+      true,
+    );
+  });
+
+  it("allows it once the org runs the delivery lanes", () => {
+    expect(rejectsUngatedDeliveryLane("approved", true)).toBe(false);
+    expect(rejectsUngatedDeliveryLane("merged", true)).toBe(false);
+  });
+
+  it("leaves every other status alone regardless of the flag", () => {
+    for (const status of [
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+    ] as const) {
+      expect(rejectsUngatedDeliveryLane(status, false)).toBe(false);
+    }
+    expect(rejectsUngatedDeliveryLane(undefined, false)).toBe(false);
   });
 });

@@ -121,7 +121,6 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -193,7 +192,6 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -265,7 +263,6 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -367,6 +364,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -434,6 +432,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -533,6 +532,7 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -5031,6 +5031,10 @@ export interface StudioToolIO {
           }
         | { error: string };
     };
+  };
+  JIRA_RESYNC_REQUEST: {
+    input: { [x: string]: never };
+    output: { queued: true };
   };
   LIST_OBJECTS: {
     input: {

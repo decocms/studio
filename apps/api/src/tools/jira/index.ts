@@ -315,3 +315,30 @@ export const JIRA_SYNC_RUN = defineTool({
     return { result };
   },
 });
+
+export const JIRA_RESYNC_REQUEST = defineTool({
+  name: "JIRA_RESYNC_REQUEST",
+  description:
+    "Mark the whole board for a re-scan. Does NOT sync — it drops the sync's " +
+    "watermark, so the next scheduled run re-reads every issue in scope " +
+    "instead of only what changed. Use it after changing what the sync DOES " +
+    "with an issue (a widened status mapping, a fixed body renderer), since " +
+    "issues behind the watermark are otherwise never asked for again. Use " +
+    "JIRA_SYNC_RUN to pull the recent changes right now.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ queued: z.literal(true) }),
+  handler: async (_input, ctx) => {
+    requireAuth(ctx);
+    await ctx.access.check();
+    const organization = requireOrganization(ctx);
+    const integration = await requireIntegration(ctx, organization.id);
+    // Deliberately does not run the scan. A full board is thousands of Jira
+    // reads paced across ticks by MAX_ISSUES_PER_RUN and `rescan_pending`,
+    // which is the scheduler's job — holding an HTTP request open for it would
+    // time out on exactly the boards big enough to need it, and a run dropped
+    // by a recycled process would leave no trace that a re-scan was wanted.
+    // The cleared watermark IS the durable record of the request.
+    await ctx.storage.jiraIntegrations.clearWatermark(integration.id);
+    return { queued: true as const };
+  },
+});

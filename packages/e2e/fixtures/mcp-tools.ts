@@ -146,23 +146,3 @@ export async function findOrgId(
   if (!org) throw new Error(`org ${orgSlug} not found in organization/list`);
   return org.id;
 }
-
-/**
- * Shallow-merge org boolean flags through ORGANIZATION_SETTINGS_UPDATE,
- * resolving the org id for you. Keys passed win (explicit `false` persists);
- * omitted keys keep their stored value.
- *
- * Wire contract: flag names are inlined by callers on purpose — this suite owns
- * its contract (see ban-e2e-app-imports).
- */
-export async function setOrgFlags(
-  request: APIRequestContext,
-  orgSlug: string,
-  flags: Record<string, boolean>,
-): Promise<void> {
-  const organizationId = await findOrgId(request, orgSlug);
-  await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
-    organizationId,
-    flags,
-  });
-}

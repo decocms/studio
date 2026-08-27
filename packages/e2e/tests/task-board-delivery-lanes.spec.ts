@@ -71,6 +71,13 @@ test.describe("task board delivery lanes", () => {
     const request = page.context().request;
     const call = <T>(name: string, args: unknown) =>
       callSelfMcpTool<T>(request, orgSlug, name, args);
+    const orgId = await findOrgId(request, orgSlug);
+
+    // A direct write into a delivery lane is gated behind the flag.
+    await call("ORGANIZATION_SETTINGS_UPDATE", {
+      organizationId: orgId,
+      flags: { delivery_lanes_enabled: true },
+    });
 
     const { item } = await call<{ item: TaskBoardItem }>(
       "TASK_BOARD_ITEM_CREATE",
@@ -116,10 +123,10 @@ test.describe("task board delivery lanes", () => {
       callSelfMcpTool<T>(request, orgSlug, name, args);
     const orgId = await findOrgId(request, orgSlug);
 
-    // No reviewers enabled, so the readiness gate reduces to the lane alone.
+    // No reviewers enabled, and the flag lets CREATE below land straight in "approved".
     await call("ORGANIZATION_SETTINGS_UPDATE", {
       organizationId: orgId,
-      flags: { reviewer_enabled: false },
+      flags: { reviewer_enabled: false, delivery_lanes_enabled: true },
     });
 
     const { item: early } = await call<{ item: TaskBoardItem }>(

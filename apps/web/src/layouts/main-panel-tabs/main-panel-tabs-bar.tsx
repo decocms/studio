@@ -14,7 +14,6 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { Columns03, Folder } from "@untitledui/icons";
 import {
   isAutomationsPillActive,
   resolveAutomationsPillClickTarget,
@@ -26,9 +25,7 @@ import { TabOverflowMenu } from "./tab-overflow-menu";
 import type { TabIcon } from "./resolve-tab-icon";
 import { track } from "@/lib/posthog-client";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { useMainOverlayToggle } from "@/layouts/agent-shell-layout/use-main-overlay-toggle";
-import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
-import { useT } from "@/i18n/use-t";
+import { useReportsOnly } from "@/hooks/use-organization-settings";
 
 type BarItem = {
   id: string;
@@ -61,12 +58,7 @@ export function MainPanelTabsBar({
       virtualMcpId,
       taskId,
     });
-  const t = useT();
-  const library = useMainOverlayToggle("files");
-  const tasks = useMainOverlayToggle("board");
-  // Commerce (reports-only) orgs hide the Library overlay (see PR #4711).
   const reportsOnly = useReportsOnly();
-  const navV2 = useNavV2();
   // Key is versioned (v2): the default lead order changed (Preview · Content ·
   // Library now lead), so arrangements persisted under the old order — which
   // could pin Code second — must be discarded rather than override the new
@@ -104,49 +96,8 @@ export function MainPanelTabsBar({
     setActiveTab(id);
   };
 
-  /**
-   * Agent-independent overlays (Library, Tasks) open as main-panel overlays
-   * (?main=files / ?main=board). They trail the view tabs so the primary views
-   * lead the row; when the row overflows they fall into the stack popover.
-   * Under the first-class navigation they are sidebar destinations instead.
-   */
-  const overlayItems: BarItem[] = [];
-  if (library.enabled && !reportsOnly && !navV2) {
-    overlayItems.push({
-      id: "files",
-      title: t("agentShellLayout.libraryToggle.library"),
-      icon: { kind: "component", Component: Folder },
-      active: library.active,
-      locked: false,
-      labelCollapse: "sooner",
-      onSelect: () => {
-        track("agent_toolbar_toggled", {
-          button: "library",
-          next_state: library.active ? "closed" : "open",
-        });
-        library.toggle();
-      },
-    });
-  }
-  if (tasks.enabled && !navV2) {
-    overlayItems.push({
-      id: "board",
-      title: t("agentShellLayout.tasksToggle.tasks"),
-      icon: { kind: "component", Component: Columns03 },
-      active: tasks.active,
-      locked: false,
-      labelCollapse: "sooner",
-      onSelect: () => {
-        track("agent_toolbar_toggled", {
-          button: "tasks",
-          next_state: tasks.active ? "closed" : "open",
-        });
-        tasks.toggle();
-      },
-    });
-  }
-
-  const tabItems: BarItem[] = tabs.map((tab) => ({
+  // Library / Tasks are sidebar destinations, so only the view tabs show here.
+  const items: BarItem[] = tabs.map((tab) => ({
     id: tab.id,
     title: tab.title,
     icon: tab.icon,
@@ -155,8 +106,6 @@ export function MainPanelTabsBar({
     onSelect: () => selectTab(tab.id),
     labelCollapse: tab.kind === "system" ? "sooner" : "later",
   }));
-
-  const items = [...tabItems, ...overlayItems];
 
   // Code agents (a clonable-source repo, surfaced by a "code" view tab) keep a
   // minimal bar: Preview stays pinned and the active view shows beside it;

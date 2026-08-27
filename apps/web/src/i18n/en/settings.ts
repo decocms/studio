@@ -56,7 +56,13 @@ export const settings = {
   "settings.jira.enableRequirements":
     "Pick a project and map at least one status before enabling the sync",
   "settings.jira.lastSynced": "Last synced {ago}",
-  "settings.jira.waitingFirstSync": "Waiting for the first sync",
+  "settings.jira.waitingFirstSync": "Waiting for the next sync",
+  "settings.jira.resyncAll": "Resync everything",
+  "settings.jira.resyncAllTitle": "Re-scan the whole board?",
+  "settings.jira.resyncAllQueued":
+    "Re-scan requested — the next sync will start it.",
+  "settings.jira.resyncAllDescription":
+    '"Sync now" only pulls issues changed since the last run. This marks every issue on the board to be re-read \u2014 what you want after changing the status mapping, or when cards look wrong. It starts on the next scheduled sync rather than now, can span several runs on a large board, and never assigns an agent to a card.',
   "settings.jira.syncNow": "Sync now",
   "settings.jira.syncing": "Syncing…",
   "settings.jira.syncDone":
@@ -440,13 +446,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
-  "settings.navigation.title": "Navigation",
-  "settings.navigation.description":
-    "How this organization gets around Studio.",
-  "settings.navigation.updateError": "Couldn't update navigation settings",
-  "settings.navigation.navV2Title": "First-class navigation",
-  "settings.navigation.navV2Description":
-    "The sidebar lists destinations (Reports, Library, Tasks) instead of chats, and the chat list moves to the top of the chat panel. On by default for new organizations and report organizations.",
   "settings.orgGeneral.organization": "Organization",
   "settings.mainAgent.title": "Main agent",
   "settings.mainAgent.description":

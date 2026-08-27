@@ -1561,6 +1561,7 @@ export class TaskBoardStorage {
     await this.inTransaction(async (db) => {
       await this.attachThreads(db, items, organizationId);
       await this.attachTags(db, items);
+      await this.attachJiraKeys(db, items);
       await this.attachReviewVerdicts(db, items);
     });
   }
@@ -1687,6 +1688,32 @@ export class TaskBoardStorage {
 
   /** Populate each item's `tags`, name ascending. One batched query. Items are
    *  already org-scoped by the caller, so the join needs no org filter. */
+  /**
+   * Populate each item's `jiraIssueKey` — the key the issue wears in the
+   * tracker, which is what people say out loud about a synced card.
+   *
+   * One batched query, not a join on the item read: the link is one-to-one but
+   * lives in its own table, and every other ref on a card is attached here for
+   * the same reason. Cards Studio owns have no row and stay null.
+   */
+  private async attachJiraKeys(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_item_jira_links")
+      .select(["item_id as itemId", "jira_issue_key as jiraIssueKey"])
+      .where("item_id", "in", ids)
+      .execute();
+
+    const byItem = new Map(rows.map((row) => [row.itemId, row.jiraIssueKey]));
+    for (const item of items) {
+      item.jiraIssueKey = byItem.get(item.id) ?? null;
+    }
+  }
+
   private async attachTags(
     db: Kysely<Database>,
     items: TaskBoardItem[],
@@ -2190,7 +2217,8 @@ export class TaskBoardStorage {
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
-      // Populated by attachRefs for reads; empty for a fresh create.
+      // Populated by attachRefs for reads; null/empty for a fresh create.
+      jiraIssueKey: null,
       threads: [],
       tags: [],
       reviewVerdicts: [],

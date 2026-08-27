@@ -38,7 +38,8 @@ export function getIntervalFromRange(range: DateRange): string {
   const durationMs = range.endDate.getTime() - range.startDate.getTime();
   const rawInterval = durationMs / TARGET_STEPS;
   const nice = NICE_INTERVALS.find((b) => b.ms >= rawInterval);
-  return nice?.label ?? "1d";
+  // A range wider than the largest bucket has no match — fall back to it, not "1d".
+  return nice?.label ?? NICE_INTERVALS[NICE_INTERVALS.length - 1]!.label;
 }
 
 function intervalToMs(interval: string): number {

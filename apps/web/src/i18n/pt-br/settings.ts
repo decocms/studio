@@ -59,7 +59,13 @@ export const settings = {
   "settings.jira.enableRequirements":
     "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
   "settings.jira.lastSynced": "Última sincronização {ago}",
-  "settings.jira.waitingFirstSync": "Aguardando a primeira sincronização",
+  "settings.jira.waitingFirstSync": "Aguardando a próxima sincronização",
+  "settings.jira.resyncAll": "Resincronizar tudo",
+  "settings.jira.resyncAllTitle": "Reler o board inteiro?",
+  "settings.jira.resyncAllQueued":
+    "Releitura solicitada — a próxima sincronização vai começá-la.",
+  "settings.jira.resyncAllDescription":
+    'O "Sincronizar agora" só puxa issues alteradas desde a última execução. Esta opção marca todas as issues do board para serem relidas — é o que você quer depois de mudar o mapeamento de status, ou quando os cards estão errados. Ela começa na próxima sincronização agendada, não agora, pode se estender por várias execuções num board grande, e nunca delega um card para um agente.',
   "settings.jira.syncNow": "Sincronizar agora",
   "settings.jira.syncing": "Sincronizando…",
   "settings.jira.syncDone":
@@ -453,14 +459,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.navigation.title": "Navegação",
-  "settings.navigation.description":
-    "Como esta organização circula pelo Studio.",
-  "settings.navigation.updateError":
-    "Não foi possível atualizar as configurações de navegação",
-  "settings.navigation.navV2Title": "Navegação de primeira classe",
-  "settings.navigation.navV2Description":
-    "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações novas e em organizações de relatório.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":

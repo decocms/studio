@@ -491,7 +491,7 @@ function CardFooter({
   onDueDateChange?: (iso: string) => void;
 }) {
   const { org } = useProjectContext();
-  const key = taskKey(org.slug, item.keySeq);
+  const key = taskKey(org.slug, item.keySeq, item.jiraIssueKey);
   return (
     // No inset of its own: the footer shares the card's padding, so the type glyph starts on the same left edge as the title and the labels.
     <div className="mt-auto flex shrink-0 items-center justify-between gap-2 pt-1">

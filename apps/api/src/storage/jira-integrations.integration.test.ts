@@ -108,6 +108,39 @@ describe("jira integration status mapping", () => {
     ]);
   });
 
+  /**
+   * The watermark is what makes a repair reach nothing: an issue behind it is
+   * never asked for again, so a widened mapping or a fixed renderer only
+   * touches issues that happen to change afterwards. Clearing it has to leave
+   * the row in the initial-import state — which is also the state that
+   * suppresses auto-delegation, so a re-scan cannot dispatch a paid run per
+   * pre-existing card.
+   */
+  it("clears the watermark without disturbing the rest of the row", async () => {
+    const mapping = { in_review: ["QA", "Code Review"] };
+    const written = await write(mapping);
+    await storage.recordSyncResult(written.id, {
+      error: "boom",
+      watermark: new Date("2026-01-01T00:00:00Z"),
+      rescanPending: true,
+    });
+
+    await storage.clearWatermark(written.id);
+
+    const after = await storage.getByOrg(ORG);
+    expect(after?.lastSyncedAt).toBe(null);
+    expect(after?.lastSyncError).toBe(null);
+    expect(after?.rescanPending).toBe(false);
+    expect(after?.statusMapping).toEqual(mapping);
+    expect(after?.boardId).toBe("1");
+  });
+
+  it("is a no-op on an id that is not this org's integration", async () => {
+    const before = await storage.getByOrg(ORG);
+    await storage.clearWatermark("jira_does_not_exist");
+    expect(await storage.getByOrg(ORG)).toEqual(before);
+  });
+
   it("reads an empty mapping as empty rather than throwing", async () => {
     await write({});
     expect((await storage.getByOrg(ORG))?.statusMapping).toEqual({});
@@ -189,5 +222,42 @@ describe("linked issues still on the board", () => {
     expect(await storage.listLinkedIssuesOnBoard("org_someone_else")).toEqual(
       [],
     );
+  });
+
+  /**
+   * The card read has to carry the tracker's key, because that is what the
+   * card shows. Real Postgres rather than a fake: the value is attached by a
+   * batched second query over the link table, not selected off the item row,
+   * so a fake that simply returns the item would agree with a version that
+   * attaches nothing.
+   */
+  it("attaches the tracker key to a synced card, and null to one Studio owns", async () => {
+    const synced = await linkedCard("9100", "todo");
+    const own = await taskBoard.create({
+      organizationId: ORG_R,
+      title: "written in Studio",
+      status: "todo",
+      by: USER_R,
+    });
+
+    expect((await taskBoard.getById(synced.id, ORG_R))?.jiraIssueKey).toBe(
+      "OS-9100",
+    );
+    expect((await taskBoard.getById(own.id, ORG_R))?.jiraIssueKey).toBe(null);
+
+    const listed = await taskBoard.list(ORG_R);
+    const byId = new Map(listed.map((i) => [i.id, i.jiraIssueKey]));
+    expect(byId.get(synced.id)).toBe("OS-9100");
+    expect(byId.get(own.id)).toBe(null);
+  });
+
+  it("leaves a fresh create's key null, before any link exists", async () => {
+    const created = await taskBoard.create({
+      organizationId: ORG_R,
+      title: "fresh",
+      status: "todo",
+      by: USER_R,
+    });
+    expect(created.jiraIssueKey).toBe(null);
   });
 });

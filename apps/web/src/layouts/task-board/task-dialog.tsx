@@ -619,7 +619,7 @@ function TaskBoardItemEditor({
     item && onRerun && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
   /** The card's human key (`DECO-01`), the one identity a person can quote. */
-  const key = item ? taskKey(org.slug, item.keySeq) : null;
+  const key = item ? taskKey(org.slug, item.keySeq, item.jiraIssueKey) : null;
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)

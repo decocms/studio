@@ -31,6 +31,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     dueDate: null,
     sortOrder,
     keySeq: 1,
+    jiraIssueKey: null,
     retryAttempts: 0,
     threads: [],
     tags: [],
