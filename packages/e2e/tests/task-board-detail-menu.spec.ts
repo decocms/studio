@@ -82,6 +82,31 @@ test("browser back returns to the board", async ({ authedPage }) => {
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
 });
 
+test("closing a task does not leave it one Back away", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  await seedCards(page.context().request, orgSlug, 1);
+  await openBoard(page, orgSlug);
+
+  const depth = () => page.evaluate(() => history.length);
+  const atBoard = await depth();
+
+  await page.locator('button:has-text("Card 0")').click();
+  await expect(detail(page)).toBeVisible();
+  expect(await depth()).toBe(atBoard + 1);
+
+  /* Leaving replaces the task's entry instead of stacking a second one: if it
+     pushed, Back would re-open the task just closed, and a few open/close
+     cycles would bury whatever the board was reached from. */
+  await detail(page).getByRole("button", { name: "Tasks" }).click();
+  await expect(detail(page)).toHaveCount(0);
+  expect(await depth()).toBe(atBoard + 1);
+
+  await page.goBack();
+  await expect(detail(page)).toHaveCount(0);
+});
+
 /** Every item in this menu leaves the detail the same way, so the two that
  *  change the board prove the whole menu. */
 for (const action of ["Delete", "Archive"] as const) {

@@ -973,12 +973,18 @@ export function TaskBoardPage() {
    *  board rather than an empty pane, the way the short link does. */
   const staleTaskId = !!openTaskId && !openItem && !isLoading;
 
-  const closeTask = (replace = false) => {
+  /**
+   * Leaving a task replaces its entry rather than stacking a second one.
+   * Opening pushes, so back from a task lands on the board; if closing pushed
+   * too, back from the board would re-open the task just closed, and a cycle
+   * of opens would bury the page the board was reached from.
+   */
+  const closeTask = () => {
     if (openTaskId)
       navigate({
         to: ".",
         search: ({ task: _task, ...rest }: Record<string, unknown>) => rest,
-        replace,
+        replace: true,
       });
   };
 
@@ -1303,7 +1309,7 @@ export function TaskBoardPage() {
           }}
           onDelete={() => {
             actions.remove.mutate(openItem.id);
-            closeTask(true);
+            closeTask();
           }}
           onClone={() => {
             // A copy starts fresh and undelegated: no assignee, no threads.
