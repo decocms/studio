@@ -134,6 +134,24 @@ export function isRevalidationStale(
   return nowMs - lastMs >= minIntervalMs;
 }
 
+/**
+ * Drop a deleted connection's throttle bookkeeping.
+ *
+ * `lastRevalidatedAt` has no TTL and nothing else ever removes an entry — a
+ * long-lived pod that revalidates a connection's lists once accumulates one
+ * key per (type, connection) for the rest of its life, even after the
+ * connection is gone. Call this once the connection itself is deleted, the
+ * one point a key is guaranteed to never be read again.
+ */
+export function clearRevalidationState(connectionId: string): void {
+  const types: McpListType[] = ["tools", "resources", "prompts"];
+  for (const type of types) {
+    const key = `${type}:${connectionId}`;
+    lastRevalidatedAt.delete(key);
+    revalidating.delete(key);
+  }
+}
+
 function isMethodNotFound(err: unknown): boolean {
   return err instanceof McpError && err.code === ErrorCode.MethodNotFound;
 }
