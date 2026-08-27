@@ -30,6 +30,12 @@ import { TaskQuotaError } from "@/billing/task-quota";
 import { ensureReviewerCommented } from "./reviewer-comment";
 import { taskRunContextStore } from "./task-run-context";
 
+/** `notes` is mirrored verbatim into a card comment (`ensureReviewerCommented`)
+ *  and into the next Super Agent run's re-dispatch prompt (`feedback` below) —
+ *  same cap as a regular comment body so a reviewer can't grow either without
+ *  bound. */
+const MAX_REVIEW_NOTES_LENGTH = 50_000;
+
 /**
  * True when a resolved LEGACY reviewToken claim actually belongs to THIS
  * reviewer's claim on the CURRENT review cycle. (Current tokens are HMACs —
@@ -119,6 +125,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     notes: z
       .string()
       .min(1)
+      .max(MAX_REVIEW_NOTES_LENGTH)
       .describe(
         "For approve: a short summary of what you verified. For " +
           "request_changes: specific, actionable feedback the Super Agent " +
