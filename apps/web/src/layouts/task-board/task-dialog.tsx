@@ -211,9 +211,9 @@ const EMPTY_PROPERTY = "opacity-50";
 
 /**
  * What this task has cost, summed over every run linked to it. A bare dollar
- * sign next to a task reads as an invoice, so the chip says on its face that
- * the figure is the provider's list-price estimate, and — on a linked Claude
- * plan — that nobody is billed it at all.
+ * sign next to a task reads as an invoice, so it's prefixed with `~` to read
+ * as an estimate; run count, provider list-price basis, and subscription
+ * status (if any) move to the hover tooltip instead of the chip face.
  *
  * The task, not the run, is the unit that matters: a card is a Super Agent run
  * plus however many reviewer and re-run rounds it took, and until now that
@@ -251,19 +251,6 @@ function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
           }),
         })}
       </span>
-      <span className="text-muted-foreground">
-        {t(
-          isSingular
-            ? "taskBoard.taskDialog.costRunCountSingular"
-            : "taskBoard.taskDialog.costRunCountPlural",
-          { runs: String(runCount) },
-        )}
-      </span>
-      {onSubscription ? (
-        <span className="text-muted-foreground">
-          {t("taskBoard.taskDialog.costOnSubscription")}
-        </span>
-      ) : null}
     </div>
   );
 }
