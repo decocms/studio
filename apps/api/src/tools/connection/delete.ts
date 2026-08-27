@@ -16,10 +16,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import {
-  clearRevalidationState,
-  getMcpListCache,
-} from "../../mcp-clients/mcp-list-cache";
+import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
 import { ConnectionEntitySchema } from "./schema";
 
@@ -116,10 +113,7 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     getMcpListCache()
       ?.invalidate(input.id)
       .catch(() => {});
-    // Drop this pod's revalidation-throttle bookkeeping for the deleted connection.
-    clearRevalidationState(input.id);
-    // Drop cached read content and tool results for this connection across ALL
-    // replicas (per-pod caches → NATS broadcast).
+    // Drops caches and revalidation state across ALL replicas (NATS broadcast).
     invalidateConnectionCaches(input.id);
 
     const userId = getUserId(ctx);
