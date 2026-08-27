@@ -56,6 +56,7 @@ export function TagPickerContent({
         value={search}
         onValueChange={setSearch}
         placeholder={t("taskBoard.taskDialog.tagFilterPlaceholder")}
+        aria-label={t("taskBoard.taskDialog.tagFilterPlaceholder")}
         className="h-9"
       />
       <CommandList>
