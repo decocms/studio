@@ -64,7 +64,7 @@ const PROMPTS = [
 
 type PromptId = (typeof PROMPTS)[number]["id"];
 
-class PromptEditorError extends Error {
+export class PromptEditorError extends Error {
   constructor(
     message: string,
     readonly status: 400 | 404 | 409,
@@ -146,6 +146,35 @@ async function clientForActor(
     gh: createGitDataClient({ ...PROMPT_REPO, accessToken }),
     org: { slug: org.slug, name: org.name },
   };
+}
+
+/**
+ * Splice every edit into `sources` (mutated in place). A region can vanish
+ * between the GET that populated the editor and this POST — the file itself
+ * was reverted, or the registry and the source drifted — and `baseSha`
+ * doesn't catch every such case (a caller can post an edit without ever
+ * having loaded the current HEAD). `replacePromptRegion` throws a plain
+ * `Error` for that; surface it the same way `readSources` already does for
+ * a moved file, instead of letting it fall through to a generic 500.
+ */
+export function applyPromptEdits(
+  sources: Map<string, string>,
+  edits: { id: PromptId; content: string }[],
+): void {
+  for (const edit of edits) {
+    const prompt = PROMPTS.find((p) => p.id === edit.id)!;
+    try {
+      sources.set(
+        prompt.path,
+        replacePromptRegion(sources.get(prompt.path)!, prompt.id, edit.content),
+      );
+    } catch {
+      throw new PromptEditorError(
+        `Prompt "${edit.id}" no longer has a marked region in ${prompt.path} — reload and re-apply your edit`,
+        409,
+      );
+    }
+  }
 }
 
 /** Every distinct source file the registry touches, read once at `ref`. */
@@ -238,13 +267,7 @@ export function createAdminPromptRoutes(): Hono<Env> {
     // Splice against the exact parent commit's content so an unedited prompt in
     // the same file is carried over verbatim rather than reverted.
     const sources = await readSources(gh, baseSha);
-    for (const edit of edits) {
-      const prompt = PROMPTS.find((p) => p.id === edit.id)!;
-      sources.set(
-        prompt.path,
-        replacePromptRegion(sources.get(prompt.path)!, prompt.id, edit.content),
-      );
-    }
+    applyPromptEdits(sources, edits);
 
     const changedPaths = [
       ...new Set(edits.map((e) => PROMPTS.find((p) => p.id === e.id)!.path)),
