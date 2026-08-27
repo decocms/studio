@@ -210,6 +210,8 @@ export const taskBoard = {
   "taskBoard.taskDialog.setPriorityButton": "Set priority",
   "taskBoard.taskDialog.someoneLabel": "someone",
   "taskBoard.taskDialog.startedByLabel": "started by",
+  "taskBoard.taskDialog.reviewerLabel": "Reviewer",
+  // The two-reviewer era's names, still on older cards' timelines.
   "taskBoard.taskDialog.qaAgentLabel": "QA Agent",
   "taskBoard.taskDialog.codeReviewerLabel": "Code Reviewer",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",

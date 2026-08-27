@@ -67,8 +67,7 @@ import {
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { QaAgentIcon } from "@/components/qa-agent-icon";
-import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
+import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import {
   isReportsTask,
@@ -110,7 +109,10 @@ import {
   useTaskBoardActivity,
   type TaskBoardActivity,
 } from "@/hooks/use-task-board-activity";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  useOrgFlag,
+  useReviewerEnabled,
+} from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
 import {
@@ -1534,8 +1536,7 @@ function ThreadActivityItem({
   const message = thread.lastMessage;
   // The Super Agent and both reviewers run on the org agent, distinguished only
   // by their thread title prefix — reflect that in the card's glyph/name.
-  const isQaThread = isReviewerThreadTitle(thread.title, "qa");
-  const isCodeReviewThread = isReviewerThreadTitle(thread.title, "code_review");
+  const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
 
   return (
     <button
@@ -1545,10 +1546,8 @@ function ThreadActivityItem({
       className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
     >
       <div className="flex items-center gap-2">
-        {isQaThread ? (
-          <QaAgentIcon size={16} className="shrink-0" />
-        ) : isCodeReviewThread ? (
-          <CodeReviewerIcon size={16} className="shrink-0" />
+        {isReviewerThread ? (
+          <ReviewerIcon size={16} className="shrink-0" />
         ) : (
           <SuperAgentIcon size={16} className="shrink-0" />
         )}
@@ -1942,8 +1941,7 @@ function LinksSection({
   const t = useT();
   const { data: prs, isLoading: prsLoading } = useTaskBoardItemPrs(item.id);
   const { data: activity } = useTaskBoardActivity(item.id);
-  const qaEnabled = useOrgFlag("qa_agent_enabled");
-  const codeReviewerEnabled = useOrgFlag("code_reviewer_enabled");
+  const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
   const links = extractDescriptionLinks(description);
@@ -1960,10 +1958,7 @@ function LinksSection({
   // token verification). The per-card PrCard adds the PR-open + green-checks gate.
   const reviewsReady =
     laneCanShip(item.status) &&
-    reviewsSatisfiedForPromotion(
-      activity ?? [],
-      enabledReviewers({ qa: qaEnabled, codeReview: codeReviewerEnabled }),
-    );
+    reviewsSatisfiedForPromotion(activity ?? [], enabledReviewers(reviewerOn));
   const onShip = () =>
     promote.mutate(undefined, {
       onSuccess: (res) =>
@@ -2252,11 +2247,14 @@ function interleaveChips(
 }
 
 /** One timeline line: prose from `t()`, values rendered as chips. */
-/** Display name for a reviewer kind stored in an activity payload. */
+/** Display name for a reviewer kind stored in an activity payload — including
+ *  the two-reviewer era's, which older cards still carry in their timeline. */
 function reviewerName(reviewer: unknown, t: ReturnType<typeof useT>): string {
-  return reviewer === "code_review"
-    ? t("taskBoard.taskDialog.codeReviewerLabel")
-    : t("taskBoard.taskDialog.qaAgentLabel");
+  if (reviewer === "qa") return t("taskBoard.taskDialog.qaAgentLabel");
+  if (reviewer === "code_review") {
+    return t("taskBoard.taskDialog.codeReviewerLabel");
+  }
+  return t("taskBoard.taskDialog.reviewerLabel");
 }
 
 function describeActivity(
@@ -2346,13 +2344,7 @@ function describeActivity(
   };
   const reviewerChip = (reviewer: unknown) => (
     <ValueChip
-      icon={
-        reviewer === "code_review" ? (
-          <CodeReviewerIcon size={14} />
-        ) : (
-          <QaAgentIcon size={14} />
-        )
-      }
+      icon={<ReviewerIcon size={14} />}
       label={reviewerName(reviewer, t)}
     />
   );

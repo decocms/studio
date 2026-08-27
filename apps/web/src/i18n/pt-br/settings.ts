@@ -475,17 +475,14 @@ export const settings = {
     "N\u00e3o foi poss\u00edvel atualizar o agente principal",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "Revisores autom\u00e1ticos rodam no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ambos aparecem como sess\u00f5es no card da tarefa.",
-  "settings.review.qaAgentTitle": "Ativar QA Agent",
-  "settings.review.qaAgentDescription":
-    "Garante que a tarefa realmente resolveu o problema \u2014 testa a feature, n\u00e3o s\u00f3 o diff.",
-  "settings.review.codeReviewerTitle": "Ativar Code Reviewer",
-  "settings.review.codeReviewerDescription":
-    "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
+    "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
+  "settings.review.reviewerTitle": "Ativar Reviewer",
+  "settings.review.reviewerDescription":
+    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para voc\u00ea quando n\u00e3o consegue resolver algo.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
-    "O QA Agent e o Code Reviewer leem um diff e chegam a um veredito, então rodam em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
+    "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",

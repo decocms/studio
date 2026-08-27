@@ -7,7 +7,7 @@
  *   - "none" — nothing to preview or browse: both tabs are hidden entirely.
  *
  * The one case that has neither is a sandbox task run dispatched with NO repo
- * (QA Agent / Code Reviewer / debugging runs off the task board). Those run on
+ * (the Reviewer / debugging runs off the task board). Those run on
  * the bare synthetic `thread:<id>` sandbox key — `enqueueTaskRun` writes it on
  * the thread row precisely because the run has no repo of its own, and
  * `resolveSandboxBranch` keeps it (see `apps/api/src/tools/sandbox/thread-repo.ts`).

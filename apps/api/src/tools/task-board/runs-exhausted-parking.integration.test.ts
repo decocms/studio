@@ -146,14 +146,14 @@ describe("runs-exhausted parking", () => {
       taskBoardItemId: card.id,
       action: "review_approved",
       actorId: null,
-      data: { reviewer: "code_review", notes: "looks good to me" },
+      data: { reviewer: "reviewer", notes: "looks good to me" },
     });
     await taskBoard.recordActivity({
       taskBoardItemId: card.id,
       action: "review_changes_requested",
       actorId: null,
       data: {
-        reviewer: "qa",
+        reviewer: "reviewer",
         notes: "the fix is right — do not redo the approach",
       },
     });
@@ -169,13 +169,13 @@ describe("runs-exhausted parking", () => {
       taskBoardItemId: card.id,
       action: "review_changes_requested",
       actorId: null,
-      data: { reviewer: "qa", notes: "needs work" },
+      data: { reviewer: "reviewer", notes: "needs work" },
     });
     await taskBoard.recordActivity({
       taskBoardItemId: card.id,
       action: "review_approved",
       actorId: null,
-      data: { reviewer: "qa", notes: "fixed" },
+      data: { reviewer: "reviewer", notes: "fixed" },
     });
 
     expect(

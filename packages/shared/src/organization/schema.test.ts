@@ -8,19 +8,19 @@ import {
 
 describe("orgFlagEnabled", () => {
   it("default-on flags read as enabled unless stored exactly false", () => {
-    expect(DEFAULT_ON_FLAGS.has("qa_agent_enabled")).toBe(true);
+    expect(DEFAULT_ON_FLAGS.has("reviewer_enabled")).toBe(true);
     // unset / null / true → on; only explicit false opts out.
-    expect(orgFlagEnabled(null, "qa_agent_enabled")).toBe(true);
-    expect(orgFlagEnabled(undefined, "qa_agent_enabled")).toBe(true);
-    expect(orgFlagEnabled({}, "qa_agent_enabled")).toBe(true);
-    expect(orgFlagEnabled({ qa_agent_enabled: null }, "qa_agent_enabled")).toBe(
+    expect(orgFlagEnabled(null, "reviewer_enabled")).toBe(true);
+    expect(orgFlagEnabled(undefined, "reviewer_enabled")).toBe(true);
+    expect(orgFlagEnabled({}, "reviewer_enabled")).toBe(true);
+    expect(orgFlagEnabled({ reviewer_enabled: null }, "reviewer_enabled")).toBe(
       true,
     );
-    expect(orgFlagEnabled({ qa_agent_enabled: true }, "qa_agent_enabled")).toBe(
+    expect(orgFlagEnabled({ reviewer_enabled: true }, "reviewer_enabled")).toBe(
       true,
     );
     expect(
-      orgFlagEnabled({ qa_agent_enabled: false }, "qa_agent_enabled"),
+      orgFlagEnabled({ reviewer_enabled: false }, "reviewer_enabled"),
     ).toBe(false);
   });
 
@@ -37,7 +37,7 @@ describe("orgFlagEnabled", () => {
   it("a non-boolean stored value follows the branch's strict comparison", () => {
     // Reads hit raw jsonb, bypassing zod: only a strict boolean flips the gate.
     expect(
-      orgFlagEnabled({ qa_agent_enabled: "true" }, "qa_agent_enabled"),
+      orgFlagEnabled({ reviewer_enabled: "true" }, "reviewer_enabled"),
     ).toBe(true);
     expect(orgFlagEnabled({ auto_merge: "true" }, "auto_merge")).toBe(false);
   });

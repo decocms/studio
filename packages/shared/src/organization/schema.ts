@@ -143,29 +143,36 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "First-class navigation: the sidebar lists destinations (Reports, Library, Tasks) instead of chat threads, and the thread list moves into a menu at the top of the chat panel. Seeded on for newly created orgs (see NEW_ORG_DEFAULT_FLAGS) and defaults on for reports_only orgs; an explicit false wins over both.",
     ),
+  reviewer_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run the Reviewer on a task's pull request once it's In Review — it reviews the code with the repo's stack-appropriate skills, fixes what it finds on the PR's own branch, then exercises the change on the deploy preview and approves or hands the card to a human.",
+    ),
+  /** @deprecated Superseded by `reviewer_enabled` — the QA Agent and Code
+   *  Reviewer are one run now. Kept readable (a `z.object` strips unknown keys)
+   *  so an org that turned BOTH off keeps no automated review; see
+   *  `reviewerEnabled`. Drop both keys once no org has them stored. */
   qa_agent_enabled: z
     .boolean()
     .optional()
-    .describe(
-      "Run the QA Agent on a task's pull request once it's In Review — it verifies the task actually solved the problem (exercises the feature, not just the diff).",
-    ),
+    .describe("Deprecated: see reviewer_enabled."),
+  /** @deprecated See `qa_agent_enabled`. */
   code_reviewer_enabled: z
     .boolean()
     .optional()
-    .describe(
-      "Run the Code Reviewer on a task's pull request once it's In Review — it reviews the code using the repo's stack-appropriate review skills.",
-    ),
+    .describe("Deprecated: see reviewer_enabled."),
   auto_merge: z
     .boolean()
     .optional()
     .describe(
-      "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
+      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
     ),
   cheap_reviewer_model: z
     .boolean()
     .optional()
     .describe(
-      "Run the QA Agent and Code Reviewer on a cheaper model than the Super Agent. A review reads a diff and reaches a verdict; it does not need the model that wrote the code. Off by default — turning it on trades some review depth for cost.",
+      "Run the Reviewer on a cheaper model than the Super Agent that wrote the code. Off by default — turning it on trades some review depth for cost.",
     ),
   coding_agent_org_mcps: z
     .boolean()
@@ -201,12 +208,11 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
  * off). New orgs get these behaviors without opting in — a team opts OUT by
  * toggling the flag off, which persists an explicit `false`.
  *
- * The automated reviewers live here: the QA Agent and Code Reviewer run on a
- * task's PR by default; disabling one is the deliberate action.
+ * The automated Reviewer lives here: it runs on a task's PR by default;
+ * disabling it is the deliberate action.
  */
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
-  "qa_agent_enabled",
-  "code_reviewer_enabled",
+  "reviewer_enabled",
 ]);
 
 /**
@@ -222,7 +228,7 @@ export const NEW_ORG_DEFAULT_FLAGS: OrgFlags = {
  * Resolve one org flag to its effective boolean. Honors {@link DEFAULT_ON_FLAGS}
  * — a default-on flag is enabled unless stored as exactly `false`; every other
  * flag is enabled only when stored as exactly `true`. The single reader shared
- * by the server gate (`enabledReviewerKinds`) and the web hook (`useOrgFlag`),
+ * by the server gate (`reviewerEnabled`) and the web hook (`useOrgFlag`),
  * so both agree on what "unset" means.
  */
 export function orgFlagEnabled(

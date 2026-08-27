@@ -119,7 +119,7 @@ test.describe("task board delivery lanes", () => {
     // No reviewers enabled, so the readiness gate reduces to the lane alone.
     await call("ORGANIZATION_SETTINGS_UPDATE", {
       organizationId: orgId,
-      flags: { qa_agent_enabled: false, code_reviewer_enabled: false },
+      flags: { reviewer_enabled: false },
     });
 
     const { item: early } = await call<{ item: TaskBoardItem }>(

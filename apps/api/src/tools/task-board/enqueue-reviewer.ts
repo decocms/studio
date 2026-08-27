@@ -51,81 +51,68 @@ function isReviewerThreadLive(
   );
 }
 
-/**
- * Built-in harness tools each reviewer must NOT have.
- *
- * QA reviews, it does not implement: no `Edit`, and `Write` only because
- * exercising a change means scratch files (a curl script, a throwaway spec).
- * The Code Reviewer DOES implement — review is single-pass, so it fixes what it
- * finds on the PR branch itself rather than bouncing the card back — so it keeps
- * the full edit surface. Both keep `Bash`: a review is `git diff` / `gh pr
- * view`, and QA has to actually run the thing.
- *
- * These are SDK tool NAMES, which is all `disallowedTools` matches.
- */
-export const REVIEWER_DISALLOWED_TOOLS: Record<ReviewerKind, string[]> = {
-  qa: ["Edit", "NotebookEdit"],
-  code_review: [],
-};
-
-/** The review instructions unique to each reviewer. Shared scaffolding (load
- *  the PR, don't push code, end with a decision) lives in the prompt builder. */
+/** The reviewer's instructions. Shared scaffolding (load the PR, end with a
+ *  decision) lives in the prompt builder; this is the persona, and the ORDER in
+ *  it is load-bearing — see `ReviewerKind`. No `disallowedTools`: the reviewer
+ *  is the last run on the task, so it has to be able to fix what it finds. */
 const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
-  // prompt-region:start qa-agent
-  qa:
-    "You are the QA Agent. Your job is to confirm the task ACTUALLY SOLVED THE " +
-    "PROBLEM — not to review code style. Exercise the feature/behavior the task " +
-    "describes, check the acceptance criteria implied by the title and " +
-    "description, and look for regressions in the affected flow. Judge outcomes, " +
-    "not the diff — and NEVER approve on inspection alone: an approval must be " +
-    "backed by evidence you actually exercised the change.\n" +
-    "Exercise the change on the PR's deploy preview, deep-linked to the specific " +
-    "page/route the task affects (not just its root). For any VISUAL change, " +
-    "capture the affected view BEFORE (the current production / base-branch site) " +
-    "and AFTER (the preview) so the two can be compared, and for a responsive " +
-    "change capture BOTH a desktop and a real mobile view (a phone viewport AND a " +
-    "mobile user-agent — not a narrowed desktop). The How-to steps below name the " +
-    "exact screenshot tool for your run.\n" +
-    "If the preview will not render (303s, hangs, blank) or you otherwise cannot " +
-    "exercise the change, do NOT approve: request changes stating what is blocking " +
-    "and what is needed to unblock. An unverified preview is not a pass.\n" +
-    "RECORD your QA pass as a task comment BEFORE the decision — a durable record, " +
-    "separate from the short decision summary, and REQUIRED: a verdict with no " +
-    "comment is an incomplete run and you will be asked for one. Structure it: " +
-    "the acceptance criteria / scenarios you checked with a pass/fail on each, a " +
-    "before→after pointer to the screenshots, the exact URL(s) and viewport you " +
-    "exercised, and anything you could not verify and why.\n" +
+  // prompt-region:start reviewer
+  reviewer:
+    "You are the Reviewer, the LAST automated run on this task. Your job is to " +
+    "confirm the task ACTUALLY SOLVED THE PROBLEM, fix what is wrong with how " +
+    "it was solved, and then ship or hand over. Nothing picks up findings you " +
+    "only describe, so an issue you write down and leave is an issue that " +
+    "ships.\n" +
+    "Do it in THIS ORDER — the order is the point:\n" +
+    "1. REVIEW the code. FIRST look for a review skill/command appropriate to " +
+    "this repository's stack (e.g. a `/review`, `code-review`, or " +
+    "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) " +
+    "and use it. Read the diff critically for correctness, security and " +
+    "quality, and note concrete issues with file/line references.\n" +
+    "2. FIX what you found, on the PR's OWN branch, and push to that same pull " +
+    "request — never a new branch, never a new pull request, never a force " +
+    "push, and never any other ref. Keep the fixes scoped to what your review " +
+    "found; do not redesign the change. Before you push, run the repository's " +
+    "own checks (its type-check / lint / test / format scripts) and make them " +
+    "pass — you are approving this code, so an unverified fix of yours is the " +
+    "same defect as the one you were fixing. If a fix does not hold, revert it " +
+    "and describe it instead of pushing it.\n" +
+    "3. EXERCISE the change on the PR's deploy preview, AFTER your push, on the " +
+    "preview of the commit you actually pushed — the earlier preview is a " +
+    "different build and a verdict on it is a verdict on bytes that will not " +
+    "ship. Wait for it if it is still building. Deep-link to the specific " +
+    "page/route the task affects (not just its root), check the acceptance " +
+    "criteria implied by the title and description, and look for regressions " +
+    "in the affected flow. Judge OUTCOMES, not the diff — NEVER approve on " +
+    "inspection alone. For any VISUAL change capture the affected view BEFORE " +
+    "(the current production / base-branch site) and AFTER (the preview), and " +
+    "for a responsive change capture BOTH a desktop and a real mobile view (a " +
+    "phone viewport AND a mobile user-agent — not a narrowed desktop). The " +
+    "How-to steps below name the exact screenshot tool for your run.\n" +
+    "If the preview will not render (303s, hangs, blank) or you otherwise " +
+    "cannot exercise the change, do NOT approve: request changes stating what " +
+    "is blocking and what is needed to unblock. An unverified preview is not a " +
+    "pass.\n" +
+    "4. RECORD the whole pass as a task comment BEFORE the decision — a " +
+    "durable record, separate from the short decision summary, and REQUIRED: a " +
+    "verdict with no comment is an incomplete run and you will be asked for " +
+    "one. Structure it: what you read and the concrete issues with file/line " +
+    "references, WHICH of them you fixed (with the commits), the acceptance " +
+    "criteria / scenarios you exercised with a pass/fail on each, a " +
+    "before→after pointer to the screenshots, the exact URL(s) and viewport, " +
+    "and anything you did not review or could not verify and why.\n" +
     "That comment must ALWAYS carry the visual change: embed the before/after " +
     "screenshots in it whenever the change has any visual surface. If it has " +
     `none, write the exact words \`${NO_VISUAL_SURFACE}\` in the comment and ` +
     "name why (backend-only, config, test-only) — that literal is what a " +
     "machine check looks for, so no paraphrase of it counts, and silence about " +
-    "screenshots is not an acceptable answer either way.",
-  // prompt-region:end qa-agent
-  // prompt-region:start code-reviewer
-  code_review:
-    "You are the Code Reviewer, and you are the LAST run on this task. Review " +
-    "the code changes for correctness, security, and quality. FIRST look for a " +
-    "review skill/command appropriate to this repository's stack (e.g. a " +
-    "`/review`, `code-review`, or `security-review` skill, or the repo's " +
-    "CONTRIBUTING/review guidelines) and use it. Read the diff critically and " +
-    "flag concrete issues with file/line references.\n" +
-    "You FIX what you find yourself: apply the changes on the PR's own branch " +
-    "and push them to that same PR (never a new branch, never a new PR). " +
-    "Nothing runs after you — there is no Super Agent round to hand findings " +
-    "back to — so an issue you only describe is an issue that ships. Keep the " +
-    "fixes scoped to what your review found; do not redesign the change.\n" +
-    "Approve once the PR is in the state you would approve. Only " +
-    "`request_changes` for something you genuinely cannot fix here (a product " +
-    "decision, a missing credential, a broken approach that needs rethinking) " +
-    "— that hands the card to a human.\n" +
-    "RECORD your review as a task comment BEFORE the decision — REQUIRED, and " +
-    "separate from the short decision summary: what you read, the concrete " +
-    "issues with file/line references, WHICH ones you fixed (with the commits), " +
-    "and what you deliberately did not review. " +
-    "A verdict with no comment is an incomplete run and you will be asked for " +
-    "one.",
-  // prompt-region:end code-reviewer
+    "screenshots is not an acceptable answer either way.\n" +
+    "5. DECIDE. Approve once the pull request is in the state you would " +
+    "approve. Only `request_changes` for something you genuinely cannot settle " +
+    "here (a product decision, a missing credential, an approach that needs " +
+    "rethinking) — that hands the card to a human, it does not start another " +
+    "agent round.",
+  // prompt-region:end reviewer
 };
 
 /**
@@ -137,12 +124,12 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
  * timeline entry. Best-effort per reviewer.
  */
 /**
- * How long QA waits for the PR's deploy preview to catch up with its head
- * commit before the card goes to a person.
+ * How long the reviewer waits for the PR's deploy preview to catch up with its
+ * head commit before the card goes to a person.
  *
  * A deploy takes minutes, so this is mostly slack; what it really bounds is the
  * case that has no end (a build broken account-wide, a deploy misconfigured).
- * Without it, gating QA would swap one silent strand for another: no verdict, no
+ * Without it, gating the reviewer would swap one silent strand for another: no verdict, no
  * hand-off, a card that reads as "in review" forever.
  */
 const STALE_PREVIEW_HANDOFF_GRACE_MS = 30 * 60 * 1000;
@@ -163,7 +150,8 @@ export async function enqueueEnabledReviewers(
   task: TaskBoardItem,
   opts?: {
     /** Whether the deploy preview shows the PR's head commit
-     *  (`previewMatchesHead`). `false` holds QA back — see the gate below.
+     *  (`previewMatchesHead`). `false` holds the reviewer back — see the gate
+     *  below.
      *  Omitted means "not checked", which dispatches as it always did. */
     previewMatchesHead?: boolean;
   },
@@ -187,10 +175,10 @@ export async function enqueueEnabledReviewers(
   const lastInReviewAt = await lastInReviewTime(ctx, task);
   const cycleAt = new Date(lastInReviewAt);
 
-  // Each reviewer's enqueue is independent (its own fence id), so run them
-  // CONCURRENTLY — this is on TASK_BOARD_ITEM_PRS_GET's synchronous poll path,
-  // and serial awaits doubled its latency once both QA and Code Reviewer are
-  // enabled.
+  // One reviewer today, but the enqueue stays a fan-out over `enabled`: each
+  // dispatch is independent (its own fence id), and this runs on
+  // TASK_BOARD_ITEM_PRS_GET's synchronous poll path, where serial awaits showed
+  // up as latency when there were two.
   await Promise.all(
     enabled.map(async (kind) => {
       // A dead end, not a wait — see `reviewerAttemptsExhausted`.
@@ -204,14 +192,14 @@ export async function enqueueEnabledReviewers(
         return;
       }
       // Would be a verdict on the wrong bytes — see `previewMatchesHead`.
-      if (kind === "qa" && opts?.previewMatchesHead === false) {
+      if (opts?.previewMatchesHead === false) {
         if (stalePreviewHandoffDue(lastInReviewAt, Date.now())) {
           await handTaskToHuman(
             ctx,
             task,
             "the pull request's deploy preview is not showing its latest " +
-              "commit (its checks never went green), so QA cannot verify this " +
-              "change against what the PR actually does",
+              "commit (its checks never went green), so the Reviewer cannot " +
+              "verify this change against what the PR actually does",
           );
         }
         return;
@@ -355,7 +343,7 @@ function reviewerThreadsThisCycle(
  * therefore never coming and the all-approved gate can never close,
  * so the caller hands the card to a person instead of letting the sweeper visit
  * it forever. Two cards sat In Review for six days on exactly this: one
- * approval each, and a QA Agent that had died twice.
+ * approval each, and a reviewer that had died twice.
  *
  * Pure — unit-tested.
  */
@@ -531,14 +519,10 @@ async function enqueueReviewerForTask(
       "truly cannot judge the outcome) — that should be rare. When in doubt " +
       "between asking and deciding, DECIDE.",
     "",
-    kind === "code_review"
-      ? "Do NOT merge the pull request — the board does that once every " +
-        "reviewer has approved. Pushing fixes to the PR's branch is expected " +
-        "of you; opening a second PR is not."
-      : "Do NOT push commits, merge, or change the code to fix what you find. " +
-        "You are reviewing, not implementing — the tools that would let you " +
-        "rewrite the checkout are removed from this run on purpose. Report " +
-        "what you find in your decision instead.",
+    "Do NOT merge the pull request — the board does that itself once your " +
+      "approval is in. Pushing fixes to the PR's own branch is expected of " +
+      "you; opening a second pull request, force-pushing, or touching any " +
+      "other ref is not.",
   ].join("\n");
 
   const prompt = [
@@ -559,36 +543,25 @@ async function enqueueReviewerForTask(
     `- ${PR_DIFF_RECIPE}`,
     ...(priorReviewAt > 0
       ? [
-          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes; the Super Agent has pushed more commits since. Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
+          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
         ]
       : []),
-    ...(kind === "qa"
-      ? [
-          `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
-          // Two paths because the harnesses differ: the sandbox has a real
-          // browser baked in (`qa-screenshot`, which can also reach its own dev
-          // server on localhost); hosted Decopilot has no sandbox and uses its
-          // Browserless-backed built-in, which streams the image into the thread.
-          sandboxed
-            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` too for a responsive change."
-            : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
-          sandboxed
-            ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`
-            : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
-        ]
-      : []),
-    ...(kind === "qa"
-      ? []
-      : [
-          `- Fix the issues you find on the PR's branch and push them to that same PR. You are the last run on this task — nothing picks up findings you only describe.`,
-          `- Record your review with \`${commentTool}\` (what you read, the concrete issues with file/line references, which ones you fixed, what you did not review) BEFORE your decision. This is required — a verdict with no comment gets you a follow-up asking for one.`,
-        ]),
+    `- Fix the issues you find on the PR's branch, run the repository's own checks, and push to that same PR. You are the last automated run on this task — nothing picks up findings you only describe.`,
+    `- THEN exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`) — re-read it after your push so you get the preview of YOUR commit, and wait for it if it is still building. Deep-link to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+    // Two paths because the harnesses differ: the sandbox has a real browser
+    // baked in (`qa-screenshot`, which can also reach its own dev server on
+    // localhost); hosted Decopilot has no sandbox and uses its
+    // Browserless-backed built-in, which streams the image into the thread.
+    sandboxed
+      ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` too for a responsive change."
+      : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
+    sandboxed
+      ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`
+      : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
-    kind === "code_review"
-      ? "  - `request_changes` ONLY for something you cannot fix here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes."
-      : "  - `request_changes` when something is wrong or missing. Include specific, actionable notes — review is single-pass, so this hands the task to a human with your notes.",
+    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
     `- \`${decisionTool}\` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.`,
     "",
@@ -610,10 +583,7 @@ async function enqueueReviewerForTask(
       ? {
           harnessId: "claude-code" as const,
           modelClass,
-          agent: {
-            instructions,
-            disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind],
-          },
+          agent: { instructions },
         }
       : {}),
     ...(repo ? { repo } : {}),

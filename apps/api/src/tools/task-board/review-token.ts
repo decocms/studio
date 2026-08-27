@@ -42,13 +42,18 @@ export function mintReviewToken(
   return `rtok_${mac}`;
 }
 
+/** `reviewer` is the name the token was MINTED with, which for an in-flight run
+ *  dispatched before the reviewers merged is `qa` / `code_review` — hence the
+ *  wider type than {@link mintReviewToken}. */
 export function verifyReviewToken(
   token: string,
   itemId: string,
-  reviewer: ReviewerKind,
+  reviewer: ReviewerKind | "qa" | "code_review",
   cycleAt: Date,
 ): boolean {
   const a = Buffer.from(token);
-  const b = Buffer.from(mintReviewToken(itemId, reviewer, cycleAt));
+  const b = Buffer.from(
+    mintReviewToken(itemId, reviewer as ReviewerKind, cycleAt),
+  );
   return a.length === b.length && timingSafeEqual(a, b);
 }

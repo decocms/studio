@@ -5,7 +5,7 @@
  * What production actually showed (14 days, prod RDS) is three failures wearing
  * one shape, and only one of them needs a model:
  *
- * 1. **The Code Reviewer wasn't silent — it wrote in the wrong place.** 244 of
+ * 1. **The reviewer wasn't silent — it wrote in the wrong place.** 244 of
  *    408 completed runs left no comment, while its verdicts carry ~2,000
  *    characters of review in `notes`, which the timeline renders as ONE
  *    truncated `text-xs` line. Its prompt never asked for a comment, so it used
@@ -53,7 +53,6 @@ import {
   type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { nudgeThreadTurn } from "./nudge-thread";
-import { REVIEWER_DISALLOWED_TOOLS } from "./enqueue-reviewer";
 
 /** What the reviewer still owes the card. Null = nothing. */
 export type ReviewerCommentGap = "missing" | "no_screenshots";
@@ -66,23 +65,21 @@ const MIN_RECORD_LENGTH = 80;
  * What this reviewer's run failed to record on the card. Pure — unit-tested.
  *
  * Attribution is `threadId`: every agent comment carries the same synthetic
- * author id, so the run's own thread is the only thing that separates the QA
- * Agent's comment from the Code Reviewer's from the Super Agent's.
+ * author id, so the run's own thread is the only thing that separates the
+ * Reviewer's comment from the Super Agent's.
  */
 export function reviewerCommentGap(
   comments: readonly { threadId: string | null; body: string }[],
   threadId: string,
-  kind: ReviewerKind,
 ): ReviewerCommentGap | null {
   const own = comments.filter(
     (c) => c.threadId === threadId && c.body.trim().length >= MIN_RECORD_LENGTH,
   );
   if (own.length === 0) return "missing";
-  if (kind !== "qa") return null;
   return own.some((c) => hasVisualEvidence(c.body)) ? null : "no_screenshots";
 }
 
-/** Does this one comment carry the visual evidence QA owes? `![` opens a
+/** Does this one comment carry the visual evidence the reviewer owes? `![` opens a
  *  markdown image either side of `embedOrgOutputImages`. Pure — unit-tested. */
 function hasVisualEvidence(body: string): boolean {
   return body.includes("![") || body.includes(NO_VISUAL_SURFACE);
@@ -94,14 +91,11 @@ function hasVisualEvidence(body: string): boolean {
  * The mirrored text IS the reviewer's definitive record regardless of length
  * (a one-word "LGTM" verdict is still a real verdict, not a progress note),
  * so re-applying `MIN_RECORD_LENGTH` here would keep flagging a short-but-real
- * code-review approval as "missing" forever and send it the QA-only
- * screenshots follow-up meant for a different reviewer kind entirely.
+ * approval as "missing" forever.
  */
 export function nextGapAfterMirror(
-  kind: ReviewerKind,
   mirroredBody: string,
 ): ReviewerCommentGap | null {
-  if (kind !== "qa") return null;
   return hasVisualEvidence(mirroredBody) ? null : "no_screenshots";
 }
 
@@ -116,11 +110,12 @@ export function verdictCommentBody(
   return `**${REVIEWER_LABEL[kind]}** ${verb}:\n\n${notes.trim()}`;
 }
 
-/** The follow-up turn, for the one gap a model has to close: QA captured (or
- *  failed to capture) screenshots, and only it can put them on the card. */
+/** The follow-up turn, for the one gap a model has to close: the reviewer
+ *  captured (or failed to capture) screenshots, and only it can put them on the
+ *  card. */
 function followUpPrompt(kind: ReviewerKind): string {
   return [
-    `Your ${REVIEWER_LABEL[kind]} comment carries no screenshots and does not declare the change free of any visual surface. One of the two is required — a QA pass on a visual change nobody can SEE is not a QA pass.`,
+    `Your ${REVIEWER_LABEL[kind]} comment carries no screenshots and does not declare the change free of any visual surface. One of the two is required — a pass on a visual change nobody can SEE is not a pass.`,
     "",
     "Do exactly ONE thing in this run and then stop:",
     "- Post a comment with `TASK_BOARD_COMMENT_CREATE` carrying the before/after screenshots you captured, embedded as markdown images referencing their `org/output/...` path, each pair in a two-column table.",
@@ -151,7 +146,7 @@ export async function ensureReviewerCommented(
     item.id,
     item.organizationId,
   );
-  let gap = reviewerCommentGap(comments, threadId, kind);
+  let gap = reviewerCommentGap(comments, threadId);
   if (!gap) return;
 
   // The record itself costs nothing — the reviewer already wrote it, into the
@@ -172,8 +167,8 @@ export async function ensureReviewerCommented(
       `[task-board] ${kind} reviewer on ${item.id} recorded no comment — ` +
         `mirrored its verdict notes`,
     );
-    // A mirrored verdict is a record, but for QA it is not evidence.
-    gap = nextGapAfterMirror(kind, body);
+    // A mirrored verdict is a record, but it is not visual evidence.
+    gap = nextGapAfterMirror(body);
     if (!gap) return;
   }
 
@@ -184,7 +179,7 @@ export async function ensureReviewerCommented(
   if (!thread || thread.message_storage_version !== 2) return;
 
   console.warn(
-    `[task-board] qa reviewer on ${item.id} showed no visual evidence — ` +
+    `[task-board] reviewer on ${item.id} showed no visual evidence — ` +
       `asking for it`,
   );
   await nudgeThreadTurn(ctx, item, thread, {
@@ -198,6 +193,5 @@ export async function ensureReviewerCommented(
     // human being able to see what was verified.
     runClass: "reviewer",
     // No reviewer `instructions` on purpose: they would ask for a second review.
-    agent: { disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind] },
   });
 }

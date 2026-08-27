@@ -220,6 +220,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.setPriorityButton": "Definir prioridade",
   "taskBoard.taskDialog.someoneLabel": "alguém",
   "taskBoard.taskDialog.startedByLabel": "iniciado por",
+  "taskBoard.taskDialog.reviewerLabel": "Reviewer",
   "taskBoard.taskDialog.qaAgentLabel": "QA Agent",
   "taskBoard.taskDialog.codeReviewerLabel": "Code Reviewer",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",

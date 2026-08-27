@@ -33,21 +33,15 @@ const PROMPT_REPO = { owner: "decocms", repo: "studio" } as const;
 
 /**
  * The editable prompts, each addressed by the marker pair that fences it in its
- * source file (see `admin-prompt-region.ts`). Two entries share
- * `enqueue-reviewer.ts`: QA and Code Review are one builder with a per-reviewer
- * persona, and the persona is the part worth editing.
+ * source file (see `admin-prompt-region.ts`) — the persona, which is the part
+ * worth editing, not the scaffolding the builder wraps around it.
  *
  * Adding a prompt here = wrapping it in a marker pair + one line below.
  */
 const PROMPTS = [
   {
-    id: "qa-agent",
-    label: "QA Agent",
-    path: "apps/api/src/tools/task-board/enqueue-reviewer.ts",
-  },
-  {
-    id: "code-reviewer",
-    label: "Code Reviewer",
+    id: "reviewer",
+    label: "Reviewer",
     path: "apps/api/src/tools/task-board/enqueue-reviewer.ts",
   },
   {

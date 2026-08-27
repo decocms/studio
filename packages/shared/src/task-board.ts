@@ -44,25 +44,33 @@ export function isReportsTask(item: { createdBy: string }): boolean {
 }
 
 /**
- * The org's automated reviewers. Both are derived identities over the org's
- * agent runtime (never seeded), enabled per-org via `qa_agent_enabled` /
- * `code_reviewer_enabled` flags. When a Super Agent task reaches In Review with
- * passing/absent checks, a run is enqueued for each ENABLED reviewer — they're
- * not task assignees (the task stays with the Super Agent), they run as linked
- * review threads shown on the card.
+ * The org's automated reviewer. A derived identity over the org's agent runtime
+ * (never seeded), enabled per-org via the `reviewer_enabled` flag. When a Super
+ * Agent task reaches In Review with passing/absent checks, one reviewer run is
+ * enqueued — it is not a task assignee (the task stays with the Super Agent), it
+ * runs as a linked review thread shown on the card.
  *
- * - `qa` — verifies the task actually solved the problem (exercises the feature).
- * - `code_review` — reviews the code with the repo's stack-appropriate skills,
- *   and FIXES what it finds on the PR branch itself.
+ * ONE reviewer, not two. QA and code review were separate runs on the same diff,
+ * which bought a second opinion and paid for it twice: they raced (the Code
+ * Reviewer pushed fixes while QA exercised a preview of the commit before them),
+ * and a QA approval could ship code QA never saw. What earns the second look is
+ * fresh CONTEXT — an implementer reads its own diff as it meant it, not as it is
+ * — and one run after the implementer has that. Code review is a part of the
+ * job, not a job.
  *
- * Review is SINGLE-PASS: each reviewer runs at most once per delegation. A
+ * Review is SINGLE-PASS: the reviewer runs at most once per delegation, in a
+ * fixed order — review, fix what it found on the PR's own branch, push, then
+ * exercise the change on the preview of THAT push, then decide. A
  * `request_changes` verdict hands the card to a human instead of bouncing it
- * back to the Super Agent — the reviewer → fix → re-review loop had no natural
+ * back to the Super Agent: the reviewer → fix → re-review loop had no natural
  * fixed point (one live board logged 179 change-requests against 68 approvals,
- * one task rejected five times in an hour on the same PR), and the Code Reviewer
- * applying its own findings removes the reason to loop at all.
+ * one task rejected five times in an hour on the same PR), and a reviewer that
+ * applies its own findings removes the reason to loop at all.
+ *
+ * The union stays a union so every caller keeps reading a SET of reviewers —
+ * adding a second one back is a one-line change here, not a refactor.
  */
-export type ReviewerKind = "qa" | "code_review";
+export type ReviewerKind = "reviewer";
 
 /**
  * What every sandbox-hosted run has to know about its checkout: it is
@@ -89,7 +97,7 @@ export const SHALLOW_CHECKOUT_NOTE =
  *
  * Left to itself a reviewer improvises: fetch the PR ref, find the merge base,
  * `--stat`, then `git diff` sliced by directory because it cannot tell how big
- * the diff is. One production Code Reviewer run spent six turns and 46KB doing
+ * the diff is. One production review run spent six turns and 46KB doing
  * that, across three overlapping slices of ONE diff — and a tool result is not
  * paid for once, it rides in the prompt of every turn after it.
  *
@@ -113,39 +121,63 @@ export const PR_DIFF_RECIPE =
  */
 export const DEFAULT_TASK_TYPE = "chore";
 
-export const REVIEWER_KINDS: ReviewerKind[] = ["qa", "code_review"];
+export const REVIEWER_KINDS: ReviewerKind[] = ["reviewer"];
 
 /** Human label for a reviewer — also the prefix of its run thread's title
- *  (`"QA Agent: <task>"`), which is how the board tells the thread apart. */
+ *  (`"Reviewer: <task>"`), which is how the board tells the thread apart. */
 export const REVIEWER_LABEL: Record<ReviewerKind, string> = {
-  qa: "QA Agent",
-  code_review: "Code Reviewer",
+  reviewer: "Reviewer",
 };
 
-/** What the QA Agent writes verbatim when a change has no visual surface at
+/**
+ * Thread-title prefixes the two-reviewer era used.
+ *
+ * ponytail: a compat list, not a migration. A reviewer run dispatched before
+ * this deploy is still going after it, and its title is how the board
+ * recognises it — both for "don't dispatch a second one this cycle" and for
+ * serving it `TASK_BOARD_REVIEW_DECISION` at all (`resolveReviewRunToolNames`).
+ * Unrecognised, it loses the tool mid-run and its card sits In Review forever.
+ * Delete once no in-flight cycle predates the deploy (a day is ample).
+ */
+const LEGACY_REVIEWER_LABELS = ["QA Agent", "Code Reviewer"];
+
+/** What the reviewer writes verbatim when a change has no visual surface at
  *  all — the one alternative to embedding before/after screenshots in its task
  *  comment. A sentinel rather than a phrasing heuristic: "no visual
  *  regressions" is what a UI run that FORGOT its screenshots writes, and
  *  anything loose enough to accept a real justification accepts that too. */
 export const NO_VISUAL_SURFACE = "NO VISUAL SURFACE";
 
-/** The org-settings flag that gates each reviewer. */
-export const REVIEWER_FLAG: Record<
-  ReviewerKind,
-  "qa_agent_enabled" | "code_reviewer_enabled"
-> = {
-  qa: "qa_agent_enabled",
-  code_review: "code_reviewer_enabled",
-};
+/**
+ * True when this org runs the automated Reviewer. Default-on via
+ * `orgFlagEnabled` — only an explicit `false` turns it off.
+ *
+ * Carries over the two-reviewer opt-out: an org that had explicitly turned BOTH
+ * the QA Agent and the Code Reviewer off wanted no automated review, and this
+ * must not silently re-enable one. Turning either back on (or setting
+ * `reviewer_enabled` at all) leaves the legacy keys behind for good.
+ */
+export function reviewerEnabled(
+  flags: Record<string, unknown> | null | undefined,
+): boolean {
+  if (
+    flags?.reviewer_enabled === undefined &&
+    flags?.qa_agent_enabled === false &&
+    flags?.code_reviewer_enabled === false
+  ) {
+    return false;
+  }
+  return orgFlagEnabled(flags, "reviewer_enabled");
+}
 
-/** The reviewer kinds this org has enabled, per its settings flags. Single
- *  home for a filter repeated at every call site that reads the review gate
- *  (enqueue, auto-merge, conflict resolution, manual ship). Both reviewers are
- *  default-on via `orgFlagEnabled` — only an explicit `false` drops one. */
+/** The reviewer kinds this org has enabled. Single home for a filter repeated
+ *  at every call site that reads the review gate (enqueue, auto-merge, conflict
+ *  resolution, manual ship) — a list, so those call sites stay written against
+ *  a set of reviewers. */
 export function enabledReviewerKinds(
   flags: Record<string, unknown> | null | undefined,
 ): ReviewerKind[] {
-  return REVIEWER_KINDS.filter((k) => orgFlagEnabled(flags, REVIEWER_FLAG[k]));
+  return reviewerEnabled(flags) ? REVIEWER_KINDS : [];
 }
 
 /**
@@ -182,12 +214,16 @@ export function shippedLane(
   return deliveryLanesEnabled(flags) ? "merged" : "done";
 }
 
-/** True when a thread title belongs to the given reviewer's run. */
+/** True when a thread title belongs to the given reviewer's run — including the
+ *  two-reviewer era's titles, see {@link LEGACY_REVIEWER_LABELS}. */
 export function isReviewerThreadTitle(
   title: string | null | undefined,
   kind: ReviewerKind,
 ): boolean {
-  return title?.startsWith(`${REVIEWER_LABEL[kind]}:`) ?? false;
+  if (!title) return false;
+  return [REVIEWER_LABEL[kind], ...LEGACY_REVIEWER_LABELS].some((label) =>
+    title.startsWith(`${label}:`),
+  );
 }
 
 /** One activity entry, minimally shaped for the review-cycle reducers below.
@@ -234,12 +270,16 @@ export function reviewCycleVerdicts(
     }
     if (new Date(a.occurredAt).getTime() < start) continue;
     const d = (a.data ?? {}) as { reviewer?: unknown; verified?: unknown };
-    if (d.reviewer !== "qa" && d.reviewer !== "code_review") continue;
+    // Verdicts recorded by the two-reviewer era are ignored on purpose: a `qa`
+    // approval says nothing about whether the merged Reviewer has run, and
+    // counting one would close the merge gate on half a review. A card mid-cycle
+    // at deploy time gets a Reviewer dispatched and reaches a fresh verdict.
+    if (d.reviewer !== "reviewer") continue;
     if (a.action === "review_approved") {
       if (opts?.verifiedOnly && d.verified !== true) continue;
-      latest.set(d.reviewer, "approved");
+      latest.set("reviewer", "approved");
     } else {
-      latest.set(d.reviewer, "changes_requested");
+      latest.set("reviewer", "changes_requested");
     }
   }
   return latest;

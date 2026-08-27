@@ -72,8 +72,7 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { LoaderCircle } from "lucide-react";
-import { QaAgentIcon } from "@/components/qa-agent-icon";
-import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
+import { ReviewerIcon } from "@/components/reviewer-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   Dialog,
@@ -129,7 +128,10 @@ import {
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  useOrgFlag,
+  useReviewerEnabled,
+} from "@/hooks/use-organization-settings";
 import type { Sprint } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {
@@ -612,12 +614,7 @@ function ChecksChip({
     <span className="flex flex-col gap-0.5">
       {enabled.map((kind) => {
         const verdict = verdicts.find((v) => v.reviewer === kind);
-        const Glyph = kind === "qa" ? QaAgentIcon : CodeReviewerIcon;
-        const name = t(
-          kind === "qa"
-            ? "taskBoard.taskDialog.qaAgentLabel"
-            : "taskBoard.taskDialog.codeReviewerLabel",
-        );
+        const name = t("taskBoard.taskDialog.reviewerLabel");
         const state = !verdict
           ? t("taskBoard.taskBoard.checksPending")
           : verdict.verdict === "changes_requested"
@@ -632,7 +629,7 @@ function ChecksChip({
             key={kind}
             className="flex items-center gap-1.5 whitespace-nowrap"
           >
-            <Glyph size={12} />
+            <ReviewerIcon size={12} />
             {name} — {state}
           </span>
         );
@@ -699,16 +696,13 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
 /**
  * The card's checks indicator, or null when there is nothing to say: this org
  * runs no reviewers, or the task has not reached review yet (a To Do card with
- * `0/2` would be reporting a failure that hasn't had a chance to happen).
+ * `0/1` would be reporting a failure that hasn't had a chance to happen).
  */
 function useCardChecks(item: TaskBoardItem): {
   summary: ChecksSummary;
   enabled: ReviewerKind[];
 } | null {
-  const enabled = enabledReviewers({
-    qa: useOrgFlag("qa_agent_enabled"),
-    codeReview: useOrgFlag("code_reviewer_enabled"),
-  });
+  const enabled = enabledReviewers(useReviewerEnabled());
   if (item.reviewVerdicts.length === 0 && item.status !== "in_review") {
     return null;
   }

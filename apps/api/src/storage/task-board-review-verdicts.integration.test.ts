@@ -109,48 +109,44 @@ describe("reviewVerdicts (real Postgres)", () => {
     expect(await verdictsOf(item.id)).toEqual([]);
   });
 
-  it("reports one entry per reviewer that decided, in REVIEWER_KINDS order", async () => {
-    const item = await card("both decided");
+  it("reports the reviewer's decision", async () => {
+    const item = await card("decided");
     await enterReview(item.id);
-    await approve(item.id, "code_review");
-    await requestChanges(item.id, "qa");
+    await requestChanges(item.id, "reviewer");
 
     expect(await verdictsOf(item.id)).toEqual([
-      { reviewer: "qa", verdict: "changes_requested", verified: false },
-      { reviewer: "code_review", verdict: "approved", verified: true },
+      { reviewer: "reviewer", verdict: "changes_requested", verified: false },
     ]);
   });
 
-  it("omits a reviewer that has not decided yet", async () => {
-    const item = await card("half decided");
+  it("ignores the two-reviewer era's verdicts", async () => {
+    const item = await card("legacy verdicts");
     await enterReview(item.id);
     await approve(item.id, "qa");
+    await approve(item.id, "code_review");
 
-    expect(await verdictsOf(item.id)).toEqual([
-      { reviewer: "qa", verdict: "approved", verified: true },
-    ]);
+    expect(await verdictsOf(item.id)).toEqual([]);
   });
 
-  it("keeps only a reviewer's latest verdict within the cycle", async () => {
+  it("keeps only the latest verdict within the cycle", async () => {
     const item = await card("changed its mind");
     await enterReview(item.id);
-    await requestChanges(item.id, "qa");
-    await approve(item.id, "qa");
+    await requestChanges(item.id, "reviewer");
+    await approve(item.id, "reviewer");
 
     expect(await verdictsOf(item.id)).toEqual([
-      { reviewer: "qa", verdict: "approved", verified: true },
+      { reviewer: "reviewer", verdict: "approved", verified: true },
     ]);
   });
 
   it("drops verdicts from before the card last re-entered In Review", async () => {
-    const item = await card("bounced and re-reviewed");
+    const item = await card("re-reviewed");
     await enterReview(item.id);
-    await approve(item.id, "qa");
-    await approve(item.id, "code_review");
-    expect(await verdictsOf(item.id)).toHaveLength(2);
+    await approve(item.id, "reviewer");
+    expect(await verdictsOf(item.id)).toHaveLength(1);
 
-    // The bounce: a change-request sends the card back, and returning to In
-    // Review starts a fresh cycle that nothing has signed off on yet.
+    // A human re-delegating the card sends it back through In Review, which
+    // starts a fresh cycle that nothing has signed off on yet.
     await enterReview(item.id);
     expect(await verdictsOf(item.id)).toEqual([]);
   });
@@ -158,10 +154,10 @@ describe("reviewVerdicts (real Postgres)", () => {
   it("marks an unverified approval as unverified, not as no approval", async () => {
     const item = await card("self-asserted approval");
     await enterReview(item.id);
-    await approve(item.id, "qa", false);
+    await approve(item.id, "reviewer", false);
 
     expect(await verdictsOf(item.id)).toEqual([
-      { reviewer: "qa", verdict: "approved", verified: false },
+      { reviewer: "reviewer", verdict: "approved", verified: false },
     ]);
   });
 
@@ -169,7 +165,7 @@ describe("reviewVerdicts (real Postgres)", () => {
     const mine = await card("mine");
     const theirs = await card("theirs");
     await enterReview(mine.id);
-    await approve(mine.id, "qa");
+    await approve(mine.id, "reviewer");
 
     expect(await verdictsOf(mine.id)).toHaveLength(1);
     expect(await verdictsOf(theirs.id)).toEqual([]);
@@ -178,11 +174,11 @@ describe("reviewVerdicts (real Postgres)", () => {
   it("carries the same verdicts through a single-item read", async () => {
     const item = await card("single read");
     await enterReview(item.id);
-    await approve(item.id, "code_review", false);
+    await approve(item.id, "reviewer", false);
 
     const fetched = await taskBoard.getById(item.id, ORG);
     expect(fetched?.reviewVerdicts).toEqual([
-      { reviewer: "code_review", verdict: "approved", verified: false },
+      { reviewer: "reviewer", verdict: "approved", verified: false },
     ]);
   });
 });

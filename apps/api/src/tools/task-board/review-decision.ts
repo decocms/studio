@@ -97,10 +97,13 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
   inputSchema: z.object({
     taskBoardItemId: z.string(),
     reviewer: z
-      .enum(["qa", "code_review"])
-      .describe(
-        "Which reviewer you are: `qa` (QA Agent) or `code_review` (Code Reviewer).",
-      ),
+      // ponytail: `qa` / `code_review` are the two-reviewer era's names, kept
+      // ONLY so a reviewer run dispatched before this deploy can still record
+      // its verdict — rejected input there means a card stuck In Review with a
+      // verdict nobody kept. Normalized to `reviewer` below. Drop both once no
+      // in-flight cycle predates the deploy.
+      .enum(["reviewer", "qa", "code_review"])
+      .describe("Which reviewer you are — pass `reviewer`."),
     reviewToken: z
       .string()
       .optional()
@@ -129,9 +132,19 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       ),
   }),
   handler: async (
-    { taskBoardItemId, reviewer, reviewToken, decision, notes },
+    {
+      taskBoardItemId,
+      reviewer: claimedReviewer,
+      reviewToken,
+      decision,
+      notes,
+    },
     ctx,
   ) => {
+    // One reviewer now; a legacy claim is that same reviewer under its old name.
+    // The token is verified against the name it was MINTED with (below), not
+    // this one.
+    const reviewer: ReviewerKind = "reviewer";
     requireAuth(ctx);
     await ctx.access.check();
 
@@ -175,7 +188,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       (verifyReviewToken(
         reviewToken,
         taskBoardItemId,
-        reviewer,
+        claimedReviewer,
         new Date(currentCycleAt),
       ) ||
         reviewTokenVerified(
@@ -183,7 +196,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
             taskBoardItemId,
             reviewToken,
           ),
-          reviewer,
+          claimedReviewer,
           currentCycleAt,
         ));
 
@@ -205,9 +218,9 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
 
     if (decision === "request_changes") {
       // Review is SINGLE-PASS: a change-request ends the task's automated run.
-      // It is NOT bounced back to the Super Agent — the Code Reviewer applies
-      // its own findings on the PR branch, so a `request_changes` verdict means
-      // something neither reviewer could settle, and that is a person's call.
+      // It is NOT bounced back to the Super Agent — the reviewer applies its
+      // own findings on the PR branch, so a `request_changes` verdict means
+      // something it could not settle itself, and that is a person's call.
       // The verdict is still recorded (it is the reviewer's most useful output)
       // and the card stays In Review with the notes on it.
       const history = await ctx.storage.taskBoard.listActivity(

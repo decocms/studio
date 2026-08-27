@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { SPRINT_STATES } from "@decocms/shared/sprints";
+import { REVIEWER_KINDS, type ReviewerKind } from "@decocms/shared/task-board";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
@@ -104,7 +105,7 @@ const TaskBoardItemThreadSchema = z.object({
  * `completed` may well have asked for changes.
  */
 const TaskBoardItemReviewVerdictSchema = z.object({
-  reviewer: z.enum(["qa", "code_review"]),
+  reviewer: z.enum(REVIEWER_KINDS as [ReviewerKind]),
   verdict: z.enum(["approved", "changes_requested"]),
   /** Whether the approval was token-verified. An unverified approval counts as
    *  an approval but can never satisfy the auto-merge gate, so it must not

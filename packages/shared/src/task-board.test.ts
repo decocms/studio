@@ -10,29 +10,38 @@ import {
 } from "./task-board";
 
 describe("enabledReviewerKinds", () => {
-  it("enables both reviewers when flags are missing/empty (default-on)", () => {
-    expect(enabledReviewerKinds(null)).toEqual(["qa", "code_review"]);
-    expect(enabledReviewerKinds(undefined)).toEqual(["qa", "code_review"]);
-    expect(enabledReviewerKinds({})).toEqual(["qa", "code_review"]);
+  it("enables the reviewer when flags are missing/empty (default-on)", () => {
+    expect(enabledReviewerKinds(null)).toEqual(["reviewer"]);
+    expect(enabledReviewerKinds(undefined)).toEqual(["reviewer"]);
+    expect(enabledReviewerKinds({})).toEqual(["reviewer"]);
   });
 
-  it("drops a reviewer only when its flag is exactly false", () => {
-    expect(
-      enabledReviewerKinds({
-        qa_agent_enabled: true,
-        code_reviewer_enabled: false,
-      }),
-    ).toEqual(["qa"]);
+  it("drops the reviewer only when its flag is exactly false", () => {
+    expect(enabledReviewerKinds({ reviewer_enabled: false })).toEqual([]);
+    expect(enabledReviewerKinds({ reviewer_enabled: true })).toEqual([
+      "reviewer",
+    ]);
+  });
+
+  it("carries over the two-reviewer opt-out: both off stays off", () => {
     expect(
       enabledReviewerKinds({
         qa_agent_enabled: false,
         code_reviewer_enabled: false,
       }),
     ).toEqual([]);
-    // An unset flag stays on; only an explicit `false` opts out.
+    // Only ONE of them off was still an org that wanted review.
     expect(enabledReviewerKinds({ qa_agent_enabled: false })).toEqual([
-      "code_review",
+      "reviewer",
     ]);
+    // An explicit `reviewer_enabled` always wins over the legacy pair.
+    expect(
+      enabledReviewerKinds({
+        reviewer_enabled: true,
+        qa_agent_enabled: false,
+        code_reviewer_enabled: false,
+      }),
+    ).toEqual(["reviewer"]);
   });
 });
 
@@ -55,13 +64,16 @@ const IN_REVIEW_2 = at(
 
 describe("isReviewerThreadTitle", () => {
   it("matches the reviewer's own thread by title prefix, not the Super Agent's", () => {
-    expect(isReviewerThreadTitle("QA Agent: Fix", "qa")).toBe(true);
-    expect(isReviewerThreadTitle("Code Reviewer: Fix", "code_review")).toBe(
-      true,
-    );
-    expect(isReviewerThreadTitle("QA Agent: Fix", "code_review")).toBe(false);
-    expect(isReviewerThreadTitle("Super Agent: Fix", "qa")).toBe(false);
-    expect(isReviewerThreadTitle(null, "qa")).toBe(false);
+    expect(isReviewerThreadTitle("Reviewer: Fix", "reviewer")).toBe(true);
+    expect(isReviewerThreadTitle("Super Agent: Fix", "reviewer")).toBe(false);
+    expect(isReviewerThreadTitle(null, "reviewer")).toBe(false);
+  });
+
+  it("still matches an in-flight run from the two-reviewer era", () => {
+    // Its title is the only thing that keeps it recognised — and being
+    // recognised is what gets it the decision tool and stops a second dispatch.
+    expect(isReviewerThreadTitle("QA Agent: Fix", "reviewer")).toBe(true);
+    expect(isReviewerThreadTitle("Code Reviewer: Fix", "reviewer")).toBe(true);
   });
 });
 
@@ -75,31 +87,30 @@ describe("reviewCycleStart", () => {
 });
 
 describe("reviewCycleVerdicts", () => {
-  it("keeps the latest verdict per reviewer within the current cycle", () => {
+  it("keeps the latest verdict within the current cycle", () => {
     const v = reviewCycleVerdicts([
       IN_REVIEW_1,
-      at("review_approved", { reviewer: "qa" }, "2026-01-01T10:05:00Z"),
+      at("review_approved", { reviewer: "reviewer" }, "2026-01-01T10:05:00Z"),
       at(
         "review_changes_requested",
-        { reviewer: "code_review" },
+        { reviewer: "reviewer" },
         "2026-01-01T10:06:00Z",
       ),
     ]);
-    expect(v.get("qa")).toBe("approved");
-    expect(v.get("code_review")).toBe("changes_requested");
+    expect(v.get("reviewer")).toBe("changes_requested");
   });
 
   it("ignores verdicts from a prior cycle (before the latest in_review)", () => {
     const v = reviewCycleVerdicts([
       IN_REVIEW_1,
-      at("review_approved", { reviewer: "qa" }, "2026-01-01T10:05:00Z"),
+      at("review_approved", { reviewer: "reviewer" }, "2026-01-01T10:05:00Z"),
       IN_REVIEW_2, // re-review — old approval is now stale
     ]);
-    expect(v.get("qa")).toBeUndefined();
+    expect(v.get("reviewer")).toBeUndefined();
   });
 
-  it("verifiedOnly drops unverified approvals but keeps verified ones", () => {
-    const activity = [
+  it("ignores the two-reviewer era's verdicts — half a review is not a review", () => {
+    const v = reviewCycleVerdicts([
       IN_REVIEW_1,
       at(
         "review_approved",
@@ -108,71 +119,67 @@ describe("reviewCycleVerdicts", () => {
       ),
       at(
         "review_approved",
-        { reviewer: "code_review", verified: false },
+        { reviewer: "code_review", verified: true },
         "2026-01-01T10:06:00Z",
       ),
+    ]);
+    expect(v.size).toBe(0);
+  });
+
+  it("verifiedOnly drops an unverified approval but keeps a verified one", () => {
+    const verified = [
+      IN_REVIEW_1,
+      at(
+        "review_approved",
+        { reviewer: "reviewer", verified: true },
+        "2026-01-01T10:05:00Z",
+      ),
     ];
-    const strict = reviewCycleVerdicts(activity, { verifiedOnly: true });
-    expect(strict.get("qa")).toBe("approved");
-    expect(strict.get("code_review")).toBeUndefined();
-    const loose = reviewCycleVerdicts(activity);
-    expect(loose.get("code_review")).toBe("approved");
+    const unverified = [
+      IN_REVIEW_1,
+      at(
+        "review_approved",
+        { reviewer: "reviewer", verified: false },
+        "2026-01-01T10:05:00Z",
+      ),
+    ];
+    expect(
+      reviewCycleVerdicts(verified, { verifiedOnly: true }).get("reviewer"),
+    ).toBe("approved");
+    expect(
+      reviewCycleVerdicts(unverified, { verifiedOnly: true }).get("reviewer"),
+    ).toBeUndefined();
+    expect(reviewCycleVerdicts(unverified).get("reviewer")).toBe("approved");
   });
 });
 
 describe("allReviewersApproved", () => {
-  const base = [
+  const approved = (verified: boolean) => [
     IN_REVIEW_1,
     at(
       "review_approved",
-      { reviewer: "qa", verified: true },
+      { reviewer: "reviewer", verified },
       "2026-01-01T10:05:00Z",
     ),
   ];
 
-  it("is false until every enabled reviewer approved", () => {
-    expect(allReviewersApproved(base, ["qa", "code_review"])).toBe(false);
-    expect(
-      allReviewersApproved(
-        [
-          ...base,
-          at(
-            "review_approved",
-            { reviewer: "code_review", verified: true },
-            "2026-01-01T10:06:00Z",
-          ),
-        ],
-        ["qa", "code_review"],
-      ),
-    ).toBe(true);
+  it("is false until the enabled reviewer approved", () => {
+    expect(allReviewersApproved([IN_REVIEW_1], ["reviewer"])).toBe(false);
+    expect(allReviewersApproved(approved(true), ["reviewer"])).toBe(true);
   });
 
   it("empty enabled → false (nothing has signed off)", () => {
-    expect(allReviewersApproved(base, [])).toBe(false);
+    expect(allReviewersApproved(approved(true), [])).toBe(false);
   });
 
   it("verifiedOnly gate: an unverified approval never completes the review (anti-forgery)", () => {
-    const forged = [
-      IN_REVIEW_1,
-      at(
-        "review_approved",
-        { reviewer: "qa", verified: true },
-        "2026-01-01T10:05:00Z",
-      ),
-      // Same agent forging the other reviewer without its token → unverified.
-      at(
-        "review_approved",
-        { reviewer: "code_review", verified: false },
-        "2026-01-01T10:06:00Z",
-      ),
-    ];
     expect(
-      allReviewersApproved(forged, ["qa", "code_review"], {
+      allReviewersApproved(approved(false), ["reviewer"], {
         verifiedOnly: true,
       }),
     ).toBe(false);
-    // The human ship button (no verifiedOnly) still sees both as approved.
-    expect(allReviewersApproved(forged, ["qa", "code_review"])).toBe(true);
+    // The human ship button (no verifiedOnly) still sees it as approved.
+    expect(allReviewersApproved(approved(false), ["reviewer"])).toBe(true);
   });
 });
 
@@ -182,12 +189,12 @@ describe("outstandingReviewFeedback", () => {
     notes: unknown = "fix the landmark",
   ) => ({
     action: "review_changes_requested",
-    data: { reviewer: "qa", notes },
+    data: { reviewer: "reviewer", notes },
     occurredAt,
   });
   const approved = (occurredAt: string) => ({
     action: "review_approved",
-    data: { reviewer: "code_review", notes: "looks good" },
+    data: { reviewer: "reviewer", notes: "looks good" },
     occurredAt,
   });
 

@@ -21,7 +21,7 @@ import { mergeLinkedPr } from "./merge-pr";
  * side) — but that's client-side gating only. Without this check here, any
  * caller of this tool (a decopilot agent, a stale client, a direct MCP call)
  * could merge ANY task's linked PR — todo, in_progress, unreviewed — bypassing
- * the QA Agent / Code Reviewer gate entirely.
+ * the Reviewer gate entirely.
  */
 export function isReadyToShip(
   status: TaskBoardItem["status"],

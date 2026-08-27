@@ -15,17 +15,22 @@ import {
 } from "./task-run-context";
 
 describe("resolveReviewRunToolNames", () => {
-  test("a QA Agent run can record its decision", () => {
-    expect(resolveReviewRunToolNames("QA Agent: Add an H1")).toContain(
+  test("a Reviewer run can record its decision", () => {
+    expect(resolveReviewRunToolNames("Reviewer: Add an H1")).toContain(
       "TASK_BOARD_REVIEW_DECISION",
     );
   });
 
-  test("a Code Reviewer run can record its decision", () => {
-    expect(resolveReviewRunToolNames("Code Reviewer: Add an H1")).toContain(
-      "TASK_BOARD_REVIEW_DECISION",
-    );
-  });
+  // An in-flight run from the two-reviewer era must not lose the decision tool
+  // mid-run: unrecognised, its verdict has nowhere to go and the card stays In
+  // Review forever.
+  for (const legacy of ["QA Agent", "Code Reviewer"]) {
+    test(`a ${legacy} run from before the merge still can`, () => {
+      expect(resolveReviewRunToolNames(`${legacy}: Add an H1`)).toContain(
+        "TASK_BOARD_REVIEW_DECISION",
+      );
+    });
+  }
 
   // The invariant the narrow list exists for: the worker must not be able to
   // approve or bounce its own work.

@@ -21,6 +21,7 @@ import type {
   OrgFlags,
   SimpleModeTier,
 } from "@decocms/shared/organization/schema";
+import { reviewerEnabled } from "@decocms/shared/task-board";
 
 export interface ModelSlot {
   keyId: string;
@@ -271,6 +272,17 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
     orgFlagEnabled(s.flags, flag),
   );
   return data ?? DEFAULT_ON_FLAGS.has(flag);
+}
+
+/**
+ * True when this org runs the automated Reviewer. Not `useOrgFlag`: it carries
+ * over the two-reviewer era's opt-out, which the server gate also honors
+ * (`reviewerEnabled`) — reading the raw flag instead would show checks the board
+ * is never going to get.
+ */
+export function useReviewerEnabled(): boolean {
+  const { data } = useOrganizationSettings((s) => reviewerEnabled(s.flags));
+  return data ?? true;
 }
 
 /**
