@@ -2012,7 +2012,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   return () => observer.disconnect();
                 }}
                 className={cn(
-                  "h-full relative overflow-hidden flex justify-center",
+                  // `overflow-clip`, not `hidden`: the scaled frame's layout box outgrows this container, and a scroll port would let the browser scroll it to reveal a focused descendant (section select), jumping the preview up.
+                  "h-full relative overflow-clip flex justify-center",
                   previewSurfaceActive && !previewFluid && "bg-muted/30",
                 )}
               >
