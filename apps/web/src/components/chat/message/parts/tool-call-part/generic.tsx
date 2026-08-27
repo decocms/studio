@@ -376,10 +376,12 @@ export function GenericToolCallPart({
         durationMs={sleepDurationMs}
         anchorMs={partCreatedAtMs(part)}
       />
-    ) : effectiveState === "loading" && !isStaleApproval && !isOutputError ? (
+    ) : effectiveState === "loading" ? (
       // Any other still-running call: count up. A multi-minute build or test
       // is the case that reads as a dead run, and it has no duration to count
       // down from — "Preparing…" alone is what made it look frozen.
+      // A stale approval and an output error both resolve to another
+      // `effectiveState` above, so "loading" already excludes them.
       <ToolElapsedSummary
         toolCallId={toolCallId}
         anchorMs={partCreatedAtMs(part)}
