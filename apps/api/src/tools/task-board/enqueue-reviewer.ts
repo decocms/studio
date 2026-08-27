@@ -52,23 +52,20 @@ function isReviewerThreadLive(
 }
 
 /**
- * Built-in harness tools each reviewer must NOT have — the enforcement behind
- * "you are reviewing, not implementing", which until now was prompt-only.
+ * Built-in harness tools each reviewer must NOT have.
  *
- * Neither reviewer can rewrite an existing file. QA keeps `Write` because
- * exercising a change means scratch files (a curl script, a throwaway spec);
- * the Code Reviewer reads the diff and has no reason to touch the checkout at
- * all. Both keep `Bash` — a review is `git diff` / `gh pr view`, and QA has to
- * actually run the thing.
+ * QA reviews, it does not implement: no `Edit`, and `Write` only because
+ * exercising a change means scratch files (a curl script, a throwaway spec).
+ * The Code Reviewer DOES implement — review is single-pass, so it fixes what it
+ * finds on the PR branch itself rather than bouncing the card back — so it keeps
+ * the full edit surface. Both keep `Bash`: a review is `git diff` / `gh pr
+ * view`, and QA has to actually run the thing.
  *
- * These are SDK tool NAMES, which is all `disallowedTools` matches. "Don't
- * push" stays a prompt rule on purpose: a permission pattern like
- * `Bash(git push:*)` is not a tool name (it would be a silent no-op here), and
- * any command-level denylist is bypassable from a shell anyway.
+ * These are SDK tool NAMES, which is all `disallowedTools` matches.
  */
 export const REVIEWER_DISALLOWED_TOOLS: Record<ReviewerKind, string[]> = {
   qa: ["Edit", "NotebookEdit"],
-  code_review: ["Write", "Edit", "NotebookEdit"],
+  code_review: [],
 };
 
 /** The review instructions unique to each reviewer. Shared scaffolding (load
@@ -107,15 +104,25 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
   // prompt-region:end qa-agent
   // prompt-region:start code-reviewer
   code_review:
-    "You are the Code Reviewer. Review the code changes for correctness, " +
-    "security, and quality. FIRST look for a review skill/command appropriate " +
-    "to this repository's stack (e.g. a `/review`, `code-review`, or " +
-    "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) and " +
-    "use it. Read the diff critically and flag concrete issues with file/line " +
-    "references.\n" +
+    "You are the Code Reviewer, and you are the LAST run on this task. Review " +
+    "the code changes for correctness, security, and quality. FIRST look for a " +
+    "review skill/command appropriate to this repository's stack (e.g. a " +
+    "`/review`, `code-review`, or `security-review` skill, or the repo's " +
+    "CONTRIBUTING/review guidelines) and use it. Read the diff critically and " +
+    "flag concrete issues with file/line references.\n" +
+    "You FIX what you find yourself: apply the changes on the PR's own branch " +
+    "and push them to that same PR (never a new branch, never a new PR). " +
+    "Nothing runs after you — there is no Super Agent round to hand findings " +
+    "back to — so an issue you only describe is an issue that ships. Keep the " +
+    "fixes scoped to what your review found; do not redesign the change.\n" +
+    "Approve once the PR is in the state you would approve. Only " +
+    "`request_changes` for something you genuinely cannot fix here (a product " +
+    "decision, a missing credential, a broken approach that needs rethinking) " +
+    "— that hands the card to a human.\n" +
     "RECORD your review as a task comment BEFORE the decision — REQUIRED, and " +
     "separate from the short decision summary: what you read, the concrete " +
-    "issues with file/line references, and what you deliberately did not review. " +
+    "issues with file/line references, WHICH ones you fixed (with the commits), " +
+    "and what you deliberately did not review. " +
     "A verdict with no comment is an incomplete run and you will be asked for " +
     "one.",
   // prompt-region:end code-reviewer
@@ -524,10 +531,14 @@ async function enqueueReviewerForTask(
       "truly cannot judge the outcome) — that should be rare. When in doubt " +
       "between asking and deciding, DECIDE.",
     "",
-    "Do NOT push commits, merge, or change the code to fix what you find. You " +
-      "are reviewing, not implementing — the tools that would let you rewrite " +
-      "the checkout are removed from this run on purpose. Report what you find " +
-      "in your decision instead.",
+    kind === "code_review"
+      ? "Do NOT merge the pull request — the board does that once every " +
+        "reviewer has approved. Pushing fixes to the PR's branch is expected " +
+        "of you; opening a second PR is not."
+      : "Do NOT push commits, merge, or change the code to fix what you find. " +
+        "You are reviewing, not implementing — the tools that would let you " +
+        "rewrite the checkout are removed from this run on purpose. Report " +
+        "what you find in your decision instead.",
   ].join("\n");
 
   const prompt = [
@@ -569,12 +580,15 @@ async function enqueueReviewerForTask(
     ...(kind === "qa"
       ? []
       : [
-          `- Record your review with \`${commentTool}\` (what you read, the concrete issues with file/line references, what you did not review) BEFORE your decision. This is required — a verdict with no comment gets you a follow-up asking for one.`,
+          `- Fix the issues you find on the PR's branch and push them to that same PR. You are the last run on this task — nothing picks up findings you only describe.`,
+          `- Record your review with \`${commentTool}\` (what you read, the concrete issues with file/line references, which ones you fixed, what you did not review) BEFORE your decision. This is required — a verdict with no comment gets you a follow-up asking for one.`,
         ]),
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
-    "  - `request_changes` when something is wrong or missing. Include specific, actionable notes — the task goes back to the Super Agent with your notes.",
+    kind === "code_review"
+      ? "  - `request_changes` ONLY for something you cannot fix here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes."
+      : "  - `request_changes` when something is wrong or missing. Include specific, actionable notes — review is single-pass, so this hands the task to a human with your notes.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
     `- \`${decisionTool}\` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.`,
     "",

@@ -3,12 +3,9 @@ import {
   allReviewersApproved,
   enabledReviewerKinds,
   isReviewerThreadTitle,
-  MAX_REVIEW_BOUNCES,
   outstandingReviewFeedback,
-  reviewBounceLimitReached,
   reviewCycleStart,
   reviewCycleVerdicts,
-  SUPER_AGENT_ASSIGNEE_ID,
   type ReviewCycleActivity,
 } from "./task-board";
 
@@ -176,139 +173,6 @@ describe("allReviewersApproved", () => {
     ).toBe(false);
     // The human ship button (no verifiedOnly) still sees both as approved.
     expect(allReviewersApproved(forged, ["qa", "code_review"])).toBe(true);
-  });
-});
-
-// The runaway-loop guard. It counts ACROSS review cycles on purpose — each
-// bounce starts a new cycle, so a per-cycle count is always 1 and would never
-// trip, which is exactly how a board reached 179 change-requests.
-
-function bounce(at: string, reviewer = "code_review"): ReviewCycleActivity {
-  return {
-    action: "review_changes_requested",
-    data: { reviewer },
-    occurredAt: at,
-  };
-}
-
-function enteredReview(at: string): ReviewCycleActivity {
-  return {
-    action: "status_changed",
-    data: { to: "in_review" },
-    occurredAt: at,
-  };
-}
-
-/**
- * `n` real bounces: a card enters In Review, a reviewer requests changes, the
- * card goes back and re-enters. A bare run of `review_changes_requested` rows
- * is NOT n bounces — the counter groups by cycle, because one dispatch can land
- * more than one verdict.
- */
-function bounceCycles(n: number, fromHour = 0): ReviewCycleActivity[] {
-  return Array.from({ length: n }, (_, i) => {
-    const h = String(fromHour + i).padStart(2, "0");
-    return [
-      enteredReview(`2026-01-01T${h}:00:00.000Z`),
-      bounce(`2026-01-01T${h}:30:00.000Z`),
-    ];
-  }).flat();
-}
-
-describe("reviewBounceLimitReached", () => {
-  it("allows the first bounces through", () => {
-    expect(reviewBounceLimitReached([])).toBe(false);
-    expect(reviewBounceLimitReached(bounceCycles(3))).toBe(false);
-  });
-
-  it("trips on the bounce that would reach the limit, counting the pending one", () => {
-    expect(reviewBounceLimitReached(bounceCycles(MAX_REVIEW_BOUNCES - 1))).toBe(
-      true,
-    );
-  });
-
-  // The claim fences the DISPATCH, not the decision, so a reviewer can land two
-  // verdicts against one dispatch — only the first moves the card. Charging
-  // both halved the real budget on three of four cards in one org.
-  it("counts one bounce per cycle, however many verdicts land in it", () => {
-    // The prod shape: two cycles, QA landing a duplicate verdict in each. Four
-    // rows — which the old row-count read as four bounces and tripped on.
-    const doubleCharged: ReviewCycleActivity[] = [
-      enteredReview("2026-01-01T00:00:00.000Z"),
-      bounce("2026-01-01T00:30:00.000Z", "qa"),
-      bounce("2026-01-01T00:31:00.000Z", "qa"),
-      enteredReview("2026-01-01T01:00:00.000Z"),
-      bounce("2026-01-01T01:30:00.000Z", "qa"),
-      bounce("2026-01-01T01:31:00.000Z", "qa"),
-    ];
-    expect(reviewBounceLimitReached(doubleCharged)).toBe(false);
-
-    // Four REAL cycles still trip, on the same number of rows.
-    expect(reviewBounceLimitReached(bounceCycles(4))).toBe(true);
-  });
-
-  it("counts bounces from earlier review cycles, not just the current one", () => {
-    expect(reviewBounceLimitReached(bounceCycles(4))).toBe(true);
-  });
-
-  // The reset that makes a re-run mean something. Four cards carrying 5-7 old
-  // bounces were re-delegated in prod and each was handed straight back on its
-  // FIRST change-request — one review round, zero retries.
-  it("counts only from the most recent hand-back to the Super Agent", () => {
-    const burntOut = bounceCycles(6);
-    expect(reviewBounceLimitReached(burntOut)).toBe(true);
-
-    const reDelegated: ReviewCycleActivity[] = [
-      ...burntOut,
-      {
-        action: "assignee_changed",
-        data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
-        occurredAt: "2026-01-08T00:00:00.000Z",
-      },
-    ];
-    expect(reviewBounceLimitReached(reDelegated)).toBe(false);
-  });
-
-  // ...and the loop still terminates: only a hand-back TO the Super Agent
-  // resets, and the automatic hand-off writes `to: null`.
-  it("is not reset by the automatic hand-off to a human", () => {
-    expect(
-      reviewBounceLimitReached([
-        ...bounceCycles(4),
-        {
-          action: "assignee_changed",
-          data: { from: SUPER_AGENT_ASSIGNEE_ID, to: null, reason: "burned" },
-          occurredAt: "2026-01-01T05:00:00.000Z",
-        },
-      ]),
-    ).toBe(true);
-  });
-
-  it("still trips within one delegation, after the reset", () => {
-    const reDelegated: ReviewCycleActivity[] = [
-      ...bounceCycles(2),
-      {
-        action: "assignee_changed",
-        data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
-        occurredAt: "2026-01-01T05:00:00.000Z",
-      },
-      ...bounceCycles(MAX_REVIEW_BOUNCES - 1, 6),
-    ];
-    expect(reviewBounceLimitReached(reDelegated)).toBe(true);
-  });
-
-  it("ignores approvals and unrelated activity", () => {
-    expect(
-      reviewBounceLimitReached([
-        {
-          action: "review_approved",
-          data: { reviewer: "qa" },
-          occurredAt: "2026-01-01T00:00:00.000Z",
-        },
-        { action: "created", occurredAt: "2026-01-01T00:00:00.000Z" },
-        bounce("2026-01-01T01:00:00.000Z"),
-      ]),
-    ).toBe(false);
   });
 });
 

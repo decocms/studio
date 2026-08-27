@@ -2,10 +2,8 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import {
-  MAX_REVIEW_BOUNCES,
   REVIEWER_LABEL,
   type ReviewCycleActivity,
-  reviewBounceLimitReached,
   reviewCycleStart,
   reviewCycleVerdicts,
   type ReviewerKind,
@@ -13,12 +11,7 @@ import {
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
-import {
-  emitTaskBoardUpdated,
-  handTaskToHuman,
-  parkOnRunsExhausted,
-} from "./run-reactions";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import {
   allEnabledReviewersVerifiedApproved,
   conflictSignal,
@@ -31,9 +24,8 @@ import { TaskQuotaError } from "@/billing/task-quota";
 import { ensureReviewerCommented } from "./reviewer-comment";
 import { taskRunContextStore } from "./task-run-context";
 
-/** `notes` is mirrored verbatim into a card comment (`ensureReviewerCommented`)
- *  and into the next Super Agent run's re-dispatch prompt (`feedback` below) —
- *  same cap as a regular comment body so a reviewer can't grow either without
+/** `notes` is mirrored verbatim into a card comment (`ensureReviewerCommented`),
+ *  same cap as a regular comment body so a reviewer can't grow one without
  *  bound. */
 const MAX_REVIEW_NOTES_LENGTH = 50_000;
 
@@ -70,19 +62,14 @@ export function reviewTokenVerified(
  *
  * Reviewer runs do call twice: an agent that gets a tool result it doesn't
  * recognise as terminal calls again, and one QA run landed the same notes twice
- * ten seconds apart on six cards in one night. The first call already bounced
- * the card, so the repeat is *usually* absorbed by `claimReviewChangesBounce`
- * (the card has left In Review and the claim returns null) — but only usually:
- * if the re-run finished in between, the card is back In Review and the stale
- * repeat bounces it a second time, spending a run and a bounce on a verdict
- * already answered. It also charged the bounce budget a cycle early, which is
- * how four of these cards were handed over one round sooner than the cap says.
+ * ten seconds apart on six cards in one night. The first call already handed the
+ * card over, so the repeat would only re-record a verdict already answered.
  *
- * Scoped to the CYCLE, so a genuine second opinion after the Super Agent pushes
- * a fix is a fresh verdict, not a duplicate. Only `request_changes`: it is the
- * decision with a side effect, and a repeated approval is inert — while
- * dropping one could discard the verified retry of an approval whose first call
- * lost its token.
+ * Scoped to the CYCLE, so a genuine second opinion after a human re-delegates is
+ * a fresh verdict, not a duplicate. Only `request_changes`: it is the decision
+ * with a side effect, and a repeated approval is inert — while dropping one
+ * could discard the verified retry of an approval whose first call lost its
+ * token.
  */
 export function isDuplicateChangeRequest(
   history: ReviewCycleActivity[],
@@ -97,8 +84,8 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     "Record a reviewer's decision for a task under review. `approve` marks the " +
     "pull request approved by that reviewer (and, once EVERY enabled reviewer " +
     "has approved, merges it when the org enabled auto-merge, advancing the " +
-    "task to Done); `request_changes` hands the task back to the Super Agent " +
-    "with your notes so it can fix the PR.",
+    "task to Done); `request_changes` records your notes and hands the task to " +
+    "a human — review is single-pass, so it is not sent back to the Super Agent.",
   annotations: {
     title: "Review Decision",
     readOnlyHint: false,
@@ -217,17 +204,12 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     }
 
     if (decision === "request_changes") {
-      // Break a runaway review loop BEFORE bouncing. A reviewer that keeps
-      // finding something keeps finding something, and each round costs a
-      // sandbox run — one board logged 179 change-requests against 68
-      // approvals. Past the cap the verdict is still recorded (it is the
-      // reviewer's most useful output) but the task stops going back to the
-      // Super Agent and is handed to a person instead.
-      //
-      // Checked BEFORE `claimReviewChangesBounce`, not after: that call moves
-      // the card to In Progress, and skipping the dispatch afterwards would
-      // leave it sitting In Progress with nothing running — the
-      // delegated-but-idle state this codebase goes out of its way to avoid.
+      // Review is SINGLE-PASS: a change-request ends the task's automated run.
+      // It is NOT bounced back to the Super Agent — the Code Reviewer applies
+      // its own findings on the PR branch, so a `request_changes` verdict means
+      // something neither reviewer could settle, and that is a person's call.
+      // The verdict is still recorded (it is the reviewer's most useful output)
+      // and the card stays In Review with the notes on it.
       const history = await ctx.storage.taskBoard.listActivity(
         taskBoardItemId,
         organizationId,
@@ -235,107 +217,23 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       if (isDuplicateChangeRequest(history, reviewer)) {
         return { status: item.status, merged: false };
       }
-      if (reviewBounceLimitReached(history)) {
-        await recordTaskActivity(ctx, {
-          taskBoardItemId,
-          action: "review_changes_requested",
-          actorId: null,
-          data: { reviewer, notes, verified, bounceLimitReached: true },
-        });
-        // Stays In Review with the reviewer's notes, where a human picks it up.
-        await handTaskToHuman(
-          ctx,
-          item,
-          `${MAX_REVIEW_BOUNCES} review bounces reached — the reviewer and the ` +
-            `Super Agent are not converging`,
-        );
-        const handed =
-          (await ctx.storage.taskBoard.getById(
-            taskBoardItemId,
-            organizationId,
-          )) ?? item;
-        return { status: handed.status, merged: false };
-      }
-
-      // Any reviewer requesting changes bounces the task straight back to the
-      // Super Agent with the feedback in its re-run prompt — no need to wait on
-      // the other reviewer. Pull it back to In Progress and re-enqueue directly.
-      //
-      // Atomically claim the bounce — the dispatch fence. QA and Code Reviewer
-      // run concurrently, and either can independently decide changes are
-      // needed; without this fence both would win a plain update and each
-      // enqueue its own Super Agent run on the SAME PR, racing to push
-      // conflicting commits. The claim also re-checks the assignee is still
-      // the Super Agent, so a human who took the task over mid-review isn't
-      // overridden by a reviewer run that started before the reassignment. The
-      // decision is still recorded either way (see below) — only the losing
-      // reviewer's re-enqueue is skipped, since either the first winner's run
-      // already carries the fix forward, or the task has a new owner now.
-      const updated = await ctx.storage.taskBoard.claimReviewChangesBounce(
-        taskBoardItemId,
-        organizationId,
-        item.updatedBy,
-      );
       await recordTaskActivity(ctx, {
         taskBoardItemId,
         action: "review_changes_requested",
         actorId: null,
         data: { reviewer, notes, verified },
       });
-      if (!updated) {
-        const current =
-          (await ctx.storage.taskBoard.getById(
-            taskBoardItemId,
-            organizationId,
-          )) ?? item;
-        return { status: current.status, merged: false };
-      }
-      emitTaskBoardUpdated(organizationId, updated);
-      // Pass the PR under review so the re-run updates it in place (checks out
-      // its branch) instead of opening a second PR.
-      const prs = await ctx.storage.taskBoard.listPrs(
-        taskBoardItemId,
-        organizationId,
+      await handTaskToHuman(
+        ctx,
+        item,
+        `${REVIEWER_LABEL[reviewer]} requested changes — review is single-pass`,
       );
-      const pr = await pickActivePr(ctx, organizationId, prs);
-      // Best-effort, like the auto-merge conflict path below — a dispatch
-      // failure (no model configured, queue error) must never fail this
-      // decision: the bounce-to-in_progress + activity write already
-      // committed, so surfacing an error here would report failure on an
-      // otherwise-successful reviewer decision.
-      await enqueueSuperAgentForTask(ctx, updated, {
-        feedback: `${REVIEWER_LABEL[reviewer]}: ${notes}`,
-        pr: pr ? { number: pr.number, url: pr.url } : undefined,
-      }).catch(async (err) => {
-        // The per-task run cap refused the re-dispatch. Nothing will run, and
-        // the bounce above already moved the card to In Progress — so put it
-        // back and hand it over, rather than rethrowing (which fails an
-        // otherwise-good reviewer decision and strands the card In Progress
-        // with nothing running).
-        if (await parkOnRunsExhausted(ctx, updated, err)) {
-          await ctx.storage.taskBoard
-            .update(
-              updated.id,
-              organizationId,
-              { status: "in_review" },
-              "system",
-            )
-            .then((reverted) => emitTaskBoardUpdated(organizationId, reverted))
-            .catch((revertErr) =>
-              console.error(
-                "[task-board] runs-exhausted status revert failed",
-                revertErr,
-              ),
-            );
-          return;
-        }
-        // Any other paywall rejection is NOT best-effort — swallowing it would
-        // leave the task bounced-but-never-re-running with only a log line
-        // (same reasoning as reactToSuperAgentDelegation).
-        if (err instanceof TaskQuotaError) throw err;
-        console.error("[task-board] request_changes re-enqueue failed", err);
-      });
-      return { status: updated.status, merged: false };
+      const handed =
+        (await ctx.storage.taskBoard.getById(
+          taskBoardItemId,
+          organizationId,
+        )) ?? item;
+      return { status: handed.status, merged: false };
     }
 
     // approve — record first so the all-approved check below sees this verdict.

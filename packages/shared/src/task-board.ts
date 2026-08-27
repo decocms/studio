@@ -52,7 +52,15 @@ export function isReportsTask(item: { createdBy: string }): boolean {
  * review threads shown on the card.
  *
  * - `qa` — verifies the task actually solved the problem (exercises the feature).
- * - `code_review` — reviews the code with the repo's stack-appropriate skills.
+ * - `code_review` — reviews the code with the repo's stack-appropriate skills,
+ *   and FIXES what it finds on the PR branch itself.
+ *
+ * Review is SINGLE-PASS: each reviewer runs at most once per delegation. A
+ * `request_changes` verdict hands the card to a human instead of bouncing it
+ * back to the Super Agent — the reviewer → fix → re-review loop had no natural
+ * fixed point (one live board logged 179 change-requests against 68 approvals,
+ * one task rejected five times in an hour on the same PR), and the Code Reviewer
+ * applying its own findings removes the reason to loop at all.
  */
 export type ReviewerKind = "qa" | "code_review";
 
@@ -314,90 +322,6 @@ export function outstandingReviewFeedback(
     };
   }
   return latest?.notes ?? null;
-}
-
-/**
- * How many times a task may be bounced back to the Super Agent by a reviewer
- * before the loop is broken and a human takes over.
- *
- * The reviewer → fix → re-review cycle has no natural fixed point: a reviewer
- * that keeps finding something will keep finding something, and each round
- * costs a sandbox run and (before the PR-branch pin) an extra pull request. One
- * live board logged 179 change-requests against 68 approvals, with a single
- * task rejected five times in an hour by the same reviewer on the same PR.
- *
- * Five is chosen to be clearly past "the reviewer had a point" and clearly
- * short of "we are burning runs on a disagreement a person should settle".
- */
-export const MAX_REVIEW_BOUNCES = 5;
-
-/**
- * When the task was most recently handed TO the Super Agent (ms since epoch),
- * else 0 — the start of its current delegation, and the point the bounce budget
- * counts from.
- *
- * `assignee_changed` with `to` = the Super Agent is only ever written by
- * `TASK_BOARD_ITEM_UPDATE`, i.e. a person assigning the card (or the intake
- * auto-assign). The automatic hand-off writes `to: null`, so it can't reset
- * anything — a runaway loop still terminates.
- */
-export function delegationStart(activity: ReviewCycleActivity[]): number {
-  let latest = 0;
-  for (const a of activity) {
-    if (a.action !== "assignee_changed") continue;
-    if (
-      (a.data as { to?: unknown } | null | undefined)?.to !==
-      SUPER_AGENT_ASSIGNEE_ID
-    ) {
-      continue;
-    }
-    latest = Math.max(latest, new Date(a.occurredAt).getTime());
-  }
-  return latest;
-}
-
-/**
- * True when this task has already been handed back to the Super Agent
- * `MAX_REVIEW_BOUNCES` times, counting the change-request about to be recorded.
- *
- * Counts across all review CYCLES since the current delegation, not the current
- * cycle: the runaway loop IS the cycles — each bounce starts a fresh one, so a
- * per-cycle count is always 1 and would never trip.
- *
- * But it resets when a person hands the card back (see {@link delegationStart}).
- * Counting a card's whole lifetime made re-running a burnt-out task pointless:
- * four cards carrying 5-7 old bounces were re-delegated, and the very first
- * change-request tripped `6 + 1 >= 5` and handed each straight back — one review
- * round, zero retries. A person re-assigning the card is them saying "try
- * again"; this is what makes that mean something.
- */
-export function reviewBounceLimitReached(
-  activity: ReviewCycleActivity[],
-  limit: number = MAX_REVIEW_BOUNCES,
-): boolean {
-  const since = delegationStart(activity);
-  // Count review CYCLES that ended in a change-request, not change-request
-  // rows. A reviewer can land more than one verdict against a single dispatch
-  // — the claim fences the dispatch, not the decision — and only the first
-  // moves the card, so counting rows charged a card twice for one bounce and
-  // halved the real budget. Three of four cards in one org did exactly that.
-  const bounced = new Set<number>();
-  let cycle = 0;
-  for (const a of [...activity].sort((x, y) =>
-    x.occurredAt.localeCompare(y.occurredAt),
-  )) {
-    const at = new Date(a.occurredAt).getTime();
-    if (a.action === "status_changed") {
-      if ((a.data as { to?: unknown } | null | undefined)?.to === "in_review") {
-        cycle = at;
-      }
-      continue;
-    }
-    if (a.action === "review_changes_requested" && at >= since) {
-      bounced.add(cycle);
-    }
-  }
-  return bounced.size + 1 >= limit;
 }
 
 /**
