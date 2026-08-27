@@ -155,6 +155,29 @@ describe("jiraBodyToText block structure", () => {
     );
   });
 
+  /**
+   * Order matters: escaping the pipe first would turn `a\|b` into `a\\|b`,
+   * which markdown reads as one literal backslash followed by a LIVE column
+   * separator — the break the escape exists to prevent. Caught by CodeQL as an
+   * incomplete escape, and it is a real one.
+   */
+  it("escapes a backslash before the pipe it precedes", () => {
+    const cell = (text: string) => ({
+      type: "tableCell",
+      content: [para(text)],
+    });
+    expect(
+      jiraBodyToText(
+        doc({
+          type: "table",
+          content: [
+            { type: "tableRow", content: [cell("a\\|b"), cell("c\\\\d")] },
+          ],
+        }),
+      ),
+    ).toBe("| a\\\\\\|b | c\\\\\\\\d |\n| --- | --- |");
+  });
+
   it("pads a ragged row and neutralizes a pipe inside a cell", () => {
     const cell = (text: string) => ({
       type: "tableCell",

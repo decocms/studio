@@ -892,14 +892,22 @@ function listText(
     .join("\n");
 }
 
-/** A table cell flattened to one line: newlines and pipes would both break the
- *  row apart, so they are folded rather than emitted. */
+/**
+ * A table cell flattened to one line: a newline or a bare pipe would each break
+ * the row apart, so they are folded and escaped rather than emitted.
+ *
+ * Backslashes are escaped BEFORE pipes, and the order is load-bearing. A cell
+ * reading `a\|b` would otherwise come out as `a\\|b`, where markdown reads the
+ * pair as one literal backslash and the pipe as a live column separator — the
+ * exact break the escape exists to prevent.
+ */
 function cellText(value: unknown, names: ReadonlyMap<string, string>): string {
   const node = adfNode(value);
   if (!node) return "";
   return blockTexts(adfChildren(node), names)
     .join(" ")
     .replace(/\s*\n\s*/g, " ")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .trim();
 }
