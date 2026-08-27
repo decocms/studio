@@ -166,7 +166,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Run the Reviewer on a cheaper model than the Super Agent that wrote the code. Off by default — turning it on trades some review depth for cost.",
+      "Run the Reviewer on a cheaper model than the Super Agent that wrote the code. On by default — turning it off trades cost for some review depth.",
     ),
   coding_agent_org_mcps: z
     .boolean()
@@ -207,6 +207,7 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
  */
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "reviewer_enabled",
+  "cheap_reviewer_model",
 ]);
 
 /**

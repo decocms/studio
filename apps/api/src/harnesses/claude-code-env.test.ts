@@ -9,6 +9,7 @@ import {
 
 const BUDGET = {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
+  CLAUDE_CODE_MAX_TURNS: null,
 };
 
 describe("claudeCodeEnvFromCredential", () => {
@@ -166,15 +167,43 @@ describe("claudeCodeEnvFromCredential", () => {
     ).toBe("claude-sonnet-5");
   });
 
-  test("the class changes only the model — credentials are untouched", () => {
-    const { CLAUDE_CODE_MODEL: _builder, ...builderRest } =
-      claudeCodeEnvFromCredential({ providerId: "openrouter", apiKey: "or-1" });
-    const { CLAUDE_CODE_MODEL: _reviewer, ...reviewerRest } =
-      claudeCodeEnvFromCredential(
-        { providerId: "openrouter", apiKey: "or-1" },
-        "reviewer",
-      );
+  test("the class changes only the model and the turn cap — credentials are untouched", () => {
+    const {
+      CLAUDE_CODE_MODEL: _builder,
+      CLAUDE_CODE_MAX_TURNS: _builderTurns,
+      ...builderRest
+    } = claudeCodeEnvFromCredential({
+      providerId: "openrouter",
+      apiKey: "or-1",
+    });
+    const {
+      CLAUDE_CODE_MODEL: _reviewer,
+      CLAUDE_CODE_MAX_TURNS: _reviewerTurns,
+      ...reviewerRest
+    } = claudeCodeEnvFromCredential(
+      { providerId: "openrouter", apiKey: "or-1" },
+      "reviewer",
+    );
     expect(reviewerRest).toEqual(builderRest);
+  });
+
+  test("only the reviewer is turn-capped, and every shape carries the cap", () => {
+    for (const credential of [
+      { providerId: "anthropic", apiKey: "sk-a" },
+      { providerId: "openrouter", apiKey: "or-1" },
+      { providerId: "deco", apiKey: "deco-1" },
+      { providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID, apiKey: "sk-ant-oat-1" },
+    ]) {
+      expect(
+        claudeCodeEnvFromCredential(credential, "reviewer")
+          .CLAUDE_CODE_MAX_TURNS,
+      ).toBe("60");
+      // `null` deletes a cap a prior reviewer run left on this sandbox.
+      expect(
+        claudeCodeEnvFromCredential(credential, "default")
+          .CLAUDE_CODE_MAX_TURNS,
+      ).toBeNull();
+    }
   });
 
   test("omitting the class keeps the model every run had before", () => {

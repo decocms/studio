@@ -33,7 +33,32 @@ const ENVS = {
   // colon-separated. Set by the daemon, not by Studio: it is the daemon that
   // knows where it wrote them, and the value must not outlive that pod.
   PLUGIN_DIRS_ENV: "CLAUDE_CODE_PLUGIN_DIRS",
+  MAX_TURNS_ENV: "CLAUDE_CODE_MAX_TURNS",
 };
+
+/**
+ * The turn cap for this run, or `undefined` for the SDK's own default. Set by
+ * Studio per model class (see `claude-code-env.ts`); a non-numeric or
+ * non-positive value is treated as unset rather than failing the run — an
+ * uncapped run is a cost problem, a refused one is a broken board.
+ */
+function maxTurnsFromEnv(): number | undefined {
+  const parsed = Number(process.env[ENVS.MAX_TURNS_ENV]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * Told to the model, because a cap it cannot see is a cap it walks into. With
+ * the budget in the prompt it front-loads the work and commits a verdict.
+ */
+function turnBudgetInstruction(maxTurns: number): string {
+  return (
+    `You have at most ${maxTurns} turns for this run, and the run is cut off ` +
+    `when they are spent. Plan for that budget: gather what you need in as ` +
+    `few, as broad steps as you can, and reach and record your conclusion ` +
+    `well before the last turn rather than exploring until you are stopped.`
+  );
+}
 
 /**
  * One frame of a turn's output. `error` accompanies whatever the turn managed
@@ -201,7 +226,12 @@ export function buildOptions(args: {
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
   const model = process.env[ENVS.MODEL_ENV];
-  const instructionsWithSkills = [instructions, skillsInstruction()]
+  const maxTurns = maxTurnsFromEnv();
+  const instructionsWithSkills = [
+    instructions,
+    skillsInstruction(),
+    maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
+  ]
     .filter(Boolean)
     .join("\n\n");
   const executable = process.env[ENVS.EXECUTABLE_ENV];
@@ -233,6 +263,7 @@ export function buildOptions(args: {
         }
       : {}),
     ...(model ? { model } : {}),
+    ...(maxTurns === undefined ? {} : { maxTurns }),
     // ponytail: fixed, not configurable — raise it here if runs come back thin.
     effort: "low",
     // Per-dispatch tool subtraction (a reviewer run is read-only; the Super
