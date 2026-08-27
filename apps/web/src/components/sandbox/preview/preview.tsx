@@ -145,6 +145,10 @@ import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
 import { BlocksPanel } from "@/components/sandbox/blocks/blocks-panel";
 import {
+  PageJsonPanel,
+  type PageJsonPanelHandle,
+} from "@/components/sandbox/blocks/page-json-panel";
+import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -362,6 +366,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
+  // Page key whose raw JSON is open in the side panel next to Blocks (null = closed).
+  const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
+  const jsonPanelHandleRef = useRef<PageJsonPanelHandle>(null);
+  const closeJsonPanel = () => {
+    jsonPanelHandleRef.current?.flush();
+    setJsonPageKey(null);
+  };
+  const toggleJsonPanel = (pageKey: string) =>
+    setJsonPageKey((current) => {
+      if (current === pageKey) {
+        jsonPanelHandleRef.current?.flush();
+        return null;
+      }
+      return pageKey;
+    });
   // Live canvas size, used to scale the fixed-width frame to fit.
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   /** Origin most recently confirmed registered with the native shell via
@@ -1095,6 +1114,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (mode === "blocks") blocksPanelRef.current?.resize("30%");
       else blocksPanelRef.current?.collapse();
     }
+    // The JSON side panel only makes sense next to the Blocks editor.
+    if (mode !== "blocks") closeJsonPanel();
     setEditingMode(mode);
     setVisualElement(null);
     setCmsSelectedSection(null);
@@ -1960,7 +1981,18 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <BlocksPanel
               virtualMcpId={virtualMcpId}
               externalSelection={cmsSelectedSection}
+              onViewJsonFile={toggleJsonPanel}
             />
+            {jsonPageKey && (
+              <div className="absolute inset-0 z-10">
+                <PageJsonPanel
+                  ref={jsonPanelHandleRef}
+                  virtualMcpId={virtualMcpId}
+                  pageKey={jsonPageKey}
+                  onClose={closeJsonPanel}
+                />
+              </div>
+            )}
             {isMobile && floatingPreviewControls}
           </div>
         ) : (
@@ -1981,6 +2013,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 <BlocksPanel
                   virtualMcpId={virtualMcpId}
                   externalSelection={cmsSelectedSection}
+                  onViewJsonFile={toggleJsonPanel}
                 />
               )}
             </ResizablePanel>
@@ -1993,189 +2026,222 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               minSize="35%"
               className="min-w-0 overflow-hidden"
             >
-              <div
-                ref={(node) => {
-                  if (!node) return;
-                  const measure = () =>
-                    setCanvasSize((prev) =>
-                      prev.width === node.clientWidth &&
-                      prev.height === node.clientHeight
-                        ? prev
-                        : {
-                            width: node.clientWidth,
-                            height: node.clientHeight,
-                          },
-                    );
-                  measure();
-                  const observer = new ResizeObserver(measure);
-                  observer.observe(node);
-                  return () => observer.disconnect();
-                }}
-                className={cn(
-                  // `overflow-clip`, not `hidden`: the scaled frame's layout box outgrows this container, and a scroll port would let the browser scroll it to reveal a focused descendant (section select), jumping the preview up.
-                  "h-full relative overflow-clip flex justify-center",
-                  previewSurfaceActive && !previewFluid && "bg-muted/30",
-                )}
+              <ResizablePanelGroup
+                orientation="horizontal"
+                disabled={!jsonPageKey}
               >
-                {/* Asymptotic "commit ramp" progress: brand lime fill over a
+                {jsonPageKey && (
+                  <>
+                    <ResizablePanel
+                      id="preview-json-editor"
+                      defaultSize="43%"
+                      minSize="20%"
+                      className="min-w-0 overflow-hidden"
+                    >
+                      <PageJsonPanel
+                        ref={jsonPanelHandleRef}
+                        virtualMcpId={virtualMcpId}
+                        pageKey={jsonPageKey}
+                        onClose={closeJsonPanel}
+                      />
+                    </ResizablePanel>
+                    <ResizableHandle withHandle />
+                  </>
+                )}
+                <ResizablePanel
+                  id="preview-canvas-inner"
+                  minSize="30%"
+                  className="min-w-0 overflow-hidden"
+                >
+                  <div
+                    ref={(node) => {
+                      if (!node) return;
+                      const measure = () =>
+                        setCanvasSize((prev) =>
+                          prev.width === node.clientWidth &&
+                          prev.height === node.clientHeight
+                            ? prev
+                            : {
+                                width: node.clientWidth,
+                                height: node.clientHeight,
+                              },
+                        );
+                      measure();
+                      const observer = new ResizeObserver(measure);
+                      observer.observe(node);
+                      return () => observer.disconnect();
+                    }}
+                    className={cn(
+                      // `overflow-clip`, not `hidden`: the scaled frame's layout box outgrows this container, and a scroll port would let the browser scroll it to reveal a focused descendant (section select), jumping the preview up.
+                      "h-full relative overflow-clip flex justify-center",
+                      previewSurfaceActive && !previewFluid && "bg-muted/30",
+                    )}
+                  >
+                    {/* Asymptotic "commit ramp" progress: brand lime fill over a
                     transparent track — no strip across the site, just the
                     moving edge itself, with a soft same-color glow for
                     presence on busy content. */}
-                {(navigating || decofileWriting) && previewSurfaceActive && (
-                  <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
-                    <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
-                  </div>
-                )}
+                    {(navigating || decofileWriting) &&
+                      previewSurfaceActive && (
+                        <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
+                          <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
+                        </div>
+                      )}
 
-                {display.showBlockingOverlay && (
-                  <div className="absolute inset-0 z-30">
-                    <SandboxStateCard
-                      kind="starting"
-                      progress={progress}
-                      claimPhase={claimPhase}
-                    />
-                  </div>
-                )}
-
-                {previewState.kind === "suspended" && (
-                  <div className="absolute inset-0 z-30">
-                    <SandboxStateCard
-                      kind="suspended"
-                      onResume={lifecycle.resume}
-                    />
-                  </div>
-                )}
-
-                {previewState.kind === "errored" && (
-                  <div className="absolute inset-0 z-30">
-                    <SandboxStateCard
-                      kind="errored"
-                      error={previewState.error}
-                      onRetry={lifecycle.retry}
-                      connectionsHref={`/${org.slug}/settings/connections`}
-                    />
-                  </div>
-                )}
-
-                {display.showWakingPill && (
-                  <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
-                    <Loading01
-                      size={18}
-                      className="mt-0.5 shrink-0 animate-spin text-muted-foreground"
-                    />
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium text-foreground">
-                        {t("sandbox.preview.startingPreview")}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {t("sandbox.preview.startingPreviewHint")}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {effectiveEditingMode === "visual" && !visualElement && (
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
-                    <CursorClick01 size={12} />
-                    {t("sandbox.preview.clickElementToAsk")}
-                  </div>
-                )}
-                {effectiveEditingMode === "visual" && visualElement && (
-                  <VisualEditorPrompt
-                    element={visualElement}
-                    onDismiss={() => setVisualElement(null)}
-                  />
-                )}
-
-                {floatingPreviewControls}
-
-                {previewSurfaceActive && iframeSrc && (
-                  <div
-                    className={cn(
-                      "shrink-0",
-                      !previewFluid &&
-                        "border-x border-border bg-background shadow-sm",
+                    {display.showBlockingOverlay && (
+                      <div className="absolute inset-0 z-30">
+                        <SandboxStateCard
+                          kind="starting"
+                          progress={progress}
+                          claimPhase={claimPhase}
+                        />
+                      </div>
                     )}
-                    style={previewFrameStyle}
-                  >
-                    <iframe
-                      // Key on the iframe base: remount when the base URL changes
-                      // (branch switch, or the production→sandbox swap once the dev
-                      // server is up). Path navigation is driven by `iframeSrc`.
-                      key={display.iframeBase}
-                      ref={previewIframeRef}
-                      src={iframeSrc}
-                      className="w-full h-full border-0"
-                      title={t("sandbox.preview.devServerPreviewTitle")}
-                      onError={iframeRecovery.handleError}
-                      onLoad={() => {
-                        // A load reached the frame — cancel the recovery watchdog
-                        // and reset its backoff before anything else.
-                        iframeRecovery.handleLoad();
-                        // The page finished loading — always clear the navigation
-                        // indicator first, before any of the early returns below.
-                        endNavigation();
-                        // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
-                        if (display.mode !== "sandbox") {
-                          if (
-                            display.mode === "production" &&
-                            !display.showWakingPill &&
-                            editingMode === "blocks"
-                          ) {
-                            injectCmsEditor();
-                          }
-                          return;
-                        }
-                        // This is the VM dev-server preview (sandboxed running app),
-                        // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
-                        track("vm_preview_loaded", {
-                          view_mode: editingMode,
-                          vm_id: vmEntry?.sandboxHandle ?? null,
-                          // Intentionally excluding the full previewUrl — it can contain
-                          // ephemeral tokens / user data in the query string.
-                        });
-                        // Sync currentPath when the user navigates inside the iframe.
-                        // Skip while a programmatic navigation is pending — stale
-                        // onLoad events from the previous URL would reset us to "/".
-                        if (!activeGlobalSection) {
-                          try {
-                            const iframePath =
-                              previewIframeRef.current?.contentWindow?.location
-                                ?.pathname;
-                            if (!iframePath) return;
-                            const intended = intendedPathRef.current;
-                            if (intended !== null) {
-                              intendedPathRef.current = null;
-                              // Stale onLoad from the previous URL — ignore.
-                              if (normPath(iframePath) !== normPath(intended)) {
-                                return;
+
+                    {previewState.kind === "suspended" && (
+                      <div className="absolute inset-0 z-30">
+                        <SandboxStateCard
+                          kind="suspended"
+                          onResume={lifecycle.resume}
+                        />
+                      </div>
+                    )}
+
+                    {previewState.kind === "errored" && (
+                      <div className="absolute inset-0 z-30">
+                        <SandboxStateCard
+                          kind="errored"
+                          error={previewState.error}
+                          onRetry={lifecycle.retry}
+                          connectionsHref={`/${org.slug}/settings/connections`}
+                        />
+                      </div>
+                    )}
+
+                    {display.showWakingPill && (
+                      <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
+                        <Loading01
+                          size={18}
+                          className="mt-0.5 shrink-0 animate-spin text-muted-foreground"
+                        />
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-medium text-foreground">
+                            {t("sandbox.preview.startingPreview")}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {t("sandbox.preview.startingPreviewHint")}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {effectiveEditingMode === "visual" && !visualElement && (
+                      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
+                        <CursorClick01 size={12} />
+                        {t("sandbox.preview.clickElementToAsk")}
+                      </div>
+                    )}
+                    {effectiveEditingMode === "visual" && visualElement && (
+                      <VisualEditorPrompt
+                        element={visualElement}
+                        onDismiss={() => setVisualElement(null)}
+                      />
+                    )}
+
+                    {floatingPreviewControls}
+
+                    {previewSurfaceActive && iframeSrc && (
+                      <div
+                        className={cn(
+                          "shrink-0",
+                          !previewFluid &&
+                            "border-x border-border bg-background shadow-sm",
+                        )}
+                        style={previewFrameStyle}
+                      >
+                        <iframe
+                          // Key on the iframe base: remount when the base URL changes
+                          // (branch switch, or the production→sandbox swap once the dev
+                          // server is up). Path navigation is driven by `iframeSrc`.
+                          key={display.iframeBase}
+                          ref={previewIframeRef}
+                          src={iframeSrc}
+                          className="w-full h-full border-0"
+                          title={t("sandbox.preview.devServerPreviewTitle")}
+                          onError={iframeRecovery.handleError}
+                          onLoad={() => {
+                            // A load reached the frame — cancel the recovery watchdog
+                            // and reset its backoff before anything else.
+                            iframeRecovery.handleLoad();
+                            // The page finished loading — always clear the navigation
+                            // indicator first, before any of the early returns below.
+                            endNavigation();
+                            // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                            if (display.mode !== "sandbox") {
+                              if (
+                                display.mode === "production" &&
+                                !display.showWakingPill &&
+                                editingMode === "blocks"
+                              ) {
+                                injectCmsEditor();
                               }
-                            }
-                            // Keep the template as currentPath when the loaded
-                            // path is just the template with params filled in —
-                            // otherwise the page match and param inputs are lost.
-                            if (
-                              normPath(iframePath) === normPath(resolvedPath)
-                            ) {
                               return;
                             }
-                            setCurrentPath(iframePath);
-                            persistLastPage({
-                              path: iframePath,
-                              pageKey: pinnedPageKey,
-                              params: pathParamValues,
+                            // This is the VM dev-server preview (sandboxed running app),
+                            // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
+                            track("vm_preview_loaded", {
+                              view_mode: editingMode,
+                              vm_id: vmEntry?.sandboxHandle ?? null,
+                              // Intentionally excluding the full previewUrl — it can contain
+                              // ephemeral tokens / user data in the query string.
                             });
-                          } catch {
-                            // Cross-origin — can't read, keep current value
-                          }
-                        }
-                        if (editingMode === "visual") injectVisualEditor();
-                        if (editingMode === "blocks") injectCmsEditor();
-                      }}
-                    />
+                            // Sync currentPath when the user navigates inside the iframe.
+                            // Skip while a programmatic navigation is pending — stale
+                            // onLoad events from the previous URL would reset us to "/".
+                            if (!activeGlobalSection) {
+                              try {
+                                const iframePath =
+                                  previewIframeRef.current?.contentWindow
+                                    ?.location?.pathname;
+                                if (!iframePath) return;
+                                const intended = intendedPathRef.current;
+                                if (intended !== null) {
+                                  intendedPathRef.current = null;
+                                  // Stale onLoad from the previous URL — ignore.
+                                  if (
+                                    normPath(iframePath) !== normPath(intended)
+                                  ) {
+                                    return;
+                                  }
+                                }
+                                // Keep the template as currentPath when the loaded
+                                // path is just the template with params filled in —
+                                // otherwise the page match and param inputs are lost.
+                                if (
+                                  normPath(iframePath) ===
+                                  normPath(resolvedPath)
+                                ) {
+                                  return;
+                                }
+                                setCurrentPath(iframePath);
+                                persistLastPage({
+                                  path: iframePath,
+                                  pageKey: pinnedPageKey,
+                                  params: pathParamValues,
+                                });
+                              } catch {
+                                // Cross-origin — can't read, keep current value
+                              }
+                            }
+                            if (editingMode === "visual") injectVisualEditor();
+                            if (editingMode === "blocks") injectCmsEditor();
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
