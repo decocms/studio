@@ -35,4 +35,5 @@ export const LOCALSTORAGE_KEYS = {
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
   cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,
+  blogBoardArchivedCollapsed: () => `studio:blog-board:archived-collapsed`,
 } as const;

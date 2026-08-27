@@ -265,7 +265,7 @@ describe("listPostsWithMeta", () => {
       ),
     ).toEqual({
       Live: "published",
-      Draft: "in_review",
+      Draft: "draft",
       Legacy: "published",
       Planned: "scheduled",
     });
@@ -428,7 +428,9 @@ describe("blocksPostStatus", () => {
   });
 
   test("blocks scheduling an incomplete post — a live date needs a live post", () => {
-    expect(blocksPostStatus({ status: "in_review" }, "scheduled")).toBe(true);
+    expect(blocksPostStatus({ status: "awaiting_review" }, "scheduled")).toBe(
+      true,
+    );
     expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(true);
   });
 
@@ -437,8 +439,17 @@ describe("blocksPostStatus", () => {
   });
 
   test("never blocks pulling a post back to review", () => {
-    expect(blocksPostStatus({ status: "published" }, "in_review")).toBe(false);
-    expect(blocksPostStatus({ status: "scheduled" }, "in_review")).toBe(false);
+    expect(blocksPostStatus({ status: "published" }, "awaiting_review")).toBe(
+      false,
+    );
+    expect(blocksPostStatus({ status: "scheduled" }, "awaiting_review")).toBe(
+      false,
+    );
+  });
+
+  test("never blocks archiving — archived is not a live state", () => {
+    expect(blocksPostStatus({ status: "published" }, "archived")).toBe(false);
+    expect(blocksPostStatus({ status: "draft" }, "archived")).toBe(false);
   });
 
   test("does not block the state the post is already in", () => {
@@ -461,25 +472,28 @@ describe("postStatus", () => {
   });
 
   test("is case- and whitespace-sensitive: an inexact value is unrecognized", () => {
-    expect(postStatus({ status: "Published" })).toBe("in_review");
-    expect(postStatus({ status: " published " })).toBe("in_review");
-    expect(postStatus({ status: " scheduled " })).toBe("in_review");
+    expect(postStatus({ status: "Published" })).toBe("awaiting_review");
+    expect(postStatus({ status: " published " })).toBe("awaiting_review");
+    expect(postStatus({ status: " scheduled " })).toBe("awaiting_review");
   });
 
-  test("reads the five lifecycle states", () => {
-    expect(postStatus({ status: "idea" })).toBe("idea");
+  // Every value must round-trip: this is the blog app's own PostStatus union.
+  test("reads the six lifecycle states", () => {
+    expect(postStatus({ status: "draft" })).toBe("draft");
     expect(postStatus({ status: "generating" })).toBe("generating");
-    expect(postStatus({ status: "in_review" })).toBe("in_review");
+    expect(postStatus({ status: "awaiting_review" })).toBe("awaiting_review");
     expect(postStatus({ status: "scheduled" })).toBe("scheduled");
     expect(postStatus({ status: "published" })).toBe("published");
+    expect(postStatus({ status: "archived" })).toBe("archived");
   });
 
-  test("reads the legacy draft value as in_review", () => {
-    expect(postStatus({ status: "draft" })).toBe("in_review");
+  test("reads the legacy Studio-only names as their app equivalents", () => {
+    expect(postStatus({ status: "idea" })).toBe("draft");
+    expect(postStatus({ status: "in_review" })).toBe("awaiting_review");
   });
 
-  test("reads an unrecognized status as in_review, never live", () => {
-    expect(postStatus({ status: "awaiting_review" })).toBe("in_review");
+  test("reads an unrecognized status as awaiting_review, never live", () => {
+    expect(postStatus({ status: "nonsense" })).toBe("awaiting_review");
   });
 
   test("reads scheduled from the status alone, with no datetime", () => {
@@ -535,10 +549,10 @@ describe("setPostStatus", () => {
   test("clears the instant when leaving scheduled for review", () => {
     const next = setPostStatus(
       { status: "scheduled", scheduledDatetime: new Date().toISOString() },
-      "in_review",
+      "awaiting_review",
       now,
     );
-    expect(next.status).toBe("in_review");
+    expect(next.status).toBe("awaiting_review");
     expect(next.scheduledDatetime).toBe("");
   });
 
@@ -616,9 +630,9 @@ describe("emptyIdeaPayload / planningMeta", () => {
       planning: { pillarKey: "p1", brief: "Angle." },
       now,
     });
-    expect(payload.status).toBe("idea");
+    expect(payload.status).toBe("draft");
     expect(payload.sections).toEqual([]);
-    expect(postStatus(payload)).toBe("idea");
+    expect(postStatus(payload)).toBe("draft");
     expect(planningMeta(payload).brief).toBe("Angle.");
     expect(planningMeta(payload).pillarKey).toBe("p1");
   });
@@ -633,7 +647,7 @@ describe("listPlanningPosts / listAllPostsWithMeta", () => {
     const decofile = {
       [`${PLANNING_POST_KEY_PREFIX}1`]: buildPlanningPostBlock(
         `${PLANNING_POST_KEY_PREFIX}1`,
-        { title: "An idea", status: "idea" },
+        { title: "An idea", status: "draft" },
       ),
       ...decofileWithPosts({
         "collections/blog/posts/2": { title: "Live", status: "published" },
@@ -648,7 +662,7 @@ describe("listPlanningPosts / listAllPostsWithMeta", () => {
     expect(
       Object.fromEntries(all.map((p) => [p.title, [p.status, p.form]])),
     ).toEqual({
-      "An idea": ["idea", "planning"],
+      "An idea": ["draft", "planning"],
       Live: ["published", "live"],
     });
   });
@@ -667,7 +681,7 @@ describe("movePostToStatus", () => {
   test("promotes a planning post to a live block, preserving id and slug", () => {
     const key = planningPostKey("abc123");
     const move = movePostToStatus(
-      { key, payload: { ...complete, status: "in_review" } },
+      { key, payload: { ...complete, status: "awaiting_review" } },
       "scheduled",
       now,
     );
@@ -685,7 +699,7 @@ describe("movePostToStatus", () => {
     const key = livePostKey("abc123");
     const move = movePostToStatus(
       { key, payload: { ...complete, status: "scheduled" } },
-      "in_review",
+      "awaiting_review",
       now,
     );
     const targetKey = planningPostKey("abc123");
@@ -693,19 +707,33 @@ describe("movePostToStatus", () => {
     const block = move.writes[targetKey] as Record<string, unknown>;
     expect("__resolveType" in block).toBe(false);
     const post = block.post as Record<string, unknown>;
-    expect(post.status).toBe("in_review");
+    expect(post.status).toBe("awaiting_review");
     expect(post.scheduledDatetime).toBe("");
   });
 
   test("a within-planning move rewrites in place with nothing to delete", () => {
     const key = planningPostKey("abc123");
     const move = movePostToStatus(
-      { key, payload: { title: "T", status: "idea" } },
-      "in_review",
+      { key, payload: { title: "T", status: "draft" } },
+      "awaiting_review",
       now,
     );
     expect(move.deletes).toEqual([]);
     expect(Object.keys(move.writes)).toEqual([key]);
+  });
+
+  test("archiving a live post demotes it, so the site stops rendering it", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "published" } },
+      "archived",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    expect((block.post as Record<string, unknown>).status).toBe("archived");
   });
 });
 

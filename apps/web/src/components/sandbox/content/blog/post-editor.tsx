@@ -376,7 +376,7 @@ function PostSettings({
               blocked={blocksPostStatus(post, "scheduled")}
               blockedReason={missingLabel}
               onCheckedChange={(checked) =>
-                setStatus(checked ? "scheduled" : "in_review")
+                setStatus(checked ? "scheduled" : "awaiting_review")
               }
             />
           )}
@@ -404,7 +404,7 @@ function PostSettings({
               blocked={blocksPostStatus(post, "published")}
               blockedReason={missingLabel}
               onCheckedChange={(checked) =>
-                setStatus(checked ? "published" : "in_review")
+                setStatus(checked ? "published" : "awaiting_review")
               }
             />
           )}

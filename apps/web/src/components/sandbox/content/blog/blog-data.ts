@@ -309,7 +309,8 @@ export interface PostMeta {
 /**
  * The two physical forms one lifecycle post takes. A `planning` post is a
  * block with no `__resolveType` under {@link PLANNING_POST_KEY_PREFIX}, so the
- * site never renders it (idea / generating / in_review). A `live` post is the
+ * site never renders it (draft / generating / awaiting_review / archived). A
+ * `live` post is the
  * classic `collections/blog/posts/<id>` block with a `__resolveType`
  * (scheduled / published). One stable `<id>` is shared across both forms; a
  * status change that crosses the boundary promotes/demotes the block — see
@@ -358,26 +359,33 @@ export function missingPostFields(payload: Record<string, unknown>): string[] {
 }
 
 /**
- * The lifecycle a post travels, in board order. `idea` / `generating` /
- * `in_review` are pre-publication planning states — stored as planning-only
- * blocks the site never resolves (see {@link PLANNING_POST_KEY_PREFIX}).
- * `scheduled` / `published` are the live states the site renders. The legacy
- * stored value `"draft"` is read as `in_review` (display-only back-compat).
+ * The lifecycle a post travels, in board order.
+ *
+ * These values are the blog app's own `PostStatus` union — Studio writes them
+ * into `payload.status`, the app reads them, so the vocabulary has to be the
+ * app's, not one invented here. Do not add a state the app cannot read.
+ *
+ * `draft` / `generating` / `awaiting_review` / `archived` are stored as
+ * planning-only blocks the site never resolves (see
+ * {@link PLANNING_POST_KEY_PREFIX}); `scheduled` / `published` are the live
+ * states the site renders.
  */
 export type PostStatus =
-  | "idea"
+  | "draft"
   | "generating"
-  | "in_review"
+  | "awaiting_review"
   | "scheduled"
-  | "published";
+  | "published"
+  | "archived";
 
 /** The board lanes, left → right — the order the lifecycle advances. */
 export const POST_STATUSES: readonly PostStatus[] = [
-  "idea",
+  "draft",
   "generating",
-  "in_review",
+  "awaiting_review",
   "scheduled",
   "published",
+  "archived",
 ];
 
 /** Local hour of day a newly scheduled post goes live. */
@@ -385,29 +393,36 @@ export const DEFAULT_SCHEDULE_HOUR = 8;
 
 /**
  * Publication state from `status` alone. Planning posts always carry an
- * explicit `idea`/`generating`/`in_review`; on a live post an unset/blank
- * status still means published (legacy: adding the field unpublished nothing),
- * and the legacy `"draft"` value displays as In Review.
+ * explicit non-live state; on a live post an unset/blank status still means
+ * published (legacy: adding the field unpublished nothing).
+ *
+ * `idea` and `in_review` are read as `draft` / `awaiting_review`: a short-lived
+ * Studio-only vocabulary that predates aligning on the blog app's union.
  */
 export function postStatus(payload: Record<string, unknown>): PostStatus {
   switch (str(payload.status)) {
+    case "draft":
+    // Legacy Studio-only name for the first lane.
     case "idea":
-      return "idea";
+      return "draft";
     case "generating":
       return "generating";
+    case "awaiting_review":
+    // Legacy Studio-only name for the review lane.
     case "in_review":
-    case "draft":
-      return "in_review";
+      return "awaiting_review";
     case "scheduled":
       return "scheduled";
     case "published":
       return "published";
+    case "archived":
+      return "archived";
     // Legacy: an unset status field means published (adding it unpublishes nothing).
     case "":
       return "published";
     // Any other value is unrecognized — the safest non-live state, not a live post.
     default:
-      return "in_review";
+      return "awaiting_review";
   }
 }
 
@@ -482,14 +497,15 @@ export function listPostsWithMeta(
 // ------------------ Lifecycle posts (idea → published) -----------------------
 
 /**
- * Planning posts (idea / generating / in_review) live one block each under this
+ * Planning posts (draft / generating / awaiting_review / archived) live one
+ * block each under this
  * prefix, carrying NO `__resolveType` — exactly like themes, so the site's blog
  * app never resolves an unfinished draft. Only when a post is scheduled is it
  * promoted to a real `collections/blog/posts/<id>` block the site renders.
  */
 export const PLANNING_POST_KEY_PREFIX = "blog-manager/posts/";
 
-/** True when a key points at a planning post (idea / generating / in_review). */
+/** True when a key points at a planning post — anything but scheduled/published. */
 function isPlanningPostKey(key: string): boolean {
   return key.startsWith(PLANNING_POST_KEY_PREFIX);
 }
@@ -554,7 +570,7 @@ export function emptyIdeaPayload(args: {
     authors: [],
     categories: [],
     sections: [],
-    status: "idea",
+    status: "draft",
     planning: (args.planning ?? {}) as Record<string, unknown>,
   };
 }
@@ -570,7 +586,7 @@ export function buildPlanningPostBlock(
 /**
  * Rebuild a post block in the form its key implies — planning (no
  * `__resolveType`) or live — so a content edit never accidentally promotes an
- * idea/in-review post to a site-rendered block. Crossing the boundary is a
+ * unpublished post to a site-rendered block. Crossing the boundary is a
  * status change, handled by {@link movePostToStatus}, not a content save.
  */
 export function buildPostBlock(
@@ -582,7 +598,7 @@ export function buildPostBlock(
     : buildBlogBlock(key, "posts", payload);
 }
 
-/** All planning posts (idea / generating / in_review) paired with their payload. */
+/** All planning posts (everything but scheduled/published) with their payload. */
 export function listPlanningPosts(
   decofile: Record<string, unknown>,
 ): Array<{ key: string; payload: Record<string, unknown> }> {
@@ -630,7 +646,8 @@ export interface PostMove {
 
 /**
  * Move a post to `next`, crossing the planning↔live boundary when the target
- * state requires it. idea/generating/in_review live as planning blocks;
+ * state requires it. draft/generating/awaiting_review/archived live as
+ * planning blocks;
  * scheduled/published as live `collections/blog/posts/<id>` blocks. The `<id>`
  * and `slug` are preserved across a promote/demote, so links stay stable.
  *
@@ -763,7 +780,13 @@ export function removeCategoryFromPost(
 export function stampPostModified(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { ...payload, dateModified: new Date().toISOString() };
+  // Only the legacy names: an absent status already means published.
+  const stored = str(payload.status);
+  const normalized =
+    stored === "idea" || stored === "in_review"
+      ? { status: postStatus(payload) }
+      : {};
+  return { ...payload, ...normalized, dateModified: new Date().toISOString() };
 }
 
 function randomHex(length: number): string {

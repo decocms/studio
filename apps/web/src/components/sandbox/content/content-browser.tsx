@@ -121,6 +121,7 @@ import {
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
+import { useT } from "@/i18n/use-t.ts";
 import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { PostFilterBar, PostSelectionToolbar } from "./post-toolbar";
@@ -359,6 +360,7 @@ function ContentBrowserReady({
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
+  const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
@@ -888,7 +890,7 @@ function ContentBrowserReady({
     if (!source) return;
     const payload = getBlogPayload(source, "posts");
     if (blocksPostStatus(payload, next)) {
-      toast.error("Finish the required fields before scheduling.");
+      toast.error(t("sandbox.postBoard.moveBlocked"));
       return;
     }
     const move = movePostToStatus({ key, payload }, next, new Date());
@@ -902,7 +904,9 @@ function ContentBrowserReady({
       const targetKey = Object.keys(move.writes)[0];
       if (targetKey) setSelection({ collection: "posts", key: targetKey });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not update");
+      toast.error(
+        err instanceof Error ? err.message : t("sandbox.postBoard.moveFailed"),
+      );
     }
   };
 
@@ -1722,11 +1726,12 @@ function ItemList({
   const categoryCounts = new Map<string, number>();
   const authorCounts = new Map<string, number>();
   const statusCounts = {
-    idea: 0,
+    draft: 0,
     generating: 0,
-    in_review: 0,
+    awaiting_review: 0,
     scheduled: 0,
     published: 0,
+    archived: 0,
   } satisfies Record<PostStatusFilter, number>;
   for (const p of postsWithMeta) statusCounts[p.status]++;
   for (const p of postsWithMeta) {

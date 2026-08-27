@@ -2,8 +2,8 @@
  * The Posts area: one workspace with two views of the same lifecycle — a Kanban
  * Board (lanes by status, drag to advance) and a grouped List (by status by
  * default, switchable to format or pillar). Opening a post swaps to the editor;
- * the caller renders that with a Back button. Lane/status labels stay English
- * in every locale (product terms).
+ * the caller renders that with a Back button. Statuses are the blog app's own
+ * `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
  */
 import { type ReactNode, Suspense, useState } from "react";
 import {
@@ -17,6 +17,7 @@ import {
   Loading02,
   Plus,
   Stars02,
+  Trash01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Badge } from "@decocms/ui/components/badge.tsx";
@@ -36,6 +37,8 @@ import { Label } from "@decocms/ui/components/label.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useLocalStorage } from "@/hooks/use-local-storage.ts";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
@@ -66,22 +69,24 @@ export type PostsView = "board" | "list";
 export type PostsGroupBy = "status" | "format" | "pillar";
 
 const LANE_LABEL: Record<PostStatus, TranslationKey> = {
-  idea: "sandbox.postBoard.laneIdea",
+  draft: "sandbox.postBoard.laneDraft",
   generating: "sandbox.postBoard.laneGenerating",
-  in_review: "sandbox.postBoard.laneInReview",
+  awaiting_review: "sandbox.postBoard.laneAwaitingReview",
   scheduled: "sandbox.postBoard.laneScheduled",
   published: "sandbox.postBoard.lanePublished",
+  archived: "sandbox.postBoard.laneArchived",
 };
 
 const STATUS_VARIANT: Record<
   PostStatus,
   "secondary" | "warning" | "success" | "outline"
 > = {
-  idea: "outline",
+  draft: "outline",
   generating: "secondary",
-  in_review: "warning",
+  awaiting_review: "warning",
   scheduled: "secondary",
   published: "success",
+  archived: "outline",
 };
 
 /** Drag payload key — the dragged post's block key. */
@@ -136,6 +141,10 @@ export function PostsWorkspace({
   const [guidance, setGuidance] = useState("");
   const [count, setCount] = useState(3);
   const [expanded, setExpanded] = useState(false);
+  const [archivedCollapsed, setArchivedCollapsed] = useLocalStorage(
+    LOCALSTORAGE_KEYS.blogBoardArchivedCollapsed(),
+    false,
+  );
 
   const posts = listAllPostsWithMeta(decofile);
   const payloadOf = (key: string) =>
@@ -149,7 +158,10 @@ export function PostsWorkspace({
       ? selectedKey
       : (posts[0]?.key ?? null);
 
-  /** Apply a promote/demote as write(s) then delete(s) — delete after write. */
+  /**
+   * Apply a promote/demote as write(s) then delete(s) — delete after write.
+   * Reports whether the move landed, so a caller can skip its own toast.
+   */
   const applyMove = async (post: PostMeta, next: PostStatus) => {
     const move = movePostToStatus(
       { key: post.key, payload: payloadOf(post.key) },
@@ -163,8 +175,20 @@ export function PostsWorkspace({
       for (const key of move.deletes) {
         await deleteBlock.mutateAsync({ blockKey: key });
       }
+      return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  };
+
+  /**
+   * Delete is a soft delete: the post moves to Archived, off every working
+   * lane but still recoverable by dragging it back out.
+   */
+  const archivePost = async (post: PostMeta) => {
+    if (await applyMove(post, "archived")) {
+      toast.success(t("sandbox.postBoard.archived"));
     }
   };
 
@@ -186,7 +210,7 @@ export function PostsWorkspace({
     onOpen(key);
   };
 
-  /** Propose ideas from the brand context and drop them into the Idea lane. */
+  /** Propose ideas from the brand context and drop them into the Draft lane. */
   const generateIdeas = async () => {
     setIsGenerating(true);
     try {
@@ -406,6 +430,10 @@ export function PostsWorkspace({
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
           {POST_STATUSES.map((status) => {
             const lanePosts = posts.filter((p) => p.status === status);
+            const laneLabel = t(LANE_LABEL[status]);
+            /** Archived is the one lane nobody works out of, so only it collapses. */
+            const collapsible = status === "archived";
+            const isCollapsed = collapsible && archivedCollapsed;
             return (
               <div
                 key={status}
@@ -421,32 +449,76 @@ export function PostsWorkspace({
                   onDrop(status, e.dataTransfer.getData(DRAG_KEY));
                 }}
                 className={cn(
-                  "flex w-72 shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
+                  "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
+                  isCollapsed ? "w-11" : "w-72",
                   dragOverLane === status && "border-primary bg-primary/5",
                 )}
               >
-                <div className="flex items-center justify-between px-3 py-2.5 text-sm font-medium">
-                  <span>{t(LANE_LABEL[status])}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {lanePosts.length}
-                  </span>
-                </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
-                  {lanePosts.length === 0 ? (
-                    <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-                      {t("sandbox.postBoard.laneEmpty")}
-                    </p>
-                  ) : (
-                    lanePosts.map((post) => (
-                      <PostCard
-                        key={post.key}
-                        post={post}
-                        payload={payloadOf(post.key)}
-                        onOpen={() => onOpen(post.key)}
-                      />
-                    ))
-                  )}
-                </div>
+                {isCollapsed ? (
+                  // Still a drop target, so a post can be archived onto the closed lane.
+                  <button
+                    type="button"
+                    onClick={() => setArchivedCollapsed(false)}
+                    aria-label={t("sandbox.postBoard.expandLane", {
+                      lane: laneLabel,
+                    })}
+                    aria-expanded={false}
+                    className="flex min-h-0 flex-1 cursor-pointer flex-col items-center gap-2 py-2.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronRight size={14} className="shrink-0" />
+                    <span className="text-xs tabular-nums">
+                      {lanePosts.length}
+                    </span>
+                    <span className="[writing-mode:vertical-rl] text-sm font-medium">
+                      {laneLabel}
+                    </span>
+                  </button>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
+                      {collapsible ? (
+                        <button
+                          type="button"
+                          onClick={() => setArchivedCollapsed(true)}
+                          aria-label={t("sandbox.postBoard.collapseLane", {
+                            lane: laneLabel,
+                          })}
+                          aria-expanded
+                          className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
+                        >
+                          <ChevronDown size={14} className="shrink-0" />
+                          <span className="truncate">{laneLabel}</span>
+                        </button>
+                      ) : (
+                        <span className="truncate">{laneLabel}</span>
+                      )}
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {lanePosts.length}
+                      </span>
+                    </div>
+                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
+                      {lanePosts.length === 0 ? (
+                        <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+                          {t("sandbox.postBoard.laneEmpty")}
+                        </p>
+                      ) : (
+                        lanePosts.map((post) => (
+                          <PostCard
+                            key={post.key}
+                            post={post}
+                            payload={payloadOf(post.key)}
+                            onOpen={() => onOpen(post.key)}
+                            onArchive={
+                              post.status === "archived"
+                                ? undefined
+                                : () => void archivePost(post)
+                            }
+                          />
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
@@ -460,6 +532,7 @@ export function PostsWorkspace({
               payloadOf={payloadOf}
               selectedKey={detailKey}
               onOpen={onOpen}
+              onArchive={(post) => void archivePost(post)}
             />
           </div>
           <div className="min-w-0 flex-1 overflow-hidden">
@@ -595,12 +668,14 @@ function PostList({
   payloadOf,
   selectedKey,
   onOpen,
+  onArchive,
 }: {
   posts: PostMeta[];
   groupBy: PostsGroupBy;
   payloadOf: (key: string) => Record<string, unknown>;
   selectedKey?: string | null;
   onOpen: (key: string) => void;
+  onArchive: (post: PostMeta) => void;
 }) {
   const t = useT();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -661,6 +736,11 @@ function PostList({
                     selected={post.key === selectedKey}
                     showStatus={groupBy !== "status"}
                     onOpen={() => onOpen(post.key)}
+                    onArchive={
+                      post.status === "archived"
+                        ? undefined
+                        : () => onArchive(post)
+                    }
                   />
                 ))}
               </ul>
@@ -677,19 +757,24 @@ function PostRow({
   selected,
   showStatus,
   onOpen,
+  onArchive,
 }: {
   post: PostMeta;
   selected: boolean;
   /** Show the status badge — redundant when the list is already grouped by status. */
   showStatus: boolean;
   onOpen: () => void;
+  /** Omitted for a post that is already archived — there is nothing to archive. */
+  onArchive?: () => void;
 }) {
   const t = useT();
-  const hasIssues = post.status === "in_review" && post.missing.length > 0;
+  const hasIssues =
+    post.status === "awaiting_review" && post.missing.length > 0;
   const hasDate = post.status === "scheduled" || post.status === "published";
   const showMeta = showStatus || hasIssues || hasDate;
   return (
-    <li>
+    <li className="group/row relative">
+      {onArchive && <ArchiveButton onArchive={onArchive} className="top-2.5" />}
       <button
         type="button"
         onClick={onOpen}
@@ -701,7 +786,7 @@ function PostRow({
             : "bg-card hover:bg-muted/50",
         )}
       >
-        <span className="min-w-0 truncate font-medium">
+        <span className="min-w-0 truncate pr-6 font-medium">
           {post.title || t("sandbox.postBoard.untitled")}
         </span>
         {showMeta && (
@@ -734,71 +819,113 @@ function PostCard({
   post,
   payload,
   onOpen,
+  onArchive,
 }: {
   post: PostMeta;
   payload: Record<string, unknown>;
   onOpen: () => void;
+  /** Omitted for a post that is already archived — there is nothing to archive. */
+  onArchive?: () => void;
 }) {
   const t = useT();
   const draggable = post.status !== "generating";
   const plan = planningMeta(payload);
 
   return (
-    <button
-      type="button"
-      draggable={draggable}
-      onDragStart={(e) => e.dataTransfer.setData(DRAG_KEY, post.key)}
-      onClick={onOpen}
+    <div
       className={cn(
-        "block w-full rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40",
-        draggable ? "cursor-grab active:cursor-grabbing" : "opacity-80",
+        "group/card relative rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40",
+        !draggable && "opacity-80",
       )}
     >
-      <p className="line-clamp-2 text-sm font-medium">
-        {post.title || t("sandbox.postBoard.untitled")}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {post.status === "idea" && (
-          <>
-            {plan.pillarTitle && (
-              <Badge variant="secondary" className="max-w-full truncate">
-                {plan.pillarTitle}
-              </Badge>
-            )}
-            {plan.format?.name && (
-              <Badge variant="outline" className="max-w-full truncate">
-                {plan.format.name}
-              </Badge>
-            )}
-          </>
+      {onArchive && <ArchiveButton onArchive={onArchive} className="top-2" />}
+      <button
+        type="button"
+        draggable={draggable}
+        onDragStart={(e) => e.dataTransfer.setData(DRAG_KEY, post.key)}
+        onClick={onOpen}
+        className={cn(
+          "block w-full p-3 text-left",
+          draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
         )}
-        {post.status === "generating" && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loading02 size={12} className="animate-spin" />
-            {t("sandbox.postBoard.generatingLabel")}
-          </span>
-        )}
-        {post.status === "in_review" &&
-          (post.missing.length > 0 ? (
-            <span className="inline-flex items-center gap-1 text-xs text-warning">
-              <AlertCircle size={12} />
-              {t("sandbox.postBoard.nIssues", {
-                count: String(post.missing.length),
-              })}
+      >
+        <p className="line-clamp-2 pr-6 text-sm font-medium">
+          {post.title || t("sandbox.postBoard.untitled")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {post.status === "draft" && (
+            <>
+              {plan.pillarTitle && (
+                <Badge variant="secondary" className="max-w-full truncate">
+                  {plan.pillarTitle}
+                </Badge>
+              )}
+              {plan.format?.name && (
+                <Badge variant="outline" className="max-w-full truncate">
+                  {plan.format.name}
+                </Badge>
+              )}
+            </>
+          )}
+          {post.status === "generating" && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loading02 size={12} className="animate-spin" />
+              {t("sandbox.postBoard.generatingLabel")}
             </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-xs text-success">
-              <CheckCircle size={12} />
-              {t("sandbox.postBoard.readyToSchedule")}
+          )}
+          {post.status === "awaiting_review" &&
+            (post.missing.length > 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs text-warning">
+                <AlertCircle size={12} />
+                {t("sandbox.postBoard.nIssues", {
+                  count: String(post.missing.length),
+                })}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs text-success">
+                <CheckCircle size={12} />
+                {t("sandbox.postBoard.readyToSchedule")}
+              </span>
+            ))}
+          {(post.status === "scheduled" || post.status === "published") && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <CalendarDate size={12} />
+              {(post.scheduledDatetime || post.date || "").slice(0, 10)}
             </span>
-          ))}
-        {(post.status === "scheduled" || post.status === "published") && (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <CalendarDate size={12} />
-            {(post.scheduledDatetime || post.date || "").slice(0, 10)}
-          </span>
-        )}
-      </div>
+          )}
+        </div>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Delete affordance for a post. Deleting is a soft delete — the post moves to
+ * the Archived lane, so nothing is lost and no confirmation is warranted.
+ */
+function ArchiveButton({
+  onArchive,
+  className,
+}: {
+  onArchive: () => void;
+  className?: string;
+}) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      aria-label={t("sandbox.postBoard.delete")}
+      title={t("sandbox.postBoard.delete")}
+      onClick={(e) => {
+        e.stopPropagation();
+        onArchive();
+      }}
+      className={cn(
+        "absolute right-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100",
+        className,
+      )}
+    >
+      <Trash01 size={13} />
     </button>
   );
 }
