@@ -119,9 +119,9 @@ test.describe("fast preview publish stages", () => {
       await route.continue();
     });
 
-    // Repo-backed vMCP: the main panel opens on Preview, so publish lives there.
+    // Publish lives in the main panel header; open it (the vMCP defaults to chat).
     await page.goto(
-      `/${orgSlug}/${thread.item.id}?virtualmcpid=${project.vmcpId}`,
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${project.vmcpId}&main=preview`,
     );
 
     const primary = page.getByRole("button", {

@@ -316,15 +316,7 @@ export function useMainPanelTabs(ctx: {
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
-  // Unified "settings" tab bundles instructions, connections, and layout
-  // into a single detail view. On GitHub-linked vMCPs the contextual
-  // work tabs (Preview, git) come first so they're closest to the panel;
-  // Settings + Automations stay anchored at the right.
-  // The Overview view (the Super Agent's default) leads the bar so it reads as
-  // the agent's home. Data-driven off the configured default view — no
-  // per-agent special-case. Source tabs (Preview · Code) share one capability
-  // gate via getSourceSystemTabs; Blocks is an editing mode inside Preview.
-  // Library / Tasks / Overview are sidebar destinations, not per-agent tabs.
+  // Source tabs (Preview · Code) lead the bar; other surfaces are sidebar destinations.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
   // Reports-only orgs get a persistent Preview/Code entry point to their
   // storefront regardless of which agent/screen they're on — visibility is
