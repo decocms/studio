@@ -273,6 +273,17 @@ export async function fetchOrgFsSkillCatalog(
   return skills;
 }
 
+/** react-query wrapper around {@link fetchOrgFsSkillCatalog} — same cache key
+ *  the chat "/" picker uses (`KEYS.slashSkills`), so both surfaces share one
+ *  fetch of the org's full skill catalog (home + public sets + synced repos). */
+export function useOrgFsSkillCatalog() {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.slashSkills(org.id),
+    queryFn: () => fetchOrgFsSkillCatalog(org.slug),
+  });
+}
+
 /** Read a file's contents as UTF-8 text (org-fs `/read` endpoint). */
 async function fetchOrgFsText(
   orgSlug: string,
