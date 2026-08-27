@@ -124,12 +124,12 @@ async function refreshAndStoreOnce(
       tokenEndpoint: token.tokenEndpoint,
     });
   } catch (error) {
-    // Persisting the refreshed token failed — report a transient failure.
+    // A cache miss, not a failure — the token is already valid on the upstream.
     console.warn("[TokenRefresh] failed to persist refreshed token", {
       connectionId: token.connectionId,
       message: error instanceof Error ? error.message : String(error),
     });
-    return { accessToken: null, permanent: false };
+    return { accessToken: result.accessToken, permanent: false };
   }
   return { accessToken: result.accessToken, permanent: false };
 }

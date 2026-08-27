@@ -44,7 +44,7 @@ beforeEach(() => {
 });
 
 describe("refreshAndStore — storage failures don't throw", () => {
-  it("returns null instead of rejecting when persisting a fresh token fails", async () => {
+  it("returns the freshly refreshed token instead of discarding it when persisting fails", async () => {
     mockRefreshAccessToken.mockResolvedValue({
       success: true,
       accessToken: "new-access",
@@ -54,7 +54,9 @@ describe("refreshAndStore — storage failures don't throw", () => {
       upsert: vi.fn().mockRejectedValue(new Error("db unavailable")),
     });
 
-    await expect(refreshAndStore(baseToken, storage)).resolves.toBeNull();
+    await expect(refreshAndStore(baseToken, storage)).resolves.toBe(
+      "new-access",
+    );
   });
 
   it("returns null instead of rejecting when deleting a dead token fails", async () => {
