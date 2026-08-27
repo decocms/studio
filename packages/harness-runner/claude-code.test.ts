@@ -179,11 +179,11 @@ describe("buildOptions", () => {
   test("carries the turn cap and tells the model its budget", () => {
     const prev = process.env.CLAUDE_CODE_MAX_TURNS;
     try {
-      process.env.CLAUDE_CODE_MAX_TURNS = "30";
+      process.env.CLAUDE_CODE_MAX_TURNS = "60";
       const capped = options({ agent: { id: "a", instructions: "Review." } });
-      expect(capped.maxTurns).toBe(30);
+      expect(capped.maxTurns).toBe(60);
       expect((capped.systemPrompt as { append: string }).append).toContain(
-        "at most 30 turns",
+        "at most 60 turns",
       );
 
       // A cap the model cannot see is a cap it walks into.
