@@ -956,8 +956,8 @@ export function TaskBoardPage() {
   const navigate = useNavigate();
   /**
    * `?main=board&task=<id>` renders that task in place of the lanes — the one
-   * address a task has, whether it was reached by clicking its card, by a
-   * chat's "open in board", or by the short `/$org/t/DECO-01` link.
+   * address a task has, whether it was reached by clicking its card or by the
+   * short `/$org/t/DECO-01` link.
    *
    * It is the whole of the open-task state: reading the row out of the
    * SSE-patched list on every render is what lets a thread or status linked

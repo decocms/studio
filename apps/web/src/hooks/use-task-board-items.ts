@@ -32,10 +32,9 @@ type TaskBoardData = {
  * loads — so a card can name its sprint without the sprint being threaded down
  * through every lane and row.
  *
- * Shares `useTaskBoardItems`' query key and fetcher (as `useTaskForThread`
- * does) rather than calling `useTaskBoardItems` itself: that hook also
- * subscribes to the board's SSE streams, and one subscription per rendered card
- * is not what a lookup should cost.
+ * Shares `useTaskBoardItems`' query key and fetcher rather than calling that
+ * hook itself: it also subscribes to the board's SSE streams, and one
+ * subscription per rendered card is not what a lookup should cost.
  */
 export function useBoardSprintIndex(): Map<string, Sprint> {
   const { locator } = useProjectContext();
