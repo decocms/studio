@@ -71,6 +71,13 @@ test.describe("task board delivery lanes", () => {
     const request = page.context().request;
     const call = <T>(name: string, args: unknown) =>
       callSelfMcpTool<T>(request, orgSlug, name, args);
+    const orgId = await findOrgId(request, orgSlug);
+
+    // A direct write into a delivery lane is gated behind the flag.
+    await call("ORGANIZATION_SETTINGS_UPDATE", {
+      organizationId: orgId,
+      flags: { delivery_lanes_enabled: true },
+    });
 
     const { item } = await call<{ item: TaskBoardItem }>(
       "TASK_BOARD_ITEM_CREATE",
