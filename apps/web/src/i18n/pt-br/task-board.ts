@@ -182,10 +182,7 @@ export const taskBoard = {
     "Agente acionado para resolver os conflitos",
   "taskBoard.taskDialog.resolveConflictError":
     "Não foi possível acionar o agente",
-  "taskBoard.taskDialog.costRunCountSingular": "em {runs} execução",
-  "taskBoard.taskDialog.costRunCountPlural": "em {runs} execuções",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
-  "taskBoard.taskDialog.costOnSubscription": "· no seu plano Claude",
   "taskBoard.taskDialog.costTooltipSingular":
     "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
   "taskBoard.taskDialog.costTooltipPlural":
