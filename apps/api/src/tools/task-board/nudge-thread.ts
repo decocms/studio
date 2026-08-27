@@ -47,6 +47,9 @@ export async function nudgeThreadTurn(
     id: opts.messageId,
     role: "user" as const,
     parts: [{ type: "text" as const, text: opts.prompt }],
+    // Same reason as `enqueueAgentRunForTask`: the mirrored stream chunk needs
+    // its own timestamp or replaying viewers order this turn by arrival.
+    metadata: { created_at: new Date().toISOString() },
   };
 
   // Persist the user turn before dispatch, for the same ordering reason as

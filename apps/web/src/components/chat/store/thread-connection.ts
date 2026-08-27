@@ -164,8 +164,17 @@ function applyLocally(
     // that earlier assistant. A persisted refetch (incoming carries the DB
     // `created_at`) overwrites this via `preserveCreatedAt`. No-op if a
     // `created_at` is already present.
-    const msg = action.message as UIMessage & { created_at?: string };
+    const msg = action.message as UIMessage & {
+      created_at?: string;
+      metadata?: { created_at?: string };
+    };
     if (msg.created_at != null) return [...prev, msg];
+    // A server-dispatched turn (task board, nudge) carries its timestamp in
+    // `metadata` — promote it rather than stamping arrival time.
+    const fromMetadata = msg.metadata?.created_at;
+    if (fromMetadata != null) {
+      return [...prev, { ...msg, created_at: fromMetadata } as UIMessage];
+    }
     let maxMs = 0;
     for (const m of prev) {
       const ts = (m as { created_at?: string | number | Date }).created_at;
