@@ -796,33 +796,224 @@ function collectMentions(body: unknown, ids: Set<string>): void {
   }
 }
 
-/** Jira rich body → text the cards can render. The Agile API returns
- *  v2-style STRING bodies (wiki markup — converted to markdown); REST v3
- *  returns an ADF tree, which is flattened: text nodes concatenated,
- *  doc-level blocks separated by blank lines. ADF marks, tables, and media
- *  are dropped — the card links back to the issue for full fidelity. */
+interface AdfNode {
+  type?: string;
+  text?: string;
+  attrs?: Record<string, unknown> & MentionAttrs;
+  content?: unknown[];
+}
+
+function adfNode(value: unknown): AdfNode | null {
+  return value && typeof value === "object" ? (value as AdfNode) : null;
+}
+
+function adfChildren(node: AdfNode): unknown[] {
+  return Array.isArray(node.content) ? node.content : [];
+}
+
+function attrText(node: AdfNode, key: string): string {
+  const value = node.attrs?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * The inline run of a node: text, breaks, mentions, and the small widgets ADF
+ * uses for links, emoji and dates.
+ *
+ * Marks (bold, links, code) are dropped: the card is a summary that links back
+ * to the issue, and re-deriving `[text](href)` from mark ranges is a different
+ * job from keeping the body readable. Anything unrecognized recurses, so a node
+ * type Atlassian adds later still contributes its text instead of vanishing.
+ */
+function inlineText(
+  value: unknown,
+  names: ReadonlyMap<string, string>,
+): string {
+  const node = adfNode(value);
+  if (!node) return "";
+  switch (node.type) {
+    case "text":
+      return node.text ?? "";
+    case "hardBreak":
+      return "\n";
+    case "mention":
+      return mentionText(node.attrs, names);
+    case "emoji":
+      return attrText(node, "text") || attrText(node, "shortName");
+    case "inlineCard":
+    case "blockCard":
+      return attrText(node, "url");
+    case "date":
+      return attrText(node, "timestamp");
+    case "status":
+      return attrText(node, "text");
+    default:
+      return adfChildren(node)
+        .map((child) => inlineText(child, names))
+        .join("");
+  }
+}
+
+/** Indent every line but the first, so a list item's second paragraph stays
+ *  inside the item instead of ending it. Blank lines are left blank rather than
+ *  padded — the separator between an item's paragraphs must not carry trailing
+ *  whitespace. */
+function hangingIndent(text: string, width: number): string {
+  const pad = " ".repeat(width);
+  return text
+    .split("\n")
+    .map((line, index) => (index === 0 || line === "" ? line : pad + line))
+    .join("\n");
+}
+
+function prefixLines(text: string, prefix: string): string {
+  return text
+    .split("\n")
+    .map((line) => (line === "" ? prefix.trimEnd() : prefix + line))
+    .join("\n");
+}
+
+/** One list, its items marked and their continuation lines indented under the
+ *  marker. `marker` decides bullet vs number vs checkbox. */
+function listText(
+  node: AdfNode,
+  names: ReadonlyMap<string, string>,
+  marker: (item: AdfNode, index: number) => string,
+): string {
+  const items = adfChildren(node)
+    .map(adfNode)
+    .filter((item): item is AdfNode => item !== null);
+  return items
+    .map((item, index) => {
+      const bullet = marker(item, index);
+      const body = blockTexts(adfChildren(item), names).join("\n\n");
+      return bullet + hangingIndent(body, bullet.length);
+    })
+    .join("\n");
+}
+
+/** A table cell flattened to one line: newlines and pipes would both break the
+ *  row apart, so they are folded rather than emitted. */
+function cellText(value: unknown, names: ReadonlyMap<string, string>): string {
+  const node = adfNode(value);
+  if (!node) return "";
+  return blockTexts(adfChildren(node), names)
+    .join(" ")
+    .replace(/\s*\n\s*/g, " ")
+    .replace(/\|/g, "\\|")
+    .trim();
+}
+
+/**
+ * An ADF table as a markdown one.
+ *
+ * The delimiter row goes under the first row whether or not it is made of
+ * header cells: markdown has no way to render a table without one, and a body
+ * row promoted to a header reads far better than a table that does not render.
+ */
+function tableText(node: AdfNode, names: ReadonlyMap<string, string>): string {
+  const rows = adfChildren(node)
+    .map(adfNode)
+    .filter((row): row is AdfNode => row?.type === "tableRow")
+    .map((row) => adfChildren(row).map((cell) => cellText(cell, names)));
+  if (rows.length === 0) return "";
+  const width = Math.max(...rows.map((row) => row.length));
+  const line = (cells: string[]) =>
+    `| ${[...cells, ...Array(width - cells.length).fill("")].join(" | ")} |`;
+  const [header, ...body] = rows as [string[], ...string[][]];
+  return [
+    line(header),
+    `| ${Array(width).fill("---").join(" | ")} |`,
+    ...body.map(line),
+  ].join("\n");
+}
+
+/** The block-level nodes of one container, each rendered whole, with the empty
+ *  ones dropped so a stray media node does not leave a blank paragraph. */
+function blockTexts(
+  values: unknown[],
+  names: ReadonlyMap<string, string>,
+): string[] {
+  return values
+    .map((value) => blockText(value, names))
+    .filter((text) => text.trim() !== "");
+}
+
+/**
+ * One block, rendered as the markdown the card's description field is written
+ * in (that is already the contract — a v2 wiki body goes through
+ * {@link wikiToMarkdown}).
+ *
+ * Every container that holds siblings has to say how they are separated. The
+ * previous version answered that only for `doc` and concatenated everywhere
+ * else, so a table came out as its cells run together and a list as its items
+ * run together — the text was all present and none of it was readable.
+ */
+function blockText(value: unknown, names: ReadonlyMap<string, string>): string {
+  const node = adfNode(value);
+  if (!node) return "";
+  switch (node.type) {
+    case "doc":
+      return blockTexts(adfChildren(node), names).join("\n\n");
+    case "heading": {
+      const level = Number(node.attrs?.level);
+      const depth = Number.isInteger(level)
+        ? Math.min(Math.max(level, 1), 6)
+        : 1;
+      return `${"#".repeat(depth)} ${inlineText(node, names)}`;
+    }
+    case "bulletList":
+      return listText(node, names, () => "- ");
+    case "orderedList": {
+      const start = Number(node.attrs?.order);
+      const first = Number.isInteger(start) && start > 0 ? start : 1;
+      return listText(node, names, (_item, index) => `${first + index}. `);
+    }
+    case "taskList":
+      return listText(node, names, (item) =>
+        attrText(item, "state") === "DONE" ? "- [x] " : "- [ ] ",
+      );
+    case "codeBlock":
+      return `\`\`\`${attrText(node, "language")}\n${inlineText(node, names)}\n\`\`\``;
+    case "blockquote":
+    case "panel":
+      return prefixLines(
+        blockTexts(adfChildren(node), names).join("\n\n"),
+        "> ",
+      );
+    case "rule":
+      return "---";
+    case "table":
+      return tableText(node, names);
+    case "expand":
+    case "nestedExpand": {
+      const title = attrText(node, "title").trim();
+      const body = blockTexts(adfChildren(node), names).join("\n\n");
+      return title ? `**${title}**\n\n${body}` : body;
+    }
+    case "media":
+      return "";
+    case "mediaSingle":
+    case "mediaGroup":
+      return blockTexts(adfChildren(node), names).join("\n\n");
+    default:
+      return inlineText(node, names);
+  }
+}
+
+/** Jira rich body → the markdown a card's description is written in. The Agile
+ *  API returns v2-style STRING bodies (wiki markup — converted by
+ *  {@link wikiToMarkdown}); REST v3 returns an ADF tree, rendered block by
+ *  block: headings, lists, task lists, code blocks, quotes and tables all keep
+ *  their shape. ADF marks and media are dropped — the card links back to the
+ *  issue for full fidelity. */
 export function jiraBodyToText(
   adf: unknown,
   names: ReadonlyMap<string, string> = new Map(),
 ): string {
   if (typeof adf === "string") return wikiToMarkdown(adf, names);
   if (!adf || typeof adf !== "object") return "";
-  const node = adf as {
-    type?: string;
-    text?: string;
-    attrs?: MentionAttrs;
-    content?: unknown[];
-  };
-  if (node.type === "text") return node.text ?? "";
-  if (node.type === "hardBreak") return "\n";
-  if (node.type === "mention") return mentionText(node.attrs, names);
-  const inner = (Array.isArray(node.content) ? node.content : []).map((child) =>
-    jiraBodyToText(child, names),
-  );
-  if (node.type === "doc") {
-    return inner.filter((text) => text.trim() !== "").join("\n\n");
-  }
-  return inner.join("");
+  return blockText(adf, names);
 }
 
 /**
