@@ -254,7 +254,7 @@ export function formatMetricValue(
 
 export function getThreadAgentId(thread: {
   run_config?: Record<string, unknown> | null;
-  virtual_mcp_id?: string;
+  virtual_mcp_id?: string | null;
 }): string | null {
   const runConfig = (thread.run_config ?? {}) as { agent?: { id: string } };
   return runConfig.agent?.id ?? (thread.virtual_mcp_id || null);
@@ -285,7 +285,11 @@ export function resolveAgentIcon(
   const found =
     virtualMcps.find((v) => v.id === agentId) ??
     connections?.find((c) => c.id === agentId);
-  return found?.icon ?? null;
+  if (found?.icon) return found.icon;
+  // Synthesized, so never in either list — the same miss `resolveAgentName` covers.
+  const orgId = isDecopilot(agentId);
+  if (orgId) return getWellKnownDecopilotVirtualMCP(orgId).icon ?? null;
+  return null;
 }
 
 // ── Member helpers ──────────────────────────────────────────────────────────

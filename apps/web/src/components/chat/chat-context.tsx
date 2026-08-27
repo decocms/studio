@@ -299,6 +299,28 @@ export function ChatStreamValueProvider({
   );
 }
 
+/**
+ * Blanks the stream and task contexts for a subtree.
+ *
+ * For rendering one thread's messages while a *different* thread is the live
+ * one on screen — a task's linked run in a sheet over the board, say. The
+ * message renderers reach for the ambient thread to decorate a message (its
+ * produced files, its HTML previews, its next-action button); left alone they
+ * would decorate the transcript with the wrong thread's, and the next-action
+ * button would post into it. Reading them optionally is already the norm, so
+ * `null` is a shape they all handle.
+ *
+ * Prefs are deliberately left alone: nothing on the read path routes on them,
+ * and blanking them would break `useChatPrefs`'s throwing consumers.
+ */
+export function DetachedChatContext({ children }: PropsWithChildren) {
+  return (
+    <ChatStreamCtx.Provider value={null}>
+      <ChatTaskCtx.Provider value={null}>{children}</ChatTaskCtx.Provider>
+    </ChatStreamCtx.Provider>
+  );
+}
+
 // ============================================================================
 // ChatPrefsProvider — standalone-mountable prefs context
 // ============================================================================
