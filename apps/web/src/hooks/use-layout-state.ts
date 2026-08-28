@@ -57,11 +57,8 @@ export interface WorkspaceLayoutState {
 }
 
 export interface WorkspaceLayoutActions {
-  setTaskId: (id: string, virtualMcpId?: string) => void;
   toggleMain: () => void;
   toggleSidePanel: () => void;
-  setMobileSurface: (surface: MobileWorkspaceSurface) => void;
-  openSidePanel: () => void;
   createNewTask: () => void;
 }
 
@@ -314,20 +311,6 @@ export function useWorkspaceLayoutState(
     });
   };
 
-  const setTaskId = (id: string, targetVirtualMcpId?: string) => {
-    navigateThread(
-      id,
-      () => {
-        const next: Record<string, unknown> = {};
-        if (targetVirtualMcpId) next.virtualmcpid = targetVirtualMcpId;
-        else Object.assign(next, preserveVirtualMcp);
-        return next;
-      },
-      /** The target thread's agent moves the `{-$project}` segment with it. */
-      { virtualMcpId: targetVirtualMcpId },
-    );
-  };
-
   const toggleMain = () => {
     const update = resolveWorkspacePanelAction(
       { type: "toggleMain" },
@@ -339,18 +322,6 @@ export function useWorkspaceLayoutState(
   const toggleSidePanel = () => {
     const update = resolveWorkspacePanelAction(
       { type: "toggleSidePanel" },
-      visibility,
-    );
-    if (update) navigateSearch(update, { replace: true });
-  };
-
-  const setMobileSurface = (surface: MobileWorkspaceSurface) => {
-    navigateSearch(mobileSurfaceSearch(surface), { replace: true });
-  };
-
-  const openSidePanel = () => {
-    const update = resolveWorkspacePanelAction(
-      { type: "openSidePanel" },
       visibility,
     );
     if (update) navigateSearch(update, { replace: true });
@@ -384,11 +355,8 @@ export function useWorkspaceLayoutState(
     sidePanelOpen,
     mainOpen,
     sidePanelParamPresent: search.sidepanel !== undefined,
-    setTaskId,
     toggleMain,
     toggleSidePanel,
-    setMobileSurface,
-    openSidePanel,
     createNewTask,
   };
 }
