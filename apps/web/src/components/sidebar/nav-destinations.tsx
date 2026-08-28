@@ -19,7 +19,7 @@
  * not listed.
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useSyncExternalStore } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
 import {
   BarChartSquare02,
@@ -38,6 +38,10 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { useOptionalThreadManager } from "@/components/chat/store/hooks";
+import type { Task } from "@/components/chat/task/types";
+import { findLastThreadForAgent } from "@/lib/find-last-thread-for-agent";
+import { authClient } from "@/lib/auth-client";
 import { AgentAvatar } from "@/components/agent-icon";
 import {
   agentHasClonableSource,
@@ -53,6 +57,9 @@ import { useRouteProjectId, useRouteThreadId } from "@/layouts/thread-route";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+
+const NO_THREADS: Task[] = [];
+const noopSubscribe = () => () => {};
 
 interface NavDestination {
   key: string;
@@ -133,6 +140,21 @@ function useAgentNavRows(
   /** The `{-$project}` segment of the matched route; absent off a scoped one. */
   const activeProject = useRouteProjectId();
   const routeThreadId = useRouteThreadId();
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id;
+  /**
+   * The in-scope ThreadManager's loaded thread list (org-wide "Mine" page).
+   * Subscribed reactively so each row's `?thread=` restores that agent's last
+   * conversation as soon as the page lands — and updates when it changes. Null
+   * off a `ThreadManagerProvider` (e.g. settings routes), which degrades to the
+   * empty-composer fallback.
+   */
+  const manager = useOptionalThreadManager();
+  const threads = useSyncExternalStore(
+    manager?.threads.subscribe ?? noopSubscribe,
+    manager?.threads.get ?? (() => NO_THREADS),
+    manager?.threads.get ?? (() => NO_THREADS),
+  );
 
   return agents
     .filter((agent) => predicate(agent, devAgentIds))
@@ -141,11 +163,16 @@ function useAgentNavRows(
       const isActive =
         leafPath === DESTINATION_ROUTE.agents && activeProject === agent.id;
       /**
-       * Landing on a project is a navigation, so the row carries no thread —
-       * the chat panel opens an empty composer. The exception is the row you
-       * are already on: swapping the view there must not close the open chat.
+       * The row you are already on carries its OWN open thread verbatim, so
+       * swapping the view there never closes the chat (and an empty composer
+       * stays empty — we don't yank you onto an older thread). Every OTHER row
+       * carries that agent's last conversation, so returning to it reopens the
+       * thread instead of an empty composer. Falls back to no thread — the empty
+       * composer — when the agent has no resumable thread loaded yet.
        */
-      const thread = isActive && routeThreadId ? routeThreadId : undefined;
+      const thread = isActive
+        ? (routeThreadId ?? undefined)
+        : (findLastThreadForAgent(threads, agent.id, userId)?.id ?? undefined);
       /** `panel: undefined` is deliberate: params merge with the current
        *  match, so a project row would otherwise carry the open view over to
        *  the project you are switching TO. */
