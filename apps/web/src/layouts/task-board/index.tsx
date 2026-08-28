@@ -443,7 +443,7 @@ function FooterDueDate({
   );
 }
 
-/** The card's one run action, as a footer glyph. Its slot is always reserved, so revealing it on hover shifts nothing and covers nothing. */
+/** The card's one run action, as a written footer button. Revealed on hover; its collapsed width keeps the resting footer uncluttered. */
 function CardActionGlyph({
   action,
 }: {
@@ -452,17 +452,17 @@ function CardActionGlyph({
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
-      title={action.label}
+      size="sm"
       aria-label={action.label}
       onClick={(e) => {
         e.stopPropagation();
         action.onClick();
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      className="-m-1.5 pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="-my-1.5 h-7 gap-1.5 px-2 text-xs font-medium pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
+      {action.label}
     </Button>
   );
 }
