@@ -12,8 +12,8 @@ import { useAutoInstallGitHub } from "@/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { resolveDecoSiteGithubRepo } from "@decocms/shared/deco-sites-github";
 import {
+  defaultPreviewServerUrl,
   pickProductionDomain,
-  productionUrlFromDomain,
 } from "@decocms/shared/deco-site-production-url";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import {
@@ -271,10 +271,8 @@ export function ImportFromDecoDialog({
         const projectIcon = connBody.icon ?? null;
         const slug = generateSlug(siteName);
         const siteSlug = siteName.toLowerCase();
-        // Default the preview server to the site's `{slug}.deco.site` host (legacy `productionUrl` dual-written for rollback).
-        const previewServerUrl = productionUrlFromDomain(
-          `${siteSlug}.deco.site`,
-        );
+        // Default to the `{slug}.deco.site` host (legacy `productionUrl` dual-written for rollback).
+        const previewServerUrl = defaultPreviewServerUrl(siteName);
 
         // 2. Create a space (virtual MCP) wired to both admin-mcp and GitHub.
         const result = (await client.callTool({

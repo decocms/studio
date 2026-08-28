@@ -1,3 +1,5 @@
+import { slugify } from "./utils/slugify";
+
 /**
  * Site-URL helpers for linked deco.cx sites.
  *
@@ -6,9 +8,9 @@
  * by imports before the rename and still read as a fallback). It is usually
  * the live production site, but any deco-runtime deployment works (staging, a
  * local `https://localhost:3100`, ...), which is why the canonical name is
- * "preview server". We deliberately do NOT derive it from `siteSlug` (the
- * `{slug}.deco.site` guess) — a site's real URL can be a custom domain, so we
- * persist what deco.cx actually reports at import time.
+ * "preview server". Imports default it to the site's `{slug}.deco.site` guess
+ * (see `defaultPreviewServerUrl`) rather than a reported custom domain, so the
+ * preview always targets the deco-runtime host.
  */
 
 /** Validate/normalize a stored site URL. Returns the canonical href or `null`. */
@@ -66,4 +68,19 @@ export function productionUrlFromDomain(
   if (!raw) return null;
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   return sanitizeSiteUrl(withProtocol);
+}
+
+/**
+ * Guess a site's deco.site preview host from its display name. `siteName` is
+ * a free-text title (shown as-is in the import picker), not a hostname, so it
+ * is slugified first — an unslugified name with a space or symbol makes
+ * `new URL()` throw, and `productionUrlFromDomain` swallows that into `null`,
+ * silently leaving the imported site with no preview server at all.
+ */
+export function defaultPreviewServerUrl(
+  siteName: string | null | undefined,
+): string | null {
+  const slug = slugify(siteName ?? "");
+  if (!slug) return null;
+  return productionUrlFromDomain(`${slug}.deco.site`);
 }
