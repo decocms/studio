@@ -46,6 +46,14 @@ export const settings = {
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
   "settings.jira.loadingBoards": "Carregando boards…",
+  "settings.jira.rolesLabel": "O que cada coluna significa",
+  "settings.jira.rolesDescription":
+    "As colunas do seu board vêm do Jira. Diga ao Studio qual delas é onde a revisão acontece, e qual arquiva um card — a maioria não significa nada pra ele, e tudo bem.",
+  "settings.jira.roleNone": "Nada em especial",
+  "settings.jira.roleInReview": "Em revisão",
+  "settings.jira.roleArchived": "Arquivo",
+  "settings.jira.noColumnsYet":
+    "Nenhuma coluna ainda — elas chegam na próxima sincronização.",
   "settings.jira.mappingLabel": "Mapeamento de colunas",
   "settings.jira.mappingDescription":
     "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",

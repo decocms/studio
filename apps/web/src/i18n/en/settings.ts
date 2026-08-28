@@ -44,6 +44,14 @@ export const settings = {
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
   "settings.jira.loadingBoards": "Loading boards…",
+  "settings.jira.rolesLabel": "What each column means",
+  "settings.jira.rolesDescription":
+    "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
+  "settings.jira.roleNone": "Nothing special",
+  "settings.jira.roleInReview": "Under review",
+  "settings.jira.roleArchived": "Archive",
+  "settings.jira.noColumnsYet":
+    "No columns yet — they arrive with the next sync.",
   "settings.jira.mappingLabel": "Column mapping",
   "settings.jira.mappingDescription":
     "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
