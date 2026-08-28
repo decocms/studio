@@ -215,6 +215,19 @@ export interface GitDataClient {
     commitTreeSha: string,
     packagePath: string | null,
   ): Promise<TreeEntry[]>;
+  /**
+   * Blob entries for a bounded, caller-known set of paths — the same
+   * 502-on-large-repo cap `getDecofileTree` dodges for decofile reads, but for
+   * callers that already know exactly which paths they need (discard's
+   * `filepaths`, the branch-wins merge's changed-file list) instead of a
+   * whole subdirectory. Walks only the directories those paths live in, so
+   * cost scales with the path set, never with repo size. A path absent at
+   * this commit (deleted, or never existed) is omitted from the map.
+   */
+  getBlobsAtPaths(
+    commitTreeSha: string,
+    paths: string[],
+  ): Promise<Map<string, TreeEntry>>;
   getBlobText(blobSha: string): Promise<string>;
   /**
    * One file's text at a ref, addressed by PATH rather than blob sha — null when
@@ -286,6 +299,44 @@ export interface GitDataClient {
      */
     commitMessages: string[];
   }>;
+}
+
+/**
+ * `getBlobsAtPaths`'s directory-scoped walk, factored out for testing: given
+ * how to list a subtree's direct children, resolve each path to its blob
+ * entry by visiting only the directories the paths actually live in (cached
+ * per directory, so siblings share one listing call).
+ */
+export async function resolveBlobsAtPaths(
+  rootTreeSha: string,
+  paths: string[],
+  ops: {
+    resolveSubtreeSha: (
+      rootTreeSha: string,
+      segments: string[],
+    ) => Promise<string | null>;
+    treeShallow: (treeSha: string) => Promise<TreeEntry[]>;
+  },
+): Promise<Map<string, TreeEntry>> {
+  const result = new Map<string, TreeEntry>();
+  const dirListings = new Map<string, TreeEntry[] | null>();
+  for (const path of paths) {
+    const slash = path.lastIndexOf("/");
+    const dir = slash === -1 ? "" : path.slice(0, slash);
+    const base = slash === -1 ? path : path.slice(slash + 1);
+    let listing = dirListings.get(dir);
+    if (listing === undefined) {
+      const subtreeSha = await ops.resolveSubtreeSha(
+        rootTreeSha,
+        dir === "" ? [] : dir.split("/"),
+      );
+      listing = subtreeSha === null ? null : await ops.treeShallow(subtreeSha);
+      dirListings.set(dir, listing);
+    }
+    const entry = listing?.find((e) => e.type === "blob" && e.path === base);
+    if (entry) result.set(path, { ...entry, path });
+  }
+  return result;
 }
 
 export function createGitDataClient(params: {
@@ -521,6 +572,13 @@ export function createGitDataClient(params: {
         }
       }
       return out;
+    },
+
+    getBlobsAtPaths(commitTreeSha, paths) {
+      return resolveBlobsAtPaths(commitTreeSha, paths, {
+        resolveSubtreeSha,
+        treeShallow,
+      });
     },
 
     getBlobText(blobSha) {
