@@ -382,7 +382,7 @@ function VirtualMcpDetailViewWithData({
         instructions_length: currentInstructions.length,
       });
 
-      openSidePanel("chat");
+      openSidePanel();
 
       await sendMessage({
         tiptapDoc: buildImprovePromptDoc({

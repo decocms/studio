@@ -465,8 +465,8 @@ function TaskBoardItemEditor({
   const [tagsOpen, setTagsOpen] = useState(false);
   /** The linked run being read in the sheet, by id rather than by object: a
    *  live list patch can drop it mid-read, and this closes the sheet instead
-   *  of freezing a stale copy. Local state — `?task=` already addresses the
-   *  page it opens over. */
+   *  of freezing a stale copy. Local state — the card's own path already
+   *  addresses the page it opens over. */
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const openThread =
     item?.threads.find((th) => th.threadId === openThreadId) ?? null;
@@ -694,7 +694,7 @@ function TaskBoardItemEditor({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 copyLink(
-                  `${window.location.origin}/${org.slug}/t/${key ?? item.id}`,
+                  `${window.location.origin}/${org.slug}/tasks/${key ?? item.id}`,
                 );
                 toast.success(t("taskBoard.taskDialog.linkCopied"));
               }}

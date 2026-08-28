@@ -318,7 +318,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const send = (text: string) => {
     // Surface the chat panel so the user sees the message we just sent.
-    openSidePanel("chat");
+    openSidePanel();
     return chat.sendMessage({ parts: [{ type: "text", text }] });
   };
 

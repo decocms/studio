@@ -92,7 +92,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
                   onClose();
                   if (key) {
                     navigate({
-                      to: "/$org/t/$taskKey",
+                      to: "/$org/tasks/{-$taskKey}",
                       params: { org: org.slug, taskKey: key },
                     });
                   }

@@ -12,6 +12,7 @@ import { useStickToBottom } from "use-stick-to-bottom";
 import {
   ActiveTaskProvider,
   ChatProvider,
+  ThreadlessChatProvider,
   useChatStream,
   useChatTask,
 } from "./context";
@@ -333,6 +334,7 @@ export const Chat = Object.assign(ChatRoot, {
   Input: ChatInput,
   Provider: ChatProvider,
   ActiveTaskProvider: ActiveTaskProvider,
+  ThreadlessProvider: ThreadlessChatProvider,
   Skeleton: DecoChatSkeleton,
   IceBreakers: IceBreakers,
   NoAiProviderEmptyState: NoAiProviderEmptyState,

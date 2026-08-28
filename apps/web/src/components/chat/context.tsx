@@ -13,6 +13,7 @@ export {
   ChatStreamValueProvider,
   DetachedChatContext,
   ActiveTaskProvider,
+  ThreadlessChatProvider,
   useChatTask,
   useOptionalChatTask,
   useChatStream,

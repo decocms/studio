@@ -1,8 +1,8 @@
 /**
  * ThreadHtmlPreviews — chips for every distinct HTML artifact the model has
  * produced in this thread: decks (`decks/`) and pages (`pages/`) in the org
- * home volume. Clicking a chip sets `?main=deck:<path>` so the preview
- * side-panel mounts.
+ * home volume. Clicking a chip opens the `deck` panel on that path, so the
+ * preview side-panel mounts.
  *
  * Why this exists: the preview panel is opened solely by URL state, and the
  * `data-deck-updated` data part renders to null in the chat. Once the panel
@@ -14,9 +14,9 @@
  * tool output to scan for them.
  */
 
-import { useNavigate } from "@tanstack/react-router";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useOptionalChatStream } from "../context.tsx";
 
 interface DeckRef {
@@ -60,7 +60,7 @@ function collectChips(
 }
 
 export function ThreadHtmlPreviews() {
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const messages = useOptionalChatStream()?.messages ?? [];
   const chips = collectChips(messages);
 
@@ -84,16 +84,7 @@ export function ThreadHtmlPreviews() {
           <button
             type="button"
             key={chip.tabId}
-            onClick={() =>
-              navigate({
-                to: ".",
-                search: (prev: Record<string, unknown>) => ({
-                  ...prev,
-                  main: chip.tabId,
-                }),
-                replace: true,
-              })
-            }
+            onClick={() => openPanel(chip.tabId)}
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 text-[13px] transition-colors"
           >
             {chip.kind === "deck" ? (

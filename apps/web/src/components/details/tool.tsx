@@ -230,7 +230,7 @@ function ToolDetailsAuthenticated({
     if (!chatStream) return;
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
-      openSidePanel("chat");
+      openSidePanel();
       chatStream.sendMessage({ tiptapDoc: doc });
     }
   };

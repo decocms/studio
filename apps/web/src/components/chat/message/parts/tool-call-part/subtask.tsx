@@ -153,6 +153,8 @@ function useFlipToBackground(toolCallId: string): (() => Promise<void>) | null {
   const { org } = useProjectContext();
   if (!threadId) return null;
   return async () => {
+    // Unreachable: a subtask part only renders inside a thread's own message.
+    if (threadId === null) return;
     const res = await fetch(
       `/api/${encodeURIComponent(org.slug)}/decopilot/flip/${encodeURIComponent(threadId)}`,
       {

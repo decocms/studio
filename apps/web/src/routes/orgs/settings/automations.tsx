@@ -45,9 +45,7 @@ function SettingsAutomationsPage() {
       agent_id: target,
       source: "settings_automations",
     });
-    navigateToAgent(target, {
-      search: { main: "automation:" + automationId },
-    });
+    navigateToAgent(target, { panel: `automation:${automationId}` });
   };
 
   const handleBrowseAgents = () => {

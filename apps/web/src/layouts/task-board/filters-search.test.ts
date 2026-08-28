@@ -49,3 +49,27 @@ describe("board search params", () => {
     ).toEqual({ filters: EMPTY_FILTERS, layout: "board" });
   });
 });
+
+describe("project-scoped board", () => {
+  test("the route's project seeds the repo filter", () => {
+    expect(
+      parseBoardSearch({}, { defaultRepo: "acme/site" }).filters.repo,
+    ).toBe("acme/site");
+  });
+
+  test("an explicit ?repo= beats the route's project", () => {
+    expect(
+      parseBoardSearch({ repo: "acme/other" }, { defaultRepo: "acme/site" })
+        .filters.repo,
+    ).toBe("acme/other");
+  });
+
+  /** A project with no GitHub attachment scopes nothing — the board stays
+   *  org-wide rather than filtering to a repo that does not exist. */
+  test("no project repo leaves the board unfiltered", () => {
+    expect(parseBoardSearch({}, { defaultRepo: null })).toEqual({
+      filters: EMPTY_FILTERS,
+      layout: "board",
+    });
+  });
+});

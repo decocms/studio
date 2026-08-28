@@ -29,10 +29,14 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * invitation row directly (no generic email) and hand the caller the accept
  * URL; commerce-discovery sends the preview email with that URL as its CTA.
  *
- * The accept URL's `redirectTo` is the org-home deep link that OPENS the
- * diagnostic app view — the exact shape `commerceReportNavTarget()`
+ * The accept URL's `redirectTo` is the deep link that OPENS the diagnostic app
+ * view — the exact shape `commerceReportNavTarget()`
  * (web/hooks/use-commerce-diagnostic.ts) and setup.ts's completion-email link
- * build: `/{slug}/{taskId}?virtualmcpid=..&main=app:{conn}:get_my_diagnostic`.
+ * build: `/{slug}/agents/{agent}/app?connection={conn}&tool=get_my_diagnostic`,
+ * where the project and the view are path segments and the view's parameter is
+ * search. Mail sent before that grammar carried the same target as
+ * `?main=app:{conn}:get_my_diagnostic`; the web app accepts that shape forever
+ * (`web/layouts/legacy-main-redirect.tsx`), so delivered links keep working.
  *
  * Branching by invitee (requirement: "invite to studio, or if already a user
  * only invite for the org"): an existing user who is already a member of this
@@ -50,21 +54,18 @@ export const shareInviteBodySchema = z.object({
   invitee_email: z.string().trim().email().max(320),
 });
 
-/** Org-home deep link that opens the org's commerce-diagnostic app view.
+/** Deep link that opens the org's commerce-diagnostic app view.
  *  Mirrors commerceReportNavTarget() and setup.ts's completion-email link.
  *  Relative (path + query) so it is a safe `redirectTo` (login.tsx rejects
  *  absolute/protocol-relative targets). Exported for unit tests. */
-export function diagnosticDeepLinkPath(
-  orgSlug: string,
-  orgId: string,
-  taskId: string,
-): string {
+export function diagnosticDeepLinkPath(orgSlug: string, orgId: string): string {
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId);
   const search = new URLSearchParams({
-    virtualmcpid: getCommerceDiscoveryAgentId(orgId),
-    main: `app:${connectionId}:${COMMERCE_DISCOVERY_REPORT_TOOL_NAME}`,
+    connection: connectionId,
+    tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   });
-  return `/${orgSlug}/${taskId}?${search.toString()}`;
+  const agentId = getCommerceDiscoveryAgentId(orgId);
+  return `/${orgSlug}/agents/${agentId}/app?${search.toString()}`;
 }
 
 export const createCommerceDiagnosticShareRoutes = () => {
@@ -104,13 +105,8 @@ export const createCommerceDiagnosticShareRoutes = () => {
       return c.json({ error: "organization has no slug" }, 409);
     }
 
-    // The deep link opens the diagnostic once the recipient is in the org. A
-    // fresh taskId per share matches commerceReportNavTarget (a new home thread).
-    const redirectPath = diagnosticDeepLinkPath(
-      orgSlug,
-      org.id,
-      crypto.randomUUID(),
-    );
+    // Names no thread, like commerceReportNavTarget: the chat opens an empty composer.
+    const redirectPath = diagnosticDeepLinkPath(orgSlug, org.id);
     const baseUrl = getBaseUrl();
     const absoluteRedirect = `${baseUrl}${redirectPath}`;
 

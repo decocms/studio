@@ -35,16 +35,11 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { AlertCircle, Loading01 } from "@untitledui/icons";
-import {
-  getWellKnownDecopilotVirtualMCP,
-  useProjectContext,
-  useVirtualMCP,
-  parseBranchMap,
-} from "@/sdk";
+import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
@@ -70,6 +65,9 @@ import {
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
+import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
+import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -101,13 +99,20 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const runtimeAdapter = useAgentRuntimeAdapter();
-  const defaultContent = isDesktopApp ? (
-    runtimeAdapter ? (
-      <runtimeAdapter.SidePanel />
-    ) : null
-  ) : (
-    <ChatSidePanel />
-  );
+  /**
+   * The native terminal panel renders a session, and there is no session until
+   * a thread exists. Until then both runtimes show the structured composer,
+   * whose first send mints the thread the terminal then attaches to.
+   */
+  const hasThread = useRouteThreadId() !== null;
+  const defaultContent =
+    isDesktopApp && hasThread ? (
+      runtimeAdapter ? (
+        <runtimeAdapter.SidePanel />
+      ) : null
+    ) : (
+      <ChatSidePanel />
+    );
   return (
     <ErrorBoundary
       fallback={
@@ -127,15 +132,24 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
 }
 
 function ActiveTaskRuntimeProvider({
-  taskId,
+  threadId,
   children,
 }: {
-  taskId: string;
+  threadId: string | null;
   children: ReactNode;
 }) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const runtimeAdapter = useAgentRuntimeAdapter();
+
+  /**
+   * No thread means no runtime to own: nothing to stream, nothing to attach a
+   * terminal to. The threadless provider installs the same stream shape the
+   * panel consumes and mints the thread on the first send.
+   */
+  if (threadId === null) {
+    return <Chat.ThreadlessProvider>{children}</Chat.ThreadlessProvider>;
+  }
 
   if (isDesktopApp) {
     if (!runtimeAdapter) {
@@ -149,14 +163,14 @@ function ActiveTaskRuntimeProvider({
       );
     }
     return (
-      <runtimeAdapter.ActiveTaskProvider taskId={taskId}>
+      <runtimeAdapter.ActiveTaskProvider taskId={threadId}>
         {children}
       </runtimeAdapter.ActiveTaskProvider>
     );
   }
 
   return (
-    <Chat.ActiveTaskProvider taskId={taskId}>
+    <Chat.ActiveTaskProvider taskId={threadId}>
       {children}
     </Chat.ActiveTaskProvider>
   );
@@ -397,9 +411,9 @@ function DesktopTaskWorkspace({
       <Suspense fallback={<Chat.Skeleton />}>
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
-          taskId={layout.taskId}
+          taskId={layout.threadId}
           entity={entity}
-          sidePanel={layout.sidePanel}
+          sidePanelOpen={layout.sidePanelOpen}
           mainOpen={layout.mainOpen}
           toggleSidePanel={layout.toggleSidePanel}
           toggleMain={layout.toggleMain}
@@ -421,7 +435,10 @@ function MobileTaskWorkspace({
 }) {
   const t = useT();
   const mobileSurface = resolveMobileSurface({
-    visibility: { sidePanel: layout.sidePanel, mainOpen: layout.mainOpen },
+    visibility: {
+      sidePanelOpen: layout.sidePanelOpen,
+      mainOpen: layout.mainOpen,
+    },
     sidePanelParamPresent: layout.sidePanelParamPresent,
   });
 
@@ -433,7 +450,7 @@ function MobileTaskWorkspace({
       <Toolbar.Tabs>
         <MobileMainPanelTabSelect
           virtualMcpId={virtualMcpId}
-          taskId={layout.taskId}
+          taskId={layout.threadId}
         />
       </Toolbar.Tabs>
       <NewTaskBridge
@@ -465,7 +482,7 @@ function MobileTaskWorkspace({
               >
                 <div data-testid="main-panel" className="h-full">
                   <MainPanelWithDrawer
-                    taskId={layout.taskId}
+                    taskId={layout.threadId}
                     virtualMcpId={virtualMcpId}
                   />
                 </div>
@@ -493,24 +510,18 @@ function AgentInsetProvider() {
 
   useStatusSounds(org.slug);
 
-  const params = useParams({ strict: false }) as {
-    org?: string;
-    taskId?: string;
-    pluginId?: string;
-  };
+  const params = useParams({ strict: false });
   const orgSlug = params.org ?? "";
 
-  const search = useSearch({ strict: false }) as {
-    virtualmcpid?: string;
-  };
-  const virtualMcpId =
-    search.virtualmcpid ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+  const routeThreadId = useRouteThreadId();
+  /** The agent is the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
+  const virtualMcpId = useRouteVirtualMcpId();
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
   // "Creating task…" state until the row is persisted. Without this the
   // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(params.taskId ?? "", virtualMcpId);
+  const ensureState = useEnsureTask(routeThreadId, virtualMcpId);
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
   // sandboxMap bound by load_repo after the panel snapshot) so the preview
@@ -534,7 +545,6 @@ function AgentInsetProvider() {
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
   const layout = useWorkspaceLayoutState(entityMetadata, {
     virtualMcpId,
-    orgSlug,
     isAgentRoute: true,
   });
 
@@ -643,8 +653,8 @@ function AgentInsetProvider() {
               sandboxMap={entity?.metadata?.sandboxMap}
             >
               <ActiveTaskRuntimeProvider
-                key={layout.taskId}
-                taskId={layout.taskId}
+                key={layout.providerKey}
+                threadId={layout.threadId}
               >
                 <Suspense fallback={<Chat.Skeleton />}>
                   <MobileTaskWorkspace
@@ -682,8 +692,8 @@ function AgentInsetProvider() {
                 runtime-setup prompt lives only in the side panel; the tabs
                 stay navigable regardless. */}
             <ActiveTaskRuntimeProvider
-              key={layout.taskId}
-              taskId={layout.taskId}
+              key={layout.providerKey}
+              threadId={layout.threadId}
             >
               <Suspense fallback={<Chat.Skeleton />}>
                 <DesktopTaskWorkspace
@@ -712,6 +722,10 @@ function AgentInsetProvider() {
 export default function AgentShellLayout() {
   return (
     <Suspense fallback={<ShellRouteLoading />}>
+      {/* Rewrites a legacy `/$org/$taskId` URL into the first-class shape,
+          without unmounting anything below it. */}
+      <LegacyThreadRedirect />
+      <LegacyMainRedirect />
       <OrgFileOpenProvider>
         <AgentInsetProvider />
         <OrgFilePreviewMount />

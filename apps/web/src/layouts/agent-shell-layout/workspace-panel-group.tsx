@@ -23,7 +23,6 @@ import { useSidePanelWidth } from "@/hooks/use-side-panel-width";
 import { useElementWidth } from "@/hooks/use-element-width";
 import {
   computeWorkspacePanelSizes,
-  type SidePanelKind,
   type WorkspaceVisibility,
 } from "@/hooks/use-layout-state";
 import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-drawer";
@@ -89,7 +88,7 @@ function MainControls({
   maxVisible,
 }: {
   virtualMcpId: string;
-  taskId: string;
+  taskId: string | null;
   disableActiveMainToggle: boolean;
   maxVisible?: number;
 }) {
@@ -105,9 +104,10 @@ function MainControls({
 
 export interface WorkspacePanelGroupProps extends WorkspaceVisibility {
   virtualMcpId: string;
-  taskId: string;
+  /** The open thread, or `null` on a destination route that names none. */
+  taskId: string | null;
   entity: VirtualMCPEntity;
-  toggleSidePanel: (sidePanel: SidePanelKind) => void;
+  toggleSidePanel: () => void;
   toggleMain: () => void;
   chatContent?: ReactNode;
 }
@@ -116,7 +116,7 @@ export function WorkspacePanelGroup({
   virtualMcpId,
   taskId,
   entity,
-  sidePanel,
+  sidePanelOpen,
   mainOpen,
   toggleSidePanel,
   toggleMain,
@@ -124,12 +124,9 @@ export function WorkspacePanelGroup({
 }: WorkspacePanelGroupProps) {
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
-  const visibility = { sidePanel, mainOpen };
-  const sizes = computeWorkspacePanelSizes(visibility);
-  const sideSize = sidePanel !== null && mainOpen ? sidePanelWidth : sizes.side;
+  const sizes = computeWorkspacePanelSizes({ sidePanelOpen, mainOpen });
+  const sideSize = sidePanelOpen && mainOpen ? sidePanelWidth : sizes.side;
   const mainSize = 100 - sideSize;
-
-  const chatOpen = sidePanel !== null;
 
   // Responsive header: measure the whole header (== panel width) and the right
   // actions cluster. `headerLayout` derives BOTH the tab count and whether the
@@ -175,7 +172,7 @@ export function WorkspacePanelGroup({
           <PanelCollapseToggle
             side="right"
             open={mainOpen}
-            disabled={!chatOpen}
+            disabled={!sidePanelOpen}
             onToggle={toggleMain}
           />
         )}
@@ -197,14 +194,14 @@ export function WorkspacePanelGroup({
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         <PanelCollapseToggle
           side="left"
-          open={chatOpen}
+          open={sidePanelOpen}
           disabled={!mainOpen}
-          onToggle={() => toggleSidePanel("chat")}
+          onToggle={toggleSidePanel}
         />
         <MainControls
           virtualMcpId={virtualMcpId}
           taskId={taskId}
-          disableActiveMainToggle={!chatOpen}
+          disableActiveMainToggle={!sidePanelOpen}
           maxVisible={maxTabs}
         />
       </div>
@@ -251,7 +248,7 @@ export function WorkspacePanelGroup({
           <PanelCollapseToggle
             side="right"
             open={mainOpen}
-            disabled={!chatOpen}
+            disabled={!sidePanelOpen}
             onToggle={toggleMain}
           />
         </div>
@@ -275,7 +272,7 @@ export function WorkspacePanelGroup({
           const percentage = layout[SIDE_PANEL_ID];
           if (
             isUserInteraction &&
-            sidePanel !== null &&
+            sidePanelOpen &&
             mainOpen &&
             typeof percentage === "number" &&
             percentage > 0 &&
@@ -291,11 +288,14 @@ export function WorkspacePanelGroup({
           minSize="20%"
           collapsible
           collapsedSize="0%"
-          data-workspace-panel-open={sidePanel !== null ? "" : undefined}
+          data-workspace-panel-open={sidePanelOpen ? "" : undefined}
           className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
-            {chatOpen && <SidePanel chatContent={chatContent} />}
+          <PanelCard
+            testId="side-panel"
+            header={sidePanelOpen ? chatHeader : null}
+          >
+            {sidePanelOpen && <SidePanel chatContent={chatContent} />}
           </PanelCard>
         </ResizablePanel>
 

@@ -151,7 +151,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           key: "tasks",
           label: t("settings.nav.tasks"),
           icon: <Columns03 size={14} />,
-          to: "/$org/settings/tasks",
+          to: "/$org/settings/task-board",
           requires: "org:manage",
         },
       ],

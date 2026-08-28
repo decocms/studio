@@ -113,26 +113,27 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id);
     const virtualMcpId = getCommerceDiscoveryAgentId(organization.id);
 
-    // Claim contact forwarded on /upgrade: Commerce Discovery emails this
-    // address when the run completes (the "generating" screen's promise). The
-    // "diagnóstico completo" CTA must land on the report app view — NOT the
-    // /commerce-onboarding page. Build the exact URL the onboarding "open report"
-    // button navigates to (commerce-onboarding.tsx): /$org/$taskId with the vMCP
-    // selected and its report view pinned open. connectionId + virtualMcpId are
-    // deterministic per org, so the URL is fully known here at /upgrade time.
-    //   main="app:<connectionId>:<toolName>" — pinned-view tab grammar
-    //   (web/layouts/main-panel-tabs/tab-id.ts:formatPinnedViewTabId).
-    //   No sidepanel param: the vMCP's chatDefaultOpen metadata selects Chat,
-    //   matching the onboarding button.
+    /**
+     * Claim contact forwarded on /upgrade: Commerce Discovery emails this
+     * address when the run completes (the "generating" screen's promise). The
+     * "diagnóstico completo" CTA must land on the report app view — NOT the
+     * /commerce-onboarding page — so build the exact URL the app writes for
+     * that view (`commerceReportNavTarget`, web/hooks/use-commerce-diagnostic):
+     * the agent is the project segment, `app` is the view, and the view's
+     * parameter is search. Both ids are deterministic per org, so the URL is
+     * fully known here at /upgrade time. No thread: the report is a view, and
+     * no sidepanel param either — the vMCP's chatDefaultOpen selects Chat,
+     * matching the onboarding button.
+     */
     const reportSearch = new URLSearchParams({
-      virtualmcpid: virtualMcpId,
-      main: `app:${connectionId}:${REPORT_TOOL_NAME}`,
+      connection: connectionId,
+      tool: REPORT_TOOL_NAME,
     });
     const claimContact = {
       email: ctx.auth.user?.email,
       reportUrl: `${ctx.baseUrl}/${encodeURIComponent(
         organization.slug ?? organization.id,
-      )}/${crypto.randomUUID()}?${reportSearch.toString()}`,
+      )}/agents/${virtualMcpId}/app?${reportSearch.toString()}`,
     };
 
     let connection = await ctx.storage.connections.findById(

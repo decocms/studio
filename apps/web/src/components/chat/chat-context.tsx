@@ -25,6 +25,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
@@ -190,7 +191,8 @@ export interface ChatStreamContextValue {
 
 export interface ChatTaskContextValue {
   virtualMcpId: string;
-  taskId: string;
+  /** The thread the route names, or `null` on a route that names none. */
+  taskId: string | null;
   openTask: (taskId: string) => void;
   /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
    *  coding session; `branch` overrides the carried-over current branch. */
@@ -255,6 +257,16 @@ export interface ChatPrefsContextValue {
   setPendingAgentOption: (option: LocalAgentOption | null) => void;
   /** Derived from `pendingAgentOption`. Read-only. */
   pendingHarnessId: NativeHarnessId | null;
+}
+
+/** `sendMessage` takes either shape; both providers normalize it through here. */
+function toSendMessageParams(
+  params: SendMessageParams | Metadata["tiptapDoc"],
+): SendMessageParams {
+  if (params && typeof params === "object" && "type" in params) {
+    return { tiptapDoc: params as Metadata["tiptapDoc"] };
+  }
+  return params as SendMessageParams;
 }
 
 // ============================================================================
@@ -651,7 +663,7 @@ export function ChatContextProvider({
   // panel-visible threads slot. Guard against transient prop/URL skew during
   // navigation by only honoring the prop when ids match.
   const activeTask =
-    effectiveTaskId && task?.id === effectiveTaskId ? task : null;
+    effectiveTaskId !== null && task?.id === effectiveTaskId ? task : null;
   const lockedHarness = activeTask?.harness_id ?? null;
   const lockedBranch = activeTask?.branch ?? null;
   const isThreadLocked = lockedHarness != null;
@@ -774,6 +786,53 @@ export function ChatContextProvider({
   );
 }
 
+/** Frozen identity so a threadless render never hands consumers a new array. */
+const NO_MESSAGES: ChatMessage[] = [];
+
+/**
+ * Chat context for a route with no thread — every destination (`/$org/home`,
+ * `/$org/tasks`, …) until one is opened.
+ *
+ * It installs the same stream shape the panel consumes, but owns no thread: no
+ * SSE subscription, no thread-scoped fetch, no `chat_opened`. The composer it
+ * renders is the empty one, and its first send mints the thread through the
+ * same create-and-hand-off path every other "new chat" affordance uses; the
+ * real {@link ActiveTaskProvider} then mounts on the thread that now exists.
+ */
+export function ThreadlessChatProvider({ children }: PropsWithChildren) {
+  const { createTaskWithMessage } = useChatTask();
+
+  const value: ChatStreamContextValue = {
+    messages: NO_MESSAGES,
+    status: "ready",
+    sendMessage: async (params) => {
+      createTaskWithMessage({ message: toSendMessageParams(params) });
+    },
+    editQueuedMessage: async () => false,
+    stop: () => {},
+    // Tool output and approval responses answer a message, and there are none.
+    submit: async () => {},
+    removeLocalMessage: () => {},
+    isSendInFlight: () => false,
+    error: null,
+    clearError: () => {},
+    finishReason: null,
+    runStatusStage: null,
+    clearFinishReason: () => {},
+    isStreaming: false,
+    isChatEmpty: true,
+    isWaitingForApprovals: false,
+    isRunInProgress: false,
+    hasMoreOlder: false,
+    isFetchingOlder: false,
+    fetchOlderMessages: async () => {},
+  };
+
+  return (
+    <ChatStreamValueProvider value={value}>{children}</ChatStreamValueProvider>
+  );
+}
+
 // ============================================================================
 // ActiveTaskProvider (inner, inside Suspense)
 // ============================================================================
@@ -793,11 +852,14 @@ export function ActiveTaskProvider({
     "chat.input.codingAgentRequiresDesktop",
   );
 
-  // Fire chat_opened once per (page session × taskId). Runs during render, but
-  // the Set gate keeps it idempotent. Fires for every thread a user views —
-  // new or existing — giving us a "chat session view" signal distinct from
-  // chat_started (thread creation).
-  if (taskId && !openedChats.has(taskId)) {
+  /**
+   * Fire chat_opened once per (page session × taskId). Runs during render, but
+   * the Set gate keeps it idempotent. Fires for every thread a user views —
+   * new or existing — giving us a "chat session view" signal distinct from
+   * chat_started (thread creation). A route that names no thread never reaches
+   * this provider, so the id here is always one a person actually opened.
+   */
+  if (!openedChats.has(taskId)) {
     openedChats.add(taskId);
     track("chat_opened", { thread_id: taskId });
   }
@@ -831,6 +893,7 @@ export function ActiveTaskProvider({
   const queryClient = useQueryClient();
   const manager = useThreadManager();
   const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
 
   // The connection owns SSE subscription, POSTs, and message state. The
   // provider is keyed by taskId at the layout level, so this resolves to a
@@ -864,6 +927,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    openPanel,
     orgId: org.id,
     orgSlug: org.slug,
   });
@@ -875,6 +939,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    openPanel,
     orgId: org.id,
     orgSlug: org.slug,
   };
@@ -958,14 +1023,7 @@ export function ActiveTaskProvider({
           cb.queryClient.invalidateQueries({
             queryKey: KEYS.orgFsRecent(cb.orgId),
           });
-          cb.navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              main: formatDeckTabId(path),
-            }),
-            replace: true,
-          });
+          cb.openPanel(formatDeckTabId(path));
           return;
         }
         // `load_repo` finished cloning a repo into the thread's sandbox. Patch
@@ -995,14 +1053,7 @@ export function ActiveTaskProvider({
               } as Task["metadata"],
             });
           }
-          cb.navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              main: "preview",
-            }),
-            replace: true,
-          });
+          cb.openPanel("preview");
           return;
         }
       },
@@ -1404,14 +1455,7 @@ export function ActiveTaskProvider({
   // sendMessage wrapper: accept both SendMessageParams and raw tiptapDoc
   const sendMessagePublic = (
     params: SendMessageParams | Metadata["tiptapDoc"],
-  ): Promise<void> => {
-    if (params && typeof params === "object" && "type" in params) {
-      return sendMessageInternal({
-        tiptapDoc: params as Metadata["tiptapDoc"],
-      });
-    }
-    return sendMessageInternal(params as SendMessageParams);
-  };
+  ): Promise<void> => sendMessageInternal(toSendMessageParams(params));
 
   // Autosend consumer: the URL carries only `autosend=true`; the message
   // body lives in sessionStorage keyed by locator + taskId. It only boots empty

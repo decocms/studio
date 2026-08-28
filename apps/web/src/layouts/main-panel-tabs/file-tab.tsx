@@ -1,6 +1,6 @@
 /**
  * FileTab — main-panel preview of a file the thread produced
- * (`?main=file:<encoded key>`).
+ * (`/agents/{-$project}/file?key=…`).
  *
  * The tab id only carries the output `key`; the file's URL/name/size are
  * resolved from the same `threadOutputs` query the chips and the
@@ -10,7 +10,6 @@
  * (also used by the Library page).
  */
 
-import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
@@ -29,6 +28,7 @@ import {
   useThreadOutputs,
   type ThreadOutput,
 } from "@/components/chat/use-thread-outputs.ts";
+import { usePanelNavigate } from "./use-panel-navigate";
 
 function FileToolbar({
   file,
@@ -108,25 +108,17 @@ export function FileTab({
   taskId,
 }: {
   fileKey: string;
-  taskId: string;
+  taskId: string | null;
 }) {
   const t = useT();
-  const navigate = useNavigate();
+  const { closePanel } = usePanelNavigate();
   // Always enabled while the tab is open — on a fresh page load the
   // message-scan gate (useThreadHasFileWork) may not have hydrated yet,
   // and an open file tab is itself proof the thread produced files.
   const { data: outputs, isPending } = useThreadOutputs(taskId);
   const file = outputs?.find((o) => o.key === fileKey) ?? null;
 
-  const handleClose = () =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: 0 as const,
-      }),
-      replace: true,
-    });
+  const handleClose = () => closePanel();
 
   if (!file) {
     if (isPending) {

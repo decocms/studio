@@ -79,7 +79,7 @@ test.describe("task board live updates", () => {
       title: "Seed card",
     });
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`/${orgSlug}?main=board`);
+    await page.goto(`/${orgSlug}/tasks`);
     await expect(page.locator('button:has-text("Seed card")')).toBeVisible();
 
     await callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {

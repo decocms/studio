@@ -289,7 +289,6 @@ export function ImportFromDecoDialog({
               description: "Imported from deco.cx",
               pinned: false,
               icon: projectIcon ?? null,
-              subtype: "project",
               metadata: {
                 instructions: null,
                 enabled_plugins: [],
@@ -378,8 +377,6 @@ export function ImportFromDecoDialog({
           );
         },
       });
-      // Also invalidate the legacy projects key for any other consumers.
-      queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
       toast.success(t("common.importFromDecoDialog.importSuccess", { slug }));
       handleClose(false);
       localStorage.setItem(

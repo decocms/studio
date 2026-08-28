@@ -24,13 +24,23 @@ import {
   Outlet,
   useMatch,
   useNavigate,
-  useParams,
   useRouter,
+  useRouterState,
   useSearch,
 } from "@tanstack/react-router";
+import {
+  useRouteAgentId,
+  useRouteThreadId,
+  useRouteVirtualMcpId,
+  useThreadNavigate,
+} from "@/layouts/thread-route";
 import { KEYS } from "../lib/query-keys";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { resolveTaskSwitchSearch } from "@/layouts/resolve-task-switch-search";
+import {
+  useActivePanelTabId,
+  usePanelNavigate,
+} from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { readThreadLayout, saveThreadLayout } from "@/lib/thread-layout-memory";
 import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
 import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
@@ -76,10 +86,13 @@ function ShellProjectProvider({
 
 // ---------------------------------------------------------------------------
 // Panel actions — works anywhere in the router tree.
-// Only updates URL search params. The UnifiedPanelGroup useEffect syncs
-// the visual panel layout from the querystring-derived state.
 // ---------------------------------------------------------------------------
 
+/**
+ * Layout actions only update search (`to: "."`, so they stay on the matched
+ * route); thread switches go through `useThreadNavigate`. The UnifiedPanelGroup
+ * effect syncs the visual panel layout from the querystring-derived state.
+ */
 export function usePanelActions() {
   const navigate = useNavigate();
   // Optional: the settings route tree has no ThreadManagerProvider, so this is
@@ -87,49 +100,44 @@ export function usePanelActions() {
   const manager = useOptionalThreadManager();
   const { org } = useProjectContext();
 
-  const params = useParams({ strict: false }) as {
-    org?: string;
-    taskId?: string;
-  };
   const search = useSearch({ strict: false }) as {
-    virtualmcpid?: string;
-    main?: string | 0;
-    sidepanel?: "chat" | 0;
+    mainpanel?: boolean;
+    sidepanel?: boolean;
   };
-  const orgSlug = params.org ?? "";
-  const currentTaskId = params.taskId ?? "";
+  const activeTabId = useActivePanelTabId();
+  const { openPanel, closePanel } = usePanelNavigate();
+  /** The agent the route NAMES — undefined on an org-level destination, which
+   *  belongs to the Super Agent and so records no agent anywhere. */
+  const routeAgentId = useRouteAgentId();
+  const currentTaskId = useRouteThreadId();
+  const routeVirtualMcpId = useRouteVirtualMcpId();
+  const navigateThread = useThreadNavigate();
 
-  const navWith = (
-    taskId: string,
+  /**
+   * Search-only navigation: `to: "."` re-interpolates the matched route's own
+   * path params, so a panel/tab change stays on the current page and can never
+   * fabricate a thread id.
+   */
+  const navSearch = (
     searchFn: (prev: Record<string, unknown>) => Record<string, unknown>,
     replace = true,
-  ) =>
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: orgSlug, taskId },
-      search: searchFn,
-      replace,
-    });
+  ) => navigate({ to: ".", search: searchFn, replace });
 
-  const nav = (
-    searchFn: (prev: Record<string, unknown>) => Record<string, unknown>,
-    replace = true,
-  ) => navWith(currentTaskId, searchFn, replace);
-
-  const openSidePanel = (sidePanel: "chat") =>
-    nav((prev) => ({ ...prev, sidepanel: sidePanel }));
+  const openSidePanel = () =>
+    navSearch((prev) => ({ ...prev, sidepanel: true }));
 
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
-    opts?: { autosend?: boolean; main?: string },
+    opts?: { autosend?: boolean; panel?: string },
   ) => {
     const isSameThread = !!currentTaskId && currentTaskId === id;
     // Remember the layout of the thread we're leaving so returning to it
     // restores the same tabs/side-panel instead of the agent default.
     if (currentTaskId && !isSameThread) {
       saveThreadLayout(currentTaskId, {
-        main: search.main,
+        tab: activeTabId,
+        mainpanel: search.mainpanel,
         sidepanel: search.sidepanel,
       });
     }
@@ -138,45 +146,48 @@ export function usePanelActions() {
     const savedLayout = isSameThread ? null : readThreadLayout(id);
     const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
-    return navWith(
+    const target = resolveTaskSwitchSearch({
+      /** The source agent is the one the ROUTE names, never a search param a previous navigation left behind — a stale one misreports the agent we're switching AWAY from, and the carry-forward view rides on that comparison. */
+      prev: { virtualmcpid: routeAgentId, tabId: activeTabId },
+      virtualMcpId,
+      decopilotId,
+      savedLayout,
+      opts,
+      autosendValue: AUTOSEND_QUERY_VALUE,
+    });
+
+    return navigateThread(
       id,
-      (prev) =>
-        resolveTaskSwitchSearch({
-          prev: prev as { virtualmcpid?: unknown; main?: unknown },
-          virtualMcpId,
-          decopilotId,
-          savedLayout,
-          opts,
-          autosendValue: AUTOSEND_QUERY_VALUE,
-        }),
-      false,
+      () => target.search,
+      /** A thread belongs to one agent, so switching to another project's thread moves the `{-$project}` segment with it — and the view it lands on moves with it too. */
+      { virtualMcpId, view: { tabId: target.tabId } },
     );
   };
 
-  // Create the row before navigating so the route loader does not race its
-  // create-on-404 fallback.
-  //
-  // `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin
-  // the thread to a specific agent regardless of the current URL. When
-  // omitted, falls back to the URL's `virtualmcpid`, then to the well-known
-  // Decopilot agent.
-  //
-  // `branch` lets a "New chat on the branch I'm viewing" caller inherit the
-  // current thread's branch. When omitted/null (e.g. a branchless agent, or an
-  // "open agent X" flow), the server picks the most-recently-touched branch from
-  // the user's sandboxMap. The schema only accepts a non-empty branch string, so
-  // null/empty is dropped.
-  /** `opts` forwards straight to `setTaskId` (e.g. to pin the new thread's landing tab). */
+  /**
+   * Create the row before navigating so the route loader does not race its
+   * create-on-404 fallback.
+   *
+   * `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin the
+   * thread to a specific agent regardless of the current URL. When omitted, the
+   * route answers — `useRouteVirtualMcpId` reads the `{-$project}` segment
+   * first, so a new chat on a project belongs to that project.
+   *
+   * `branch` lets a "New chat on the branch I'm viewing" caller inherit the
+   * current thread's branch. When omitted/null (e.g. a branchless agent, or an
+   * "open agent X" flow), the server picks the most-recently-touched branch from
+   * the user's sandboxMap. The schema only accepts a non-empty branch string, so
+   * null/empty is dropped.
+   *
+   * `opts` forwards straight to `setTaskId` (e.g. to pin the new thread's landing tab).
+   */
   const createNewTask = async (
     virtualMcpId?: string,
     branch?: string | null,
-    opts?: { main?: string },
+    opts?: { panel?: string },
   ) => {
     const newId = crypto.randomUUID();
-    const targetVmcp =
-      virtualMcpId ??
-      search.virtualmcpid ??
-      getWellKnownDecopilotVirtualMCP(org.id).id;
+    const targetVmcp = virtualMcpId ?? routeVirtualMcpId;
     try {
       // No manager (settings tree): skip the eager create and let the
       // /$org/$taskId route loader's ensure-fallback create the thread.
@@ -192,18 +203,31 @@ export function usePanelActions() {
     setTaskId(newId, targetVmcp, opts);
   };
 
-  const openTab = (tabId: string) =>
-    navWith(currentTaskId || crypto.randomUUID(), (prev) => ({
-      ...prev,
-      main: tabId,
-    }));
-
   return {
     openSidePanel,
     setTaskId,
     createNewTask,
-    openTab,
+    /** Changing which view is showing is not a reason to mint a thread. */
+    openTab: openPanel,
+    closeTab: closePanel,
   };
+}
+
+/**
+ * The two routes that land on the home overview: the `/$org` resolver and the
+ * `/$org/home` destination it resolves to. Matching on the route rather than on
+ * "this URL has no taskId" keeps the prefetch off every other destination,
+ * none of which carries a thread in its path either.
+ */
+const HOME_ROUTE_FULL_PATHS = new Set(["/$org/", "/$org/home"]);
+
+function useIsHomeRoute(): boolean {
+  return useRouterState({
+    select: (state) => {
+      const fullPath = state.matches.at(-1)?.fullPath;
+      return fullPath !== undefined && HOME_ROUTE_FULL_PATHS.has(fullPath);
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -214,13 +238,13 @@ export function usePanelActions() {
 function ShellLayoutContent() {
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const org = orgMatch?.params.org;
-  const { taskId } = useParams({ strict: false }) as { taskId?: string };
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
   const router = useRouter();
+  const isHomeRoute = useIsHomeRoute();
 
   useQuery({
     ...homeNextActionsQueryOptions(org ?? ""),
-    enabled: !!org && !taskId,
+    enabled: !!org && isHomeRoute,
   });
 
   // Session is guaranteed present here (this renders inside <SignedIn>), so the

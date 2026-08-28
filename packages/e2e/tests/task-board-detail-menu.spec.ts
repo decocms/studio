@@ -1,10 +1,11 @@
 /**
- * The task detail's "More actions" menu (`/$org?main=board` → card → ⋯).
+ * The task detail's "More actions" menu (`/$org/tasks` → card → ⋯).
  *
- * Opening a card is a navigation, not a modal: `?task=<id>` renders the task
- * in place of the lanes and the breadcrumb leads back out. These tests pin
- * that contract at both ends — the URL a card click produces, and the fact
- * that a menu item which destroys the card lands you back on a working board.
+ * Opening a card is a navigation, not a modal: the card owns the path
+ * `/$org/tasks/DECO-01`, which renders it in place of the lanes, and the
+ * breadcrumb leads back out to the bare board. These tests pin that contract
+ * at both ends — the URL a card click produces, and the fact that a menu item
+ * which destroys the card lands you back on a working board.
  *
  * The inherited guard is still here on purpose: when Delete/Archive lived in a
  * dialog, picking one tore two overlapping Radix layers down in the same tick
@@ -38,7 +39,7 @@ async function seedCards(
 
 async function openBoard(page: Page, orgSlug: string) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/${orgSlug}?main=board`);
+  await page.goto(`/${orgSlug}/tasks`);
   // Generous: the board's first paint waits on the shell's route chunks.
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible({
     timeout: 30_000,
@@ -46,6 +47,9 @@ async function openBoard(page: Page, orgSlug: string) {
 }
 
 const detail = (page: Page) => page.getByTestId("task-detail");
+
+/** A card's own URL: the board's path plus the human key it wears. */
+const cardUrl = (orgSlug: string) => new RegExp(`/${orgSlug}/tasks/[^/?#]+`);
 
 test("clicking a card navigates to it and the breadcrumb comes back", async ({
   authedPage,
@@ -57,14 +61,15 @@ test("clicking a card navigates to it and the breadcrumb comes back", async ({
   await page.locator('button:has-text("Card 1")').click();
   await expect(detail(page)).toBeVisible();
   await expect(detail(page)).toContainText("Card 1");
-  // The address, not just the pixels: this is what a shared link carries.
-  await expect(page).toHaveURL(/[?&]task=/);
+  // The address a shared link carries is a path segment now, never `?task=`.
+  await expect(page).toHaveURL(cardUrl(orgSlug));
+  await expect(page).not.toHaveURL(/[?&]task=/);
   // The lanes are out of view while the task holds the panel.
   await expect(page.locator('button:has-text("Card 0")')).toBeHidden();
 
   await detail(page).getByRole("button", { name: "Tasks" }).click();
   await expect(detail(page)).toHaveCount(0);
-  await expect(page).not.toHaveURL(/[?&]task=/);
+  await expect(page).not.toHaveURL(cardUrl(orgSlug));
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
 });
 
