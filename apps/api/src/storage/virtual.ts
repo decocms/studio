@@ -26,6 +26,7 @@ import type {
   VirtualMCPUpdateData,
 } from "./ports";
 import type { Database, DependencyMode } from "./types";
+import { pruneOrphanedUiRefs } from "./prune-orphaned-ui-refs";
 
 /** Raw database row type for connections (VIRTUAL type) */
 type RawConnectionRow = {
@@ -497,7 +498,8 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
   }
 
   /**
-   * Remove pinned views that reference a specific connection from the given virtual MCPs.
+   * Remove pinned views and home tiles that reference a specific connection
+   * from the given virtual MCPs.
    */
   private async cleanOrphanedPinnedViews(
     virtualMcpIds: string[],
@@ -521,25 +523,16 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       } catch {
         continue;
       }
-      const pinnedViews = (metadata?.ui as Record<string, unknown>)
-        ?.pinnedViews;
-      if (!Array.isArray(pinnedViews)) continue;
+      const ui = (metadata.ui as Record<string, unknown>) ?? null;
+      if (!ui) continue;
 
-      const filtered = pinnedViews.filter(
-        (pv: { connectionId: string }) =>
-          pv.connectionId !== removedConnectionId,
+      const { ui: prunedUi, changed } = pruneOrphanedUiRefs(
+        ui,
+        removedConnectionId,
       );
+      if (!changed) continue;
 
-      if (filtered.length === pinnedViews.length) continue;
-
-      const ui = (metadata.ui as Record<string, unknown>) ?? {};
-      const updatedMetadata = {
-        ...metadata,
-        ui: {
-          ...ui,
-          pinnedViews: filtered.length > 0 ? filtered : null,
-        },
-      };
+      const updatedMetadata = { ...metadata, ui: prunedUi };
 
       await this.db
         .updateTable("connections")
