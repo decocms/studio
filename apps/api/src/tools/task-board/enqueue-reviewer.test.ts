@@ -256,6 +256,58 @@ describe("reviewerHandledThisCycle", () => {
   });
 });
 
+describe("a reviewer that completed without recording a verdict", () => {
+  // OS-303 (osklen): the run finished while it was still "standing by" for a
+  // background task, so it never called the decision tool. The card sat In
+  // Review at 0/1 with nothing to move it — no re-dispatch, no hand-off.
+  const completed = taskWith([
+    thread({
+      title: "Reviewer: fix",
+      status: "completed",
+      createdAt: "2026-01-01T10:05:00Z",
+    }),
+  ]);
+
+  it("is not handled, and its attempt is spent, so it re-dispatches", () => {
+    expect(
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(1);
+    expect(
+      reviewerAttemptsExhausted(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+  });
+
+  it("is handled once the verdict is on the cycle's timeline", () => {
+    expect(
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
+    ).toBe(true);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
+    ).toBe(0);
+  });
+
+  it("hands the card over once the budget is gone", () => {
+    const twice = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:07:00Z",
+      }),
+    ]);
+    expect(
+      reviewerAttemptsExhausted(twice, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(true);
+  });
+});
+
 describe("reviewerAttemptsExhausted", () => {
   const failed = (createdAt: string) =>
     thread({ title: "Reviewer: fix", status: "failed", createdAt });

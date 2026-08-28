@@ -9,6 +9,7 @@ import {
   REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewCycleStart,
+  reviewCycleVerdicts,
   SHALLOW_CHECKOUT_NOTE,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
@@ -194,8 +195,18 @@ export async function enqueueEnabledReviewers(
   // created since the cycle opened — either way don't re-enqueue.
   // A stale thread from a PRIOR cycle (before a Super Agent re-run bounced the
   // task back and forward) does NOT count, so reviewers re-run on re-review.
-  const lastInReviewAt = await reviewCycleStartTime(ctx, task);
+  // The timeline is read unconditionally (`reviewCycleStartedAt` alone would do
+  // for the boundary): the verdicts and the verdict asks below only exist here.
+  const activity = await ctx.storage.taskBoard.listActivity(
+    task.id,
+    task.organizationId,
+  );
+  const cycleStartedAt = task.reviewCycleStartedAt;
+  const lastInReviewAt = reviewCycleStart(activity, cycleStartedAt);
   const cycleAt = new Date(lastInReviewAt);
+  // Which reviewers actually ruled this cycle. A reviewer thread that completed
+  // without one is a spent attempt, not a review — see `isSpentAttempt`.
+  const decided = reviewCycleVerdicts(activity, { cycleStartedAt });
 
   // One reviewer today, but the enqueue stays a fan-out over `enabled`: each
   // dispatch is independent (its own fence id), and this runs on
@@ -204,7 +215,16 @@ export async function enqueueEnabledReviewers(
   await Promise.all(
     enabled.map(async (kind) => {
       // A dead end, not a wait — see `reviewerAttemptsExhausted`.
-      if (reviewerAttemptsExhausted(task, kind, lastInReviewAt)) {
+      const verdictRecorded = decided.has(kind);
+      if (
+        reviewerAttemptsExhausted(
+          task,
+          kind,
+          lastInReviewAt,
+          Date.now(),
+          verdictRecorded,
+        )
+      ) {
         await handTaskToHuman(
           ctx,
           task,
@@ -226,12 +246,28 @@ export async function enqueueEnabledReviewers(
         }
         return;
       }
-      if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;
+      if (
+        reviewerHandledThisCycle(
+          task,
+          kind,
+          lastInReviewAt,
+          Date.now(),
+          verdictRecorded,
+        )
+      ) {
+        return;
+      }
       // Getting here with a dead reviewer thread from THIS cycle means the last
       // attempt failed (see `reviewerHandledThisCycle`), so this dispatch is a
       // RETRY and needs a fence of its own — the previous attempt's thread id
       // is taken, and reusing it would collapse the retry onto the corpse.
-      const attempt = spentAttemptsThisCycle(task, kind, lastInReviewAt);
+      const attempt = spentAttemptsThisCycle(
+        task,
+        kind,
+        lastInReviewAt,
+        Date.now(),
+        verdictRecorded,
+      );
       await enqueueReviewerForTask(
         ctx,
         task,
@@ -264,11 +300,12 @@ export function spentAttemptsThisCycle(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): number {
   return task.threads.filter(
     (thr) =>
       isReviewerThreadTitle(thr.title, kind) &&
-      isSpentAttempt(thr, now) &&
+      isSpentAttempt(thr, now, verdictRecorded) &&
       new Date(thr.createdAt).getTime() >= lastInReviewAt,
   ).length;
 }
@@ -324,18 +361,28 @@ export function priorCycleReviewAt(
   return times.length === 0 ? 0 : Math.max(...times);
 }
 
-/** A reviewer attempt that produced no verdict and never will: it failed, or it
- *  is non-terminal with a heartbeat past the stall window. */
+/** A reviewer attempt that produced no verdict and never will: it failed, it
+ *  ended in any other terminal state without recording one, or it is
+ *  non-terminal with a heartbeat past the stall window.
+ *
+ *  `verdictRecorded` is whether this reviewer has a verdict on the CURRENT
+ *  cycle's timeline. A run that reaches a decision records it and then
+ *  completes, so a `completed` thread used to be taken as proof of a review —
+ *  but a reviewer can also run out of turns, or stop while it waits on a
+ *  background task, and complete having decided nothing. That card was then
+ *  stranded In Review at `0/1` forever: nothing re-dispatched it (the thread
+ *  read as handled) and nothing handed it over (the attempts read as unspent).
+ *  Defaults true so callers without the timeline keep the old reading. */
 function isSpentAttempt(
   thr: TaskBoardItem["threads"][number],
   now: number,
+  verdictRecorded = true,
 ): boolean {
   if (thr.status === "failed") return true;
-  return (
-    thr.status !== null &&
-    !TERMINAL_THREAD_STATUSES.has(thr.status) &&
-    !isThreadRunLive(thr, now)
-  );
+  if (thr.status !== null && TERMINAL_THREAD_STATUSES.has(thr.status)) {
+    return !verdictRecorded;
+  }
+  return thr.status !== null && !isThreadRunLive(thr, now);
 }
 
 /** The reviewer's threads belonging to the current cycle: created since the
@@ -374,6 +421,7 @@ export function reviewerAttemptsExhausted(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): boolean {
   const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   return (
@@ -381,7 +429,7 @@ export function reviewerAttemptsExhausted(
     // A hung attempt counts as spent, not just a failed one — otherwise a
     // reviewer whose pod keeps dying is re-dispatched forever, which is the
     // opposite mistake to the deadlock this replaced.
-    thisCycle.every((thr) => isSpentAttempt(thr, now)) &&
+    thisCycle.every((thr) => isSpentAttempt(thr, now, verdictRecorded)) &&
     thisCycle.length >= MAX_REVIEWER_ATTEMPTS
   );
 }
@@ -413,6 +461,7 @@ export function reviewerHandledThisCycle(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): boolean {
   const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   if (thisCycle.length === 0) return false;
@@ -423,31 +472,14 @@ export function reviewerHandledThisCycle(
   // never come. One sat that way while its co-reviewer had approved in 68
   // seconds.
   if (thisCycle.some((thr) => isThreadRunLive(thr, now))) return true;
-  const spent = thisCycle.filter((thr) => isSpentAttempt(thr, now));
+  const spent = thisCycle.filter((thr) =>
+    isSpentAttempt(thr, now, verdictRecorded),
+  );
   // Every attempt spent and the budget is gone — stop, a human owns it now.
   if (spent.length >= MAX_REVIEWER_ATTEMPTS) return true;
-  // Anything that finished without failing IS a review (a reviewer records its
-  // decision and completes), so the cycle is handled.
+  // Anything that finished and left a verdict IS a review, so the cycle is
+  // handled. A run that completed without one is spent, not handled.
   return spent.length !== thisCycle.length;
-}
-
-/** When the task's current review cycle opened (ms), else 0. Reads the card's
- *  own `reviewCycleStartedAt` through the shared reducer, so it stays in
- *  lockstep with the merge gate and the ship button; the activity fallback
- *  inside `reviewCycleStart` only serves cards stamped before migration 190,
- *  which is why the timeline is still fetched. */
-async function reviewCycleStartTime(
-  ctx: StudioContext,
-  task: TaskBoardItem,
-): Promise<number> {
-  if (task.reviewCycleStartedAt) {
-    return new Date(task.reviewCycleStartedAt).getTime();
-  }
-  const activity = await ctx.storage.taskBoard.listActivity(
-    task.id,
-    task.organizationId,
-  );
-  return reviewCycleStart(activity, null);
 }
 
 /**
