@@ -77,6 +77,10 @@ describe("boardHandler — the board Studio ships with", () => {
     }
   });
 
+  it("leaves a card unguarded, because its lanes are constants", () => {
+    expect(board().columnOwner()).toBe(null);
+  });
+
   it("retires a finished card to its Archived lane", async () => {
     expect(await board().archiveColumn()).toBe("archived");
   });
@@ -254,6 +258,12 @@ describe("boardHandler — a board whose columns are the org's own", () => {
       by: USER_M,
     });
     expect(card.status).toBe("not_a_column");
+  });
+
+  /** The value every writer asks for instead of recomputing. Getting it from
+   *  the board is what stops one path guarding a card and another not. */
+  it("names itself as the owner a guarded card is held to", () => {
+    expect(board().columnOwner()).toBe(ORG_M);
   });
 
   it("runs a rule hung on a column the tracker named", async () => {

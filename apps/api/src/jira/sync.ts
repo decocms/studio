@@ -541,6 +541,7 @@ async function runSync(
   // board the org owns it is DERIVED from the board's own configuration —
   // Jira already knows which statuses each of its columns groups, so asking
   // anyone to restate that by hand was the mapping screen's whole mistake.
+  const board = await boardFor(ctx, integration.organizationId);
   const laneOf = orgOwnedColumns
     ? await mirrorBoardColumns(ctx, integration, boardId)
     : laneIndex(integration.statusMapping);
@@ -638,11 +639,11 @@ async function runSync(
         description: await cardDescription(integration.siteUrl, issue, users),
         priority: mapPriority(issue),
         sprintId: await sprints.localIdFor(pickIssueSprint(issue.sprints)),
-        // Written alongside the status it describes, so a card enters the
-        // foreign key's protection the moment the sync first places it in a
-        // column of the org's own — no separate backfill, and a card the sync
-        // has not reached yet simply stays unguarded rather than wrong.
-        boardColumnOrg: orgOwnedColumns ? orgId : null,
+        // Asked of the board, not recomputed from the flag: one answer for
+        // every writer, so a card cannot be guarded by one path and not by
+        // another. A card the sync has not reached yet stays unguarded rather
+        // than wrong, which is what makes adopting the key incremental.
+        boardColumnOrg: board.columnOwner(),
       };
 
       if (link) {

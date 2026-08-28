@@ -42,6 +42,16 @@ export interface BoardHandler {
    * that does not exist — invisible, which is worse than not archiving.
    */
   archiveColumn(): Promise<string | null>;
+
+  /**
+   * What to write into a card's `board_column_org` — the org id when this
+   * board's columns are rows the foreign key can hold it to, null when they
+   * are Studio's constants and the key must stay asleep.
+   *
+   * Asked of the board rather than recomputed from the flag at each writer, so
+   * one answer cannot drift from another and leave a card unguarded.
+   */
+  columnOwner(): string | null;
 }
 
 /** `title` is the key: the canonical columns are translated by the client,
@@ -72,6 +82,10 @@ class StudioBoardHandler implements BoardHandler {
 
   archiveColumn(): Promise<string | null> {
     return Promise.resolve("archived");
+  }
+
+  columnOwner(): string | null {
+    return null;
   }
 }
 
@@ -108,6 +122,10 @@ class OrgBoardHandler implements BoardHandler {
   async archiveColumn(): Promise<string | null> {
     const columns = await this.boardColumns.listByOrg(this.organizationId);
     return columns.find((column) => column.role === "archived")?.key ?? null;
+  }
+
+  columnOwner(): string | null {
+    return this.organizationId;
   }
 }
 

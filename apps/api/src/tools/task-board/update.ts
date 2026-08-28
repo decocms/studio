@@ -291,11 +291,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       throw new Error(`Task board item not found: ${input.id}`);
     }
 
+    const board = await boardFor(ctx, organizationId);
     if (input.status !== undefined) {
-      await assertBoardHasColumn(
-        await boardFor(ctx, organizationId),
-        input.status,
-      );
+      await assertBoardHasColumn(board, input.status);
     }
 
     if (input.status !== undefined && isDeliveryLane(input.status)) {
@@ -389,6 +387,11 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           title: input.title,
           description: input.description,
           status: becameSuperAgent ? "todo" : input.status,
+          // Written with the status it describes, so a card cannot end up in a
+          // column of the org's own while still unguarded.
+          ...(input.status !== undefined || becameSuperAgent
+            ? { boardColumnOrg: board.columnOwner() }
+            : {}),
           priority: input.priority,
           type: input.type,
           assigneeId: input.assigneeId,
