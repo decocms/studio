@@ -4,6 +4,7 @@ import {
   buildJql,
   isUnchanged,
   rescanContinues,
+  rewritesStatus,
   runTruncated,
   vanishedLinks,
 } from "./sync";
@@ -210,5 +211,85 @@ describe("runTruncated", () => {
 
   it("is not truncated when a run finishes under both caps", () => {
     expect(runTruncated(42, 1)).toBe(false);
+  });
+});
+
+/**
+ * The rule that makes a board conversion survivable.
+ *
+ * Normally the pull leaves a card's status alone unless Jira's own changed —
+ * that is what stops an unrelated edit yanking back a card the agent
+ * advanced. But on the day an org's board becomes its own, every card is
+ * holding one of Studio's lanes while the columns are suddenly the tracker's,
+ * and a card nobody touched in Jira would render nowhere at all.
+ */
+describe("rewritesStatus", () => {
+  const columns = new Set(["BACKLOG", "Fazendo", "Code Review"]);
+
+  it("writes when Jira moved the issue", () => {
+    expect(
+      rewritesStatus({
+        jiraStatusChanged: true,
+        currentStatus: "Fazendo",
+        boardColumns: columns,
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves a card alone when Jira did not move it", () => {
+    expect(
+      rewritesStatus({
+        jiraStatusChanged: false,
+        currentStatus: "Fazendo",
+        boardColumns: columns,
+      }),
+    ).toBe(false);
+  });
+
+  it("re-homes a card stranded in a column the board does not have", () => {
+    expect(
+      rewritesStatus({
+        jiraStatusChanged: false,
+        currentStatus: "triage",
+        boardColumns: columns,
+      }),
+    ).toBe(true);
+  });
+
+  /** The bound that makes this a conversion path and not a standing override:
+   *  a re-homed card stops being re-written on the very next pull. */
+  it("stops re-homing once the card lands somewhere real", () => {
+    expect(
+      rewritesStatus({
+        jiraStatusChanged: false,
+        currentStatus: "BACKLOG",
+        boardColumns: columns,
+      }),
+    ).toBe(false);
+  });
+
+  it("has nothing to re-home when the card could not be read", () => {
+    expect(
+      rewritesStatus({
+        jiraStatusChanged: false,
+        currentStatus: null,
+        boardColumns: columns,
+      }),
+    ).toBe(false);
+  });
+
+  /** Studio's own board answers with its nine lanes, so no card on it is ever
+   *  stranded and this rule changes nothing there. */
+  it("never re-homes on a board whose columns are Studio's own", () => {
+    const canonical = new Set(["triage", "todo", "in_progress", "done"]);
+    for (const status of canonical) {
+      expect(
+        rewritesStatus({
+          jiraStatusChanged: false,
+          currentStatus: status,
+          boardColumns: canonical,
+        }),
+      ).toBe(false);
+    }
   });
 });
