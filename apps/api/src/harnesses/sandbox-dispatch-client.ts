@@ -548,21 +548,24 @@ export class SandboxDispatchClient {
       resume: { reason: string } | null,
     ): AsyncIterable<UIMessageChunk> =>
       (async function* () {
-        // The longest silence in the run: pod boot, clone, and (interactive)
-        // install. The chat has no per-thread stream here, so this rides
-        // the org `/watch`.
-        await publishRunStatusStage({
-          streamBuffer,
-          harnessId: SANDBOX_HOSTED_HARNESS,
-          taskId: runId,
-          stage: "starting-sandbox",
-        });
         const sandbox = await ensureSandbox(
           {
             virtualMcpId,
             branch,
             // Headless loop, no preview — unless someone is watching it.
             purpose: interactive ? "interactive" : "harness-run",
+            // The longest silence in the run: pod boot, clone, and
+            // (interactive) install. The chat has no per-thread stream here, so
+            // this rides the org `/watch`. Only on a cold start — an
+            // interactive agent keeps its pod between turns, and announcing a
+            // boot on every message made a warm resume look like a re-boot.
+            onColdStart: () =>
+              publishRunStatusStage({
+                streamBuffer,
+                harnessId: SANDBOX_HOSTED_HARNESS,
+                taskId: runId,
+                stage: "starting-sandbox",
+              }),
           },
           ctx,
         );
