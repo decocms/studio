@@ -191,6 +191,7 @@ import * as migration189taskboardcolumnautomations from "./189-task-board-column
 import * as migration190taskboardreviewcyclestartedat from "./190-task-board-review-cycle-started-at.ts";
 import * as migration191taskboardcolumns from "./191-task-board-columns.ts";
 import * as migration192taskboardverdictnudgeactivity from "./192-task-board-verdict-nudge-activity.ts";
+import * as migration193taskboardstatuscolumnfk from "./193-task-board-status-column-fk.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -415,6 +416,7 @@ const migrations: Record<string, Migration> = {
   "191-task-board-columns": migration191taskboardcolumns,
   "192-task-board-verdict-nudge-activity":
     migration192taskboardverdictnudgeactivity,
+  "193-task-board-status-column-fk": migration193taskboardstatuscolumnfk,
 };
 
 export default migrations;

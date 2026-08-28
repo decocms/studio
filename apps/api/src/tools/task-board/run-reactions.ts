@@ -42,9 +42,9 @@ import {
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { inReviewPhase, LANE_RANK } from "./lanes";
+import { LANE_RANK, inReviewPhase, laneRank } from "./lanes";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
+import type { TaskBoardItem } from "@/storage/types";
 
 /** Run-lifecycle funnel events (auto-fix leg of the PLG funnel). System
  *  actions with no acting user — org identity, person processing off.
@@ -146,7 +146,7 @@ export async function resolveRunTaskTargets(
  */
 export async function advanceTaskBoardForRun(
   ctx: StudioContext,
-  status: TaskBoardItemStatus,
+  status: string,
   threadId?: string,
 ): Promise<void> {
   const orgId = ctx.organization?.id;
@@ -157,9 +157,12 @@ export async function advanceTaskBoardForRun(
       // ponytail: read-then-write rank guard. A single run's transitions are
       // sequential, so the race window is negligible; it buys idempotency (a
       // repeated PR tool call, or in_progress re-fired on a DBOS retry, won't
-      // regress a card that's already further along). Upgrade to a conditional
-      // UPDATE ... WHERE status-rank < new-rank only if concurrency ever bites.
-      if (!current || LANE_RANK[status] <= LANE_RANK[current.status]) continue;
+      // regress a card that's already further along). A status with no rank is
+      // a column Studio did not define, and inventing an order for someone
+      // else's columns would be worse than not guarding.
+      const to = laneRank(status);
+      const from = laneRank(current?.status ?? "");
+      if (!current || (to !== null && from !== null && to <= from)) continue;
       const item = await ctx.storage.taskBoard.update(
         itemId,
         orgId,
@@ -316,11 +319,11 @@ export async function advanceTasksToReviewOnThreadFinish(
  * lost stream as a plain failure.
  */
 function cardDelivered(item: {
-  status: TaskBoardItemStatus;
+  status: string;
   reviewCycleStartedAt: string | null;
 }): boolean {
   return (
-    LANE_RANK[item.status] >= LANE_RANK.in_review ||
+    (laneRank(item.status) ?? -1) >= LANE_RANK.in_review ||
     Boolean(item.reviewCycleStartedAt)
   );
 }

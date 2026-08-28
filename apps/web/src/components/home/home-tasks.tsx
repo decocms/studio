@@ -22,7 +22,7 @@ import {
 } from "@/hooks/use-task-board-items";
 import {
   PRIORITY_CONFIG,
-  STATUS_CONFIG,
+  laneVisual,
   type TaskBoardItem,
   type TaskBoardItemStatus,
 } from "@/layouts/task-board/config";
@@ -56,7 +56,7 @@ function TaskRow({
   assignee?: OrgMember;
   onOpen: () => void;
 }) {
-  const statusConfig = STATUS_CONFIG[task.status];
+  const statusConfig = laneVisual(task.status);
   const StatusIcon = statusConfig.icon;
   const priority = PRIORITY_CONFIG[task.priority];
   const assigneeName =

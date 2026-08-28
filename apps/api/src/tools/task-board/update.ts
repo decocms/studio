@@ -1,12 +1,9 @@
+import { assertBoardHasColumn, boardFor } from "./board-handler";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import type {
-  TaskBoardActivityAction,
-  TaskBoardItem,
-  TaskBoardItemStatus,
-} from "@/storage/types";
+import type { TaskBoardActivityAction, TaskBoardItem } from "@/storage/types";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
   MAX_TASK_REPO_LENGTH,
@@ -145,7 +142,7 @@ export function delegatesToSuperAgent(
  *  review just as effectively as completing it does. The delivery lanes count
  *  too: they sit past In Review, so a run setting `merged` would escape this
  *  guard and drop the card out of `listItemsPendingReview`. */
-const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
+const REVIEW_CLOSING_STATUSES = new Set<string>([
   "approved",
   "merged",
   "post_deploy_validation",
@@ -156,10 +153,8 @@ const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
 /** `task-run-context` withholds REVIEW_DECISION and PROMOTE_TO_PRODUCTION for this
  *  invariant; this tool sets `status` freely, so it needs the same guard. */
 export function closesOwnReview(
-  inputStatus: TaskBoardItemStatus | undefined,
-  previous:
-    | { status: TaskBoardItemStatus; reviewCycleStartedAt: string | null }
-    | undefined,
+  inputStatus: string | undefined,
+  previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
   isTaskRun: boolean,
 ): boolean {
   const completesTask =
@@ -183,7 +178,7 @@ export function closesOwnReview(
  * gate the UI's own drag/dropdown, not the tool underneath them.
  */
 export function rejectsUngatedDeliveryLane(
-  inputStatus: TaskBoardItemStatus | undefined,
+  inputStatus: string | undefined,
   deliveryLanesEnabled: boolean,
 ): boolean {
   return (
@@ -294,6 +289,13 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // longer org-scoped itself (the join table has no organization_id).
     if (hasFieldUpdate && !previous) {
       throw new Error(`Task board item not found: ${input.id}`);
+    }
+
+    if (input.status !== undefined) {
+      await assertBoardHasColumn(
+        await boardFor(ctx, organizationId),
+        input.status,
+      );
     }
 
     if (input.status !== undefined && isDeliveryLane(input.status)) {

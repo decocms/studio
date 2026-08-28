@@ -1,3 +1,4 @@
+import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
   AlertCircle,
   AlertOctagon,
@@ -143,7 +144,7 @@ export function cardNeedsAttention(item: TaskBoardItem): boolean {
 export function statusIconClassName(item: TaskBoardItem): string {
   return item.status === "in_progress" && isTaskBlocked(item)
     ? "text-warning animate-pulse"
-    : STATUS_CONFIG[item.status].iconClassName;
+    : laneVisual(item.status).iconClassName;
 }
 
 /**
@@ -231,8 +232,11 @@ export const STATUSES: TaskBoardItemStatus[] = [
  */
 export const HIDDEN_STATUSES: TaskBoardItemStatus[] = ["archived"];
 
+/** Keyed by Studio's OWN lanes, not by a card's status. Exhaustive on purpose:
+ *  adding a lane is a compile error here. A card's status is any column key,
+ *  which is what `laneVisual` and `laneLabel` are for. */
 export const STATUS_CONFIG: Record<
-  TaskBoardItemStatus,
+  CanonicalColumnKey,
   { labelKey: TranslationKey; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
@@ -281,6 +285,46 @@ export const STATUS_CONFIG: Record<
     iconClassName: "text-muted-foreground",
   },
 };
+
+/** What a lane looks like, for a status we may not recognise. */
+export type LaneVisual = {
+  icon: typeof Circle;
+  iconClassName: string;
+};
+
+/** Neutral stand-in for a column Studio did not name. An org board's columns
+ *  come from its tracker, so there is no icon of ours and no translation. */
+const UNKNOWN_LANE: LaneVisual = {
+  icon: Circle,
+  iconClassName: "text-muted-foreground",
+};
+
+/** Widened on purpose. `STATUS_CONFIG` is exhaustive over Studio's own lanes —
+ *  that is what makes adding one a compile error — but a card's status is any
+ *  column key, and indexing the closed Record would let the compiler believe
+ *  every lookup hits. */
+const LANE_VISUALS: Record<string, LaneVisual> = STATUS_CONFIG;
+
+export function laneVisual(status: string): LaneVisual {
+  return LANE_VISUALS[status] ?? UNKNOWN_LANE;
+}
+
+/**
+ * What to call a lane.
+ *
+ * Studio's own lanes are translated; a column mirrored from a tracker is
+ * called whatever that tracker calls it, which is not ours to translate. Pass
+ * `title` when the board read gave you one — callers without it get the raw
+ * key, which is still the name the team uses.
+ */
+export function laneLabel(
+  status: string,
+  t: (key: TranslationKey) => string,
+  title?: string,
+): string {
+  const known = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG];
+  return known ? t(known.labelKey) : (title ?? status);
+}
 
 export const TASK_TYPES: TaskBoardItemType[] = [
   "bug",

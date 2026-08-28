@@ -11,10 +11,11 @@ import { DELIVERY_LANES, shippedLane } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
 import {
   DELIVERY_LANE_STATUSES,
-  inReviewPhase,
   LANE_RANK,
-  movesForward,
   SHIP_ELIGIBLE_LANES,
+  inReviewPhase,
+  laneRank,
+  movesForward,
 } from "./lanes";
 
 const BOARD_ORDER: TaskBoardItemStatus[] = [
@@ -38,8 +39,8 @@ describe("LANE_RANK", () => {
 
   it("puts every delivery lane between In Review and Done", () => {
     for (const lane of DELIVERY_LANE_STATUSES) {
-      expect(LANE_RANK[lane]).toBeGreaterThan(LANE_RANK.in_review);
-      expect(LANE_RANK[lane]).toBeLessThan(LANE_RANK.done);
+      expect(laneRank(lane)).toBeGreaterThan(LANE_RANK.in_review);
+      expect(laneRank(lane)).toBeLessThan(LANE_RANK.done);
     }
   });
 

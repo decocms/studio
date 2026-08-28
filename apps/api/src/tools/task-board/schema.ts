@@ -20,17 +20,16 @@ export const MAX_TASK_REPO_LENGTH = 200;
  *  same reasoning as MAX_TASK_DESCRIPTION_LENGTH. */
 export const MAX_AUTOMATION_PROMPT_LENGTH = 50_000;
 
-export const TaskBoardItemStatusSchema = z.enum([
-  "triage",
-  "todo",
-  "in_progress",
-  "in_review",
-  "approved",
-  "merged",
-  "post_deploy_validation",
-  "done",
-  "archived",
-]);
+/**
+ * A card's column, by key.
+ *
+ * Not an enum: on a board whose columns are the org's own the keys come from
+ * their tracker, and a closed union would reject the only values that board
+ * has. What an enum used to guarantee is now the board's job — see
+ * `assertBoardHasColumn` — because only the board knows which keys are real
+ * for the org making the call.
+ */
+export const TaskBoardItemStatusSchema = z.string().min(1);
 
 /**
  * A sprint cards can belong to — mirrored from the tracker the board syncs
