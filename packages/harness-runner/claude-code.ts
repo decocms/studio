@@ -830,11 +830,28 @@ export async function runClaudeCode(
     }
     startTurn(messageId ?? `msg_${Date.now()}`);
     emit({
-      chunks: [
-        { type: "finish-step" },
-        { type: "finish", finishReason: "error" },
-      ],
+      chunks: errorFinishChunks(translator),
       error,
     });
   }
+}
+
+/**
+ * Chunks for an aborted turn: close whatever `stream_event` left open, then
+ * finish the step and the run.
+ *
+ * Same orphan-end hazard the step boundary above guards against — the AI SDK
+ * reducer clears its open text/reasoning parts on `finish-step`, so an end
+ * emitted after it throws and drops the stream. An SDK throw mid-block (a
+ * network drop, a crash) reaches `fail()` with a block `stream_event` opened
+ * and never closed; without this, `finish-step` went out first and the part
+ * was left open forever instead of throwing — no crash, but a message that
+ * reads as still streaming after the run has already failed.
+ */
+export function errorFinishChunks(translator: UiChunkTranslator): unknown[] {
+  return [
+    ...translator.closeOpenStreamBlocks(),
+    { type: "finish-step" },
+    { type: "finish", finishReason: "error" },
+  ];
 }
