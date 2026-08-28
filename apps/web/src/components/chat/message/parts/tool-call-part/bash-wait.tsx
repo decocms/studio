@@ -2,7 +2,46 @@ import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick.ts";
 
-const STORAGE_PREFIX = "bash-sleep-start:";
+const STORAGE_KEY = "studio:bash-sleep-start:v1";
+
+/** LRU cap. A long session runs many `bash` calls; bounds sessionStorage growth. */
+const MAX_ENTRIES = 200;
+
+type StoredEntry = [toolCallId: string, startedAtMs: number];
+
+/**
+ * LRU upsert of `toolCallId`, evicting the oldest entries past `cap`. Pure —
+ * takes and returns the entry list, same shape as `thread-layout-memory`'s.
+ */
+export function upsertCallStartEntries(
+  entries: StoredEntry[],
+  toolCallId: string,
+  startedAtMs: number,
+  cap: number = MAX_ENTRIES,
+): StoredEntry[] {
+  const next = entries.filter(([id]) => id !== toolCallId);
+  next.push([toolCallId, startedAtMs]);
+  while (next.length > cap) next.shift();
+  return next;
+}
+
+function readEntries(): StoredEntry[] {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (e): e is StoredEntry =>
+        Array.isArray(e) &&
+        e.length === 2 &&
+        typeof e[0] === "string" &&
+        Number.isFinite(e[1]),
+    );
+  } catch {
+    return [];
+  }
+}
 
 /**
  * First-observed fire time (epoch ms) for a bash `sleep`, keyed by toolCallId
@@ -14,15 +53,15 @@ const STORAGE_PREFIX = "bash-sleep-start:";
  * `Date.now()` (and records it) the first time a given call is seen.
  */
 function firstSeenStart(toolCallId: string): number {
-  const key = STORAGE_PREFIX + toolCallId;
   try {
-    const stored = sessionStorage.getItem(key);
-    if (stored !== null) {
-      const parsed = Number.parseInt(stored, 10);
-      if (Number.isFinite(parsed)) return parsed;
-    }
+    const entries = readEntries();
+    const existing = entries.find(([id]) => id === toolCallId);
+    if (existing) return existing[1];
     const now = Date.now();
-    sessionStorage.setItem(key, String(now));
+    sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(upsertCallStartEntries(entries, toolCallId, now)),
+    );
     return now;
   } catch {
     // sessionStorage unavailable (SSR / privacy mode): best-effort, non-sticky.
