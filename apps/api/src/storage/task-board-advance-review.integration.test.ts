@@ -281,6 +281,43 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
    * cycle never opened, and the card sat In Review for the whole reviewer run
    * with its verdicts falling back to the legacy activity scan. Inverted.
    */
+  /**
+   * `hasPr` used to be `item.repo != null && listPrs().length > 0`. `repo` is
+   * only stamped on a card CREATED against a repository, so a run that finds
+   * its own with `TASK_ADD_REPO` links a pull request and leaves it null — the
+   * card then read as repo-less and the backstop parked it In Review, on top of
+   * an already-open cycle, for the whole reviewer run.
+   */
+  it("keeps a card with a PR In Progress even when repo was never stamped", async () => {
+    const { task, thread } = await cardWithFinishedRun("no repo column");
+    expect(task.repo).toBeNull();
+    await taskBoard.linkPr({
+      taskBoardItemId: task.id,
+      organizationId: ORG,
+      url: "https://github.com/acme/site/pull/7",
+      prNumber: 7,
+      repoOwner: "acme",
+      repoName: "site",
+    });
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+
+    const after = await taskBoard.getById(task.id, ORG);
+    expect(after?.status).toBe("in_progress");
+    expect(after?.reviewCycleStartedAt).not.toBeNull();
+  });
+
+  // The backstop must never move a card that is already mid-review, whatever
+  // the PR read says — that is the move this whole change exists to prevent.
+  it("leaves a card with an open cycle where it is", async () => {
+    const { task, thread } = await cardWithFinishedRun("already reviewing");
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
+  });
+
   it("rescues a card the backstop parked In Review before the PR landed", async () => {
     const { task } = await cardWithFinishedRun("late pr link");
     await taskBoard.update(

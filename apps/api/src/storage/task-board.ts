@@ -1350,11 +1350,22 @@ export class TaskBoardStorage {
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;
-      // Only query PRs for a repo-backed task — that's the one gate that needs it.
-      const hasPr =
-        item.repo != null &&
-        (await this.listPrs(taskId, organizationId)).length > 0;
+      // A LINKED PR is the whole test. It used to be `item.repo != null && …`,
+      // as a cheap way to skip the query for a card that could not have one —
+      // but `repo` is only stamped on a card created against a repository, and
+      // a run that finds its own with `TASK_ADD_REPO` links a pull request
+      // without ever setting it. Those cards read as repo-less forever, so this
+      // took the "its answer IS its deliverable" branch and parked them In
+      // Review — on top of an already-open review cycle, for the whole reviewer
+      // run. Three consecutive prod cards landed that way; the fourth, created
+      // against a repo, stayed In Progress exactly as intended.
+      const hasPr = (await this.listPrs(taskId, organizationId)).length > 0;
       if (!shouldAdvanceToReview(item, hasPr)) continue;
+      // Belt and braces for the same failure: whatever the PR read says, a card
+      // with a cycle already open is mid-review and this backstop has nothing
+      // to add. Only the repo-less branch below can move a card, and moving one
+      // out from under its reviewer is the bug this whole change exists to fix.
+      if (item.reviewCycleStartedAt) continue;
 
       // Both writes below are CONDITIONAL updates guarded on what we just
       // read, so exactly one concurrent caller can win either.
