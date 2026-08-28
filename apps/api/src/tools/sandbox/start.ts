@@ -239,6 +239,13 @@ export async function ensureSandbox(
      * agent-run SandboxTemplate + warm pool. Defaults to `interactive`.
      */
     purpose?: SandboxPurpose;
+    /**
+     * Fired only when this call actually has to provision a pod — i.e. the
+     * resume fast path below did NOT hit. Callers that show a "booting the
+     * sandbox" status use this so a warm resume doesn't announce a boot that
+     * isn't happening. Best-effort: a throw here must not fail the ensure.
+     */
+    onColdStart?: () => Promise<void>;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -301,6 +308,8 @@ export async function ensureSandbox(
   const threadRepo = await getThreadGithubRepo(ctx, provisioningThreadId);
   const githubRepo =
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
+  // Past the resume fast path: this call is a real boot, so tell the caller.
+  await input.onColdStart?.().catch(() => {});
   const { entry } = await provisionSandbox({
     ctx,
     userId,
