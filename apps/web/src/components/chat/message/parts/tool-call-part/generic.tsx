@@ -46,7 +46,7 @@ import {
   XClose,
 } from "@untitledui/icons";
 import { TOOL_DISPLAY_MAP } from "./tool-display-map.ts";
-import { BashWaitSummary, ToolElapsedSummary } from "./bash-wait.tsx";
+import { BashWaitSummary } from "./bash-wait.tsx";
 import { parseSleepMs } from "./bash-sleep.ts";
 import { toEpochMs } from "@/lib/format-time.ts";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
@@ -374,16 +374,6 @@ export function GenericToolCallPart({
       <BashWaitSummary
         toolCallId={toolCallId}
         durationMs={sleepDurationMs}
-        anchorMs={partCreatedAtMs(part)}
-      />
-    ) : effectiveState === "loading" ? (
-      // Any other still-running call: count up. A multi-minute build or test
-      // is the case that reads as a dead run, and it has no duration to count
-      // down from — "Preparing…" alone is what made it look frozen.
-      // A stale approval and an output error both resolve to another
-      // `effectiveState` above, so "loading" already excludes them.
-      <ToolElapsedSummary
-        toolCallId={toolCallId}
         anchorMs={partCreatedAtMs(part)}
       />
     ) : isStaleApproval ? (

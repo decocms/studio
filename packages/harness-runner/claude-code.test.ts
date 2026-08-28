@@ -3,7 +3,6 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
   brokenStudioMcp,
   buildOptions,
-  createDeltaCoalescer,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
@@ -159,12 +158,6 @@ describe("brokenStudioMcp", () => {
 });
 
 describe("buildOptions", () => {
-  test("asks the SDK for partial messages", () => {
-    // Without this the SDK yields only complete assistant messages and a
-    // paragraph reaches the UI as one frame after the model finished writing.
-    expect(options().includePartialMessages).toBe(true);
-  });
-
   test("bypasses permissions — the pod is the isolation boundary", () => {
     expect(options().permissionMode).toBe("bypassPermissions");
   });
@@ -432,71 +425,5 @@ describe("isTransientProviderRejection", () => {
     expect(
       isTransientProviderRejection("Session ID abc is already in use"),
     ).toBe(false);
-  });
-});
-
-describe("createDeltaCoalescer", () => {
-  const delta = (id: string, text: string) => ({
-    type: "text-delta",
-    id,
-    delta: text,
-  });
-
-  test("holds a short delta until something forces it out", () => {
-    const c = createDeltaCoalescer(10);
-    expect(c.push([delta("a", "hi")])).toEqual([]);
-    expect(c.drain()).toEqual([delta("a", "hi")]);
-    // Drained once; nothing left to emit twice.
-    expect(c.drain()).toEqual([]);
-  });
-
-  test("concatenates same-block deltas and flushes at the threshold", () => {
-    const c = createDeltaCoalescer(5);
-    expect(c.push([delta("a", "ab")])).toEqual([]);
-    expect(c.push([delta("a", "cd")])).toEqual([]);
-    expect(c.push([delta("a", "ef")])).toEqual([delta("a", "abcdef")]);
-    expect(c.drain()).toEqual([]);
-  });
-
-  test("a non-delta chunk flushes what is held, before itself", () => {
-    const c = createDeltaCoalescer(100);
-    // Ordering is the contract: text-end must never overtake its own text.
-    expect(c.push([delta("a", "hi"), { type: "text-end", id: "a" }])).toEqual([
-      delta("a", "hi"),
-      { type: "text-end", id: "a" },
-    ]);
-  });
-
-  test("a different block flushes the previous one rather than merging", () => {
-    const c = createDeltaCoalescer(100);
-    c.push([delta("a", "one")]);
-    expect(c.push([delta("b", "two")])).toEqual([delta("a", "one")]);
-    expect(c.drain()).toEqual([delta("b", "two")]);
-  });
-
-  test("reasoning and text deltas are not merged into each other", () => {
-    const c = createDeltaCoalescer(100);
-    c.push([{ type: "reasoning-delta", id: "a", delta: "think" }]);
-    // Same id, different kind — merging would put reasoning into a text part.
-    expect(c.push([delta("a", "say")])).toEqual([
-      { type: "reasoning-delta", id: "a", delta: "think" },
-    ]);
-  });
-
-  test("chunks that are not deltas pass through untouched", () => {
-    const c = createDeltaCoalescer(100);
-    const chunks = [
-      { type: "text-start", id: "a" },
-      { type: "tool-input-available", toolCallId: "t", toolName: "Bash" },
-      { type: "finish-step" },
-    ];
-    expect(c.push(chunks)).toEqual(chunks);
-  });
-
-  test("a malformed delta is passed through, not swallowed", () => {
-    const c = createDeltaCoalescer(100);
-    // No `delta` string: not coalescable, but dropping it would lose output.
-    const odd = { type: "text-delta", id: "a" };
-    expect(c.push([odd])).toEqual([odd]);
   });
 });
