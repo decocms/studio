@@ -159,15 +159,6 @@ func (reg *Registry) claim(runId string, cancel context.CancelFunc) (*activeRun,
 	}
 }
 
-// HasActiveRuns reports whether any harness run is in flight. Read by the
-// daemon's autosave loop: checkpoints exist to bound a run's loss window, and an
-// idle sandbox already syncs its tree on shutdown.
-func (reg *Registry) HasActiveRuns() bool {
-	reg.mu.Lock()
-	defer reg.mu.Unlock()
-	return len(reg.activeRuns) > 0
-}
-
 // CancelAll kills every in-flight run. Used on daemon shutdown: a running
 // harness holds CLIs writing into the tree the shutdown publish is about to
 // commit.

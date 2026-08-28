@@ -195,7 +195,6 @@ export const chat = {
   "chat.generic.loadingApp": "Carregando app...",
   "chat.generic.openInPanel": "Abrir no painel",
   "chat.generic.preparing": "Preparando...",
-  "chat.generic.runningFor": "Executando há {elapsed}",
   "chat.generic.retry": "Tentar novamente",
   "chat.generic.waitingForApproval": "Aguardando sua aprovação",
   "chat.highlight.continue": "Continuar",

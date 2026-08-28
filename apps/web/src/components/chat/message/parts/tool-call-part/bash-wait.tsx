@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick.ts";
 
 const STORAGE_PREFIX = "bash-sleep-start:";
@@ -36,12 +35,15 @@ function firstSeenStart(toolCallId: string): number {
  * the first time this browser observed the call running, persisted in
  * sessionStorage so it survives a page refresh instead of resetting.
  */
-function useCallStartedAt(toolCallId: string, anchorMs: number | null): number {
+function useSleepStartedAt(
+  toolCallId: string,
+  anchorMs: number | null,
+): number {
   const fallback = useState(() => firstSeenStart(toolCallId))[0];
   return anchorMs ?? fallback;
 }
 
-function formatDuration(ms: number): string {
+function formatCountdown(ms: number): string {
   const secs = Math.ceil(ms / 1000);
   if (secs < 60) return `${secs}s`;
   const mins = Math.floor(secs / 60);
@@ -68,48 +70,11 @@ export function BashWaitSummary({
   anchorMs: number | null;
 }) {
   useClockTick(1000);
-  const startedAt = useCallStartedAt(toolCallId, anchorMs);
+  const startedAt = useSleepStartedAt(toolCallId, anchorMs);
   const remaining = startedAt + durationMs - Date.now();
   return (
     <span className="tabular-nums">
-      {remaining > 0 ? `Waiting ${formatDuration(remaining)}` : "Wrapping up…"}
-    </span>
-  );
-}
-
-/**
- * Below this, a running tool is just latency and a counter is noise. Past it,
- * the run looks frozen without one.
- */
-const ELAPSED_VISIBLE_AFTER_MS = 10_000;
-
-/**
- * Live "running for Ns" readout for any still-running tool call.
- *
- * The sibling countdown above needs a known duration; this one does not, which
- * is what makes it usable for the calls that actually read as a hang — a
- * multi-minute `deno test`, a build, an MCP tool waiting on a deploy. Anchored
- * the same way (`anchorMs`, else the sessionStorage-backed first-observed time)
- * so a reload keeps counting from when the call really fired.
- *
- * Under `ELAPSED_VISIBLE_AFTER_MS` it renders the plain "Preparing…" copy: a
- * counter on every fast tool call would be worse than no counter at all.
- */
-export function ToolElapsedSummary({
-  toolCallId,
-  anchorMs,
-}: {
-  toolCallId: string;
-  anchorMs: number | null;
-}) {
-  const t = useT();
-  useClockTick(1000);
-  const startedAt = useCallStartedAt(toolCallId, anchorMs);
-  const elapsed = Date.now() - startedAt;
-  if (elapsed < ELAPSED_VISIBLE_AFTER_MS) return t("chat.generic.preparing");
-  return (
-    <span className="tabular-nums">
-      {t("chat.generic.runningFor", { elapsed: formatDuration(elapsed) })}
+      {remaining > 0 ? `Waiting ${formatCountdown(remaining)}` : "Wrapping up…"}
     </span>
   );
 }
