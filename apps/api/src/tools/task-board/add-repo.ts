@@ -181,19 +181,37 @@ async function podBash(
 }
 
 /**
- * Interpret the clone probe (`__CLONED__` marker + `ls -A`). A HEAD ref can
- * appear before the checkout does, so entries — not the marker — are what make
- * it ready. Pure, so the readiness rule is unit-tested.
+ * Interpret the clone probe (`__CLONED__` marker + `ls -A`).
+ *
+ * The marker is the answer, and the directory listing is NOT. Readiness used to
+ * be "`ls -A` has an entry that isn't `.git`", on the reasoning that a HEAD ref
+ * lands before the checkout does. But the checkout directory is never empty to
+ * begin with: the pod stages `.deco` (the MCP tool stubs) and mounts `org` (the
+ * org filesystem) into it before any clone starts. Both survive the `.git`
+ * filter, both are there on the first probe, and neither changes — so the
+ * "stabilized across two probes" guard agreed with them, and the tool returned
+ * `cloned: true, files: ".deco\\norg"` about a second and a half in, having
+ * waited for nothing.
+ *
+ * The run that produced this then did exactly what it was told: read the
+ * directory, found no repository in it, and finished. It opened no PR, so its
+ * card took the repo-less path to In Review and sat there waiting for a person
+ * — a task "completed" in twenty seconds without a line of code read.
+ *
+ * `git ls-files` is what the marker is built from now (see the probe in
+ * `addRepoToThread`): a non-empty index means the checkout has actually written
+ * the tree, which no amount of pre-staged scaffolding can fake. The listing is
+ * still returned, because it is what the model reads — it just no longer gets a
+ * vote on whether the clone happened.
  */
 export function parseRepoProbe(stdout: string): {
   cloned: boolean;
   listing: string;
 } {
-  const entries = stdout
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && l !== ".git" && l !== "__CLONED__");
-  return { cloned: entries.length > 0, listing: entries.join("\n") };
+  const lines = stdout.split("\n").map((l) => l.trim());
+  const cloned = lines.includes("__CLONED__");
+  const entries = lines.filter((l) => l && l !== ".git" && l !== "__CLONED__");
+  return { cloned, listing: entries.join("\n") };
 }
 
 /**
@@ -534,7 +552,12 @@ export const TASK_ADD_REPO = defineTool({
         provider,
         record.sandboxHandle,
         threadId,
-        `cd ${checkoutDir} 2>/dev/null || exit 1; if git rev-parse HEAD >/dev/null 2>&1; then echo __CLONED__; fi; ls -A 2>/dev/null`,
+        // `git ls-files`, not `git rev-parse HEAD`: the ref can be written
+        // before the tree is, and the directory is never empty anyway (the pod
+        // stages `.deco` and mounts `org` into it before the clone starts), so
+        // neither HEAD nor the listing can tell a checkout from scaffolding. A
+        // non-empty index can only come from one. See `parseRepoProbe`.
+        `cd ${checkoutDir} 2>/dev/null || exit 1; if [ -n "$(git ls-files 2>/dev/null | head -1)" ]; then echo __CLONED__; fi; ls -A 2>/dev/null`,
       ).catch(() => null);
       if (!probe) {
         if (++failures >= CLONE_MAX_CONSECUTIVE_FAILURES) break;
