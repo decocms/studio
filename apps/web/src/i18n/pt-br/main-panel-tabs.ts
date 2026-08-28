@@ -39,6 +39,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.loading": "Carregando…",
   "mainPanelTabs.hostingTab.noDeployments": "Nenhuma implantação ainda.",
   "mainPanelTabs.hostingTab.noEnv": "Nenhuma variável de ambiente definida.",
+  "mainPanelTabs.hostingTab.codeVarsHint":
+    "Do wrangler.jsonc (somente leitura) — edite no código. Uma variável acima com o mesmo nome as sobrescreve no deploy.",
   "mainPanelTabs.hostingTab.noRedirects":
     "Nenhum redirecionamento configurado.",
   "mainPanelTabs.hostingTab.noSiteTitle": "Nenhum site vinculado",
@@ -120,6 +122,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.secretNamePlaceholder": "NOME",
   "mainPanelTabs.hostingTab.secretValuePlaceholder": "valor",
   "mainPanelTabs.hostingTab.secretValueHidden": "••••••",
+  "mainPanelTabs.hostingTab.secretOnWorker": "No worker",
   "mainPanelTabs.hostingTab.deleteSecret": "Excluir segredo",
   "mainPanelTabs.hostingTab.confirmDeleteSecretTitle": "Excluir segredo?",
   "mainPanelTabs.hostingTab.confirmDeleteSecretDescription":

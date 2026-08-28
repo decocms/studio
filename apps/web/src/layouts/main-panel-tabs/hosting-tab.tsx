@@ -128,9 +128,13 @@ interface EnvVar {
   name: string;
   value: string;
 }
-/** Secrets are listed by NAME only — values are write-only and never returned. */
+/** Secrets are listed by NAME only — values are write-only and never returned.
+ *  `origin`: "control-plane" (in the CP store) or "worker" (bound on the CF
+ *  Worker out-of-band, e.g. `wrangler secret put` — shown for visibility). */
 interface Secret {
   name: string;
+  origin?: "control-plane" | "worker";
+  boundOnWorker?: boolean;
 }
 interface Redirect {
   id?: string;
@@ -847,6 +851,7 @@ function EnvSection({
   orgSlug,
   site,
   envVars,
+  codeVars,
   isLoading,
   error,
 }: {
@@ -854,6 +859,7 @@ function EnvSection({
   orgSlug: string;
   site: string;
   envVars: EnvVar[];
+  codeVars: EnvVar[];
   isLoading: boolean;
   error: unknown;
 }) {
@@ -1020,6 +1026,30 @@ function EnvSection({
               {t("mainPanelTabs.hostingTab.add")}
             </Button>
           </div>
+
+          {/* Read-only vars declared in the repo wrangler.jsonc (code vars). Not
+              editable here; a platform var above with the same name overrides. */}
+          {codeVars.length > 0 && (
+            <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3">
+              <p className="px-2 text-xs text-muted-foreground">
+                {t("mainPanelTabs.hostingTab.codeVarsHint")}
+              </p>
+              <Table>
+                <TableBody>
+                  {codeVars.map((e) => (
+                    <TableRow key={e.name}>
+                      <TableCell className="font-mono text-xs align-middle">
+                        {e.name}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground max-w-[360px] truncate align-middle">
+                        {e.value}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       )}
 
@@ -1159,7 +1189,17 @@ function SecretsSection({
             {secrets.map((s) => (
               <TableRow key={s.name}>
                 <TableCell className="font-mono text-xs align-middle">
-                  {s.name}
+                  <span className="inline-flex items-center gap-2">
+                    {s.name}
+                    {s.origin === "worker" && (
+                      <Badge
+                        variant="secondary"
+                        className="font-sans text-[10px]"
+                      >
+                        {t("mainPanelTabs.hostingTab.secretOnWorker")}
+                      </Badge>
+                    )}
+                  </span>
                 </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground align-middle">
                   {t("mainPanelTabs.hostingTab.secretValueHidden")}
@@ -1793,6 +1833,7 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   const deployments = list<Deployment>(deploymentsQuery.data, "items");
   const envVars = list<EnvVar>(envQuery.data, "vars");
+  const codeVars = list<EnvVar>(envQuery.data, "codeVars");
   const secrets = list<Secret>(secretsQuery.data, "secrets");
   const redirects = list<Redirect>(redirectsQuery.data, "items");
   const framework = frameworkLabel(
@@ -1835,6 +1876,7 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
           orgSlug={org.slug}
           site={siteSlug}
           envVars={envVars}
+          codeVars={codeVars}
           isLoading={envQuery.isLoading}
           error={envQuery.error}
         />
