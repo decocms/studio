@@ -24,12 +24,12 @@ import {
   Outlet,
   useMatch,
   useNavigate,
-  useParams,
   useRouter,
   useRouterState,
   useSearch,
 } from "@tanstack/react-router";
 import {
+  useRouteAgentId,
   useRouteThreadId,
   useRouteVirtualMcpId,
   useThreadNavigate,
@@ -37,6 +37,10 @@ import {
 import { KEYS } from "../lib/query-keys";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { resolveTaskSwitchSearch } from "@/layouts/resolve-task-switch-search";
+import {
+  useActivePanelTabId,
+  usePanelNavigate,
+} from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { readThreadLayout, saveThreadLayout } from "@/lib/thread-layout-memory";
 import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
 import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
@@ -96,9 +100,15 @@ export function usePanelActions() {
   const manager = useOptionalThreadManager();
   const { org } = useProjectContext();
 
-  const params = useParams({ strict: false });
-  const search = useSearch({ strict: false });
-  const routeProjectId = params.project;
+  const search = useSearch({ strict: false }) as {
+    mainpanel?: boolean;
+    sidepanel?: boolean;
+  };
+  const activeTabId = useActivePanelTabId();
+  const { openPanel, closePanel } = usePanelNavigate();
+  /** The agent the route NAMES — undefined on an org-level destination, which
+   *  belongs to the Super Agent and so records no agent anywhere. */
+  const routeAgentId = useRouteAgentId();
   const currentTaskId = useRouteThreadId();
   const routeVirtualMcpId = useRouteVirtualMcpId();
   const navigateThread = useThreadNavigate();
@@ -119,14 +129,15 @@ export function usePanelActions() {
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
-    opts?: { autosend?: boolean; main?: string },
+    opts?: { autosend?: boolean; panel?: string },
   ) => {
     const isSameThread = !!currentTaskId && currentTaskId === id;
     // Remember the layout of the thread we're leaving so returning to it
     // restores the same tabs/side-panel instead of the agent default.
     if (currentTaskId && !isSameThread) {
       saveThreadLayout(currentTaskId, {
-        main: search.main,
+        tab: activeTabId,
+        mainpanel: search.mainpanel,
         sidepanel: search.sidepanel,
       });
     }
@@ -135,25 +146,21 @@ export function usePanelActions() {
     const savedLayout = isSameThread ? null : readThreadLayout(id);
     const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
+    const target = resolveTaskSwitchSearch({
+      /** The source agent is the one the ROUTE names, never a search param a previous navigation left behind — a stale one misreports the agent we're switching AWAY from, and the carry-forward view rides on that comparison. */
+      prev: { virtualmcpid: routeAgentId, tabId: activeTabId },
+      virtualMcpId,
+      decopilotId,
+      savedLayout,
+      opts,
+      autosendValue: AUTOSEND_QUERY_VALUE,
+    });
+
     return navigateThread(
       id,
-      (prev) => {
-        const prevSearch = prev as { virtualmcpid?: unknown; main?: unknown };
-        return resolveTaskSwitchSearch({
-          /** The source agent is `{-$project}` on a destination route, `?virtualmcpid=` on the legacy one — path first, so a stale param can't misreport the agent we're switching AWAY from. */
-          prev: {
-            virtualmcpid: routeProjectId ?? prevSearch.virtualmcpid,
-            main: prevSearch.main,
-          },
-          virtualMcpId,
-          decopilotId,
-          savedLayout,
-          opts,
-          autosendValue: AUTOSEND_QUERY_VALUE,
-        });
-      },
-      /** A thread belongs to one agent, so switching to another project's thread moves the `{-$project}` segment with it. */
-      { virtualMcpId },
+      () => target.search,
+      /** A thread belongs to one agent, so switching to another project's thread moves the `{-$project}` segment with it — and the view it lands on moves with it too. */
+      { virtualMcpId, view: { tabId: target.tabId } },
     );
   };
 
@@ -177,7 +184,7 @@ export function usePanelActions() {
   const createNewTask = async (
     virtualMcpId?: string,
     branch?: string | null,
-    opts?: { main?: string },
+    opts?: { panel?: string },
   ) => {
     const newId = crypto.randomUUID();
     const targetVmcp = virtualMcpId ?? routeVirtualMcpId;
@@ -196,15 +203,13 @@ export function usePanelActions() {
     setTaskId(newId, targetVmcp, opts);
   };
 
-  /** Changing which tab is showing is not a reason to mint a thread. */
-  const openTab = (tabId: string) =>
-    navSearch((prev) => ({ ...prev, main: tabId }));
-
   return {
     openSidePanel,
     setTaskId,
     createNewTask,
-    openTab,
+    /** Changing which view is showing is not a reason to mint a thread. */
+    openTab: openPanel,
+    closeTab: closePanel,
   };
 }
 

@@ -156,7 +156,7 @@ test.describe("Organization main agent setting", () => {
     });
 
     // The main agent is a project, so `/$org` lands on its id as a path segment, minting no thread.
-    const mainAgentPath = `/${orgSlug}/chat/${agentId}`;
+    const mainAgentPath = `/${orgSlug}/agents/${agentId}`;
     await page.goto(`/${orgSlug}`);
     await page.waitForURL((url) => url.pathname === mainAgentPath);
     const landed = new URL(page.url());

@@ -10,7 +10,7 @@
  * independently; `useVirtualMCP` / `useSuspenseQuery` dedupe the reads.
  */
 
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement } from "react";
@@ -50,6 +50,7 @@ import {
   resolveTabClickTarget,
   type AutomationTabParsed,
 } from "./tab-id";
+import { useActivePanelTabId, usePanelNavigate } from "./use-panel-navigate";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
 import { useTaskMetadata } from "./use-task-metadata";
 import { resolvePreviewSource } from "./preview-source";
@@ -106,10 +107,9 @@ export function useMainPanelTabs(ctx: {
   taskId: string | null;
 }): MainPanelTabs {
   const t = useT();
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as {
-    main?: string | 0;
-  };
+  const { openPanel, closePanel } = usePanelNavigate();
+  const search = useSearch({ strict: false }) as { mainpanel?: boolean };
+  const panelTabId = useActivePanelTabId();
   const routeDefaultMain = useRouteDefaultMain();
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
@@ -261,7 +261,7 @@ export function useMainPanelTabs(ctx: {
   // Preview toolbar's CMS toggle. `off` takes the Content tab with it.
   const cmsOff = resolveCmsMode(entityLayout) === "off";
   const showContentTab = !cmsOff && hasEditableDecoContent(decofile, meta);
-  // Don't bounce a deep-linked `?main=content` before the first load resolves —
+  // Don't bounce a deep-linked Content view before the first load resolves —
   // unless the CMS is off, where the answer can't change.
   const contentTabPending =
     !cmsOff && !!decofileFetchParams && (decofileIsPending || metaIsPending);
@@ -279,12 +279,13 @@ export function useMainPanelTabs(ctx: {
     fileConfigsQuery.data?.configs ?? [],
     siteSlug,
   );
-  // Don't bounce a deep-linked `?main=assets` away before the first config load resolves.
+  // Don't bounce a deep-linked Assets view away before the first config load resolves.
   const assetsTabPending = fileConfigsQuery.isPending;
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
-      mainParam: search.main,
+      panelTabId,
+      mainPanelParam: search.mainpanel,
       routeDefaultMain,
       metadata:
         effectiveDefaultMainView || entityLayout
@@ -401,7 +402,7 @@ export function useMainPanelTabs(ctx: {
     });
   }
 
-  // Ephemeral file-preview tab (`?main=file:<key>`): surfaces as a pill
+  // Ephemeral file-preview tab (the `file` view): surfaces as a pill
   // while open — like the Figma artifact pill — so the open file is
   // visible in the bar and click-to-toggle closes it. Not persisted:
   // once closed, recovery is via the chat's file rows / files panel.
@@ -424,7 +425,7 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
-  // Ephemeral live-HTML preview tab (`?main=deck:<path>` — decks AND
+  // Ephemeral live-HTML preview tab (the `deck` view — decks AND
   // standalone pages from the org home volume): same pill semantics as
   // file previews. Title is the file stem; icon follows the artifact dir.
   const deckTabParsed = parseDeckTabId(activeTab);
@@ -448,7 +449,7 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
-  // Ephemeral Library file-preview tab (`?main=library-file:<path>`): an org
+  // Ephemeral Library file-preview tab (the `library-file` view): an org
   // file referenced from a chat message, opened as a side panel on desktop.
   // Same pill semantics as file/deck previews; title is the basename.
   const libraryFileTabParsed = parseLibraryFileTabId(activeTab);
@@ -544,10 +545,10 @@ export function useMainPanelTabs(ctx: {
     // preview the current agent, which has no source. On the Report Agent
     // itself this falls through to the normal tab-toggle below.
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
-      navigate({
-        to: "/$org/$taskId",
-        params: { org: org.slug, taskId: crypto.randomUUID() },
-        search: { virtualmcpid: getCommerceDiscoveryAgentId(org.id), main: id },
+      openPanel(id, {
+        project: getCommerceDiscoveryAgentId(org.id),
+        /** Another agent's conversation does not follow the view over. */
+        search: (prev) => ({ ...prev, thread: undefined }),
       });
       return;
     }
@@ -556,14 +557,8 @@ export function useMainPanelTabs(ctx: {
       activeTab,
       mainOpen,
     });
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: target,
-      }),
-      replace: true,
-    });
+    if ("close" in target) closePanel();
+    else openPanel(target.tabId);
   };
 
   return {

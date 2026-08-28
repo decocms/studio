@@ -3,8 +3,8 @@
  *
  * Clicking a run on a task used to leave the task for that run's chat. It now
  * opens a read-only sheet over the task, so the two assertions that matter are
- * that the transcript is really there and that `?task=` never moved — the task
- * is still the page you are on.
+ * that the transcript is really there and that the card's own URL never moved
+ * — the task is still the page you are on.
  *
  * The transcript is rendered by the live chat's own message components, which
  * reach for the ambient chat context to decorate a message. On the board that
@@ -17,6 +17,9 @@ import { expect, test } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
 const detail = (page: Page) => page.getByTestId("task-detail");
+
+/** A card's own URL: the board's path plus the human key it wears. */
+const cardUrl = (orgSlug: string) => new RegExp(`/${orgSlug}/tasks/[^/?#]+`);
 const sheet = (page: Page) => page.getByTestId("task-thread-sheet");
 
 /** Seeds a linked run with a two-turn transcript, and returns its thread id. */
@@ -141,13 +144,13 @@ test.describe("task run drawer", () => {
     );
     // The whole point: the task is still the page, still mounted underneath.
     expect(page.url()).toBe(url);
-    await expect(page).toHaveURL(/[?&]task=/);
+    await expect(page).toHaveURL(cardUrl(orgSlug));
     await expect(detail(page)).toBeVisible();
 
     // Closing keeps the task open and the app clickable (see detail-menu spec).
     await sheet(page).getByRole("button", { name: "Close" }).click();
     await expect(sheet(page)).toHaveCount(0);
-    await expect(page).toHaveURL(/[?&]task=/);
+    await expect(page).toHaveURL(cardUrl(orgSlug));
     await expect(detail(page)).toBeVisible();
     await expect
       .poll(() =>

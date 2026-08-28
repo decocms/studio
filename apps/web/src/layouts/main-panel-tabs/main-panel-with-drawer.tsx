@@ -3,13 +3,13 @@
  * ErrorBoundary) above the sandbox PreviewDrawer, which `shouldShowTerminalDrawer` gates.
  */
 
-import { useSearch } from "@tanstack/react-router";
 import { useChatTask } from "@/components/chat/chat-context";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { MainPanelContent } from "@/layouts/main-panel-tabs";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { shouldShowTerminalDrawer } from "./terminal-drawer-gate";
+import { useActivePanelTabId } from "./use-panel-navigate";
 import { PreviewDrawerHost } from "./preview-drawer-host";
 
 export function MainPanelWithDrawer({
@@ -21,7 +21,7 @@ export function MainPanelWithDrawer({
 }) {
   const inset = useInsetContext();
   const { activeTask } = useChatTask();
-  const { main } = useSearch({ strict: false }) as { main?: string | 0 };
+  const activeTabId = useActivePanelTabId();
   // Thread-scoped repo (bound by `load_repo`) also gets the drawer + dev
   // terminal, not just agents with their own repo.
   const hasClonableSource =
@@ -34,7 +34,7 @@ export function MainPanelWithDrawer({
   const showDrawer = shouldShowTerminalDrawer({
     hasClonableSource,
     fastPreviewActive,
-    mainTab: typeof main === "string" ? main : null,
+    mainTab: activeTabId ?? null,
   });
 
   return (

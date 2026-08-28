@@ -144,15 +144,16 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     expect(claimArg.siteUrl).toBe("https://new-site.com");
     expect(claimArg.orgId).toBe(ORG_ID);
 
-    // The completion-email CTA ("diagnóstico completo") must deep-link to the
-    // report APP VIEW, not the /commerce-onboarding page: /$org/$taskId with the
-    // vMCP selected and its report view pinned open. No chat param — the
-    // The vMCP's chatDefaultOpen metadata selects Chat in the side panel.
+    /** The completion-email CTA ("diagnóstico completo") must deep-link to the
+     *  report app view, not /commerce-onboarding; chatDefaultOpen selects Chat. */
     const reportUrl = (claimArg as unknown as { reportUrl?: string })
       .reportUrl!;
-    expect(reportUrl).toContain("https://studio.example.com/test-org/");
-    expect(reportUrl).toContain("virtualmcpid=commerce-discovery_");
-    expect(reportUrl).toContain("main=app"); // "app:<connId>:<toolName>" pinned view
+    expect(reportUrl).toContain(
+      "https://studio.example.com/test-org/agents/commerce-discovery_",
+    );
+    expect(reportUrl).toContain("/app?");
+    expect(reportUrl).toContain("tool=get_my_diagnostic");
+    expect(reportUrl).toContain("connection=");
     expect(reportUrl).not.toContain("sidepanel=");
     expect(reportUrl).not.toContain("commerce-onboarding");
 

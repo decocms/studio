@@ -25,6 +25,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
@@ -892,6 +893,7 @@ export function ActiveTaskProvider({
   const queryClient = useQueryClient();
   const manager = useThreadManager();
   const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
 
   // The connection owns SSE subscription, POSTs, and message state. The
   // provider is keyed by taskId at the layout level, so this resolves to a
@@ -925,6 +927,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    openPanel,
     orgId: org.id,
     orgSlug: org.slug,
   });
@@ -936,6 +939,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    openPanel,
     orgId: org.id,
     orgSlug: org.slug,
   };
@@ -1019,14 +1023,7 @@ export function ActiveTaskProvider({
           cb.queryClient.invalidateQueries({
             queryKey: KEYS.orgFsRecent(cb.orgId),
           });
-          cb.navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              main: formatDeckTabId(path),
-            }),
-            replace: true,
-          });
+          cb.openPanel(formatDeckTabId(path));
           return;
         }
         // `load_repo` finished cloning a repo into the thread's sandbox. Patch
@@ -1056,14 +1053,7 @@ export function ActiveTaskProvider({
               } as Task["metadata"],
             });
           }
-          cb.navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              main: "preview",
-            }),
-            replace: true,
-          });
+          cb.openPanel("preview");
           return;
         }
       },

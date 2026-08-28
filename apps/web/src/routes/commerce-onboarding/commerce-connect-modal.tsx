@@ -14,11 +14,10 @@ import {
   DialogPortal,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
+import { commerceReportNavTarget } from "@/hooks/use-commerce-diagnostic";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  getCommerceDiscoveryAgentId,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
@@ -64,14 +63,13 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
       JSON.stringify(false),
     );
     navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId: crypto.randomUUID() },
+      ...commerceReportNavTarget(
+        org,
+        WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
+      ),
       search: {
-        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
-        main: formatPinnedViewTabId(
-          WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
-          COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-        ),
+        connection: WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
+        tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
         sidepanel: false,
       },
     });

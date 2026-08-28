@@ -244,113 +244,127 @@ describe("resolveActiveTabAndOpen", () => {
     tabs: [{ id: "analytics" }],
   };
 
-  test("?main absent + defaultMainView set → open, tab = default", () => {
+  test("no segment + defaultMainView set → open, tab = default", () => {
     expect(
-      resolveActiveTabAndOpen({ mainParam: undefined, metadata: meta }),
+      resolveActiveTabAndOpen({ panelTabId: undefined, metadata: meta }),
     ).toEqual({ mainOpen: true, activeTab: "analytics" });
   });
 
-  test("?main absent + no defaultMainView → closed, tab = 'settings'", () => {
+  test("no segment + no defaultMainView → closed, tab = 'settings'", () => {
     expect(
-      resolveActiveTabAndOpen({ mainParam: undefined, metadata: null }),
+      resolveActiveTabAndOpen({ panelTabId: undefined, metadata: null }),
     ).toEqual({ mainOpen: false, activeTab: "settings" });
   });
 
-  test("?main absent + defaultMainView.type === 'chat' → closed (aligns with resolveDefaultPanelState)", () => {
+  test("no segment + defaultMainView.type === 'chat' → closed (aligns with resolveDefaultPanelState)", () => {
     expect(
       resolveActiveTabAndOpen({
-        mainParam: undefined,
+        panelTabId: undefined,
         metadata: { defaultMainView: { type: "chat" } },
       }),
     ).toEqual({ mainOpen: false, activeTab: "settings" });
   });
 
-  test("?main absent + a route default → open on the route's tab", () => {
+  test("no segment + a route default → open on the route's tab", () => {
     expect(
       resolveActiveTabAndOpen({
-        mainParam: undefined,
+        panelTabId: undefined,
         metadata: { defaultMainView: { type: "chat" } },
         routeDefaultMain: "board",
       }),
     ).toEqual({ mainOpen: true, activeTab: "board" });
   });
 
-  test("?main wins over a route default", () => {
+  test("the segment wins over a route default", () => {
     expect(
       resolveActiveTabAndOpen({
-        mainParam: "settings",
+        panelTabId: "settings",
         metadata: meta,
         routeDefaultMain: "board",
       }),
     ).toEqual({ mainOpen: true, activeTab: "settings" });
   });
 
-  test("?main=0 → closed, with the route default as the resting tab", () => {
+  test("?mainpanel=false → closed, with the route default as the resting tab", () => {
     expect(
       resolveActiveTabAndOpen({
-        mainParam: 0,
+        panelTabId: undefined,
+        mainPanelParam: false,
         metadata: meta,
         routeDefaultMain: "files",
       }),
     ).toEqual({ mainOpen: false, activeTab: "files" });
   });
 
-  test("?main=0 → closed, tab = default", () => {
-    expect(resolveActiveTabAndOpen({ mainParam: 0, metadata: meta })).toEqual({
-      mainOpen: false,
-      activeTab: "analytics",
-    });
-  });
-
-  test("?main=settings → open, tab = 'settings'", () => {
-    expect(
-      resolveActiveTabAndOpen({ mainParam: "settings", metadata: meta }),
-    ).toEqual({ mainOpen: true, activeTab: "settings" });
-  });
-
-  test("?main=instructions (legacy) → open, tab = 'settings'", () => {
-    expect(
-      resolveActiveTabAndOpen({ mainParam: "instructions", metadata: meta }),
-    ).toEqual({ mainOpen: true, activeTab: "settings" });
-  });
-
-  test("?main=connections (legacy) → open, tab = 'settings'", () => {
-    expect(
-      resolveActiveTabAndOpen({ mainParam: "connections", metadata: meta }),
-    ).toEqual({ mainOpen: true, activeTab: "settings" });
-  });
-
-  test("?main=layout (legacy) → open, tab = 'settings'", () => {
-    expect(
-      resolveActiveTabAndOpen({ mainParam: "layout", metadata: meta }),
-    ).toEqual({ mainOpen: true, activeTab: "settings" });
-  });
-
-  test("?main=automation:abc → open, tab = 'automation:abc'", () => {
+  test("?mainpanel=false keeps the view the segment names — reopening returns to it", () => {
     expect(
       resolveActiveTabAndOpen({
-        mainParam: "automation:abc",
+        panelTabId: "preview",
+        mainPanelParam: false,
+        metadata: meta,
+      }),
+    ).toEqual({ mainOpen: false, activeTab: "preview" });
+  });
+
+  test("?mainpanel=true opens a panel the agent default would leave closed", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        panelTabId: undefined,
+        mainPanelParam: true,
+        metadata: { defaultMainView: { type: "chat" } },
+      }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("segment 'settings' → open, tab = 'settings'", () => {
+    expect(
+      resolveActiveTabAndOpen({ panelTabId: "settings", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("segment 'instructions' (legacy) → open, tab = 'settings'", () => {
+    expect(
+      resolveActiveTabAndOpen({ panelTabId: "instructions", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("segment 'connections' (legacy) → open, tab = 'settings'", () => {
+    expect(
+      resolveActiveTabAndOpen({ panelTabId: "connections", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("segment 'layout' (legacy) → open, tab = 'settings'", () => {
+    expect(
+      resolveActiveTabAndOpen({ panelTabId: "layout", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("an automation detail tab id → open on it", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        panelTabId: "automation:abc",
         metadata: meta,
       }),
     ).toEqual({ mainOpen: true, activeTab: "automation:abc" });
   });
 
-  test("?main=git → open, tab = 'git'", () => {
+  test("segment 'git' → open, tab = 'git'", () => {
     expect(
-      resolveActiveTabAndOpen({ mainParam: "git", metadata: meta }),
+      resolveActiveTabAndOpen({ panelTabId: "git", metadata: meta }),
     ).toEqual({ mainOpen: true, activeTab: "git" });
   });
 });
 
 describe("resolveTabClickTarget", () => {
-  test("clicking active tab while panel open → close (0)", () => {
+  test("clicking active tab while panel open → close", () => {
     expect(
       resolveTabClickTarget({
         clickedId: "settings",
         activeTab: "settings",
         mainOpen: true,
       }),
-    ).toBe(0);
+    ).toEqual({ close: true });
   });
 
   test("clicking non-active tab while panel open → clicked id", () => {
@@ -360,7 +374,7 @@ describe("resolveTabClickTarget", () => {
         activeTab: "settings",
         mainOpen: true,
       }),
-    ).toBe("preview");
+    ).toEqual({ tabId: "preview" });
   });
 
   test("clicking any tab while panel closed → clicked id (open it)", () => {
@@ -370,14 +384,14 @@ describe("resolveTabClickTarget", () => {
         activeTab: "settings",
         mainOpen: false,
       }),
-    ).toBe("settings");
+    ).toEqual({ tabId: "settings" });
     expect(
       resolveTabClickTarget({
         clickedId: "preview",
         activeTab: "settings",
         mainOpen: false,
       }),
-    ).toBe("preview");
+    ).toEqual({ tabId: "preview" });
   });
 });
 
@@ -426,7 +440,7 @@ describe("resolveAutomationsPillClickTarget", () => {
         activeTab: "automations",
         mainOpen: false,
       }),
-    ).toBe("automations");
+    ).toEqual({ tabId: "automations" });
   });
 
   test("on detail (automation:<id>) → navigate up to list", () => {
@@ -435,7 +449,7 @@ describe("resolveAutomationsPillClickTarget", () => {
         activeTab: "automation:abc",
         mainOpen: true,
       }),
-    ).toBe("automations");
+    ).toEqual({ tabId: "automations" });
   });
 
   test("on detail (automation:new) → navigate up to list", () => {
@@ -444,16 +458,16 @@ describe("resolveAutomationsPillClickTarget", () => {
         activeTab: "automation:new",
         mainOpen: true,
       }),
-    ).toBe("automations");
+    ).toEqual({ tabId: "automations" });
   });
 
-  test("on list while panel open → close (0)", () => {
+  test("on list while panel open → close", () => {
     expect(
       resolveAutomationsPillClickTarget({
         activeTab: "automations",
         mainOpen: true,
       }),
-    ).toBe(0);
+    ).toEqual({ close: true });
   });
 
   test("on unrelated tab → open list", () => {
@@ -462,7 +476,7 @@ describe("resolveAutomationsPillClickTarget", () => {
         activeTab: "settings",
         mainOpen: true,
       }),
-    ).toBe("automations");
+    ).toEqual({ tabId: "automations" });
   });
 });
 

@@ -2,7 +2,7 @@
  * ConnectSourcesTab — reopens the commerce-onboarding connect flow for a
  * client who already finished onboarding but skipped one or more data
  * sources (GA4/GSC/VTEX/GitHub). Opened via the report app's generic
- * `studio://navigate?main=connect-sources` resource link (see
+ * `studio://navigate?main=connect-sources` app message (see
  * project-app-navigate.ts) — a dismissable overlay tab, unlike the blocking
  * onboarding step (CommerceConnectModal), sharing the same provider-card UI
  * and chrome (ConnectLayout) so the two don't drift.
@@ -12,7 +12,6 @@
  * place (ConnectSourceDialog) instead of swapping the panel.
  */
 import { useMutation } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import { Suspense, useState } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t.ts";
@@ -32,6 +31,7 @@ import {
   ConnectLayout,
 } from "@/routes/commerce-onboarding/connect-layout.tsx";
 import { parseSelfToolResult } from "@/routes/commerce-onboarding/self-tool-result.ts";
+import { usePanelNavigate } from "./use-panel-navigate";
 
 function ConnectSourcesTabError({ onClose }: { onClose: () => void }) {
   const t = useT();
@@ -45,16 +45,8 @@ function ConnectSourcesTabError({ onClose }: { onClose: () => void }) {
 }
 
 export function ConnectSourcesTab() {
-  const navigate = useNavigate();
-  const close = () =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: 0 as const,
-      }),
-      replace: true,
-    });
+  const { closePanel } = usePanelNavigate();
+  const close = () => closePanel();
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">

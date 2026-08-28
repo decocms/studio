@@ -16,13 +16,13 @@
  * This is the durable counterpart: it scans the persisted messages for a
  * successful `load_repo` tool result (`tool-load_repo`, `output-available`,
  * `output.success`), refreshes the thread's metadata from the server and opens
- * `?main=preview`. The tab opens once per thread (so it never fights a manual
+ * the Preview view. The tab opens once per thread (so it never fights a manual
  * switch away from Preview afterwards) while the metadata refresh re-runs on a
  * repo SWITCH — a second `load_repo` binds a different repo and sandbox.
  */
 
-import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useOptionalChatStream, useOptionalChatTask } from "./context";
 import { useOptionalThreadManager } from "./store/hooks";
 
@@ -52,7 +52,7 @@ export function countLoadedRepos(
 }
 
 export function useOpenPreviewOnRepoLoad(): void {
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const manager = useOptionalThreadManager();
   const messages = useOptionalChatStream()?.messages ?? [];
   const taskId = useOptionalChatTask()?.taskId ?? null;
@@ -74,10 +74,6 @@ export function useOpenPreviewOnRepoLoad(): void {
     }
     if (openedFor.current === taskId) return;
     openedFor.current = taskId;
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: "preview" }),
-      replace: true,
-    });
-  }, [loads, taskId, navigate, manager]);
+    openPanel("preview");
+  }, [loads, taskId, openPanel, manager]);
 }

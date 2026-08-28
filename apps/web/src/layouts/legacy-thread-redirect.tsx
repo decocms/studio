@@ -33,21 +33,21 @@ export function LegacyThreadRedirect() {
   const target = useLegacyThreadTarget();
   if (!target) return null;
 
-  if (target.to === "/$org/chat/{-$project}") {
+  if (target.to === "/$org/agents/{-$project}/{-$panel}") {
     return (
       <Navigate
-        to="/$org/chat/{-$project}"
+        to="/$org/agents/{-$project}/{-$panel}"
         params={target.params}
         search={target.search}
         replace
       />
     );
   }
-  if (target.to === "/$org/tasks/{-$project}") {
+  if (target.to === "/$org/tasks/{-$taskKey}") {
     return (
       <Navigate
-        to="/$org/tasks/{-$project}"
-        params={target.params}
+        to="/$org/tasks/{-$taskKey}"
+        params={{ org: target.params.org }}
         search={target.search}
         replace
       />

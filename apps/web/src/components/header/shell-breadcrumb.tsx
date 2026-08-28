@@ -238,7 +238,7 @@ export function NewChatCrumb() {
 
   /**
    * The scope of the page, not of the legacy grammar: on
-   * `/$org/chat/{-$project}` the project segment names the agent, so a new chat
+   * `/$org/agents/{-$project}` the project segment names the agent, so a new chat
    * started there belongs to that project rather than to the Super Agent.
    */
   const activeAgentId = useRouteVirtualMcpId();

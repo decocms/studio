@@ -53,7 +53,7 @@ function AppRenderer({
 }) {
   const { sendMessage } = useChatStream();
   const { setAppContext, clearAppContext } = useChatPrefs();
-  const { openSidePanel, openTab } = usePanelActions();
+  const { openSidePanel, openTab, closeTab } = usePanelActions();
   const sourceId = `${connectionId}:${tool.name}`;
   // A `field`-carrying connect-sources navigate opens the source's connect
   // dialog right here, over the app view — swapping the whole panel to the
@@ -66,7 +66,7 @@ function AppRenderer({
     mode: McpUiDisplayMode,
   ): McpUiDisplayMode => {
     if (mode === "inline") {
-      openTab("0");
+      closeTab();
       return "inline";
     }
     return "fullscreen";

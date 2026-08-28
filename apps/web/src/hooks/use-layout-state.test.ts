@@ -11,7 +11,7 @@ import {
 
 describe("resolveDefaultPanelState", () => {
   const absentSearch = {
-    mainParamPresent: false,
+    panelNamed: false,
     sidePanelParamPresent: false,
   };
 
@@ -76,7 +76,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "overview" },
           chatDefaultOpen: false,
         },
-        mainParamPresent: false,
+        panelNamed: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: true,
       }),
@@ -90,7 +90,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "settings" },
           chatDefaultOpen: true,
         },
-        mainParamPresent: false,
+        panelNamed: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
       }),
@@ -100,7 +100,7 @@ describe("resolveDefaultPanelState", () => {
   /**
    * INVERTED: a destination route used to open its main view AND the chat
    * beside it. Going to Tasks now shows Tasks alone — a route that names its
-   * own `defaultMain` collapses the side panel, and `/$org/chat` gets its open
+   * own `defaultMain` collapses the side panel, and `/$org/agents` gets its open
    * panel for free by declaring no `defaultMain` at all.
    */
   test("a route default opens Main alone, collapsing the chat", () => {
@@ -117,7 +117,7 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        mainParamPresent: false,
+        panelNamed: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: true,
         routeDefaultMain: "board",
@@ -125,26 +125,51 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanelOpen: true, mainOpen: true });
   });
 
-  test("main=0 on a route default leaves the chat as the last open panel", () => {
+  test("?mainpanel=false on a route default leaves the chat as the last open panel", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        mainParamPresent: true,
-        mainParamValue: 0,
+        mainPanelParam: false,
+        panelNamed: false,
         sidePanelParamPresent: false,
         routeDefaultMain: "board",
       }),
       /** The route default would collapse the chat, but the "at least one panel
-       *  open" fallback keeps it showing once `main=0` closes the other. */
+       *  open" fallback keeps it showing once the main panel closes. */
     ).toEqual({ sidePanelOpen: true, mainOpen: false });
   });
 
-  test("main=<tab> opens Main alongside a Chat default", () => {
+  /** INVERTED: this was `?main=<tab>`. The view is a path segment now, so what
+   *  opens the panel is the segment naming one — `panelNamed`. */
+  test("a named view opens Main alongside a Chat default", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        mainParamPresent: true,
-        mainParamValue: "settings",
+        panelNamed: true,
+        sidePanelParamPresent: false,
+      }),
+    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+  });
+
+  /** The split's payoff: the view stays in the path while the panel is shut, so
+   *  `?mainpanel=false` closes it without forgetting where it was. */
+  test("?mainpanel=false closes the panel even when the path names a view", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: { defaultMainView: { type: "chat" } },
+        panelNamed: true,
+        mainPanelParam: false,
+        sidePanelParamPresent: false,
+      }),
+    ).toEqual({ sidePanelOpen: true, mainOpen: false });
+  });
+
+  test("?mainpanel=true opens a panel the agent default would leave closed", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: { defaultMainView: { type: "chat" } },
+        panelNamed: false,
+        mainPanelParam: true,
         sidePanelParamPresent: false,
       }),
     ).toEqual({ sidePanelOpen: true, mainOpen: true });
@@ -154,8 +179,8 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "settings" } },
-        mainParamPresent: true,
-        mainParamValue: 0,
+        mainPanelParam: false,
+        panelNamed: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
       }),
@@ -211,22 +236,24 @@ describe("resolveWorkspacePanelAction", () => {
     ).toBeNull();
   });
 
+  /** INVERTED: opening Main used to have to NAME a view (`main=<tabId>`), which
+   *  is why closing it erased one. Both directions are the boolean now. */
   test("opens and closes Main with the final-panel guard", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleMain", openMainValue: "preview" },
+        { type: "toggleMain" },
         { sidePanelOpen: true, mainOpen: false },
       ),
-    ).toEqual({ main: "preview" });
+    ).toEqual({ mainpanel: true });
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleMain", openMainValue: "preview" },
+        { type: "toggleMain" },
         { sidePanelOpen: true, mainOpen: true },
       ),
-    ).toEqual({ main: 0 });
+    ).toEqual({ mainpanel: false });
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleMain", openMainValue: "preview" },
+        { type: "toggleMain" },
         { sidePanelOpen: false, mainOpen: true },
       ),
     ).toBeNull();
@@ -269,13 +296,13 @@ describe("computeWorkspacePanelSizes", () => {
 
 describe("mobileSurfaceSearch", () => {
   test("selects exactly one mobile surface", () => {
-    expect(mobileSurfaceSearch("chat", "preview")).toEqual({
+    expect(mobileSurfaceSearch("chat")).toEqual({
       sidepanel: true,
-      main: 0,
+      mainpanel: false,
     });
-    expect(mobileSurfaceSearch("main", "preview")).toEqual({
+    expect(mobileSurfaceSearch("main")).toEqual({
       sidepanel: false,
-      main: "preview",
+      mainpanel: true,
     });
   });
 });

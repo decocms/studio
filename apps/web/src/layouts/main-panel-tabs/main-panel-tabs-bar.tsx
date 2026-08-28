@@ -13,11 +13,11 @@
  * hook's setActiveTab (tab-as-toggle via resolveTabClickTarget).
  */
 
-import { useNavigate } from "@tanstack/react-router";
 import {
   isAutomationsPillActive,
   resolveAutomationsPillClickTarget,
 } from "./tab-id";
+import { usePanelNavigate } from "./use-panel-navigate";
 import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
 import { selectBarSlots, MAX_VISIBLE } from "./select-bar-slots";
 import { HeaderTabButton } from "./header-tab-button";
@@ -52,7 +52,7 @@ export function MainPanelTabsBar({
   /** Space-adaptive cap from the shell; clamped to `MAX_VISIBLE`. */
   maxVisible?: number;
 }) {
-  const navigate = useNavigate();
+  const { openPanel, closePanel } = usePanelNavigate();
   const { tabs, activeTab, mainOpen, setActiveTab, leadTabId } =
     useMainPanelTabs({
       virtualMcpId,
@@ -86,11 +86,8 @@ export function MainPanelTabsBar({
     });
     if (id === "automations") {
       const target = resolveAutomationsPillClickTarget({ activeTab, mainOpen });
-      navigate({
-        to: ".",
-        search: (prev: Record<string, unknown>) => ({ ...prev, main: target }),
-        replace: true,
-      });
+      if ("close" in target) closePanel();
+      else openPanel(target.tabId);
       return;
     }
     setActiveTab(id);

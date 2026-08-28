@@ -1,7 +1,7 @@
 /**
  * The sidebar lists DESTINATIONS — Home, Reports, Tasks, Library — instead of
  * chat threads. Each is a real path (`/$org/home`, `/$org/reports`,
- * `/$org/tasks/{-$project}`, `/$org/library`) under the governing rule: path =
+ * `/$org/tasks/{-$taskKey}`, `/$org/library`) under the governing rule: path =
  * which page, search = how that page is laid out. So every row is a genuine
  * `<Link>` anchor — cmd-click, middle-click and "Copy link address" all work —
  * and never a button that navigates imperatively.
@@ -11,7 +11,7 @@
  * `?thread=`, and an absent one is a fresh composer with no row written.
  *
  * The org's coding agents (GitHub-backed virtual MCPs) trail the list, one row
- * per repo, linking to `/$org/chat/<agentId>` — those DO switch projects, since
+ * per repo, linking to `/$org/agents/<agentId>` — those DO switch projects, since
  * each owns its own codebase. Agent rows also carry a
  * `showProjectSettingsGear`-gated gear onto that project's settings.
  *
@@ -20,7 +20,7 @@
  */
 
 import type { ReactNode } from "react";
-import { Link, useParams, type LinkProps } from "@tanstack/react-router";
+import { Link, type LinkProps } from "@tanstack/react-router";
 import {
   BarChartSquare02,
   Columns03,
@@ -36,11 +36,7 @@ import {
 } from "@decocms/ui/components/sidebar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  useProjectContext,
-  useVirtualMCPs,
-} from "@/sdk";
+import { useProjectContext, useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import {
@@ -53,9 +49,7 @@ import {
   DESTINATION_ROUTE,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
-import { useRouteThreadId } from "@/layouts/thread-route";
-import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
+import { useRouteProjectId, useRouteThreadId } from "@/layouts/thread-route";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
@@ -79,7 +73,6 @@ interface NavDestination {
 function useNavDestinations(): NavDestination[] {
   const t = useT();
   const { org } = useProjectContext();
-  const { diagnostic, connectionId } = useCommerceDiagnostic();
   const leafPath = useLeafRoutePath();
 
   const destination = (
@@ -89,12 +82,6 @@ function useNavDestinations(): NavDestination[] {
     isActive: boolean,
     link: LinkProps,
   ): NavDestination => ({ key, label, icon, isActive, trackAs: key, link });
-
-  /** Reports opens the org's pinned Commerce Discovery report when it has one;
-   *  otherwise the route's own default view (the "no reports yet" empty state). */
-  const reportsKey = diagnostic
-    ? formatPinnedViewTabId(connectionId, COMMERCE_DISCOVERY_REPORT_TOOL_NAME)
-    : "reports";
 
   return [
     destination(
@@ -106,22 +93,24 @@ function useNavDestinations(): NavDestination[] {
       { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
     ),
     destination(
-      reportsKey,
+      "reports",
       t("sidebar.navDestinations.reports"),
       <BarChartSquare02 size={16} />,
       leafPath === DESTINATION_ROUTE.reports,
-      {
-        to: DESTINATION_ROUTE.reports,
-        params: { org: org.slug },
-        search: diagnostic ? { main: reportsKey } : {},
-      },
+      { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
     ),
     destination(
       "board",
       t("sidebar.navDestinations.tasks"),
       <Columns03 size={16} />,
       leafPath === DESTINATION_ROUTE.tasks,
-      { to: DESTINATION_ROUTE.tasks, params: { org: org.slug } },
+      {
+        to: DESTINATION_ROUTE.tasks,
+        /** Explicitly cleared: params merge with the current match, so an open
+         *  card would otherwise keep its segment and this link would go
+         *  nowhere. Tasks means the lanes. */
+        params: { org: org.slug, taskKey: undefined },
+      },
     ),
     destination(
       "files",
@@ -142,7 +131,7 @@ function useAgentNavRows(
   const devAgentIds = getDevAgentIds(agents);
   const leafPath = useLeafRoutePath();
   /** The `{-$project}` segment of the matched route; absent off a scoped one. */
-  const activeProject = useParams({ strict: false }).project;
+  const activeProject = useRouteProjectId();
   const routeThreadId = useRouteThreadId();
 
   return agents
@@ -150,14 +139,17 @@ function useAgentNavRows(
     .map((agent) => {
       const repo = getActiveGithubRepo(agent);
       const isActive =
-        leafPath === DESTINATION_ROUTE.chat && activeProject === agent.id;
+        leafPath === DESTINATION_ROUTE.agents && activeProject === agent.id;
       /**
        * Landing on a project is a navigation, so the row carries no thread —
        * the chat panel opens an empty composer. The exception is the row you
        * are already on: swapping the view there must not close the open chat.
        */
       const thread = isActive && routeThreadId ? routeThreadId : undefined;
-      const params = { org: org.slug, project: agent.id };
+      /** `panel: undefined` is deliberate: params merge with the current
+       *  match, so a project row would otherwise carry the open view over to
+       *  the project you are switching TO. */
+      const params = { org: org.slug, project: agent.id, panel: undefined };
       return {
         key: agent.id,
         label: agent.title || repo?.name || "",
@@ -172,15 +164,17 @@ function useAgentNavRows(
         isActive,
         trackAs: "coding_agent",
         link: {
-          to: DESTINATION_ROUTE.chat,
+          to: DESTINATION_ROUTE.agents,
           params,
           search: thread ? { thread } : {},
         } satisfies LinkProps,
         settingsLink: {
-          to: DESTINATION_ROUTE.chat,
-          params,
-          // `?main=settings` — the target the agents list's row menu opens too.
-          search: thread ? { main: "settings", thread } : { main: "settings" },
+          to: DESTINATION_ROUTE.agents,
+          /** The Settings view — the target the agents list's row menu opens
+           *  too. Named explicitly because params merge with the current match,
+           *  so without it the link would keep whatever view is open. */
+          params: { ...params, panel: "settings" },
+          search: thread ? { thread } : {},
         } satisfies LinkProps,
       };
     });

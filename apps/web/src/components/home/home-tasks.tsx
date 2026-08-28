@@ -7,7 +7,6 @@
  * board (the metric tiles).
  */
 import { type ReactNode, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { formatTimeAgo } from "@/lib/format-time";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -15,6 +14,7 @@ import { ArrowUpRight, Calendar, Flag01, Plus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { useMembers } from "@/hooks/use-members";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
 import {
   useTaskBoardItemActions,
@@ -154,7 +154,7 @@ function buildSummary(
 
 export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const t = useT();
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const { items, error } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const { data: membersData } = useMembers();
@@ -175,13 +175,8 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const filtered =
     tab === "all" ? sorted : sorted.filter((t) => t.status === tab);
 
-  // Open the task board in the main panel next to chat (same as the Tasks
-  // toolbar toggle).
-  const openBoard = () =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: "board" }),
-    });
+  // The board is a destination of its own (same as the sidebar's Tasks).
+  const openBoard = () => openPanel("board", { replace: false });
 
   return (
     <div className="flex flex-col gap-10">

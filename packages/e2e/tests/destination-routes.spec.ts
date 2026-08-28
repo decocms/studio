@@ -2,9 +2,10 @@
  * E2E: the destination routes, and the legacy URLs that translate into them.
  *
  * The route grammar under test: **path = which page, search = how that page is
- * laid out.** Home, Chat, Tasks, Reports and Library are real path segments;
- * `main`, `sidepanel` and `thread` stay in search because they describe the
- * layout (`main=0` means "closed", which no path segment can express).
+ * laid out.** Home, Chat, Tasks, Reports and Library are real path segments,
+ * and so is the main-panel view (`/agents/<project>/preview`); `sidepanel`,
+ * `mainpanel` and `thread` stay in search because they describe the layout —
+ * whether each panel is open, and which conversation is in it.
  *
  * This covers the routing half of the deleted `nav-v2.spec.ts`. There is no
  * flag left to toggle — every org gets these routes — so what is worth pinning
@@ -69,12 +70,13 @@ async function createThread(
   request: APIRequestContext,
   orgSlug: string,
   virtualMcpId: string,
+  title?: string,
 ): Promise<string> {
   const thread = await callSelfMcpTool<{ item: { id: string } }>(
     request,
     orgSlug,
     "COLLECTION_THREADS_CREATE",
-    { data: { virtual_mcp_id: virtualMcpId } },
+    { data: { virtual_mcp_id: virtualMcpId, ...(title ? { title } : {}) } },
   );
   return thread.item.id;
 }
@@ -112,7 +114,7 @@ test.describe("destination routes", () => {
       { path: `/${orgSlug}/tasks`, panel: mainPanel },
       { path: `/${orgSlug}/library`, panel: mainPanel },
       { path: `/${orgSlug}/reports`, panel: mainPanel },
-      { path: `/${orgSlug}/chat`, panel: chatPanel },
+      { path: `/${orgSlug}/agents`, panel: chatPanel },
     ] as const;
 
     for (const { path, panel } of destinations) {
@@ -152,7 +154,7 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${projectId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/chat/${projectId}` &&
+        url.pathname === `/${orgSlug}/agents/${projectId}` &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -162,7 +164,7 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/${threadId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/chat` &&
+        url.pathname === `/${orgSlug}/agents` &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -202,6 +204,170 @@ test.describe("destination routes", () => {
     });
   }
 
+  /**
+   * A card is a thing you open, so it has a path of its own. The key it wears
+   * is the address the app writes: an id or a loose spelling settles onto it,
+   * the short link is an alias for it, and a legacy `?task=` retires into it.
+   */
+  test("a card owns its path, and every older shape lands on it", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const { item } = await callSelfMcpTool<{ item: { id: string } }>(
+      request,
+      orgSlug,
+      "TASK_BOARD_ITEM_CREATE",
+      { title: "card url e2e" },
+    );
+
+    /* The raw id resolves, then the board rewrites it to the human key — so
+       the address bar always shows the form worth pasting somewhere. */
+    await page.goto(`/${orgSlug}/tasks/${item.id}`);
+    await expect(page.getByTestId("task-detail")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    const cardPath = new URL(page.url()).pathname;
+    expect(cardPath).not.toBe(`/${orgSlug}/tasks/${item.id}`);
+    expect(cardPath.startsWith(`/${orgSlug}/tasks/`)).toBe(true);
+    const key = cardPath.slice(`/${orgSlug}/tasks/`.length);
+
+    /* A lowercase, unpadded spelling names the same card and canonicalizes. */
+    await page.goto(`/${orgSlug}/tasks/${key.toLowerCase()}`);
+    await page.waitForURL((url) => url.pathname === cardPath, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    /* The short link in every digest email already delivered: a thin alias. */
+    await page.goto(`/${orgSlug}/t/${key}`);
+    await page.waitForURL((url) => url.pathname === cardPath, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    /* `?task=<id>` was the card's address before it had a path. It is accepted
+       as a legacy INPUT and rewritten, never written. */
+    await page.goto(`/${orgSlug}/tasks?task=${item.id}`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === cardPath && url.searchParams.get("task") === null,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+
+    /* An unknown key lands on the board, not an error page — the card was
+       probably deleted, and the board is where you would look next. */
+    await page.goto(`/${orgSlug}/t/NOPE-99`);
+    await page.waitForURL((url) => url.pathname === `/${orgSlug}/tasks`, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+  });
+
+  /**
+   * The main-panel view is a path segment on Chat, and whether the panel is
+   * OPEN is a separate boolean — which is what lets a closed panel keep
+   * remembering its view. `?main=` said both at once and is accepted forever as
+   * a legacy INPUT: it is in bookmarks and in mail already delivered.
+   */
+  test("a view is a path segment, and a legacy ?main= still lands on it", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const projectId = await createProject(request, orgSlug, "panel path e2e");
+
+    /* The address a view is written as. */
+    await page.goto(`/${orgSlug}/agents/${projectId}/settings`);
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    /* Closing keeps the view in the path, so reopening returns to it. */
+    await page.goto(`/${orgSlug}/agents/${projectId}/settings?mainpanel=false`);
+    await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
+    expect(new URL(page.url()).pathname).toBe(
+      `/${orgSlug}/agents/${projectId}/settings`,
+    );
+
+    /* A bookmark from before the split lands on the same view, with `main`
+       retired out of the URL. */
+    await page.goto(`/${orgSlug}/agents/${projectId}?main=settings`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.searchParams.get("main") === null,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+  });
+
+  /**
+   * REGRESSION. `{-$project}` and `{-$panel}` are both optional, so a view on
+   * the Super Agent — which has no project — matches as `project="<view>"`.
+   * Reading that param raw hands a VIEW name to the agent lookup and the whole
+   * workspace becomes "Agent not found". It is not a hand-typed URL either: the
+   * panel writers and the legacy `?main=` translator both mint this shape from
+   * a page that names no project.
+   */
+  test("a lone /agents/<view> is the view, not a project named after it", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    for (const view of ["preview", "settings", "board"]) {
+      await page.goto(`/${orgSlug}/agents/${view}`);
+      await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      /* The workspace, not the not-found page the raw read produced. */
+      await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      expect(new URL(page.url()).pathname).toBe(`/${orgSlug}/agents/${view}`);
+    }
+
+    /* The legacy translator mints exactly this shape off a project-less page. */
+    await page.goto(`/${orgSlug}/home?main=preview`);
+    await page.waitForURL(
+      (url) => url.pathname === `/${orgSlug}/agents/preview`,
+      {
+        timeout: SHELL_TIMEOUT_MS,
+      },
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+  });
+
+  /**
+   * REPRODUCED BUG. Home, Tasks, Reports and Library are ORG-LEVEL: they have
+   * no `{-$project}` segment because they belong to the Super Agent. Opening
+   * another agent's chat from one of them used to stay put and record that
+   * agent in `?virtualmcpid=`, which the workspace then read back — so a whole
+   * org-wide report served itself scoped to one project.
+   *
+   * A thread belongs where its agent lives, so the switch leaves for that
+   * agent's own workspace and the search key is written nowhere.
+   */
+  test("an org-level destination never carries an agent in its search", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const projectId = await createProject(request, orgSlug, "org level e2e");
+    const threadId = await createThread(
+      request,
+      orgSlug,
+      projectId,
+      "org level e2e chat",
+    );
+
+    await page.goto(`/${orgSlug}/reports?sidepanel=true`);
+    await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
+
+    await page
+      .getByRole("button", { name: "Chats", exact: true })
+      .click({ timeout: SHELL_TIMEOUT_MS });
+    const row = page.locator(`[data-task-id="${threadId}"]`);
+    await expect(row).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await row.click();
+
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${projectId}` &&
+        url.searchParams.get("thread") === threadId,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
+  });
+
   test("the short org links still redirect", async ({
     authedPage: { page, orgSlug },
   }) => {
@@ -236,7 +402,19 @@ test.describe("destination routes", () => {
 
     /* Closing the main panel can never leave the workspace blank: with the
        route default collapsing the chat, the fallback reopens it. */
+    await page.goto(`/${orgSlug}/tasks?mainpanel=false`);
+    await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(mainPanel(page)).toBeHidden();
+
+    /* `?main=0` said the same thing before the view moved into the path. It is
+       accepted as a legacy INPUT and rewritten, never written. */
     await page.goto(`/${orgSlug}/tasks?main=0`);
+    await page.waitForURL(
+      (url) =>
+        url.searchParams.get("main") === null &&
+        url.searchParams.get("mainpanel") === "false",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toBeHidden();
 

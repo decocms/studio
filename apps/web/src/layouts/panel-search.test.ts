@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sidePanelSearchSchema } from "./sidepanel-search";
+import { mainPanelSearchSchema, sidePanelSearchSchema } from "./panel-search";
 
 const parse = (value: unknown) => sidePanelSearchSchema.parse(value);
 
@@ -21,6 +21,25 @@ describe("sidePanelSearchSchema", () => {
   test("falls back to the default rather than throwing on anything else", () => {
     for (const value of ["", "0", "true", "files", 1, null, {}, []]) {
       expect(parse(value)).toBeUndefined();
+    }
+  });
+});
+
+describe("mainPanelSearchSchema", () => {
+  const parseMain = (value: unknown) => mainPanelSearchSchema.parse(value);
+
+  test("passes booleans through unchanged", () => {
+    expect(parseMain(true)).toBe(true);
+    expect(parseMain(false)).toBe(false);
+  });
+
+  test("absent means the route/agent default decides whether the panel opens", () => {
+    expect(parseMain(undefined)).toBeUndefined();
+  });
+
+  test("falls back to the default rather than throwing on anything else", () => {
+    for (const value of ["", "0", 0, 1, "true", "preview", null, {}, []]) {
+      expect(parseMain(value)).toBeUndefined();
     }
   });
 });

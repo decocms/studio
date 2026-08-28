@@ -8,7 +8,9 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { getCommerceDiscoveryAgentId, useProjectContext } from "@/sdk";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
+import { mobileSurfaceSearch } from "@/hooks/use-layout-state";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
+import { usePanelNavigate } from "./use-panel-navigate";
 import { shouldDeepLinkSourceTab } from "./source-system-tabs";
 import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
@@ -57,6 +59,7 @@ export function MobileMainPanelTabSelect({
 }) {
   const t = useT();
   const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const params = useParams({ strict: false }) as {
     org?: string;
     taskId?: string;
@@ -69,7 +72,7 @@ export function MobileMainPanelTabSelect({
   const reportsOnly = useReportsOnly();
   const onReportAgent = virtualMcpId === getCommerceDiscoveryAgentId(org.id);
 
-  // Tasks / Library are toggled via `?main=board|files`; they need a task route
+  // Tasks / Library are destinations of their own; they need a task route
   // to act on (same gate as the desktop toggles).
   const overlayEnabled = !!(params.org && params.taskId);
 
@@ -125,23 +128,28 @@ export function MobileMainPanelTabSelect({
     // from any other shell deep-link into it instead of opening a source-less
     // panel on the current agent (mirrors setActiveTab in useMainPanelTabs).
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: value })) {
-      navigate({
-        to: "/$org/$taskId",
-        params: { org: org.slug, taskId: crypto.randomUUID() },
-        search: {
-          virtualmcpid: getCommerceDiscoveryAgentId(org.id),
-          main: value,
-        },
+      openPanel(value, {
+        project: getCommerceDiscoveryAgentId(org.id),
+        /** Another agent's conversation does not follow the view over. */
+        search: (prev) => ({ ...prev, thread: undefined, sidepanel: false }),
       });
       return;
     }
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) =>
-        value === "chat"
-          ? { ...prev, sidepanel: true, main: 0 as const }
-          : { ...prev, sidepanel: false, main: value },
-      replace: true,
+    if (value === "chat") {
+      navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          ...mobileSurfaceSearch("chat"),
+        }),
+        replace: true,
+      });
+      return;
+    }
+    /** The view is the path now, so only the chat half needs writing: naming a
+     *  view is what opens the main panel. */
+    openPanel(value, {
+      search: (prev) => ({ ...prev, sidepanel: false }),
     });
   };
 

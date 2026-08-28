@@ -24,7 +24,7 @@ export interface TerminalDrawerGateInput {
    * the session runs on a sandbox.
    */
   fastPreviewActive: boolean;
-  /** Current `?main=` tab id, or `null` when unset. */
+  /** The main panel's active view as a tab id, or `null` when it names none. */
   mainTab: string | null;
 }
 

@@ -14,9 +14,9 @@ import { ShellRouteLoading } from "@/layouts/shell-route-loading";
 
 /**
  * `?main=` values that became destinations of their own. A deep link minted
- * before the promotion (a shared `/$org?main=board&task=…`, the short card
- * link) keeps working by landing on the path instead of the overlay — the same
- * table `translateLegacyThreadRoute` applies to `/$org/$taskId`.
+ * before the promotion (a shared `/$org?main=board&task=…`) keeps working by
+ * landing on the path instead of the overlay — the same table
+ * `translateLegacyThreadRoute` applies to `/$org/$taskId`.
  */
 const DESTINATION_BY_MAIN_TAB = {
   board: DESTINATION_ROUTE.tasks,
@@ -37,8 +37,13 @@ export default function OrgHome() {
   /** Suspense read (cache-warm from the shell), used to validate the main agent
    *  still exists so a deleted one falls back to the Super Agent. */
   const agents = useVirtualMCPs();
-  /** `main` carries a deep link into a main-panel overlay (e.g. `board` =
-   *  Tasks, `files` = Library) through the redirect. */
+  /** `main` carries a legacy deep link into a view (e.g. `board` = Tasks,
+   *  `files` = Library) through the redirect. The four destination-backed
+   *  values land on their own page below; every other value rides along to the
+   *  chat route verbatim, where `<LegacyMainRedirect />` retires it into the
+   *  `{-$panel}` segment — the single place that translation lives. `task`
+   *  rides along to the board only, which is the one destination that retires
+   *  it into its path. */
   const { connect, siteUrl, main, task, sidepanel } = useSearch({
     strict: false,
   }) as {
@@ -59,7 +64,7 @@ export default function OrgHome() {
     return (
       <Navigate
         to={DESTINATION_BY_MAIN_TAB[main]}
-        params={{ org: org.slug, project: undefined }}
+        params={{ org: org.slug }}
         search={{ connect, siteUrl, task, sidepanel }}
         replace
       />
@@ -79,9 +84,9 @@ export default function OrgHome() {
   if (project) {
     return (
       <Navigate
-        to={DESTINATION_ROUTE.chat}
-        params={{ org: org.slug, project }}
-        search={{ connect, siteUrl, task, sidepanel }}
+        to={DESTINATION_ROUTE.agents}
+        params={{ org: org.slug, project, panel: undefined }}
+        search={{ connect, siteUrl, sidepanel, main }}
         replace
       />
     );
@@ -93,7 +98,7 @@ export default function OrgHome() {
     <Navigate
       to={DESTINATION_ROUTE.home}
       params={{ org: org.slug }}
-      search={{ connect, siteUrl, sidepanel }}
+      search={{ connect, siteUrl, sidepanel, main }}
       replace
     />
   );

@@ -73,7 +73,8 @@ test.describe("Blocks preview mode", () => {
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Preview", exact: true }).click();
-    await expect(page).toHaveURL(/main=preview/);
+    /* The view is a path segment now: `/agents/<project>/preview`. */
+    await expect(page).toHaveURL(/\/agents\/[^/?]+\/preview/);
     await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
   });
@@ -96,14 +97,14 @@ test.describe("Blocks preview mode", () => {
     // "View" dropdown, and only one surface shows at a time.
     const viewSelect = page.getByRole("combobox", { name: "View" });
     await expect(viewSelect).toBeVisible({ timeout: 30_000 });
-    // main=preview is the single visible surface to start.
+    // Preview is the single visible surface to start.
     await expect(page.getByTestId("main-panel")).toBeVisible();
 
-    // Pick Chat: the main panel closes and chat becomes the only surface.
+    // Pick Chat: main closes, but the view stays in the path so Preview returns.
     await viewSelect.click();
     await page.getByRole("option", { name: "Chat" }).click();
     await expect(page).toHaveURL(/sidepanel=true/);
-    await expect(page).toHaveURL(/main=0/);
+    await expect(page).toHaveURL(/mainpanel=false/);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
 
@@ -111,7 +112,7 @@ test.describe("Blocks preview mode", () => {
     await viewSelect.click();
     await page.getByRole("option", { name: "Preview" }).click();
     await expect(page).toHaveURL(/sidepanel=false/);
-    await expect(page).toHaveURL(/main=preview/);
+    await expect(page).toHaveURL(/\/agents\/[^/?]+\/preview/);
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });

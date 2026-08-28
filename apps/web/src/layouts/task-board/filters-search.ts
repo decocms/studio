@@ -34,7 +34,7 @@ const str = (v: unknown): string | null =>
 /**
  * Anything unrecognized in the URL is dropped, not trusted.
  *
- * `defaultRepo` is the repo the PATH already scopes to (`/$org/tasks/<project>`);
+ * `defaultRepo` is the repo the PATH already scopes to (`/$org/agents/<project>`);
  * it seeds the repo filter only when the URL names none, so an explicit `?repo=`
  * still wins.
  */
@@ -85,8 +85,10 @@ export function boardSearchParams(
 /**
  * The `owner/name` of the project the current route scopes to, or null.
  *
- * `/$org/tasks/{-$project}` names a project in the PATH, and the board's
- * existing repo filter is how that scope is expressed — one mechanism, not two.
+ * The board rendered as an overlay on `/$org/agents/{-$project}` names a project in the
+ * PATH, and the board's existing repo filter is how that scope is expressed —
+ * one mechanism, not two. `/$org/tasks` spends its own segment on the open card
+ * and is org-wide, so it never reaches here with a project.
  * A detached repo still filters (the tasks are real either way), which is why
  * this reads `resolveGithubAttachment` rather than `getActiveGithubRepo`.
  */

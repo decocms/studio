@@ -2,7 +2,7 @@
  * The destination routes, addressed by their full path.
  *
  * Path = which page, search = how that page is laid out. So "which destination
- * am I on" is answered by the matched leaf route, never by `?main=` — that is
+ * am I on" is answered by the matched leaf route, never by the view — that is
  * panel visibility and can read `0` (closed) on any page.
  *
  * The strings here are the `path` values registered in `router.tsx`; TanStack's
@@ -16,8 +16,8 @@ import { useRouterState } from "@tanstack/react-router";
 
 export const DESTINATION_ROUTE = {
   home: "/$org/home",
-  chat: "/$org/chat/{-$project}",
-  tasks: "/$org/tasks/{-$project}",
+  agents: "/$org/agents/{-$project}/{-$panel}",
+  tasks: "/$org/tasks/{-$taskKey}",
   reports: "/$org/reports",
   library: "/$org/library",
   /** The `/$org` resolver. Transiently matched before it redirects, so Home
@@ -30,7 +30,7 @@ export const DESTINATION_ROUTE = {
 export type DestinationRoutePath =
   (typeof DESTINATION_ROUTE)[keyof typeof DESTINATION_ROUTE];
 
-/** The matched leaf route's full path, e.g. `"/$org/tasks/{-$project}"`. */
+/** The matched leaf route's full path, e.g. `"/$org/tasks/{-$taskKey}"`. */
 export function useLeafRoutePath(): string {
   return useRouterState({
     select: (state) => state.matches.at(-1)?.fullPath ?? "",

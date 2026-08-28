@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { findTaskByKeyOrId } from "./resolve";
+import { findTaskByKeyOrId, taskRouteSegment } from "./task-route";
 
 const items = [
   { id: "board_abc", keySeq: 1, jiraIssueKey: null },
@@ -9,6 +9,31 @@ const items = [
   { id: "board_mno", keySeq: 5, jiraIssueKey: "OS-333" },
 ];
 
+describe("taskRouteSegment", () => {
+  test("writes the canonical key the card already shows", () => {
+    expect(taskRouteSegment("deco", items[0]!)).toBe("DECO-01");
+    expect(taskRouteSegment("deco", items[1]!)).toBe("DECO-12");
+  });
+
+  test("writes a synced card's tracker key, not a Studio one", () => {
+    expect(taskRouteSegment("deco", items[4]!)).toBe("OS-333");
+  });
+
+  test("falls back to the id when the card has no key", () => {
+    expect(taskRouteSegment("deco", items[2]!)).toBe("board_ghi");
+  });
+
+  /** The contract the two halves of this module exist to keep: what a link
+   *  writes is what the board reads back. */
+  test("round-trips through findTaskByKeyOrId", () => {
+    for (const item of items) {
+      expect(findTaskByKeyOrId(items, taskRouteSegment("deco", item))?.id).toBe(
+        item.id,
+      );
+    }
+  });
+});
+
 describe("findTaskByKeyOrId", () => {
   test("resolves the full key, in any case or padding", () => {
     expect(findTaskByKeyOrId(items, "DECO-01")?.id).toBe("board_abc");
@@ -16,7 +41,7 @@ describe("findTaskByKeyOrId", () => {
     expect(findTaskByKeyOrId(items, "12")?.id).toBe("board_def");
   });
 
-  test("resolves a raw id — what a keyless card's share link carries", () => {
+  test("resolves a raw id — what a keyless card's link carries", () => {
     expect(findTaskByKeyOrId(items, "board_ghi")?.id).toBe("board_ghi");
   });
 

@@ -2,7 +2,7 @@
  * Mobile-only Library file-preview overlay over the chat when `?preview=<browse
  * path>` is set — the param a clickable org-file reference in an agent message
  * navigates to on mobile (see chat/markdown.tsx). Desktop opens the file as a
- * main-panel side tab instead (`?main=library-file:<path>`), mirroring the
+ * main-panel side tab instead (the `library-file` view), mirroring the
  * Library's own panel/dialog split. Reuses the Library's URL-driven dialog so
  * the preview survives reload and closing returns to the conversation.
  */

@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { ArrowLeft } from "@untitledui/icons";
-import { useNavigate } from "@tanstack/react-router";
+import { usePanelNavigate } from "./use-panel-navigate";
 import { Suspense, useState } from "react";
 import { MainPanelLoading } from "./main-panel-loading";
 import { useT } from "@/i18n/use-t.ts";
@@ -105,20 +105,11 @@ export function AutomationTab({ tabId }: { tabId: string }) {
 
 function AutomationTabInner({ id }: { id: string }) {
   const t = useT();
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const { data: automation, isLoading } = useAutomation(id);
   const [tab, setTab] = useState<"settings" | "runs">("settings");
 
-  const onBack = () => {
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: "automations",
-      }),
-      replace: true,
-    });
-  };
+  const onBack = () => openPanel("automations");
 
   if (isLoading) {
     return <MainPanelLoading />;

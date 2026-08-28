@@ -6,24 +6,24 @@ import {
 
 describe("sanitizeThreadLayout", () => {
   test("keeps well-shaped values", () => {
-    expect(sanitizeThreadLayout({ main: "git", sidepanel: true })).toEqual({
-      main: "git",
+    expect(sanitizeThreadLayout({ tab: "git", sidepanel: true })).toEqual({
+      tab: "git",
       sidepanel: true,
     });
-    expect(sanitizeThreadLayout({ main: 0, sidepanel: false })).toEqual({
-      main: 0,
-      sidepanel: false,
-    });
+    expect(
+      sanitizeThreadLayout({ tab: "git", mainpanel: false, sidepanel: false }),
+    ).toEqual({ tab: "git", mainpanel: false, sidepanel: false });
   });
 
   test("drops absent fields (meaning: use the default)", () => {
     expect(sanitizeThreadLayout({})).toEqual({});
-    expect(sanitizeThreadLayout({ main: "git" })).toEqual({ main: "git" });
+    expect(sanitizeThreadLayout({ tab: "git" })).toEqual({ tab: "git" });
   });
 
   test("drops tampered/unexpected values", () => {
     const dirty = {
-      main: 5,
+      tab: 5,
+      mainpanel: "0",
       sidepanel: "chat",
       extra: "x",
     } as unknown as Parameters<typeof sanitizeThreadLayout>[0];
@@ -33,31 +33,31 @@ describe("sanitizeThreadLayout", () => {
 
 describe("upsertThreadLayoutEntries", () => {
   test("appends a new entry as most-recent (last)", () => {
-    const out = upsertThreadLayoutEntries([], "a", { main: "git" });
-    expect(out).toEqual([["a", { main: "git" }]]);
+    const out = upsertThreadLayoutEntries([], "a", { tab: "git" });
+    expect(out).toEqual([["a", { tab: "git" }]]);
   });
 
   test("moves an existing entry to most-recent and replaces its layout", () => {
     const out = upsertThreadLayoutEntries(
       [
-        ["a", { main: "git" }],
-        ["b", { main: "preview" }],
+        ["a", { tab: "git" }],
+        ["b", { tab: "preview" }],
       ],
       "a",
-      { main: "settings" },
+      { tab: "settings" },
     );
     expect(out).toEqual([
-      ["b", { main: "preview" }],
-      ["a", { main: "settings" }],
+      ["b", { tab: "preview" }],
+      ["a", { tab: "settings" }],
     ]);
   });
 
   test("sanitizes on write", () => {
-    const dirty = { main: "git", junk: 1 } as unknown as Parameters<
+    const dirty = { tab: "git", junk: 1 } as unknown as Parameters<
       typeof upsertThreadLayoutEntries
     >[2];
     expect(upsertThreadLayoutEntries([], "a", dirty)).toEqual([
-      ["a", { main: "git" }],
+      ["a", { tab: "git" }],
     ]);
   });
 

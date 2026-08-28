@@ -65,6 +65,7 @@ import {
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
 import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
@@ -724,6 +725,7 @@ export default function AgentShellLayout() {
       {/* Rewrites a legacy `/$org/$taskId` URL into the first-class shape,
           without unmounting anything below it. */}
       <LegacyThreadRedirect />
+      <LegacyMainRedirect />
       <OrgFileOpenProvider>
         <AgentInsetProvider />
         <OrgFilePreviewMount />

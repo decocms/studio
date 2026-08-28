@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useT } from "@/i18n/use-t.ts";
@@ -15,7 +15,11 @@ import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { resolveActiveAgentId, useRouteThreadId } from "@/layouts/thread-route";
+import {
+  resolveActiveAgentId,
+  useRouteAgentId,
+  useRouteThreadId,
+} from "@/layouts/thread-route";
 import { track } from "@/lib/posthog-client";
 import type { Task } from "@/components/chat/task/types";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
@@ -106,19 +110,17 @@ export function useThreadsPanel({
   const navigate = useNavigate();
   const studio = useStudioTools();
   const { setTaskId, createNewTask } = usePanelActions();
-  const params = useParams({ strict: false }) as { project?: string };
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
+  const routeAgentId = useRouteAgentId();
   /** Route-aware: `$taskId` on the legacy route, `?thread=` on a destination. */
   const activeTaskId = useRouteThreadId();
   /**
-   * The recipient is the agent the ROUTE names — the `{-$project}` segment, then
-   * the legacy `?virtualmcpid=` — falling back to the open thread's own agent.
-   * Reading only the search param made this control hand a new chat to the Super
-   * Agent on every `/$org/chat/<project>`.
+   * The recipient is the agent the ROUTE names — its `{-$project}` segment —
+   * falling back to the open thread's own agent on an org-level destination,
+   * which names none. Reading `?virtualmcpid=` made this control hand a new
+   * chat to the Super Agent on every `/$org/agents/<project>`.
    */
   const activeAgentId = resolveActiveAgentId({
-    projectParam: params.project,
-    virtualMcpIdSearch: search.virtualmcpid,
+    routeAgentId,
     threadVirtualMcpId: allThreads.find((thread) => thread.id === activeTaskId)
       ?.virtual_mcp_id,
   });

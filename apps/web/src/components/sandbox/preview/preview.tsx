@@ -1,6 +1,5 @@
 import { sleep } from "@decocms/shared/std";
 import { useState, useRef, useEffect, type CSSProperties } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
@@ -15,6 +14,7 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
@@ -329,17 +329,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Desktop: the main panel header hosts the preview controls (single top bar).
   // Mobile / standalone (no header slot): render the toolbar inline below.
   const headerSlot = useMainPanelHeaderSlot();
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
 
-  const goToTab = (main: string) => {
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main }),
-      replace: true,
-    });
-  };
+  const goToTab = (tabId: string) => openPanel(tabId);
 
   // Editing mode is singular: Visual editor and Blocks cannot be active
   // together. Device size is independent and survives mode switches.

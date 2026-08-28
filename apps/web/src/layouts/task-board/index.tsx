@@ -1,5 +1,5 @@
 /**
- * Task board (`?main=board`) — the org's own board of tasks (title,
+ * Task board — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
  * Rendered as a main-panel overlay tab; there is no standalone route.
  */
@@ -165,7 +165,12 @@ import {
 } from "./task-filters";
 import { useBoardSearch } from "./filters-search";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
+import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import {
+  findTaskByKeyOrId,
+  taskRouteSegment,
+} from "@/layouts/task-board/task-route";
 import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
@@ -938,7 +943,7 @@ export function TaskBoardPage() {
     setFilters(next);
     clearSelection();
   };
-  // Create only: an existing card is addressed by `?task=`, not by state.
+  // Create only: an existing card is addressed by its path, not by state.
   const [dialogOpen, setDialogOpen] = useState(false);
   // Status a newly-created task should start in (set by a lane's "+"); null for
   // the generic "New task" button.
@@ -951,23 +956,29 @@ export function TaskBoardPage() {
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
   /**
-   * `?main=board&task=<id>` renders that task in place of the lanes — the one
-   * address a task has, whether it was reached by clicking its card or by the
-   * short `/$org/t/DECO-01` link.
+   * `/$org/tasks/DECO-01` renders that card in place of the lanes — the one
+   * address a task has, whether it was reached by clicking its card, by the
+   * short `/$org/t/DECO-01` link, or by a legacy `?task=`.
    *
-   * It is the whole of the open-task state: reading the row out of the
-   * SSE-patched list on every render is what lets a thread or status linked
-   * while the task is on screen flow straight in.
+   * The segment is the whole of the open-task state: resolving the row out of
+   * the SSE-patched list on every render is what lets a thread or status
+   * linked while the task is on screen flow straight in.
+   *
+   * `strict: false` because the board also renders as an overlay view
+   * on destinations that have no such param, where it reads `undefined` and
+   * shows the lanes.
    */
-  const { task: openTaskId } = useSearch({ strict: false }) as {
-    task?: string;
+  const { taskKey: openTaskKey } = useParams({ strict: false }) as {
+    taskKey?: string;
   };
-  const openItem = openTaskId
-    ? (items.find((i) => i.id === openTaskId) ?? null)
-    : null;
-  /** A deleted (or never-visible) card leaves the id dangling; land on the
-   *  board rather than an empty pane, the way the short link does. */
-  const staleTaskId = !!openTaskId && !openItem && !isLoading;
+  const openItem = findTaskByKeyOrId(items, openTaskKey) ?? null;
+  /** A deleted (or never-visible) card leaves the segment dangling; land on
+   *  the board rather than an empty pane. */
+  const staleTaskKey = !!openTaskKey && !openItem && !isLoading;
+  /** The key the card actually wears, so a link minted from an id or from
+   *  `deco-1` settles on the shareable form instead of preserving whatever
+   *  spelling it arrived as. */
+  const canonicalKey = openItem ? taskRouteSegment(org.slug, openItem) : null;
 
   /**
    * Leaving a task replaces its entry rather than stacking a second one.
@@ -976,10 +987,11 @@ export function TaskBoardPage() {
    * of opens would bury the page the board was reached from.
    */
   const closeTask = () => {
-    if (openTaskId)
+    if (openTaskKey)
       navigate({
-        to: ".",
-        search: ({ task: _task, ...rest }: Record<string, unknown>) => rest,
+        to: DESTINATION_ROUTE.tasks,
+        params: { org: org.slug, taskKey: undefined },
+        search: (prev: Record<string, unknown>) => prev,
         replace: true,
       });
   };
@@ -1055,13 +1067,20 @@ export function TaskBoardPage() {
   };
 
   /**
-   * Open a card: a navigation, not a modal. Pushed rather than replaced so
-   * browser back lands on the board the card was clicked from.
+   * Open a card: a navigation to the card's own URL, not a modal. Pushed
+   * rather than replaced so browser back lands on the board the card was
+   * clicked from.
+   *
+   * Named as the tasks route rather than `"."` because the board also renders
+   * as an overlay view elsewhere, and a card has exactly one address
+   * wherever it was clicked. The board's filters ride along; anything the
+   * tasks route does not declare is dropped by its schema.
    */
   const openTask = (item: TaskBoardItem) => {
     navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, task: item.id }),
+      to: DESTINATION_ROUTE.tasks,
+      params: { org: org.slug, taskKey: taskRouteSegment(org.slug, item) },
+      search: (prev: Record<string, unknown>) => prev,
     });
   };
 
@@ -1078,11 +1097,23 @@ export function TaskBoardPage() {
     );
   }
 
-  if (staleTaskId) {
+  if (staleTaskKey) {
     return (
       <Navigate
-        to="."
-        search={({ task: _task, ...rest }: Record<string, unknown>) => rest}
+        to={DESTINATION_ROUTE.tasks}
+        params={{ org: org.slug, taskKey: undefined }}
+        search={(prev: Record<string, unknown>) => prev}
+        replace
+      />
+    );
+  }
+
+  if (canonicalKey && canonicalKey !== openTaskKey) {
+    return (
+      <Navigate
+        to={DESTINATION_ROUTE.tasks}
+        params={{ org: org.slug, taskKey: canonicalKey }}
+        search={(prev: Record<string, unknown>) => prev}
         replace
       />
     );
@@ -1350,7 +1381,7 @@ export function TaskBoardPage() {
           onOpenPreview={(thread) => {
             if (!thread.virtualMcpId) return;
             setTaskId(thread.threadId, thread.virtualMcpId, {
-              main: "preview",
+              panel: "preview",
             });
           }}
         />

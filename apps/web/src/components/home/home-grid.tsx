@@ -255,7 +255,7 @@ function AgentUITile({
         <button
           type="button"
           onClick={() =>
-            void startBlank(mainTab ? { main: mainTab } : undefined)
+            void startBlank(mainTab ? { panel: mainTab } : undefined)
           }
           disabled={starting}
           aria-busy={starting}
@@ -391,7 +391,9 @@ function TileErrorFallback({
     <div className="flex h-full w-full flex-col gap-3 p-4">
       <button
         type="button"
-        onClick={() => void startBlank(mainTab ? { main: mainTab } : undefined)}
+        onClick={() =>
+          void startBlank(mainTab ? { panel: mainTab } : undefined)
+        }
         disabled={starting || isEditMode}
         className="mb-1 self-start rounded-md px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
       >

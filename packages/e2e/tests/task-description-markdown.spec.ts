@@ -32,7 +32,7 @@ function editorOf(page: Page) {
   return page.getByTestId("task-description").locator(".ProseMirror");
 }
 
-/** The task rendered in place of the board — `/$org/tasks?task=<id>`. */
+/** The task rendered in place of the board — `/$org/tasks/DECO-01`. */
 function detailOf(page: Page) {
   return page.getByTestId("task-detail");
 }

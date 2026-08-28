@@ -3,7 +3,7 @@
  *
  * Path = which page, search = how that page is laid out. A destination route
  * (`/$org/home`, `/$org/tasks`, …) owns the page, so it also owns which main
- * panel tab shows when the URL names none — and only then: an explicit `?main=`
+ * panel view shows when the URL names none — and only then: an explicit segment
  * (the `0` closed sentinel included) always wins. This is one more input to the
  * existing default chain in `resolveDefaultPanelState` / `resolveActiveTabAndOpen`,
  * sitting just above the agent's own `defaultMainView`, not a new concept.

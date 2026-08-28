@@ -456,12 +456,12 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await reportCta.click();
 
-    // The report agent is a project, so the path names it and only the layout (main, sidepanel=false) stays in search.
+    // Agent and view are both path here; the view's param and layout stay search.
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${user.orgSlug}/chat/${virtualMcpId}` &&
-        url.searchParams.get("main") ===
-          `app:${connectionId}:get_my_diagnostic` &&
+        url.pathname === `/${user.orgSlug}/agents/${virtualMcpId}/app` &&
+        url.searchParams.get("connection") === connectionId &&
+        url.searchParams.get("tool") === "get_my_diagnostic" &&
         url.searchParams.get("sidepanel") === "false",
       { timeout: 20_000 },
     );

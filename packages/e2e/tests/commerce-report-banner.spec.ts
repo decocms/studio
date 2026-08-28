@@ -165,16 +165,12 @@ test.describe("commerce report banner", () => {
       await expect(banner).toContainText("minha-loja.example");
 
       await banner.click();
-      // The report agent is a project, so the path names it and the pinned view + fresh thread stay in search.
+      // Agent and view are both path here; only the view's param stays search.
       await expect(page).toHaveURL(
-        new RegExp(
-          `/${orgSlug}/chat/commerce-discovery_[^/?]+\\?.*${REPORT_TOOL}`,
-        ),
+        new RegExp(`/${orgSlug}/agents/commerce-discovery_[^/?]+/app\\?`),
         { timeout: 15_000 },
       );
-      expect(new URL(page.url()).searchParams.get("thread")).toMatch(
-        /^[0-9a-f-]{36}$/,
-      );
+      expect(new URL(page.url()).searchParams.get("tool")).toBe(REPORT_TOOL);
     } finally {
       await mcp.stop();
     }
