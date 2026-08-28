@@ -4,11 +4,13 @@ import {
   brokenStudioMcp,
   buildOptions,
   createDeltaCoalescer,
+  errorFinishChunks,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
   promptFromUserMessage,
 } from "./claude-code";
+import { UiChunkTranslator } from "./to-ui-chunks";
 
 /** A minimal valid wire input; each test overrides what it cares about. */
 function input(
@@ -498,5 +500,45 @@ describe("createDeltaCoalescer", () => {
     // No `delta` string: not coalescable, but dropping it would lose output.
     const odd = { type: "text-delta", id: "a" };
     expect(c.push([odd])).toEqual([odd]);
+  });
+});
+
+describe("errorFinishChunks", () => {
+  test("closes a block stream_event left open before finish-step", () => {
+    const translator = new UiChunkTranslator();
+    translator.translate({
+      type: "stream_event",
+      event: { type: "message_start" },
+    });
+    translator.translate({
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      },
+    });
+    translator.translate({
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "hi" },
+      },
+    });
+    // No `content_block_stop` — the SDK threw mid-block.
+    expect(errorFinishChunks(translator)).toEqual([
+      { type: "text-end", id: "stream-1" },
+      { type: "finish-step" },
+      { type: "finish", finishReason: "error" },
+    ]);
+  });
+
+  test("nothing left open: just finish-step and finish", () => {
+    const translator = new UiChunkTranslator();
+    expect(errorFinishChunks(translator)).toEqual([
+      { type: "finish-step" },
+      { type: "finish", finishReason: "error" },
+    ]);
   });
 });
