@@ -178,6 +178,11 @@ export interface TaskBoardItem {
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
+  /** When this card's current review cycle opened; null when none is open.
+   *  The boundary that decides which reviewer verdicts still count, and what
+   *  says a reviewer owns the card while its lane still reads In Progress.
+   *  Mirrors `task_board_items.review_cycle_started_at`. */
+  reviewCycleStartedAt: string | null;
   threads: TaskBoardItemThreadRef[];
   tags: TaskBoardItemTagRef[];
   /** Each reviewer's standing verdict in the current review cycle; reviewers

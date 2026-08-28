@@ -275,14 +275,16 @@ export function buildClaudeCodeTaskPrompt(
     // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
     // dispatched from the linked PR, so skipping this strands the card.
     `- As soon as \`gh pr create\` prints the URL, call \`mcp__studio__TASK_BOARD_ITEM_PR_LINK\` with that url. Do this even if you also mention the PR in a comment — the reviewers are dispatched from the linked PR, not from your message.`,
-    `- Then move this task to review on the board: call \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` with id "${task.id}" and status "in_review". Pass ONLY the fields you are changing.`,
-    // NOT "move it to review anyway": In Review is the reviewers' lane, and
-    // reviewers are only enqueued for a task that has a PR
-    // (`enqueueReviewersOnThreadFinish`). A no-PR task parked there had no
-    // reviewer to pick it up and no signal that a human should — every such
-    // card sat In Review untouched. Done is the terminal lane, and the comment
+    // Deliberately NOT "then move it to In Review". Linking the PR is what
+    // starts the review (`openReviewCycleIfInProgress`), and the card stays In
+    // Progress until the reviewer decides — an agent is still working on it.
+    // `parkReviewedCardForHuman` makes that move, on a verdict, not the model.
+    // NOT "leave it for a reviewer anyway": reviewers are only enqueued for a
+    // task that has a PR (`enqueueReviewersOnThreadFinish`). A no-PR task left
+    // waiting had no reviewer to pick it up and no signal that a human should —
+    // every such card sat untouched. Done is the terminal lane, and the comment
     // is what a human reads to disagree and reopen it.
-    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\`) and move it to "done" instead of "in_review". There is nothing for a reviewer to review, so In Review would strand it.`,
+    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\`) and move it to "done". There is nothing for a reviewer to review, so leaving it for one would strand it.`,
     // The board is where a human reads this task, so anything a reviewer needs
     // to know belongs there too — a final message they never open is not a
     // report. Optional: a comment per run, not per step.

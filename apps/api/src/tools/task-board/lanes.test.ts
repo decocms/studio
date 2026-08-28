@@ -11,6 +11,7 @@ import { DELIVERY_LANES, shippedLane } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
 import {
   DELIVERY_LANE_STATUSES,
+  inReviewPhase,
   LANE_RANK,
   movesForward,
   SHIP_ELIGIBLE_LANES,
@@ -105,5 +106,44 @@ describe("SHIP_ELIGIBLE_LANES", () => {
     for (const lane of ["merged", "post_deploy_validation", "done"] as const) {
       expect(SHIP_ELIGIBLE_LANES.has(lane)).toBe(false);
     }
+  });
+});
+
+describe("inReviewPhase", () => {
+  const card = (
+    status: TaskBoardItemStatus,
+    reviewCycleStartedAt: string | null = null,
+  ) => ({ status, reviewCycleStartedAt });
+  const CYCLE = "2026-01-01T10:00:00.000Z";
+
+  // The whole point of migration 189: a card whose reviewer is working reads
+  // In Progress, and only the open cycle says it is under review.
+  it("covers an In Progress card with an open cycle", () => {
+    expect(inReviewPhase(card("in_progress", CYCLE))).toBe(true);
+    expect(inReviewPhase(card("in_progress"))).toBe(false);
+  });
+
+  it("covers In Review with or without a cycle stamp", () => {
+    expect(inReviewPhase(card("in_review", CYCLE))).toBe(true);
+    // Pre-migration cards carry no stamp; the lane still answers for them.
+    expect(inReviewPhase(card("in_review"))).toBe(true);
+  });
+
+  // A stale stamp must never drag a shipped card back into the sweeper's work.
+  it("is false past In Review however stale the stamp", () => {
+    for (const lane of [
+      "approved",
+      "merged",
+      "post_deploy_validation",
+      "done",
+      "archived",
+    ] as const) {
+      expect(inReviewPhase(card(lane, CYCLE))).toBe(false);
+    }
+  });
+
+  it("is false for a card that has not been worked yet", () => {
+    expect(inReviewPhase(card("triage"))).toBe(false);
+    expect(inReviewPhase(card("todo"))).toBe(false);
   });
 });

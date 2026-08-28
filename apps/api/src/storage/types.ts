@@ -1686,6 +1686,20 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** When this card's CURRENT review cycle opened — the boundary that decides
+   *  which reviewer verdicts still count (`reviewCycleStart`). Null = no cycle
+   *  open, i.e. nothing is waiting on a reviewer.
+   *
+   *  It is a column rather than a derivation off the newest
+   *  `status_changed → in_review` precisely so the cycle does NOT ride on the
+   *  lane: an agent reviewer runs while the card reads In Progress, which it
+   *  could not do while moving the card meant resetting the cycle. See
+   *  `migrations/189-task-board-review-cycle-started-at.ts`. */
+  review_cycle_started_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   /** When this card is next due for an automatic re-dispatch after its run
    *  failed on infrastructure. Null = not waiting on a retry. Lives on the row
    *  so the schedule survives a pod restart — see
@@ -1913,6 +1927,11 @@ export interface TaskBoardItem {
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
+  /** When this card's current review cycle opened; null when none is open.
+   *  The anchor every cycle-scoped reducer takes (`reviewCycleStart`), and the
+   *  one thing that says "a reviewer owns this card" independently of its
+   *  lane — see `reviewCycleOpen`. */
+  reviewCycleStartedAt: string | null;
   /** Agent threads linked to this task (most-recent first). */
   threads: TaskBoardItemThreadRef[];
   /** Org tags attached to this task, name ascending. */

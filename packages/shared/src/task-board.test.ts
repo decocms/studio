@@ -78,51 +78,71 @@ describe("isReviewerThreadTitle", () => {
 });
 
 describe("reviewCycleStart", () => {
-  it("is the latest in_review transition (0 when none)", () => {
-    expect(reviewCycleStart([IN_REVIEW_1, IN_REVIEW_2])).toBe(
+  // The column is the boundary since migration 189 — the lane transition is
+  // only the fallback for cards stamped before it.
+  it("is the card's own cycle stamp when it has one", () => {
+    expect(
+      reviewCycleStart([IN_REVIEW_1, IN_REVIEW_2], "2026-02-02T09:00:00Z"),
+    ).toBe(new Date("2026-02-02T09:00:00Z").getTime());
+    expect(reviewCycleStart([], "2026-02-02T09:00:00Z")).toBe(
+      new Date("2026-02-02T09:00:00Z").getTime(),
+    );
+  });
+
+  it("falls back to the latest in_review transition (0 when none)", () => {
+    expect(reviewCycleStart([IN_REVIEW_1, IN_REVIEW_2], null)).toBe(
       new Date("2026-01-01T12:00:00Z").getTime(),
     );
-    expect(reviewCycleStart([])).toBe(0);
+    expect(reviewCycleStart([], null)).toBe(0);
   });
 });
 
 describe("reviewCycleVerdicts", () => {
   it("keeps the latest verdict within the current cycle", () => {
-    const v = reviewCycleVerdicts([
-      IN_REVIEW_1,
-      at("review_approved", { reviewer: "reviewer" }, "2026-01-01T10:05:00Z"),
-      at(
-        "review_changes_requested",
-        { reviewer: "reviewer" },
-        "2026-01-01T10:06:00Z",
-      ),
-    ]);
+    const v = reviewCycleVerdicts(
+      [
+        IN_REVIEW_1,
+        at("review_approved", { reviewer: "reviewer" }, "2026-01-01T10:05:00Z"),
+        at(
+          "review_changes_requested",
+          { reviewer: "reviewer" },
+          "2026-01-01T10:06:00Z",
+        ),
+      ],
+      { cycleStartedAt: null },
+    );
     expect(v.get("reviewer")).toBe("changes_requested");
   });
 
   it("ignores verdicts from a prior cycle (before the latest in_review)", () => {
-    const v = reviewCycleVerdicts([
-      IN_REVIEW_1,
-      at("review_approved", { reviewer: "reviewer" }, "2026-01-01T10:05:00Z"),
-      IN_REVIEW_2, // re-review — old approval is now stale
-    ]);
+    const v = reviewCycleVerdicts(
+      [
+        IN_REVIEW_1,
+        at("review_approved", { reviewer: "reviewer" }, "2026-01-01T10:05:00Z"),
+        IN_REVIEW_2, // re-review — old approval is now stale
+      ],
+      { cycleStartedAt: null },
+    );
     expect(v.get("reviewer")).toBeUndefined();
   });
 
   it("ignores the two-reviewer era's verdicts — half a review is not a review", () => {
-    const v = reviewCycleVerdicts([
-      IN_REVIEW_1,
-      at(
-        "review_approved",
-        { reviewer: "qa", verified: true },
-        "2026-01-01T10:05:00Z",
-      ),
-      at(
-        "review_approved",
-        { reviewer: "code_review", verified: true },
-        "2026-01-01T10:06:00Z",
-      ),
-    ]);
+    const v = reviewCycleVerdicts(
+      [
+        IN_REVIEW_1,
+        at(
+          "review_approved",
+          { reviewer: "qa", verified: true },
+          "2026-01-01T10:05:00Z",
+        ),
+        at(
+          "review_approved",
+          { reviewer: "code_review", verified: true },
+          "2026-01-01T10:06:00Z",
+        ),
+      ],
+      { cycleStartedAt: null },
+    );
     expect(v.size).toBe(0);
   });
 
@@ -144,12 +164,20 @@ describe("reviewCycleVerdicts", () => {
       ),
     ];
     expect(
-      reviewCycleVerdicts(verified, { verifiedOnly: true }).get("reviewer"),
+      reviewCycleVerdicts(verified, {
+        cycleStartedAt: null,
+        verifiedOnly: true,
+      }).get("reviewer"),
     ).toBe("approved");
     expect(
-      reviewCycleVerdicts(unverified, { verifiedOnly: true }).get("reviewer"),
+      reviewCycleVerdicts(unverified, {
+        cycleStartedAt: null,
+        verifiedOnly: true,
+      }).get("reviewer"),
     ).toBeUndefined();
-    expect(reviewCycleVerdicts(unverified).get("reviewer")).toBe("approved");
+    expect(
+      reviewCycleVerdicts(unverified, { cycleStartedAt: null }).get("reviewer"),
+    ).toBe("approved");
   });
 });
 
@@ -164,22 +192,37 @@ describe("allReviewersApproved", () => {
   ];
 
   it("is false until the enabled reviewer approved", () => {
-    expect(allReviewersApproved([IN_REVIEW_1], ["reviewer"])).toBe(false);
-    expect(allReviewersApproved(approved(true), ["reviewer"])).toBe(true);
+    expect(
+      allReviewersApproved([IN_REVIEW_1], ["reviewer"], {
+        cycleStartedAt: null,
+      }),
+    ).toBe(false);
+    expect(
+      allReviewersApproved(approved(true), ["reviewer"], {
+        cycleStartedAt: null,
+      }),
+    ).toBe(true);
   });
 
   it("empty enabled → false (nothing has signed off)", () => {
-    expect(allReviewersApproved(approved(true), [])).toBe(false);
+    expect(
+      allReviewersApproved(approved(true), [], { cycleStartedAt: null }),
+    ).toBe(false);
   });
 
   it("verifiedOnly gate: an unverified approval never completes the review (anti-forgery)", () => {
     expect(
       allReviewersApproved(approved(false), ["reviewer"], {
+        cycleStartedAt: null,
         verifiedOnly: true,
       }),
     ).toBe(false);
     // The human ship button (no verifiedOnly) still sees it as approved.
-    expect(allReviewersApproved(approved(false), ["reviewer"])).toBe(true);
+    expect(
+      allReviewersApproved(approved(false), ["reviewer"], {
+        cycleStartedAt: null,
+      }),
+    ).toBe(true);
   });
 });
 

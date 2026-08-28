@@ -29,9 +29,13 @@ export function enabledReviewers(enabled: boolean): ReviewerKind[] {
 export function reviewsSatisfiedForPromotion(
   activity: TaskBoardActivity[],
   enabled: ReviewerKind[],
+  /** The card's `reviewCycleStartedAt` — the boundary the approvals have to sit
+   *  inside. Since migration 189 it is a column, not a lane transition, so the
+   *  activity timeline alone can no longer date the cycle. */
+  cycleStartedAt: string | null,
 ): boolean {
   if (enabled.length === 0) return true;
-  return allReviewersApproved(activity, enabled);
+  return allReviewersApproved(activity, enabled, { cycleStartedAt });
 }
 
 /** What a card's checks indicator shows: how many enabled reviewers have
@@ -45,6 +49,9 @@ export type ChecksSummary = {
 /**
  * The card's `0/1` checks indicator, or null when this org runs no reviewers
  * (nothing to count, so nothing to show).
+ *
+ * `verdicts` arrive already scoped to the current cycle by the server (see
+ * `attachRefs`), so this reducer needs no cycle argument of its own.
  *
  * The chip must never contradict its own number: if it says `1/1`, it is green.
  * An earlier cut held a full set of approvals at amber when they weren't

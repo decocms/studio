@@ -71,7 +71,7 @@ describe("isDuplicateChangeRequest", () => {
       cycle("2026-08-13T02:39:20Z"),
       changes("reviewer", "2026-08-13T02:54:59Z"),
     ];
-    expect(isDuplicateChangeRequest(history, "reviewer")).toBe(true);
+    expect(isDuplicateChangeRequest(history, "reviewer", null)).toBe(true);
   });
 
   it("is false once the card came back for a fresh cycle", () => {
@@ -80,7 +80,19 @@ describe("isDuplicateChangeRequest", () => {
       changes("reviewer", "2026-08-13T02:54:59Z"),
       cycle("2026-08-13T02:55:21Z"),
     ];
-    expect(isDuplicateChangeRequest(history, "reviewer")).toBe(false);
+    expect(isDuplicateChangeRequest(history, "reviewer", null)).toBe(false);
+  });
+
+  // The column wins over the timeline: a card whose reviewer is mid-run has no
+  // `→ in_review` entry to derive a cycle from (migration 189).
+  it("dates the cycle from the card's column when it has one", () => {
+    const history = [changes("reviewer", "2026-08-13T02:54:59Z")];
+    expect(
+      isDuplicateChangeRequest(history, "reviewer", "2026-08-13T02:39:20Z"),
+    ).toBe(true);
+    expect(
+      isDuplicateChangeRequest(history, "reviewer", "2026-08-13T03:00:00Z"),
+    ).toBe(false);
   });
 
   it("is false when this cycle's only verdict was an approval", () => {
@@ -92,6 +104,6 @@ describe("isDuplicateChangeRequest", () => {
         occurredAt: "2026-08-13T02:44:00Z",
       } as ReviewCycleActivity,
     ];
-    expect(isDuplicateChangeRequest(history, "reviewer")).toBe(false);
+    expect(isDuplicateChangeRequest(history, "reviewer", null)).toBe(false);
   });
 });

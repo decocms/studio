@@ -173,8 +173,11 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     expect(results.filter((r) => r !== null)).toHaveLength(1);
   });
 
-  // A repo-backed task can't dead-end In Review with no PR — on finish it stays In Progress until a PR is linked, then the finish backstop advances it.
-  it("holds a repo-backed task on finish until a PR is linked", async () => {
+  // A repo-backed task can't dead-end with no PR — on finish it stays In
+  // Progress with no review cycle until a PR is linked, and then the finish
+  // backstop OPENS the cycle. It does not move the card: a reviewer is about to
+  // work on it, and In Review is what the board says once it is a person's turn.
+  it("opens the review cycle on finish only once a PR is linked", async () => {
     const task = await taskBoard.create({
       organizationId: ORG,
       title: "repo, no PR yet",
@@ -206,11 +209,13 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       })
       .execute();
 
-    // No PR → stays In Progress.
+    // No PR → stays In Progress with nothing to review.
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
-    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
+    const before = await taskBoard.getById(task.id, ORG);
+    expect(before?.status).toBe("in_progress");
+    expect(before?.reviewCycleStartedAt).toBeNull();
 
-    // Link a PR → the finish backstop now advances it.
+    // Link a PR → the finish backstop opens the cycle, and the lane holds.
     await taskBoard.linkPr({
       taskBoardItemId: task.id,
       organizationId: ORG,
@@ -220,7 +225,93 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       repoName: "site",
     });
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
-    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+    const after = await taskBoard.getById(task.id, ORG);
+    expect(after?.status).toBe("in_progress");
+    expect(after?.reviewCycleStartedAt).not.toBeNull();
+  });
+
+  /**
+   * The duplicate-stamp bug, re-encoded against the column that replaced the
+   * activity row. Re-stamping an OPEN cycle moves its boundary forward and
+   * invalidates every verdict already recorded against it — which is exactly
+   * how 13 prod cards ended up holding an approval that could never merge.
+   * `review_cycle_started_at IS NULL` in the WHERE is the whole guard, and only
+   * a real database proves a SQL predicate.
+   */
+  it("opens a review cycle exactly once, however many callers try", async () => {
+    const { task } = await cardWithFinishedRun("one cycle only");
+
+    const winners = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        taskBoard.openReviewCycleIfInProgress(task.id, ORG),
+      ),
+    );
+
+    expect(winners.filter((w) => w !== null)).toHaveLength(1);
+  });
+
+  it("re-opens a cycle only after it is closed", async () => {
+    const { task } = await cardWithFinishedRun("second round");
+    const first = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+    expect(first).not.toBeNull();
+    const firstAt = first?.reviewCycleStartedAt;
+
+    // Still open — the boundary must not move under a standing verdict.
+    expect(
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
+    ).toBeNull();
+    expect((await taskBoard.getById(task.id, ORG))?.reviewCycleStartedAt).toBe(
+      firstAt as string,
+    );
+
+    await taskBoard.closeReviewCycle(task.id, ORG);
+    const second = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+    expect(second).not.toBeNull();
+    expect(second?.reviewCycleStartedAt).not.toBe(firstAt as string);
+  });
+
+  it("never opens a cycle on a card that is not In Progress", async () => {
+    const { task } = await cardWithFinishedRun("wrong lane");
+    await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER);
+
+    expect(
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
+    ).toBeNull();
+  });
+
+  it("is org-scoped — another org cannot open the cycle", async () => {
+    const { task } = await cardWithFinishedRun("cross-org cycle");
+
+    expect(
+      await taskBoard.openReviewCycleIfInProgress(task.id, "org_other"),
+    ).toBeNull();
+    expect(
+      (await taskBoard.getById(task.id, ORG))?.reviewCycleStartedAt,
+    ).toBeNull();
+  });
+
+  // The sweeper's work list is the open cycle, not the lane — a card whose
+  // reviewer is working reads In Progress and still has to be swept.
+  it("lists an In Progress card with an open cycle as pending review", async () => {
+    const { task } = await cardWithFinishedRun("pending while in progress");
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+
+    const pending = await taskBoard.listItemsPendingReview(100);
+
+    expect(pending.map((p) => p.id)).toContain(task.id);
+  });
+
+  it("drops a card out of the work list once it ships", async () => {
+    const { task } = await cardWithFinishedRun("shipped, stop sweeping");
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+    await taskBoard.update(task.id, ORG, { status: "done" }, USER);
+
+    expect(
+      (await taskBoard.listItemsPendingReview(100)).map((p) => p.id),
+    ).not.toContain(task.id);
+    expect(
+      (await taskBoard.getById(task.id, ORG))?.reviewCycleStartedAt,
+    ).toBeNull();
   });
 });
 

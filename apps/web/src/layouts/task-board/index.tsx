@@ -697,13 +697,22 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
  * The card's checks indicator, or null when there is nothing to say: this org
  * runs no reviewers, or the task has not reached review yet (a To Do card with
  * `0/1` would be reporting a failure that hasn't had a chance to happen).
+ *
+ * "Reached review" is the open cycle, not the In Review lane. Since migration
+ * 189 a card whose reviewer is working reads In Progress, and that is exactly
+ * when the pending chip earns its place — the lane alone would hide the checks
+ * for the whole time they are actually being decided.
  */
 function useCardChecks(item: TaskBoardItem): {
   summary: ChecksSummary;
   enabled: ReviewerKind[];
 } | null {
   const enabled = enabledReviewers(useReviewerEnabled());
-  if (item.reviewVerdicts.length === 0 && item.status !== "in_review") {
+  if (
+    item.reviewVerdicts.length === 0 &&
+    item.status !== "in_review" &&
+    !item.reviewCycleStartedAt
+  ) {
     return null;
   }
   const summary = checksSummary(item.reviewVerdicts, enabled);

@@ -23,7 +23,7 @@ import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
 import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
 
-/** Statuses from which a PR-open advance may move a card into review. Terminal
+/** Statuses from which a PR-open may put a card into the review phase. Terminal
  *  lanes (and in_review itself) are left alone so a re-opened PR never regresses
  *  a finished card. */
 const ADVANCEABLE: ReadonlySet<TaskBoardItemStatus> = new Set([
@@ -155,7 +155,7 @@ export async function applyBoardDecision(
 
   let item: TaskBoardItem | null;
   if (target) {
-    // Advance into review only from an earlier lane; never regress a finished card.
+    // Enter the review phase only from an earlier lane; never regress a finished card.
     const advancing = ADVANCEABLE.has(target.status);
     // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's.
     const claimSuperAgent = advancing && target.assigneeId == null;
@@ -163,23 +163,28 @@ export async function applyBoardDecision(
       target.id,
       orgId,
       {
-        status: advancing ? "in_review" : undefined,
+        // In Progress, not In Review: a reviewer is about to work on this PR,
+        // and In Review is what the board says once it is a person's turn.
+        // The open cycle below is what puts it on the reviewer's work list.
+        status: advancing ? "in_progress" : undefined,
         ...(claimSuperAgent
           ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
           : {}),
       },
       userId,
     );
+    if (advancing) await storage.openReviewCycleIfInProgress(target.id, orgId);
   } else {
     // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
       organizationId: orgId,
       title: decision.title?.trim() || `PR #${pr.number}`,
-      status: "in_review",
+      status: "in_progress",
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
       by: userId,
     });
+    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId);
   }
   if (!item) return null;
 

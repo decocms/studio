@@ -84,6 +84,15 @@ export const TASK_BOARD_ITEM_PR_LINK = defineTool({
         repoOwner: pr.owner,
         repoName: pr.repo,
       });
+      // There is something to review now — open the cycle, which is what puts
+      // the card on the sweeper's work list. The card is NOT moved: an agent
+      // reviewer is about to work on it, and In Review is what the board says
+      // once it is a person's turn (migration 189). Idempotent: a re-call, or a
+      // second PR on the same card, cannot move a boundary verdicts stand on.
+      await ctx.storage.taskBoard.openReviewCycleIfInProgress(
+        taskBoardItemId,
+        organizationId,
+      );
       // The sweeper is what hands the card to the reviewers, and it may have
       // just claimed this card's 5-minute budget while it had no PR to look at.
       // Make it due again so the hand-off happens on the next tick (<=60s).

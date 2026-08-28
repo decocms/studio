@@ -1973,7 +1973,11 @@ function LinksSection({
   // token verification). The per-card PrCard adds the PR-open + green-checks gate.
   const reviewsReady =
     laneCanShip(item.status) &&
-    reviewsSatisfiedForPromotion(activity ?? [], enabledReviewers(reviewerOn));
+    reviewsSatisfiedForPromotion(
+      activity ?? [],
+      enabledReviewers(reviewerOn),
+      item.reviewCycleStartedAt,
+    );
   const onShip = () =>
     promote.mutate(undefined, {
       onSuccess: (res) =>

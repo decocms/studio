@@ -191,10 +191,10 @@ export async function enqueueEnabledReviewers(
     : "default";
 
   // A reviewer belongs to the current cycle if its thread is still live, or was
-  // created since the task last entered In Review — either way don't re-enqueue.
+  // created since the cycle opened — either way don't re-enqueue.
   // A stale thread from a PRIOR cycle (before a Super Agent re-run bounced the
   // task back and forward) does NOT count, so reviewers re-run on re-review.
-  const lastInReviewAt = await lastInReviewTime(ctx, task);
+  const lastInReviewAt = await reviewCycleStartTime(ctx, task);
   const cycleAt = new Date(lastInReviewAt);
 
   // One reviewer today, but the enqueue stays a fan-out over `enabled`: each
@@ -431,18 +431,23 @@ export function reviewerHandledThisCycle(
   return spent.length !== thisCycle.length;
 }
 
-/** When the task most recently entered In Review (ms), else 0. Drawn from the
- *  activity timeline (shared reducer) so it survives across the many-to-many
- *  thread links and stays in lockstep with the merge gate + ship button. */
-async function lastInReviewTime(
+/** When the task's current review cycle opened (ms), else 0. Reads the card's
+ *  own `reviewCycleStartedAt` through the shared reducer, so it stays in
+ *  lockstep with the merge gate and the ship button; the activity fallback
+ *  inside `reviewCycleStart` only serves cards stamped before migration 189,
+ *  which is why the timeline is still fetched. */
+async function reviewCycleStartTime(
   ctx: StudioContext,
   task: TaskBoardItem,
 ): Promise<number> {
+  if (task.reviewCycleStartedAt) {
+    return new Date(task.reviewCycleStartedAt).getTime();
+  }
   const activity = await ctx.storage.taskBoard.listActivity(
     task.id,
     task.organizationId,
   );
-  return reviewCycleStart(activity);
+  return reviewCycleStart(activity, null);
 }
 
 /**

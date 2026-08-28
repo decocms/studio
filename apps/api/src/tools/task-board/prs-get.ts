@@ -15,7 +15,7 @@ import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { cardWorkLanded } from "./archive-merged";
 import { recordTaskActivity } from "./activity";
-import { movesForward } from "./lanes";
+import { inReviewPhase, movesForward } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
@@ -1208,7 +1208,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
     if (
       item &&
-      item.status === "in_review" &&
+      inReviewPhase(item) &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       prReadyForReview(prs)
     ) {

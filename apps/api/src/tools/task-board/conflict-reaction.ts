@@ -84,7 +84,12 @@ export async function reactToApprovedPrConflict(
   // an approval standing behind it.
   const enabled = enabledReviewerKinds(flags);
   const activity = await ctx.storage.taskBoard.listActivity(item.id, orgId);
-  if (!allReviewersApproved(activity, enabled, { verifiedOnly: true })) {
+  if (
+    !allReviewersApproved(activity, enabled, {
+      cycleStartedAt: item.reviewCycleStartedAt,
+      verifiedOnly: true,
+    })
+  ) {
     return false;
   }
 

@@ -33,6 +33,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     keySeq: 1,
     jiraIssueKey: null,
     retryAttempts: 0,
+    reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
