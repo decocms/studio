@@ -456,6 +456,62 @@ function retryingProviderChunk(): Record<string, unknown> {
 }
 
 /**
+ * Drops a `text-end` / `reasoning-end` whose part the consumer does not have
+ * open, and mirrors the AI SDK reducer's own part lifecycle to decide that.
+ *
+ * The reducer throws on an orphan end — `Received reasoning-end for missing
+ * reasoning part with ID "stream-2"` — and that throw kills the stream
+ * mid-run. Observed live: an agent that had cloned its repo and was still
+ * working in its pod had its Studio-side run torn down after two tool calls,
+ * while the pod kept going for minutes, oblivious.
+ *
+ * Two things upstream can separate an end from its start, and neither is a
+ * bug this can be fixed at:
+ *
+ *  - **A restart drops the start.** `pending` buffers everything until the
+ *    turn's message id is known, and an abandoned attempt clears it wholesale
+ *    (`pending.length = 0`) along with the coalescer — but `UiChunkTranslator`
+ *    keeps its `openStreamBlocks`, so the next `message_start` closes a block
+ *    whose start went in the bin.
+ *  - **A `finish-step` lands between them.** The reducer CLEARS its open parts
+ *    on that boundary, so every end after it is an orphan by definition. The
+ *    step-boundary call sites close open blocks first for exactly this reason;
+ *    this is the backstop for the next call site that forgets.
+ *
+ * Rather than chase each path, this sits at the one place every chunk reaches
+ * the consumer and enforces the reducer's rule directly: a start opens an id,
+ * an end closes it, and `finish-step` clears them all. An end with no open id
+ * is dropped — the part it referred to is already closed or was never opened,
+ * so dropping it costs nothing and keeps the run alive.
+ */
+export function createOrphanEndGuard(): (chunks: unknown[]) => unknown[] {
+  const open = new Set<string>();
+  return (chunks) =>
+    chunks.filter((chunk) => {
+      if (typeof chunk !== "object" || chunk === null) return true;
+      const { type, id } = chunk as { type?: unknown; id?: unknown };
+      if (type === "finish-step") {
+        open.clear();
+        return true;
+      }
+      if (typeof type !== "string" || typeof id !== "string") return true;
+      // Keyed on KIND and id, like the coalescer's merge check: ids are minted
+      // distinctly today, so a `reasoning-end` landing on a `text` part's id
+      // means something upstream is confused, and closing that part on its
+      // behalf would corrupt it rather than just misorder it.
+      if (type === "text-start" || type === "reasoning-start") {
+        open.add(`${type.slice(0, -"-start".length)}:${id}`);
+        return true;
+      }
+      // `delete` returns whether it was open — exactly the keep/drop answer.
+      if (type === "text-end" || type === "reasoning-end") {
+        return open.delete(`${type.slice(0, -"-end".length)}:${id}`);
+      }
+      return true;
+    });
+}
+
+/**
  * Coalesces adjacent text/reasoning deltas so token-level streaming does not
  * become token-level *framing*.
  *
@@ -561,10 +617,11 @@ export async function runClaudeCode(
   // produces before the first assistant message waits here, never longer.
   const pending: unknown[] = [];
   let started = false;
+  const guard = createOrphanEndGuard();
   const startTurn = (id: string) => {
     if (started) return;
     started = true;
-    emit({ chunks: [...turnStartChunks(id), ...pending.splice(0)] });
+    emit({ chunks: guard([...turnStartChunks(id), ...pending.splice(0)]) });
   };
   /**
    * Whether a failed attempt can be restarted without duplicating work.
@@ -579,8 +636,14 @@ export async function runClaudeCode(
   const coalescer = createDeltaCoalescer();
   const send = (chunks: unknown[]) => {
     if (chunks.length === 0) return;
-    if (started) emit({ chunks });
-    else pending.push(...chunks);
+    // Buffered chunks are guarded when `startTurn` flushes them, not here: an
+    // end whose start is still sitting in `pending` is not an orphan, and
+    // `pending` is dropped WHOLESALE on a restart, so what survives is only
+    // decidable at the emit that actually sends it.
+    if (started) {
+      const guarded = guard(chunks);
+      if (guarded.length > 0) emit({ chunks: guarded });
+    } else pending.push(...chunks);
   };
   const push = (chunks: unknown[]) => {
     if (chunks.length === 0) return;
