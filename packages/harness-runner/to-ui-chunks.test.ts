@@ -243,6 +243,35 @@ describe("UiChunkTranslator — token streaming (includePartialMessages)", () =>
     );
   });
 
+  test("a block still open at the step boundary is closed by the caller, once", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "thinking_delta", thinking: "hmm" },
+      }),
+    );
+    // No `content_block_stop`. The caller closes BEFORE it pushes
+    // `finish-step` — the SDK reducer drops its open reasoning parts there, so
+    // an end emitted after it is an orphan that throws and kills the run.
+    expect(t.closeOpenStreamBlocks()).toEqual([
+      { type: "reasoning-end", id: "stream-1" },
+    ]);
+    // The assistant restatement must not end it a second time.
+    expect(
+      t.translate(assistant([{ type: "thinking", thinking: "hmm" }])),
+    ).toEqual([]);
+  });
+
   test("tool calls still come from the assistant message, not the deltas", () => {
     const t = new UiChunkTranslator();
     t.translate(streamEvent({ type: "message_start" }));

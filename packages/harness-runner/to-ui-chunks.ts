@@ -234,8 +234,14 @@ export class UiChunkTranslator {
    * `content_block_stop` (an interrupt, a crash mid-block) would otherwise
    * leave a part that never closes, which the projector reassembles as
    * unfinished forever.
+   *
+   * Public because a `-end` must never cross a `finish-step`: the AI SDK's
+   * reducer CLEARS its open text/reasoning parts on that boundary, so a late
+   * end lands on a part it no longer knows and throws `Received reasoning-end
+   * for missing reasoning part`, killing the run mid-stream. The caller closes
+   * here before it opens a new step (see `claude-code.ts`).
    */
-  private closeOpenStreamBlocks(): UIMessageChunk[] {
+  closeOpenStreamBlocks(): UIMessageChunk[] {
     if (this.openStreamBlocks.size === 0) return [];
     const chunks: UIMessageChunk[] = [];
     for (const open of this.openStreamBlocks.values()) {

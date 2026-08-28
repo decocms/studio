@@ -786,7 +786,15 @@ export async function runClaudeCode(
         if (!messageId && typeof id === "string" && id.length > 0) {
           messageId = id;
         }
-        if (started) push([{ type: "finish-step" }, { type: "start-step" }]);
+        // Close whatever `stream_event` left open BEFORE the step boundary —
+        // the SDK reducer drops its open parts on `finish-step`, so an end
+        // emitted after it is an orphan that throws and kills the run.
+        if (started)
+          push([
+            ...translator.closeOpenStreamBlocks(),
+            { type: "finish-step" },
+            { type: "start-step" },
+          ]);
         else startTurn(messageId ?? `msg_${message.uuid}`);
       }
       push([...translator.translate(message)]);
