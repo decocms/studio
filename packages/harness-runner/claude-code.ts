@@ -475,6 +475,7 @@ function retryingProviderChunk(): Record<string, unknown> {
 export function createDeltaCoalescer(flushChars = 200): {
   push(chunks: unknown[]): unknown[];
   drain(): unknown[];
+  discard(): void;
 } {
   let held: { type: string; id: string; delta: string } | null = null;
 
@@ -524,6 +525,9 @@ export function createDeltaCoalescer(flushChars = 200): {
       const chunk = held;
       held = null;
       return [chunk];
+    },
+    discard() {
+      held = null;
     },
   };
 }
@@ -636,6 +640,8 @@ export async function runClaudeCode(
           emit({ chunks: [retryingProviderChunk()] });
           // What the dead attempt buffered is not part of the next one.
           pending.length = 0;
+          // Nor is a delta it left half-coalesced — discard it, don't drain it.
+          coalescer.discard();
           await Bun.sleep(waitMs);
           if (!resumeSession) sessionId = crypto.randomUUID();
           attempt = 0;
