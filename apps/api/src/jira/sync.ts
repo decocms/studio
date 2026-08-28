@@ -24,6 +24,7 @@
  * its issue is next updated in Jira.
  */
 
+import { boardHandler } from "@/tools/task-board/board-handler";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type {
@@ -240,8 +241,11 @@ async function maybeAutoDelegate(
   item: TaskBoardItem,
 ): Promise<TaskBoardItem> {
   if (!integration.autoDelegate) return item;
-  if (item.status !== "todo" || item.assigneeId) return item;
+  if (item.assigneeId) return item;
   const orgId = integration.organizationId;
+  // The board decides whether its own column starts work; one nobody set up
+  // that way is uneventful.
+  if (!(await boardHandler(orgId).startsWorkOn(item.status))) return item;
   // Conditional claim, not a plain update: the cron, a webhook wake-up (its
   // debounce is per-pod) and a manual JIRA_SYNC_RUN can all be mid-sync on the
   // same issue, and a read-then-write would dispatch two paid agent runs on it.

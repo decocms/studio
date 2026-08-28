@@ -11,20 +11,21 @@
  * too, and those importing `run-reactions` for a constant would be a cycle.
  */
 
-import { DELIVERY_LANES } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  type CanonicalColumnKey,
+  DELIVERY_LANES,
+} from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
 
-export const LANE_RANK: Record<TaskBoardItemStatus, number> = {
-  triage: 0,
-  todo: 1,
-  in_progress: 2,
-  in_review: 3,
-  approved: 4,
-  merged: 5,
-  post_deploy_validation: 6,
-  done: 7,
-  archived: 8,
-};
+const RANK_BY_KEY = Object.fromEntries(
+  CANONICAL_COLUMN_KEYS.map((key, index) => [key, index]),
+) as Record<CanonicalColumnKey, number>;
+
+/** Annotated, not cast: a status added to the union with no place in
+ *  `CANONICAL_COLUMN_KEYS` fails to satisfy this `Record` and is a compile
+ *  error here, which is the whole reason the table is exhaustive. */
+export const LANE_RANK: Record<TaskBoardItemStatus, number> = RANK_BY_KEY;
 
 /** The delivery lanes, as board statuses — the assertion that the shared
  *  literal union stays a subset of this side's lane vocabulary. */

@@ -1,9 +1,18 @@
+import { boardHandler } from "./board-handler";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { SprintSchema, TaskBoardItemSchema } from "./schema";
 import { recoverStalledTasks } from "./stall-recovery";
+
+/** A board column as the client renders it — mirrors `BoardColumn` in shared. */
+const BoardColumnSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  position: z.number(),
+  role: z.string().nullable(),
+});
 
 export const TASK_BOARD_ITEM_LIST = defineTool({
   name: "TASK_BOARD_ITEM_LIST",
@@ -25,6 +34,8 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     repos: z.array(z.string()),
     // The sprint filter's option set, in reading order (running → next → past).
     sprints: z.array(SprintSchema),
+    // The board's columns, left to right — its whole vocabulary.
+    columns: z.array(BoardColumnSchema),
   }),
   handler: async (_input, ctx) => {
     requireAuth(ctx);
@@ -37,11 +48,13 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
       );
     }
 
-    const [items, { items: githubConnections }, sprints] = await Promise.all([
-      ctx.storage.taskBoard.list(organizationId),
-      ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
-      ctx.storage.sprints.listByOrg(organizationId),
-    ]);
+    const [items, { items: githubConnections }, sprints, columns] =
+      await Promise.all([
+        ctx.storage.taskBoard.list(organizationId),
+        ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
+        ctx.storage.sprints.listByOrg(organizationId),
+        boardHandler(organizationId).columns(),
+      ]);
     const repos = listRepoScopeLabels(githubConnections);
 
     // Opening the board is the stall-recovery trigger: re-run the thread-finish
@@ -51,6 +64,6 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     // moves broadcast over SSE, which is how the board already learns them).
     void recoverStalledTasks(ctx, items);
 
-    return { items, repos, sprints };
+    return { items, repos, sprints, columns };
   },
 });
