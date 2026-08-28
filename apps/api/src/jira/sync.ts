@@ -164,6 +164,33 @@ async function mirrorBoardColumns(
   return index;
 }
 
+/**
+ * Whether the pull writes the card's status, or leaves it where it is.
+ *
+ * Normally only when Jira's own status changed — an unrelated issue edit must
+ * not yank back a card the agent already advanced.
+ *
+ * The exception is a card sitting in a column this board does not have. That
+ * is EVERY card on the day an org's board becomes its own: their statuses are
+ * Studio's lanes, the columns are suddenly the tracker's, and a card nobody
+ * touched in Jira would render nowhere at all. Re-homing is bounded to exactly
+ * those cards and stops for each one the moment it lands somewhere real, so it
+ * is a conversion path rather than a standing override.
+ */
+export function rewritesStatus({
+  jiraStatusChanged,
+  currentStatus,
+  boardColumns,
+}: {
+  jiraStatusChanged: boolean;
+  /** Null when the card could not be read; nothing to re-home. */
+  currentStatus: string | null;
+  boardColumns: ReadonlySet<string>;
+}): boolean {
+  if (jiraStatusChanged) return true;
+  return currentStatus !== null && !boardColumns.has(currentStatus);
+}
+
 export function buildJql(
   integration: OrgJiraIntegration,
   scopeJql: string,
@@ -545,6 +572,10 @@ async function runSync(
   const laneOf = orgOwnedColumns
     ? await mirrorBoardColumns(ctx, integration, boardId)
     : laneIndex(integration.statusMapping);
+  // Read AFTER the mirror, or the first sync of a converting board would see
+  // no columns at all and call every card stranded — right by accident, and
+  // wrong the moment a board legitimately has none.
+  const columnKeys = new Set((await board.columns()).map((c) => c.key));
   if (laneOf.size === 0) {
     throw new Error(
       orgOwnedColumns
@@ -650,16 +681,21 @@ async function runSync(
         // Status applies only when it changed ON JIRA'S SIDE, so an unrelated issue edit can't yank back a card the agent already advanced.
         const statusChangedOnJira = link.jiraStatus !== jiraStatusName;
         const before = await ctx.storage.taskBoard.getById(link.itemId, orgId);
+        const writeStatus = rewritesStatus({
+          jiraStatusChanged: statusChangedOnJira,
+          currentStatus: before?.status ?? null,
+          boardColumns: columnKeys,
+        });
         let item = await ctx.storage.taskBoard.update(
           link.itemId,
           orgId,
-          { ...fields, ...(statusChangedOnJira ? { status } : {}) },
+          { ...fields, ...(writeStatus ? { status } : {}) },
           JIRA_SYNC_ACTOR,
         );
         await ctx.storage.jiraIntegrations.touchLink(link.itemId, {
           jiraStatus: jiraStatusName,
         });
-        if (before && statusChangedOnJira && before.status !== status) {
+        if (before && writeStatus && before.status !== status) {
           await ctx.storage.taskBoard.recordActivity({
             taskBoardItemId: link.itemId,
             action: "status_changed",
