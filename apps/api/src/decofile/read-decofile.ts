@@ -59,7 +59,7 @@ export async function resolveOrCreateHead(
  * stampedes the connection pool, flakes into timeouts, and can trip GitHub's
  * secondary (abuse) rate limit. Cold reads are rare — the blob cache makes
  * every subsequent read fetch only what changed. */
-const BLOB_FETCH_CONCURRENCY = 12;
+export const BLOB_FETCH_CONCURRENCY = 12;
 
 /** Above this many cache-missing blobs, a single tarball download beats
  * per-blob API calls (rate-limit- and latency-wise). */
@@ -188,6 +188,23 @@ export function primeBlobCache(
   return putBlob(owner, repo, blobSha, content);
 }
 
+/**
+ * A block blob's text, disk-cache-first (mirrors `resolveSnapshot`'s tail
+ * fetch). Writers share this so the in-commit `blocks.gen.json` regeneration
+ * reads the warm blobs the editor's read just primed, instead of re-fetching
+ * every block from GitHub uncached. A miss fetches once and writes through.
+ */
+export async function getBlockText(
+  client: GitDataClient,
+  sha: string,
+): Promise<string> {
+  const hit = await getBlob(client.owner, client.repo, sha);
+  if (hit !== null) return hit;
+  const content = await client.getBlobText(sha);
+  await putBlob(client.owner, client.repo, sha, content);
+  return content;
+}
+
 export interface DecofileSnapshot {
   /** Branch head commit sha — the version everywhere (ETag, __draft, response). */
   sha: string;
@@ -209,6 +226,25 @@ function mergedDocSha(sha: string, packagePath: string | null): string {
   return createHash("sha1")
     .update(`${MERGED_DOC_FORMAT}:${sha}:${packagePath ?? ""}`)
     .digest("hex");
+}
+
+/**
+ * Prime the merged-doc disk cache for `(sha, packagePath)` with a document the
+ * writer already computed in-commit, so the preview read right after a save is
+ * a disk hit instead of a tree read + full re-merge. Keyed identically to
+ * `resolveSnapshot`'s own writes (same `mergedDocSha`/format), and the writer's
+ * `mergeBlocks` output is byte-for-byte what `resolveSnapshot` would produce at
+ * that sha, so a later read is served correct. Fail-open (`putMerged` never
+ * throws): a cache miss just recomputes.
+ */
+export function primeMergedSnapshot(
+  owner: string,
+  repo: string,
+  sha: string,
+  packagePath: string | null,
+  decofile: string,
+): Promise<void> {
+  return putMerged(owner, repo, mergedDocSha(sha, packagePath), decofile);
 }
 
 /** Concurrent snapshot reads of the same content share ONE resolution — this

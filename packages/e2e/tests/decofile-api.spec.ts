@@ -561,6 +561,58 @@ test.describe("decofile API", () => {
     }
   });
 
+  test("PATCH regenerates a committed blocks.gen.json from the full block set", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      const oldHero = { __resolveType: "site/sections/Hero.tsx", title: "old" };
+      const footer = { __resolveType: "site/sections/Footer.tsx", year: 2024 };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: {
+            files: {
+              ".deco/blocks/Hero.json": blockFileContent(oldHero),
+              ".deco/blocks/Footer.json": blockFileContent(footer),
+              // Deliberately stale (no Footer, pre-edit Hero): a pass proves a full re-merge.
+              ".deco/blocks.gen.json": `${JSON.stringify({ Hero: oldHero })}\n`,
+            },
+          },
+          draft: null,
+        },
+      });
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const url = decofileUrl(project, "draft");
+
+      const newHero = { __resolveType: "site/sections/Hero.tsx", title: "new" };
+      const patchRes = await ctx.patch(url, {
+        data: { set: { Hero: newHero } },
+      });
+      expect(patchRes.status()).toBe(200);
+
+      const inspected = await inspectStubRepo(ctx, owner, repo);
+      const genRaw =
+        inspected.branches["draft"]?.files[".deco/blocks.gen.json"];
+      expect(genRaw).toBeDefined();
+      const gen = JSON.parse(genRaw as string) as Record<string, unknown>;
+      // Edited Hero + untouched Footer: the stale seed was replaced, not key-patched.
+      expect(gen["Hero"]).toEqual(newHero);
+      expect(gen["Footer"]).toEqual(footer);
+      // Keys sorted by filename (Footer.json < Hero.json), matching the daemon.
+      expect(Object.keys(gen)).toEqual(["Footer", "Hero"]);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test("large repo whose recursive tree read truncates still reads and writes blocks", async ({
     playwright,
   }) => {
