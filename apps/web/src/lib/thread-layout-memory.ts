@@ -42,6 +42,7 @@ type StoredEntry = [taskId: string, layout: ThreadLayout];
  */
 export function sanitizeThreadLayout(layout: ThreadLayout): ThreadLayout {
   const clean: ThreadLayout = {};
+  if (layout === null || typeof layout !== "object") return clean;
   if (typeof layout.tab === "string") clean.tab = layout.tab;
   if (typeof layout.mainpanel === "boolean") clean.mainpanel = layout.mainpanel;
   if (typeof layout.sidepanel === "boolean") {
