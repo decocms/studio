@@ -45,6 +45,12 @@ describe("uploadsAsSandboxPaths", () => {
     }
   });
 
+  it("leaves an encoded-slash volume that could climb out of the mount alone", () => {
+    // `..%2F..%2Fetc` decodes to `../../etc` though the raw capture has no slash.
+    const url = "(/api/o/fs/..%2F..%2Fetc/read?path=passwd)";
+    expect(uploadsAsSandboxPaths(url)).toBe(url);
+  });
+
   it("leaves everything that isn't an org-fs read URL alone", () => {
     const md =
       "See ![x](https://example.com/a.png) and /api/o/fs/uploads/read (no path)";
