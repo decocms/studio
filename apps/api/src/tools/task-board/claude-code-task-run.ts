@@ -24,7 +24,10 @@ import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
-import { uploadsAsSandboxPaths } from "./description-uploads";
+import {
+  sandboxUploadHint,
+  uploadsAsSandboxPaths,
+} from "./description-uploads";
 
 /** The repo a claude-code task run works in. */
 export interface TaskRepo {
@@ -205,13 +208,9 @@ export function buildClaudeCodeTaskPrompt(
   if (task.description) {
     const description = uploadsAsSandboxPaths(task.description);
     lines.push("", "Description:", description);
-    // Only when the description actually carries one: an unconditional note
-    // about attachments that aren't there is noise the model has to rule out.
-    if (description !== task.description) {
-      lines.push(
-        "",
-        "The image and file links in that description are real paths in this sandbox, not URLs — `Read` them. A screenshot the task points at is usually the clearest statement of what it wants.",
-      );
+    const hint = sandboxUploadHint(task.description, description);
+    if (hint) {
+      lines.push("", hint);
     }
   }
   lines.push(

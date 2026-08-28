@@ -38,3 +38,20 @@ export function uploadsAsSandboxPaths(description: string): string {
     },
   );
 }
+
+/**
+ * The note to append after a rewritten description, so the run knows the
+ * `org/.uploads/…` paths `uploadsAsSandboxPaths` just wrote are real files to
+ * `Read`, not more prose. Only when the rewrite actually changed something —
+ * an unconditional note about attachments that aren't there is noise the
+ * model has to rule out. Shared by every sandboxed prompt that shows a task
+ * description (the task run itself and its reviewers).
+ */
+export function sandboxUploadHint(
+  original: string,
+  rewritten: string,
+): string | null {
+  return rewritten === original
+    ? null
+    : "The image and file links in that description are real paths in this sandbox, not URLs — `Read` them. A screenshot the task points at is usually the clearest statement of what it wants.";
+}

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { uploadsAsSandboxPaths } from "./description-uploads";
+import {
+  sandboxUploadHint,
+  uploadsAsSandboxPaths,
+} from "./description-uploads";
 
 describe("uploadsAsSandboxPaths", () => {
   it("points an editor image at its sandbox mount", () => {
@@ -46,5 +49,19 @@ describe("uploadsAsSandboxPaths", () => {
     const md =
       "See ![x](https://example.com/a.png) and /api/o/fs/uploads/read (no path)";
     expect(uploadsAsSandboxPaths(md)).toBe(md);
+  });
+});
+
+describe("sandboxUploadHint", () => {
+  it("is null when the rewrite changed nothing", () => {
+    const md = "Just plain text, no uploads.";
+    expect(sandboxUploadHint(md, uploadsAsSandboxPaths(md))).toBeNull();
+  });
+
+  it("fires when the rewrite pointed a link at the sandbox mount", () => {
+    const md = "![x](/api/o/fs/uploads/read?path=a.png)";
+    expect(sandboxUploadHint(md, uploadsAsSandboxPaths(md))).toContain(
+      "real paths in this sandbox",
+    );
   });
 });
