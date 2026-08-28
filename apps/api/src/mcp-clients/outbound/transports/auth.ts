@@ -20,6 +20,7 @@ import type {
   JSONRPCMessage,
   JSONRPCRequest,
   CallToolRequest,
+  Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { WrapperTransport } from "@decocms/mcp-utils";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -92,7 +93,7 @@ export class AuthTransport extends WrapperTransport {
     return this.toolsListPromise;
   }
 
-  private async ensureToolsMap(): Promise<Map<string, any>> {
+  private async ensureToolsMap(): Promise<Map<string, Tool>> {
     const cache = this.options.cache ?? getMcpListCache();
 
     const tools = await fetchWithCache(
@@ -114,7 +115,7 @@ export class AuthTransport extends WrapperTransport {
       return new Map();
     }
 
-    return new Map((tools as Array<{ name: string }>).map((t) => [t.name, t]));
+    return new Map((tools as Tool[]).map((t) => [t.name, t]));
   }
 
   protected override async handleOutgoingMessage(
