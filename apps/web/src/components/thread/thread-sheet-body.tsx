@@ -386,7 +386,19 @@ function ThreadConversationPanel({
                 <MessagePair
                   pair={pair}
                   isLastPair={idx === messagePairs.length - 1}
-                  status="ready"
+                  // The sheet is a read-only viewer with no chat stream behind
+                  // it, so `useOptionalChatStream()` is null inside and an
+                  // assistant message with no parts yet reads as settled —
+                  // rendering "No response was generated" over a run that is
+                  // still generating. The thread's own status is the signal
+                  // the sheet does have; only the last pair can be the live
+                  // one, and marking an earlier one would shimmer history.
+                  status={
+                    idx === messagePairs.length - 1 &&
+                    thread.status === "in_progress"
+                      ? "streaming"
+                      : "ready"
+                  }
                 />
               </div>
             ))}

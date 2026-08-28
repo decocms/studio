@@ -41,6 +41,36 @@ export type TaskBoardItemTag = TaskBoardItem["tags"][number];
 export type TaskBoardItemPr =
   ToolOutput<"TASK_BOARD_ITEM_PRS_GET">["prs"][number];
 
+/**
+ * An infrastructure retry is not news. Each one wrote its own
+ * `In Progress → In Progress` activity ("scheduled retry 1 of 1 — error"), so a
+ * card that burned its budget read as a wall of retry chatter with the actual
+ * story buried in it. The retry is still counted — the terminal
+ * `activityRetriesExhausted` line ("moved to To Do after N failed retries") is
+ * the part a person acts on, and it survives this filter.
+ */
+export function isFeedWorthyActivity(a: {
+  action: string;
+  data?: Record<string, unknown> | null;
+}): boolean {
+  return !(a.action === "status_changed" && typeof a.data?.retry === "number");
+}
+
+/**
+ * The same noise from the other side: every retry spawns a fresh thread, and
+ * each one rendered its own card, so three attempts meant three near-identical
+ * "Retried" cards stacked above the one that matters.
+ *
+ * `superseded` means a NEWER attempt replaced this one, so a superseded thread
+ * can never be the newest — the live (or last) run always survives this filter,
+ * and with it the link to a transcript.
+ */
+export function isLiveAttempt(thread: {
+  failureKind?: string | null;
+}): boolean {
+  return thread.failureKind !== "superseded";
+}
+
 /** Org tag, as returned by TAGS_LIST/TAGS_CREATE (same shape a task's `tags`
  *  snapshot is drawn from). */
 export type OrgTag = ToolOutput<"TAGS_LIST">["tags"][number];

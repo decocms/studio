@@ -6,6 +6,8 @@ import {
   dueDateUrgency,
   formatSprintDates,
   insertSortOrder,
+  isFeedWorthyActivity,
+  isLiveAttempt,
   isTaskHandedToHuman,
   laneVisibility,
   moveTargets,
@@ -365,5 +367,54 @@ describe("laneVisibility", () => {
       occupied: [],
     });
     expect(lanes).not.toContain("a_lane_that_no_longer_exists");
+  });
+});
+
+describe("isFeedWorthyActivity", () => {
+  test("drops the per-retry line — it says nothing a person acts on", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "in_progress", to: "in_progress", retry: 1, of: 1 },
+      }),
+    ).toBe(false);
+  });
+
+  test("keeps the terminal line that counts the retries", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "in_progress", to: "todo", retriesSpent: 1 },
+      }),
+    ).toBe(true);
+  });
+
+  test("keeps ordinary moves, and anything that is not a status change", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "todo", to: "in_progress" },
+      }),
+    ).toBe(true);
+    expect(isFeedWorthyActivity({ action: "created", data: null })).toBe(true);
+    // `retry` is only a retry when it is a count — a stray string is not one.
+    expect(
+      isFeedWorthyActivity({ action: "status_changed", data: { retry: "1" } }),
+    ).toBe(true);
+  });
+});
+
+describe("isLiveAttempt", () => {
+  test("drops a superseded attempt — a newer run replaced it", () => {
+    expect(isLiveAttempt({ failureKind: "superseded" })).toBe(false);
+  });
+
+  test("keeps the attempt that actually ended the card", () => {
+    // The last attempt is never superseded (nothing replaced it), so a card
+    // whose every run failed still shows one card, and one transcript.
+    expect(isLiveAttempt({ failureKind: "error" })).toBe(true);
+    expect(isLiveAttempt({ failureKind: "ended_after_delivery" })).toBe(true);
+    expect(isLiveAttempt({ failureKind: null })).toBe(true);
+    expect(isLiveAttempt({})).toBe(true);
   });
 });
