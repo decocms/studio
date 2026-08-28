@@ -62,6 +62,7 @@ const ALL_TOOL_NAMES = [
   "BRAND_CONTEXT_DELETE",
   "BRAND_CONTEXT_EXTRACT",
   "BLOG_BRAND_EXTRACT",
+  "BLOG_PILLAR_SUGGEST",
   "BLOG_THEME_SUGGEST",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
@@ -378,8 +379,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Blog",
   },
   {
+    name: "BLOG_PILLAR_SUGGEST",
+    description: "Propose content pillars from a brand's editorial context",
+    category: "Blog",
+  },
+  {
     name: "BLOG_THEME_SUGGEST",
-    description: "Propose blog themes from a brand's editorial context",
+    description: "Propose blog post ideas from a brand's editorial context",
     category: "Blog",
   },
   {

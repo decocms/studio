@@ -22,13 +22,11 @@ export const sandbox = {
   "sandbox.blockPicker.insertBlockButton": "Inserir bloco",
   "sandbox.blockPicker.noBlocksFound": "Nenhum bloco encontrado.",
   "sandbox.blockPicker.searchPlaceholder": "Pesquisar blocos…",
-  "sandbox.blogBrand.addCategory": "Adicionar categoria",
   "sandbox.blogBrand.addCompetitor": "Adicionar concorrente",
   "sandbox.blogBrand.addDo": "Adicionar orientação",
   "sandbox.blogBrand.addDont": "Adicionar restrição",
   "sandbox.blogBrand.addValue": "Adicionar valor",
   "sandbox.blogBrand.audienceLabel": "Público-alvo",
-  "sandbox.blogBrand.categoriesLabel": "Categorias do blog",
   "sandbox.blogBrand.companyNameLabel": "Nome da marca",
   "sandbox.blogBrand.competitorsBodyPlaceholder":
     "Como se posicionam, e onde esta marca se diferencia",
@@ -88,35 +86,27 @@ export const sandbox = {
   "sandbox.blockRow.deleteBlock": "Deletar bloco",
   "sandbox.blockRow.dragToReorder": "Arraste para reordenar",
   "sandbox.blockRow.duplicateBlock": "Duplicar bloco",
+  "sandbox.blogContext.addAuthor": "Adicionar autor",
+  "sandbox.blogContext.addCategory": "Adicionar categoria",
+  "sandbox.blogContext.authorsEmpty": "Nenhum autor ainda.",
+  "sandbox.blogContext.authorsHint":
+    "As pessoas a quem seus posts são atribuídos. Adicione uma e abra para editar.",
+  "sandbox.blogContext.categoriesEmpty": "Nenhuma categoria ainda.",
+  "sandbox.blogContext.categoriesHint":
+    "Os temas sob os quais seus posts são classificados. Adicione um e abra para editar.",
+  "sandbox.blogContext.removeEntry": "Remover",
+  "sandbox.blogContext.subtitle":
+    "O contexto de marca do qual seu blog é escrito — voz, formatos e os pilares aos quais ele sempre volta.",
+  "sandbox.blogContext.tabAuthors": "Autores",
+  "sandbox.blogContext.tabBrand": "Marca",
+  "sandbox.blogContext.tabCategories": "Categorias",
+  "sandbox.blogContext.tabFormats": "Formatos",
+  "sandbox.blogContext.tabPillars": "Pilares de conteúdo",
+  "sandbox.blogContext.title": "Contexto",
   "sandbox.bootingVisual.phaseCloning": "Clonando seu repositório",
   "sandbox.bootingVisual.phaseDev": "Iniciando seu preview",
   "sandbox.bootingVisual.phaseInstall": "Instalando pacotes",
   "sandbox.bootingVisual.phaseProvision": "Reservando sandbox",
-  "sandbox.bulkCategoryPanel.applyButton": "Aplicar",
-  "sandbox.bulkCategoryPanel.cancelButton": "Cancelar",
-  "sandbox.bulkCategoryPanel.categoryLabel": "Categoria",
-  "sandbox.bulkCategoryPanel.descriptionEmpty":
-    "Selecione posts da lista para escolher a quais posts essa atualização se aplica.",
-  "sandbox.bulkCategoryPanel.descriptionWithCount":
-    "Escolha uma categoria para aplicar a {count} post(s).",
-  "sandbox.bulkCategoryPanel.exitSelection": "Sair da seleção",
-  "sandbox.bulkCategoryPanel.modeAddDescription":
-    "Mantenha as categorias existentes e adicione esta.",
-  "sandbox.bulkCategoryPanel.modeAddTitle": "Adicionar categoria",
-  "sandbox.bulkCategoryPanel.modeReplaceDescription":
-    "Remova todas as categorias atuais e defina apenas esta.",
-  "sandbox.bulkCategoryPanel.modeReplaceTitle": "Substituir categoria",
-  "sandbox.bulkCategoryPanel.noCategoriesMessage":
-    "Nenhuma categoria ainda — crie uma na coleção de Categorias.",
-  "sandbox.bulkCategoryPanel.noPostsSelectedMessage":
-    "Nenhum post selecionado ainda — escolha-os da lista à esquerda.",
-  "sandbox.bulkCategoryPanel.selectCategoryPlaceholder":
-    "Selecione uma categoria",
-  "sandbox.bulkCategoryPanel.selectedCount": "{count} post(s) selecionado(s)",
-  "sandbox.bulkCategoryPanel.selectedPostsLabel":
-    "{count} post(s) selecionado(s)",
-  "sandbox.bulkCategoryPanel.title": "Atualizar categoria",
-  "sandbox.bulkCategoryPanel.updatingButton": "Atualizando…",
   "sandbox.categoryEditor.addPostsButton": "Adicionar posts",
   "sandbox.categoryEditor.cancelButton": "Cancelar",
   "sandbox.categoryEditor.categoryNamePlaceholder": "Nome da categoria",
@@ -147,16 +137,24 @@ export const sandbox = {
   "sandbox.categoryEditor.slugPlaceholder": "minha-categoria",
   "sandbox.categoryEditor.untitledCategory": "Categoria sem título",
   "sandbox.categoryEditor.untitledPost": "Post sem título",
+  "sandbox.cmsSettings.contentEditing.auto": "Automático",
+  "sandbox.cmsSettings.contentEditing.autoDescription":
+    "O preview abre o CMS assim que for possível editar o conteúdo.",
+  "sandbox.cmsSettings.contentEditing.description":
+    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
+  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
+  "sandbox.cmsSettings.contentEditing.manualDescription":
+    "Quem edita abre o CMS pelo preview quando precisa.",
+  "sandbox.cmsSettings.contentEditing.off": "Desativado",
+  "sandbox.cmsSettings.contentEditing.offDescription":
+    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
+  "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.collectionsSidebar.actions": "Ações",
   "sandbox.collectionsSidebar.apps": "Apps",
-  "sandbox.collectionsSidebar.authors": "Autores",
-  "sandbox.collectionsSidebar.autonomous": "Conteúdo autônomo",
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendário",
-  "sandbox.collectionsSidebar.categories": "Categorias",
-  "sandbox.collectionsSidebar.generate": "Gerar",
-  "sandbox.collectionsSidebar.library": "Biblioteca",
   "sandbox.collectionsSidebar.content": "Conteúdo",
+  "sandbox.collectionsSidebar.context": "Contexto",
   "sandbox.collectionsSidebar.loaders": "Carregadores",
   "sandbox.collectionsSidebar.pages": "Páginas",
   "sandbox.collectionsSidebar.postSchedule": "Agendamento",
@@ -165,7 +163,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
-  "sandbox.collectionsSidebar.themes": "Temas",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',
@@ -346,50 +343,49 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} formato(s) adicionado(s)",
   "sandbox.formats.unknownCitations":
     "Este formato cita sections que o site não tem: {names}",
-  "sandbox.generate.back": "Voltar",
-  "sandbox.generate.badDate":
-    "Essa data n\u00e3o \u00e9 v\u00e1lida — escolha outra.",
-  "sandbox.generate.blockedBrand":
-    "Um post escrito sem o contexto da marca sai igual ao de qualquer outra. Preencha estes na Biblioteca primeiro — o bot\u00e3o Preencher faz de uma vez.",
-  "sandbox.generate.blockedBrandTitle": "Preencha o contexto da marca primeiro",
-  "sandbox.generate.blockedSections":
-    "Este site n\u00e3o exp\u00f5e nenhuma section de post que d\u00ea para escrever s\u00f3 com texto, ent\u00e3o ainda n\u00e3o h\u00e1 do que montar um post.",
-  "sandbox.generate.blockedSectionsTitle": "Sem sections para escrever",
-  "sandbox.generate.cancel": "Cancelar",
-  "sandbox.generate.done": "\u201c{title}\u201d gerado e agendado.",
-  "sandbox.generate.extraHint":
-    "O que voc\u00ea quer deste post espec\u00edfico e que o tema e o formato ainda n\u00e3o dizem.",
-  "sandbox.generate.extraLabel": "Instru\u00e7\u00f5es extras",
-  "sandbox.generate.extraPlaceholder": "Opcional",
-  "sandbox.generate.failed": "N\u00e3o foi poss\u00edvel gerar o post",
-  "sandbox.generate.idle":
-    "Todo post gerado \u00e9 agendado, nunca publicado — voc\u00ea revisa, e ele entra no ar no dia que escolheu.",
-  "sandbox.generate.new": "Novo",
-  "sandbox.generate.next": "Continuar",
-  "sandbox.generate.noFormats":
-    "Nenhum formato ainda. Escreva um aqui, ou nomeie os que este blog j\u00e1 usa na Biblioteca.",
-  "sandbox.generate.noThemes":
-    "Nenhum tema ainda. Escreva um aqui, ou deixe o agente propor alguns em Temas.",
-  "sandbox.generate.phaseFinishing": "Finalizando o post\u2026",
-  "sandbox.generate.phaseReading": "Lendo a marca, o tema e o formato\u2026",
-  "sandbox.generate.phaseWriting": "Escrevendo\u2026",
-  "sandbox.generate.pickFormat": "Qual formato?",
-  "sandbox.generate.pickInstead": "Escolher um existente",
-  "sandbox.generate.pickTheme": "Qual tema?",
-  "sandbox.generate.run": "Gerar",
-  "sandbox.generate.scheduleHint":
-    "O post entra no ar neste instante. Post gerado \u00e9 sempre agendado.",
-  "sandbox.generate.scheduleLabel": "Publicar em",
-  "sandbox.generate.suggest": "Sugerir um",
-  "sandbox.generate.suggesting": "Pensando\u2026",
-  "sandbox.generate.stepExtra": "Instru\u00e7\u00f5es extras",
-  "sandbox.generate.stepFormat": "Formato",
-  "sandbox.generate.stepSchedule": "Agendamento",
-  "sandbox.generate.stepTheme": "Tema",
-  "sandbox.generate.subtitle":
-    "Um tema mais um formato viram um draft agendado.",
-  "sandbox.generate.title": "Gerar",
-  "sandbox.generate.writeInstead": "Escrever um novo",
+  "sandbox.generatePost.authorLabel": "Autor",
+  "sandbox.generatePost.back": "Voltar",
+  "sandbox.generatePost.blockedBrand":
+    "Preencha {fields} na aba Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
+  "sandbox.generatePost.categoryLabel": "Categoria",
+  "sandbox.generatePost.done": '"{title}" escrito — pronto para revisão',
+  "sandbox.generatePost.extraLabel": "Mais alguma coisa?",
+  "sandbox.generatePost.extraPlaceholder":
+    "O que você quer além de tudo isso, nas suas palavras.",
+  "sandbox.generatePost.failed": "Não foi possível escrever este post",
+  "sandbox.generatePost.formatHint":
+    "Escolha um formato que a marca já usa, ou descreva um novo.",
+  "sandbox.generatePost.formatNameLabel": "Nome do formato",
+  "sandbox.generatePost.formatNamePlaceholder":
+    "O formato, nomeado pelo trabalho que faz",
+  "sandbox.generatePost.formatValueLabel": "Como um post assim é construído",
+  "sandbox.generatePost.formatValuePlaceholder":
+    "Como ele abre, desenvolve e fecha.",
+  "sandbox.generatePost.generate": "Gerar",
+  "sandbox.generatePost.ideaBodyLabel": "O ângulo",
+  "sandbox.generatePost.ideaBodyPlaceholder":
+    "Para quem é e o que deve cobrir. Opcional.",
+  "sandbox.generatePost.ideaHint":
+    "Um ângulo só, específico o bastante para virar um post.",
+  "sandbox.generatePost.ideaHintInPillar":
+    'Um ângulo dentro de "{pillar}" — específico o bastante para virar um post, não o território inteiro.',
+  "sandbox.generatePost.ideaTitleLabel": "Sobre o que é o post?",
+  "sandbox.generatePost.ideaTitlePlaceholder": "ex.: Por que o linho amassa",
+  "sandbox.generatePost.inferHint":
+    "Deixe categoria ou autor em branco e o modelo escolhe entre os que o seu blog já tem.",
+  "sandbox.generatePost.inferIt": "Deixar a IA escolher",
+  "sandbox.generatePost.next": "Avançar",
+  "sandbox.generatePost.stepExtra": "Detalhes",
+  "sandbox.generatePost.stepFormat": "Formato",
+  "sandbox.generatePost.stepIdea": "Ideia",
+  "sandbox.generatePost.subtitle":
+    "Uma ideia, o pilar a que ela pertence, o formato que ela segue — e o que mais você quiser definir.",
+  "sandbox.generatePost.suggestFailed": "Não foi possível sugerir",
+  "sandbox.generatePost.suggestIdeas": "Sugerir ideias",
+  "sandbox.generatePost.suggestIdeasHint":
+    "Propor ideias a partir do seu contexto de marca.",
+  "sandbox.generatePost.title": "Gerar um post",
+  "sandbox.generatePost.writeAnIdea": "Escrever uma nova",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -397,10 +393,6 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "Mais ações",
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
-  "sandbox.library.subtitle": "O contexto que orienta todo post gerado.",
-  "sandbox.library.tabContext": "Contexto",
-  "sandbox.library.tabFormats": "Formatos",
-  "sandbox.library.title": "Biblioteca",
   "sandbox.listBlocks.addCard": "Adicionar card",
   "sandbox.listBlocks.addItem": "Adicionar item",
   "sandbox.listBlocks.addStat": "Adicionar estatística",
@@ -471,6 +463,29 @@ export const sandbox = {
     "Procurar {options} ou digite um valor…",
   "sandbox.pathParamPickerChip.useRawValue":
     'Usar "{rawTerm}" como {paramLabel}',
+  "sandbox.pillars.add": "Adicionar pilar",
+  "sandbox.pillars.bodyPlaceholder":
+    "O que esse território cobre e por que sua marca sempre volta a ele.",
+  "sandbox.pillars.empty": "Nenhum pilar de conteúdo ainda.",
+  "sandbox.pillars.guidanceHint":
+    "Sobre o que os pilares devem ser, nas suas palavras. Opcional.",
+  "sandbox.pillars.guidanceLabel": "Algo específico?",
+  "sandbox.pillars.guidancePlaceholder": "ex.: foco em educação pós-compra",
+  "sandbox.pillars.hint":
+    "Pilares são os territórios recorrentes aos quais seu blog volta — novidades de produto, casos de clientes, tendências. Cada um pode ser escrito em vários formatos.",
+  "sandbox.pillars.namePlaceholder":
+    "Nomeie o território — ex.: Casos de clientes",
+  "sandbox.pillars.noNew": "Nenhum pilar novo para adicionar",
+  "sandbox.pillars.phaseReading": "Lendo seu contexto de marca…",
+  "sandbox.pillars.phaseWriting": "Nomeando os territórios…",
+  "sandbox.pillars.remove": "Remover pilar",
+  "sandbox.pillars.suggest": "Sugerir pilares",
+  "sandbox.pillars.suggestFailed": "Não foi possível sugerir pilares",
+  "sandbox.pillars.suggestHint":
+    "Propor pilares a partir do seu contexto de marca.",
+  "sandbox.pillars.suggestNoBrand": "Preencha a aba Marca primeiro.",
+  "sandbox.pillars.suggested": "{count} pilar(es) adicionado(s)",
+  "sandbox.pillars.untitled": "Pilar sem título",
   "sandbox.plainBlocks.bulletedLabel": "Com marcadores",
   "sandbox.plainBlocks.codePlaceholder": "Código",
   "sandbox.plainBlocks.headingLevel1": "Título 1",
@@ -481,6 +496,68 @@ export const sandbox = {
   "sandbox.plainBlocks.listItemPlaceholder": "Item de lista",
   "sandbox.plainBlocks.numberedLabel": "Numerada",
   "sandbox.plainBlocks.quotePlaceholder": "Citação",
+  "sandbox.postBoard.close": "Fechar",
+  "sandbox.postBoard.archived": "Movido para Arquivado",
+  "sandbox.postBoard.collapse": "Recolher para o painel",
+  "sandbox.postBoard.collapseLane": "Recolher {lane}",
+  "sandbox.postBoard.delete": "Excluir",
+  "sandbox.postBoard.deleteIdea": "Excluir ideia",
+  "sandbox.postBoard.emptyDescription":
+    "Gere algumas ideias e transforme-as em posts publicados.",
+  "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
+  "sandbox.postBoard.expand": "Expandir para página inteira",
+  "sandbox.postBoard.expandLane": "Expandir {lane}",
+  "sandbox.postBoard.generateIdeas": "Gerar ideias",
+  "sandbox.postBoard.generateIdeasHint":
+    "Propor ideias de post a partir do seu contexto.",
+  "sandbox.postBoard.generatingLabel": "Gerando…",
+  "sandbox.postBoard.groupBy": "Agrupar por",
+  "sandbox.postBoard.groupFormat": "Formato",
+  "sandbox.postBoard.groupPillar": "Pilar",
+  "sandbox.postBoard.groupStatus": "Status",
+  "sandbox.postBoard.ideaCount": "Quantas",
+  "sandbox.postBoard.ideaGuidanceLabel": "Ideias soltas ou um foco",
+  "sandbox.postBoard.ideaGuidancePlaceholder":
+    "ex.: um texto sobre escolher a gramatura do tecido",
+  "sandbox.postBoard.ideaNoPillar": "Qualquer pilar",
+  "sandbox.postBoard.ideaPillarLabel": "Pilar",
+  "sandbox.postBoard.ideasAdded": "{count} ideia(s) adicionada(s)",
+  "sandbox.postBoard.ideasEmpty":
+    "Nenhuma ideia ainda. Gere algumas, ou escreva uma direto num post.",
+  "sandbox.postBoard.ideasFailed": "Não foi possível gerar ideias",
+  "sandbox.postBoard.ideasTray": "Ideias",
+  "sandbox.postBoard.laneEmpty": "Nada aqui ainda",
+  "sandbox.postBoard.laneArchived": "Arquivado",
+  "sandbox.postBoard.laneGenerating": "Gerando",
+  "sandbox.postBoard.laneDraft": "Rascunho",
+  "sandbox.postBoard.laneAwaitingReview": "Aguardando revisão",
+  "sandbox.postBoard.lanePublished": "Publicado",
+  "sandbox.postBoard.laneScheduled": "Agendado",
+  "sandbox.postBoard.moveBlocked":
+    "Este post está sem campos obrigatórios — abra-o para concluir antes de agendar.",
+  "sandbox.postBoard.moveFailed": "Não foi possível mover este post",
+  "sandbox.postBoard.moveInFlight": "Ainda movendo este post…",
+  "sandbox.postBoard.moveNotATarget":
+    "Gerando é definido pela geração, não à mão.",
+  "sandbox.postBoard.moveUnsupported":
+    "O blog app deste site é anterior à {required} — rode `{command}` para habilitar.",
+  "sandbox.postBoard.nIssues": "{count} a corrigir antes de agendar",
+  "sandbox.postBoard.newPost": "Novo post",
+  "sandbox.postBoard.newPostGenerate": "Gerar",
+  "sandbox.postBoard.newPostGenerateHint":
+    "Escrever com IA, a partir do seu contexto",
+  "sandbox.postBoard.newPostWrite": "Escrever",
+  "sandbox.postBoard.newPostWriteHint": "Começar um rascunho vazio você mesmo",
+  "sandbox.postBoard.noFormat": "Sem formato",
+  "sandbox.postBoard.noPillar": "Sem pilar",
+  "sandbox.postBoard.readyToSchedule": "Pronto para agendar",
+  "sandbox.postBoard.selectPrompt": "Selecione um post para vê-lo aqui.",
+  "sandbox.postBoard.untitled": "Post sem título",
+  "sandbox.postBoard.untitledIdea": "Ideia sem título",
+  "sandbox.postBoard.usesCredits": "Usa créditos de IA",
+  "sandbox.postBoard.viewBoard": "Quadro",
+  "sandbox.postBoard.viewList": "Lista",
+  "sandbox.postBoard.writeFromIdea": "Escrever um post",
   "sandbox.postCalendar.couldNotCreate": "Não foi possível criar",
   "sandbox.postCalendar.couldNotReschedule": "Não foi possível reagendar",
   "sandbox.postCalendar.createdScheduledPost": "Post agendado criado",
@@ -533,11 +610,9 @@ export const sandbox = {
     "Defina o slug do post (e sua categoria) mais o pageSlug do aplicativo de blog para visualizar",
   "sandbox.postEditor.previewTooltip":
     "Abrir visualização do post em uma nova aba",
-  "sandbox.postEditor.publishedLabel": "Publicado",
   "sandbox.postEditor.scheduledDatetimeDescription":
     "Quando este post entra no ar. O site publica sozinho depois que esse momento passa.",
   "sandbox.postEditor.scheduledDatetimeLabel": "Entra no ar em",
-  "sandbox.postEditor.schedulingLabel": "Agendado",
   "sandbox.postEditor.removePropLabel": "Remover propriedade",
   "sandbox.postEditor.seePreview": "Ver visualização",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Selecionar autores",
@@ -554,37 +629,10 @@ export const sandbox = {
   "sandbox.postEditor.seoSectionLabel": "SEO",
   "sandbox.postEditor.seoTitleLabel": "Título de SEO",
   "sandbox.postEditor.settingsTab": "Configurações",
+  "sandbox.postEditor.statusLabel": "Status",
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "meu-post",
-  "sandbox.postEditor.untitledPost": "Post sem título",
   "sandbox.postEditor.valuePlaceholder": "valor",
-  "sandbox.postToolbar.allPosts": "Todos os posts",
-  "sandbox.postToolbar.authorLabel": "Autor",
-  "sandbox.postToolbar.categoryLabel": "Categoria",
-  "sandbox.postToolbar.clearFilter": "Limpar filtro",
-  "sandbox.postToolbar.deleteSelected": "Deletar selecionados",
-  "sandbox.postToolbar.deleteSelectedPosts": "Deletar posts selecionados",
-  "sandbox.postToolbar.deselectAll": "Desselecionar tudo",
-  "sandbox.postToolbar.deselectAllPosts": "Desselecionar todos os posts",
-  "sandbox.postToolbar.exitSelection": "Sair da seleção",
-  "sandbox.postToolbar.filterBy": "Filtrar por",
-  "sandbox.postToolbar.filterLabel": "Filtro",
-  "sandbox.postToolbar.itemsSelected": "{count} selecionados",
-  "sandbox.postToolbar.selectAll": "Selecionar tudo",
-  "sandbox.postToolbar.selectAllPosts": "Selecionar todos os posts",
-  "sandbox.postToolbar.sortAZ": "A–Z",
-  "sandbox.postToolbar.sortBy": "Ordenar por",
-  "sandbox.postToolbar.sortNewest": "Recentes",
-  "sandbox.postToolbar.sortNewestFirst": "Mais recentes primeiro",
-  "sandbox.postToolbar.sortOldest": "Antigas",
-  "sandbox.postToolbar.sortOldestFirst": "Mais antigas primeiro",
-  "sandbox.postToolbar.sortTitleAZ": "Título A–Z",
-  "sandbox.postToolbar.sortTitleZA": "Título Z–A",
-  "sandbox.postToolbar.sortZA": "Z–A",
-  "sandbox.postToolbar.statusDraft": "Rascunho",
-  "sandbox.postToolbar.statusLabel": "Status",
-  "sandbox.postToolbar.statusScheduled": "Agendado",
-  "sandbox.postToolbar.statusPublished": "Publicado",
   "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":
@@ -735,18 +783,7 @@ export const sandbox = {
     "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
-  "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
-  "sandbox.cmsSettings.contentEditing.description":
-    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
-  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Quem edita abre o CMS pelo preview quando precisa.",
-  "sandbox.cmsSettings.contentEditing.auto": "Automático",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "O preview abre o CMS assim que for possível editar o conteúdo.",
-  "sandbox.cmsSettings.contentEditing.off": "Desativado",
-  "sandbox.cmsSettings.contentEditing.offDescription":
-    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
+  "sandbox.cmsSettings.editing.title": "Edição",
   "sandbox.cmsUnavailable.title":
     "Este chat não consegue pré-visualizar seu site",
   "sandbox.cmsUnavailable.noPreviewServer":
@@ -755,6 +792,8 @@ export const sandbox = {
     "É uma sessão de CMS, mas este projeto não tem repositório do GitHub para salvar.",
   "sandbox.cmsUnavailable.startCodingSession":
     "Continuar esta branch em uma sessão de código",
+  "sandbox.cmsSettings.editing.description":
+    "Personalize a experiência de edição de conteúdo no formulário de blocos.",
   "sandbox.previewServerUrlField.description":
     "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
   "sandbox.previewServerUrlField.label": "Servidor de preview",
@@ -908,36 +947,6 @@ export const sandbox = {
   "sandbox.submoduleCredentialsField.title": "Credenciais de submódulo",
   "sandbox.submoduleCredentialsField.tokenLabel": "Token de acesso pessoal",
   "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
-  "sandbox.themes.add": "Novo tema",
-  "sandbox.themes.bodyPlaceholder":
-    "O ângulo, para quem é, e o que o post tem que cobrir…",
-  "sandbox.themes.empty":
-    "Nenhum tema ainda. Escreva um, ou deixe o agente propor alguns a partir do contexto da sua marca.",
-  "sandbox.themes.guidanceHint":
-    "Deixe em branco e os temas saem só do contexto da sua marca.",
-  "sandbox.themes.guidanceLabel": "Sobre o que devem ser?",
-  "sandbox.themes.guidancePlaceholder": "Opcional — ex: pré-venda de verão",
-  "sandbox.themes.namePlaceholder": "O tema, como você diria em voz alta",
-  "sandbox.themes.noNewThemes":
-    "Nada novo voltou — todas as propostas já estavam na lista.",
-  "sandbox.themes.noResearch":
-    "Propostos só a partir do contexto da marca: esta org não tem modelo de busca na web configurado.",
-  "sandbox.themes.phaseReading": "Lendo o contexto da sua marca…",
-  "sandbox.themes.phaseResearching":
-    "Pesquisando o que o seu público está perguntando…",
-  "sandbox.themes.phaseWriting": "Escrevendo os briefings…",
-  "sandbox.themes.remove": "Remover tema",
-  "sandbox.themes.subtitle":
-    "O que este blog deve publicar em seguida. Cada tema vira um draft.",
-  "sandbox.themes.suggest": "Sugerir temas",
-  "sandbox.themes.suggestFailed": "Não foi possível sugerir temas",
-  "sandbox.themes.suggestHint":
-    "Propor temas a partir do contexto da marca, dos posts que você já tem e de uma busca na web",
-  "sandbox.themes.suggestNoBrand":
-    "Preencha o contexto da marca na Biblioteca primeiro — sem ele os temas saem genéricos",
-  "sandbox.themes.suggested": "{count} tema(s) adicionado(s)",
-  "sandbox.themes.title": "Temas",
-  "sandbox.themes.untitled": "Tema sem título",
   "sandbox.toolbar.closeTab": "Fechar {tab}",
   "sandbox.toolbar.noScriptsFound": "Nenhum script encontrado",
   "sandbox.toolbar.restart": "Reiniciar",

@@ -1,14 +1,19 @@
+import { useState } from "react";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   AlertCircle,
+  Expand01,
   LinkExternal01,
+  Minimize01,
   Pilcrow01,
   Settings01,
+  XClose,
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Tabs,
   TabsContent,
@@ -21,27 +26,23 @@ import { ImageField } from "@/components/sections-editor/fields/image-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
-  blocksPostStatus,
-  buildBlogBlock,
+  buildPostBlock,
   getBlogPayload,
   listBlogPayloads,
   missingPostFields,
+  POST_STATUSES,
   type PostStatus,
   postStatus,
   relationPickerState,
-  setPostStatus,
   stampPostModified,
 } from "./blog-data";
+import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  type BlogSupport,
-  supportsPublishToggle,
-  supportsScheduling,
-} from "./blog-capabilities";
+import { type BlogSupport, supportsScheduling } from "./blog-capabilities";
 import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -83,6 +84,10 @@ export function PostEditor({
   decofile,
   meta,
   previewBaseUrl,
+  move,
+  onClose,
+  expanded,
+  onToggleExpand,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -92,6 +97,14 @@ export function PostEditor({
   decofile: Record<string, unknown>;
   meta: LiveMeta;
   previewBaseUrl?: string | null;
+  /** Whether the editor is in its full-page form (vs the floating panel). */
+  expanded?: boolean;
+  /** When set, renders a control that toggles panel ↔ full page. */
+  onToggleExpand?: () => void;
+  /** When set, renders a close control in the top cluster. */
+  onClose?: () => void;
+  /** The one status transition, shared with the board — see `usePostStatusMove`. */
+  move: PostStatusMove;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
@@ -100,12 +113,31 @@ export function PostEditor({
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
-  const [post, setPost] = useAutosave(initial, (next) => {
+  const [post, setPost, syncPost] = useAutosave(initial, (next) => {
     save.mutate({
       blockKey,
-      data: buildBlogBlock(blockKey, "posts", stampPostModified(next)),
+      data: buildPostBlock(blockKey, stampPostModified(next)),
     });
   });
+
+  // A move renamed the block, so drop a pending write aimed at the retired key.
+  const [seenBlockKey, setSeenBlockKey] = useState(blockKey);
+  if (seenBlockKey !== blockKey) {
+    setSeenBlockKey(blockKey);
+    syncPost(initial);
+  }
+
+  /**
+   * Change the status through the shared move, handing it the live draft.
+   *
+   * `syncPost` first: the move carries the draft itself, so the pending
+   * autosave has nothing left to write — and letting it fire would write to a
+   * block key the move is about to retire, resurrecting the post's old form.
+   */
+  const moveStatus = (next: PostStatus) => {
+    syncPost(post);
+    void move.apply(blockKey, next, post);
+  };
 
   const setField = (key: string, value: unknown) =>
     setPost({ ...post, [key]: value });
@@ -129,53 +161,46 @@ export function PostEditor({
         });
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-        <span className="truncate text-sm font-medium">
-          {str(post.title) || t("sandbox.postEditor.untitledPost")}
-        </span>
-        <div className="flex shrink-0 items-center gap-3">
-          {hasErrors && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
-                  <AlertCircle size={14} />
-                  {missing.length}{" "}
-                  {missing.length === 1
-                    ? t("sandbox.postEditor.issueSingular")
-                    : t("sandbox.postEditor.issuePlural")}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{missingLabel}</TooltipContent>
-            </Tooltip>
-          )}
-          <SaveStatus isPending={save.isPending} isError={save.isError} />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!previewUrl || hasErrors}
-            title={
-              hasErrors
-                ? missingLabel
-                : previewUrl
-                  ? t("sandbox.postEditor.previewTooltip")
-                  : t("sandbox.postEditor.previewRequiresSlugAndCategory")
-            }
-            onClick={() => {
-              if (previewUrl && !hasErrors) {
-                window.open(previewUrl, "_blank", "noopener,noreferrer");
+    <div className="relative flex h-full flex-col">
+      {(onToggleExpand || onClose) && (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5">
+          {onToggleExpand && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-2 text-muted-foreground"
+              onClick={onToggleExpand}
+              title={
+                expanded
+                  ? t("sandbox.postBoard.collapse")
+                  : t("sandbox.postBoard.expand")
               }
-            }}
-          >
-            <LinkExternal01 size={14} />
-            {t("sandbox.postEditor.seePreview")}
-          </Button>
+            >
+              {expanded ? <Minimize01 size={16} /> : <Expand01 size={16} />}
+            </Button>
+          )}
+          {onClose && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-2 text-muted-foreground"
+              onClick={onClose}
+              title={t("sandbox.postBoard.close")}
+            >
+              <XClose size={16} />
+            </Button>
+          )}
         </div>
-      </div>
-
+      )}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl px-8 py-8">
+        <div
+          className={cn(
+            "mx-auto max-w-4xl px-8 pb-6",
+            onToggleExpand || onClose ? "pt-14" : "pt-6",
+          )}
+        >
           {/* Title — wraps onto multiple lines instead of truncating */}
           <EditableText
             value={str(post.title)}
@@ -184,18 +209,61 @@ export function PostEditor({
             className="py-1 text-4xl font-bold text-foreground"
           />
 
-          {/* Content and Settings are sibling tabs; the body is the default */}
+          {/* Content and Settings are sibling tabs; the body is the default. The
+              tab row also carries the save state + preview, so no top chrome. */}
           <Tabs defaultValue="content" className="mt-6 gap-4">
-            <TabsList>
-              <TabsTrigger value="content">
-                <Pilcrow01 />
-                {t("sandbox.postEditor.contentTab")}
-              </TabsTrigger>
-              <TabsTrigger value="settings">
-                <Settings01 />
-                {t("sandbox.postEditor.settingsTab")}
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="content">
+                  <Pilcrow01 />
+                  {t("sandbox.postEditor.contentTab")}
+                </TabsTrigger>
+                <TabsTrigger value="settings">
+                  <Settings01 />
+                  {t("sandbox.postEditor.settingsTab")}
+                </TabsTrigger>
+              </TabsList>
+              <div className="flex shrink-0 items-center gap-3">
+                {hasErrors && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                        <AlertCircle size={14} />
+                        {missing.length}{" "}
+                        {missing.length === 1
+                          ? t("sandbox.postEditor.issueSingular")
+                          : t("sandbox.postEditor.issuePlural")}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {missingLabel}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                <SaveStatus isPending={save.isPending} isError={save.isError} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!previewUrl || hasErrors}
+                  title={
+                    hasErrors
+                      ? missingLabel
+                      : previewUrl
+                        ? t("sandbox.postEditor.previewTooltip")
+                        : t("sandbox.postEditor.previewRequiresSlugAndCategory")
+                  }
+                  onClick={() => {
+                    if (previewUrl && !hasErrors) {
+                      window.open(previewUrl, "_blank", "noopener,noreferrer");
+                    }
+                  }}
+                >
+                  <LinkExternal01 size={14} />
+                  {t("sandbox.postEditor.seePreview")}
+                </Button>
+              </div>
+            </div>
 
             <TabsContent value="content">
               <div className="rounded-xl border bg-card p-8 shadow-sm">
@@ -216,7 +284,9 @@ export function PostEditor({
                   decofile={decofile}
                   support={support}
                   onChange={setField}
-                  onPatch={(fields) => setPost({ ...post, ...fields })}
+                  blockKey={blockKey}
+                  move={move}
+                  onMoveStatus={moveStatus}
                 />
               </div>
             </TabsContent>
@@ -227,46 +297,58 @@ export function PostEditor({
   );
 }
 
-/**
- * A switch plus its tooltip, disabled when required fields are missing. Only
- * flipping *on* is ever gated, so a post can always be pulled back down.
- */
-function StatusSwitch({
-  id,
-  label,
-  checked,
-  blocked,
-  blockedReason,
-  className,
-  onCheckedChange,
+/** The board's lanes as a control, gated by the same `move.refuse`. */
+function StatusPicker({
+  blockKey,
+  post,
+  move,
+  onMoveStatus,
 }: {
-  id: string;
-  label: string;
-  checked: boolean;
-  blocked: boolean;
-  blockedReason: string;
-  className?: string;
-  onCheckedChange: (checked: boolean) => void;
+  blockKey: string;
+  post: Record<string, unknown>;
+  move: PostStatusMove;
+  onMoveStatus: (next: PostStatus) => void;
 }) {
+  const t = useT();
+  const current = postStatus(post);
+  // `generating` belongs to a generation run — shown only while the post is in it.
+  const options = POST_STATUSES.filter(
+    (status) => status !== "generating" || current === "generating",
+  );
   return (
-    <div className="flex items-center justify-between gap-3">
-      <Label htmlFor={id}>{label}</Label>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <Switch
-              id={id}
-              className={className}
-              checked={checked}
-              disabled={blocked}
-              onCheckedChange={onCheckedChange}
-            />
-          </span>
-        </TooltipTrigger>
-        {blocked && (
-          <TooltipContent side="bottom">{blockedReason}</TooltipContent>
-        )}
-      </Tooltip>
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((status) => {
+        const active = status === current;
+        const refusal = active ? null : move.refuse(blockKey, status, post);
+        return (
+          <Tooltip key={status}>
+            <TooltipTrigger asChild>
+              <span>
+                <button
+                  type="button"
+                  disabled={!!refusal}
+                  aria-pressed={active}
+                  onClick={() => onMoveStatus(status)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "cursor-pointer bg-card hover:bg-muted",
+                    refusal && "cursor-not-allowed opacity-50",
+                  )}
+                >
+                  {t(POST_STATUS_LABEL[status])}
+                </button>
+              </span>
+            </TooltipTrigger>
+            {refusal && (
+              <TooltipContent side="bottom">
+                {move.reasonText(refusal)}
+              </TooltipContent>
+            )}
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
@@ -276,78 +358,50 @@ function PostSettings({
   decofile,
   support,
   onChange,
-  onPatch,
+  blockKey,
+  move,
+  onMoveStatus,
 }: {
   post: Record<string, unknown>;
   decofile: Record<string, unknown>;
-  /** Gates the status controls — see {@link supportsPublishToggle}. */
+  /** Gates the scheduled go-live field — see {@link supportsScheduling}. */
   support: BlogSupport;
   onChange: (key: string, value: unknown) => void;
-  onPatch: (fields: Record<string, unknown>) => void;
+  blockKey: string;
+  move: PostStatusMove;
+  onMoveStatus: (next: PostStatus) => void;
 }) {
   const t = useT();
-  const canPublish = supportsPublishToggle(support);
-  const canSchedule = supportsScheduling(support);
   const status = postStatus(post);
-  const isScheduled = canSchedule && status === "scheduled";
-  const missing = missingPostFields(post);
-  const missingLabel =
-    missing.length === 1
-      ? t("sandbox.postEditor.missingFieldSingular", {
-          fields: missing.join(", "),
-        })
-      : t("sandbox.postEditor.missingFieldPlural", {
-          fields: missing.join(", "),
-        });
-  const setStatus = (next: PostStatus) =>
-    onPatch(setPostStatus(post, next, new Date()));
+  const isScheduled = supportsScheduling(support) && status === "scheduled";
 
   return (
     <div className="space-y-5">
-      {canPublish && (
-        <div className="space-y-4 border-b pb-4">
-          {canSchedule && (
-            <StatusSwitch
-              id="post-scheduled"
-              label={t("sandbox.postEditor.schedulingLabel")}
-              checked={isScheduled}
-              blocked={blocksPostStatus(post, "scheduled")}
-              blockedReason={missingLabel}
-              onCheckedChange={(checked) =>
-                setStatus(checked ? "scheduled" : "draft")
-              }
-            />
-          )}
-          {isScheduled ? (
-            <StringField
-              schema={{
-                type: "string",
-                format: "date-time",
-                title: t("sandbox.postEditor.scheduledDatetimeLabel"),
-                description: t(
-                  "sandbox.postEditor.scheduledDatetimeDescription",
-                ),
-              }}
-              value={str(post.scheduledDatetime)}
-              onChange={(v) => onChange("scheduledDatetime", v)}
-              path="post-scheduled-datetime"
-              label={t("sandbox.postEditor.scheduledDatetimeLabel")}
-            />
-          ) : (
-            <StatusSwitch
-              id="post-published"
-              label={t("sandbox.postEditor.publishedLabel")}
-              className="data-[state=checked]:bg-success"
-              checked={status === "published"}
-              blocked={blocksPostStatus(post, "published")}
-              blockedReason={missingLabel}
-              onCheckedChange={(checked) =>
-                setStatus(checked ? "published" : "draft")
-              }
-            />
-          )}
+      <div className="space-y-4 border-b pb-4">
+        <div className="space-y-2">
+          <Label>{t("sandbox.postEditor.statusLabel")}</Label>
+          <StatusPicker
+            blockKey={blockKey}
+            post={post}
+            move={move}
+            onMoveStatus={onMoveStatus}
+          />
         </div>
-      )}
+        {isScheduled && (
+          <StringField
+            schema={{
+              type: "string",
+              format: "date-time",
+              title: t("sandbox.postEditor.scheduledDatetimeLabel"),
+              description: t("sandbox.postEditor.scheduledDatetimeDescription"),
+            }}
+            value={str(post.scheduledDatetime)}
+            onChange={(v) => onChange("scheduledDatetime", v)}
+            path="post-scheduled-datetime"
+            label={t("sandbox.postEditor.scheduledDatetimeLabel")}
+          />
+        )}
+      </div>
       <div className="space-y-2">
         <Label htmlFor="post-excerpt">
           {t("sandbox.postEditor.excerptLabel")}
