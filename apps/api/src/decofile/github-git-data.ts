@@ -198,10 +198,9 @@ export interface GitDataClient {
    */
   getTarballStream(ref: string): Promise<ReadableStream<Uint8Array>>;
   getCommitTreeSha(commitSha: string): Promise<string>;
-  getTreeRecursive(treeSha: string): Promise<TreeEntry[]>;
   /**
    * Block-dir view of a commit's tree WITHOUT a whole-repo recursive read.
-   * `getTreeRecursive` on the root tree of a large repo trips GitHub's
+   * A whole-repo recursive read on the root tree of a large repo trips GitHub's
    * 100k-entry / 7MB recursive cap (`truncated: true` → hard 502), which broke
    * every decofile read/write on big storefronts. Instead this walks
    * `<packagePath>/.deco/` non-recursively and returns only the block sources
@@ -527,24 +526,6 @@ export function createGitDataClient(params: {
         `${repoBase}/git/commits/${commitSha}`,
       );
       return json.tree.sha;
-    },
-
-    async getTreeRecursive(treeSha) {
-      const { json } = await call<{ tree: TreeEntry[]; truncated: boolean }>(
-        "GET",
-        `${repoBase}/git/trees/${treeSha}?recursive=1`,
-      );
-      if (json.truncated) {
-        // 100k-entry / 7MB response cap. A repo this size needs pagination by
-        // subtree; fail loudly rather than serving a silently partial decofile.
-        throw new GitHubApiError(
-          502,
-          "GET",
-          `${repoBase}/git/trees/${treeSha}`,
-          "tree listing truncated by GitHub; repo too large for recursive read",
-        );
-      }
-      return json.tree;
     },
 
     async getDecofileTree(commitTreeSha, packagePath) {
