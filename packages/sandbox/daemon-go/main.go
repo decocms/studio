@@ -933,32 +933,39 @@ func main() {
 	// minutes. Without it, a pod killed with no grace period (OOM, node loss)
 	// loses everything the agent had not committed itself — the shutdown sync
 	// below only runs on SIGTERM.
-	d.autosave = gitx.NewAutosaver(gitx.AutosaveDeps{
-		Publish: gitx.PublishDeps{
-			RepoDir: repoDir,
-			GetCloneUrl: func() string {
-				if cfg := d.store.Read(); cfg != nil {
-					return cfg.CloneUrl()
-				}
-				return ""
+	//
+	// AUTOSAVE_DISABLED is the kill switch: this runs unattended on every
+	// sandbox's boot/dispatch path and pushes to the user's remote, so a
+	// surprise (e.g. GitHub rate-limiting the fleet, an unwanted branch
+	// history) needs to be turned off fleet-wide without a daemon redeploy.
+	if os.Getenv("AUTOSAVE_DISABLED") == "" {
+		d.autosave = gitx.NewAutosaver(gitx.AutosaveDeps{
+			Publish: gitx.PublishDeps{
+				RepoDir: repoDir,
+				GetCloneUrl: func() string {
+					if cfg := d.store.Read(); cfg != nil {
+						return cfg.CloneUrl()
+					}
+					return ""
+				},
+				GetOperator: d.operatorIdentity,
+				// Same disposition as the shutdown sync: one invalid block must not
+				// cost the user every other change in the checkpoint.
+				OnInvalidBlock: gitx.InvalidBlockSkip,
+				// Never force-push from a checkpoint. Losing one checkpoint beats
+				// clobbering a concurrent writer's commit.
+				ReconcileRemote: false,
 			},
-			GetOperator: d.operatorIdentity,
-			// Same disposition as the shutdown sync: one invalid block must not
-			// cost the user every other change in the checkpoint.
-			OnInvalidBlock: gitx.InvalidBlockSkip,
-			// Never force-push from a checkpoint. Losing one checkpoint beats
-			// clobbering a concurrent writer's commit.
-			ReconcileRemote: false,
-		},
-		Lock: &d.treeLock,
-		Configured: func() bool {
-			cfg := d.store.Read()
-			return cfg != nil && cfg.Branch() != ""
-		},
-		RunActive: func() bool { return d.dispatchReg.HasActiveRuns() },
-		Dirty:     func() bool { return gitx.IsDirty(repoDir) },
-	})
-	d.autosave.Start()
+			Lock: &d.treeLock,
+			Configured: func() bool {
+				cfg := d.store.Read()
+				return cfg != nil && cfg.Branch() != ""
+			},
+			RunActive: func() bool { return d.dispatchReg.HasActiveRuns() },
+			Dirty:     func() bool { return gitx.IsDirty(repoDir) },
+		})
+		d.autosave.Start()
+	}
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
