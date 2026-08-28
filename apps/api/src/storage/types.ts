@@ -1719,16 +1719,21 @@ export interface TaskBoardItemTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
-/**
- * A sprint a card can belong to — an entity, not a window over a cadence (see
- * `migrations/182-task-board-sprints-entities.ts`).
- *
- * `jira_sprint_id` is the mirror's identity: UNIQUE per org, so the pull
- * upserts on it and a renamed Jira sprint updates in place instead of
- * splitting in two. Null means a sprint this board owns — nothing writes those
- * yet.
- */
-/** A rule the board runs when a card lands in a column (migration 190). The
+/** One column of a board whose columns belong to the org rather than to
+ *  Studio (migration 191). `key` is what a card's `status` holds; `role` is
+ *  what automation keys on, null until someone says what the column means. */
+export interface TaskBoardColumnTable {
+  id: string;
+  organization_id: string;
+  key: string;
+  title: string;
+  position: number;
+  role: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A rule the board runs when a card lands in a column (migration 189). The
  *  row's existence is the switch; `prompt` null means the Super Agent's own
  *  instruction. */
 export interface TaskBoardColumnAutomationTable {
@@ -1740,6 +1745,15 @@ export interface TaskBoardColumnAutomationTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/**
+ * A sprint a card can belong to — an entity, not a window over a cadence (see
+ * `migrations/182-task-board-sprints-entities.ts`).
+ *
+ * `jira_sprint_id` is the mirror's identity: UNIQUE per org, so the pull
+ * upserts on it and a renamed Jira sprint updates in place instead of
+ * splitting in two. Null means a sprint this board owns — nothing writes those
+ * yet.
+ */
 export interface TaskBoardSprintTable {
   id: string;
   organization_id: string;
@@ -2270,6 +2284,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_items: TaskBoardItemTable;
   task_board_sprints: TaskBoardSprintTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
+  task_board_columns: TaskBoardColumnTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;

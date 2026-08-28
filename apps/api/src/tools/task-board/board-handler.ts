@@ -4,6 +4,9 @@ import type {
   ColumnAutomation,
   ColumnAutomationStorage,
 } from "@/storage/task-board-column-automations";
+import type { BoardColumnStorage } from "@/storage/task-board-columns";
+import type { StudioContext } from "@/core/studio-context";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 
 /**
  * A board's behaviour, as the questions its callers actually have.
@@ -42,7 +45,7 @@ const CANONICAL: BoardColumn[] = CANONICAL_COLUMN_KEYS.map((key, position) => ({
 
 /** The board Studio ships with: a fixed set of columns, and whatever rules the
  *  org has hung on them. */
-class StaticBoardHandler implements BoardHandler {
+class StudioBoardHandler implements BoardHandler {
   constructor(
     private readonly organizationId: string,
     private readonly automations: ColumnAutomationStorage,
@@ -58,15 +61,72 @@ class StaticBoardHandler implements BoardHandler {
 }
 
 /**
+ * A board whose columns belong to the org, not to Studio.
+ *
+ * Named for who defines the set, not for where it came from. Today the only
+ * source is a Jira board, but mirroring is something the SYNC does; this side
+ * only knows the columns are not ours to invent. A column someone typed by
+ * hand would land here too and nothing would need renaming.
+ *
+ * Only `columns` differs from Studio's own board: the rules hang off a column
+ * key either way, so whose board it is has no bearing on what runs where. That
+ * is the point of keying automations by column rather than by lane.
+ */
+class OrgBoardHandler implements BoardHandler {
+  constructor(
+    private readonly organizationId: string,
+    private readonly automations: ColumnAutomationStorage,
+    private readonly boardColumns: BoardColumnStorage,
+  ) {}
+
+  columns(): Promise<BoardColumn[]> {
+    return this.boardColumns.listByOrg(this.organizationId);
+  }
+
+  automationFor(columnKey: string): Promise<ColumnAutomation | null> {
+    return this.automations.get(this.organizationId, columnKey);
+  }
+}
+
+export interface BoardHandlerDeps {
+  automations: ColumnAutomationStorage;
+  boardColumns: BoardColumnStorage;
+  /** `org_board_columns` — see `OrgFlagsSchema`. */
+  orgOwnedColumns: boolean;
+}
+
+/**
  * This org's board.
  *
- * One implementation today. It takes the org so every call site is already
- * written the way it needs to be once a board can be tracker-owned instead,
- * and choosing between the two is a change here rather than at each caller.
+ * The one place the two answers are chosen between, which is why every caller
+ * asks the board rather than reading a status. An org board with no columns yet
+ * is still an org board: it renders empty rather than falling back to Studio's
+ * lanes, because falling back would silently re-introduce a vocabulary the org
+ * has said it does not use.
  */
 export function boardHandler(
   organizationId: string,
-  automations: ColumnAutomationStorage,
+  deps: BoardHandlerDeps,
 ): BoardHandler {
-  return new StaticBoardHandler(organizationId, automations);
+  return deps.orgOwnedColumns
+    ? new OrgBoardHandler(organizationId, deps.automations, deps.boardColumns)
+    : new StudioBoardHandler(organizationId, deps.automations);
+}
+
+/**
+ * This org's board, with its mode read for you.
+ *
+ * The single construction point: every caller goes through here, so which
+ * board an org has is decided once instead of at each site.
+ */
+export async function boardFor(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<BoardHandler> {
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  return boardHandler(organizationId, {
+    automations: ctx.storage.columnAutomations,
+    boardColumns: ctx.storage.boardColumns,
+    orgOwnedColumns: orgFlagEnabled(settings?.flags, "org_board_columns"),
+  });
 }
