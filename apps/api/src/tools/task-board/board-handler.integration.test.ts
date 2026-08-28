@@ -226,6 +226,36 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     expect((await board().columns()).map((c) => c.key)).toEqual(["BACKLOG"]);
   });
 
+  /**
+   * The foreign key was paid for in #6710 and slept until something wrote the
+   * discriminator. These pin that it is now awake for a card the sync placed,
+   * and still asleep for one it has not — which is what makes adopting it
+   * incremental instead of a flag day.
+   */
+  it("refuses a card in a column the board does not have, once guarded", async () => {
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog" },
+    ]);
+    const guarded = taskBoard.create({
+      organizationId: ORG_M,
+      title: "guarded",
+      status: "not_a_column",
+      boardColumnOrg: ORG_M,
+      by: USER_M,
+    });
+    await expect(guarded).rejects.toThrow(/foreign key|violates/i);
+  });
+
+  it("accepts the same card while it is still unguarded", async () => {
+    const card = await taskBoard.create({
+      organizationId: ORG_M,
+      title: "unguarded",
+      status: "not_a_column",
+      by: USER_M,
+    });
+    expect(card.status).toBe("not_a_column");
+  });
+
   it("runs a rule hung on a column the tracker named", async () => {
     await automations.upsert(ORG_M, "Code Review", "Review it.");
     expect((await board().automationFor("Code Review"))?.prompt).toBe(

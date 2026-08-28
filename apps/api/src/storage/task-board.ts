@@ -277,6 +277,10 @@ export class TaskBoardStorage {
     title: string;
     description?: string | null;
     status?: string;
+    /** Set to the org id when the card's status names a row in
+     *  `task_board_columns`, which is what wakes the optional foreign key.
+     *  Null while the status is one of Studio's own lanes. */
+    boardColumnOrg?: string | null;
     priority?: TaskBoardItemPriority;
     type?: TaskBoardItemType;
     assigneeId?: string | null;
@@ -310,6 +314,7 @@ export class TaskBoardStorage {
           title: params.title,
           description: params.description ?? null,
           status,
+          board_column_org: params.boardColumnOrg ?? null,
           priority: params.priority ?? "medium",
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
@@ -357,6 +362,10 @@ export class TaskBoardStorage {
       title?: string;
       description?: string | null;
       status?: string;
+      /** Set to the org id when the card's status names a row in
+       *  `task_board_columns`, which is what wakes the optional foreign key.
+       *  Null while the status is one of Studio's own lanes. */
+      boardColumnOrg?: string | null;
       priority?: TaskBoardItemPriority;
       type?: TaskBoardItemType;
       assigneeId?: string | null;
@@ -387,6 +396,9 @@ export class TaskBoardStorage {
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
+        ...(data.boardColumnOrg !== undefined
+          ? { board_column_org: data.boardColumnOrg }
+          : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
         // Done here rather than at the call sites so it covers every one of
