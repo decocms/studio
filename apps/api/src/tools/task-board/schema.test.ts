@@ -44,6 +44,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     keySeq: 1,
     jiraIssueKey: null,
     retryAttempts: 0,
+    reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],

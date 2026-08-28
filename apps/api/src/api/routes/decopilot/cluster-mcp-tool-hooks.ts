@@ -21,7 +21,7 @@ import type {
 } from "@/harnesses/lib/decopilot/mcp-tools";
 import { resolveArgsStorageRefs } from "./file-materializer";
 import {
-  advanceTaskBoardForRun,
+  openReviewCycleForRun,
   capturePrForRun,
   isPrCreateMcpTool,
 } from "@/tools/task-board/run-reactions";
@@ -51,10 +51,13 @@ export function buildClusterMcpToolHooks(
   return {
     resolveArgs: (input) => resolveArgsStorageRefs(input, ctx),
     onToolCalled: (event) => {
-      // A Super Agent task run just opened a PR via the GitHub MCP tool —
-      // move its card to In Review. Fire-and-forget (no-ops off a task run).
+      // A Super Agent task run just opened a PR via the GitHub MCP tool — open
+      // its card's review cycle so a reviewer picks it up. The card STAYS In
+      // Progress: an agent is still working on it, and In Review is what the
+      // board says once it is a person's turn. Fire-and-forget (no-ops off a
+      // task run).
       if (!event.isError && isPrCreateMcpTool(event.toolName)) {
-        void advanceTaskBoardForRun(ctx, "in_review", threadId);
+        void openReviewCycleForRun(ctx, threadId);
       }
       const orgId = ctx.organization?.id;
       const userId = ctx.auth?.user?.id;

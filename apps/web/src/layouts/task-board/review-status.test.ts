@@ -54,11 +54,13 @@ describe("enabledReviewers", () => {
 
 describe("reviewsSatisfiedForPromotion", () => {
   it("is ready when no reviewers are enabled (nothing to wait on)", () => {
-    expect(reviewsSatisfiedForPromotion([IN_REVIEW], [])).toBe(true);
+    expect(reviewsSatisfiedForPromotion([IN_REVIEW], [], null)).toBe(true);
   });
 
   it("waits until the enabled reviewer approved this cycle", () => {
-    expect(reviewsSatisfiedForPromotion([IN_REVIEW], ENABLED)).toBe(false);
+    expect(reviewsSatisfiedForPromotion([IN_REVIEW], ENABLED, null)).toBe(
+      false,
+    );
     expect(
       reviewsSatisfiedForPromotion(
         [
@@ -70,6 +72,7 @@ describe("reviewsSatisfiedForPromotion", () => {
           ),
         ],
         ENABLED,
+        null,
       ),
     ).toBe(true);
   });
@@ -84,7 +87,7 @@ describe("reviewsSatisfiedForPromotion", () => {
         "2026-01-01T10:06:00Z",
       ),
     ];
-    expect(reviewsSatisfiedForPromotion(activity, ENABLED)).toBe(false);
+    expect(reviewsSatisfiedForPromotion(activity, ENABLED, null)).toBe(false);
   });
 
   it("ignores the two-reviewer era's approvals — they are not this reviewer's", () => {
@@ -97,7 +100,23 @@ describe("reviewsSatisfiedForPromotion", () => {
         "2026-01-01T10:06:00Z",
       ),
     ];
-    expect(reviewsSatisfiedForPromotion(activity, ENABLED)).toBe(false);
+    expect(reviewsSatisfiedForPromotion(activity, ENABLED, null)).toBe(false);
+  });
+
+  // The lane transition is only the legacy anchor. A card whose reviewer is
+  // still working never enters In Review at all (migration 190), so the
+  // column is the only thing that can date its cycle.
+  it("dates the cycle from the card's stamp when it has one", () => {
+    const activity = [
+      act("review_approved", { reviewer: "reviewer" }, "2026-01-01T10:05:00Z"),
+    ];
+    expect(
+      reviewsSatisfiedForPromotion(activity, ENABLED, "2026-01-01T10:00:00Z"),
+    ).toBe(true);
+    // A cycle that opened after the approval: it belongs to the round before.
+    expect(
+      reviewsSatisfiedForPromotion(activity, ENABLED, "2026-01-01T11:00:00Z"),
+    ).toBe(false);
   });
 
   it("ignores approvals from a prior review cycle (before the latest In Review)", () => {
@@ -108,7 +127,7 @@ describe("reviewsSatisfiedForPromotion", () => {
       // stale.
       IN_REVIEW,
     ];
-    expect(reviewsSatisfiedForPromotion(activity, ENABLED)).toBe(false);
+    expect(reviewsSatisfiedForPromotion(activity, ENABLED, null)).toBe(false);
   });
 });
 

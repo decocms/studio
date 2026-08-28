@@ -18,6 +18,7 @@ import {
   pickActivePr,
   resolveGithubConnection,
 } from "./prs-get";
+import { inReviewPhase } from "./lanes";
 import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 
 /** Cap the merge round-trip so a slow GitHub can't hang the caller. */
@@ -303,7 +304,11 @@ export async function allEnabledReviewersVerifiedApproved(
     taskBoardItemId,
     orgId,
   );
-  return allReviewersApproved(activity, enabled, { verifiedOnly: true });
+  const item = await ctx.storage.taskBoard.getById(taskBoardItemId, orgId);
+  return allReviewersApproved(activity, enabled, {
+    cycleStartedAt: item?.reviewCycleStartedAt ?? null,
+    verifiedOnly: true,
+  });
 }
 
 /**
@@ -330,7 +335,13 @@ async function handUnverifiedApprovalToHuman(
     item.id,
     item.organizationId,
   );
-  if (!approvedButUnverified(activity, enabled)) return;
+  if (
+    !approvedButUnverified(activity, enabled, {
+      cycleStartedAt: item.reviewCycleStartedAt,
+    })
+  ) {
+    return;
+  }
   await handTaskToHuman(
     ctx,
     item,
@@ -431,7 +442,7 @@ export async function retryAutoMergeIfApproved(
   item: TaskBoardItem,
 ): Promise<boolean> {
   const orgId = item.organizationId;
-  if (item.status !== "in_review") return false;
+  if (!inReviewPhase(item)) return false;
   const settings = await ctx.storage.organizationSettings.get(orgId);
   if (settings?.flags?.auto_merge !== true) return false;
   // Same human-override guard `review-decision.ts` and `prs-get` honor.

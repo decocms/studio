@@ -107,6 +107,14 @@ function extractPartText(payload: unknown): string | null {
   return null;
 }
 
+/** The lanes a review cycle may span: an agent reviewer runs while the card
+ *  reads In Progress, and the card sits In Review once it is a person's turn.
+ *  Moving to any OTHER lane ends the cycle — see `update()`. */
+const REVIEW_PHASE_LANES = new Set<TaskBoardItemStatus>([
+  "in_progress",
+  "in_review",
+]);
+
 /** Thread run statuses that mean the run is over (not running / not paused on a
  *  user_ask). `requires_action` and `in_progress` are deliberately excluded. */
 export const TERMINAL_THREAD_STATUSES = new Set([
@@ -386,6 +394,14 @@ export class TaskBoardStorage {
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
+        // Any move OUT of the two lanes a review can span closes the cycle.
+        // Done here rather than at the call sites so it covers every one of
+        // them — the ship paths, a human dragging a card back to To Do, the
+        // archive — present and future. Leaving a cycle open on a shipped card
+        // would keep it in the sweeper's work list forever.
+        ...(data.status !== undefined && !REVIEW_PHASE_LANES.has(data.status)
+          ? { review_cycle_started_at: null }
+          : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
@@ -639,8 +655,14 @@ export class TaskBoardStorage {
    * without bounding what the sweep can ever reach.
    */
   /**
-   * The review sweeper's work list: cards parked In Review that are DUE a
-   * sweep, i.e. never swept or last swept before `dueBefore`.
+   * The review sweeper's work list: cards with an OPEN REVIEW CYCLE that are
+   * DUE a sweep, i.e. never swept or last swept before `dueBefore`.
+   *
+   * An open cycle, not the In Review lane: a card whose reviewer is still
+   * working reads In Progress on the board, and the sweeper is what dispatches
+   * and re-dispatches that reviewer, so keying it on the lane would leave the
+   * card with nothing watching it. `review_cycle_started_at` is the durable
+   * "a reviewer owns this" fact; see migration 190.
    *
    * That predicate is what bounds the sweeper's GitHub cost. Without it the same
    * cards came back on every tick of every replica — a card whose checks never
@@ -660,7 +682,18 @@ export class TaskBoardStorage {
     let query = this.db
       .selectFrom("task_board_items")
       .select(["id", "organization_id as organizationId", "updated_at"])
-      .where("status", "=", "in_review")
+      // Mirrors `inReviewPhase`: an OPEN CYCLE (a reviewer is working, and the
+      // card still reads In Progress) OR the In Review lane (parked for a
+      // person — its approvals stand and it stays merge-eligible). Either one
+      // alone leaves a real case unswept: cycle-only drops a card a conflict
+      // bounce put back In Review with no cycle, and lane-only drops every card
+      // currently under review, which is the whole point of migration 190.
+      .where((eb) =>
+        eb.or([
+          eb("review_cycle_started_at", "is not", null),
+          eb("status", "=", "in_review"),
+        ]),
+      )
       .where("dismissed_at", "is", null);
     if (dueBefore) {
       // A never-swept card (NULL) is always due — `<` alone would exclude it.
@@ -1297,9 +1330,17 @@ export class TaskBoardStorage {
   }
 
   /**
-   * A linked thread reached a terminal run status — advance any of its tasks
-   * that qualify (see `shouldAdvanceToReview`) to In Review. Returns the items
-   * that actually moved so the caller can broadcast them over SSE.
+   * A linked thread reached a terminal run status — settle any of its tasks
+   * that qualify (see `shouldAdvanceToReview`). Returns the items that actually
+   * moved so the caller can broadcast them over SSE.
+   *
+   * Two landings, because two different things are waiting:
+   *  - a REPO-BACKED task with a PR opens a review cycle and STAYS In Progress.
+   *    An agent reviewer is about to work on it, and In Review is what the
+   *    board says when it is a person's turn — see migration 190.
+   *  - a repo-less task goes to In Review. Its answer IS its deliverable, no
+   *    reviewer is ever dispatched (that needs a PR), so the only thing left is
+   *    a human reading it.
    */
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
@@ -1309,28 +1350,50 @@ export class TaskBoardStorage {
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;
-      // Only query PRs for a repo-backed task — that's the one gate that needs it.
-      const hasPr =
-        item.repo != null &&
-        (await this.listPrs(taskId, organizationId)).length > 0;
+      // A LINKED PR is the whole test. It used to be `item.repo != null && …`,
+      // as a cheap way to skip the query for a card that could not have one —
+      // but `repo` is only stamped on a card created against a repository, and
+      // a run that finds its own with `TASK_ADD_REPO` links a pull request
+      // without ever setting it. Those cards read as repo-less forever, so this
+      // took the "its answer IS its deliverable" branch and parked them In
+      // Review — on top of an already-open review cycle, for the whole reviewer
+      // run. Three consecutive prod cards landed that way; the fourth, created
+      // against a repo, stayed In Progress exactly as intended.
+      const hasPr = (await this.listPrs(taskId, organizationId)).length > 0;
       if (!shouldAdvanceToReview(item, hasPr)) continue;
-      // The status flip is a CONDITIONAL update guarded on the status we just
-      // read, so exactly one concurrent caller can win it.
+      // Belt and braces for the same failure: whatever the PR read says, a card
+      // with a cycle already open is mid-review and this backstop has nothing
+      // to add. Only the repo-less branch below can move a card, and moving one
+      // out from under its reviewer is the bug this whole change exists to fix.
+      if (item.reviewCycleStartedAt) continue;
+
+      // Both writes below are CONDITIONAL updates guarded on what we just
+      // read, so exactly one concurrent caller can win either.
       //
-      // It used to be an unconditional `update()`, and the read-then-write above
-      // is not atomic: `recoverStalledTasks` runs fire-and-forget on EVERY
+      // The flip used to be an unconditional `update()`, and the read-then-write
+      // above is not atomic: `recoverStalledTasks` runs fire-and-forget on EVERY
       // `TASK_BOARD_ITEM_LIST` over the list that read already loaded, so N
       // overlapping board reads (multiple tabs, a refocus burst, the Super
       // Agent calling the tool itself) each saw `in_progress` and each wrote.
       // One prod item collected 42 of these; another took 27 inside 112 ms.
       //
-      // The duplicate ROW was not the real damage — the duplicate ACTIVITY was.
-      // `reviewCycleStart` reads the newest `status_changed→in_review` as the
-      // start of the current review cycle, so every redundant stamp invalidated
-      // every approval recorded before it: the verified-approval gate stopped
-      // seeing a complete set, auto-merge never fired, and the card sat In
-      // Review forever. In prod all 13 items holding an approval had been
-      // stranded this way, one of them 15 seconds after approving.
+      // The duplicate ROW was not the real damage — the duplicate CYCLE STAMP
+      // was. Every redundant stamp invalidated every approval recorded before
+      // it: the verified-approval gate stopped seeing a complete set, auto-merge
+      // never fired, and the card sat waiting forever. In prod all 13 items
+      // holding an approval had been stranded this way, one of them 15 seconds
+      // after approving. `openReviewCycleIfInProgress` carries that guarantee
+      // now — it only stamps a card that has NO cycle open.
+      if (hasPr) {
+        const opened = await this.openReviewCycleIfInProgress(
+          taskId,
+          organizationId,
+        );
+        if (!opened) continue;
+        moved.push(opened);
+        continue;
+      }
+
       const advanced = await this.advanceToReviewIfInProgress(
         taskId,
         organizationId,
@@ -1338,13 +1401,8 @@ export class TaskBoardStorage {
       );
       if (!advanced) continue;
       moved.push(advanced);
-      // Record the transition — the reviewer flow keys its "current review
-      // cycle" off the newest `status_changed→in_review` activity, and a
-      // re-review (Super Agent pushed a fix to the same PR, no new PR opened)
-      // re-enters In Review only through THIS path. Without the activity row
-      // the cycle boundary would stay stale and reviewers would never re-run.
       // Machine-driven, hence a null actor. Best-effort. Reached only by the
-      // caller that won the flip above, so it writes exactly once per cycle.
+      // caller that won the flip above, so it writes exactly once.
       await this.recordActivity({
         taskBoardItemId: taskId,
         action: "status_changed",
@@ -1355,6 +1413,90 @@ export class TaskBoardStorage {
       );
     }
     return moved;
+  }
+
+  /**
+   * Open a review cycle on a task that has none open, leaving it In Progress —
+   * where a card whose reviewer is working belongs — and returning the updated
+   * item, or null when there was nothing to do.
+   *
+   * The `review_cycle_started_at IS NULL` predicate is what makes it safe to
+   * call from every trigger that notices reviewable work (the PR-open hook, the
+   * MCP tool hook, the thread-finish backstop): re-stamping an OPEN cycle would
+   * move its boundary forward and silently invalidate verdicts already recorded
+   * against it. Closing the cycle is the only way to start a new one, and that
+   * is `closeReviewCycle`, which every bounce-back-to-work path calls.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`, so a dismissed card whose linked thread finishes
+   * afterward would otherwise get resurrected into the reviewer's work list.
+   */
+  async openReviewCycleIfInProgress(
+    id: string,
+    organizationId: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({ review_cycle_started_at: new Date(), status: "in_progress" })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      // In Review is in here because the PR link can LOSE THE RACE to the
+      // thread-finish backstop. `advanceLinkedTasksToReviewOnThreadFinish`
+      // reads `listPrs` to decide repo-backed vs repo-less, and a run that
+      // links its PR moments after its thread goes terminal is read as
+      // repo-less and parked In Review. The link then lands on a card that is
+      // no longer In Progress, this update matched nothing, and the cycle
+      // never opened at all: the card sat In Review for the whole reviewer run
+      // — the exact thing migration 189 exists to prevent — with every verdict
+      // falling back to the legacy activity scan. Observed at 52 seconds
+      // between the two on a real board.
+      //
+      // Taking the card BACK to In Progress is safe precisely because the
+      // cycle is still null: a card whose cycle never opened has had no
+      // reviewer and no verdict, so there is nothing behind it to invalidate,
+      // and the Super Agent guard keeps it off a card a person has taken over
+      // (`handTaskToHuman` clears the assignee). Both columns move in ONE
+      // statement — a separate flip could interleave with the sweeper's read.
+      .where((eb) =>
+        eb.or([
+          eb("status", "=", "in_progress"),
+          eb.and([
+            eb("status", "=", "in_review"),
+            eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
+          ]),
+        ]),
+      )
+      .where("review_cycle_started_at", "is", null)
+      .where("dismissed_at", "is", null)
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
+   * Close a task's review cycle — no reviewer owns it any more.
+   *
+   * Called by every path that sends a card back to work (a rerun, a
+   * conflict-resolution claim, a human re-engaging the thread) and by every
+   * path that ends the review (the verdict, a merge). It is what allows the
+   * NEXT `openReviewCycleIfInProgress` to stamp a fresh boundary, so forgetting
+   * it does not corrupt anything — it strands the card in the old cycle, where
+   * the previous verdict still stands.
+   *
+   * Not conditional on status: the callers each have their own fence, and a
+   * clear is idempotent.
+   */
+  async closeReviewCycle(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ review_cycle_started_at: null })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
   }
 
   /**
@@ -1398,6 +1540,10 @@ export class TaskBoardStorage {
   /**
    * A new run is starting on a thread — pull any linked task sitting in In
    * Review back to In Progress (the user re-engaged it). Returns moved items.
+   *
+   * Closes the review cycle too: whatever a reviewer decided was about the code
+   * as it stood, and a fresh run is about to change it. Leaving the cycle open
+   * would carry that verdict onto work it never saw.
    */
   async reopenLinkedTasksOnThreadRun(
     threadId: string,
@@ -1407,6 +1553,7 @@ export class TaskBoardStorage {
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item || item.status !== "in_review") continue;
+      await this.closeReviewCycle(taskId, organizationId);
       moved.push(
         await this.update(
           taskId,
@@ -1462,6 +1609,12 @@ export class TaskBoardStorage {
       .updateTable("task_board_items")
       .set({
         status: "in_progress",
+        // The claim exists to put the card back in the Super Agent's hands to
+        // fix something, so the review that just ended is over. Cleared in the
+        // SAME statement as the flip: a separate write could lose the race with
+        // the PR push that opens the next cycle, and an open cycle from the
+        // previous round would then swallow that push's fresh boundary.
+        review_cycle_started_at: null,
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
@@ -1800,8 +1953,10 @@ export class TaskBoardStorage {
 
     for (const item of items) {
       const activity = byItem.get(item.id) ?? [];
-      const verdicts = reviewCycleVerdicts(activity);
+      const cycleStartedAt = item.reviewCycleStartedAt;
+      const verdicts = reviewCycleVerdicts(activity, { cycleStartedAt });
       const verifiedApprovals = reviewCycleVerdicts(activity, {
+        cycleStartedAt,
         verifiedOnly: true,
       });
       item.reviewVerdicts = REVIEWER_KINDS.flatMap((reviewer) => {
@@ -2193,6 +2348,7 @@ export class TaskBoardStorage {
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
+    review_cycle_started_at?: string | Date | null;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -2217,6 +2373,10 @@ export class TaskBoardStorage {
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
+      reviewCycleStartedAt:
+        row.review_cycle_started_at instanceof Date
+          ? row.review_cycle_started_at.toISOString()
+          : (row.review_cycle_started_at ?? null),
       // Populated by attachRefs for reads; null/empty for a fresh create.
       jiraIssueKey: null,
       threads: [],

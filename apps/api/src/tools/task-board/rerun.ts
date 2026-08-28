@@ -43,6 +43,8 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
+import type { TaskBoardItemStatus } from "@/storage/types";
+import { inReviewPhase } from "./lanes";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
 import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
@@ -207,8 +209,9 @@ const MERGE_RETRY_GRACE_MS = 15 * 60 * 1000;
 export function mergeRetryExpired(
   activity: ReviewCycleActivity[],
   nowMs: number,
+  cycleStartedAt: string | null,
 ): boolean {
-  const cycleStart = reviewCycleStart(activity);
+  const cycleStart = reviewCycleStart(activity, cycleStartedAt);
   let latestApproval = 0;
   for (const a of activity) {
     if (a.action !== "review_approved") continue;
@@ -249,9 +252,14 @@ export function mergeRetryExpired(
  */
 export async function refuseIfMergePending(
   ctx: StudioContext,
-  item: { id: string; status: string; organizationId: string },
+  item: {
+    id: string;
+    status: TaskBoardItemStatus;
+    organizationId: string;
+    reviewCycleStartedAt: string | null;
+  },
 ): Promise<void> {
-  if (item.status !== "in_review") return;
+  if (!inReviewPhase(item)) return;
   const settings = await ctx.storage.organizationSettings.get(
     item.organizationId,
   );
@@ -265,7 +273,8 @@ export async function refuseIfMergePending(
   const activity = await ctx.storage.taskBoard
     .listActivity(item.id, item.organizationId)
     .catch(() => []);
-  if (mergeRetryExpired(activity, Date.now())) return;
+  if (mergeRetryExpired(activity, Date.now(), item.reviewCycleStartedAt))
+    return;
   if (await mergeIsDeadlocked(ctx, item, activity)) return;
   throw new Error(
     "Every reviewer approved this task and its merge is retrying — re-running " +

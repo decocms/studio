@@ -271,9 +271,27 @@ export type ReviewCycleActivity = {
   occurredAt: string;
 };
 
-/** When the task most recently entered In Review (ms since epoch), else 0 — the
- *  start of the current review cycle. Verdicts before this are stale. */
-export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
+/**
+ * When the task's current review cycle opened (ms since epoch), else 0 —
+ * verdicts recorded before it are stale.
+ *
+ * The card's `reviewCycleStartedAt` IS the boundary: it is stamped when the
+ * work becomes reviewable and re-stamped on every re-review, independently of
+ * what lane the card sits in. That independence is the point — the cycle used
+ * to be derived from the newest `status_changed → in_review`, which made the
+ * lane load-bearing (a card could not leave In Review mid-review without
+ * invalidating its own reviewer's verdict), and so pinned every card to In
+ * Review while an agent was still working on it.
+ *
+ * The activity scan survives only as the fallback for a card stamped before
+ * migration 190. Pass `null` for a card that has no column value and the old
+ * derivation applies, so an in-flight cycle is never lost mid-deploy.
+ */
+export function reviewCycleStart(
+  activity: ReviewCycleActivity[],
+  cycleStartedAt: string | Date | null | undefined,
+): number {
+  if (cycleStartedAt) return new Date(cycleStartedAt).getTime();
   let latest = 0;
   for (const a of activity) {
     if (a.action !== "status_changed") continue;
@@ -285,6 +303,19 @@ export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
   return latest;
 }
 
+/**
+ * What every cycle-scoped reducer below needs: the card's own
+ * `reviewCycleStartedAt` (see {@link reviewCycleStart}). It is a REQUIRED
+ * field, not an optional one — a caller that forgets it would silently fall
+ * back to the activity scan, which for a card written after migration 190 finds
+ * no boundary at all and so counts a previous cycle's verdicts as current.
+ */
+export type ReviewCycleOpts = {
+  cycleStartedAt: string | Date | null | undefined;
+  /** Count an approval only when it was token-verified (`data.verified`). */
+  verifiedOnly?: boolean;
+};
+
 /** Each reviewer's latest verdict within the current review cycle. Approvals /
  *  change-requests recorded before the cycle start are ignored. With
  *  `verifiedOnly`, an approval counts only when it was token-verified
@@ -292,9 +323,9 @@ export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
  *  (unverifiable) approval can't ship; the manual ship button does not. */
 export function reviewCycleVerdicts(
   activity: ReviewCycleActivity[],
-  opts?: { verifiedOnly?: boolean },
+  opts: ReviewCycleOpts,
 ): Map<ReviewerKind, "approved" | "changes_requested"> {
-  const start = reviewCycleStart(activity);
+  const start = reviewCycleStart(activity, opts.cycleStartedAt);
   const latest = new Map<ReviewerKind, "approved" | "changes_requested">();
   for (const a of activity) {
     if (
@@ -326,7 +357,7 @@ export function reviewCycleVerdicts(
 export function allReviewersApproved(
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
-  opts?: { verifiedOnly?: boolean },
+  opts: ReviewCycleOpts,
 ): boolean {
   if (enabled.length === 0) return false;
   const verdicts = reviewCycleVerdicts(activity, opts);
@@ -346,10 +377,11 @@ export function allReviewersApproved(
 export function approvedButUnverified(
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
+  opts: ReviewCycleOpts,
 ): boolean {
   return (
-    allReviewersApproved(activity, enabled) &&
-    !allReviewersApproved(activity, enabled, { verifiedOnly: true })
+    allReviewersApproved(activity, enabled, opts) &&
+    !allReviewersApproved(activity, enabled, { ...opts, verifiedOnly: true })
   );
 }
 

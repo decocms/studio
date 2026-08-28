@@ -49,9 +49,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       .optional()
       .describe(
         "GitHub pull request URL to link to the new task, e.g. " +
-          "https://github.com/owner/repo/pull/123. Pass this with " +
-          '`status: "in_review"` right after you open a PR so the card lands ' +
-          "on the board with its PR already attached for review.",
+          "https://github.com/owner/repo/pull/123. Pass it right after you " +
+          "open a PR so the card lands on the board with its PR already " +
+          "attached for review.",
       ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),

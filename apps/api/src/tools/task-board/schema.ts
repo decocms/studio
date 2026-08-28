@@ -201,6 +201,13 @@ export const TaskBoardItemSchema = z.object({
   // reject every response with `-32602: Structured content does not match
   // the tool's output schema` the moment a row carried a non-zero value.
   retryAttempts: z.number(),
+  /** When this card's current review cycle opened; null when none is open — the
+   *  boundary that decides which reviewer verdicts still count, and the one
+   *  thing that says a reviewer owns the card while its lane still reads In
+   *  Progress. Present on every `TaskBoardItem`, so — like `retryAttempts`
+   *  above — it MUST be modeled here or Ajv-revalidating MCP clients reject
+   *  every response with `-32602`. */
+  reviewCycleStartedAt: z.string().datetime().nullable(),
   // Agent threads linked to this task (many-to-many), most-recent first.
   threads: z.array(TaskBoardItemThreadSchema),
   // Org tags attached to this task, name ascending.

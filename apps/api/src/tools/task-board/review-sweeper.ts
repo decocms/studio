@@ -72,6 +72,7 @@ import {
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
+import { inReviewPhase } from "./lanes";
 import { advanceToDoneIfMerged } from "./reconcile-merged";
 import {
   emitTaskBoardUpdated,
@@ -443,7 +444,14 @@ export class TaskBoardReviewSweeper {
       item.id,
       item.organizationId,
     );
-    if (!noPrHandoffDue(reviewCycleStart(activity), Date.now())) return;
+    if (
+      !noPrHandoffDue(
+        reviewCycleStart(activity, item.reviewCycleStartedAt),
+        Date.now(),
+      )
+    ) {
+      return;
+    }
     await handTaskToHuman(
       ctx,
       item,
@@ -468,7 +476,7 @@ export class TaskBoardReviewSweeper {
     // Re-check against the fresh row: `listItemsPendingReview` scanned a
     // possibly-stale snapshot, and a human can bounce the card between that scan
     // and this reconcile.
-    if (item.status !== "in_review") return false;
+    if (!inReviewPhase(item)) return false;
     // Everything below EXCEPT the merge retry needs the Super Agent to still own
     // the card — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own
     // `enqueueEnabledReviewers` call. A handed-off card burns no agent runs, but

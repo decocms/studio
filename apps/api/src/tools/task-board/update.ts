@@ -17,7 +17,7 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import { isDeliveryLane } from "./lanes";
+import { inReviewPhase, isDeliveryLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
@@ -157,12 +157,17 @@ const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
  *  invariant; this tool sets `status` freely, so it needs the same guard. */
 export function closesOwnReview(
   inputStatus: TaskBoardItemStatus | undefined,
-  previousStatus: TaskBoardItemStatus | undefined,
+  previous:
+    | { status: TaskBoardItemStatus; reviewCycleStartedAt: string | null }
+    | undefined,
   isTaskRun: boolean,
 ): boolean {
   const completesTask =
     inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
-  const awaitingReview = previousStatus === "in_review";
+  // The PHASE, not the lane: a card whose reviewer is still working reads In
+  // Progress since migration 190, and gating on the lane alone would let the
+  // author's own run mark its work Done out from under that reviewer.
+  const awaitingReview = previous !== undefined && inReviewPhase(previous);
   return isTaskRun && completesTask && awaitingReview;
 }
 
@@ -225,8 +230,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       .optional()
       .describe(
         "GitHub pull request URL to link to this task, e.g. " +
-          "https://github.com/owner/repo/pull/123. Pass this with " +
-          '`status: "in_review"` after opening a PR for an existing card.',
+          "https://github.com/owner/repo/pull/123. Pass it after opening a " +
+          "PR for an existing card; linking one is what starts its review.",
       ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
@@ -309,10 +314,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    if (closesOwnReview(input.status, previous?.status, isTaskRun)) {
+    if (closesOwnReview(input.status, previous ?? undefined, isTaskRun)) {
       throw new Error(
-        "This task is In Review — a run can't move it to Done or Archived. " +
-          "Leave it in in_review for the reviewer; only a person, or " +
+        "This task is under review — a run can't move it to Done or Archived. " +
+          "Leave it for the reviewer; only a person, or " +
           "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, closes out a " +
           "task under review.",
       );

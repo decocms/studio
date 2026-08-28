@@ -11,7 +11,11 @@ import {
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
-import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
+import {
+  emitTaskBoardUpdated,
+  handTaskToHuman,
+  parkReviewedCardForHuman,
+} from "./run-reactions";
 import {
   allEnabledReviewersVerifiedApproved,
   conflictSignal,
@@ -74,8 +78,12 @@ export function reviewTokenVerified(
 export function isDuplicateChangeRequest(
   history: ReviewCycleActivity[],
   reviewer: ReviewerKind,
+  cycleStartedAt: string | null,
 ): boolean {
-  return reviewCycleVerdicts(history).get(reviewer) === "changes_requested";
+  return (
+    reviewCycleVerdicts(history, { cycleStartedAt }).get(reviewer) ===
+    "changes_requested"
+  );
 }
 
 export const TASK_BOARD_REVIEW_DECISION = defineTool({
@@ -177,10 +185,13 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     // drained — a day is ample.
     const currentCycleAt = reviewToken
       ? reviewCycleStart(
-          await ctx.storage.taskBoard.listActivity(
-            taskBoardItemId,
-            organizationId,
-          ),
+          item.reviewCycleStartedAt
+            ? []
+            : await ctx.storage.taskBoard.listActivity(
+                taskBoardItemId,
+                organizationId,
+              ),
+          item.reviewCycleStartedAt,
         )
       : 0;
     const verified =
@@ -227,7 +238,9 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         taskBoardItemId,
         organizationId,
       );
-      if (isDuplicateChangeRequest(history, reviewer)) {
+      if (
+        isDuplicateChangeRequest(history, reviewer, item.reviewCycleStartedAt)
+      ) {
         return { status: item.status, merged: false };
       }
       await recordTaskActivity(ctx, {
@@ -256,6 +269,14 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       actorId: null,
       data: { reviewer, notes, verified },
     });
+
+    // The reviewer is done with the card whatever happens next, so settle the
+    // lane before deciding about the merge: a verdict means it is a person's
+    // turn, and until this the card has been reading In Progress (migration
+    // 189). A merge moves it further along from here; a conflict bounce pulls
+    // it back — both are forward-only against In Review, so neither cares that
+    // it passed through.
+    await parkReviewedCardForHuman(ctx, item);
 
     // Only the LAST enabled reviewer to (verifiably) approve completes the
     // review. Until then the task waits In Review for the other reviewer.
@@ -289,6 +310,14 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     // A merge ships the task → Merged with the delivery lanes on, else Done.
     if (merged) {
       const shipped = shippedLane(settings?.flags);
+      // Re-read: `parkReviewedCardForHuman` above may have moved the card since
+      // `item` was loaded, and the timeline's `from` has to be where it
+      // actually came from.
+      const before =
+        (await ctx.storage.taskBoard.getById(
+          taskBoardItemId,
+          organizationId,
+        )) ?? item;
       const done = await ctx.storage.taskBoard.update(
         taskBoardItemId,
         organizationId,
@@ -299,7 +328,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         taskBoardItemId,
         action: "status_changed",
         actorId: null,
-        data: { from: item.status, to: shipped },
+        data: { from: before.status, to: shipped },
       });
       emitTaskBoardUpdated(organizationId, done);
       return { status: done.status, merged: true };

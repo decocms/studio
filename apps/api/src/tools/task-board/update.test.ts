@@ -34,6 +34,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     keySeq: 1,
     jiraIssueKey: null,
     retryAttempts: 0,
+    reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
@@ -207,34 +208,62 @@ describe("delegatesToSuperAgent", () => {
 });
 
 describe("closesOwnReview", () => {
+  /** A card in the review phase, as the guard now reads it. `in_review` is the
+   *  lane a card takes AFTER its reviewer decided; while one is still working
+   *  the card reads In Progress with its cycle open (migration 190), and both
+   *  must be protected from the author's own run closing them out. */
+  const underReview = (
+    status: TaskBoardItem["status"] = "in_review",
+    reviewCycleStartedAt: string | null = null,
+  ) => ({ status, reviewCycleStartedAt });
+
   it("catches a run completing a task under review", () => {
-    expect(closesOwnReview("done", "in_review", true)).toBe(true);
+    expect(closesOwnReview("done", underReview(), true)).toBe(true);
   });
 
   it("catches a run archiving a task under review — archiving skips review just like completing", () => {
-    expect(closesOwnReview("archived", "in_review", true)).toBe(true);
+    expect(closesOwnReview("archived", underReview(), true)).toBe(true);
   });
 
   // Shipping yourself past review also drops the card out of the review sweep.
   it("catches a run shipping a task under review into a delivery lane", () => {
-    expect(closesOwnReview("approved", "in_review", true)).toBe(true);
-    expect(closesOwnReview("merged", "in_review", true)).toBe(true);
-    expect(closesOwnReview("post_deploy_validation", "in_review", true)).toBe(
+    expect(closesOwnReview("approved", underReview(), true)).toBe(true);
+    expect(closesOwnReview("merged", underReview(), true)).toBe(true);
+    expect(closesOwnReview("post_deploy_validation", underReview(), true)).toBe(
       true,
     );
   });
 
+  // The lane alone used to answer this, and In Progress read as "not under
+  // review" — which is now exactly where a card sits while its reviewer works.
+  // The open cycle is what protects it.
+  it("catches a run completing a task whose reviewer is still working", () => {
+    expect(
+      closesOwnReview(
+        "done",
+        underReview("in_progress", "2026-08-13T02:39:20Z"),
+        true,
+      ),
+    ).toBe(true);
+  });
+
   it("allows a run to complete a task that needed no code change", () => {
-    expect(closesOwnReview("done", "in_progress", true)).toBe(false);
+    expect(closesOwnReview("done", underReview("in_progress"), true)).toBe(
+      false,
+    );
   });
 
   it("allows a run to move a task under review BACKWARD, or not at all", () => {
-    expect(closesOwnReview("in_progress", "in_review", true)).toBe(false);
-    expect(closesOwnReview(undefined, "in_review", true)).toBe(false);
+    expect(closesOwnReview("in_progress", underReview(), true)).toBe(false);
+    expect(closesOwnReview(undefined, underReview(), true)).toBe(false);
   });
 
   it("never catches a person", () => {
-    expect(closesOwnReview("done", "in_review", false)).toBe(false);
+    expect(closesOwnReview("done", underReview(), false)).toBe(false);
+  });
+
+  it("has nothing to protect without a pre-update card", () => {
+    expect(closesOwnReview("done", undefined, true)).toBe(false);
   });
 });
 
