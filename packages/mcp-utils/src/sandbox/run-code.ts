@@ -1,4 +1,8 @@
-import type { QuickJSContext, QuickJSHandle } from "quickjs-emscripten-core";
+import type {
+  ExecutePendingJobsResult,
+  QuickJSContext,
+  QuickJSHandle,
+} from "quickjs-emscripten-core";
 import { scheduler } from "node:timers/promises";
 import { installConsole, type SandboxLog } from "./builtins/console.ts";
 import { createSandboxRuntime } from "./runtime.ts";
@@ -7,7 +11,9 @@ import { PendingPromiseTracker, toQuickJS } from "./utils/to-quickjs.ts";
 import type { IClient } from "../client-like.ts";
 
 function executePendingJobs(ctx: {
-  runtime: { executePendingJobs: Function };
+  runtime: {
+    executePendingJobs: (maxJobsToExecute?: number) => ExecutePendingJobsResult;
+  };
 }) {
   const res = ctx.runtime.executePendingJobs(100);
   try {
