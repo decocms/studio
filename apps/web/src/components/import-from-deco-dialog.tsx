@@ -271,13 +271,9 @@ export function ImportFromDecoDialog({
         const projectIcon = connBody.icon ?? null;
         const slug = generateSlug(siteName);
         const siteSlug = siteName.toLowerCase();
-        // Persist the site's real deployed URL (custom domain when present,
-        // else the deco.site host) as the preview server so the CMS preview
-        // can render against it. `null` when the site has no domains. The
-        // legacy `productionUrl` key is dual-written so an older app version
-        // rolling back still finds the value.
+        // Default the preview server to the site's `{slug}.deco.site` host (legacy `productionUrl` dual-written for rollback).
         const previewServerUrl = productionUrlFromDomain(
-          pickProductionDomain(site.domains),
+          `${siteSlug}.deco.site`,
         );
 
         // 2. Create a space (virtual MCP) wired to both admin-mcp and GitHub.
@@ -320,7 +316,7 @@ export function ImportFromDecoDialog({
                   ],
                   layout: {
                     defaultMainView: { type: "preview" },
-                    chatDefaultOpen: true,
+                    chatDefaultOpen: false,
                   },
                 },
               },
