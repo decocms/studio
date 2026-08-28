@@ -53,7 +53,7 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
         ctx.storage.taskBoard.list(organizationId),
         ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
         ctx.storage.sprints.listByOrg(organizationId),
-        boardHandler(organizationId).columns(),
+        boardHandler(organizationId, ctx.storage.columnAutomations).columns(),
       ]);
     const repos = listRepoScopeLabels(githubConnections);
 

@@ -49,9 +49,6 @@ export const settings = {
     "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
   "settings.jira.dontSync": "Don't sync",
   "settings.jira.columnsFailed": "Could not load the board's columns",
-  "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
-  "settings.jira.autoDelegateDescription":
-    "When an issue lands in a column mapped to To Do, the Super Agent takes the card and starts working. Its progress is mirrored back onto the issue.",
   "settings.jira.enableLabel": "Sync enabled",
   "settings.jira.enableRequirements":
     "Pick a project and map at least one status before enabling the sync",

@@ -44,7 +44,6 @@ const integrationSchema = z.object({
   boardId: z.string().nullable(),
   boardName: z.string().nullable(),
   statusMapping: statusMappingSchema,
-  autoDelegate: z.boolean(),
   webhookSecret: z.string(),
   enabled: z.boolean(),
   lastSyncedAt: z.string().nullable(),
@@ -74,7 +73,6 @@ function toOutput(
     boardId: integration.boardId,
     boardName: integration.boardName,
     statusMapping: integration.statusMapping,
-    autoDelegate: integration.autoDelegate,
     webhookSecret: integration.webhookSecret,
     enabled: integration.enabled,
     lastSyncedAt: integration.lastSyncedAt,
@@ -141,12 +139,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
       .optional()
       .describe("Display name of that board"),
     statusMapping: statusMappingSchema.optional(),
-    autoDelegate: z
-      .boolean()
-      .optional()
-      .describe(
-        "Assign the Super Agent when an issue lands in a To Do-mapped column",
-      ),
     enabled: z.boolean().optional(),
   }),
   outputSchema: z.object({ integration: integrationSchema }),
@@ -210,7 +202,9 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
           ? input.boardName
           : (existing?.boardName ?? null),
       statusMapping,
-      autoDelegate: input.autoDelegate ?? existing?.autoDelegate ?? false,
+      // Superseded by column automations; the column stays until a later
+      // migration drops it, so writes keep it at its current value.
+      autoDelegate: existing?.autoDelegate ?? false,
       enabled,
       createdBy: existing?.createdBy ?? userId,
     });

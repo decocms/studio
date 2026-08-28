@@ -52,9 +52,6 @@ export const settings = {
   "settings.jira.dontSync": "Não sincronizar",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
-  "settings.jira.autoDelegateLabel": "Delegar automaticamente pro agente",
-  "settings.jira.autoDelegateDescription":
-    "Quando uma issue entra numa coluna mapeada pra To Do, o Super Agent assume o card e começa a trabalhar. O progresso dele é espelhado de volta na issue.",
   "settings.jira.enableLabel": "Sincronização ativa",
   "settings.jira.enableRequirements":
     "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",

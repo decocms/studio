@@ -240,12 +240,16 @@ async function maybeAutoDelegate(
   integration: OrgJiraIntegration,
   item: TaskBoardItem,
 ): Promise<TaskBoardItem> {
-  if (!integration.autoDelegate) return item;
   if (item.assigneeId) return item;
   const orgId = integration.organizationId;
-  // The board decides whether its own column starts work; one nobody set up
-  // that way is uneventful.
-  if (!(await boardHandler(orgId).startsWorkOn(item.status))) return item;
+  // The board decides: a column with no rule on it is uneventful. This is also
+  // what replaced `integration.autoDelegate`, which could only ever mean the
+  // Super Agent, on To Do, for an org that had Jira.
+  const automation = await boardHandler(
+    orgId,
+    ctx.storage.columnAutomations,
+  ).automationFor(item.status);
+  if (!automation) return item;
   // Conditional claim, not a plain update: the cron, a webhook wake-up (its
   // debounce is per-pod) and a manual JIRA_SYNC_RUN can all be mid-sync on the
   // same issue, and a read-then-write would dispatch two paid agent runs on it.
@@ -263,7 +267,9 @@ async function maybeAutoDelegate(
     data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
   });
   try {
-    await reactToSuperAgentDelegation(ctx, delegated);
+    await reactToSuperAgentDelegation(ctx, delegated, {
+      instruction: automation.prompt ?? undefined,
+    });
   } catch (err) {
     console.warn(
       `[jira] auto-delegate of ${item.id} rejected, un-delegating:`,

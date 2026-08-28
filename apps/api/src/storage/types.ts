@@ -1714,6 +1714,18 @@ export interface TaskBoardItemTable {
  * splitting in two. Null means a sprint this board owns — nothing writes those
  * yet.
  */
+/** A rule the board runs when a card lands in a column (migration 189). The
+ *  row's existence is the switch; `prompt` null means the Super Agent's own
+ *  instruction. */
+export interface TaskBoardColumnAutomationTable {
+  id: string;
+  organization_id: string;
+  column_key: string;
+  prompt: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface TaskBoardSprintTable {
   id: string;
   organization_id: string;
@@ -2238,6 +2250,7 @@ export interface Database extends PrivateRegistryDatabase {
   org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
   task_board_sprints: TaskBoardSprintTable;
+  task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
