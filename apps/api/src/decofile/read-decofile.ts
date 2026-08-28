@@ -252,7 +252,7 @@ async function resolveSnapshot(
   if (cachedMerged !== null) return { sha, decofile: cachedMerged };
 
   const treeSha = await client.getCommitTreeSha(sha);
-  const tree = await client.getTreeRecursive(treeSha);
+  const tree = await client.getDecofileTree(treeSha, packagePath);
   const entries = blockEntriesInTree(tree, packagePath);
 
   // Per-blob disk hits first; only what's left goes to GitHub.
