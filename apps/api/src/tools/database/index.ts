@@ -42,41 +42,35 @@ function escapeSqlValue(value: unknown): string {
 }
 
 /**
- * Replace ALL placeholders (?, $1, $2, etc.) with escaped values
+ * Replace ALL placeholders (?, $1, $2, etc.) with escaped values.
  *
- * IMPORTANT: We find all placeholder positions FIRST, then replace from end to start.
- * This prevents ? characters inside interpolated values from being treated as placeholders.
+ * Walks the ORIGINAL sql string once, left to right, and only ever appends
+ * escaped values to the output — it never re-scans text it already produced.
+ * A prior version substituted placeholders in separate passes over a `result`
+ * string that grew with each pass; an escaped param containing a literal `?`
+ * or `$1` (e.g. a string param holding "a?b") was then picked up as a REAL
+ * placeholder by a later pass and substituted again, corrupting the query.
  */
-function interpolateParams(sql: string, params: unknown[]): string {
-  // First, handle $1, $2, etc. style placeholders (unambiguous)
-  let result = sql;
-  for (let i = params.length; i >= 1; i--) {
-    const placeholder = `$${i}`;
-    if (result.includes(placeholder)) {
-      result = result.replaceAll(placeholder, escapeSqlValue(params[i - 1]));
+export function interpolateParams(sql: string, params: unknown[]): string {
+  let result = "";
+  let questionMarkIndex = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    if (char === "$") {
+      const match = /^\$(\d+)/.exec(sql.slice(i));
+      const paramIndex = match ? Number(match[1]) - 1 : -1;
+      if (match && paramIndex >= 0 && paramIndex < params.length) {
+        result += escapeSqlValue(params[paramIndex]);
+        i += match[0].length - 1;
+        continue;
+      }
+    } else if (char === "?" && questionMarkIndex < params.length) {
+      result += escapeSqlValue(params[questionMarkIndex]);
+      questionMarkIndex++;
+      continue;
     }
+    result += char;
   }
-
-  // For ? placeholders, find all positions FIRST, then replace from end to start
-  // This prevents ? inside interpolated values from being matched
-  const questionMarkPositions: number[] = [];
-  for (let i = 0; i < result.length; i++) {
-    if (result[i] === "?") {
-      questionMarkPositions.push(i);
-    }
-  }
-
-  // Replace from end to start so positions don't shift
-  for (
-    let i = Math.min(questionMarkPositions.length, params.length) - 1;
-    i >= 0;
-    i--
-  ) {
-    const pos = questionMarkPositions[i];
-    const escaped = escapeSqlValue(params[i]);
-    result = result.slice(0, pos!) + escaped + result.slice(pos! + 1);
-  }
-
   return result;
 }
 
