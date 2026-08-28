@@ -117,18 +117,37 @@ export class BoardColumnStorage {
     });
   }
 
-  /** Say what one of this board's columns means to Studio, or unsay it. */
+  /**
+   * Say what one of this board's columns means to Studio, or unsay it.
+   *
+   * A role means one column, not a set of them — `archiveColumn` and
+   * `automationFor` both read it that way, picking whichever row happens to
+   * match first. So giving a role to a column strips it from whichever column
+   * held it before, in the same transaction, rather than leaving two columns
+   * quietly claiming the same meaning.
+   */
   async setRole(
     organizationId: string,
     key: string,
     role: string | null,
   ): Promise<boolean> {
-    const result = await this.db
-      .updateTable("task_board_columns")
-      .set({ role, updated_at: new Date() })
-      .where("organization_id", "=", organizationId)
-      .where("key", "=", key)
-      .executeTakeFirst();
-    return (result.numUpdatedRows ?? 0n) > 0n;
+    return await this.db.transaction().execute(async (tx) => {
+      if (role !== null) {
+        await tx
+          .updateTable("task_board_columns")
+          .set({ role: null, updated_at: new Date() })
+          .where("organization_id", "=", organizationId)
+          .where("role", "=", role)
+          .where("key", "!=", key)
+          .execute();
+      }
+      const result = await tx
+        .updateTable("task_board_columns")
+        .set({ role, updated_at: new Date() })
+        .where("organization_id", "=", organizationId)
+        .where("key", "=", key)
+        .executeTakeFirst();
+      return (result.numUpdatedRows ?? 0n) > 0n;
+    });
   }
 }

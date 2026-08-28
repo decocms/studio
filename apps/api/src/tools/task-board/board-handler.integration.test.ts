@@ -193,6 +193,17 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     expect(await board().archiveColumn()).toBe(null);
   });
 
+  /** A role names one column. Re-pointing it must strip it from wherever it
+   *  used to be, or `archiveColumn` picks between two columns that both
+   *  quietly claim "archived" — whichever the query happens to return first. */
+  it("moves a role rather than duplicating it onto a second column", async () => {
+    await boardColumns.setRole(ORG_M, "BACKLOG", "archived");
+    await boardColumns.setRole(ORG_M, "Code Review", "archived");
+    const columns = await board().columns();
+    expect(columns.filter((c) => c.role === "archived")).toHaveLength(1);
+    expect(await board().archiveColumn()).toBe("Code Review");
+  });
+
   /**
    * The obligation the foreign key creates. A column the tracker dropped that
    * still holds cards cannot be deleted — RESTRICT refuses — and moving those
