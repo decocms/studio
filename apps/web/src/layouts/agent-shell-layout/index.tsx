@@ -25,6 +25,8 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
+  useSyncExternalStore,
   use,
   Suspense,
   type ReactNode,
@@ -45,7 +47,10 @@ import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import { useThreadManager } from "@/components/chat/store/hooks";
+import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
@@ -567,6 +572,17 @@ function AgentInsetProvider() {
   const routeThreadId = useRouteThreadId();
   /** The agent is the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
   const virtualMcpId = useRouteVirtualMcpId();
+  /** A stable thread id to mint when a repo-backed editor arrives with none and
+   *  the user has no idle empty chat to reuse, so a re-render before the URL
+   *  catches up reuses it instead of looping through fresh ones. Generated once
+   *  per mount; only used by the redirect below. */
+  const [generatedThreadId] = useState(() => crypto.randomUUID());
+  const { data: session } = authClient.useSession();
+  const threadManager = useThreadManager();
+  const threads = useSyncExternalStore(
+    threadManager.threads.subscribe,
+    threadManager.threads.get,
+  );
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
@@ -612,6 +628,32 @@ function AgentInsetProvider() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, []);
+
+  /**
+   * A repo-backed editor's branch is a thread field, so it must run on a thread;
+   * mint one into `?thread=` before mounting when the URL names none (#6667). The
+   * Super Agent (no repo) keeps its lazy threadless composer.
+   */
+  if (routeThreadId === null && hasActiveGithubRepo) {
+    // Focus the user's idle empty chat for this agent, else mint one — as useNavigateToAgent does.
+    const threadId =
+      findReusableNewChat(
+        threads,
+        virtualMcpId,
+        session?.user?.id,
+        defaultThreadRuntime(entity.metadata),
+      )?.id ?? generatedThreadId;
+    return (
+      <Navigate
+        to="."
+        replace
+        search={(prev: Record<string, unknown>) => ({
+          ...prev,
+          thread: threadId,
+        })}
+      />
+    );
+  }
 
   const chatVirtualMcpId = virtualMcpId;
 
