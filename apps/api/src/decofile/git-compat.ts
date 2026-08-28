@@ -376,16 +376,17 @@ export async function githubGitDiscard(
   for (let attempt = 1; ; attempt++) {
     const branchHead = await client.getHeadSha(branch);
     const { mergeBaseSha } = await client.compareDetailed(base, branch);
-    const [baseTree, headTree] = await Promise.all([
-      client.getTreeRecursive(await client.getCommitTreeSha(mergeBaseSha)),
-      client.getTreeRecursive(await client.getCommitTreeSha(branchHead)),
+    // Scoped to `filepaths`, not a whole-repo recursive read.
+    const [baseBlobByPath, headBlobByPath] = await Promise.all([
+      client.getBlobsAtPaths(
+        await client.getCommitTreeSha(mergeBaseSha),
+        filepaths,
+      ),
+      client.getBlobsAtPaths(
+        await client.getCommitTreeSha(branchHead),
+        filepaths,
+      ),
     ]);
-    const baseBlobByPath = new Map(
-      baseTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
-    );
-    const headBlobByPath = new Map(
-      headTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
-    );
 
     const entries: TreeWriteEntry[] = [];
     for (const path of filepaths) {
@@ -454,12 +455,10 @@ async function buildBranchWinsTree(
     );
   }
 
-  // Blob shas AND modes come from the branch tree — compare carries no modes.
-  const branchTree = await client.getTreeRecursive(
+  // Blob shas AND modes, scoped to `files` rather than a whole-repo recursive read.
+  const branchBlobByPath = await client.getBlobsAtPaths(
     await client.getCommitTreeSha(branchHead),
-  );
-  const branchBlobByPath = new Map(
-    branchTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
+    files.map((f) => f.filename),
   );
 
   return client.createTree(
