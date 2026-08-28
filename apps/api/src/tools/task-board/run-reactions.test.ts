@@ -213,6 +213,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     keySeq: 1,
     jiraIssueKey: null,
     retryAttempts: 0,
+    reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],

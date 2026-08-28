@@ -188,6 +188,7 @@ import * as migration186jirarescanpendingflag from "./186-jira-rescan-pending-fl
 import * as migration187taskboardcommentthread from "./187-task-board-comment-thread.ts";
 import * as migration188invitationautoaccept from "./188-invitation-auto-accept.ts";
 import * as migration189taskboardcolumnautomations from "./189-task-board-column-automations.ts";
+import * as migration190taskboardreviewcyclestartedat from "./190-task-board-review-cycle-started-at.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -407,6 +408,8 @@ const migrations: Record<string, Migration> = {
   "187-task-board-comment-thread": migration187taskboardcommentthread,
   "188-invitation-auto-accept": migration188invitationautoaccept,
   "189-task-board-column-automations": migration189taskboardcolumnautomations,
+  "190-task-board-review-cycle-started-at":
+    migration190taskboardreviewcyclestartedat,
 };
 
 export default migrations;

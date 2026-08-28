@@ -27,9 +27,13 @@ export function isReadyToShip(
   status: TaskBoardItem["status"],
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
+  cycleStartedAt: string | null,
 ): boolean {
   if (!SHIP_ELIGIBLE_LANES.has(status)) return false;
-  return enabled.length === 0 || allReviewersApproved(activity, enabled);
+  return (
+    enabled.length === 0 ||
+    allReviewersApproved(activity, enabled, { cycleStartedAt })
+  );
 }
 
 export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
@@ -77,7 +81,9 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
       taskBoardItemId,
       organizationId,
     );
-    if (!isReadyToShip(item.status, activity, enabled)) {
+    if (
+      !isReadyToShip(item.status, activity, enabled, item.reviewCycleStartedAt)
+    ) {
       throw new Error(
         "Task is not ready to ship: it must be In Review or Approved with every enabled reviewer approved",
       );

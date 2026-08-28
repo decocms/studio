@@ -369,6 +369,7 @@ export interface StudioToolIO {
         keySeq: number | null;
         jiraIssueKey: string | null;
         retryAttempts: number;
+        reviewCycleStartedAt: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -437,6 +438,7 @@ export interface StudioToolIO {
         keySeq: number | null;
         jiraIssueKey: string | null;
         retryAttempts: number;
+        reviewCycleStartedAt: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -543,6 +545,7 @@ export interface StudioToolIO {
         keySeq: number | null;
         jiraIssueKey: string | null;
         retryAttempts: number;
+        reviewCycleStartedAt: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;

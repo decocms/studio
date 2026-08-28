@@ -20,37 +20,41 @@ function approved(reviewer: ReviewerKind): ReviewCycleActivity {
   };
 }
 
+/** The cycle every approval in this file was recorded inside. Passing it is
+ *  what makes those approvals current — see `reviewCycleStart`. */
+const CYCLE = "2026-01-01T00:00:00.000Z";
+
 describe("isReadyToShip", () => {
   it("rejects a task that never entered review, even with no reviewers enabled", () => {
-    expect(isReadyToShip("todo", [], [])).toBe(false);
-    expect(isReadyToShip("in_progress", [], [])).toBe(false);
+    expect(isReadyToShip("todo", [], [], CYCLE)).toBe(false);
+    expect(isReadyToShip("in_progress", [], [], CYCLE)).toBe(false);
   });
 
   it("allows an in_review task straight through when no reviewers are enabled", () => {
-    expect(isReadyToShip("in_review", [], [])).toBe(true);
+    expect(isReadyToShip("in_review", [], [], CYCLE)).toBe(true);
   });
 
   it("rejects an in_review task while the required reviewer hasn't approved", () => {
-    expect(isReadyToShip("in_review", [], ["reviewer"])).toBe(false);
+    expect(isReadyToShip("in_review", [], ["reviewer"], CYCLE)).toBe(false);
   });
 
   it("allows an in_review task once the enabled reviewer approved", () => {
     expect(
-      isReadyToShip("in_review", [approved("reviewer")], ["reviewer"]),
+      isReadyToShip("in_review", [approved("reviewer")], ["reviewer"], CYCLE),
     ).toBe(true);
   });
 
   // Refusing to ship from Approved would make the lane a dead end.
   it("allows shipping from Approved", () => {
-    expect(isReadyToShip("approved", [], [])).toBe(true);
+    expect(isReadyToShip("approved", [], [], CYCLE)).toBe(true);
     expect(
-      isReadyToShip("approved", [approved("reviewer")], ["reviewer"]),
+      isReadyToShip("approved", [approved("reviewer")], ["reviewer"], CYCLE),
     ).toBe(true);
   });
 
   it("rejects an already-shipped task", () => {
-    expect(isReadyToShip("merged", [], [])).toBe(false);
-    expect(isReadyToShip("post_deploy_validation", [], [])).toBe(false);
-    expect(isReadyToShip("done", [], [])).toBe(false);
+    expect(isReadyToShip("merged", [], [], CYCLE)).toBe(false);
+    expect(isReadyToShip("post_deploy_validation", [], [], CYCLE)).toBe(false);
+    expect(isReadyToShip("done", [], [], CYCLE)).toBe(false);
   });
 });

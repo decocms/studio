@@ -74,3 +74,27 @@ export const SHIP_ELIGIBLE_LANES: ReadonlySet<TaskBoardItemStatus> = new Set([
 export function isTaggableMergedStatus(status: TaskBoardItemStatus): boolean {
   return status === "done" || DELIVERY_LANE_STATUSES.includes(status);
 }
+
+/**
+ * True while a card is in its REVIEW PHASE: a reviewer owns it, or it is parked
+ * In Review waiting on a person.
+ *
+ * This is the gate every automatic review path takes, and it is deliberately
+ * not `status === "in_review"`. Since migration 190 an agent reviewer runs
+ * while the card still reads In Progress — the lane says whose turn it is, and
+ * during a review it is nobody's — so the durable fact is the open cycle
+ * (`reviewCycleStartedAt`), not the lane.
+ *
+ * Still bounded by rank: a card that has shipped (Approved and beyond) is out
+ * of the phase whatever a stale cycle stamp says, so a missed `closeReviewCycle`
+ * can never drag a merged card back into the sweeper's work.
+ */
+export function inReviewPhase(item: {
+  status: TaskBoardItemStatus;
+  reviewCycleStartedAt: string | null;
+}): boolean {
+  if (LANE_RANK[item.status] > LANE_RANK.in_review) return false;
+  // Truthiness, not `!== null`: an absent stamp must read as "no cycle", and
+  // a partial item (a fixture, a projection) carries `undefined`, not `null`.
+  return item.status === "in_review" || Boolean(item.reviewCycleStartedAt);
+}

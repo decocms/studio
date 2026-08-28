@@ -183,20 +183,26 @@ describe("checksBlockMerge", () => {
 describe("approvedButUnverified", () => {
   it("is true when the approval is unverified — green checks that can never merge", () => {
     expect(
-      approvedButUnverified([approved("reviewer", false)], [...ENABLED]),
+      approvedButUnverified([approved("reviewer", false)], [...ENABLED], {
+        cycleStartedAt: null,
+      }),
     ).toBe(true);
   });
 
   // The happy path must not be handed to a human — it is about to merge.
   it("is false when the approval verified", () => {
     expect(
-      approvedButUnverified([approved("reviewer", true)], [...ENABLED]),
+      approvedButUnverified([approved("reviewer", true)], [...ENABLED], {
+        cycleStartedAt: null,
+      }),
     ).toBe(false);
   });
 
   // Not yet voted is not a dead end.
   it("is false while the reviewer has not voted yet", () => {
-    expect(approvedButUnverified([], [...ENABLED])).toBe(false);
+    expect(
+      approvedButUnverified([], [...ENABLED], { cycleStartedAt: null }),
+    ).toBe(false);
   });
 
   it("is false when the reviewer requested changes", () => {
@@ -207,7 +213,9 @@ describe("approvedButUnverified", () => {
         occurredAt: at,
       },
     ];
-    expect(approvedButUnverified(activity, [...ENABLED])).toBe(false);
+    expect(
+      approvedButUnverified(activity, [...ENABLED], { cycleStartedAt: null }),
+    ).toBe(false);
   });
 });
 
