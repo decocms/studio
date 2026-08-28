@@ -39,11 +39,14 @@ export default function OrgHome() {
   const agents = useVirtualMCPs();
   /** `main` carries a deep link into a main-panel overlay (e.g. `board` =
    *  Tasks, `files` = Library) through the redirect. */
-  const { connect, siteUrl, main, task } = useSearch({ strict: false }) as {
+  const { connect, siteUrl, main, task, sidepanel } = useSearch({
+    strict: false,
+  }) as {
     connect?: string;
     siteUrl?: string;
     main?: string;
     task?: string;
+    sidepanel?: boolean;
   };
 
   /** Wait for the org settings before deciding, so the landing never flashes
@@ -57,7 +60,7 @@ export default function OrgHome() {
       <Navigate
         to={DESTINATION_BY_MAIN_TAB[main]}
         params={{ org: org.slug, project: undefined }}
-        search={{ connect, siteUrl, task }}
+        search={{ connect, siteUrl, task, sidepanel }}
         replace
       />
     );
@@ -78,7 +81,7 @@ export default function OrgHome() {
       <Navigate
         to={DESTINATION_ROUTE.chat}
         params={{ org: org.slug, project }}
-        search={{ connect, siteUrl, task }}
+        search={{ connect, siteUrl, task, sidepanel }}
         replace
       />
     );
@@ -90,7 +93,7 @@ export default function OrgHome() {
     <Navigate
       to={DESTINATION_ROUTE.home}
       params={{ org: org.slug }}
-      search={{ connect, siteUrl }}
+      search={{ connect, siteUrl, sidepanel }}
       replace
     />
   );

@@ -557,6 +557,10 @@ const orgIndexSearchSchema = z.object({
    *  here, `/$org?main=board&task=…` (the short card link's target) would drop
    *  the card on the redirect. */
   task: z.string().optional(),
+  /** Declared so the resolver can forward it: this route sits outside the agent
+   *  shell that owns the layout search, and destinations open the chat
+   *  collapsed, so `/$org?sidepanel=true` is the only way to land with it open. */
+  sidepanel: sidePanelSearchSchema,
 });
 
 const orgIndexRoute = createRoute({

@@ -196,7 +196,7 @@ async function openNewThread(
   orgSlug: string,
   seed: string,
 ): Promise<string> {
-  await page.goto(`/${orgSlug}`);
+  await page.goto(`/${orgSlug}?sidepanel=true`);
   await waitForChatInput(page);
   await typeInComposer(page, seed);
   await submitComposer(page);
@@ -273,7 +273,7 @@ test.describe("chat input draft persistence", () => {
 
   test("home composer draft survives page refresh", async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
-    await page.goto(`/${orgSlug}`);
+    await page.goto(`/${orgSlug}?sidepanel=true`);
     await waitForChatInput(page);
 
     await typeInComposer(page, "home composer draft");
