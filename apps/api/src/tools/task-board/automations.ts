@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { boardHandler } from "./board-handler";
+import { MAX_AUTOMATION_PROMPT_LENGTH } from "./schema";
 
 const AutomationSchema = z.object({
   columnKey: z.string(),
@@ -46,6 +47,7 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
       .describe("A column of this board — see TASK_BOARD_ITEM_LIST."),
     prompt: z
       .string()
+      .max(MAX_AUTOMATION_PROMPT_LENGTH)
       .nullable()
       .optional()
       .describe("What to do with a card landing here; null for the default."),
