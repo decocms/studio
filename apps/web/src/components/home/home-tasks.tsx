@@ -24,7 +24,6 @@ import {
   PRIORITY_CONFIG,
   laneVisual,
   type TaskBoardItem,
-  type TaskBoardItemStatus,
 } from "@/layouts/task-board/config";
 import { TaskBoardItemDialog } from "@/layouts/task-board/task-dialog";
 
@@ -33,9 +32,10 @@ interface OrgMember {
   user?: { name?: string; email?: string; image?: string | null };
 }
 
-type TaskTab =
-  | "all"
-  | Extract<TaskBoardItemStatus, "in_progress" | "in_review" | "done">;
+/** Named outright rather than `Extract`ed from a card's status: that is now any
+ *  column key, and extracting from an open `string` collapses to `never`. These
+ *  three are Studio's own lanes, which is exactly what this strip is about. */
+type TaskTab = "all" | "in_progress" | "in_review" | "done";
 
 const TASK_TABS: { id: TaskTab; labelKey: string }[] = [
   { id: "all", labelKey: "home.homeTasks.tabAll" },
