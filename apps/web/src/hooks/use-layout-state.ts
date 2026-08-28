@@ -28,6 +28,7 @@ import { useRouteThreadId, useThreadNavigate } from "@/layouts/thread-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
+import { threadHasMessages } from "@/lib/thread-has-messages";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -141,6 +142,11 @@ export function resolveDefaultPanelState(ctx: {
   /** The destination route's default view (e.g. `board` on `/$org/tasks`).
    *  Wins over the agent's `defaultMainView`, loses to the path segment. */
   routeDefaultMain?: string | null;
+  /** The current thread already holds a conversation. Forces the chat panel
+   *  open even when the agent opts out of it (`chatDefaultOpen: false`), so
+   *  returning to a chat you've been talking in never drops you on a closed
+   *  panel. An empty composer (no thread / empty thread) leaves this false. */
+  threadHasMessages?: boolean;
 }): WorkspaceVisibility {
   const defaultView = ctx.entityMetadata?.defaultMainView ?? null;
   const defaultIsChat = defaultView == null || defaultView.type === "chat";
@@ -157,7 +163,9 @@ export function resolveDefaultPanelState(ctx: {
    */
   const defaultSidePanelOpen = ctx.routeDefaultMain
     ? false
-    : defaultIsChat || ctx.entityMetadata?.chatDefaultOpen === true;
+    : defaultIsChat ||
+      ctx.entityMetadata?.chatDefaultOpen === true ||
+      ctx.threadHasMessages === true;
   const sidePanelOpen = ctx.sidePanelParamPresent
     ? ctx.sidePanelParamValue === true
     : defaultSidePanelOpen;
@@ -260,16 +268,6 @@ export function useWorkspaceLayoutState(
   const routeDefaultMain = useRouteDefaultMain();
   const panelTabId = useActivePanelTabId();
 
-  const { sidePanelOpen, mainOpen } = resolveDefaultPanelState({
-    entityMetadata,
-    mainPanelParam: search.mainpanel,
-    panelNamed: panelTabId !== undefined,
-    sidePanelParamPresent: search.sidepanel !== undefined,
-    sidePanelParamValue: search.sidepanel,
-    routeDefaultMain,
-  });
-  const visibility = { sidePanelOpen, mainOpen };
-
   const routeThreadId = useRouteThreadId();
   const fallbackRef = useRef(crypto.randomUUID());
   const { threadId, providerKey } = resolveWorkspaceThread({
@@ -277,6 +275,21 @@ export function useWorkspaceLayoutState(
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     fallbackKey: fallbackRef.current,
   });
+
+  // Reopen the chat for a thread that already holds a conversation (threadHasMessages).
+  const currentThread =
+    threadId != null ? threads.find((t) => t.id === threadId) : undefined;
+
+  const { sidePanelOpen, mainOpen } = resolveDefaultPanelState({
+    entityMetadata,
+    mainPanelParam: search.mainpanel,
+    panelNamed: panelTabId !== undefined,
+    sidePanelParamPresent: search.sidepanel !== undefined,
+    sidePanelParamValue: search.sidepanel,
+    routeDefaultMain,
+    threadHasMessages: currentThread ? threadHasMessages(currentThread) : false,
+  });
+  const visibility = { sidePanelOpen, mainOpen };
 
   /** The legacy `/$org/$taskId` is the only route that records its agent in
    *  search; every destination drops the key (`resolveDestinationThreadSearch`)

@@ -57,6 +57,49 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanelOpen: false, mainOpen: true });
   });
 
+  test("a thread that already has messages opens the chat despite chatDefaultOpen:false", () => {
+    // Returning to a chat you've talked in reopens it even when the agent opts out of the chat panel.
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: {
+          defaultMainView: { type: "content" },
+          chatDefaultOpen: false,
+        },
+        ...absentSearch,
+        threadHasMessages: true,
+      }),
+    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+  });
+
+  test("an empty thread keeps a chatDefaultOpen:false agent chat closed", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: {
+          defaultMainView: { type: "content" },
+          chatDefaultOpen: false,
+        },
+        ...absentSearch,
+        threadHasMessages: false,
+      }),
+    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+  });
+
+  test("an explicit sidepanel=false still hides the chat even with messages", () => {
+    // The user's URL param beats the messages-present default.
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: {
+          defaultMainView: { type: "content" },
+          chatDefaultOpen: false,
+        },
+        panelNamed: false,
+        sidePanelParamPresent: true,
+        sidePanelParamValue: false,
+        threadHasMessages: true,
+      }),
+    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+  });
+
   test("chatDefaultOpen maps to the Chat side panel", () => {
     expect(
       resolveDefaultPanelState({
