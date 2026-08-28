@@ -84,6 +84,15 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       if (existing?.organization_id === organization.id) {
         throw new Error("Connection already exists in organization");
       }
+      // Would collide with another connection's DATABASES_RUN_SQL schema/role — see findBySanitizedId.
+      const collision = await ctx.storage.connections.findBySanitizedId(
+        connectionData.id,
+      );
+      if (collision) {
+        throw new Error(
+          "Connection id conflicts with an existing connection's isolated database schema",
+        );
+      }
     }
 
     // Validate VIRTUAL connections - ensure the referenced Virtual MCP exists

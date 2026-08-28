@@ -169,6 +169,42 @@ describe("ConnectionStorage", () => {
     });
   });
 
+  describe("findBySanitizedId", () => {
+    it("should find a connection whose id folds to the same schema/role name", async () => {
+      await storage.create({
+        id: "conn-acme-prod",
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "Acme Prod",
+        connection_type: "HTTP",
+        connection_url: "https://acme-prod.invalid/mcp",
+      });
+
+      const collision = await storage.findBySanitizedId("conn_acme_prod");
+      expect(collision?.id).toBe("conn-acme-prod");
+    });
+
+    it("should not report a connection as colliding with itself", async () => {
+      const created = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "No Self Collision",
+        connection_type: "HTTP",
+        connection_url: "https://no-self-collision.invalid/mcp",
+      });
+
+      const collision = await storage.findBySanitizedId(created.id);
+      expect(collision).toBeNull();
+    });
+
+    it("should return null when no id sanitizes to the same value", async () => {
+      const collision = await storage.findBySanitizedId(
+        "conn_completely_unused_id",
+      );
+      expect(collision).toBeNull();
+    });
+  });
+
   describe("list", () => {
     it("should list all connections for an organization", async () => {
       await storage.create({

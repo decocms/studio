@@ -315,6 +315,26 @@ export class ConnectionStorage implements ConnectionStoragePort {
     return row ? this.deserializeConnection(row as RawConnectionRow) : null;
   }
 
+  /**
+   * A connection whose id collides with `id` once `DATABASES_RUN_SQL` folds
+   * hyphens to underscores to build its Postgres schema/role name — excluding
+   * `id` itself. That fold is not injective ("acme-prod" and "acme_prod" both
+   * become "acme_prod"), so two DIFFERENT connections, in different orgs, can
+   * end up sharing the exact same isolated schema and role. Used to refuse
+   * creating the second one rather than silently handing it the first one's
+   * data (see `create.ts`).
+   */
+  async findBySanitizedId(id: string): Promise<ConnectionEntity | null> {
+    const sanitized = id.replace(/-/g, "_");
+    const row = await this.db
+      .selectFrom("connections")
+      .selectAll()
+      .where(sql<string>`replace(id, '-', '_')`, "=", sanitized)
+      .where("id", "!=", id)
+      .executeTakeFirst();
+    return row ? this.deserializeConnection(row as RawConnectionRow) : null;
+  }
+
   async list(
     organizationId: string,
     options?: {
