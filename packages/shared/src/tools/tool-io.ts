@@ -691,6 +691,7 @@ export interface StudioToolIO {
           | "review_requested"
           | "review_approved"
           | "review_changes_requested"
+          | "review_verdict_requested"
           | "merge_failed"
           | "priority_changed"
           | "due_date_changed"

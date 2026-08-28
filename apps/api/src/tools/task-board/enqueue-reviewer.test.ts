@@ -15,6 +15,9 @@ import {
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
   stalePreviewHandoffDue,
+  undecidedReviewerThread,
+  verdictNudgedThreads,
+  awaitingVerdictNudge,
 } from "./enqueue-reviewer";
 
 /** Cycle start (the task last entered In Review) at 10:00. */
@@ -253,6 +256,138 @@ describe("reviewerHandledThisCycle", () => {
     expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
       true,
     );
+  });
+});
+
+describe("a reviewer that completed without recording a verdict", () => {
+  // OS-303 (osklen): the run finished while it was still "standing by" for a
+  // background task, so it never called the decision tool. The card sat In
+  // Review at 0/1 with nothing to move it — no re-dispatch, no hand-off.
+  const completed = taskWith([
+    thread({
+      title: "Reviewer: fix",
+      status: "completed",
+      createdAt: "2026-01-01T10:05:00Z",
+    }),
+  ]);
+
+  it("is not handled, and its attempt is spent, so it re-dispatches", () => {
+    expect(
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(1);
+    expect(
+      reviewerAttemptsExhausted(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+  });
+
+  it("is handled once the verdict is on the cycle's timeline", () => {
+    expect(
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
+    ).toBe(true);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
+    ).toBe(0);
+  });
+
+  it("hands the card over once the budget is gone", () => {
+    const twice = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:07:00Z",
+      }),
+    ]);
+    expect(
+      reviewerAttemptsExhausted(twice, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(true);
+  });
+});
+
+describe("the ask for a missing verdict", () => {
+  const completed = taskWith([
+    thread({
+      title: "Reviewer: fix",
+      status: "completed",
+      createdAt: "2026-01-01T10:05:00Z",
+    }),
+  ]);
+  const owedThreadId = completed.threads[0]!.threadId;
+
+  it("names the completed thread that owes a verdict", () => {
+    expect(
+      undecidedReviewerThread(
+        completed,
+        "reviewer",
+        CYCLE_START,
+        new Map(),
+        NOW,
+      )?.threadId,
+    ).toBe(owedThreadId);
+  });
+
+  it("asks each thread at most once", () => {
+    const asked = new Map([[owedThreadId, NOW]]);
+    expect(
+      undecidedReviewerThread(completed, "reviewer", CYCLE_START, asked, NOW),
+    ).toBeNull();
+  });
+
+  it("does not ask a failed or still-live run", () => {
+    const dead = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+      thread({
+        title: "Reviewer: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:06:00Z",
+      }),
+    ]);
+    expect(
+      undecidedReviewerThread(dead, "reviewer", CYCLE_START, new Map(), NOW),
+    ).toBeNull();
+  });
+
+  it("reads the asks off the cycle's timeline, ignoring older ones", () => {
+    const asked = verdictNudgedThreads(
+      [
+        {
+          action: "review_verdict_requested",
+          data: { threadId: "stale" },
+          occurredAt: "2026-01-01T09:00:00Z",
+        },
+        {
+          action: "review_verdict_requested",
+          data: { threadId: owedThreadId },
+          occurredAt: "2026-01-01T10:06:00Z",
+        },
+        {
+          action: "status_changed",
+          data: { to: "in_review" },
+          occurredAt: "2026-01-01T10:00:00Z",
+        },
+      ],
+      CYCLE_START,
+    );
+    expect([...asked.keys()]).toEqual([owedThreadId]);
+  });
+
+  it("holds the reviewer's attempts back only while an ask is fresh", () => {
+    const at = new Date("2026-01-01T10:06:00Z").getTime();
+    expect(awaitingVerdictNudge(new Map([["t", at]]), NOW)).toBe(true);
+    expect(
+      awaitingVerdictNudge(new Map([["t", at]]), at + 11 * 60 * 1000),
+    ).toBe(false);
   });
 });
 

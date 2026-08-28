@@ -99,6 +99,8 @@ export const taskBoard = {
     "{reviewer} pediu alterações e devolveu a tarefa ao Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} pediu alterações: {notes}",
+  "taskBoard.taskDialog.activityReviewVerdictRequested":
+    "{reviewer} terminou sem veredito e foi solicitado a registrar um",
   "taskBoard.taskDialog.subscribe": "Seguir",
   "taskBoard.taskDialog.unsubscribe": "Deixar de seguir",
   "taskBoard.taskDialog.activityMergeConflictResolution":

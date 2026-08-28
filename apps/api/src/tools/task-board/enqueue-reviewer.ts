@@ -9,6 +9,7 @@ import {
   REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewCycleStart,
+  reviewCycleVerdicts,
   SHALLOW_CHECKOUT_NOTE,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
@@ -21,6 +22,7 @@ import {
 } from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 import { mintReviewToken } from "./review-token";
+import { nudgeThreadTurn } from "./nudge-thread";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 
@@ -131,7 +133,11 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "approve. Only `request_changes` for something you genuinely cannot settle " +
     "here (a product decision, a missing credential, an approach that needs " +
     "rethinking) — that hands the card to a human, it does not start another " +
-    "agent round.",
+    "agent round. NEVER end your run without having called " +
+    "`TASK_BOARD_REVIEW_DECISION`: a run that stops to wait on a background " +
+    "task, or that runs low on room, must decide on what it knows first. An " +
+    "unrecorded verdict strands the card and is the one failure this run " +
+    "cannot leave behind.",
   // prompt-region:end reviewer
 };
 
@@ -194,8 +200,18 @@ export async function enqueueEnabledReviewers(
   // created since the cycle opened — either way don't re-enqueue.
   // A stale thread from a PRIOR cycle (before a Super Agent re-run bounced the
   // task back and forward) does NOT count, so reviewers re-run on re-review.
-  const lastInReviewAt = await reviewCycleStartTime(ctx, task);
+  // The timeline is read unconditionally (`reviewCycleStartedAt` alone would do
+  // for the boundary): the verdicts and the verdict asks below only exist here.
+  const activity = await ctx.storage.taskBoard.listActivity(
+    task.id,
+    task.organizationId,
+  );
+  const cycleStartedAt = task.reviewCycleStartedAt;
+  const lastInReviewAt = reviewCycleStart(activity, cycleStartedAt);
   const cycleAt = new Date(lastInReviewAt);
+  // Which reviewers actually ruled this cycle. A reviewer thread that completed
+  // without one is a spent attempt, not a review — see `isSpentAttempt`.
+  const decided = reviewCycleVerdicts(activity, { cycleStartedAt });
 
   // One reviewer today, but the enqueue stays a fan-out over `enabled`: each
   // dispatch is independent (its own fence id), and this runs on
@@ -203,8 +219,35 @@ export async function enqueueEnabledReviewers(
   // up as latency when there were two.
   await Promise.all(
     enabled.map(async (kind) => {
+      const verdictRecorded = decided.has(kind);
+      // Ask before spending: a run that ended undecided still has everything it
+      // reviewed in its session, so one more turn on its own thread is both
+      // cheaper and better-informed than a fresh reviewer.
+      if (!verdictRecorded) {
+        const asked = verdictNudgedThreads(activity, lastInReviewAt);
+        const owed = undecidedReviewerThread(task, kind, lastInReviewAt, asked);
+        if (owed) {
+          await requestMissingVerdict(ctx, task, kind, owed).catch((err) =>
+            console.error(`[task-board] ${kind} verdict nudge failed`, err),
+          );
+          return;
+        }
+        // Asked, not yet answered: the follow-up run lands on the reviewer's own
+        // thread, so between the dispatch and its first heartbeat the thread
+        // still reads `completed` and everything below would spend an attempt on
+        // a reviewer that is about to speak.
+        if (awaitingVerdictNudge(asked, Date.now())) return;
+      }
       // A dead end, not a wait — see `reviewerAttemptsExhausted`.
-      if (reviewerAttemptsExhausted(task, kind, lastInReviewAt)) {
+      if (
+        reviewerAttemptsExhausted(
+          task,
+          kind,
+          lastInReviewAt,
+          Date.now(),
+          verdictRecorded,
+        )
+      ) {
         await handTaskToHuman(
           ctx,
           task,
@@ -226,12 +269,28 @@ export async function enqueueEnabledReviewers(
         }
         return;
       }
-      if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;
+      if (
+        reviewerHandledThisCycle(
+          task,
+          kind,
+          lastInReviewAt,
+          Date.now(),
+          verdictRecorded,
+        )
+      ) {
+        return;
+      }
       // Getting here with a dead reviewer thread from THIS cycle means the last
       // attempt failed (see `reviewerHandledThisCycle`), so this dispatch is a
       // RETRY and needs a fence of its own — the previous attempt's thread id
       // is taken, and reusing it would collapse the retry onto the corpse.
-      const attempt = spentAttemptsThisCycle(task, kind, lastInReviewAt);
+      const attempt = spentAttemptsThisCycle(
+        task,
+        kind,
+        lastInReviewAt,
+        Date.now(),
+        verdictRecorded,
+      );
       await enqueueReviewerForTask(
         ctx,
         task,
@@ -264,11 +323,12 @@ export function spentAttemptsThisCycle(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): number {
   return task.threads.filter(
     (thr) =>
       isReviewerThreadTitle(thr.title, kind) &&
-      isSpentAttempt(thr, now) &&
+      isSpentAttempt(thr, now, verdictRecorded) &&
       new Date(thr.createdAt).getTime() >= lastInReviewAt,
   ).length;
 }
@@ -324,18 +384,28 @@ export function priorCycleReviewAt(
   return times.length === 0 ? 0 : Math.max(...times);
 }
 
-/** A reviewer attempt that produced no verdict and never will: it failed, or it
- *  is non-terminal with a heartbeat past the stall window. */
+/** A reviewer attempt that produced no verdict and never will: it failed, it
+ *  ended in any other terminal state without recording one, or it is
+ *  non-terminal with a heartbeat past the stall window.
+ *
+ *  `verdictRecorded` is whether this reviewer has a verdict on the CURRENT
+ *  cycle's timeline. A run that reaches a decision records it and then
+ *  completes, so a `completed` thread used to be taken as proof of a review —
+ *  but a reviewer can also run out of turns, or stop while it waits on a
+ *  background task, and complete having decided nothing. That card was then
+ *  stranded In Review at `0/1` forever: nothing re-dispatched it (the thread
+ *  read as handled) and nothing handed it over (the attempts read as unspent).
+ *  Defaults true so callers without the timeline keep the old reading. */
 function isSpentAttempt(
   thr: TaskBoardItem["threads"][number],
   now: number,
+  verdictRecorded = true,
 ): boolean {
   if (thr.status === "failed") return true;
-  return (
-    thr.status !== null &&
-    !TERMINAL_THREAD_STATUSES.has(thr.status) &&
-    !isThreadRunLive(thr, now)
-  );
+  if (thr.status !== null && TERMINAL_THREAD_STATUSES.has(thr.status)) {
+    return !verdictRecorded;
+  }
+  return thr.status !== null && !isThreadRunLive(thr, now);
 }
 
 /** The reviewer's threads belonging to the current cycle: created since the
@@ -374,6 +444,7 @@ export function reviewerAttemptsExhausted(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): boolean {
   const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   return (
@@ -381,7 +452,7 @@ export function reviewerAttemptsExhausted(
     // A hung attempt counts as spent, not just a failed one — otherwise a
     // reviewer whose pod keeps dying is re-dispatched forever, which is the
     // opposite mistake to the deadlock this replaced.
-    thisCycle.every((thr) => isSpentAttempt(thr, now)) &&
+    thisCycle.every((thr) => isSpentAttempt(thr, now, verdictRecorded)) &&
     thisCycle.length >= MAX_REVIEWER_ATTEMPTS
   );
 }
@@ -413,6 +484,7 @@ export function reviewerHandledThisCycle(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): boolean {
   const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   if (thisCycle.length === 0) return false;
@@ -423,31 +495,137 @@ export function reviewerHandledThisCycle(
   // never come. One sat that way while its co-reviewer had approved in 68
   // seconds.
   if (thisCycle.some((thr) => isThreadRunLive(thr, now))) return true;
-  const spent = thisCycle.filter((thr) => isSpentAttempt(thr, now));
+  const spent = thisCycle.filter((thr) =>
+    isSpentAttempt(thr, now, verdictRecorded),
+  );
   // Every attempt spent and the budget is gone — stop, a human owns it now.
   if (spent.length >= MAX_REVIEWER_ATTEMPTS) return true;
-  // Anything that finished without failing IS a review (a reviewer records its
-  // decision and completes), so the cycle is handled.
+  // Anything that finished and left a verdict IS a review, so the cycle is
+  // handled. A run that completed without one is spent, not handled.
   return spent.length !== thisCycle.length;
 }
 
-/** When the task's current review cycle opened (ms), else 0. Reads the card's
- *  own `reviewCycleStartedAt` through the shared reducer, so it stays in
- *  lockstep with the merge gate and the ship button; the activity fallback
- *  inside `reviewCycleStart` only serves cards stamped before migration 190,
- *  which is why the timeline is still fetched. */
-async function reviewCycleStartTime(
+/**
+ * The reviewer's completed thread that owes this cycle a verdict and has not
+ * been asked for one yet, else null.
+ *
+ * A reviewer that runs out of turns, or stops while it waits on a background
+ * task, completes having decided nothing — and until it is asked, nothing on
+ * the card can tell that apart from a review. Only `completed` threads qualify:
+ * a failed run has no session left to answer with, and a live one is still
+ * working. Pure — unit-tested.
+ */
+export function undecidedReviewerThread(
+  task: TaskBoardItem,
+  kind: ReviewerKind,
+  lastInReviewAt: number,
+  alreadyAsked: ReadonlyMap<string, number>,
+  now: number = Date.now(),
+): TaskBoardItem["threads"][number] | null {
+  return (
+    task.threads.find(
+      (thr) =>
+        isReviewerThreadTitle(thr.title, kind) &&
+        thr.status === "completed" &&
+        !isThreadRunLive(thr, now) &&
+        new Date(thr.createdAt).getTime() >= lastInReviewAt &&
+        !alreadyAsked.has(thr.threadId),
+    ) ?? null
+  );
+}
+
+/** The reviewer threads already asked for a verdict this cycle. The timeline is
+ *  the marker, so the ask survives a pod restart and can only happen once per
+ *  thread. Pure — unit-tested. */
+export function verdictNudgedThreads(
+  activity: readonly {
+    action: string;
+    data?: Record<string, unknown> | null;
+    occurredAt: string;
+  }[],
+  lastInReviewAt: number,
+): Map<string, number> {
+  const asked = new Map<string, number>();
+  for (const a of activity) {
+    if (a.action !== "review_verdict_requested") continue;
+    const at = new Date(a.occurredAt).getTime();
+    if (at < lastInReviewAt) continue;
+    const threadId = (a.data as { threadId?: unknown } | null | undefined)
+      ?.threadId;
+    if (typeof threadId === "string") asked.set(threadId, at);
+  }
+  return asked;
+}
+
+/** How long an unanswered ask holds the reviewer's attempts back. Long enough
+ *  to cover the queue wait before the follow-up run's first heartbeat, short
+ *  enough that a card whose follow-up never ran still moves within one sweep or
+ *  two. */
+const VERDICT_NUDGE_GRACE_MS = 10 * 60 * 1000;
+
+/** True while an ask made this cycle is still young enough that its follow-up
+ *  run may not have started. Pure — unit-tested. */
+export function awaitingVerdictNudge(
+  asked: ReadonlyMap<string, number>,
+  now: number,
+): boolean {
+  for (const at of asked.values()) {
+    if (now - at < VERDICT_NUDGE_GRACE_MS) return true;
+  }
+  return false;
+}
+
+/** What the reviewer is told when it ended without deciding. Deliberately
+ *  narrow: it is not being asked to review again, only to state the verdict its
+ *  own run already reached. */
+function missingVerdictPrompt(kind: ReviewerKind): string {
+  return [
+    `Your ${REVIEWER_LABEL[kind]} run ended without recording a decision, so the task is stuck: nothing ships and nobody is told why. A review that reaches no verdict is not a review.`,
+    "",
+    "Do exactly ONE thing in this run and then stop:",
+    "- Call `TASK_BOARD_REVIEW_DECISION` now, with the verdict your review already reached and notes that say what you checked.",
+    "- Approve ONLY if you actually exercised the change and it holds. If you could not finish — a check never came back, a preview never rendered, you ran out of room — `request_changes` and say exactly what is unresolved. That hands the card to a person, which is the correct outcome for an unfinished review.",
+    "- Do NOT re-run the review, do NOT change any code, and do NOT wait on any background task: whatever you know right now is the verdict.",
+  ].join("\n");
+}
+
+/**
+ * Ask a reviewer run that finished without a verdict for one, on its OWN
+ * thread.
+ *
+ * The ask is recorded on the timeline BEFORE the dispatch, and both are keyed
+ * to the thread: the record is what stops a second ask (and what lets
+ * `isSpentAttempt` treat a still-undecided thread as spent afterwards), so a
+ * dispatch that throws must not look un-asked forever — the run is retried by
+ * the next reviewer attempt, not by asking again.
+ */
+async function requestMissingVerdict(
   ctx: StudioContext,
   task: TaskBoardItem,
-): Promise<number> {
-  if (task.reviewCycleStartedAt) {
-    return new Date(task.reviewCycleStartedAt).getTime();
-  }
-  const activity = await ctx.storage.taskBoard.listActivity(
-    task.id,
-    task.organizationId,
+  kind: ReviewerKind,
+  owed: TaskBoardItem["threads"][number],
+): Promise<void> {
+  const thread = await ctx.storage.threads.get(owed.threadId);
+  // Only a v2 thread can take a new turn — dispatch nulls the part emitter for
+  // v1 (same gate as `ensureReviewerCommented`).
+  if (!thread || thread.message_storage_version !== 2) return;
+
+  await ctx.storage.taskBoard.recordActivity({
+    taskBoardItemId: task.id,
+    action: "review_verdict_requested",
+    actorId: null,
+    data: { reviewer: kind, threadId: owed.threadId },
+  });
+  console.warn(
+    `[task-board] ${kind} reviewer on ${task.id} completed with no verdict — ` +
+      `asking for one`,
   );
-  return reviewCycleStart(activity, null);
+  await nudgeThreadTurn(ctx, task, thread, {
+    messageId: `review-verdict-${owed.threadId}`,
+    prompt: missingVerdictPrompt(kind),
+    workflowID: `review-verdict:${owed.threadId}`,
+    runClass: "reviewer",
+  });
 }
 
 /**

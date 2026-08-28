@@ -243,6 +243,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_requested",
   "review_approved",
   "review_changes_requested",
+  "review_verdict_requested",
   "merge_conflict_resolution",
   "merge_failed",
   "type_changed",
