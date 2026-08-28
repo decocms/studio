@@ -3,6 +3,7 @@ import type { Kysely } from "kysely";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import type { Database } from "../../storage/types";
 
 const QueryResult = z.object({
   results: z.array(z.unknown()).optional(),
@@ -13,7 +14,7 @@ const QueryResult = z.object({
  * Safely escape and quote SQL values
  * This is still not as safe as parameterized queries, but better than raw replacement
  */
-function escapeSqlValue(value: any): string {
+function escapeSqlValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "NULL";
   }
@@ -46,7 +47,7 @@ function escapeSqlValue(value: any): string {
  * IMPORTANT: We find all placeholder positions FIRST, then replace from end to start.
  * This prevents ? characters inside interpolated values from being treated as placeholders.
  */
-function interpolateParams(sql: string, params: any[]): string {
+function interpolateParams(sql: string, params: unknown[]): string {
   // First, handle $1, $2, etc. style placeholders (unambiguous)
   let result = sql;
   for (let i = params.length; i >= 1; i--) {
@@ -84,7 +85,7 @@ export type QueryResult = z.infer<typeof QueryResult>;
 const DatatabasesRunSqlInputSchema = z.object({
   sql: z.string().describe("The SQL query to run"),
   params: z
-    .array(z.any())
+    .array(z.unknown())
     .describe("The parameters to pass to the SQL query")
     .optional(),
 });
@@ -127,7 +128,7 @@ function isRoleOrSchemaNotFoundError(error: unknown): boolean {
  * - Revokes access to public schema for this role
  */
 async function createSchemaAndRole(
-  db: Kysely<any>,
+  db: Kysely<Database>,
   schemaName: string,
   roleName: string,
 ): Promise<void> {
@@ -178,11 +179,11 @@ async function createSchemaAndRole(
  * settings are automatically reset, preventing cross-request leakage.
  */
 async function executeWithIsolation(
-  db: Kysely<any>,
+  db: Kysely<Database>,
   schemaName: string,
   roleName: string,
   sqlQuery: string,
-): Promise<any> {
+): Promise<unknown> {
   try {
     // Use a transaction with SET LOCAL for concurrency-safe isolation
     // SET LOCAL only affects the current transaction - no leakage to other requests
