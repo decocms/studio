@@ -22,7 +22,7 @@
  *   GET   /repos/{o}/{r}                              -> { default_branch }
  *   GET   /repos/{o}/{r}/git/ref/heads/{branch}       -> { object: { sha } }
  *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { tree: { sha }, parents }
- *   GET   /repos/{o}/{r}/git/trees/{sha}?recursive=1  -> { tree: [...], truncated }
+ *   GET   /repos/{o}/{r}/git/trees/{sha}[?recursive=1] -> { tree: [...], truncated } (non-recursive = direct children + subtree shas)
  *   GET   /repos/{o}/{r}/git/blobs/{sha}              -> { content, encoding }
  *   GET   /repos/{o}/{r}/contents/{path}?ref={sha}    -> { sha, content, encoding }
  *   POST  /repos/{o}/{r}/git/blobs                    -> { sha }
@@ -87,10 +87,16 @@ interface RepoState {
   commitLog: string[];
   /** treeSha -> (path -> blobSha) */
   trees: Map<string, Map<string, string>>;
+  /** Synthetic subtree sha -> the root tree + path prefix it lists (minted on
+   *  demand when a non-recursive listing descends into a subdirectory). */
+  subtrees: Map<string, { rootSha: string; prefix: string }>;
   /** blobSha -> utf-8 content */
   blobs: Map<string, string>;
   pulls: PullRecord[];
   nextPullNumber: number;
+  /** When set, recursive tree reads answer `truncated: true` (GitHub's
+   *  100k-entry / 7MB cap) — arms the large-repo path in tests. */
+  truncateRecursive: boolean;
 }
 
 interface SeedRepoBody {
@@ -108,6 +114,9 @@ interface SeedRepoBody {
     { files?: Record<string, string>; committedAt?: string } | null
   >;
   mergeMode?: MergeMode;
+  /** Make recursive tree reads return `truncated: true`, simulating a repo too
+   *  large for GitHub's recursive listing. */
+  truncateRecursive?: boolean;
 }
 
 const repos = new Map<string, RepoState>();
@@ -233,9 +242,11 @@ function seedRepo(body: SeedRepoBody): RepoState {
     commits: new Map(),
     commitLog: [],
     trees: new Map(),
+    subtrees: new Map(),
     blobs: new Map(),
     pulls: [],
     nextPullNumber: 1,
+    truncateRecursive: body.truncateRecursive ?? false,
   };
 
   const branches = body.branches ?? {};
@@ -471,30 +482,75 @@ async function handleRepos(
     return;
   }
 
-  // GET /repos/{o}/{r}/git/trees/{sha}
+  // GET /repos/{o}/{r}/git/trees/{sha}[?recursive=1]
   if (
     req.method === "GET" &&
     rest[0] === "git" &&
     rest[1] === "trees" &&
     rest.length === 3
   ) {
-    const tree = rest[2] ? repo.trees.get(rest[2]) : undefined;
-    if (!tree) {
+    const treeSha = rest[2];
+    // A tree sha is a real root tree, or a synthetic subtree sha (see below).
+    const sub = treeSha ? repo.subtrees.get(treeSha) : undefined;
+    const rootSha = sub ? sub.rootSha : treeSha;
+    const prefix = sub ? sub.prefix : "";
+    const flat = rootSha ? repo.trees.get(rootSha) : undefined;
+    if (!treeSha || !rootSha || !flat) {
       notFound(res);
       return;
     }
+    // GitHub returns blob byte size; the decofile cold read pre-validates on it.
+    const blobSize = (blobSha: string): number =>
+      Buffer.byteLength(repo.blobs.get(blobSha) ?? "", "utf8");
+    if (url.searchParams.get("recursive") === "1") {
+      // truncateRecursive arms GitHub's cap; recursive only hits a root tree.
+      if (repo.truncateRecursive) {
+        json(res, 200, { sha: treeSha, truncated: true, tree: [] });
+        return;
+      }
+      json(res, 200, {
+        sha: treeSha,
+        truncated: false,
+        tree: [...flat.entries()].map(([path, blobSha]) => ({
+          path,
+          mode: "100644",
+          type: "blob",
+          sha: blobSha,
+          size: blobSize(blobSha),
+        })),
+      });
+      return;
+    }
+    // Non-recursive: DIRECT children under `prefix`; a subdir becomes a `tree`.
+    const blobEntries: Array<Record<string, unknown>> = [];
+    const subdirs = new Set<string>();
+    for (const [path, blobSha] of flat) {
+      if (!path.startsWith(prefix)) continue;
+      const rel = path.slice(prefix.length);
+      const slash = rel.indexOf("/");
+      if (slash === -1) {
+        blobEntries.push({
+          path: rel,
+          mode: "100644",
+          type: "blob",
+          sha: blobSha,
+          size: blobSize(blobSha),
+        });
+      } else {
+        subdirs.add(rel.slice(0, slash));
+      }
+    }
+    // Register each subtree sha so a follow-up GET can list that directory.
+    const treeEntries = [...subdirs].map((name) => {
+      const childPrefix = `${prefix}${name}/`;
+      const childSha = sha1(`subtree:${rootSha}:${childPrefix}`);
+      repo.subtrees.set(childSha, { rootSha, prefix: childPrefix });
+      return { path: name, mode: "040000", type: "tree", sha: childSha };
+    });
     json(res, 200, {
-      sha: rest[2],
+      sha: treeSha,
       truncated: false,
-      tree: [...tree.entries()].map(([path, blobSha]) => ({
-        path,
-        mode: "100644",
-        type: "blob",
-        sha: blobSha,
-        // GitHub returns the blob byte size for blob entries; the decofile
-        // cold-read path pre-validates tarball downloads against it.
-        size: Buffer.byteLength(repo.blobs.get(blobSha) ?? "", "utf8"),
-      })),
+      tree: [...blobEntries, ...treeEntries],
     });
     return;
   }

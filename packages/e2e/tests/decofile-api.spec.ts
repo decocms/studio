@@ -561,6 +561,64 @@ test.describe("decofile API", () => {
     }
   });
 
+  test("large repo whose recursive tree read truncates still reads and writes blocks", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      const hero = { __resolveType: "site/sections/Hero.tsx", title: "old" };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        // A recursive read of this root tree 502s (GitHub's truncation cap).
+        truncateRecursive: true,
+        branches: {
+          main: {
+            files: {
+              ".deco/blocks/Hero.json": blockFileContent(hero),
+              // Non-block files a recursive read would drag in.
+              "src/index.ts": "export const x = 1;\n",
+              "package.json": '{"name":"site"}\n',
+            },
+          },
+          draft: null,
+        },
+      });
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const url = decofileUrl(project, "draft");
+
+      // Read resolves the block via the scoped subtree walk, not a recursive read.
+      const before = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      expect(before.decofile["Hero"]).toEqual(hero);
+
+      // Write lands even though a recursive tree read would 502.
+      const nextHero = { ...hero, title: "Fresh" };
+      const patchRes = await ctx.patch(url, {
+        data: { set: { Hero: nextHero } },
+      });
+      expect(patchRes.status()).toBe(200);
+      const patchBody = (await patchRes.json()) as { version: string };
+      expect(patchBody.version).toMatch(/^[0-9a-f]{40}$/);
+
+      const inspected = await inspectStubRepo(ctx, owner, repo);
+      expect(inspected.branches["draft"]?.files[".deco/blocks/Hero.json"]).toBe(
+        blockFileContent(nextHero),
+      );
+
+      const after = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      expect(after.version).toBe(patchBody.version);
+      expect(after.decofile["Hero"]).toEqual(nextHero);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test("PATCH batches set+delete into one commit and delete removes every alias file", async ({
     playwright,
   }) => {
