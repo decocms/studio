@@ -638,6 +638,11 @@ async function runSync(
         description: await cardDescription(integration.siteUrl, issue, users),
         priority: mapPriority(issue),
         sprintId: await sprints.localIdFor(pickIssueSprint(issue.sprints)),
+        // Written alongside the status it describes, so a card enters the
+        // foreign key's protection the moment the sync first places it in a
+        // column of the org's own — no separate backfill, and a card the sync
+        // has not reached yet simply stays unguarded rather than wrong.
+        boardColumnOrg: orgOwnedColumns ? orgId : null,
       };
 
       if (link) {

@@ -1629,6 +1629,14 @@ export interface TaskBoardItemTable {
   /** The key of the column the card sits in — free text, because on a board
    *  whose columns are the org's own the key comes from their tracker. */
   status: ColumnType<string, string | undefined, string>;
+  /** The org id when `status` names a row in `task_board_columns`, null when it
+   *  names one of Studio's lanes. Half of the optional foreign key (migration
+   *  193): NULL is what lets the key sleep on a board built from constants. */
+  board_column_org: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   priority: ColumnType<
     TaskBoardItemPriority,
     TaskBoardItemPriority | undefined,
