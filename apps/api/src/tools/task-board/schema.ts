@@ -16,6 +16,10 @@ export const MAX_TASK_TITLE_LENGTH = 500;
  *  so nothing legitimate approaches this; same reasoning as the caps above. */
 export const MAX_TASK_REPO_LENGTH = 200;
 
+/** A column automation's prompt is an instruction, not the message body —
+ *  same reasoning as MAX_TASK_DESCRIPTION_LENGTH. */
+export const MAX_AUTOMATION_PROMPT_LENGTH = 50_000;
+
 export const TaskBoardItemStatusSchema = z.enum([
   "triage",
   "todo",
