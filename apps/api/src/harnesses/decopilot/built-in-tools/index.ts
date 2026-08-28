@@ -468,7 +468,10 @@ export function instrumentBuiltIns<T extends Record<string, unknown>>(
   const userId = ctx.auth?.user?.id;
   const result: Record<string, unknown> = {};
   for (const [name, tool] of Object.entries(tools)) {
-    const t = tool as { execute?: Function; [k: string]: unknown };
+    const t = tool as {
+      execute?: (input: unknown, options: unknown) => unknown;
+      [k: string]: unknown;
+    };
     const originalExecute = t.execute;
     if (typeof originalExecute !== "function") {
       result[name] = tool;
