@@ -1,18 +1,67 @@
 /**
- * HostingTab — read-only per-site hosting view (control-plane BFF proxy).
+ * HostingTab — per-site hosting view (control-plane BFF proxy).
  *
- * Surfaces deployments, environment variables, and redirects for the site
- * this agent resolves against. All data is fetched through the server-side
- * proxy at `/api/:org/hosting/:site/*`, so the control-plane service token
- * never reaches the browser — the client only ever sees the proxied JSON.
+ * Surfaces deployments, environment variables, secrets, and redirects for the
+ * site this agent resolves against. All traffic flows through the server-side
+ * proxy at `/api/:org/hosting/:site/*`, so the control-plane service token never
+ * reaches the browser — the client only ever sees the proxied JSON.
  *
- * Prototype: read-only. Write/deploy actions are a follow-up.
+ * Interactive: deploy from the header, and add/edit/delete env vars, secrets,
+ * and redirects. Env is a REPLACE-SET on the control-plane, so every env
+ * mutation computes the full desired list and PUTs it. Secret values are
+ * write-only — the list returns names only, and a value is never rendered.
  */
 
-import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Server01 } from "@untitledui/icons";
+import { Fragment, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Copy01,
+  CornerUpRight,
+  FileCode02,
+  FlipBackward,
+  GitCommit,
+  Globe01,
+  LinkExternal01,
+  Pencil01,
+  Plus,
+  RefreshCw02,
+  Rocket01,
+  Server01,
+  Trash01,
+} from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Table,
   TableBody,
@@ -22,117 +71,1590 @@ import {
   TableRow,
 } from "@decocms/ui/components/table.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { toast } from "sonner";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
+// --- control-plane REST DTOs (client-safe fields only) ---------------------
+
 interface Deployment {
-  id?: string;
-  status?: string;
-  url?: string;
-  createdAt?: string;
-  created_at?: string;
+  id: string;
+  env?: string | null;
+  framework?: string | null;
+  commitSha?: string | null;
+  shortCommit?: string | null;
+  phase?: string | null;
+  up?: boolean | null;
+  production?: boolean | null;
+  servingUrl?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  durationMs?: number | null;
+  createdAt?: string | null;
+  source?: "managed" | "observed" | string;
+  buildMessage?: string | null;
 }
-
+/** One deploy-timeline event (deploy / redeploy / rollback). */
+interface DeploymentHistoryEvent {
+  id: string;
+  env?: string | null;
+  commitSha?: string | null;
+  deploymentId?: string | null;
+  framework?: string | null;
+  action?: string | null;
+  actor?: string | null;
+  createdAt?: string | null;
+}
+/** Build-logs payload for one commit/env. `configured:false` means the platform
+ *  has no build-log wiring; otherwise `text` is inline and `url` is a presigned
+ *  link (expires ~5min — never cached). */
+interface BuildLogs {
+  configured?: boolean;
+  available?: boolean;
+  reason?: string | null;
+  url?: string | null;
+  text?: string | null;
+  truncated?: boolean;
+  logs?: { name: string; url: string; sizeBytes?: number }[];
+}
 interface EnvVar {
-  key?: string;
-  name?: string;
-  value?: string;
+  name: string;
+  value: string;
 }
-
+/** Secrets are listed by NAME only — values are write-only and never returned. */
+interface Secret {
+  name: string;
+}
 interface Redirect {
-  from?: string;
-  to?: string;
-  status?: number;
-  statusCode?: number;
+  id?: string;
+  from: string;
+  to: string;
+  type?: "permanent" | "temporary";
+  source?: string;
 }
 
-/**
- * The control-plane REST shapes aren't pinned yet (prototype), so accept both
- * a bare array and a `{ <key>: [...] }` envelope and normalize to an array.
- */
-function asList<T>(data: unknown, key: string): T[] {
+type Translate = ReturnType<typeof useT>;
+
+// --- helpers ----------------------------------------------------------------
+
+function list<T>(data: unknown, key: string): T[] {
   if (Array.isArray(data)) return data as T[];
   if (data && typeof data === "object") {
-    const value = (data as Record<string, unknown>)[key];
-    if (Array.isArray(value)) return value as T[];
+    const v = (data as Record<string, unknown>)[key];
+    if (Array.isArray(v)) return v as T[];
   }
   return [];
 }
 
-async function fetchHosting(
-  url: string,
-  fallbackMessage: string,
-): Promise<unknown> {
-  const res = await fetch(url);
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const message =
-      body && typeof body === "object" && "error" in body
-        ? String((body as { error: unknown }).error)
-        : `${fallbackMessage} (${res.status})`;
-    throw new Error(message);
-  }
-  return body;
+/** Studio never shows the substrate — only the client-facing framework. */
+function frameworkLabel(slug: string | null | undefined): string | null {
+  if (slug === "deco-deno") return "Deco Deno";
+  if (slug === "deco-tanstack") return "Deco TanStack";
+  return slug ?? null;
 }
 
 function statusVariant(
-  status: string | undefined,
+  s: string | null | undefined,
 ): "success" | "destructive" | "warning" | "secondary" {
-  const s = (status ?? "").toLowerCase();
-  if (s.includes("ready") || s.includes("success") || s.includes("active")) {
+  const v = (s ?? "").toLowerCase();
+  if (v.includes("ready") || v.includes("success") || v.includes("active")) {
     return "success";
   }
-  if (s.includes("fail") || s.includes("error")) return "destructive";
-  if (s.includes("build") || s.includes("pending") || s.includes("progress")) {
+  if (v.includes("fail") || v.includes("error")) return "destructive";
+  if (v.includes("build") || v.includes("pend") || v.includes("progress")) {
     return "warning";
   }
   return "secondary";
 }
 
-function SectionState({
-  loading,
-  error,
-  empty,
-  loadingLabel,
-  emptyLabel,
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "—";
+  const secs = Math.round((Date.now() - ms) / 1000);
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["year", 31536000],
+    ["month", 2592000],
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(secs) >= size)
+      return rtf.format(-Math.round(secs / size), unit);
+  }
+  return rtf.format(-secs, "second");
+}
+
+function fmtDuration(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const secs = ms / 1000;
+  if (secs < 60) return `${secs.toFixed(secs >= 10 ? 0 : 1)}s`;
+  const mins = Math.floor(secs / 60);
+  const rem = Math.round(secs % 60);
+  return `${mins}m ${rem}s`;
+}
+
+/** The pre-token condition: the upstream (or its proxy) answers 401. Rendered as
+ *  a calm "not connected" state, not a red error. */
+function isUnauthorized(error: unknown): boolean {
+  const m = error instanceof Error ? error.message.toLowerCase() : "";
+  return m.includes("unauthorized") || m.includes("401");
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const res = await fetch(url);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err =
+      body && typeof body === "object" && "error" in body
+        ? String((body as { error: unknown }).error)
+        : `request failed (${res.status})`;
+    throw new Error(err);
+  }
+  return body;
+}
+
+async function mutateJson(
+  url: string,
+  method: string,
+  body?: unknown,
+): Promise<unknown> {
+  const res = await fetch(url, {
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err =
+      data && typeof data === "object" && "error" in data
+        ? String((data as { error: unknown }).error)
+        : `request failed (${res.status})`;
+    throw new Error(err);
+  }
+  return data;
+}
+
+// --- section shell ----------------------------------------------------------
+
+function Section({
+  title,
+  count,
+  action,
   children,
 }: {
-  loading: boolean;
-  error: Error | null;
-  empty: boolean;
-  loadingLabel: string;
-  emptyLabel: string;
-  children: ReactNode;
+  title: string;
+  count?: number;
+  action?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-  if (loading) {
-    return (
-      <div className="text-sm text-muted-foreground py-6">{loadingLabel}</div>
-    );
-  }
-  if (error) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-destructive py-6">
-        <AlertCircle size={16} />
-        {error.message}
-      </div>
-    );
-  }
-  if (empty) {
-    return (
-      <div className="text-sm text-muted-foreground py-6">{emptyLabel}</div>
-    );
-  }
-  return <>{children}</>;
+  return (
+    <section className="rounded-xl border border-border bg-card overflow-hidden">
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        {typeof count === "number" && count > 0 && (
+          <Badge variant="secondary" className="tabular-nums">
+            {count}
+          </Badge>
+        )}
+        {action && <div className="ml-auto">{action}</div>}
+      </header>
+      <div className="p-2">{children}</div>
+    </section>
+  );
 }
+
+function RowsSkeleton({ cols }: { cols: number }) {
+  return (
+    <div className="flex flex-col gap-2 p-2">
+      {[0, 1, 2].map((r) => (
+        <div key={r} className="flex gap-3">
+          {Array.from({ length: cols }).map((_, c) => (
+            <Skeleton key={c} className="h-4 flex-1" />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Muted({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-3 py-6 text-sm text-muted-foreground">{children}</div>
+  );
+}
+
+// --- deploy -----------------------------------------------------------------
+
+function DeployButton({
+  base,
+  orgSlug,
+  site,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [confirm, setConfirm] = useState(false);
+
+  const deployMutation = useMutation({
+    mutationFn: () => mutateJson(`${base}/deploy`, "POST", { mode: "current" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.hostingDeployments(orgSlug, site),
+      });
+      toast.success(t("mainPanelTabs.hostingTab.toastDeployQueued"));
+      setConfirm(false);
+    },
+    onError: (error) => toast.error(errorText(error)),
+  });
+
+  return (
+    <>
+      <Button
+        size="sm"
+        onClick={() => setConfirm(true)}
+        disabled={deployMutation.isPending}
+      >
+        <Rocket01 className="size-4" />
+        {deployMutation.isPending
+          ? t("mainPanelTabs.hostingTab.deploying")
+          : t("mainPanelTabs.hostingTab.deploy")}
+      </Button>
+      <AlertDialog open={confirm} onOpenChange={setConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("mainPanelTabs.hostingTab.deployConfirmTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("mainPanelTabs.hostingTab.deployConfirmDescription")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deployMutation.isPending}>
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                deployMutation.mutate();
+              }}
+              disabled={deployMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.deploy")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// --- deployments (history + live marker + build logs) -----------------------
+
+function actionBadge(action: string | null | undefined, t: Translate) {
+  const a = (action ?? "").toLowerCase();
+  if (a.includes("rollback")) {
+    return (
+      <Badge variant="warning">
+        <FlipBackward className="size-3" />
+        {t("mainPanelTabs.hostingTab.actionRollback")}
+      </Badge>
+    );
+  }
+  if (a.includes("redeploy")) {
+    return (
+      <Badge variant="secondary">
+        <RefreshCw02 className="size-3" />
+        {t("mainPanelTabs.hostingTab.actionRedeploy")}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary">
+      <Rocket01 className="size-3" />
+      {t("mainPanelTabs.hostingTab.actionDeploy")}
+    </Badge>
+  );
+}
+
+/** Build-logs dialog. Re-fetches on every open (staleTime/gcTime 0) because the
+ *  presigned `url` expires ~5min — the URL is never cached. */
+function BuildLogsDialog({
+  base,
+  orgSlug,
+  site,
+  target,
+  onOpenChange,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  /** The commit/env whose logs to show, or null when the dialog is closed. */
+  target: { commit: string; env: string } | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useT();
+  const open = target != null;
+  const commit = target?.commit ?? "";
+  const env = target?.env ?? "";
+
+  const logsQuery = useQuery({
+    queryKey: KEYS.hostingBuildLogs(orgSlug, site, commit, env),
+    queryFn: () =>
+      fetchJson(
+        `${base}/deployments/logs?commit=${encodeURIComponent(
+          commit,
+        )}&env=${encodeURIComponent(env)}`,
+      ),
+    enabled: open && Boolean(commit),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+  });
+
+  const data = logsQuery.data as BuildLogs | undefined;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {t("mainPanelTabs.hostingTab.buildLogsTitle")}
+          </DialogTitle>
+        </DialogHeader>
+        <p className="font-mono text-xs text-muted-foreground">
+          {t("mainPanelTabs.hostingTab.buildLogsCommit", {
+            commit: commit.slice(0, 7),
+          })}
+        </p>
+
+        {isUnauthorized(logsQuery.error) ? (
+          <EmptyState
+            icon={<Server01 className="size-5" />}
+            title={t("mainPanelTabs.hostingTab.notConnectedTitle")}
+            description={t("mainPanelTabs.hostingTab.notConnectedDescription")}
+          />
+        ) : logsQuery.isLoading ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        ) : logsQuery.error ? (
+          <Muted>{t("mainPanelTabs.hostingTab.buildLogsError")}</Muted>
+        ) : data && data.configured === false ? (
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-8 text-center">
+            <AlertCircle className="size-5 text-muted-foreground" />
+            <p className="text-sm font-medium text-foreground">
+              {t("mainPanelTabs.hostingTab.buildLogsNotWiredTitle")}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {data.reason ??
+                t("mainPanelTabs.hostingTab.buildLogsNotWiredDescription")}
+            </p>
+          </div>
+        ) : data?.text ? (
+          <div className="flex flex-col gap-2">
+            <pre className="max-h-[52vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+              {data.text}
+            </pre>
+            {data.truncated && (
+              <p className="text-xs text-warning">
+                {t("mainPanelTabs.hostingTab.buildLogsTruncated")}
+              </p>
+            )}
+            {data.url && (
+              <a
+                href={data.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-fit items-center gap-1.5 text-xs text-primary hover:underline"
+              >
+                <LinkExternal01 className="size-3.5" />
+                {t("mainPanelTabs.hostingTab.buildLogsOpenFull")}
+              </a>
+            )}
+          </div>
+        ) : data?.url ? (
+          <a
+            href={data.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
+          >
+            <LinkExternal01 className="size-4" />
+            {t("mainPanelTabs.hostingTab.buildLogsOpenFull")}
+          </a>
+        ) : (
+          <Muted>{t("mainPanelTabs.hostingTab.buildLogsEmpty")}</Muted>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeploymentsSection({
+  base,
+  orgSlug,
+  site,
+  enabled,
+  deployments,
+  isLoading,
+  error,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  enabled: boolean;
+  deployments: Deployment[];
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const t = useT();
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [logsTarget, setLogsTarget] = useState<{
+    commit: string;
+    env: string;
+  } | null>(null);
+
+  const historyQuery = useQuery({
+    queryKey: KEYS.hostingDeploymentHistory(orgSlug, site),
+    queryFn: () => fetchJson(`${base}/deployments/history?limit=50`),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const history = list<DeploymentHistoryEvent>(historyQuery.data, "items");
+
+  // LIVE marker: the serving deployment is the one currently `up`; its commit is
+  // what the site actually serves. Any history event on that same commit is the
+  // live one.
+  const servingCommit =
+    deployments.find((d) => d.up === true)?.commitSha ??
+    deployments.find((d) => d.production === true && d.up)?.commitSha ??
+    null;
+
+  const openLogs = (commit: string | null | undefined, env?: string | null) => {
+    if (!commit) return;
+    setLogsTarget({ commit, env: env ?? "production" });
+  };
+
+  return (
+    <>
+      {/* Current deployments */}
+      <Section
+        title={t("mainPanelTabs.hostingTab.deployments")}
+        count={deployments.length}
+      >
+        {isLoading ? (
+          <RowsSkeleton cols={5} />
+        ) : error ? (
+          <Muted>{t("mainPanelTabs.hostingTab.deploymentsError")}</Muted>
+        ) : deployments.length === 0 ? (
+          <Muted>{t("mainPanelTabs.hostingTab.noDeployments")}</Muted>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("mainPanelTabs.hostingTab.colCommit")}</TableHead>
+                <TableHead>{t("mainPanelTabs.hostingTab.colStatus")}</TableHead>
+                <TableHead>
+                  {t("mainPanelTabs.hostingTab.colFramework")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("mainPanelTabs.hostingTab.colDuration")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("mainPanelTabs.hostingTab.colUpdated")}
+                </TableHead>
+                <TableHead className="w-[1%]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {deployments.map((d) => {
+                const hasMessage = Boolean(d.buildMessage);
+                const isExpanded = expanded === d.id;
+                return (
+                  <Fragment key={d.id}>
+                    <TableRow>
+                      <TableCell className="align-middle">
+                        <div className="flex items-center gap-1.5">
+                          {hasMessage ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpanded(isExpanded ? null : d.id)
+                              }
+                              aria-label={t(
+                                "mainPanelTabs.hostingTab.showBuildMessage",
+                              )}
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="size-4" />
+                              ) : (
+                                <ChevronRight className="size-4" />
+                              )}
+                            </button>
+                          ) : (
+                            <GitCommit className="size-4 text-muted-foreground/60" />
+                          )}
+                          <span className="font-mono text-xs">
+                            {d.shortCommit ?? d.commitSha?.slice(0, 7) ?? "—"}
+                          </span>
+                          {d.production === true && (
+                            <Badge variant="outline">
+                              {t("mainPanelTabs.hostingTab.production")}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-middle">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant={statusVariant(d.phase)}>
+                            {d.phase ?? "—"}
+                          </Badge>
+                          {d.up === true && (
+                            <Badge variant="success">
+                              {t("mainPanelTabs.hostingTab.live")}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-middle text-xs text-muted-foreground">
+                        {frameworkLabel(d.framework) ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right align-middle font-mono text-xs text-muted-foreground tabular-nums">
+                        {fmtDuration(d.durationMs)}
+                      </TableCell>
+                      <TableCell className="text-right align-middle text-xs text-muted-foreground whitespace-nowrap">
+                        {timeAgo(d.finishedAt ?? d.startedAt ?? d.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right align-middle">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={t("mainPanelTabs.hostingTab.buildLogs")}
+                          onClick={() => openLogs(d.commitSha, d.env)}
+                          disabled={!d.commitSha}
+                        >
+                          <FileCode02 className="size-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {hasMessage && isExpanded && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="bg-muted/10">
+                          <p className="whitespace-pre-wrap break-words px-2 py-1 font-mono text-xs text-muted-foreground">
+                            {d.buildMessage}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
+
+      {/* Deploy history (timeline) */}
+      <Section
+        title={t("mainPanelTabs.hostingTab.deployHistory")}
+        count={history.length}
+      >
+        {historyQuery.isLoading ? (
+          <RowsSkeleton cols={4} />
+        ) : historyQuery.error ? (
+          <Muted>{t("mainPanelTabs.hostingTab.deployHistoryError")}</Muted>
+        ) : history.length === 0 ? (
+          <EmptyState
+            icon={<Rocket01 className="size-5" />}
+            title={t("mainPanelTabs.hostingTab.noDeployHistory")}
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("mainPanelTabs.hostingTab.colAction")}</TableHead>
+                <TableHead>{t("mainPanelTabs.hostingTab.colCommit")}</TableHead>
+                <TableHead>
+                  {t("mainPanelTabs.hostingTab.colFramework")}
+                </TableHead>
+                <TableHead>{t("mainPanelTabs.hostingTab.colActor")}</TableHead>
+                <TableHead className="text-right">
+                  {t("mainPanelTabs.hostingTab.colDate")}
+                </TableHead>
+                <TableHead className="w-[1%]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {history.map((h) => {
+                const isLive =
+                  Boolean(servingCommit) && h.commitSha === servingCommit;
+                return (
+                  <TableRow key={h.id}>
+                    <TableCell className="align-middle">
+                      {actionBadge(h.action, t)}
+                    </TableCell>
+                    <TableCell className="align-middle">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs">
+                          {h.commitSha?.slice(0, 7) ?? "—"}
+                        </span>
+                        {isLive && (
+                          <Badge variant="success">
+                            {t("mainPanelTabs.hostingTab.live")}
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-middle text-xs text-muted-foreground">
+                      {frameworkLabel(h.framework) ?? "—"}
+                    </TableCell>
+                    <TableCell className="align-middle text-xs text-muted-foreground">
+                      {h.actor ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right align-middle text-xs text-muted-foreground whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="size-3" />
+                        {timeAgo(h.createdAt)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right align-middle">
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={t("mainPanelTabs.hostingTab.buildLogs")}
+                        onClick={() => openLogs(h.commitSha, h.env)}
+                        disabled={!h.commitSha}
+                      >
+                        <FileCode02 className="size-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
+
+      <BuildLogsDialog
+        base={base}
+        orgSlug={orgSlug}
+        site={site}
+        target={logsTarget}
+        onOpenChange={(open) => {
+          if (!open) setLogsTarget(null);
+        }}
+      />
+    </>
+  );
+}
+
+// --- environment variables --------------------------------------------------
+
+function EnvSection({
+  base,
+  orgSlug,
+  site,
+  envVars,
+  isLoading,
+  error,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  envVars: EnvVar[];
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [addName, setAddName] = useState("");
+  const [addValue, setAddValue] = useState("");
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  // The control-plane PUT is a REPLACE-SET: the body is the complete desired
+  // list, so every add/edit/delete recomputes it from `envVars` and PUTs.
+  const envMutation = useMutation({
+    mutationFn: (vars: EnvVar[]) => mutateJson(`${base}/env`, "PUT", { vars }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.hostingEnv(orgSlug, site),
+      });
+      toast.success(t("mainPanelTabs.hostingTab.toastEnvSaved"));
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+
+  const handleAdd = () => {
+    const name = addName.trim();
+    if (!name) {
+      toast.error(t("mainPanelTabs.hostingTab.errorEnvNameRequired"));
+      return;
+    }
+    if (envVars.some((v) => v.name === name)) {
+      toast.error(t("mainPanelTabs.hostingTab.errorEnvNameDuplicate"));
+      return;
+    }
+    envMutation.mutate([...envVars, { name, value: addValue }], {
+      onSuccess: () => {
+        setAddName("");
+        setAddValue("");
+      },
+    });
+  };
+
+  const handleSaveEdit = (name: string) => {
+    envMutation.mutate(
+      envVars.map((v) => (v.name === name ? { name, value: editValue } : v)),
+      { onSuccess: () => setEditingName(null) },
+    );
+  };
+
+  const handleConfirmDelete = () => {
+    const name = deleteTarget;
+    if (!name) return;
+    envMutation.mutate(
+      envVars.filter((v) => v.name !== name),
+      { onSuccess: () => setDeleteTarget(null) },
+    );
+  };
+
+  return (
+    <Section title={t("mainPanelTabs.hostingTab.env")} count={envVars.length}>
+      {isLoading ? (
+        <RowsSkeleton cols={2} />
+      ) : error ? (
+        <Muted>{t("mainPanelTabs.hostingTab.envError")}</Muted>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {envVars.length === 0 ? (
+            <Muted>{t("mainPanelTabs.hostingTab.noEnv")}</Muted>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("mainPanelTabs.hostingTab.colName")}</TableHead>
+                  <TableHead>
+                    {t("mainPanelTabs.hostingTab.colValue")}
+                  </TableHead>
+                  <TableHead className="w-[1%]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {envVars.map((e) => (
+                  <TableRow key={e.name}>
+                    <TableCell className="font-mono text-xs align-middle">
+                      {e.name}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground max-w-[360px] align-middle">
+                      {editingName === e.name ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={editValue}
+                            onChange={(ev) => setEditValue(ev.target.value)}
+                            className="h-7 font-mono text-xs"
+                          />
+                          <Button
+                            size="xs"
+                            onClick={() => handleSaveEdit(e.name)}
+                            disabled={envMutation.isPending}
+                          >
+                            {t("mainPanelTabs.hostingTab.save")}
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => setEditingName(null)}
+                            disabled={envMutation.isPending}
+                          >
+                            {t("mainPanelTabs.hostingTab.cancel")}
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingName(e.name);
+                            setEditValue(e.value);
+                          }}
+                          className="block w-full truncate text-left hover:underline"
+                          aria-label={t("mainPanelTabs.hostingTab.editValue")}
+                        >
+                          {e.value}
+                        </button>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right align-middle">
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={t(
+                          "mainPanelTabs.hostingTab.deleteVariable",
+                        )}
+                        onClick={() => setDeleteTarget(e.name)}
+                        disabled={envMutation.isPending}
+                      >
+                        <Trash01 className="size-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          {/* Inline add-variable row */}
+          <div className="flex items-center gap-2 px-2 py-1">
+            <Input
+              placeholder={t("mainPanelTabs.hostingTab.envNamePlaceholder")}
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              className="h-8 flex-1 font-mono text-xs"
+            />
+            <Input
+              placeholder={t("mainPanelTabs.hostingTab.envValuePlaceholder")}
+              value={addValue}
+              onChange={(e) => setAddValue(e.target.value)}
+              className="h-8 flex-1 font-mono text-xs"
+            />
+            <Button
+              size="sm"
+              aria-label={t("mainPanelTabs.hostingTab.addVariable")}
+              onClick={handleAdd}
+              disabled={envMutation.isPending || !addName.trim()}
+            >
+              <Plus className="size-4" />
+              {t("mainPanelTabs.hostingTab.add")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("mainPanelTabs.hostingTab.confirmDeleteVariableTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("mainPanelTabs.hostingTab.confirmDeleteVariableDescription", {
+                name: deleteTarget ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={envMutation.isPending}>
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                handleConfirmDelete();
+              }}
+              disabled={envMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.deleteVariable")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Section>
+  );
+}
+
+// --- secrets ----------------------------------------------------------------
+
+function SecretsSection({
+  base,
+  orgSlug,
+  site,
+  secrets,
+  isLoading,
+  error,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  secrets: Secret[];
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addValue, setAddValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({
+      queryKey: KEYS.hostingSecrets(orgSlug, site),
+    });
+
+  const putMutation = useMutation({
+    mutationFn: (input: { name: string; value: string }) =>
+      mutateJson(`${base}/secrets`, "PUT", input),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.hostingTab.toastSecretSaved"));
+      setAddOpen(false);
+      setAddName("");
+      setAddValue("");
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (name: string) =>
+      mutateJson(`${base}/secrets/${encodeURIComponent(name)}`, "DELETE"),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.hostingTab.toastSecretDeleted"));
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+
+  const handleAdd = () => {
+    const name = addName.trim();
+    if (!name) {
+      toast.error(t("mainPanelTabs.hostingTab.errorSecretNameRequired"));
+      return;
+    }
+    if (!addValue) {
+      toast.error(t("mainPanelTabs.hostingTab.errorSecretValueRequired"));
+      return;
+    }
+    putMutation.mutate({ name, value: addValue });
+  };
+
+  const addButton = (
+    <Button size="sm" variant="secondary" onClick={() => setAddOpen(true)}>
+      <Plus className="size-4" />
+      {t("mainPanelTabs.hostingTab.addSecret")}
+    </Button>
+  );
+
+  return (
+    <Section
+      title={t("mainPanelTabs.hostingTab.secrets")}
+      count={secrets.length}
+      action={addButton}
+    >
+      {isLoading ? (
+        <RowsSkeleton cols={2} />
+      ) : error ? (
+        <Muted>{t("mainPanelTabs.hostingTab.secretsError")}</Muted>
+      ) : secrets.length === 0 ? (
+        <Muted>{t("mainPanelTabs.hostingTab.noSecrets")}</Muted>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("mainPanelTabs.hostingTab.colName")}</TableHead>
+              <TableHead>{t("mainPanelTabs.hostingTab.colValue")}</TableHead>
+              <TableHead className="w-[1%]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {secrets.map((s) => (
+              <TableRow key={s.name}>
+                <TableCell className="font-mono text-xs align-middle">
+                  {s.name}
+                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground align-middle">
+                  {t("mainPanelTabs.hostingTab.secretValueHidden")}
+                </TableCell>
+                <TableCell className="text-right align-middle">
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t("mainPanelTabs.hostingTab.deleteSecret")}
+                    onClick={() => setDeleteTarget(s.name)}
+                    disabled={deleteMutation.isPending}
+                  >
+                    <Trash01 className="size-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      {/* Add secret dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t("mainPanelTabs.hostingTab.addSecretTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="secret-name">
+                {t("mainPanelTabs.hostingTab.colName")}
+              </Label>
+              <Input
+                id="secret-name"
+                placeholder={t(
+                  "mainPanelTabs.hostingTab.secretNamePlaceholder",
+                )}
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                className="font-mono text-xs"
+                disabled={putMutation.isPending}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="secret-value">
+                {t("mainPanelTabs.hostingTab.colValue")}
+              </Label>
+              <Input
+                id="secret-value"
+                type="password"
+                placeholder={t(
+                  "mainPanelTabs.hostingTab.secretValuePlaceholder",
+                )}
+                value={addValue}
+                onChange={(e) => setAddValue(e.target.value)}
+                className="font-mono text-xs"
+                disabled={putMutation.isPending}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setAddOpen(false)}
+              disabled={putMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleAdd}
+              disabled={putMutation.isPending || !addName.trim() || !addValue}
+            >
+              {putMutation.isPending
+                ? t("mainPanelTabs.hostingTab.saving")
+                : t("mainPanelTabs.hostingTab.add")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete secret confirm */}
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("mainPanelTabs.hostingTab.confirmDeleteSecretTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("mainPanelTabs.hostingTab.confirmDeleteSecretDescription", {
+                name: deleteTarget ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteTarget) deleteMutation.mutate(deleteTarget);
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.deleteSecret")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Section>
+  );
+}
+
+// --- redirects --------------------------------------------------------------
+
+// The redirect ingress runs on eks-hub (namespace `deco-redirect-system`); its
+// NLB has three FIXED Elastic IPs. A host redirect only activates once its
+// `from` host resolves to these, so the UI must tell the user which A records
+// to add at their registrar. Same constant the admin + control-plane DNS panels
+// use — kept in sync by hand (there is no endpoint that returns it).
+const REDIRECT_APEX_EIPS = [
+  "16.148.147.194",
+  "52.32.122.94",
+  "52.35.156.199",
+] as const;
+
+/** A bare apex host (`example.com`, two labels) vs a subdomain
+ *  (`old.example.com`). The redirect ingress accepts either once its DNS points
+ *  at the EIPs; apex hosts conventionally use the `@` record name. */
+function isApexHost(host: string): boolean {
+  return host.replace(/\.$/, "").split(".").filter(Boolean).length === 2;
+}
+
+function redirectRecordName(host: string): string {
+  return isApexHost(host) ? "@" : host;
+}
+
+function CopyValueButton({ value, t }: { value: string; t: Translate }) {
+  return (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      aria-label={t("mainPanelTabs.hostingTab.dnsCopy")}
+      onClick={() => {
+        void navigator.clipboard?.writeText(value);
+        toast.success(t("mainPanelTabs.hostingTab.dnsCopied"));
+      }}
+    >
+      <Copy01 className="size-3.5" />
+    </Button>
+  );
+}
+
+/** Registrar DNS instructions to activate a host redirect: the `from` host must
+ *  resolve to the redirect ingress's three fixed EIPs. `source === "both"` means
+ *  the redirect is already observed live on the cluster; anything else is still
+ *  pending its DNS. */
+function RedirectDnsPanel({
+  from,
+  source,
+  t,
+}: {
+  from: string;
+  source?: string;
+  t: Translate;
+}) {
+  const host = from.trim().replace(/\.$/, "");
+  const name = host ? redirectRecordName(host) : "@";
+  const active = source === "both";
+  return (
+    <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
+      <div className="flex items-center gap-2">
+        <Globe01 className="size-4 text-muted-foreground" />
+        <span className="text-xs font-medium">
+          {t("mainPanelTabs.hostingTab.dnsSetupTitle")}
+        </span>
+        <Badge variant={active ? "secondary" : "outline"} className="ml-auto">
+          {active
+            ? t("mainPanelTabs.hostingTab.dnsActive")
+            : t("mainPanelTabs.hostingTab.dnsAwaiting")}
+        </Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("mainPanelTabs.hostingTab.dnsRedirectIntent", {
+          from: host || "—",
+        })}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {t("mainPanelTabs.hostingTab.dnsSetupDescription", {
+          host: host || "—",
+        })}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {active
+          ? t("mainPanelTabs.hostingTab.dnsActiveHint")
+          : t("mainPanelTabs.hostingTab.dnsAwaitingHint")}
+      </p>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t("mainPanelTabs.hostingTab.dnsColType")}</TableHead>
+            <TableHead>{t("mainPanelTabs.hostingTab.dnsColName")}</TableHead>
+            <TableHead>{t("mainPanelTabs.hostingTab.dnsColValue")}</TableHead>
+            <TableHead className="w-[1%]" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {REDIRECT_APEX_EIPS.map((ip) => (
+            <TableRow key={ip}>
+              <TableCell className="font-mono text-xs align-middle">
+                A
+              </TableCell>
+              <TableCell className="font-mono text-xs align-middle">
+                {name}
+              </TableCell>
+              <TableCell className="font-mono text-xs align-middle">
+                {ip}
+              </TableCell>
+              <TableCell className="text-right align-middle">
+                <CopyValueButton value={ip} t={t} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function RedirectTypeBadge({ type, t }: { type?: string; t: Translate }) {
+  return (
+    <Badge variant={type === "permanent" ? "secondary" : "outline"}>
+      {type === "permanent"
+        ? t("mainPanelTabs.hostingTab.permanent")
+        : t("mainPanelTabs.hostingTab.temporary")}
+    </Badge>
+  );
+}
+
+function RedirectsSection({
+  base,
+  orgSlug,
+  site,
+  redirects,
+  isLoading,
+  error,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  redirects: Redirect[];
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // null = add mode; a string = editing that (immutable) `from`.
+  const [editingFrom, setEditingFrom] = useState<string | null>(null);
+  const [formFrom, setFormFrom] = useState("");
+  const [formTo, setFormTo] = useState("");
+  const [formType, setFormType] = useState<"permanent" | "temporary">(
+    "permanent",
+  );
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  // Which redirect's registrar DNS instructions are expanded (`from` value).
+  const [dnsOpenFrom, setDnsOpenFrom] = useState<string | null>(null);
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({
+      queryKey: KEYS.hostingRedirects(orgSlug, site),
+    });
+
+  // PUT is idempotent per `from` — it upserts the redirect for that source, so
+  // the same call powers both add and edit.
+  const putMutation = useMutation({
+    mutationFn: (input: {
+      from: string;
+      to: string;
+      type: "permanent" | "temporary";
+    }) => mutateJson(`${base}/redirects`, "PUT", input),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.hostingTab.toastRedirectSaved"));
+      setDialogOpen(false);
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (from: string) =>
+      mutateJson(`${base}/redirects/${encodeURIComponent(from)}`, "DELETE"),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.hostingTab.toastRedirectDeleted"));
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+
+  const openAdd = () => {
+    setEditingFrom(null);
+    setFormFrom("");
+    setFormTo("");
+    setFormType("permanent");
+    setDialogOpen(true);
+  };
+
+  const openEdit = (r: Redirect) => {
+    setEditingFrom(r.from);
+    setFormFrom(r.from);
+    setFormTo(r.to);
+    setFormType(r.type === "temporary" ? "temporary" : "permanent");
+    setDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    const from = formFrom.trim();
+    const to = formTo.trim();
+    if (!from || !to) {
+      toast.error(t("mainPanelTabs.hostingTab.errorRedirectFieldsRequired"));
+      return;
+    }
+    putMutation.mutate({ from, to, type: formType });
+  };
+
+  const addButton = (
+    <Button size="sm" variant="secondary" onClick={openAdd}>
+      <Plus className="size-4" />
+      {t("mainPanelTabs.hostingTab.addRedirect")}
+    </Button>
+  );
+
+  return (
+    <Section
+      title={t("mainPanelTabs.hostingTab.redirects")}
+      count={redirects.length}
+      action={addButton}
+    >
+      {isLoading ? (
+        <RowsSkeleton cols={3} />
+      ) : error ? (
+        <Muted>{t("mainPanelTabs.hostingTab.redirectsError")}</Muted>
+      ) : redirects.length === 0 ? (
+        <EmptyState
+          icon={<CornerUpRight className="size-5" />}
+          title={t("mainPanelTabs.hostingTab.noRedirects")}
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("mainPanelTabs.hostingTab.colFrom")}</TableHead>
+              <TableHead>{t("mainPanelTabs.hostingTab.colTo")}</TableHead>
+              <TableHead>{t("mainPanelTabs.hostingTab.colType")}</TableHead>
+              <TableHead className="w-[1%]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {redirects.map((r, i) => (
+              <Fragment key={r.id ?? `${r.from}-${i}`}>
+                <TableRow>
+                  <TableCell className="font-mono text-xs align-middle">
+                    {r.from}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground max-w-[280px] truncate align-middle">
+                    {r.to}
+                  </TableCell>
+                  <TableCell className="align-middle">
+                    <RedirectTypeBadge type={r.type} t={t} />
+                  </TableCell>
+                  <TableCell className="text-right align-middle whitespace-nowrap">
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={t("mainPanelTabs.hostingTab.dnsSetup")}
+                      onClick={() =>
+                        setDnsOpenFrom(dnsOpenFrom === r.from ? null : r.from)
+                      }
+                    >
+                      <Globe01 className="size-4" />
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={t("mainPanelTabs.hostingTab.editRedirect")}
+                      onClick={() => openEdit(r)}
+                      disabled={putMutation.isPending}
+                    >
+                      <Pencil01 className="size-4" />
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={t("mainPanelTabs.hostingTab.deleteRedirect")}
+                      onClick={() => setDeleteTarget(r.from)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash01 className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+                {dnsOpenFrom === r.from && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="bg-muted/10">
+                      <RedirectDnsPanel from={r.from} source={r.source} t={t} />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      {/* Add / edit redirect dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingFrom != null
+                ? t("mainPanelTabs.hostingTab.editRedirectTitle")
+                : t("mainPanelTabs.hostingTab.addRedirectTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="redirect-from">
+                {t("mainPanelTabs.hostingTab.colFrom")}
+              </Label>
+              <Input
+                id="redirect-from"
+                placeholder={t(
+                  "mainPanelTabs.hostingTab.redirectFromPlaceholder",
+                )}
+                value={formFrom}
+                onChange={(e) => setFormFrom(e.target.value)}
+                className="font-mono text-xs"
+                // `from` is the redirect's identity; editing changes to/type only.
+                disabled={editingFrom != null || putMutation.isPending}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="redirect-to">
+                {t("mainPanelTabs.hostingTab.colTo")}
+              </Label>
+              <Input
+                id="redirect-to"
+                placeholder={t(
+                  "mainPanelTabs.hostingTab.redirectToPlaceholder",
+                )}
+                value={formTo}
+                onChange={(e) => setFormTo(e.target.value)}
+                className="font-mono text-xs"
+                disabled={putMutation.isPending}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>{t("mainPanelTabs.hostingTab.colType")}</Label>
+              <Select
+                value={formType}
+                onValueChange={(v) =>
+                  setFormType(v === "temporary" ? "temporary" : "permanent")
+                }
+                disabled={putMutation.isPending}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="permanent">
+                    {t("mainPanelTabs.hostingTab.permanent")}
+                  </SelectItem>
+                  <SelectItem value="temporary">
+                    {t("mainPanelTabs.hostingTab.temporary")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {formFrom.trim() && (
+              <RedirectDnsPanel
+                from={formFrom}
+                source={redirects.find((r) => r.from === editingFrom)?.source}
+                t={t}
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setDialogOpen(false)}
+              disabled={putMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={
+                putMutation.isPending || !formFrom.trim() || !formTo.trim()
+              }
+            >
+              {putMutation.isPending
+                ? t("mainPanelTabs.hostingTab.saving")
+                : t("mainPanelTabs.hostingTab.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete redirect confirm */}
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("mainPanelTabs.hostingTab.confirmDeleteRedirectTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("mainPanelTabs.hostingTab.confirmDeleteRedirectDescription", {
+                from: deleteTarget ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteTarget) deleteMutation.mutate(deleteTarget);
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.deleteRedirect")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Section>
+  );
+}
+
+// --- tab --------------------------------------------------------------------
 
 export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(virtualMcpId);
   const siteSlug = resolveAgentSiteSlug(entity);
-
   const enabled = Boolean(siteSlug);
   const base = siteSlug
     ? `/api/${org.slug}/hosting/${encodeURIComponent(siteSlug)}`
@@ -140,32 +1662,28 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   const deploymentsQuery = useQuery({
     queryKey: KEYS.hostingDeployments(org.slug, siteSlug ?? ""),
-    queryFn: () =>
-      fetchHosting(
-        `${base}/deployments`,
-        t("mainPanelTabs.hostingTab.deploymentsError"),
-      ),
+    queryFn: () => fetchJson(`${base}/deployments`),
     enabled,
     retry: false,
     staleTime: 30_000,
   });
-
   const envQuery = useQuery({
     queryKey: KEYS.hostingEnv(org.slug, siteSlug ?? ""),
-    queryFn: () =>
-      fetchHosting(`${base}/env`, t("mainPanelTabs.hostingTab.envError")),
+    queryFn: () => fetchJson(`${base}/env`),
     enabled,
     retry: false,
     staleTime: 30_000,
   });
-
+  const secretsQuery = useQuery({
+    queryKey: KEYS.hostingSecrets(org.slug, siteSlug ?? ""),
+    queryFn: () => fetchJson(`${base}/secrets`),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  });
   const redirectsQuery = useQuery({
     queryKey: KEYS.hostingRedirects(org.slug, siteSlug ?? ""),
-    queryFn: () =>
-      fetchHosting(
-        `${base}/redirects`,
-        t("mainPanelTabs.hostingTab.redirectsError"),
-      ),
+    queryFn: () => fetchJson(`${base}/redirects`),
     enabled,
     retry: false,
     staleTime: 30_000,
@@ -173,9 +1691,9 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   if (!siteSlug) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
+      <div className="flex-1 flex items-center justify-center p-6">
         <EmptyState
-          icon={<Server01 size={20} />}
+          icon={<Server01 className="size-5" />}
           title={t("mainPanelTabs.hostingTab.noSiteTitle")}
           description={t("mainPanelTabs.hostingTab.noSiteDescription")}
         />
@@ -183,157 +1701,92 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
-  const deployments = asList<Deployment>(deploymentsQuery.data, "deployments");
-  const envVars = asList<EnvVar>(envQuery.data, "env");
-  const redirects = asList<Redirect>(redirectsQuery.data, "redirects");
+  // Pre-token / not-connected: when the proxy answers 401 across the board, show
+  // one calm configuration state instead of red errors.
+  const allUnauthorized =
+    isUnauthorized(deploymentsQuery.error) &&
+    isUnauthorized(envQuery.error) &&
+    isUnauthorized(redirectsQuery.error);
+  if (allUnauthorized) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <EmptyState
+          icon={<Server01 className="size-5" />}
+          title={t("mainPanelTabs.hostingTab.notConnectedTitle")}
+          description={t("mainPanelTabs.hostingTab.notConnectedDescription")}
+        />
+      </div>
+    );
+  }
+
+  const deployments = list<Deployment>(deploymentsQuery.data, "items");
+  const envVars = list<EnvVar>(envQuery.data, "vars");
+  const secrets = list<Secret>(secretsQuery.data, "secrets");
+  const redirects = list<Redirect>(redirectsQuery.data, "items");
+  const framework = frameworkLabel(
+    deployments.find((d) => d.framework)?.framework,
+  );
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto p-6 flex flex-col gap-8">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-          <Server01 size={18} className="text-muted-foreground" />
-          {t("mainPanelTabs.hostingTab.title")}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {t("mainPanelTabs.hostingTab.subtitle", { site: siteSlug })}
-        </p>
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Server01 className="size-[18px] text-muted-foreground" />
+              <h2 className="text-base font-semibold text-foreground">
+                {t("mainPanelTabs.hostingTab.title")}
+              </h2>
+              {framework && <Badge variant="secondary">{framework}</Badge>}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t("mainPanelTabs.hostingTab.subtitle", { site: siteSlug })}
+            </p>
+          </div>
+          <DeployButton base={base} orgSlug={org.slug} site={siteSlug} />
+        </div>
+
+        {/* Deployments — current + history timeline + build logs */}
+        <DeploymentsSection
+          base={base}
+          orgSlug={org.slug}
+          site={siteSlug}
+          enabled={enabled}
+          deployments={deployments}
+          isLoading={deploymentsQuery.isLoading}
+          error={deploymentsQuery.error}
+        />
+
+        {/* Environment variables (interactive) */}
+        <EnvSection
+          base={base}
+          orgSlug={org.slug}
+          site={siteSlug}
+          envVars={envVars}
+          isLoading={envQuery.isLoading}
+          error={envQuery.error}
+        />
+
+        {/* Secrets (interactive; names only) */}
+        <SecretsSection
+          base={base}
+          orgSlug={org.slug}
+          site={siteSlug}
+          secrets={secrets}
+          isLoading={secretsQuery.isLoading}
+          error={secretsQuery.error}
+        />
+
+        {/* Redirects (interactive) */}
+        <RedirectsSection
+          base={base}
+          orgSlug={org.slug}
+          site={siteSlug}
+          redirects={redirects}
+          isLoading={redirectsQuery.isLoading}
+          error={redirectsQuery.error}
+        />
       </div>
-
-      {/* Deployments */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">
-          {t("mainPanelTabs.hostingTab.deployments")}
-        </h3>
-        <SectionState
-          loading={deploymentsQuery.isLoading}
-          error={deploymentsQuery.error as Error | null}
-          empty={deployments.length === 0}
-          loadingLabel={t("mainPanelTabs.hostingTab.loading")}
-          emptyLabel={t("mainPanelTabs.hostingTab.noDeployments")}
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("mainPanelTabs.hostingTab.colId")}</TableHead>
-                <TableHead>{t("mainPanelTabs.hostingTab.colStatus")}</TableHead>
-                <TableHead>{t("mainPanelTabs.hostingTab.colUrl")}</TableHead>
-                <TableHead>
-                  {t("mainPanelTabs.hostingTab.colCreated")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {deployments.map((d, i) => (
-                <TableRow key={d.id ?? i}>
-                  <TableCell className="font-mono text-xs">
-                    {d.id ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    {d.status ? (
-                      <Badge variant={statusVariant(d.status)}>
-                        {d.status}
-                      </Badge>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {d.url ? (
-                      <a
-                        href={d.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        {d.url}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {d.createdAt ?? d.created_at ?? "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </SectionState>
-      </section>
-
-      {/* Environment variables */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">
-          {t("mainPanelTabs.hostingTab.env")}
-        </h3>
-        <SectionState
-          loading={envQuery.isLoading}
-          error={envQuery.error as Error | null}
-          empty={envVars.length === 0}
-          loadingLabel={t("mainPanelTabs.hostingTab.loading")}
-          emptyLabel={t("mainPanelTabs.hostingTab.noEnv")}
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("mainPanelTabs.hostingTab.colKey")}</TableHead>
-                <TableHead>{t("mainPanelTabs.hostingTab.colValue")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {envVars.map((e, i) => (
-                <TableRow key={e.key ?? e.name ?? i}>
-                  <TableCell className="font-mono text-xs">
-                    {e.key ?? e.name ?? "—"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground max-w-md truncate">
-                    {e.value ?? "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </SectionState>
-      </section>
-
-      {/* Redirects */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">
-          {t("mainPanelTabs.hostingTab.redirects")}
-        </h3>
-        <SectionState
-          loading={redirectsQuery.isLoading}
-          error={redirectsQuery.error as Error | null}
-          empty={redirects.length === 0}
-          loadingLabel={t("mainPanelTabs.hostingTab.loading")}
-          emptyLabel={t("mainPanelTabs.hostingTab.noRedirects")}
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("mainPanelTabs.hostingTab.colFrom")}</TableHead>
-                <TableHead>{t("mainPanelTabs.hostingTab.colTo")}</TableHead>
-                <TableHead>{t("mainPanelTabs.hostingTab.colStatus")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {redirects.map((r, i) => (
-                <TableRow key={`${r.from ?? ""}-${i}`}>
-                  <TableCell className="font-mono text-xs">
-                    {r.from ?? "—"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {r.to ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {r.status ?? r.statusCode ?? "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </SectionState>
-      </section>
     </div>
   );
 }

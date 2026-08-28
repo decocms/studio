@@ -10,6 +10,7 @@
  * independently; `useVirtualMCP` / `useSuspenseQuery` dedupe the reads.
  */
 
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement } from "react";
@@ -67,6 +68,7 @@ import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
+import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
 export type AgentTabDef = {
@@ -281,6 +283,27 @@ export function useMainPanelTabs(ctx: {
    * blocks on the bucket list.
    */
   const siteSlug = resolveAgentSiteSlug(entity);
+  // Per-site ownership gate for the control-plane tabs (Hosting / E2E /
+  // Analytics). `hostingEnabled` only says the DEPLOYMENT wired the BFF; it does
+  // NOT say this org owns THIS site. Without the ownership probe the three tabs
+  // render for every site and then fail with 404 "Site not found in
+  // organization" (the BFF's own isolation guard). Probe the local access
+  // endpoint (no control-plane call) and only surface the tabs when the org owns
+  // the resolved slug. Undefined while loading → tabs stay hidden until settled,
+  // so an unowned site never flashes the tabs then drops them.
+  const hostingAccessQuery = useQuery({
+    queryKey: KEYS.hostingAccess(org.slug, siteSlug ?? ""),
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/${org.slug}/hosting/${encodeURIComponent(siteSlug ?? "")}/access`,
+      );
+      if (!res.ok) return { owned: false, canWrite: false };
+      return (await res.json()) as { owned: boolean; canWrite: boolean };
+    },
+    enabled: hostingEnabled && !!siteSlug,
+    staleTime: 60_000,
+  });
+  const hostingOwned = hostingAccessQuery.data?.owned === true;
   const fileConfigsQuery = useFileConfigsQuery();
   const showAssetsTab = !!matchSiteSlugConfig(
     fileConfigsQuery.data?.configs ?? [],
@@ -390,10 +413,23 @@ export function useMainPanelTabs(ctx: {
       title: t("common.mainPanelTabs.assets"),
     });
   }
-  if (hostingEnabled) {
+  if (hostingEnabled && hostingOwned) {
+    // Hosting, E2E, and Deco Analytics are peers over the same control-plane
+    // connection — one gate, one order (Hosting · E2E · Deco Analytics). Gated
+    // on org ownership of the resolved site (`hostingOwned`), not just the
+    // deployment-wide `hostingEnabled`, so a site the org doesn't own never
+    // surfaces these tabs (matching the BFF's per-site isolation guard).
     systemTabs.push({
       id: "hosting",
       title: t("common.mainPanelTabs.hosting"),
+    });
+    systemTabs.push({
+      id: "e2e",
+      title: t("common.mainPanelTabs.e2e"),
+    });
+    systemTabs.push({
+      id: "analytics",
+      title: t("common.mainPanelTabs.analytics"),
     });
   }
   if (gitTabVisible) {

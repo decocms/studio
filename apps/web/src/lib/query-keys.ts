@@ -648,12 +648,51 @@ export const KEYS = {
 
   // Hosting tab — per-site control-plane reads (scoped by org + site slug),
   // proxied through the BFF at /api/:org/hosting/:site/*.
+  // Ownership + role probe (LOCAL, no control-plane call) that gates whether the
+  // Hosting / E2E / Analytics tabs render at all — /api/:org/hosting/:site/access.
+  hostingAccess: (org: string, site: string) =>
+    ["hosting", org, site, "access"] as const,
   hostingDeployments: (org: string, site: string) =>
     ["hosting", org, site, "deployments"] as const,
+  // Deploy timeline (deploy / redeploy / rollback events) — /deployments/history.
+  hostingDeploymentHistory: (org: string, site: string) =>
+    ["hosting", org, site, "deployment-history"] as const,
+  // Build logs for one commit/env — /deployments/logs?commit&env. NOT cached
+  // beyond the dialog's lifetime (staleTime 0): the presigned log `url` expires
+  // ~5min, so every open re-fetches a fresh URL.
+  hostingBuildLogs: (org: string, site: string, commit: string, env: string) =>
+    ["hosting", org, site, "build-logs", commit, env] as const,
   hostingEnv: (org: string, site: string) =>
     ["hosting", org, site, "env"] as const,
   hostingRedirects: (org: string, site: string) =>
     ["hosting", org, site, "redirects"] as const,
+  // Secret NAMES only (values are write-only, never returned by the BFF).
+  hostingSecrets: (org: string, site: string) =>
+    ["hosting", org, site, "secrets"] as const,
+
+  // E2E tab — per-site control-plane run list, proxied through the same BFF at
+  // /api/:org/hosting/:site/e2e/runs.
+  e2eRuns: (org: string, site: string) =>
+    ["hosting", org, site, "e2e-runs"] as const,
+  // The runnable check types (journey / pdp-check …) that populate the
+  // Run-test picker — /api/:org/hosting/:site/e2e/types.
+  e2eTypes: (org: string, site: string) =>
+    ["hosting", org, site, "e2e-types"] as const,
+  // One run's rich detail — /api/:org/hosting/:site/e2e/runs/:runId. NOT cached
+  // beyond the drawer's lifetime (staleTime 0): its presigned artifact URLs
+  // expire ~1h, so every open re-fetches fresh URLs.
+  e2eRun: (org: string, site: string, runId: string) =>
+    ["hosting", org, site, "e2e-run", runId] as const,
+
+  // Deco Analytics tab — per-site lifecycle status (configured / registered /
+  // host / config), proxied through the BFF at /api/:org/hosting/:site/
+  // analytics/status. The lifecycle mutations invalidate this key.
+  analyticsStatus: (org: string, site: string) =>
+    ["hosting", org, site, "analytics-status"] as const,
+  // Deco Analytics tab — per-site usage series/totals, proxied through the same
+  // BFF at /api/:org/hosting/:site/analytics/usage.
+  analyticsUsage: (org: string, site: string) =>
+    ["hosting", org, site, "analytics-usage"] as const,
 
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,

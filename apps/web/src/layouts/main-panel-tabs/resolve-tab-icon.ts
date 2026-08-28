@@ -1,5 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  BarChartSquare02,
+  CheckDone01,
   Code02,
   File02,
   Folder,
@@ -31,6 +33,8 @@ export type SystemTabId =
   | "content"
   | "assets"
   | "hosting"
+  | "e2e"
+  | "analytics"
   | "git"
   | "files";
 
@@ -43,6 +47,8 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   content: File02,
   assets: Package,
   hosting: Server01,
+  e2e: CheckDone01,
+  analytics: BarChartSquare02,
   git: GitBranch01,
   files: Folder,
 };

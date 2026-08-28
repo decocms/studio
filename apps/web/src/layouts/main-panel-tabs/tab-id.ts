@@ -179,6 +179,8 @@ export const FIXED_SYSTEM_TABS = [
   "content",
   "assets",
   "hosting",
+  "e2e",
+  "analytics",
   "git",
 ] as const;
 

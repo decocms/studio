@@ -19,6 +19,8 @@ import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AssetsTab } from "./assets-tab";
 import { HostingTab } from "./hosting-tab";
+import { E2eTab } from "./e2e-tab";
+import { AnalyticsTab } from "./analytics-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
@@ -112,6 +114,12 @@ function TabBody({
   }
   if (activeTab === "hosting") {
     return <HostingTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "e2e") {
+    return <E2eTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "analytics") {
+    return <AnalyticsTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {
     return <LibraryTab />;
