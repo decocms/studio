@@ -22,30 +22,33 @@ import { LANE_RANK } from "./lanes";
 
 const ORG = "org_bh_1";
 const OTHER = "org_bh_2";
+const ORG_M = "org_bh_m";
+
+let database: StudioDatabase;
+let automations: ColumnAutomationStorage;
+let boardColumns: BoardColumnStorage;
+
+/** One pool for the file. `connectTestPgDatabase` hands back a shared instance,
+ *  so a per-describe lifecycle would close it out from under the next one. */
+beforeAll(async () => {
+  database = await connectTestPgDatabase();
+  await resetTestPgDatabase(database);
+  const now = new Date().toISOString();
+  for (const id of [ORG, OTHER, ORG_M]) {
+    await database.db
+      .insertInto("organization")
+      .values({ id, name: id, slug: id.replace(/_/g, "-"), createdAt: now })
+      .execute();
+  }
+  automations = new ColumnAutomationStorage(database.db);
+  boardColumns = new BoardColumnStorage(database.db);
+});
+
+afterAll(async () => {
+  await closeTestPgDatabase(database);
+});
 
 describe("boardHandler — the board Studio ships with", () => {
-  let database: StudioDatabase;
-  let automations: ColumnAutomationStorage;
-  let boardColumns: BoardColumnStorage;
-
-  beforeAll(async () => {
-    database = await connectTestPgDatabase();
-    await resetTestPgDatabase(database);
-    const now = new Date().toISOString();
-    for (const id of [ORG, OTHER]) {
-      await database.db
-        .insertInto("organization")
-        .values({ id, name: id, slug: id.replace(/_/g, "-"), createdAt: now })
-        .execute();
-    }
-    automations = new ColumnAutomationStorage(database.db);
-    boardColumns = new BoardColumnStorage(database.db);
-  });
-
-  afterAll(async () => {
-    await closeTestPgDatabase(database);
-  });
-
   const board = (org = ORG) =>
     boardHandler(org, { automations, boardColumns, orgOwnedColumns: false });
 
@@ -122,26 +125,6 @@ describe("boardHandler — the board Studio ships with", () => {
  * out of, and the cards would look filed under lanes nobody chose.
  */
 describe("boardHandler — a board whose columns are the org's own", () => {
-  let database: StudioDatabase;
-  let automations: ColumnAutomationStorage;
-  let boardColumns: BoardColumnStorage;
-  const ORG_M = "org_bh_m";
-
-  beforeAll(async () => {
-    database = await connectTestPgDatabase();
-    const now = new Date().toISOString();
-    await database.db
-      .insertInto("organization")
-      .values({ id: ORG_M, name: ORG_M, slug: "org-bh-m", createdAt: now })
-      .execute();
-    automations = new ColumnAutomationStorage(database.db);
-    boardColumns = new BoardColumnStorage(database.db);
-  });
-
-  afterAll(async () => {
-    await closeTestPgDatabase(database);
-  });
-
   const board = () =>
     boardHandler(ORG_M, { automations, boardColumns, orgOwnedColumns: true });
 
