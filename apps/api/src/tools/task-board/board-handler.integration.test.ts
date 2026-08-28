@@ -16,6 +16,7 @@ import {
   resetTestPgDatabase,
 } from "@/database/test-db-pg";
 import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
+import { BoardColumnStorage } from "@/storage/task-board-columns";
 import { boardHandler } from "./board-handler";
 import { LANE_RANK } from "./lanes";
 
@@ -25,6 +26,7 @@ const OTHER = "org_bh_2";
 describe("boardHandler — the board Studio ships with", () => {
   let database: StudioDatabase;
   let automations: ColumnAutomationStorage;
+  let boardColumns: BoardColumnStorage;
 
   beforeAll(async () => {
     database = await connectTestPgDatabase();
@@ -37,13 +39,15 @@ describe("boardHandler — the board Studio ships with", () => {
         .execute();
     }
     automations = new ColumnAutomationStorage(database.db);
+    boardColumns = new BoardColumnStorage(database.db);
   });
 
   afterAll(async () => {
     await closeTestPgDatabase(database);
   });
 
-  const board = (org = ORG) => boardHandler(org, automations);
+  const board = (org = ORG) =>
+    boardHandler(org, { automations, boardColumns, orgOwnedColumns: false });
 
   it("renders every canonical column, left to right", async () => {
     expect((await board().columns()).map((c) => c.key)).toEqual([
@@ -106,5 +110,84 @@ describe("boardHandler — the board Studio ships with", () => {
     await automations.upsert(ORG, "triage", "mine");
     expect(await board(OTHER).automationFor("triage")).toBe(null);
     expect(await automations.listByOrg(OTHER)).toEqual([]);
+  });
+});
+
+/**
+ * The second board, and the reason the interface exists.
+ *
+ * What matters is that it does NOT fall back to Studio's lanes. An org that
+ * said its columns are its own gets its own — empty if that is what they are —
+ * because falling back would quietly re-introduce a vocabulary it has opted
+ * out of, and the cards would look filed under lanes nobody chose.
+ */
+describe("boardHandler — a board whose columns are the org's own", () => {
+  let database: StudioDatabase;
+  let automations: ColumnAutomationStorage;
+  let boardColumns: BoardColumnStorage;
+  const ORG_M = "org_bh_m";
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("organization")
+      .values({ id: ORG_M, name: ORG_M, slug: "org-bh-m", createdAt: now })
+      .execute();
+    automations = new ColumnAutomationStorage(database.db);
+    boardColumns = new BoardColumnStorage(database.db);
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  const board = () =>
+    boardHandler(ORG_M, { automations, boardColumns, orgOwnedColumns: true });
+
+  it("renders nothing before its columns arrive, rather than Studio's lanes", async () => {
+    expect(await board().columns()).toEqual([]);
+  });
+
+  it("renders the org's own columns, in the order given", async () => {
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog" },
+      { key: "Fazendo", title: "Em Progresso" },
+      { key: "Code Review", title: "Code Review" },
+    ]);
+    expect((await board().columns()).map((c) => c.title)).toEqual([
+      "Backlog",
+      "Em Progresso",
+      "Code Review",
+    ]);
+  });
+
+  it("gives a mirrored column no role until someone says what it means", async () => {
+    expect((await board().columns()).every((c) => c.role === null)).toBe(true);
+    await boardColumns.setRole(ORG_M, "Code Review", "in_review");
+    const named = (await board().columns()).find(
+      (c) => c.key === "Code Review",
+    );
+    expect(named?.role).toBe("in_review");
+  });
+
+  /** A role is Studio's reading of someone else's column, so re-mirroring must
+   *  not wipe it — the tracker has no idea it exists. */
+  it("keeps a role through a re-sync, and drops a column that vanished", async () => {
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog" },
+      { key: "Code Review", title: "Code Review" },
+    ]);
+    const after = await board().columns();
+    expect(after.map((c) => c.key)).toEqual(["BACKLOG", "Code Review"]);
+    expect(after.find((c) => c.key === "Code Review")?.role).toBe("in_review");
+  });
+
+  it("runs a rule hung on a column the tracker named", async () => {
+    await automations.upsert(ORG_M, "Code Review", "Review it.");
+    expect((await board().automationFor("Code Review"))?.prompt).toBe(
+      "Review it.",
+    );
+    expect(await board().automationFor("todo")).toBe(null);
   });
 });

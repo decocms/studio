@@ -189,6 +189,7 @@ import * as migration187taskboardcommentthread from "./187-task-board-comment-th
 import * as migration188invitationautoaccept from "./188-invitation-auto-accept.ts";
 import * as migration189taskboardcolumnautomations from "./189-task-board-column-automations.ts";
 import * as migration190taskboardreviewcyclestartedat from "./190-task-board-review-cycle-started-at.ts";
+import * as migration191taskboardcolumns from "./191-task-board-columns.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -410,6 +411,7 @@ const migrations: Record<string, Migration> = {
   "189-task-board-column-automations": migration189taskboardcolumnautomations,
   "190-task-board-review-cycle-started-at":
     migration190taskboardreviewcyclestartedat,
+  "191-task-board-columns": migration191taskboardcolumns,
 };
 
 export default migrations;

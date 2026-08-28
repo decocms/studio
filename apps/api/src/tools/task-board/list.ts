@@ -1,4 +1,4 @@
-import { boardHandler } from "./board-handler";
+import { boardFor } from "./board-handler";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
@@ -53,7 +53,7 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
         ctx.storage.taskBoard.list(organizationId),
         ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
         ctx.storage.sprints.listByOrg(organizationId),
-        boardHandler(organizationId, ctx.storage.columnAutomations).columns(),
+        boardFor(ctx, organizationId).then((board) => board.columns()),
       ]);
     const repos = listRepoScopeLabels(githubConnections);
 
