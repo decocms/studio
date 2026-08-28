@@ -277,6 +277,12 @@ export function buildClaudeCodeTaskPrompt(
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
     `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path (the dev server hot-reloads, so hit the route it renders) and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+    // The sandbox image bakes in chromium + a global playwright-core and wraps
+    // them as `qa-screenshot` (packages/sandbox/image/Dockerfile). Nothing told
+    // this run about it, so a UI task would `ls node_modules/.bin | grep
+    // playwright`, find nothing in the USER's repo, conclude no browser exists,
+    // and either hand-roll a CDP client or give up on looking at the change.
+    "- For a VISUAL change that means LOOKING at it: `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders the page in headless Chromium — it reaches your own dev server on localhost, and unlike `curl` it runs the page's JS, so lazily-rendered sections are actually there. Then `Read` the file: a screenshot you never opened is not verification. It is already installed; do NOT look for playwright in the repo's `node_modules` or start a browser yourself.",
     // The ONLY reliable way the board learns the PR: Claude Code opens it inside
     // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
     // dispatched from the linked PR, so skipping this strands the card.
