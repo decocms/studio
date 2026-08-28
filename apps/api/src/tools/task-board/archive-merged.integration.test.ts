@@ -8,6 +8,9 @@
  * connection — every other part of the path is the real one.
  */
 
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
+import { BoardColumnStorage } from "@/storage/task-board-columns";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
@@ -81,7 +84,14 @@ describe("auto-archive sweep", () => {
     ctx = {
       auth: { user: { id: USER, email: "a1@archive.test", name: USER } },
       organization: { id: ORG, slug: "org-archive-1", name: ORG },
-      storage: { taskBoard },
+      storage: {
+        taskBoard,
+        // The sweep now asks the board where a finished card retires to, and
+        // the board asks the org which board it is.
+        organizationSettings: new OrganizationSettingsStorage(database.db),
+        columnAutomations: new ColumnAutomationStorage(database.db),
+        boardColumns: new BoardColumnStorage(database.db),
+      },
     } as unknown as StudioContext;
   });
 

@@ -31,6 +31,17 @@ export interface BoardHandler {
    * nothing there — which is the normal answer for most columns.
    */
   automationFor(columnKey: string): Promise<ColumnAutomation | null>;
+
+  /**
+   * Where the sweep retires a finished card, or null when this board has
+   * nowhere to retire one to.
+   *
+   * Nullable for the same reason `automationFor` is: a board whose columns are
+   * the org's own may simply not have a column that means "archived", and
+   * writing our own key into a card on that board would file it under a column
+   * that does not exist — invisible, which is worse than not archiving.
+   */
+  archiveColumn(): Promise<string | null>;
 }
 
 /** `title` is the key: the canonical columns are translated by the client,
@@ -57,6 +68,10 @@ class StudioBoardHandler implements BoardHandler {
 
   automationFor(columnKey: string): Promise<ColumnAutomation | null> {
     return this.automations.get(this.organizationId, columnKey);
+  }
+
+  archiveColumn(): Promise<string | null> {
+    return Promise.resolve("archived");
   }
 }
 
@@ -85,6 +100,14 @@ class OrgBoardHandler implements BoardHandler {
 
   automationFor(columnKey: string): Promise<ColumnAutomation | null> {
     return this.automations.get(this.organizationId, columnKey);
+  }
+
+  /** Whichever column the org marked as its archive, and none by default: a
+   *  column mirrored from a tracker means nothing to us until someone says it
+   *  does. */
+  async archiveColumn(): Promise<string | null> {
+    const columns = await this.boardColumns.listByOrg(this.organizationId);
+    return columns.find((column) => column.role === "archived")?.key ?? null;
   }
 }
 
