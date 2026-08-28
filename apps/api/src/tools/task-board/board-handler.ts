@@ -1,5 +1,9 @@
 import type { BoardColumn } from "@decocms/shared/task-board";
 import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import type {
+  ColumnAutomation,
+  ColumnAutomationStorage,
+} from "@/storage/task-board-column-automations";
 
 /**
  * A board's behaviour, as the questions its callers actually have.
@@ -20,14 +24,10 @@ export interface BoardHandler {
   columns(): Promise<BoardColumn[]>;
 
   /**
-   * Does a card landing in `columnKey` start work?
-   *
-   * Boolean while every board that exists runs the Super Agent's built-in
-   * prompt. The prompt becomes part of this answer with the implementation
-   * that can actually carry one, rather than being modelled now and returned
-   * null by everybody.
+   * What runs when a card lands in `columnKey`, or null when this board does
+   * nothing there — which is the normal answer for most columns.
    */
-  startsWorkOn(columnKey: string): Promise<boolean>;
+  automationFor(columnKey: string): Promise<ColumnAutomation | null>;
 }
 
 /** `title` is the key: the canonical columns are translated by the client,
@@ -40,18 +40,22 @@ const CANONICAL: BoardColumn[] = CANONICAL_COLUMN_KEYS.map((key, position) => ({
   role: key,
 }));
 
-/** The board Studio ships with: a fixed set, and one lane that starts work. */
+/** The board Studio ships with: a fixed set of columns, and whatever rules the
+ *  org has hung on them. */
 class StaticBoardHandler implements BoardHandler {
+  constructor(
+    private readonly organizationId: string,
+    private readonly automations: ColumnAutomationStorage,
+  ) {}
+
   columns(): Promise<BoardColumn[]> {
     return Promise.resolve(CANONICAL);
   }
 
-  startsWorkOn(columnKey: string): Promise<boolean> {
-    return Promise.resolve(columnKey === "todo");
+  automationFor(columnKey: string): Promise<ColumnAutomation | null> {
+    return this.automations.get(this.organizationId, columnKey);
   }
 }
-
-const STATIC = new StaticBoardHandler();
 
 /**
  * This org's board.
@@ -60,6 +64,9 @@ const STATIC = new StaticBoardHandler();
  * written the way it needs to be once a board can be tracker-owned instead,
  * and choosing between the two is a change here rather than at each caller.
  */
-export function boardHandler(_organizationId: string): BoardHandler {
-  return STATIC;
+export function boardHandler(
+  organizationId: string,
+  automations: ColumnAutomationStorage,
+): BoardHandler {
+  return new StaticBoardHandler(organizationId, automations);
 }

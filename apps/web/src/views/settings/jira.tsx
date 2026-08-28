@@ -515,32 +515,6 @@ function MappingRow({ integration }: { integration: JiraIntegration }) {
   );
 }
 
-function AutoDelegateRow({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  const upsert = useUpsertJiraIntegration();
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.autoDelegateLabel")}
-      description={t("settings.jira.autoDelegateDescription")}
-      action={
-        <Switch
-          checked={integration.autoDelegate}
-          disabled={upsert.isPending}
-          onCheckedChange={(checked) =>
-            upsert.mutate(
-              { autoDelegate: checked },
-              {
-                onError: (err) =>
-                  toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
-              },
-            )
-          }
-        />
-      }
-    />
-  );
-}
-
 function SyncRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -722,7 +696,6 @@ function JiraContent() {
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
       {data.boardId && <MappingRow integration={data} />}
-      {data.boardId && <AutoDelegateRow integration={data} />}
       <SyncRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>

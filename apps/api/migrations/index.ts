@@ -187,6 +187,7 @@ import * as migration185jirarescanexistingcards from "./185-jira-rescan-existing
 import * as migration186jirarescanpendingflag from "./186-jira-rescan-pending-flag.ts";
 import * as migration187taskboardcommentthread from "./187-task-board-comment-thread.ts";
 import * as migration188invitationautoaccept from "./188-invitation-auto-accept.ts";
+import * as migration189taskboardcolumnautomations from "./189-task-board-column-automations.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -405,6 +406,7 @@ const migrations: Record<string, Migration> = {
   "186-jira-rescan-pending-flag": migration186jirarescanpendingflag,
   "187-task-board-comment-thread": migration187taskboardcommentthread,
   "188-invitation-auto-accept": migration188invitationautoaccept,
+  "189-task-board-column-automations": migration189taskboardcolumnautomations,
 };
 
 export default migrations;

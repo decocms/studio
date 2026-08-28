@@ -586,6 +586,18 @@ export interface StudioToolIO {
     input: { id: string };
     output: { success: boolean };
   };
+  TASK_BOARD_AUTOMATION_LIST: {
+    input: { [x: string]: never };
+    output: { automations: { columnKey: string; prompt: string | null }[] };
+  };
+  TASK_BOARD_AUTOMATION_UPSERT: {
+    input: { columnKey: string; prompt?: string | null | undefined };
+    output: { automation: { columnKey: string; prompt: string | null } };
+  };
+  TASK_BOARD_AUTOMATION_DELETE: {
+    input: { columnKey: string };
+    output: { removed: boolean };
+  };
   TASK_BOARD_ITEM_PRS_GET: {
     input: { taskBoardItemId: string };
     output: {
