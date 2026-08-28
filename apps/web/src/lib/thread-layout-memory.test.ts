@@ -29,6 +29,16 @@ describe("sanitizeThreadLayout", () => {
     } as unknown as Parameters<typeof sanitizeThreadLayout>[0];
     expect(sanitizeThreadLayout(dirty)).toEqual({});
   });
+
+  test("doesn't throw on a non-object entry (tampered sessionStorage)", () => {
+    for (const dirty of [null, undefined, "chat", 5, ["a"]] as unknown[]) {
+      expect(
+        sanitizeThreadLayout(
+          dirty as unknown as Parameters<typeof sanitizeThreadLayout>[0],
+        ),
+      ).toEqual({});
+    }
+  });
 });
 
 describe("upsertThreadLayoutEntries", () => {
