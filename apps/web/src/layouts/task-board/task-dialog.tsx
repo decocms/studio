@@ -2476,6 +2476,10 @@ function describeActivity(
         : t("taskBoard.taskDialog.activityReviewChangesRequested", {
             reviewer: reviewerName(d.reviewer, t),
           });
+    case "review_verdict_requested":
+      return t("taskBoard.taskDialog.activityReviewVerdictRequested", {
+        reviewer: reviewerName(d.reviewer, t),
+      });
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
     case "merge_failed": {
