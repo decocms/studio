@@ -501,6 +501,16 @@ describe("createDeltaCoalescer", () => {
     const odd = { type: "text-delta", id: "a" };
     expect(c.push([odd])).toEqual([odd]);
   });
+
+  test("discard drops what is held instead of emitting it", () => {
+    const c = createDeltaCoalescer(100);
+    c.push([delta("a", "abandoned")]);
+    c.discard();
+    expect(c.drain()).toEqual([]);
+    // A later push starts clean, not merged into the discarded text.
+    expect(c.push([delta("a", "fresh")])).toEqual([]);
+    expect(c.drain()).toEqual([delta("a", "fresh")]);
+  });
 });
 
 describe("errorFinishChunks", () => {
