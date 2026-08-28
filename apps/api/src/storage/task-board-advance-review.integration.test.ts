@@ -28,6 +28,7 @@ import {
 } from "../database/test-db-pg";
 import { TaskBoardStorage } from "./task-board";
 import { SqlThreadStorage } from "./threads";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
 const ORG = "org_advance_review";
 const USER = "user_advance_review";
@@ -270,9 +271,69 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     expect(second?.reviewCycleStartedAt).not.toBe(firstAt as string);
   });
 
-  it("never opens a cycle on a card that is not In Progress", async () => {
-    const { task } = await cardWithFinishedRun("wrong lane");
+  /**
+   * The PR link can LOSE THE RACE to the thread-finish backstop: the backstop
+   * reads `listPrs` to decide repo-backed vs repo-less, and a run that links
+   * its PR moments after its thread goes terminal is read as repo-less and
+   * parked In Review. Observed at 52 seconds between the two on a real board.
+   *
+   * The old rule matched only In Progress, so the late link was a no-op, the
+   * cycle never opened, and the card sat In Review for the whole reviewer run
+   * with its verdicts falling back to the legacy activity scan. Inverted.
+   */
+  it("rescues a card the backstop parked In Review before the PR landed", async () => {
+    const { task } = await cardWithFinishedRun("late pr link");
+    await taskBoard.update(
+      task.id,
+      ORG,
+      { assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+      USER,
+    );
     await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER);
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+
+    const opened = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+
+    expect(opened?.status).toBe("in_progress");
+    expect(opened?.reviewCycleStartedAt).not.toBeNull();
+  });
+
+  // Only while the cycle is null. Once one is open the card is mid-review, and
+  // `parkReviewedCardForHuman` put it In Review on a verdict — dragging it back
+  // would undo that and re-stamp a boundary verdicts already stand on.
+  it("leaves an In Review card with a cycle already open alone", async () => {
+    const { task } = await cardWithFinishedRun("mid review");
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+    await taskBoard.update(task.id, ORG, { status: "in_review" }, USER);
+
+    expect(
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
+    ).toBeNull();
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+  });
+
+  // A person took the card over (`handTaskToHuman` clears the assignee); the
+  // automation does not get to pull it back into the agents' lane.
+  it("never rescues a card a human owns", async () => {
+    const { task } = await cardWithFinishedRun("human owns it");
+    await taskBoard.update(
+      task.id,
+      ORG,
+      { assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+      USER,
+    );
+    await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER);
+    await taskBoard.unassignSuperAgent(task.id, ORG, USER);
+
+    expect(
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
+    ).toBeNull();
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+  });
+
+  it("never opens a cycle on a card past the review phase", async () => {
+    const { task } = await cardWithFinishedRun("wrong lane");
+    await taskBoard.update(task.id, ORG, { status: "done" }, USER);
 
     expect(
       await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
