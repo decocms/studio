@@ -22,7 +22,10 @@ import {
 } from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 import { mintReviewToken } from "./review-token";
-import { uploadsAsSandboxPaths } from "./description-uploads";
+import {
+  sandboxUploadHint,
+  uploadsAsSandboxPaths,
+} from "./description-uploads";
 import { nudgeThreadTurn } from "./nudge-thread";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
@@ -731,14 +734,21 @@ async function enqueueReviewerForTask(
       "other ref is not.",
   ].join("\n");
 
+  // Sandboxed only — `uploadsAsSandboxPaths` points at an org-fs mount the hosted harness lacks.
+  const reviewerDescription =
+    task.description && sandboxed
+      ? uploadsAsSandboxPaths(task.description)
+      : task.description;
+  const reviewerUploadHint =
+    task.description && reviewerDescription
+      ? sandboxUploadHint(task.description, reviewerDescription)
+      : null;
+
   const prompt = [
     ...(sandboxed ? [] : [instructions, ""]),
     `Task title: ${task.title}`,
-    // Sandboxed only: `uploadsAsSandboxPaths` points at an org-fs mount the
-    // hosted harness does not have.
-    task.description
-      ? `\nTask description:\n${sandboxed ? uploadsAsSandboxPaths(task.description) : task.description}\n`
-      : "",
+    reviewerDescription ? `\nTask description:\n${reviewerDescription}\n` : "",
+    ...(reviewerUploadHint ? [reviewerUploadHint, ""] : []),
     "How to work:",
     `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
     repo
