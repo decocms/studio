@@ -180,6 +180,15 @@ export interface GitDataClient {
   getDefaultBranch(): Promise<string>;
   getHeadSha(branch: string): Promise<string>;
   /**
+   * Branch head sha + the head commit's committer date, in one call. Git stores
+   * no ref-creation time, so this date is the branch's last-activity signal: a
+   * branch that was edited carries its last edit's date; a branch cut from the
+   * default branch and never touched carries the base commit's date (old the
+   * moment it lags behind an advancing default branch). The CMS staleness check
+   * reads it. Throws GitHubApiError(404) for a branch not yet on GitHub.
+   */
+  getBranchHead(branch: string): Promise<{ sha: string; committedAt: string }>;
+  /**
    * Gzipped tar of the repo at `ref`, as a stream — ONE request for every
    * file, vs one blob request per block. The preferred cold-read path. The
    * body is NEVER buffered here (golden rule 1: the archive must not touch
@@ -373,6 +382,16 @@ export function createGitDataClient(params: {
         `${repoBase}/git/ref/heads/${encodeRefPath(branch)}`,
       );
       return json.object.sha;
+    },
+
+    async getBranchHead(branch) {
+      const { json } = await call<{
+        commit: { sha: string; commit: { committer: { date: string } } };
+      }>("GET", `${repoBase}/branches/${encodeRefPath(branch)}`);
+      return {
+        sha: json.commit.sha,
+        committedAt: json.commit.commit.committer.date,
+      };
     },
 
     async getTarballStream(ref) {

@@ -431,20 +431,35 @@ export function createDecofileRoutes() {
     try {
       const client = await gitDataClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
+      // Null lastCommitAt == "no age, never auto-switch off this branch".
       if (baseBranch === scope.branch) {
-        return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
+        return c.json({
+          baseBranch,
+          aheadBy: 0,
+          behindBy: 0,
+          lastCommitAt: null,
+        });
       }
       try {
-        const { aheadBy, behindBy } = await client.compare(
+        const [{ aheadBy, behindBy }, head] = await Promise.all([
+          client.compare(baseBranch, scope.branch),
+          client.getBranchHead(scope.branch),
+        ]);
+        return c.json({
           baseBranch,
-          scope.branch,
-        );
-        return c.json({ baseBranch, aheadBy, behindBy });
+          aheadBy,
+          behindBy,
+          lastCommitAt: head.committedAt,
+        });
       } catch (err) {
-        // A thread-minted branch that hasn't been materialized yet (first
-        // read/write creates it) trivially has no drift.
+        // A thread-minted branch not materialized yet has no drift and no age.
         if (err instanceof GitHubApiError && err.status === 404) {
-          return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
+          return c.json({
+            baseBranch,
+            aheadBy: 0,
+            behindBy: 0,
+            lastCommitAt: null,
+          });
         }
         throw err;
       }

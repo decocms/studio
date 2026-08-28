@@ -509,6 +509,7 @@ test.describe("decofile API", () => {
         baseBranch: "main",
         aheadBy: 0,
         behindBy: 0,
+        lastCommitAt: expect.any(String),
       });
 
       const commitsBefore = (await inspectStubRepo(ctx, owner, repo)).commits
@@ -553,6 +554,7 @@ test.describe("decofile API", () => {
         baseBranch: "main",
         aheadBy: 1,
         behindBy: 0,
+        lastCommitAt: expect.any(String),
       });
     } finally {
       await ctx.dispose();
@@ -941,6 +943,68 @@ test.describe("decofile API", () => {
         },
       ).catch((error: unknown) => error);
       expect(String(refused)).toMatch(/CMS session/i);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("status exposes the branch head's last-commit date; null for the default branch and unmaterialized branches", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      const staleAt = new Date(
+        Date.now() - 15 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+          // A side branch whose only commit is 15 days old (stale-shaped).
+          stale: {
+            files: { ".deco/blocks/Hero.json": '{"n":2}\n' },
+            committedAt: staleAt,
+          },
+        },
+      });
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const statusUrl = (branch: string) =>
+        `${decofileUrl(project, branch)}/status`;
+
+      // Side branch: its own old commit date comes back verbatim.
+      const stale = await ctx.get(statusUrl("stale"));
+      expect(stale.status()).toBe(200);
+      expect(await stale.json()).toEqual({
+        baseBranch: "main",
+        aheadBy: 1,
+        behindBy: 0,
+        lastCommitAt: staleAt,
+      });
+
+      // Editing the default branch itself is never a stale side branch.
+      const onMain = await ctx.get(statusUrl("main"));
+      expect(await onMain.json()).toEqual({
+        baseBranch: "main",
+        aheadBy: 0,
+        behindBy: 0,
+        lastCommitAt: null,
+      });
+
+      // A branch not yet materialized on GitHub has no age — never stale.
+      const unmaterialized = await ctx.get(statusUrl("thread-minted-branch"));
+      expect(await unmaterialized.json()).toEqual({
+        baseBranch: "main",
+        aheadBy: 0,
+        behindBy: 0,
+        lastCommitAt: null,
+      });
     } finally {
       await ctx.dispose();
     }

@@ -192,6 +192,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Board lanes for shipping: Approved, Merged and Post-deploy Validation sit between In Review and Done, and a merged pull request lands on Merged instead of Done. For teams whose release process continues after the merge. Off by default — with it off the board and the state machine behave exactly as if the lanes did not exist.",
     ),
+  cms_auto_fresh_branch: z
+    .boolean()
+    .optional()
+    .describe(
+      "When a user opens the CMS on a branch whose last commit is older than the staleness window (2 days), move the session to a freshly minted branch cut from the default branch. The stale branch is left intact on GitHub. Off by default.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
