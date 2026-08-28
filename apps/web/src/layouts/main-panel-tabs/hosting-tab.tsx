@@ -32,6 +32,7 @@ import {
   Rocket01,
   Server01,
   Trash01,
+  Zap,
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -104,6 +105,10 @@ interface DeploymentHistoryEvent {
   deploymentId?: string | null;
   framework?: string | null;
   action?: string | null;
+  /** Event kind: `build` | `fast-deploy` | `deploy`. Absent on legacy rows. */
+  type?: string | null;
+  /** Event outcome: `pending` | `success` | `failure`. Absent on legacy rows. */
+  outcome?: string | null;
   actor?: string | null;
   createdAt?: string | null;
 }
@@ -388,6 +393,70 @@ function actionBadge(action: string | null | undefined, t: Translate) {
       {t("mainPanelTabs.hostingTab.actionDeploy")}
     </Badge>
   );
+}
+
+/** The deploy-event KIND (build / fast-deploy / deploy). Legacy rows carry no
+ *  `type`, so fall back to the action badge to keep them meaningful. */
+function typeBadge(
+  type: string | null | undefined,
+  action: string | null | undefined,
+  t: Translate,
+) {
+  const ty = (type ?? "").toLowerCase();
+  if (ty === "build") {
+    return (
+      <Badge variant="secondary">
+        <FileCode02 className="size-3" />
+        {t("mainPanelTabs.hostingTab.typeBuild")}
+      </Badge>
+    );
+  }
+  if (ty === "fast-deploy") {
+    return (
+      <Badge variant="secondary">
+        <Zap className="size-3" />
+        {t("mainPanelTabs.hostingTab.typeFastDeploy")}
+      </Badge>
+    );
+  }
+  if (ty === "deploy") {
+    return (
+      <Badge variant="secondary">
+        <Rocket01 className="size-3" />
+        {t("mainPanelTabs.hostingTab.typeDeploy")}
+      </Badge>
+    );
+  }
+  return actionBadge(action, t);
+}
+
+/** The deploy-event OUTCOME. Omitted on legacy rows that carry no `outcome`.
+ *  `pending` is a calm neutral "in progress", not a warning. */
+function outcomeBadge(outcome: string | null | undefined, t: Translate) {
+  const o = (outcome ?? "").toLowerCase();
+  if (o === "success") {
+    return (
+      <Badge variant="success">
+        {t("mainPanelTabs.hostingTab.outcomeSuccess")}
+      </Badge>
+    );
+  }
+  if (o === "failure") {
+    return (
+      <Badge variant="destructive">
+        {t("mainPanelTabs.hostingTab.outcomeFailure")}
+      </Badge>
+    );
+  }
+  if (o === "pending") {
+    return (
+      <Badge variant="secondary">
+        <Clock className="size-3" />
+        {t("mainPanelTabs.hostingTab.outcomePending")}
+      </Badge>
+    );
+  }
+  return null;
 }
 
 /** Build-logs dialog. Re-fetches on every open (staleTime/gcTime 0) because the
@@ -710,7 +779,10 @@ function DeploymentsSection({
                 return (
                   <TableRow key={h.id}>
                     <TableCell className="align-middle">
-                      {actionBadge(h.action, t)}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {typeBadge(h.type, h.action, t)}
+                        {outcomeBadge(h.outcome, t)}
+                      </div>
                     </TableCell>
                     <TableCell className="align-middle">
                       <div className="flex items-center gap-1.5">
