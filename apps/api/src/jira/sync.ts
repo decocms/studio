@@ -24,6 +24,7 @@
  * its issue is next updated in Jira.
  */
 
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { boardFor } from "@/tools/task-board/board-handler";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -31,7 +32,6 @@ import type {
   OrgJiraIntegration,
   TaskBoardItem,
   TaskBoardItemPriority,
-  TaskBoardItemStatus,
 } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
@@ -129,6 +129,41 @@ export async function syncJiraIntegrationSafe(
  * Jira's clock, so it can sit ahead of ours, and a negative window emits
  * `updated >= --25m` — a JQL 400 on every tick until the clocks converge.
  */
+/**
+ * Make the org's board look like its Jira board, and hand back the reverse
+ * index the pull needs: Jira status name → the column that groups it.
+ *
+ * Both come from the same call. Jira's board configuration already says which
+ * statuses live in which column, so the mapping is read rather than
+ * configured — and the columns Studio renders are the ones the team sees in
+ * Jira, under the names they gave them.
+ */
+async function mirrorBoardColumns(
+  ctx: StudioContext,
+  integration: OrgJiraIntegration,
+  boardId: string,
+): Promise<Map<string, string>> {
+  const client = new JiraClient(
+    integration.siteUrl,
+    integration.email,
+    integration.apiToken,
+  );
+  const columns = await client.getBoardColumns(boardId);
+  await ctx.storage.boardColumns.replaceAll(
+    integration.organizationId,
+    columns.map((column) => ({ key: column.name, title: column.name })),
+  );
+  const index = new Map<string, string>();
+  for (const column of columns) {
+    // First column wins, as it does for the hand-written mapping: a Jira status
+    // in two columns would otherwise make a card's lane depend on iteration.
+    for (const status of column.statuses) {
+      if (!index.has(status)) index.set(status, column.name);
+    }
+  }
+  return index;
+}
+
 export function buildJql(
   integration: OrgJiraIntegration,
   scopeJql: string,
@@ -497,10 +532,24 @@ async function runSync(
   if (!boardId) {
     throw new Error("No Jira board selected");
   }
-  // One reverse index for the whole sync rather than a scan per issue.
-  const laneOf = laneIndex(integration.statusMapping);
+  const settings = await ctx.storage.organizationSettings.get(
+    integration.organizationId,
+  );
+  const orgOwnedColumns = orgFlagEnabled(settings?.flags, "org_board_columns");
+
+  // One reverse index for the whole sync rather than a scan per issue. On a
+  // board the org owns it is DERIVED from the board's own configuration —
+  // Jira already knows which statuses each of its columns groups, so asking
+  // anyone to restate that by hand was the mapping screen's whole mistake.
+  const laneOf = orgOwnedColumns
+    ? await mirrorBoardColumns(ctx, integration, boardId)
+    : laneIndex(integration.statusMapping);
   if (laneOf.size === 0) {
-    throw new Error("No status mapping configured");
+    throw new Error(
+      orgOwnedColumns
+        ? "This Jira board has no columns to mirror"
+        : "No status mapping configured",
+    );
   }
 
   // First connect / scope change (migration 184) or an unfinished rescan (migration 186).
@@ -566,9 +615,7 @@ async function runSync(
         throw new Error(`Unparseable updated on ${issue.key}`);
       }
 
-      const status = laneOf.get(issue.fields.status.name) as
-        | TaskBoardItemStatus
-        | undefined;
+      const status = laneOf.get(issue.fields.status.name);
       if (!status || !isCardIssue(issue)) {
         if (!status && isCardIssue(issue)) {
           unmapped.add(issue.fields.status.name);

@@ -43,19 +43,53 @@ export class BoardColumnStorage {
     return await this.db.transaction().execute(async (tx) => {
       const existing = await tx
         .selectFrom("task_board_columns")
-        .select(["key", "role"])
+        .select(["key", "title", "role"])
         .where("organization_id", "=", organizationId)
         .execute();
       const roleOf = new Map(existing.map((r) => [r.key, r.role]));
 
-      await tx
-        .deleteFrom("task_board_columns")
-        .where("organization_id", "=", organizationId)
-        .execute();
+      // A column the tracker dropped that still holds cards is kept, appended
+      // after the mirrored set. Deleting it is refused by the foreign key, and
+      // rightly: moving someone's cards somewhere we picked is a worse answer
+      // than showing a column their tracker no longer has. It disappears on the
+      // first sync after the last card leaves it.
+      const mirrored = new Set(columns.map((column) => column.key));
+      const orphaned = existing.filter((row) => !mirrored.has(row.key));
+      const occupied = orphaned.length
+        ? await tx
+            .selectFrom("task_board_items")
+            .select("status")
+            .distinct()
+            .where("organization_id", "=", organizationId)
+            .where(
+              "status",
+              "in",
+              orphaned.map((row) => row.key),
+            )
+            .execute()
+        : [];
+      const keep = new Set(occupied.map((row) => row.status));
 
-      if (columns.length === 0) return [];
+      const drop = orphaned
+        .filter((row) => !keep.has(row.key))
+        .map((row) => row.key);
+      if (drop.length > 0) {
+        await tx
+          .deleteFrom("task_board_columns")
+          .where("organization_id", "=", organizationId)
+          .where("key", "in", drop)
+          .execute();
+      }
 
-      const rows = columns.map((column, position) => ({
+      const all = [
+        ...columns,
+        ...orphaned
+          .filter((row) => keep.has(row.key))
+          .map((row) => ({ key: row.key, title: row.title })),
+      ];
+      if (all.length === 0) return [];
+
+      const rows = all.map((column, position) => ({
         id: `tbc_${organizationId}_${column.key}`,
         organization_id: organizationId,
         key: column.key,
@@ -63,7 +97,17 @@ export class BoardColumnStorage {
         position,
         role: roleOf.get(column.key) ?? null,
       }));
-      await tx.insertInto("task_board_columns").values(rows).execute();
+      await tx
+        .insertInto("task_board_columns")
+        .values(rows)
+        .onConflict((oc) =>
+          oc.columns(["organization_id", "key"]).doUpdateSet((eb) => ({
+            title: eb.ref("excluded.title"),
+            position: eb.ref("excluded.position"),
+            updated_at: new Date(),
+          })),
+        )
+        .execute();
       return rows.map(({ key, title, position, role }) => ({
         key,
         title,

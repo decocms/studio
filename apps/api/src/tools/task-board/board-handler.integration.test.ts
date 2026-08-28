@@ -7,6 +7,8 @@
  * runs an agent on every card that moves.
  */
 
+import { sql } from "kysely";
+import { TaskBoardStorage } from "@/storage/task-board";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
 import type { StudioDatabase } from "@/database";
@@ -23,10 +25,12 @@ import { LANE_RANK } from "./lanes";
 const ORG = "org_bh_1";
 const OTHER = "org_bh_2";
 const ORG_M = "org_bh_m";
+const USER_M = "user_bh_m";
 
 let database: StudioDatabase;
 let automations: ColumnAutomationStorage;
 let boardColumns: BoardColumnStorage;
+let taskBoard: TaskBoardStorage;
 
 /** One pool for the file. `connectTestPgDatabase` hands back a shared instance,
  *  so a per-describe lifecycle would close it out from under the next one. */
@@ -40,8 +44,13 @@ beforeAll(async () => {
       .values({ id, name: id, slug: id.replace(/_/g, "-"), createdAt: now })
       .execute();
   }
+  await sql`
+    INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+    VALUES (${USER_M}, ${"bhm@test.test"}, false, ${USER_M}, ${now}, ${now})
+  `.execute(database.db);
   automations = new ColumnAutomationStorage(database.db);
   boardColumns = new BoardColumnStorage(database.db);
+  taskBoard = new TaskBoardStorage(database.db);
 });
 
 afterAll(async () => {
@@ -182,6 +191,39 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     expect(await board().archiveColumn()).toBe("BACKLOG");
     await boardColumns.setRole(ORG_M, "BACKLOG", null);
     expect(await board().archiveColumn()).toBe(null);
+  });
+
+  /**
+   * The obligation the foreign key creates. A column the tracker dropped that
+   * still holds cards cannot be deleted — RESTRICT refuses — and moving those
+   * cards somewhere Studio picked is a worse answer than showing a column the
+   * tracker no longer has. It goes to the end and leaves on its own once empty.
+   */
+  it("keeps a dropped column that still holds cards, and drops it once empty", async () => {
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog" },
+      { key: "Retired", title: "Retired" },
+    ]);
+    const card = await taskBoard.create({
+      organizationId: ORG_M,
+      title: "left behind",
+      status: "Retired",
+      by: USER_M,
+    });
+
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog" },
+    ]);
+    expect((await board().columns()).map((c) => c.key)).toEqual([
+      "BACKLOG",
+      "Retired",
+    ]);
+
+    await taskBoard.update(card.id, ORG_M, { status: "BACKLOG" }, USER_M);
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog" },
+    ]);
+    expect((await board().columns()).map((c) => c.key)).toEqual(["BACKLOG"]);
   });
 
   it("runs a rule hung on a column the tracker named", async () => {
