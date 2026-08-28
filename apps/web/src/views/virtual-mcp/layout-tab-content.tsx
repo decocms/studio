@@ -175,9 +175,9 @@ export function LayoutTabContent({
   };
 
   // Reconcile orphaned pinned views once tool data is available.
-  // Only remove pins whose connection was successfully fetched but no longer
-  // exposes the pinned tool. Pins for connections that failed to fetch are
-  // kept to avoid permanent deletion from transient errors.
+  // Drop pins whose connection is detached from the agent, or which fetched
+  // OK but no longer expose the pinned tool. Pins for attached connections
+  // that failed to fetch are kept to survive transient errors.
   const reconciledRef = useRef(false);
   if (
     connectionsWithTools &&
@@ -195,10 +195,12 @@ export function LayoutTabContent({
       connectionsData.flatMap((c) => c.uiTools.map((t) => `${c.id}:${t.name}`)),
     );
 
+    const attachedIds = new Set(connectionIds);
     const validPinned = pinnedViews.filter(
       (pv) =>
-        !fetchedOkIds.has(pv.connectionId) ||
-        validKeys.has(`${pv.connectionId}:${pv.toolName}`),
+        attachedIds.has(pv.connectionId) &&
+        (!fetchedOkIds.has(pv.connectionId) ||
+          validKeys.has(`${pv.connectionId}:${pv.toolName}`)),
     );
 
     if (validPinned.length !== pinnedViews.length) {

@@ -51,6 +51,7 @@ import {
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
 import { useTaskMetadata } from "./use-task-metadata";
+import { keepAttachedPinnedViews } from "./attached-pinned-views";
 import { resolvePreviewSource } from "./preview-source";
 import {
   getSourceSystemTabs,
@@ -227,7 +228,12 @@ export function useMainPanelTabs(ctx: {
           }))
       : [];
   const firstDevView = devViews[0];
-  const pinnedViews = firstDevView ? devViews : (entityUI?.pinnedViews ?? []);
+  const pinnedViews = firstDevView
+    ? devViews
+    : keepAttachedPinnedViews(
+        entityUI?.pinnedViews ?? [],
+        (entity?.connections ?? []).map((c) => c.connection_id),
+      );
   const effectiveDefaultMainView =
     firstDevView && devConnId
       ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
