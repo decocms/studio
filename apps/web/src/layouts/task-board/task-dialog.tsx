@@ -92,6 +92,8 @@ import {
   moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
+  isFeedWorthyActivity,
+  isLiveAttempt,
   tagDotColor,
   type Member,
   type TaskBoardItem,
@@ -2112,14 +2114,14 @@ function ActivitySection({
     | { kind: "thread"; at: number; thread: TaskBoardItemThread }
     | { kind: "comment"; at: number; comment: TaskComment };
   const events: Ev[] = [
-    ...(activity ?? []).map(
+    ...(activity ?? []).filter(isFeedWorthyActivity).map(
       (a): Ev => ({
         kind: "activity",
         at: new Date(a.occurredAt).getTime(),
         activity: a,
       }),
     ),
-    ...item.threads.map(
+    ...item.threads.filter(isLiveAttempt).map(
       (thread): Ev => ({
         kind: "thread",
         at: new Date(thread.createdAt).getTime(),
