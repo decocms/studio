@@ -389,11 +389,12 @@ export function approvedButUnverified(
  * The notes of the task's most recent review verdict, when that verdict asked
  * for changes — i.e. the work still outstanding on its pull request.
  *
- * This is what makes a re-run a CONTINUATION rather than a restart. A reviewer
- * bounce already carries its own notes into the re-run prompt; a human pressing
- * Re-run (or re-assigning the card to the Super Agent) carried nothing, so the
- * agent re-derived the whole task from the title and re-litigated an approach
- * the reviewer had explicitly told it to keep. Two prod cards spent five rounds
+ * This is what makes a re-run a CONTINUATION rather than a restart. Review is
+ * single-pass, so a change request is never bounced back to the Super Agent —
+ * the only way one reaches a run is a human pressing Re-run (or re-assigning
+ * the card), and that path carried nothing, so the agent re-derived the whole
+ * task from the title and re-litigated an approach the reviewer had explicitly
+ * told it to keep. Two prod cards spent five rounds
  * that way, one with a reviewer writing "a correção em si está CERTA — não
  * refaça o approach" into a run that then redid it.
  *
