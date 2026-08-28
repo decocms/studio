@@ -121,6 +121,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            org_board_columns?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -193,6 +194,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            org_board_columns?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -265,6 +267,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            org_board_columns?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -323,17 +326,7 @@ export interface StudioToolIO {
     input: {
       title: string;
       description?: string | null | undefined;
-      status?:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "approved"
-        | "merged"
-        | "post_deploy_validation"
-        | "archived"
-        | undefined;
+      status?: string | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
@@ -348,16 +341,7 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status:
-          | "done"
-          | "triage"
-          | "todo"
-          | "in_progress"
-          | "in_review"
-          | "approved"
-          | "merged"
-          | "post_deploy_validation"
-          | "archived";
+        status: string;
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
@@ -417,16 +401,7 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status:
-          | "done"
-          | "triage"
-          | "todo"
-          | "in_progress"
-          | "in_review"
-          | "approved"
-          | "merged"
-          | "post_deploy_validation"
-          | "archived";
+        status: string;
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
@@ -497,17 +472,7 @@ export interface StudioToolIO {
       id: string;
       title?: string | undefined;
       description?: string | null | undefined;
-      status?:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "approved"
-        | "merged"
-        | "post_deploy_validation"
-        | "archived"
-        | undefined;
+      status?: string | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
@@ -524,16 +489,7 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status:
-          | "done"
-          | "triage"
-          | "todo"
-          | "in_progress"
-          | "in_review"
-          | "approved"
-          | "merged"
-          | "post_deploy_validation"
-          | "archived";
+        status: string;
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
@@ -648,35 +604,11 @@ export interface StudioToolIO {
       notes: string;
       reviewToken?: string | undefined;
     };
-    output: {
-      status:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "approved"
-        | "merged"
-        | "post_deploy_validation"
-        | "archived";
-      merged: boolean;
-    };
+    output: { status: string; merged: boolean };
   };
   TASK_BOARD_PROMOTE_TO_PRODUCTION: {
     input: { taskBoardItemId: string };
-    output: {
-      status:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "approved"
-        | "merged"
-        | "post_deploy_validation"
-        | "archived";
-      merged: boolean;
-    };
+    output: { status: string; merged: boolean };
   };
   TASK_BOARD_ACTIVITY_LIST: {
     input: { taskBoardItemId: string };
@@ -691,13 +623,13 @@ export interface StudioToolIO {
           | "review_requested"
           | "review_approved"
           | "review_changes_requested"
-          | "review_verdict_requested"
           | "merge_failed"
           | "priority_changed"
           | "due_date_changed"
           | "title_changed"
           | "description_changed"
           | "tags_changed"
+          | "review_verdict_requested"
           | "merge_conflict_resolution"
           | "type_changed";
         actorId: string | null;
@@ -4943,21 +4875,7 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Partial<
-          Record<
-            | "done"
-            | "triage"
-            | "todo"
-            | "in_progress"
-            | "in_review"
-            | "approved"
-            | "merged"
-            | "post_deploy_validation"
-            | "archived",
-            string[]
-          >
-        >;
-        autoDelegate: boolean;
+        statusMapping: Record<string, string[]>;
         webhookSecret: string;
         enabled: boolean;
         lastSyncedAt: string | null;
@@ -4973,23 +4891,7 @@ export interface StudioToolIO {
       apiToken?: string | undefined;
       boardId?: string | null | undefined;
       boardName?: string | null | undefined;
-      statusMapping?:
-        | Partial<
-            Record<
-              | "done"
-              | "triage"
-              | "todo"
-              | "in_progress"
-              | "in_review"
-              | "approved"
-              | "merged"
-              | "post_deploy_validation"
-              | "archived",
-              string[]
-            >
-          >
-        | undefined;
-      autoDelegate?: boolean | undefined;
+      statusMapping?: Record<string, string[]> | undefined;
       enabled?: boolean | undefined;
     };
     output: {
@@ -4999,21 +4901,7 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Partial<
-          Record<
-            | "done"
-            | "triage"
-            | "todo"
-            | "in_progress"
-            | "in_review"
-            | "approved"
-            | "merged"
-            | "post_deploy_validation"
-            | "archived",
-            string[]
-          >
-        >;
-        autoDelegate: boolean;
+        statusMapping: Record<string, string[]>;
         webhookSecret: string;
         enabled: boolean;
         lastSyncedAt: string | null;

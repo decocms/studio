@@ -124,7 +124,6 @@ import {
   TASK_TYPES,
   type TaskBoardItem,
   type TaskBoardItemPriority,
-  type TaskBoardItemStatus,
   type TaskBoardItemTag,
   type Member,
 } from "./config";
@@ -831,7 +830,7 @@ function AssigneeDisplay({
 
 export function TaskBoardPage() {
   const t = useT();
-  const { items, sprints, isLoading } = useTaskBoardItems();
+  const { items, sprints, columns, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -940,7 +939,7 @@ export function TaskBoardPage() {
       else next.add(id);
       return next;
     });
-  const selectAllInLane = (status: TaskBoardItemStatus) =>
+  const selectAllInLane = (status: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
       for (const item of visibleItems)
@@ -957,9 +956,7 @@ export function TaskBoardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   // Status a newly-created task should start in (set by a lane's "+"); null for
   // the generic "New task" button.
-  const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
-    null,
-  );
+  const [createStatus, setCreateStatus] = useState<string | null>(null);
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
@@ -1071,7 +1068,7 @@ export function TaskBoardPage() {
     setDialogOpen(true);
   };
 
-  const openCreateInLane = (status: TaskBoardItemStatus) => {
+  const openCreateInLane = (status: string) => {
     setCreateStatus(status);
     setDialogOpen(true);
   };
@@ -1224,6 +1221,7 @@ export function TaskBoardPage() {
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
+          columns={columns}
           items={visibleItems}
           members={members}
           memberByUserId={memberByUserId}
@@ -1607,7 +1605,7 @@ function SelectionBar({
 }: {
   count: number;
   members: Member[];
-  onMoveTo: (status: TaskBoardItemStatus) => void;
+  onMoveTo: (status: string) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
   onAssign: (userId: string | null) => void;
@@ -1798,7 +1796,7 @@ const LANE_DROPPABLE_PREFIX = "lane:";
 /** Where a card sits locally: while a drag is in flight, and then until the
  *  server's optimistic patch catches up. */
 interface Placement {
-  status: TaskBoardItemStatus;
+  status: string;
   sortOrder: number;
 }
 
@@ -1814,6 +1812,7 @@ function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
 }
 
 function Lanes({
+  columns,
   items,
   members,
   memberByUserId,
@@ -1831,19 +1830,17 @@ function Lanes({
   onDueDateChange,
   visible,
 }: {
+  /** The board's own columns, as the server sent them. */
+  columns: readonly { key: string }[];
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
-  onSelectAllInLane: (status: TaskBoardItemStatus) => void;
+  onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: TaskBoardItemStatus) => void;
-  onMove: (
-    ids: string[],
-    status: TaskBoardItemStatus,
-    sortOrder: number,
-  ) => void;
+  onCreate: (status: string) => void;
+  onMove: (ids: string[], status: string, sortOrder: number) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
@@ -1940,7 +1937,7 @@ function Lanes({
     visible,
   );
 
-  const laneItems = (status: TaskBoardItemStatus) =>
+  const laneItems = (status: string) =>
     placed.filter((item) => item.status === status).sort(bySortOrder);
 
   /** Shown-again lanes persist per person, so pulling one onto the board
@@ -1950,11 +1947,12 @@ function Lanes({
     hidden: hiddenLanes,
     hideable: hideableLanes,
   } = laneVisibility({
+    columns,
     deliveryEnabled,
     shownLanes: preferences.shownTaskBoardLanes,
     occupied: placed.map((item) => item.status),
   });
-  const setLaneShown = (status: TaskBoardItemStatus, shown: boolean) =>
+  const setLaneShown = (status: string, shown: boolean) =>
     setPreferences((prev) => ({
       ...prev,
       shownTaskBoardLanes: shown
@@ -1982,7 +1980,7 @@ function Lanes({
       ? [id, ...Array.from(selectedIds).filter((other) => other !== id)]
       : [id];
 
-  const place = (ids: string[], status: TaskBoardItemStatus, slot: number) => {
+  const place = (ids: string[], status: string, slot: number) => {
     const orders = runSortOrders(slot, ids.length);
     setOverrides((prev) => {
       const next = new Map(prev);
@@ -2195,9 +2193,9 @@ function HiddenLanes({
   countOf,
   onShow,
 }: {
-  statuses: TaskBoardItemStatus[];
-  countOf: (status: TaskBoardItemStatus) => number;
-  onShow: (status: TaskBoardItemStatus) => void;
+  statuses: string[];
+  countOf: (status: string) => number;
+  onShow: (status: string) => void;
 }) {
   const t = useT();
   return (
@@ -2276,7 +2274,7 @@ function Lane({
   onDueDateChange,
   onHide,
 }: {
-  status: TaskBoardItemStatus;
+  status: string;
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
@@ -2287,9 +2285,9 @@ function Lane({
   /** Cards that just landed from a drop — they play the settle animation. */
   landedIds: string[];
   onToggleSelect: (id: string) => void;
-  onSelectAllInLane: (status: TaskBoardItemStatus) => void;
+  onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: TaskBoardItemStatus) => void;
+  onCreate: (status: string) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;

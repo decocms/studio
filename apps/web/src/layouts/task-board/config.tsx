@@ -230,7 +230,7 @@ export const STATUSES: TaskBoardItemStatus[] = [
  * "Hidden columns" until shown. They stay in `STATUSES`, so "Move to", drag
  * targets and status validation still know about them.
  */
-export const HIDDEN_STATUSES: TaskBoardItemStatus[] = ["archived"];
+export const HIDDEN_STATUSES: string[] = ["archived"];
 
 /** Keyed by Studio's OWN lanes, not by a card's status. Exhaustive on purpose:
  *  adding a lane is a compile error here. A card's status is any column key,
@@ -383,7 +383,7 @@ export const TASK_TYPE_CONFIG: Record<
 };
 
 /** True for one of the post-merge delivery lanes. */
-export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
+export function isDeliveryLane(status: string): boolean {
   return (DELIVERY_LANES as string[]).includes(status);
 }
 
@@ -407,22 +407,30 @@ export function moveTargets(deliveryEnabled: boolean): TaskBoardItemStatus[] {
  * absent while empty, but reappears in the drawer the moment a card sits in it.
  */
 export function laneVisibility({
+  columns,
   deliveryEnabled,
   shownLanes,
   occupied,
 }: {
+  /** The board's own columns, left to right, as the server sent them. Empty
+   *  only while the read is in flight — an org that owns its board and has no
+   *  columns yet genuinely has an empty board, and rendering Studio's lanes
+   *  instead would file its cards under lanes nobody chose. */
+  columns: readonly { key: string }[];
   deliveryEnabled: boolean;
   /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
   shownLanes: readonly string[];
-  occupied: readonly TaskBoardItemStatus[];
+  occupied: readonly string[];
 }): {
-  lanes: TaskBoardItemStatus[];
-  hidden: TaskBoardItemStatus[];
-  hideable: TaskBoardItemStatus[];
+  lanes: string[];
+  hidden: string[];
+  hideable: string[];
 } {
-  const known = STATUSES.filter(
-    (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
-  );
+  const known = columns
+    .map((column) => column.key)
+    .filter(
+      (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
+    );
   const hideable = known.filter(
     (s) =>
       HIDDEN_STATUSES.includes(s) || (!deliveryEnabled && isDeliveryLane(s)),

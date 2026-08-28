@@ -46,6 +46,9 @@ function item(id: string, sortOrder: number): TaskBoardItem {
   } as TaskBoardItem;
 }
 
+/** The board Studio ships with, in the shape the server sends it. */
+const CANONICAL = STATUSES.map((key) => ({ key }));
+
 describe("insertSortOrder", () => {
   const lane = [item("a", 0), item("b", 10), item("c", 20)];
 
@@ -303,8 +306,38 @@ describe("moveTargets", () => {
 describe("laneVisibility", () => {
   const shown: string[] = [];
 
+  /**
+   * The board Studio ships with is one answer, not the only one. A board whose
+   * columns are the org's own has to draw THOSE — falling back to our lanes
+   * would file its cards under names nobody there chose, and the delivery-lane
+   * rules simply do not apply to a set we did not define.
+   */
+  test("draws the org's own columns, in the order the server sent them", () => {
+    const { lanes, hidden, hideable } = laneVisibility({
+      columns: [{ key: "BACKLOG" }, { key: "Fazendo" }, { key: "Code Review" }],
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: [],
+    });
+    expect(lanes).toEqual(["BACKLOG", "Fazendo", "Code Review"]);
+    expect(hidden).toEqual([]);
+    expect(hideable).toEqual([]);
+  });
+
+  test("draws nothing for a board with no columns yet", () => {
+    expect(
+      laneVisibility({
+        columns: [],
+        deliveryEnabled: false,
+        shownLanes: shown,
+        occupied: [],
+      }),
+    ).toEqual({ lanes: [], hidden: [], hideable: [] });
+  });
+
   test("draws the delivery lanes as columns when they're on", () => {
     const { lanes, hidden } = laneVisibility({
+      columns: CANONICAL,
       deliveryEnabled: true,
       shownLanes: shown,
       occupied: [],
@@ -325,6 +358,7 @@ describe("laneVisibility", () => {
 
   test("an empty delivery lane is absent, not hidden, when they're off", () => {
     const { lanes, hidden } = laneVisibility({
+      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: shown,
       occupied: [],
@@ -342,6 +376,7 @@ describe("laneVisibility", () => {
   // Lanes off with work still in one: the card must stay reachable.
   test("a card left in a delivery lane keeps the lane in the drawer", () => {
     const { lanes, hidden, hideable } = laneVisibility({
+      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: shown,
       occupied: ["merged"],
@@ -353,6 +388,7 @@ describe("laneVisibility", () => {
 
   test("and showing it puts the column back", () => {
     const { lanes, hidden } = laneVisibility({
+      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: ["merged"],
       occupied: ["merged"],
@@ -363,6 +399,7 @@ describe("laneVisibility", () => {
 
   test("a lane removed from the product can linger in the preference", () => {
     const { lanes } = laneVisibility({
+      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: ["a_lane_that_no_longer_exists"],
       occupied: [],

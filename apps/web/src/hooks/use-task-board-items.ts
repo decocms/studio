@@ -25,6 +25,9 @@ type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 type TaskBoardData = {
   items: TaskBoardItem[];
   sprints: ToolOutput<"TASK_BOARD_ITEM_LIST">["sprints"];
+  /** The board's own columns. Studio's lanes for most orgs; an org that owns
+   *  its board sends its own, which is why the client cannot assume the set. */
+  columns: ToolOutput<"TASK_BOARD_ITEM_LIST">["columns"];
 };
 
 /**
@@ -42,8 +45,11 @@ export function useBoardSprintIndex(): Map<string, Sprint> {
   const { data } = useQuery({
     queryKey: KEYS.taskBoardItems(locator),
     queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
-      return { items, sprints };
+      const { items, sprints, columns } = await studio.call(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      return { items, sprints, columns };
     },
   });
   return new Map((data?.sprints ?? []).map((sprint) => [sprint.id, sprint]));
@@ -58,8 +64,11 @@ export function useTaskBoardItems() {
   const query = useQuery({
     queryKey,
     queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
-      return { items, sprints };
+      const { items, sprints, columns } = await studio.call(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      return { items, sprints, columns };
     },
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
@@ -143,6 +152,7 @@ export function useTaskBoardItems() {
   return {
     items: query.data?.items ?? [],
     sprints: query.data?.sprints ?? [],
+    columns: query.data?.columns ?? [],
     isLoading: query.isLoading,
     error: query.error,
   };
