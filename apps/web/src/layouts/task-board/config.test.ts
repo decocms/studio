@@ -324,6 +324,49 @@ describe("laneVisibility", () => {
     expect(hideable).toEqual([]);
   });
 
+  /**
+   * The last way a card could vanish. A card the board cannot place — a
+   * Studio-native one on a converted board, or any status no column accounts
+   * for — gets its own lane at the end rather than being hidden or re-filed
+   * under a column we picked. Re-filing is a decision only the org can make;
+   * hiding is the invisibility this exists to prevent.
+   */
+  test("gives a card the board cannot place a lane of its own", () => {
+    const { lanes, hidden, hideable } = laneVisibility({
+      columns: [{ key: "BACKLOG" }, { key: "Fazendo" }],
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: ["Fazendo", "triage", "done"],
+    });
+    expect(lanes).toEqual(["BACKLOG", "Fazendo", "done", "triage"]);
+    expect(hidden).toEqual([]);
+    expect(hideable).toEqual([]);
+  });
+
+  test("the extra lane goes away once its last card leaves", () => {
+    expect(
+      laneVisibility({
+        columns: [{ key: "BACKLOG" }],
+        deliveryEnabled: false,
+        shownLanes: shown,
+        occupied: [],
+      }).lanes,
+    ).toEqual(["BACKLOG"]);
+  });
+
+  /** Studio's own board accounts for every canonical status, so nothing is
+   *  ever unplaced there and this cannot start inventing lanes. */
+  test("never invents a lane on the board Studio ships", () => {
+    expect(
+      laneVisibility({
+        columns: CANONICAL,
+        deliveryEnabled: true,
+        shownLanes: STATUSES,
+        occupied: ["triage", "done", "archived"],
+      }).lanes,
+    ).toEqual(STATUSES);
+  });
+
   test("draws nothing for a board with no columns yet", () => {
     expect(
       laneVisibility({
