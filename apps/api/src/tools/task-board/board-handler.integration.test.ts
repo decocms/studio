@@ -68,6 +68,10 @@ describe("boardHandler — the board Studio ships with", () => {
     }
   });
 
+  it("retires a finished card to its Archived lane", async () => {
+    expect(await board().archiveColumn()).toBe("archived");
+  });
+
   it("does nothing on a board nobody has configured", async () => {
     for (const key of CANONICAL_COLUMN_KEYS) {
       expect(await board().automationFor(key)).toBe(null);
@@ -164,6 +168,20 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     const after = await board().columns();
     expect(after.map((c) => c.key)).toEqual(["BACKLOG", "Code Review"]);
     expect(after.find((c) => c.key === "Code Review")?.role).toBe("in_review");
+  });
+
+  /**
+   * The reason `archiveColumn` is nullable. Studio's `archived` is a lane of
+   * ours; a board mirrored from a tracker has no such column until someone
+   * says which one means that, and writing our key into a card on that board
+   * would file it under a column that does not exist.
+   */
+  it("has nowhere to retire a card until the org says which column that is", async () => {
+    expect(await board().archiveColumn()).toBe(null);
+    await boardColumns.setRole(ORG_M, "BACKLOG", "archived");
+    expect(await board().archiveColumn()).toBe("BACKLOG");
+    await boardColumns.setRole(ORG_M, "BACKLOG", null);
+    expect(await board().archiveColumn()).toBe(null);
   });
 
   it("runs a rule hung on a column the tracker named", async () => {
