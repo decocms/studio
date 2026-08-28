@@ -14,11 +14,13 @@
  *  - text/reasoning ids are per-block, not per-message: two text blocks in one
  *    assistant turn are two parts.
  *
- * Block-granular, not token-granular: the caller emits a frame per SDK message
- * (see `claude-code.ts`), so a text block arrives as start+delta+end back to
- * back rather than as deltas. The chunk vocabulary is identical either way, so
- * moving to token deltas later is a change of *when* these are yielded, not
- * *what*.
+ * Token-granular when the SDK streams, block-granular when it does not. With
+ * `includePartialMessages` on (see `claude-code.ts`) text and thinking arrive as
+ * `stream_event` deltas and are emitted as they land; the `assistant` message
+ * that follows then re-states those same blocks, so the indices already
+ * streamed are skipped there rather than emitted twice. Tool calls are always
+ * taken from the `assistant` message: `input_json_delta` is partial JSON, and
+ * the ordering contract above needs a COMPLETE input before the output.
  */
 
 import type { UIMessageChunk } from "ai";
@@ -70,10 +72,21 @@ export interface SdkResultMessage {
   total_cost_usd?: number;
 }
 
+/**
+ * A raw Anthropic streaming event, forwarded by the SDK under
+ * `includePartialMessages`. Only the content-block events matter here; `event`
+ * is `unknown` because every field read off it is guarded.
+ */
+export interface SdkStreamEventMessage {
+  type: "stream_event";
+  event: unknown;
+}
+
 export type TranslatableSdkMessage =
   | SdkAssistantMessage
   | SdkUserMessage
   | SdkResultMessage
+  | SdkStreamEventMessage
   | { type: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,6 +123,22 @@ export class UiChunkTranslator {
   private readonly announcedToolCalls = new Set<string>();
   private blockSeq = 0;
   /**
+   * Text/reasoning blocks opened from `stream_event` and not yet closed, keyed
+   * by the Anthropic content-block index. Holds the minted chunk id so the
+   * deltas and the end land on the part the start opened.
+   */
+  private readonly openStreamBlocks = new Map<
+    number,
+    { id: string; kind: "text" | "reasoning" }
+  >();
+  /**
+   * Content-block indices of the message currently streaming that were already
+   * emitted as deltas. The `assistant` message restates every block, so these
+   * are skipped there — the same index is positional in both, which is what
+   * makes the skip safe.
+   */
+  private readonly streamedIndices = new Set<number>();
+  /**
    * Prompt tokens of the most recent API call — how full the model's context
    * actually was. Read by `turnFinishChunks`; `result.usage` cannot supply it
    * because it sums every call of the session (a long turn's cached prompts
@@ -129,7 +158,97 @@ export class UiChunkTranslator {
     if (message.type === "user" && "message" in message) {
       return this.translateToolResults(message as SdkUserMessage);
     }
+    if (message.type === "stream_event" && "event" in message) {
+      return this.translateStreamEvent(
+        (message as SdkStreamEventMessage).event,
+      );
+    }
     return [];
+  }
+
+  /**
+   * One raw Anthropic streaming event → chunks. Text and thinking deltas are
+   * forwarded as they arrive; everything else (tool input deltas, message
+   * envelopes, signatures) yields nothing, because the `assistant` message is
+   * the authority for those.
+   */
+  private translateStreamEvent(event: unknown): UIMessageChunk[] {
+    if (!isRecord(event)) return [];
+    // A new message: nothing from the previous one may still be open, and its
+    // skip set does not apply to this one's indices.
+    if (event.type === "message_start") {
+      const chunks = this.closeOpenStreamBlocks();
+      this.streamedIndices.clear();
+      return chunks;
+    }
+    const index = event.index;
+    if (typeof index !== "number") return [];
+    if (event.type === "content_block_start") {
+      const block = event.content_block;
+      if (!isRecord(block)) return [];
+      const kind =
+        block.type === "text"
+          ? ("text" as const)
+          : block.type === "thinking"
+            ? ("reasoning" as const)
+            : null;
+      // tool_use blocks are announced from the `assistant` message instead.
+      if (!kind) return [];
+      const id = this.nextBlockId("stream");
+      this.openStreamBlocks.set(index, { id, kind });
+      this.streamedIndices.add(index);
+      return [{ type: `${kind}-start`, id } as UIMessageChunk];
+    }
+    if (event.type === "content_block_delta") {
+      const open = this.openStreamBlocks.get(index);
+      const delta = event.delta;
+      if (!open || !isRecord(delta)) return [];
+      const text =
+        open.kind === "text" && typeof delta.text === "string"
+          ? delta.text
+          : open.kind === "reasoning" && typeof delta.thinking === "string"
+            ? delta.thinking
+            : null;
+      // `signature_delta` on a thinking block, `input_json_delta` on a tool
+      // call: both arrive here and neither is renderable text.
+      if (text === null || text.length === 0) return [];
+      return [
+        {
+          type: `${open.kind}-delta`,
+          id: open.id,
+          delta: text,
+        } as UIMessageChunk,
+      ];
+    }
+    if (event.type === "content_block_stop") {
+      const open = this.openStreamBlocks.get(index);
+      if (!open) return [];
+      this.openStreamBlocks.delete(index);
+      return [{ type: `${open.kind}-end`, id: open.id } as UIMessageChunk];
+    }
+    return [];
+  }
+
+  /**
+   * End every block still open from `stream_event`. A stream that stops without
+   * `content_block_stop` (an interrupt, a crash mid-block) would otherwise
+   * leave a part that never closes, which the projector reassembles as
+   * unfinished forever.
+   *
+   * Public because a `-end` must never cross a `finish-step`: the AI SDK's
+   * reducer CLEARS its open text/reasoning parts on that boundary, so a late
+   * end lands on a part it no longer knows and throws `Received reasoning-end
+   * for missing reasoning part`, killing the run mid-stream. The caller closes
+   * here before it opens a new step (see `claude-code.ts`).
+   */
+  closeOpenStreamBlocks(): UIMessageChunk[] {
+    if (this.openStreamBlocks.size === 0) return [];
+    const chunks: UIMessageChunk[] = [];
+    for (const open of this.openStreamBlocks.values()) {
+      chunks.push({ type: `${open.kind}-end`, id: open.id } as UIMessageChunk);
+    }
+    this.openStreamBlocks.clear();
+    return chunks;
   }
 
   private nextBlockId(uuid: string): string {
@@ -145,10 +264,15 @@ export class UiChunkTranslator {
         (usage.cache_read_input_tokens ?? 0) +
         (usage.cache_creation_input_tokens ?? 0);
     }
-    const chunks: UIMessageChunk[] = [];
-    for (const block of message.message.content) {
+    // Anything the stream left open belongs to this message and must close
+    // before its blocks are restated.
+    const chunks: UIMessageChunk[] = this.closeOpenStreamBlocks();
+    for (const [index, block] of message.message.content.entries()) {
       if (!isRecord(block)) continue;
+      // Already emitted as deltas — restating it here would duplicate the text.
+      const streamed = this.streamedIndices.has(index);
       if (block.type === "text" && typeof block.text === "string") {
+        if (streamed) continue;
         // Empty text blocks are real in the SDK stream (a turn that only made
         // a tool call). Emitting start/end for them would create empty parts.
         if (block.text.length === 0) continue;
@@ -159,6 +283,7 @@ export class UiChunkTranslator {
         continue;
       }
       if (block.type === "thinking" && typeof block.thinking === "string") {
+        if (streamed) continue;
         if (block.thinking.length === 0) continue;
         const id = this.nextBlockId(message.uuid);
         chunks.push({ type: "reasoning-start", id });
@@ -180,6 +305,8 @@ export class UiChunkTranslator {
         });
       }
     }
+    // This message is fully accounted for; the next one's indices are its own.
+    this.streamedIndices.clear();
     return chunks;
   }
 

@@ -83,6 +83,7 @@ type daemon struct {
 	phases       *proc.PhaseManager
 	tasks        *proc.TaskManager
 	branchStatus *gitx.BranchStatusMonitor
+	autosave     *gitx.Autosaver
 	orchestrator *setup.Orchestrator
 	prober       *probe.Prober
 	proxyHandler *proxy.Handler
@@ -584,6 +585,11 @@ func (d *daemon) shutdown() {
 
 	d.tasks.Shutdown()
 	d.branchStatus.Stop()
+	// Before the sync below: Stop waits out an in-flight checkpoint, so the two
+	// publishes cannot interleave on the tree lock.
+	if d.autosave != nil {
+		d.autosave.Stop()
+	}
 	// Before the publish, and unconditionally: a running harness holds CLIs that
 	// would otherwise keep writing into the tree the publish is about to commit.
 	d.dispatchReg.CancelAll()
@@ -923,6 +929,36 @@ func main() {
 	)
 
 	d.dispatchReg = dispatch.NewRegistry()
+	// Checkpoint a running agent's tree to its own branch every couple of
+	// minutes. Without it, a pod killed with no grace period (OOM, node loss)
+	// loses everything the agent had not committed itself — the shutdown sync
+	// below only runs on SIGTERM.
+	d.autosave = gitx.NewAutosaver(gitx.AutosaveDeps{
+		Publish: gitx.PublishDeps{
+			RepoDir: repoDir,
+			GetCloneUrl: func() string {
+				if cfg := d.store.Read(); cfg != nil {
+					return cfg.CloneUrl()
+				}
+				return ""
+			},
+			GetOperator: d.operatorIdentity,
+			// Same disposition as the shutdown sync: one invalid block must not
+			// cost the user every other change in the checkpoint.
+			OnInvalidBlock: gitx.InvalidBlockSkip,
+			// Never force-push from a checkpoint. Losing one checkpoint beats
+			// clobbering a concurrent writer's commit.
+			ReconcileRemote: false,
+		},
+		Lock: &d.treeLock,
+		Configured: func() bool {
+			cfg := d.store.Read()
+			return cfg != nil && cfg.Branch() != ""
+		},
+		RunActive: func() bool { return d.dispatchReg.HasActiveRuns() },
+		Dirty:     func() bool { return gitx.IsDirty(repoDir) },
+	})
+	d.autosave.Start()
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
