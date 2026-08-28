@@ -436,7 +436,21 @@ export function laneVisibility({
       HIDDEN_STATUSES.includes(s) || (!deliveryEnabled && isDeliveryLane(s)),
   );
   const hidden = hideable.filter((s) => !shownLanes.includes(s));
-  return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
+
+  // A status no column accounts for, but cards are sitting in. Appended as its
+  // own lane rather than hidden or re-filed: a card the board cannot place is
+  // still the org's card, and rendering it under a column we picked would be
+  // us deciding something only they can. Deliberately not hideable — hiding it
+  // is the invisibility this exists to prevent. It goes away when the last card
+  // leaves, the same way a column the tracker dropped does.
+  const placed = new Set(known);
+  const unplaced = [...new Set(occupied)].filter((s) => !placed.has(s)).sort();
+
+  return {
+    lanes: [...known.filter((s) => !hidden.includes(s)), ...unplaced],
+    hidden,
+    hideable,
+  };
 }
 
 export const PRIORITIES: TaskBoardItemPriority[] = [
