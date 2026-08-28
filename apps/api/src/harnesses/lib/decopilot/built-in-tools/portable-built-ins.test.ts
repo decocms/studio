@@ -34,60 +34,34 @@ describe("buildPortableBuiltInTools", () => {
     ]);
   });
 
-  it("registers portable image and screenshot tools when their dependencies exist", () => {
-    const originalBrowserlessToken = process.env.BROWSERLESS_TOKEN;
-    process.env.BROWSERLESS_TOKEN = "browserless-test-token";
+  it("registers the portable image tool when its dependencies exist", () => {
+    const tools = buildPortableBuiltInTools({
+      writer,
+      toolOutputMap: new Map(),
+      passthroughClient,
+      toolApprovalLevel: "auto",
+      isPlanMode: false,
+      objectStorage: {
+        put: async (key: string) => ({ key }),
+        presignedGetUrl: async (key: string) =>
+          `https://storage.example.com/${key}`,
+      },
+      imageTool: {
+        provider: { aiSdk: { imageModel: () => ({}) as never } },
+        imageModelInfo: { id: "image-model-1" },
+      },
+    });
 
-    try {
-      const tools = buildPortableBuiltInTools({
-        writer,
-        toolOutputMap: new Map(),
-        passthroughClient,
-        toolApprovalLevel: "auto",
-        isPlanMode: false,
-        objectStorage: {
-          put: async (key: string) => ({ key }),
-          presignedGetUrl: async (key: string) =>
-            `https://storage.example.com/${key}`,
-        },
-        pendingImages: [],
-        imageTool: {
-          provider: {
-            aiSdk: {
-              imageModel: () => ({}) as never,
-            },
-          },
-          imageModelInfo: { id: "image-model-1" },
-        },
-      });
-
-      expect("generate_image" in tools).toBe(true);
-      expect("take_screenshot" in tools).toBe(true);
-    } finally {
-      if (originalBrowserlessToken === undefined) {
-        delete process.env.BROWSERLESS_TOKEN;
-      } else {
-        process.env.BROWSERLESS_TOKEN = originalBrowserlessToken;
-      }
-    }
+    expect("generate_image" in tools).toBe(true);
   });
 
-  it("offloads large portable scrape results to object storage", async () => {
-    const originalBrowserlessToken = process.env.BROWSERLESS_TOKEN;
-    const originalFetch = globalThis.fetch;
+  // Inverts the assertions this file used to make: BROWSERLESS_TOKEN registered
+  // take_screenshot / scrape_url / inspect_page here. The browser now lives in
+  // the sandbox image (`qa-screenshot`), reached over `bash`, so no env var
+  // conjures a browser tool into the hosted vocabulary any more.
+  it("registers no browser tools, with or without BROWSERLESS_TOKEN", () => {
+    const original = process.env.BROWSERLESS_TOKEN;
     process.env.BROWSERLESS_TOKEN = "browserless-test-token";
-
-    const writes: Array<{
-      key: string;
-      contentType?: string;
-      bodyBytes: number;
-    }> = [];
-    globalThis.fetch = (async () =>
-      new Response("word ".repeat(40_000), {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      })) as unknown as typeof fetch;
-
     try {
       const tools = buildPortableBuiltInTools({
         writer,
@@ -95,88 +69,15 @@ describe("buildPortableBuiltInTools", () => {
         passthroughClient,
         toolApprovalLevel: "auto",
         isPlanMode: false,
-        objectStorage: {
-          put: async (
-            key: string,
-            body: Uint8Array,
-            options?: { contentType?: string },
-          ) => {
-            writes.push({
-              key,
-              bodyBytes: body.byteLength,
-              contentType: options?.contentType,
-            });
-            return { key };
-          },
-        },
+        objectStorage: { put: async (key: string) => ({ key }) },
       });
 
-      const scrape = tools.scrape_url as unknown as {
-        execute: (
-          input: { url: string },
-          options: { toolCallId: string },
-        ) => Promise<unknown>;
-      };
-      const result = (await scrape.execute(
-        { url: "https://example.com" },
-        { toolCallId: "tool-1" },
-      )) as { success: boolean; uri?: string; content?: string };
-
-      expect(result.success).toBe(true);
-      expect(result.uri).toStartWith("studio-storage://scraped-pages/");
-      expect(result.content).toBeUndefined();
-      expect(writes).toHaveLength(1);
-      expect(writes[0]?.contentType).toBe("text/html");
+      expect("take_screenshot" in tools).toBe(false);
+      expect("scrape_url" in tools).toBe(false);
+      expect("inspect_page" in tools).toBe(false);
     } finally {
-      globalThis.fetch = originalFetch;
-      if (originalBrowserlessToken === undefined) {
-        delete process.env.BROWSERLESS_TOKEN;
-      } else {
-        process.env.BROWSERLESS_TOKEN = originalBrowserlessToken;
-      }
-    }
-  });
-
-  it("returns a graceful error instead of throwing when the browserless fetch aborts", async () => {
-    const originalBrowserlessToken = process.env.BROWSERLESS_TOKEN;
-    const originalFetch = globalThis.fetch;
-    process.env.BROWSERLESS_TOKEN = "browserless-test-token";
-
-    globalThis.fetch = (async () => {
-      const err = new Error("The operation was aborted");
-      err.name = "TimeoutError";
-      throw err;
-    }) as unknown as typeof fetch;
-
-    try {
-      const tools = buildPortableBuiltInTools({
-        writer,
-        toolOutputMap: new Map(),
-        passthroughClient,
-        toolApprovalLevel: "auto",
-        isPlanMode: false,
-      });
-
-      const scrape = tools.scrape_url as unknown as {
-        execute: (
-          input: { url: string },
-          options: { toolCallId: string },
-        ) => Promise<unknown>;
-      };
-      const result = (await scrape.execute(
-        { url: "https://example.com" },
-        { toolCallId: "tool-1" },
-      )) as { success: boolean; error?: string };
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("timed out");
-    } finally {
-      globalThis.fetch = originalFetch;
-      if (originalBrowserlessToken === undefined) {
-        delete process.env.BROWSERLESS_TOKEN;
-      } else {
-        process.env.BROWSERLESS_TOKEN = originalBrowserlessToken;
-      }
+      if (original === undefined) delete process.env.BROWSERLESS_TOKEN;
+      else process.env.BROWSERLESS_TOKEN = original;
     }
   });
 });

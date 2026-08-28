@@ -62,16 +62,10 @@ import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-to
 import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
-import {
-  createTakeScreenshotTool,
-  type PendingImage,
-} from "@/harnesses/lib/decopilot/built-in-tools/take-screenshot";
-import { createScrapeUrlTool } from "@/harnesses/lib/decopilot/built-in-tools/scrape-url";
-import { createInspectPageTool } from "@/harnesses/lib/decopilot/built-in-tools/inspect-page";
+import type { PendingImage } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
 import { createTaskBoardTools } from "./task-board-tools";
-import { BROWSERLESS_BASE_URL } from "@/harnesses/lib/decopilot/built-in-tools/constants";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
@@ -406,37 +400,6 @@ async function buildAllTools(
         "lookups or fact-checks, use `web_search` instead.",
     });
   }
-  // take_screenshot, scrape_url, inspect_page require Browserless API token.
-  if (process.env.BROWSERLESS_TOKEN) {
-    // Resolve Browserless and storage here so the portable tools do not read
-    // StudioContext or environment variables.
-    const browserless = {
-      baseUrl: BROWSERLESS_BASE_URL,
-      token: process.env.BROWSERLESS_TOKEN,
-    };
-    // take_screenshot keeps its nullable objectStorage (it has a data-URI
-    // fallback when storage is unavailable).
-    tools.take_screenshot = createTakeScreenshotTool(writer, {
-      objectStorage: ctx.objectStorage,
-      toolOutputMap,
-      pendingImages,
-    });
-    // scrape_url / inspect_page require non-null objectStorage (the cluster's
-    // `deps.objectStorage` is universal). Object storage is effectively always
-    // present in the cluster; guard so the non-null hook type holds.
-    if (ctx.objectStorage) {
-      tools.scrape_url = createScrapeUrlTool(writer, {
-        browserless,
-        objectStorage: ctx.objectStorage,
-        toolOutputMap,
-      });
-      tools.inspect_page = createInspectPageTool(writer, {
-        browserless,
-        objectStorage: ctx.objectStorage,
-        toolOutputMap,
-      });
-    }
-  }
   return tools as {
     user_ask: typeof userAskTool;
     todo_write: typeof todoWriteTool;
@@ -447,9 +410,6 @@ async function buildAllTools(
     generate_image: ReturnType<typeof createGenerateImageTool>;
     web_search: ReturnType<typeof createWebSearchTool>;
     deep_research: ReturnType<typeof createWebSearchTool>;
-    take_screenshot: ReturnType<typeof createTakeScreenshotTool>;
-    scrape_url: ReturnType<typeof createScrapeUrlTool>;
-    inspect_page: ReturnType<typeof createInspectPageTool>;
   };
 }
 

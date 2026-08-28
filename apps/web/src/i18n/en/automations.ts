@@ -13,7 +13,6 @@ export const automations = {
   "automations.automationConfig.all": "All",
   "automations.automationConfig.allTools": "All tools",
   "automations.automationConfig.allToolsEnabled": "All {count} tools enabled",
-  "automations.automationConfig.browser": "Browser",
   "automations.automationConfig.builtinCapabilities": "Built-in capabilities",
   "automations.automationConfig.clear": "Clear",
   "automations.automationConfig.connectAiProviderHint":
@@ -52,9 +51,6 @@ export const automations = {
   "automations.automationConfig.toolGenerateImage": "Generate image",
   "automations.automationConfig.toolGenerateImageDesc":
     "Create images from a text prompt",
-  "automations.automationConfig.toolInspectPage": "Inspect Page",
-  "automations.automationConfig.toolInspectPageDesc":
-    "Inspect a web page's structure",
   "automations.automationConfig.toolLoadSkill": "Load Skill",
   "automations.automationConfig.toolLoadSkillDesc":
     "Load a skill's full instructions (SKILL.md) by id",
@@ -70,18 +66,12 @@ export const automations = {
   "automations.automationConfig.toolRunCommand": "Run Command",
   "automations.automationConfig.toolRunCommandDesc":
     "Run shell commands in the sandbox",
-  "automations.automationConfig.toolScrapeUrl": "Scrape URL",
-  "automations.automationConfig.toolScrapeUrlDesc":
-    "Fetch and extract content from a URL",
   "automations.automationConfig.toolSearchContent": "Search Content",
   "automations.automationConfig.toolSearchContentDesc":
     "Search file contents by pattern",
   "automations.automationConfig.toolSubtask": "Subtask",
   "automations.automationConfig.toolSubtaskDesc":
     "Spawn a focused sub-agent to handle part of the work",
-  "automations.automationConfig.toolTakeScreenshot": "Take Screenshot",
-  "automations.automationConfig.toolTakeScreenshotDesc":
-    "Capture a screenshot of a web page",
   "automations.automationConfig.toolWebSearch": "Web search",
   "automations.automationConfig.toolWebSearchDesc":
     "Look up current information on the web",

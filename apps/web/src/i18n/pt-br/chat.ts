@@ -452,11 +452,6 @@ export const chat = {
     "[A subtarefa atingiu o limite de etapas — resultado parcial abaixo; considere restringir a tarefa.]",
   "chat.subtask.subtaskNoun": "Subtarefa",
   "chat.subtask.taskLabel": "Tarefa",
-  "chat.takeScreenshot.failed": "Falhou",
-  "chat.takeScreenshot.screenshot": "Captura de tela",
-  "chat.takeScreenshot.screenshotAlt": "Captura de tela",
-  "chat.takeScreenshot.taking": "Capturando tela",
-  "chat.takeScreenshot.title": "Capturar tela",
   "chat.textPart.copyMessage": "Copiar mensagem",
   "chat.thinkingIndicator.cancel": "Cancelar",
   "chat.thinkingIndicator.planningDetail":
