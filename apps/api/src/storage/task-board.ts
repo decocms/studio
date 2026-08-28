@@ -110,10 +110,7 @@ function extractPartText(payload: unknown): string | null {
 /** The lanes a review cycle may span: an agent reviewer runs while the card
  *  reads In Progress, and the card sits In Review once it is a person's turn.
  *  Moving to any OTHER lane ends the cycle — see `update()`. */
-const REVIEW_PHASE_LANES = new Set<TaskBoardItemStatus>([
-  "in_progress",
-  "in_review",
-]);
+const REVIEW_PHASE_LANES = new Set<string>(["in_progress", "in_review"]);
 
 /** Thread run statuses that mean the run is over (not running / not paused on a
  *  user_ask). `requires_action` and `in_progress` are deliberately excluded. */
@@ -142,7 +139,7 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  */
 export function shouldAdvanceToReview(
   item: {
-    status: TaskBoardItemStatus;
+    status: string;
     repo?: string | null;
     threads: { status: string | null; hasMessages: boolean }[];
   },
@@ -223,10 +220,7 @@ function newestIso(
 /** Lanes a merged PR can leave a card on, and therefore where the merged-tag
  *  sweep has to look. `archived` is deliberately absent: a card that far along
  *  is history, and tagging it moves nothing. */
-const TAGGABLE_MERGED_STATUSES: TaskBoardItemStatus[] = [
-  ...DELIVERY_LANES,
-  "done",
-];
+const TAGGABLE_MERGED_STATUSES: string[] = [...DELIVERY_LANES, "done"];
 
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
@@ -282,7 +276,7 @@ export class TaskBoardStorage {
     organizationId: string;
     title: string;
     description?: string | null;
-    status?: TaskBoardItemStatus;
+    status?: string;
     priority?: TaskBoardItemPriority;
     type?: TaskBoardItemType;
     assigneeId?: string | null;
@@ -362,7 +356,7 @@ export class TaskBoardStorage {
     data: {
       title?: string;
       description?: string | null;
-      status?: TaskBoardItemStatus;
+      status?: string;
       priority?: TaskBoardItemPriority;
       type?: TaskBoardItemType;
       assigneeId?: string | null;

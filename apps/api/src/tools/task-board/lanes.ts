@@ -27,15 +27,33 @@ const RANK_BY_KEY = Object.fromEntries(
  *  error here, which is the whole reason the table is exhaustive. */
 export const LANE_RANK: Record<TaskBoardItemStatus, number> = RANK_BY_KEY;
 
+/** Widened read of the same table. A card's status is any column key, and
+ *  indexing the closed Record would let the compiler believe every status has
+ *  a rank. */
+const RANK_LOOKUP: Record<string, number> = LANE_RANK;
+
+/**
+ * Where a status sits in Studio's own order, or null for a column Studio did
+ * not define.
+ *
+ * An org board's order is its columns' positions, not this table, so null is
+ * the honest answer rather than a guessed rank — and callers decide what an
+ * unrankable status means for them, instead of silently comparing against a
+ * number that was invented.
+ */
+export function laneRank(status: string): number | null {
+  return RANK_LOOKUP[status] ?? null;
+}
+
 /** The delivery lanes, as board statuses — the assertion that the shared
  *  literal union stays a subset of this side's lane vocabulary. */
-export const DELIVERY_LANE_STATUSES: TaskBoardItemStatus[] = DELIVERY_LANES;
+export const DELIVERY_LANE_STATUSES: string[] = DELIVERY_LANES;
 
 /** True for one of the post-merge delivery lanes (Approved, Merged, Post-deploy
  *  Validation) — the statuses that only exist for an org running
  *  `delivery_lanes_enabled`. Mirrors the web-side `isDeliveryLane` in
  *  `layouts/task-board/config.tsx`. */
-export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
+export function isDeliveryLane(status: string): boolean {
   return DELIVERY_LANE_STATUSES.includes(status);
 }
 
@@ -47,11 +65,14 @@ export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
  * enumeration is correct only for the lanes that existed when it was written,
  * so adding one silently turns it into a path that drags cards BACKWARD.
  */
-export function movesForward(
-  from: TaskBoardItemStatus,
-  to: TaskBoardItemStatus,
-): boolean {
-  return LANE_RANK[to] > LANE_RANK[from];
+export function movesForward(from: string, to: string): boolean {
+  const before = laneRank(from);
+  const after = laneRank(to);
+  // Either side unrankable means one of them is a column Studio did not
+  // define. There is no order to be forward in, so the guard abstains rather
+  // than inventing one.
+  if (before === null || after === null) return true;
+  return after > before;
 }
 
 /**
@@ -60,7 +81,7 @@ export function movesForward(
  * Without Approved, moving a card into it would lock the ship button out — the
  * lane would be a dead end.
  */
-export const SHIP_ELIGIBLE_LANES: ReadonlySet<TaskBoardItemStatus> = new Set([
+export const SHIP_ELIGIBLE_LANES: ReadonlySet<string> = new Set([
   "in_review",
   "approved",
 ]);
@@ -71,7 +92,7 @@ export const SHIP_ELIGIBLE_LANES: ReadonlySet<TaskBoardItemStatus> = new Set([
  * candidate query and the re-read inside the org's context have to agree, or
  * the sweep picks cards it then refuses.
  */
-export function isTaggableMergedStatus(status: TaskBoardItemStatus): boolean {
+export function isTaggableMergedStatus(status: string): boolean {
   return status === "done" || DELIVERY_LANE_STATUSES.includes(status);
 }
 
@@ -90,10 +111,13 @@ export function isTaggableMergedStatus(status: TaskBoardItemStatus): boolean {
  * can never drag a merged card back into the sweeper's work.
  */
 export function inReviewPhase(item: {
-  status: TaskBoardItemStatus;
+  status: string;
   reviewCycleStartedAt: string | null;
 }): boolean {
-  if (LANE_RANK[item.status] > LANE_RANK.in_review) return false;
+  const rank = laneRank(item.status);
+  // A column Studio did not define has no place in this order, so the rank
+  // bound simply does not apply to it.
+  if (rank !== null && rank > LANE_RANK.in_review) return false;
   // Truthiness, not `!== null`: an absent stamp must read as "no cycle", and
   // a partial item (a fixture, a projection) carries `undefined`, not `null`.
   return item.status === "in_review" || Boolean(item.reviewCycleStartedAt);

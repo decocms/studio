@@ -88,6 +88,8 @@ import {
   TASK_TYPES,
   type TaskBoardItemType,
   DEFAULT_TASK_TYPE,
+  laneLabel,
+  laneVisual,
   STATUS_CONFIG,
   moveTargets,
   statusIconClassName,
@@ -613,7 +615,7 @@ function TaskBoardItemEditor({
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
-  const StatusIcon = STATUS_CONFIG[status].icon;
+  const StatusIcon = laneVisual(status).icon;
   // Reports-generated tasks: content (title/description/priority) is owned by
   // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
   // rejects a write that touches any of those fields. Board interactions
@@ -963,15 +965,15 @@ function TaskBoardItemEditor({
                       className={cn(
                         item
                           ? statusIconClassName({ ...item, status })
-                          : STATUS_CONFIG[status].iconClassName,
+                          : laneVisual(status).iconClassName,
                       )}
                     />
-                    {t(STATUS_CONFIG[status].labelKey)}
+                    {laneLabel(status, t)}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
                   {moveTargets(deliveryEnabled).map((s) => {
-                    const Icon = STATUS_CONFIG[s].icon;
+                    const Icon = laneVisual(s).icon;
                     return (
                       <DropdownMenuItem
                         key={s}
@@ -980,9 +982,9 @@ function TaskBoardItemEditor({
                       >
                         <Icon
                           size={16}
-                          className={STATUS_CONFIG[s].iconClassName}
+                          className={laneVisual(s).iconClassName}
                         />
-                        {t(STATUS_CONFIG[s].labelKey)}
+                        {laneLabel(s, t)}
                       </DropdownMenuItem>
                     );
                   })}

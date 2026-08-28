@@ -22,12 +22,14 @@ import {
 import { JiraClient, normalizeSiteUrl } from "@/jira/client";
 import { syncJiraIntegrationSafe } from "@/jira/sync";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { TaskBoardItemStatusSchema } from "../task-board/schema";
 
 // `partialRecord`, not `record`: a `z.record` over an enum demands EVERY lane
 // be present, so an org mapping three of its columns would fail validation.
+// A plain record now that a board column is any key: `partialRecord` over a
+// closed enum was what forced every lane to be listed, and there is no closed
+// set of lanes to enumerate on a board the org owns.
 const statusMappingSchema = z
-  .partialRecord(TaskBoardItemStatusSchema, z.array(z.string()))
+  .record(z.string().min(1), z.array(z.string()))
   .describe(
     "Board status → its Jira status names, in board order. Several Jira " +
       "statuses may share a lane; the first is where a card entering that lane " +

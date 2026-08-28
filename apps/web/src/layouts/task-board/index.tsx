@@ -116,7 +116,8 @@ import {
   PRIORITY_CONFIG,
   runSortOrders,
   statusIconClassName,
-  STATUS_CONFIG,
+  laneLabel,
+  laneVisual,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
@@ -1650,7 +1651,7 @@ function SelectionBar({
                     key={status}
                     onClick={() => onMoveTo(status)}
                   >
-                    {t(STATUS_CONFIG[status].labelKey)}
+                    {laneLabel(status, t)}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>
@@ -2210,7 +2211,7 @@ function HiddenLanes({
       </summary>
       <div className="flex flex-col gap-2 px-1 pt-1">
         {statuses.map((status) => {
-          const config = STATUS_CONFIG[status];
+          const config = laneVisual(status);
           const LaneIcon = config.icon;
           return (
             <div
@@ -2223,7 +2224,7 @@ function HiddenLanes({
                 className={cn("shrink-0", config.iconClassName)}
               />
               <span className="text-sm font-medium text-foreground">
-                {t(config.labelKey)}
+                {laneLabel(status, t)}
               </span>
               <span className="ml-auto text-[11px] font-medium text-muted-foreground">
                 {countOf(status)}
@@ -2233,7 +2234,7 @@ function HiddenLanes({
                   <button
                     type="button"
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                      lane: t(config.labelKey),
+                      lane: laneLabel(status, t),
                     })}
                     className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
@@ -2299,7 +2300,7 @@ function Lane({
   onHide?: () => void;
 }) {
   const t = useT();
-  const config = STATUS_CONFIG[status];
+  const config = laneVisual(status);
   const LaneIcon = config.icon;
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
@@ -2339,7 +2340,7 @@ function Lane({
           )}
         />
         <span className="text-sm font-medium text-foreground">
-          {t(config.labelKey)}
+          {laneLabel(status, t)}
         </span>
         <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
           {items.length}
@@ -2349,7 +2350,7 @@ function Lane({
             <button
               type="button"
               aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                lane: t(config.labelKey),
+                lane: laneLabel(status, t),
               })}
               className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -2370,10 +2371,10 @@ function Lane({
         <button
           type="button"
           aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-            lane: t(config.labelKey),
+            lane: laneLabel(status, t),
           })}
           title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
-            lane: t(config.labelKey),
+            lane: laneLabel(status, t),
           })}
           onClick={() => onCreate(status)}
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -2651,7 +2652,7 @@ function ListRow({
   assignedBy?: Member;
   onOpen: () => void;
 }) {
-  const StatusIcon = STATUS_CONFIG[item.status].icon;
+  const StatusIcon = laneVisual(item.status).icon;
   const sprint = useCardSprint(item);
   return (
     <button

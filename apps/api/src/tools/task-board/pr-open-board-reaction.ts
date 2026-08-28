@@ -19,14 +19,14 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
+import type { TaskBoardItem } from "@/storage/types";
 import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
 
 /** Statuses from which a PR-open may put a card into the review phase. Terminal
  *  lanes (and in_review itself) are left alone so a re-opened PR never regresses
  *  a finished card. */
-const ADVANCEABLE: ReadonlySet<TaskBoardItemStatus> = new Set([
+const ADVANCEABLE: ReadonlySet<string> = new Set([
   "triage",
   "todo",
   "in_progress",

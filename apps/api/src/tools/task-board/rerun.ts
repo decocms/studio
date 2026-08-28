@@ -43,7 +43,6 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
-import type { TaskBoardItemStatus } from "@/storage/types";
 import { inReviewPhase } from "./lanes";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
@@ -254,7 +253,7 @@ export async function refuseIfMergePending(
   ctx: StudioContext,
   item: {
     id: string;
-    status: TaskBoardItemStatus;
+    status: string;
     organizationId: string;
     reviewCycleStartedAt: string | null;
   },

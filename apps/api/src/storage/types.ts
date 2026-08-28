@@ -1626,11 +1626,9 @@ export interface TaskBoardItemTable {
   organization_id: string;
   title: string;
   description: string | null;
-  status: ColumnType<
-    TaskBoardItemStatus,
-    TaskBoardItemStatus | undefined,
-    string
-  >;
+  /** The key of the column the card sits in — free text, because on a board
+   *  whose columns are the org's own the key comes from their tracker. */
+  status: ColumnType<string, string | undefined, string>;
   priority: ColumnType<
     TaskBoardItemPriority,
     TaskBoardItemPriority | undefined,
@@ -1931,7 +1929,11 @@ export interface TaskBoardItem {
   organizationId: string;
   title: string;
   description: string | null;
-  status: TaskBoardItemStatus;
+  /** The key of the column this card sits in. A string, not the lane union:
+   *  on a board whose columns are the org's own the key comes from their
+   *  tracker. `TaskBoardItemStatus` still names Studio's OWN lanes, which is
+   *  what canonical logic reasons about. */
+  status: string;
   priority: TaskBoardItemPriority;
   /** What kind of work this is. Required; defaults to `chore`. */
   type: TaskBoardItemType;

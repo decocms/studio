@@ -130,3 +130,24 @@ export async function boardFor(
     orgOwnedColumns: orgFlagEnabled(settings?.flags, "org_board_columns"),
   });
 }
+
+/**
+ * Refuse a status this board has no column for.
+ *
+ * What the closed enum used to do, moved to where the answer actually lives:
+ * only the board knows which keys are real for this org. Silence here means a
+ * card filed under a column that does not exist — it renders nowhere, which is
+ * the worst way for a bug to arrive.
+ */
+export async function assertBoardHasColumn(
+  board: BoardHandler,
+  status: string,
+): Promise<void> {
+  const columns = await board.columns();
+  if (columns.some((column) => column.key === status)) return;
+  throw new Error(
+    `This board has no column "${status}" — it has ${
+      columns.map((c) => c.key).join(", ") || "none yet"
+    }`,
+  );
+}

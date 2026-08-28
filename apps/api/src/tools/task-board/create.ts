@@ -1,3 +1,4 @@
+import { assertBoardHasColumn, boardFor } from "./board-handler";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -76,6 +77,10 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     }
 
     if (input.status !== undefined) {
+      await assertBoardHasColumn(
+        await boardFor(ctx, organizationId),
+        input.status,
+      );
       const settings =
         await ctx.storage.organizationSettings.get(organizationId);
       if (
