@@ -167,7 +167,7 @@ export function SectionsEditor({
    * view (passing the decofile block key) instead of the built-in JSON modal.
    * Hosts without a file surface (Content tab) omit this and get the modal.
    */
-  onViewJsonFile?: (pageKey: string) => void;
+  onViewJsonFile?: () => void;
   /**
    * Called when the selected section variant changes so the host can force the
    * preview iframe to render that variant via `x-deco-matchers-override`.
@@ -2656,7 +2656,7 @@ export function SectionsEditor({
                   className="size-7 shrink-0"
                   onClick={() =>
                     onViewJsonFile && activePageKey
-                      ? onViewJsonFile(activePageKey)
+                      ? onViewJsonFile()
                       : setJsonOpen(true)
                   }
                 >

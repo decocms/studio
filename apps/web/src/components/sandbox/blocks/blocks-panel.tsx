@@ -46,7 +46,7 @@ export function BlocksPanel({
    * Open the page's raw JSON in a side panel (Preview owns the slot). When
    * omitted the editor falls back to its local modal.
    */
-  onViewJsonFile?: (pageKey: string) => void;
+  onViewJsonFile?: () => void;
 }) {
   const { org } = useProjectContext();
   const { currentBranch, taskId } = useChatTask();

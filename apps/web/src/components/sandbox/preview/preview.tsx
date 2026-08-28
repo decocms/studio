@@ -360,20 +360,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
-  // Page key whose raw JSON is open in the side panel next to Blocks (null = closed).
-  const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
+  // Raw Page JSON side panel open state; the page it shows follows currentPageKey.
+  const [jsonPanelOpen, setJsonPanelOpen] = useState(false);
   const jsonPanelHandleRef = useRef<PageJsonPanelHandle>(null);
   const closeJsonPanel = () => {
     jsonPanelHandleRef.current?.flush();
-    setJsonPageKey(null);
+    setJsonPanelOpen(false);
   };
-  const toggleJsonPanel = (pageKey: string) =>
-    setJsonPageKey((current) => {
-      if (current === pageKey) {
-        jsonPanelHandleRef.current?.flush();
-        return null;
-      }
-      return pageKey;
+  const toggleJsonPanel = () =>
+    setJsonPanelOpen((open) => {
+      if (open) jsonPanelHandleRef.current?.flush();
+      return !open;
     });
   // Live canvas size, used to scale the fixed-width frame to fit.
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -1977,12 +1974,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               externalSelection={cmsSelectedSection}
               onViewJsonFile={toggleJsonPanel}
             />
-            {jsonPageKey && (
+            {jsonPanelOpen && currentPageKey && (
               <div className="absolute inset-0 z-10">
                 <PageJsonPanel
                   ref={jsonPanelHandleRef}
                   virtualMcpId={virtualMcpId}
-                  pageKey={jsonPageKey}
+                  pageKey={currentPageKey}
                   onClose={closeJsonPanel}
                 />
               </div>
@@ -2022,9 +2019,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             >
               <ResizablePanelGroup
                 orientation="horizontal"
-                disabled={!jsonPageKey}
+                disabled={!(jsonPanelOpen && currentPageKey)}
               >
-                {jsonPageKey && (
+                {jsonPanelOpen && currentPageKey && (
                   <>
                     <ResizablePanel
                       id="preview-json-editor"
@@ -2035,7 +2032,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <PageJsonPanel
                         ref={jsonPanelHandleRef}
                         virtualMcpId={virtualMcpId}
-                        pageKey={jsonPageKey}
+                        pageKey={currentPageKey}
                         onClose={closeJsonPanel}
                       />
                     </ResizablePanel>
