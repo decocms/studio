@@ -482,6 +482,12 @@ export interface StudioToolIO {
         startsAt: string | null;
         endsAt: string | null;
       }[];
+      columns: {
+        key: string;
+        title: string;
+        position: number;
+        role: string | null;
+      }[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {

@@ -187,6 +187,41 @@ export function enabledReviewerKinds(
  * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
  * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
  */
+/**
+ * The board Studio ships with, in board order.
+ *
+ * One ordering, read by both the rank guard (`LANE_RANK`) and the static
+ * column set, so "left of" cannot come to mean two different things.
+ */
+export const CANONICAL_COLUMN_KEYS = [
+  "triage",
+  "todo",
+  "in_progress",
+  "in_review",
+  "approved",
+  "merged",
+  "post_deploy_validation",
+  "done",
+  "archived",
+] as const;
+
+export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
+
+/**
+ * A board column as every surface reads it.
+ *
+ * `key` is the value a card's `status` holds. `role` is what automation keys
+ * on, and is nullable because a board mirrored from someone else's tracker
+ * will have columns nobody assigned a meaning to — null has to mean "nothing
+ * automatic happens here", not a guess.
+ */
+export interface BoardColumn {
+  key: string;
+  title: string;
+  position: number;
+  role: string | null;
+}
+
 export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
 
 export const DELIVERY_LANES: DeliveryLane[] = [
