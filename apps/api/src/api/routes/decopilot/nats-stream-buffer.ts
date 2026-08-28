@@ -87,11 +87,9 @@ const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
  * how one NATS pod restart darkened chat cluster-wide on 2026-08-26. 3 matches
  * the cluster size so a single node loss keeps quorum.
  *
- * This is the *requested* count, not a guarantee: a single-node JetStream
- * rejects anything above 1 outright, and `init()` then falls back to an
- * unreplicated stream — see `isReplicaUnsupportedError`. Local `bun run dev`,
- * self-hosts and the multi-pod/resilience test clusters all run one NATS node,
- * so without that fallback a replicated default darkens streaming there.
+ * This is the *requested* count, not a guarantee: `init()` clamps it to what
+ * the connected server can host (`supportedReplicas`). Local `bun run dev`,
+ * self-hosts and the multi-pod/resilience test clusters all run one NATS node.
  *
  * Env-overridable for rollback without a deploy — `init()` applies the value
  * through `streams.update`, and JetStream scales replicas online, so setting
@@ -236,6 +234,27 @@ export interface NatsStreamBufferOptions {
 }
 
 /**
+ * Clamp the requested replica count to what the connected server can host.
+ *
+ * `streams.add` rejects `num_replicas > 1` on a non-clustered server, but
+ * `streams.update` ACCEPTS it: it persists `num_replicas: 3` into the stream's
+ * on-disk `meta.inf` and reports success. The server then cannot recover that
+ * stream on its next boot and serves 503 from `/healthz` forever, which in
+ * Kubernetes means the startup probe never passes, so the pod never joins the
+ * Service and no client can reach it to undo the damage. Because `update`
+ * returns no error, `isReplicaUnsupportedError` cannot catch this — the count
+ * has to be clamped before any config is written.
+ *
+ * `ServerInfo.cluster` carries the cluster name and is only present when the
+ * server runs a `cluster{}` block; a single node reports nothing. Peer counts
+ * are deliberately not used: `connect_urls` is empty whenever `advertise` is
+ * off, which is the norm behind a Service.
+ */
+function supportedReplicas(nc: NatsConnection, requested: number): number {
+  return nc.info?.cluster ? requested : 1;
+}
+
+/**
  * The server cannot satisfy the requested replica count. A single-node
  * (non-clustered) JetStream rejects `replicas > 1` outright; a cluster with
  * fewer peers than requested rejects it as insufficient resources. Both are
@@ -288,6 +307,10 @@ export class NatsStreamBuffer implements StreamBuffer {
           err instanceof Error && err.message.includes("stream not found");
         if (isNotFound) {
           await mgr.streams.add(config);
+          // `add` onto a directory left by an unrecoverable stream reuses it
+          // and leaves the old `meta.inf`, so the next boot fails to recover
+          // again. `update` is what rewrites it.
+          await mgr.streams.update(DECOPILOT_STREAM_NAME, config);
         } else {
           // JetStream cannot change a stream's `storage` in place, so flipping
           // the legacy Memory stream to File makes `update` reject. The stream
@@ -312,16 +335,16 @@ export class NatsStreamBuffer implements StreamBuffer {
         const mgr = this.options.getJetStreamManager
           ? await this.options.getJetStreamManager()
           : await jetstreamManager(nc);
+        const replicas = supportedReplicas(nc, STREAM_REPLICAS);
         try {
-          await ensureStream(mgr, STREAM_REPLICAS);
+          await ensureStream(mgr, replicas);
         } catch (err: unknown) {
           // A single-node NATS can't hold a replicated stream. Streaming at all
           // beats streaming with failover: retry unreplicated rather than leave
           // `js` null, which silently drops every chunk of every run.
-          if (STREAM_REPLICAS <= 1 || !isReplicaUnsupportedError(err))
-            throw err;
+          if (replicas <= 1 || !isReplicaUnsupportedError(err)) throw err;
           console.warn(
-            `[Decopilot] StreamBuffer: NATS rejected num_replicas=${STREAM_REPLICAS} ` +
+            `[Decopilot] StreamBuffer: NATS rejected num_replicas=${replicas} ` +
               `(${(err as Error).message}); falling back to an unreplicated stream`,
           );
           await ensureStream(mgr, 1);

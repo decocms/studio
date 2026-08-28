@@ -591,6 +591,17 @@ s3Sync:
 # unless overridden via configMap.meshConfig.NATS_URL
 nats:
   enabled: true
+  # The subchart's startup probe uses the full /healthz, which reports 503 when
+  # any single stream fails to recover. Kubernetes suppresses the readiness and
+  # liveness probes until the startup probe passes, so one bad stream keeps the
+  # pod out of the Service permanently — and that is exactly what stops a client
+  # from connecting to repair it. js-server-only matches the readiness probe:
+  # the pod serves traffic once JetStream itself is up.
+  container:
+    merge:
+      startupProbe:
+        httpGet:
+          path: /healthz?js-server-only=true
   clusterCreds:
     # Enable when Studio's internal NATS_URL connection must authenticate with
     # a creds file.
