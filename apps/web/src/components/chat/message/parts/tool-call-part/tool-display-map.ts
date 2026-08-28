@@ -1,15 +1,12 @@
 import type React from "react";
 import {
   BookOpen01,
-  Code01,
   Code02,
   Database01,
   Edit01,
   Edit02,
   File06,
   Folder,
-  Globe02,
-  Monitor01,
   SearchMd,
   Server01,
   TerminalSquare,
@@ -51,7 +48,4 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplay> = {
   sandbox: { icon: Code02, label: "Run Code" },
 
   // Browser / web tools
-  take_screenshot: { icon: Monitor01, label: "Take Screenshot" },
-  scrape_url: { icon: Globe02, label: "Scrape URL" },
-  inspect_page: { icon: Code01, label: "Inspect Page" },
 };

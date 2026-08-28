@@ -768,16 +768,13 @@ async function enqueueReviewerForTask(
       : []),
     `- Fix the issues you find on the PR's branch, run the repository's own checks, and push to that same PR. You are the last automated run on this task — nothing picks up findings you only describe.`,
     `- THEN exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`) — re-read it after your push so you get the preview of YOUR commit, and wait for it if it is still building. Deep-link to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
-    // Two paths because the harnesses differ: the sandbox has a real browser
-    // baked in (`qa-screenshot`, which can also reach its own dev server on
-    // localhost); hosted Decopilot has no sandbox and uses its
-    // Browserless-backed built-in, which streams the image into the thread.
-    sandboxed
-      ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` too for a responsive change."
-      : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
-    sandboxed
-      ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`
-      : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
+    // One path now: the browser lives in the sandbox image, and BOTH harnesses
+    // have a sandbox to run it in — the hosted one gets its own once the repo
+    // is loaded, which this prompt already tells it to do. Unlike a hosted
+    // capture service, a local browser can also reach the run's OWN dev server
+    // on localhost.
+    "- For a VISUAL change, capture before/after by running `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>] [--console]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). Add `--mobile` too for a responsive change, and `--console` to catch the runtime errors a screenshot alone reports as a pass. WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them: a screenshot you never opened is not verification.",
+    `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`,
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",

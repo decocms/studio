@@ -17,7 +17,6 @@ export const automations = {
   "automations.automationConfig.allTools": "Todas as ferramentas",
   "automations.automationConfig.allToolsEnabled":
     "Todas as {count} ferramentas habilitadas",
-  "automations.automationConfig.browser": "Navegador",
   "automations.automationConfig.builtinCapabilities": "Capacidades integradas",
   "automations.automationConfig.clear": "Limpar",
   "automations.automationConfig.connectAiProviderHint":
@@ -57,9 +56,6 @@ export const automations = {
   "automations.automationConfig.toolGenerateImage": "Gerar imagem",
   "automations.automationConfig.toolGenerateImageDesc":
     "Crie imagens a partir de um prompt de texto",
-  "automations.automationConfig.toolInspectPage": "Inspecionar página",
-  "automations.automationConfig.toolInspectPageDesc":
-    "Inspecione a estrutura de uma página web",
   "automations.automationConfig.toolLoadSkill": "Carregar habilidade",
   "automations.automationConfig.toolLoadSkillDesc":
     "Carregue as instruções completas de uma habilidade (SKILL.md) por id",
@@ -75,18 +71,12 @@ export const automations = {
   "automations.automationConfig.toolRunCommand": "Executar comando",
   "automations.automationConfig.toolRunCommandDesc":
     "Execute comandos shell na sandbox",
-  "automations.automationConfig.toolScrapeUrl": "Raspar URL",
-  "automations.automationConfig.toolScrapeUrlDesc":
-    "Busque e extraia conteúdo de uma URL",
   "automations.automationConfig.toolSearchContent": "Pesquisar conteúdo",
   "automations.automationConfig.toolSearchContentDesc":
     "Pesquise conteúdo de arquivo por padrão",
   "automations.automationConfig.toolSubtask": "Subtarefa",
   "automations.automationConfig.toolSubtaskDesc":
     "Crie um sub-agente focado para lidar com parte do trabalho",
-  "automations.automationConfig.toolTakeScreenshot": "Tirar captura de tela",
-  "automations.automationConfig.toolTakeScreenshotDesc":
-    "Capture uma captura de tela de uma página web",
   "automations.automationConfig.toolWebSearch": "Busca na web",
   "automations.automationConfig.toolWebSearchDesc":
     "Pesquise informações atuais na web",

@@ -1,7 +1,5 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import { toStudioStorageUri } from "../studio-storage-uri";
-import type { PortableMediaObjectStorage } from "./portable-media-tools";
 
 export interface ReadToolOutputParams {
   readonly toolOutputMap: Map<string, string>;
@@ -176,30 +174,4 @@ function estimateTokens(text: string): number {
 export function estimateJsonTokens(value: unknown): number {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return estimateTokens(text);
-}
-
-/**
- * Upload a large tool result to blob storage and return a preview + URI, or
- * `null` if the upload itself fails (callers should fall back to returning
- * the result inline in that case). `logLabel` names the caller for the error
- * log ("scrape-url", "inspect-page").
- */
-export async function offloadLargeResult(
-  objectStorage: Pick<PortableMediaObjectStorage, "put">,
-  key: string,
-  text: string,
-  contentType: string,
-  logLabel: string,
-): Promise<{ uri: string; preview: string } | null> {
-  try {
-    const bytes = new TextEncoder().encode(text);
-    await objectStorage.put(key, bytes, { contentType });
-    return { uri: toStudioStorageUri(key), preview: createOutputPreview(text) };
-  } catch (err) {
-    console.error(
-      `[${logLabel}] Failed to upload to storage, returning inline`,
-      err,
-    );
-    return null;
-  }
 }

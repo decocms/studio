@@ -439,11 +439,6 @@ export const chat = {
     "[Subtask hit step limit — partial result below; consider narrowing the task.]",
   "chat.subtask.subtaskNoun": "Subtask",
   "chat.subtask.taskLabel": "Task",
-  "chat.takeScreenshot.failed": "Failed",
-  "chat.takeScreenshot.screenshot": "Screenshot",
-  "chat.takeScreenshot.screenshotAlt": "Screenshot",
-  "chat.takeScreenshot.taking": "Taking screenshot",
-  "chat.takeScreenshot.title": "Take screenshot",
   "chat.textPart.copyMessage": "Copy message",
   "chat.thinkingIndicator.cancel": "Cancel",
   "chat.thinkingIndicator.planningDetail":
