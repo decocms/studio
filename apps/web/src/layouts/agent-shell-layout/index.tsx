@@ -286,13 +286,12 @@ function VmEventsBridge({
    */
   const { org } = useProjectContext();
   const autoFreshBranchEnabled = useOrgFlag("cms_auto_fresh_branch");
-  const { runtime: cmsRuntime, resolved: cmsRuntimeResolved } =
-    useSessionRuntime(virtualMcpId);
+  const sessionState = useSessionRuntime(virtualMcpId);
   const freshBranchForThreadRef = useRef<string | null>(null);
   const staleCheckEnabled =
     autoFreshBranchEnabled &&
-    cmsRuntimeResolved &&
-    cmsRuntime === "cms" &&
+    sessionState.resolved &&
+    sessionState.runtime === "cms" &&
     !!org?.slug &&
     !!currentBranch &&
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
@@ -331,7 +330,6 @@ function VmEventsBridge({
   // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
   // auto-start shares this mutation key, so `useIsSandboxStartPending`
   // observes it).
-  const sessionState = useSessionRuntime(virtualMcpId);
   /** `null` until the answer is real — never act on the project default. */
   const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
   const isStartPending = useIsSandboxStartPending(
