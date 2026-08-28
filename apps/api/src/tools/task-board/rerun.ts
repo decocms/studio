@@ -366,6 +366,9 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
       await stopSupersededRun(ctx, threadId, organizationId);
     }
 
+    // Whatever a reviewer decided was about the pre-rerun work — same reasoning as `reopenLinkedTasksOnThreadRun`.
+    await ctx.storage.taskBoard.closeReviewCycle(id, organizationId);
+
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
     // chunk lands. `enqueueSuperAgentForTask` claims quota itself (idempotent
