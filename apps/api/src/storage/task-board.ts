@@ -1405,8 +1405,9 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Open a review cycle on a task that is still `in_progress` and has none
-   * open, returning the updated item or null when there was nothing to do.
+   * Open a review cycle on a task that has none open, leaving it In Progress —
+   * where a card whose reviewer is working belongs — and returning the updated
+   * item, or null when there was nothing to do.
    *
    * The `review_cycle_started_at IS NULL` predicate is what makes it safe to
    * call from every trigger that notices reviewable work (the PR-open hook, the
@@ -1426,10 +1427,35 @@ export class TaskBoardStorage {
   ): Promise<TaskBoardItem | null> {
     const row = await this.db
       .updateTable("task_board_items")
-      .set({ review_cycle_started_at: new Date() })
+      .set({ review_cycle_started_at: new Date(), status: "in_progress" })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      // In Review is in here because the PR link can LOSE THE RACE to the
+      // thread-finish backstop. `advanceLinkedTasksToReviewOnThreadFinish`
+      // reads `listPrs` to decide repo-backed vs repo-less, and a run that
+      // links its PR moments after its thread goes terminal is read as
+      // repo-less and parked In Review. The link then lands on a card that is
+      // no longer In Progress, this update matched nothing, and the cycle
+      // never opened at all: the card sat In Review for the whole reviewer run
+      // — the exact thing migration 189 exists to prevent — with every verdict
+      // falling back to the legacy activity scan. Observed at 52 seconds
+      // between the two on a real board.
+      //
+      // Taking the card BACK to In Progress is safe precisely because the
+      // cycle is still null: a card whose cycle never opened has had no
+      // reviewer and no verdict, so there is nothing behind it to invalidate,
+      // and the Super Agent guard keeps it off a card a person has taken over
+      // (`handTaskToHuman` clears the assignee). Both columns move in ONE
+      // statement — a separate flip could interleave with the sweeper's read.
+      .where((eb) =>
+        eb.or([
+          eb("status", "=", "in_progress"),
+          eb.and([
+            eb("status", "=", "in_review"),
+            eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
+          ]),
+        ]),
+      )
       .where("review_cycle_started_at", "is", null)
       .where("dismissed_at", "is", null)
       .returningAll()
