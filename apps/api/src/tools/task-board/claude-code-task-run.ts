@@ -239,6 +239,10 @@ export function buildClaudeCodeTaskPrompt(
       "",
     );
   } else if (opts?.feedback) {
+    // Review is SINGLE-PASS (`review-decision.ts`): a `request_changes` verdict
+    // hands the card to a human and is never bounced back here. This lead only
+    // reaches a run a HUMAN re-ran on such a card, carrying the verdict's notes
+    // so the re-run continues from them (`outstandingReviewFeedback`).
     lines.push(
       opts.pr
         ? `A reviewer requested changes on pull request #${opts.pr.number} (${opts.pr.url}):`
@@ -247,7 +251,6 @@ export function buildClaudeCodeTaskPrompt(
       opts.pr
         ? `Check that branch out (\`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, then push to update the SAME pull request — do NOT open a new one.`
         : "Address this feedback.",
-      "The reviewer judged the running app, not your diff. Reproduce their check LOCALLY before you push again — a fix that only looks right in the code comes straight back.",
       "",
     );
   } else if (opts?.pr) {

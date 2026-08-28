@@ -64,15 +64,6 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(prompt).not.toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
   });
 
-  test("a reviewer bounce says to reproduce the check locally", () => {
-    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
-      feedback: "view_item never fires",
-      pr: { number: 340, url: "https://github.com/acme/web/pull/340" },
-    });
-    expect(prompt).toContain("Reproduce their check LOCALLY");
-    expect(prompt).not.toContain("DEPLOYED PREVIEW");
-  });
-
   // Inverted: this used to say "move it to review anyway so a human can close
   // it out". In Review is the reviewers' lane and reviewers are only enqueued
   // for a task that HAS a PR, so a no-PR task parked there had nobody to pick
