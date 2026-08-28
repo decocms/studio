@@ -40,6 +40,7 @@ const createMockContext = (
     taskBoard: null as never,
     sprints: null as never,
     columnAutomations: null as never,
+    boardColumns: null as never,
     notifications: null as never,
     orgFsEntries: null as never,
     oauthPkceStates: null as never,

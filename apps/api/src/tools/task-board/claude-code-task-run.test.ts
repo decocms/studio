@@ -52,19 +52,25 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(buildClaudeCodeTaskPrompt(task, repo)).toContain("AUTONOMOUSLY");
   });
 
-  test("requires reachability and a preview check before handing over", () => {
+  // Inverted: this used to require fetching the PR's `previewUrl` and
+  // verifying on the deploy preview. That is the reviewer's job — the Super
+  // Agent implements and verifies locally, and must not sit waiting for a
+  // deploy.
+  test("requires reachability and a LOCAL check before handing over", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("must be REACHABLE");
-    expect(prompt).toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
+    expect(prompt).toContain("VERIFY the task's outcome LOCALLY");
     expect(prompt).toContain("A green test suite is not the bar");
+    expect(prompt).not.toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
   });
 
-  test("a reviewer bounce says to reproduce the check on the preview", () => {
+  test("a reviewer bounce says to reproduce the check locally", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo, {
       feedback: "view_item never fires",
       pr: { number: 340, url: "https://github.com/acme/web/pull/340" },
     });
-    expect(prompt).toContain("judged the DEPLOYED PREVIEW");
+    expect(prompt).toContain("Reproduce their check LOCALLY");
+    expect(prompt).not.toContain("DEPLOYED PREVIEW");
   });
 
   // Inverted: this used to say "move it to review anyway so a human can close

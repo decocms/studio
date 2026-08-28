@@ -137,6 +137,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
+  org_board_columns: z
+    .boolean()
+    .optional()
+    .describe(
+      "The task board's columns are this org's own, mirrored from its tracker, rather than the set Studio ships. Off means the canonical lanes, which is the only board most orgs want.",
+    ),
   reviewer_enabled: z
     .boolean()
     .optional()

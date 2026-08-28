@@ -247,7 +247,7 @@ export function buildClaudeCodeTaskPrompt(
       opts.pr
         ? `Check that branch out (\`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, then push to update the SAME pull request — do NOT open a new one.`
         : "Address this feedback.",
-      "The reviewer judged the DEPLOYED PREVIEW, not your diff. Reproduce their check there before you push again — a fix that only looks right in the code comes straight back.",
+      "The reviewer judged the running app, not your diff. Reproduce their check LOCALLY before you push again — a fix that only looks right in the code comes straight back.",
       "",
     );
   } else if (opts?.pr) {
@@ -270,7 +270,10 @@ export function buildClaudeCodeTaskPrompt(
     "- Change only what the task needs. Don't refactor around it.",
     // The two defects behind every card that burned its bounce budget.
     "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is dead code, and it is the most common reason a task comes back rejected.",
-    `- Before handing over, VERIFY the task's outcome the way the reviewer will: get the PR's \`previewUrl\` from \`mcp__studio__TASK_BOARD_ITEM_PRS_GET\` (give the deploy a minute), open the affected route there, and confirm the behaviour actually happens. A green test suite is not the bar — the reviewer approves what it can see on the preview.`,
+    // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
+    // for a deploy that may not exist yet, and that is the reviewer's job
+    // (`enqueue-reviewer.ts`) — this run implements and hands over.
+    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path (the dev server hot-reloads, so hit the route it renders) and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
     // The ONLY reliable way the board learns the PR: Claude Code opens it inside
     // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
     // dispatched from the linked PR, so skipping this strands the card.
