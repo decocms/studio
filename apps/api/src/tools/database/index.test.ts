@@ -26,4 +26,28 @@ describe("interpolateParams", () => {
     const result = interpolateParams("a = $1 AND b = $2", ["x"]);
     expect(result).toBe("a = 'x' AND b = $2");
   });
+
+  test("does not treat a ? inside a string literal as a placeholder", () => {
+    const result = interpolateParams(
+      "SELECT * FROM t WHERE msg = 'what?' AND id = ?",
+      [5],
+    );
+    expect(result).toBe("SELECT * FROM t WHERE msg = 'what?' AND id = 5");
+  });
+
+  test("does not treat a $1 inside a string literal as a placeholder", () => {
+    const result = interpolateParams(
+      "SELECT * FROM t WHERE msg = 'cost is $1' AND id = $1",
+      [5],
+    );
+    expect(result).toBe("SELECT * FROM t WHERE msg = 'cost is $1' AND id = 5");
+  });
+
+  test("keeps a doubled '' escaped quote inside the string open", () => {
+    const result = interpolateParams(
+      "SELECT * FROM t WHERE msg = 'it''s a ?' AND id = ?",
+      [5],
+    );
+    expect(result).toBe("SELECT * FROM t WHERE msg = 'it''s a ?' AND id = 5");
+  });
 });
