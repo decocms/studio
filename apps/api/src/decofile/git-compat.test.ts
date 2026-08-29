@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildDiscardTreeEntries,
   buildMergeTreeEntries,
   buildPublishStatus,
   normalizeCompareStatus,
 } from "./git-compat";
+import type { TreeEntry } from "./github-git-data";
 
 describe("buildMergeTreeEntries", () => {
   it("writes a rename as create-destination + delete-source", () => {
@@ -78,6 +80,46 @@ describe("buildMergeTreeEntries", () => {
     expect(entries).toEqual([
       { path: "Old.json", mode: "100644", type: "blob", sha: null },
     ]);
+  });
+});
+
+describe("buildDiscardTreeEntries", () => {
+  const blob = (sha: string, mode: string): TreeEntry => ({
+    path: "irrelevant", // overwritten by the map key at lookup time
+    mode,
+    type: "blob",
+    sha,
+  });
+
+  it("restores the base blob's mode, not a hardcoded 100644", () => {
+    const entries = buildDiscardTreeEntries(
+      ["run.sh"],
+      new Map([["run.sh", blob("base-sha", "100755")]]),
+      new Map([["run.sh", blob("head-sha", "100755")]]),
+    );
+    expect(entries).toEqual([
+      { path: "run.sh", mode: "100755", type: "blob", sha: "base-sha" },
+    ]);
+  });
+
+  it("deletes a path the base doesn't have", () => {
+    const entries = buildDiscardTreeEntries(
+      ["New.json"],
+      new Map(),
+      new Map([["New.json", blob("head-sha", "100644")]]),
+    );
+    expect(entries).toEqual([
+      { path: "New.json", mode: "100644", type: "blob", sha: null },
+    ]);
+  });
+
+  it("is a no-op when base and head already match, or both are absent", () => {
+    const entries = buildDiscardTreeEntries(
+      ["Same.json", "Never.json"],
+      new Map([["Same.json", blob("s", "100644")]]),
+      new Map([["Same.json", blob("s", "100644")]]),
+    );
+    expect(entries).toEqual([]);
   });
 });
 
