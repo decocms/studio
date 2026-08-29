@@ -28,7 +28,7 @@ import {
   ThreadSheetBody,
   type ThreadEntity,
 } from "@/components/thread/thread-sheet-body.tsx";
-import { STATUS_CONFIG } from "@/lib/task-status";
+import { getStatusConfig } from "@/lib/task-status";
 import {
   formatCompactNumber,
   formatUsd,
@@ -98,9 +98,7 @@ function ThreadRow({
     minute: "2-digit",
   });
 
-  const statusCfg =
-    STATUS_CONFIG[thread.status as keyof typeof STATUS_CONFIG] ??
-    STATUS_CONFIG.completed;
+  const statusCfg = getStatusConfig(thread.status ?? undefined);
   const StatusIcon = statusCfg.icon;
 
   return (

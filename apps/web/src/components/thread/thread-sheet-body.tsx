@@ -37,7 +37,7 @@ import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
-import { STATUS_CONFIG } from "@/lib/task-status";
+import { getStatusConfig } from "@/lib/task-status";
 import {
   getOrgMembers,
   getThreadAgentId,
@@ -200,9 +200,7 @@ function ThreadMetaRow({
     second: "2-digit",
   });
 
-  const statusCfg =
-    STATUS_CONFIG[thread.status as keyof typeof STATUS_CONFIG] ??
-    STATUS_CONFIG.completed;
+  const statusCfg = getStatusConfig(thread.status ?? undefined);
   const StatusIcon = statusCfg.icon;
 
   return (
