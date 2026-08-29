@@ -63,8 +63,21 @@ export function interpolateParams(sql: string, params: unknown[]): string {
   let questionMarkIndex = 0;
   let inString = false;
   let inIdentifier = false;
+  // A DO/CREATE FUNCTION body's own $1 (its arg, not our param) lives here.
+  let dollarQuoteTag: string | null = null;
   for (let i = 0; i < sql.length; i++) {
     const char = sql[i];
+    if (dollarQuoteTag !== null) {
+      const closeDelim = `$${dollarQuoteTag}$`;
+      if (sql.startsWith(closeDelim, i)) {
+        result += closeDelim;
+        i += closeDelim.length - 1;
+        dollarQuoteTag = null;
+      } else {
+        result += char;
+      }
+      continue;
+    }
     if (!inIdentifier && char === "'") {
       inString = !inString;
       result += char;
@@ -81,6 +94,14 @@ export function interpolateParams(sql: string, params: unknown[]): string {
       if (match && paramIndex >= 0 && paramIndex < params.length) {
         result += escapeSqlValue(params[paramIndex]);
         i += match[0].length - 1;
+        continue;
+      }
+      // A tag can't start with a digit, so this never fights the $1 case above.
+      const quoteStart = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
+      if (quoteStart) {
+        dollarQuoteTag = quoteStart[1] ?? "";
+        result += quoteStart[0];
+        i += quoteStart[0].length - 1;
         continue;
       }
     } else if (
