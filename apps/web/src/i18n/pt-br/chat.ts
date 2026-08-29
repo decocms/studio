@@ -187,6 +187,11 @@ export const chat = {
   "chat.generateImage.noImagesGenerated": "Nenhuma imagem gerada",
   "chat.generateImage.reference": "referência",
   "chat.generateImage.references": "referências:",
+  "chat.generic.annotation.destructive": "Pode modificar ou excluir dados",
+  "chat.generic.annotation.interactive": "Interativo",
+  "chat.generic.annotation.openWorld": "Alcança fora deste sistema",
+  "chat.generic.annotation.readOnly":
+    "Somente leitura — sem efeitos colaterais",
   "chat.generic.cancelled": "Cancelado",
   "chat.generic.done": "Concluído",
   "chat.generic.dynamicTool": "Ferramenta Dinâmica",
