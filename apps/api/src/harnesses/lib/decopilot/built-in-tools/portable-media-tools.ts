@@ -234,7 +234,8 @@ export async function fetchImageBytes(
     : timeoutSignal;
   let res: Response;
   try {
-    res = await fetch(url, { signal });
+    // Refuses redirects — otherwise bypasses the SSRF checks above.
+    res = await fetch(url, { signal, redirect: "manual" });
   } catch (err) {
     if (err instanceof Error && err.name === "TimeoutError") {
       throw new Error(
@@ -242,6 +243,9 @@ export async function fetchImageBytes(
       );
     }
     throw err;
+  }
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error(`Refusing to follow a redirect fetching image from ${url}`);
   }
   if (!res.ok) {
     throw new Error(`Failed to fetch image from ${url}: ${res.status}`);

@@ -91,6 +91,23 @@ describe("fetchImageBytes", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("refuses a redirect response, so a compromised host can't bounce the fetch to a private address", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(null, {
+        status: 302,
+        headers: { location: "http://169.254.169.254/latest/meta-data/" },
+      })) as unknown as typeof fetch;
+
+    try {
+      await expect(
+        fetchImageBytes("https://93.184.216.34/reference.png", {}),
+      ).rejects.toThrow(/redirect/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("generateImageCore", () => {
