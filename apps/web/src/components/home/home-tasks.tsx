@@ -7,6 +7,7 @@
  * board (the metric tiles).
  */
 import { type ReactNode, useState } from "react";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { formatTimeAgo } from "@/lib/format-time";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -25,6 +26,7 @@ import {
   laneVisual,
   type TaskBoardItem,
 } from "@/layouts/task-board/config";
+import { taskRouteSegment } from "@/layouts/task-board/task-route";
 import { TaskBoardItemDialog } from "@/layouts/task-board/task-dialog";
 
 interface OrgMember {
@@ -155,6 +157,8 @@ function buildSummary(
 export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
+  const navigate = useNavigate();
+  const orgSlug = useParams({ strict: false }).org ?? "";
   const { items, error } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const { data: membersData } = useMembers();
@@ -177,6 +181,12 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
 
   // The board is a destination of its own (same as the sidebar's Tasks).
   const openBoard = () => openPanel("board", { replace: false });
+  // Same card address the sidebar inbox links to.
+  const openTask = (task: TaskBoardItem) =>
+    navigate({
+      to: "/$org/tasks/{-$taskKey}",
+      params: { org: orgSlug, taskKey: taskRouteSegment(orgSlug, task) },
+    });
 
   return (
     <div className="flex flex-col gap-10">
@@ -250,7 +260,7 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
                     ? memberByUserId.get(task.assigneeId)
                     : undefined
                 }
-                onOpen={openBoard}
+                onOpen={() => openTask(task)}
               />
             ))}
             <button
