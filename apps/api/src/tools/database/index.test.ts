@@ -122,4 +122,9 @@ describe("interpolateParams", () => {
     );
     expect(result).toBe("SELECT 1 /* outer /* inner */ trailing ? */, 2");
   });
+
+  test("keeps a placeholder after a backslash-escaped quote in an E'...' string", () => {
+    const result = interpolateParams("SELECT E'it\\'s', ?", [1]);
+    expect(result).toBe("SELECT E'it\\'s', 1");
+  });
 });

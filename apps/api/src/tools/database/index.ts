@@ -63,6 +63,8 @@ export function interpolateParams(sql: string, params: unknown[]): string {
   let questionMarkIndex = 0;
   let inString = false;
   let inIdentifier = false;
+  // Only an E'...' string treats \' as an escape, not a closing quote.
+  let inEscapedString = false;
   // A DO/CREATE FUNCTION body's own $1 (its arg, not our param) lives here.
   let dollarQuoteTag: string | null = null;
   for (let i = 0; i < sql.length; i++) {
@@ -108,7 +110,18 @@ export function interpolateParams(sql: string, params: unknown[]): string {
       }
       continue;
     }
+    if (inString && inEscapedString && char === "\\" && i + 1 < sql.length) {
+      result += char + sql[i + 1];
+      i += 1;
+      continue;
+    }
     if (!inIdentifier && char === "'") {
+      if (!inString) {
+        const prev = sql[i - 1];
+        const prevPrev = sql[i - 2] ?? "";
+        inEscapedString =
+          (prev === "e" || prev === "E") && !/[A-Za-z0-9_]/.test(prevPrev);
+      }
       inString = !inString;
       result += char;
       continue;
