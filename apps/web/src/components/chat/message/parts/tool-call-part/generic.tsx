@@ -273,7 +273,9 @@ export function GenericToolCallPart({
   const toolName = stripToolNamespace(mcpStrippedName, gatewayClientId);
   const toolDisplay = TOOL_DISPLAY_MAP[toolName];
   const friendlyName =
-    toolDef?.title ?? toolDisplay?.label ?? toTitleCase(toolName);
+    toolDef?.title ??
+    (toolDisplay?.labelKey ? t(toolDisplay.labelKey) : undefined) ??
+    toTitleCase(toolName);
   const uiResourceUri = getUIResourceUri(meta);
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
