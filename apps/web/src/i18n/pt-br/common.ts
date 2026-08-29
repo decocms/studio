@@ -307,4 +307,10 @@ export const common = {
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
   "common.openExternalFailed": "Não foi possível abrir este link no navegador.",
+  "common.taskStatus.requiresAction": "Requer revisão",
+  "common.taskStatus.failed": "Falhou",
+  "common.taskStatus.expired": "Expirou",
+  "common.taskStatus.inProgress": "Em execução",
+  "common.taskStatus.completed": "Concluído",
+  "common.taskStatus.unknown": "Desconhecido",
 } satisfies Record<keyof typeof commonEn, string>;

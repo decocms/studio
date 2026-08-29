@@ -12,6 +12,7 @@ import {
   Loading01,
   XCircle,
 } from "@untitledui/icons";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 
 export type StatusKey =
   | "requires_action"
@@ -21,7 +22,9 @@ export type StatusKey =
   | "completed";
 
 export interface StatusConfig {
-  label: string;
+  /** Translation key for the label — resolve with `t()`, this is not
+   *  display-ready on its own. */
+  labelKey: TranslationKey;
   icon: typeof Loading01;
   iconClassName: string;
   /** Color for the label text */
@@ -30,31 +33,31 @@ export interface StatusConfig {
 
 export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
   requires_action: {
-    label: "Needs review",
+    labelKey: "common.taskStatus.requiresAction",
     icon: AlertCircle,
     iconClassName: "text-warning",
     labelColor: "text-warning",
   },
   failed: {
-    label: "Failed",
+    labelKey: "common.taskStatus.failed",
     icon: XCircle,
     iconClassName: "text-destructive",
     labelColor: "text-destructive",
   },
   expired: {
-    label: "Timed out",
+    labelKey: "common.taskStatus.expired",
     icon: Hourglass03,
     iconClassName: "text-warning",
     labelColor: "text-warning",
   },
   in_progress: {
-    label: "Running",
+    labelKey: "common.taskStatus.inProgress",
     icon: Loading01,
     iconClassName: "text-primary",
     labelColor: "text-primary",
   },
   completed: {
-    label: "Done",
+    labelKey: "common.taskStatus.completed",
     icon: CheckCircle,
     iconClassName: "text-muted-foreground/50",
     labelColor: "text-muted-foreground",
@@ -62,7 +65,7 @@ export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
 };
 
 const UNKNOWN: StatusConfig = {
-  label: "Unknown",
+  labelKey: "common.taskStatus.unknown",
   icon: Circle,
   iconClassName: "text-muted-foreground",
   labelColor: "text-muted-foreground",

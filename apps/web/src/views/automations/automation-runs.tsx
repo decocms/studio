@@ -146,6 +146,7 @@ function RunRow({
   onClick: () => void;
   lastRowRef?: (node: HTMLTableRowElement | null) => void;
 }) {
+  const t = useT();
   const date = new Date(run.created_at);
   const dateStr = date.toLocaleDateString("en-US", {
     month: "short",
@@ -174,7 +175,7 @@ function RunRow({
         <div className="flex items-center gap-1.5">
           <StatusIcon size={14} className={statusCfg.iconClassName} />
           <span className={cn("text-sm", statusCfg.labelColor)}>
-            {statusCfg.label}
+            {t(statusCfg.labelKey)}
           </span>
         </div>
       </TableCell>
