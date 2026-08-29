@@ -306,6 +306,8 @@ export interface ConnectionStoragePort {
   create(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   findById(id: string): Promise<ConnectionEntity | null>;
+  /** See `ConnectionStorage.findBySanitizedId`. */
+  findBySanitizedId(id: string): Promise<ConnectionEntity | null>;
   list(
     organizationId: string,
     options?: {
