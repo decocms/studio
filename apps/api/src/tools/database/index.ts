@@ -51,25 +51,31 @@ function escapeSqlValue(value: unknown): string {
  * or `$1` (e.g. a string param holding "a?b") was then picked up as a REAL
  * placeholder by a later pass and substituted again, corrupting the query.
  *
- * Also tracks single-quoted string state: a literal `?` or `$1` typed inside
- * the SQL text's own string literal (e.g. `WHERE msg = 'what?'`) is not a
- * placeholder — treating it as one both mangles that literal and steals a
- * positional slot from the real placeholder later in the query. A doubled `''`
- * (the SQL-standard escaped quote) toggles the state twice in a row, which
- * keeps the string open, matching how Postgres itself reads it.
+ * Also tracks single- and double-quoted state: a literal `?` or `$1` typed
+ * inside the SQL text's own string literal (`'what?'`) or a quoted identifier
+ * (`"col?"`) is not a placeholder — treating it as one both mangles that
+ * literal/identifier and steals a positional slot from the real placeholder
+ * later in the query. A doubled `''`/`""` keeps the string/identifier open,
+ * matching how Postgres itself reads an escaped quote.
  */
 export function interpolateParams(sql: string, params: unknown[]): string {
   let result = "";
   let questionMarkIndex = 0;
   let inString = false;
+  let inIdentifier = false;
   for (let i = 0; i < sql.length; i++) {
     const char = sql[i];
-    if (char === "'") {
+    if (!inIdentifier && char === "'") {
       inString = !inString;
       result += char;
       continue;
     }
-    if (!inString && char === "$") {
+    if (!inString && char === '"') {
+      inIdentifier = !inIdentifier;
+      result += char;
+      continue;
+    }
+    if (!inString && !inIdentifier && char === "$") {
       const match = /^\$(\d+)/.exec(sql.slice(i));
       const paramIndex = match ? Number(match[1]) - 1 : -1;
       if (match && paramIndex >= 0 && paramIndex < params.length) {
@@ -77,7 +83,12 @@ export function interpolateParams(sql: string, params: unknown[]): string {
         i += match[0].length - 1;
         continue;
       }
-    } else if (!inString && char === "?" && questionMarkIndex < params.length) {
+    } else if (
+      !inString &&
+      !inIdentifier &&
+      char === "?" &&
+      questionMarkIndex < params.length
+    ) {
       result += escapeSqlValue(params[questionMarkIndex]);
       questionMarkIndex++;
       continue;
