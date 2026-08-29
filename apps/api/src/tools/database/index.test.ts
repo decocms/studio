@@ -74,4 +74,24 @@ describe("interpolateParams", () => {
     );
     expect(result).toBe('SELECT * FROM t WHERE "col""?" = 1 AND id = 2');
   });
+
+  test("does not treat a $1 inside a dollar-quoted function body as a placeholder", () => {
+    const result = interpolateParams(
+      "DO $$ BEGIN PERFORM some_func($1); END $$; SELECT ? ",
+      ["x"],
+    );
+    expect(result).toBe(
+      "DO $$ BEGIN PERFORM some_func($1); END $$; SELECT 'x' ",
+    );
+  });
+
+  test("does not treat a $1 inside a tagged dollar-quoted body as a placeholder", () => {
+    const result = interpolateParams(
+      "CREATE FUNCTION f() RETURNS int AS $body$ SELECT $1 $body$ LANGUAGE sql; SELECT ?",
+      ["x"],
+    );
+    expect(result).toBe(
+      "CREATE FUNCTION f() RETURNS int AS $body$ SELECT $1 $body$ LANGUAGE sql; SELECT 'x'",
+    );
+  });
 });
