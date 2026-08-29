@@ -181,19 +181,14 @@ export class AuthTransport extends WrapperTransport {
       connection.id, // Connection ID for permission check
       getToolMeta, // Callback for public tool check
       ctx.organization?.id, // Path-resolved org for permission checks
+      false, // toolName is the downstream connection's own name — don't trust its prefix
     );
 
     await connectionAccessControl.check(toolName);
   }
 
+  // toolName is the downstream server's own name for it — never trust its prefix, only its _meta.
   private async isPublicTool(toolName: string): Promise<boolean> {
-    if (
-      toolName.startsWith("STUDIO_PUBLIC_") ||
-      toolName.startsWith("MESH_PUBLIC_")
-    ) {
-      return true;
-    }
-
     const toolsMap = await this.ensureToolsMap();
     const tool = toolsMap.get(toolName);
     if (!tool?._meta) {
