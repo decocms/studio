@@ -1,5 +1,7 @@
 import type {
   CallToolRequest,
+  CallToolResult,
+  CompatibilityCallToolResult,
   GetPromptRequest,
   GetPromptResult,
   ListPromptsResult,
@@ -11,8 +13,9 @@ import type {
 
 export interface VirtualClient {
   listTools(): Promise<ListToolsResult>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  callTool(params: CallToolRequest["params"]): Promise<any>;
+  callTool(
+    params: CallToolRequest["params"],
+  ): Promise<CallToolResult | CompatibilityCallToolResult>;
   listResources(): Promise<ListResourcesResult>;
   readResource(
     params: ReadResourceRequest["params"],
