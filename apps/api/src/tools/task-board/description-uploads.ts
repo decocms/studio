@@ -23,18 +23,20 @@ export function uploadsAsSandboxPaths(description: string): string {
     // The editor writes `?path=` as the whole query, so everything up to the
     // closing paren (or whitespace) is the encoded path.
     /\/api\/[^/\s)]+\/fs\/([^/\s)]+)\/read\?path=([^)\s]+)/g,
-    (url, volume: string, encodedPath: string) => {
+    (url, encodedVolume: string, encodedPath: string) => {
+      let volume: string;
       let path: string;
       try {
+        volume = decodeURIComponent(encodedVolume);
         path = decodeURIComponent(encodedPath);
       } catch {
         return url;
       }
-      // A description is user-written, and this path becomes a filesystem read
-      // inside the pod. Anything that could climb out of the mount keeps its
-      // original URL rather than resolving somewhere it shouldn't.
-      if (path.startsWith("/") || path.split("/").includes("..")) return url;
-      return orgFsSandboxPath(decodeURIComponent(volume), path);
+      // Checked on the DECODED value: `%2F` hides a climb-out slash from the capture.
+      const climbsOut = (part: string) =>
+        part.startsWith("/") || part.split("/").includes("..");
+      if (climbsOut(volume) || climbsOut(path)) return url;
+      return orgFsSandboxPath(volume, path);
     },
   );
 }
