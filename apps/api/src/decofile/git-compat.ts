@@ -15,6 +15,7 @@
 import {
   GitHubApiError,
   type GitDataClient,
+  type TreeEntry,
   type TreeWriteEntry,
 } from "./github-git-data";
 import { mapBounded, resolveOrCreateHead } from "./read-decofile";
@@ -359,6 +360,35 @@ export function buildMergeTreeEntries(
 }
 
 /**
+ * Tree write entries for a discard: reset each path to its blob (and MODE — a
+ * script's executable bit is real content, not metadata a discard should
+ * silently drop) at the merge base, or delete it when the base doesn't have
+ * it either. Pure, so it's unit-tested without a `GitDataClient`.
+ */
+export function buildDiscardTreeEntries(
+  filepaths: string[],
+  baseBlobByPath: Map<string, TreeEntry>,
+  headBlobByPath: Map<string, TreeEntry>,
+): TreeWriteEntry[] {
+  const entries: TreeWriteEntry[] = [];
+  for (const path of filepaths) {
+    const baseBlob = baseBlobByPath.get(path);
+    const headBlob = headBlobByPath.get(path);
+    // Already at the base content (or absent on both sides): nothing to do.
+    if (baseBlob?.sha === headBlob?.sha) continue;
+    // Deleting a path the head tree doesn't have is a 422, not a no-op.
+    if (!baseBlob && !headBlob) continue;
+    entries.push({
+      path,
+      mode: baseBlob?.mode ?? "100644",
+      type: "blob",
+      sha: baseBlob?.sha ?? null,
+    });
+  }
+  return entries;
+}
+
+/**
  * Discard the branch's changes to `filepaths`: a new commit on the branch that
  * resets each path to its content at the merge base with the default branch
  * (or deletes it when it did not exist there). The sandbox-less equivalent of
@@ -388,21 +418,11 @@ export async function githubGitDiscard(
       ),
     ]);
 
-    const entries: TreeWriteEntry[] = [];
-    for (const path of filepaths) {
-      const baseBlob = baseBlobByPath.get(path);
-      const headBlob = headBlobByPath.get(path);
-      // Already at the base content (or absent on both sides): nothing to do.
-      if (baseBlob?.sha === headBlob?.sha) continue;
-      // Deleting a path the head tree doesn't have is a 422, not a no-op.
-      if (!baseBlob && !headBlob) continue;
-      entries.push({
-        path,
-        mode: "100644",
-        type: "blob",
-        sha: baseBlob?.sha ?? null,
-      });
-    }
+    const entries = buildDiscardTreeEntries(
+      filepaths,
+      baseBlobByPath,
+      headBlobByPath,
+    );
     if (entries.length === 0) return;
 
     const treeSha = await client.createTree(
