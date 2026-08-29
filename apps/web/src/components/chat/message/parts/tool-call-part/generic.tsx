@@ -123,24 +123,33 @@ function AnnotationBadges({
   annotations?: ToolDefinition["annotations"];
   toolMeta?: ToolDefinition["_meta"];
 }) {
+  const t = useT();
   const hasUI = !!getUIResourceUri(toolMeta);
   if (!annotations && !hasUI) return null;
   return (
     <>
-      {hasUI && <AnnotationBadge icon={<LayersTwo01 />} label="Interactive" />}
+      {hasUI && (
+        <AnnotationBadge
+          icon={<LayersTwo01 />}
+          label={t("chat.generic.annotation.interactive")}
+        />
+      )}
       {annotations?.readOnlyHint && (
-        <AnnotationBadge icon={<Eye />} label="Read-only — no side effects" />
+        <AnnotationBadge
+          icon={<Eye />}
+          label={t("chat.generic.annotation.readOnly")}
+        />
       )}
       {annotations?.destructiveHint && (
         <AnnotationBadge
           icon={<AlertCircle />}
-          label="May modify or delete data"
+          label={t("chat.generic.annotation.destructive")}
         />
       )}
       {annotations?.openWorldHint && (
         <AnnotationBadge
           icon={<Globe02 />}
-          label="Reaches outside this system"
+          label={t("chat.generic.annotation.openWorld")}
         />
       )}
     </>
