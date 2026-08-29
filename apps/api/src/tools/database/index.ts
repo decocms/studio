@@ -67,6 +67,23 @@ export function interpolateParams(sql: string, params: unknown[]): string {
   let dollarQuoteTag: string | null = null;
   for (let i = 0; i < sql.length; i++) {
     const char = sql[i];
+    if (!inString && !inIdentifier && dollarQuoteTag === null) {
+      // A `?` inside a comment would otherwise shift every later positional index.
+      if (sql.startsWith("--", i)) {
+        const end = sql.indexOf("\n", i);
+        const comment = end === -1 ? sql.slice(i) : sql.slice(i, end);
+        result += comment;
+        i += comment.length - 1;
+        continue;
+      }
+      if (sql.startsWith("/*", i)) {
+        const end = sql.indexOf("*/", i + 2);
+        const comment = end === -1 ? sql.slice(i) : sql.slice(i, end + 2);
+        result += comment;
+        i += comment.length - 1;
+        continue;
+      }
+    }
     if (dollarQuoteTag !== null) {
       const closeDelim = `$${dollarQuoteTag}$`;
       if (sql.startsWith(closeDelim, i)) {
