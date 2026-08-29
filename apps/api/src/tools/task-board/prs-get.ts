@@ -14,6 +14,7 @@ import { retry, RetryError } from "@decocms/shared/std";
 import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { cardWorkLanded } from "./archive-merged";
+import { boardFor, shippedPatch } from "./board-handler";
 import { recordTaskActivity } from "./activity";
 import { inReviewPhase, movesForward } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -1266,10 +1267,11 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
             organizationId,
           ))
         ) {
+          const board = await boardFor(ctx, organizationId);
           const updated = await ctx.storage.taskBoard.update(
             taskBoardItemId,
             organizationId,
-            { status: shipped },
+            shippedPatch(board, shipped),
             item.updatedBy,
           );
           // Every other path that moves a card to Done (the review-decision
