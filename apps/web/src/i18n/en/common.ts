@@ -297,4 +297,10 @@ export const common = {
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
   "common.openExternalFailed": "Could not open this link in your browser.",
+  "common.taskStatus.requiresAction": "Needs review",
+  "common.taskStatus.failed": "Failed",
+  "common.taskStatus.expired": "Timed out",
+  "common.taskStatus.inProgress": "Running",
+  "common.taskStatus.completed": "Done",
+  "common.taskStatus.unknown": "Unknown",
 } as const;

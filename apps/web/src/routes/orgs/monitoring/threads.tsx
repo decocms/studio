@@ -69,6 +69,7 @@ function ThreadRow({
   onClick: () => void;
   lastRowRef?: (node: HTMLTableRowElement | null) => void;
 }) {
+  const t = useT();
   const agentId = getThreadAgentId(thread);
   const agentName = resolveAgentName(
     agentId,
@@ -141,7 +142,7 @@ function ThreadRow({
         <div className="flex items-center gap-1.5">
           <StatusIcon size={14} className={statusCfg.iconClassName} />
           <span className={cn("text-sm", statusCfg.labelColor)}>
-            {statusCfg.label}
+            {t(statusCfg.labelKey)}
           </span>
         </div>
       </TableCell>
