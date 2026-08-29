@@ -199,7 +199,7 @@ export async function findNDJSONFiles(dir: string): Promise<string[]> {
     if (
       err instanceof Error &&
       "code" in err &&
-      (err as any).code === "ENOENT"
+      (err as NodeJS.ErrnoException).code === "ENOENT"
     ) {
       return [];
     }
@@ -207,8 +207,7 @@ export async function findNDJSONFiles(dir: string): Promise<string[]> {
   }
   for (const entry of entries) {
     if (entry.isFile() && entry.name.endsWith(".ndjson")) {
-      const parentPath = entry.parentPath ?? (entry as any).path;
-      results.push(join(parentPath, entry.name));
+      results.push(join(entry.parentPath, entry.name));
     }
   }
   return results;
