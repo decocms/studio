@@ -11,6 +11,7 @@ import {
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
+import { boardFor, shippedPatch } from "./board-handler";
 import {
   emitTaskBoardUpdated,
   handTaskToHuman,
@@ -318,10 +319,11 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           taskBoardItemId,
           organizationId,
         )) ?? item;
+      const board = await boardFor(ctx, organizationId);
       const done = await ctx.storage.taskBoard.update(
         taskBoardItemId,
         organizationId,
-        { status: shipped },
+        shippedPatch(board, shipped),
         item.updatedBy,
       );
       await recordTaskActivity(ctx, {

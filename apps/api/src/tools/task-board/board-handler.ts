@@ -173,6 +173,20 @@ export async function boardFor(
 }
 
 /**
+ * The patch every route that ships or archives a card writes: the target
+ * status alongside the board's own discriminator. One helper so a new ship
+ * path can't repeat `{ status, boardColumnOrg }` and forget the guard — the
+ * exact gap that let a card land unguarded on an org-owned board (#6725,
+ * #6739) in the sweep paths that already remembered it.
+ */
+export function shippedPatch(
+  board: BoardHandler,
+  status: string,
+): { status: string; boardColumnOrg: string | null } {
+  return { status, boardColumnOrg: board.columnOwner() };
+}
+
+/**
  * Refuse a status this board has no column for.
  *
  * What the closed enum used to do, moved to where the answer actually lives:
