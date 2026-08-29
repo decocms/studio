@@ -1870,13 +1870,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
   }
 
-  // Expired API key cleanup (e.g. short-lived claude-code-session keys)
+  // Expired API key cleanup — the api-key plugin's own sweep, not a raw query.
   const cleanupExpiredApiKeys = () =>
-    database.db
-      .deleteFrom("apikey" as any)
-      .where("expiresAt" as any, "<", new Date())
-      .execute()
-      .then(() => {})
+    auth.api
+      .deleteAllExpiredApiKeys()
       .catch((err: unknown) =>
         console.error("[auth] Expired API key cleanup failed:", err),
       );
