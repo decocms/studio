@@ -2,9 +2,32 @@ import { describe, expect, it } from "bun:test";
 import {
   assertUrlDoesNotResolvePrivate,
   fetchImageBytes,
+  GenerateImageInputSchema,
   generateImageCore,
   validateExternalUrl,
 } from "./portable-media-tools";
+
+describe("GenerateImageInputSchema", () => {
+  it("rejects more reference images than one call may fetch", () => {
+    const referenceImages = Array.from({ length: 11 }, (_, i) => ({
+      uri: `studio-storage://generated-images/${i}.png`,
+    }));
+    expect(
+      GenerateImageInputSchema.safeParse({ prompt: "x", referenceImages })
+        .success,
+    ).toBe(false);
+  });
+
+  it("allows up to the reference-image cap", () => {
+    const referenceImages = Array.from({ length: 10 }, (_, i) => ({
+      uri: `studio-storage://generated-images/${i}.png`,
+    }));
+    expect(
+      GenerateImageInputSchema.safeParse({ prompt: "x", referenceImages })
+        .success,
+    ).toBe(true);
+  });
+});
 
 describe("validateExternalUrl", () => {
   it("rejects loopback", () => {
