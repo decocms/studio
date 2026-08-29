@@ -24,6 +24,7 @@ import type { TaskBoardItem } from "@/storage/types";
 import { shippedLane } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { cardWorkLanded, type PrLanding } from "./archive-merged";
+import { boardFor } from "./board-handler";
 import { inReviewPhase } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
@@ -63,10 +64,12 @@ export async function advanceToDoneIfMerged(
   // Read only once the card is actually shipping.
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const shipped = shippedLane(settings?.flags);
+  const board = await boardFor(ctx, orgId);
   const done = await ctx.storage.taskBoard.update(
     item.id,
     orgId,
-    { status: shipped },
+    // Guarded like a manual move: this can file the card under an org's own column too.
+    { status: shipped, boardColumnOrg: board.columnOwner() },
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
