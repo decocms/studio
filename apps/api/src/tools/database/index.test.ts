@@ -114,4 +114,12 @@ describe("interpolateParams", () => {
       "SELECT * FROM t WHERE a = 1 /* is this right? */ AND b = 2",
     );
   });
+
+  test("keeps a nested block comment closed until its outer terminator", () => {
+    const result = interpolateParams(
+      "SELECT ? /* outer /* inner */ trailing ? */, ?",
+      [1, 2, 3],
+    );
+    expect(result).toBe("SELECT 1 /* outer /* inner */ trailing ? */, 2");
+  });
 });
