@@ -61,6 +61,8 @@ export const GenerateImageInputSchema = z.object({
           ),
       }),
     )
+    // Each entry fans out into its own outbound fetch in generateImageCore.
+    .max(10)
     .optional()
     .describe(
       "Reference images to use as input for image-to-image generation. " +
