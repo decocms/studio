@@ -77,8 +77,21 @@ export function interpolateParams(sql: string, params: unknown[]): string {
         continue;
       }
       if (sql.startsWith("/*", i)) {
-        const end = sql.indexOf("*/", i + 2);
-        const comment = end === -1 ? sql.slice(i) : sql.slice(i, end + 2);
+        // Postgres block comments nest, so a `/*` inside bumps depth back up.
+        let depth = 1;
+        let j = i + 2;
+        while (depth > 0 && j < sql.length) {
+          if (sql.startsWith("/*", j)) {
+            depth++;
+            j += 2;
+          } else if (sql.startsWith("*/", j)) {
+            depth--;
+            j += 2;
+          } else {
+            j++;
+          }
+        }
+        const comment = sql.slice(i, j);
         result += comment;
         i += comment.length - 1;
         continue;
