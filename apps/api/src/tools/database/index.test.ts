@@ -50,4 +50,28 @@ describe("interpolateParams", () => {
     );
     expect(result).toBe("SELECT * FROM t WHERE msg = 'it''s a ?' AND id = 5");
   });
+
+  test("does not treat a ? inside a quoted identifier as a placeholder", () => {
+    const result = interpolateParams(
+      'SELECT * FROM t WHERE "col?" = ? AND id = ?',
+      [1, 2],
+    );
+    expect(result).toBe('SELECT * FROM t WHERE "col?" = 1 AND id = 2');
+  });
+
+  test("does not treat a $1 inside a quoted identifier as a placeholder", () => {
+    const result = interpolateParams(
+      'SELECT "col$1" FROM t WHERE id = $1',
+      [5],
+    );
+    expect(result).toBe('SELECT "col$1" FROM t WHERE id = 5');
+  });
+
+  test('keeps a doubled "" escaped quote inside the identifier open', () => {
+    const result = interpolateParams(
+      'SELECT * FROM t WHERE "col""?" = ? AND id = ?',
+      [1, 2],
+    );
+    expect(result).toBe('SELECT * FROM t WHERE "col""?" = 1 AND id = 2');
+  });
 });
