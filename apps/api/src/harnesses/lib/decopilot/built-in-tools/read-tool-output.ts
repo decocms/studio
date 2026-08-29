@@ -13,6 +13,13 @@ export interface ReadToolOutputParams {
  *  output is a fair trade for a bounded memory footprint. */
 export const MAX_TOOL_OUTPUTS = 200;
 
+/** The entry-count cap above only bounds the number of stashed outputs, not
+ *  their size — a single oversized one (a bash dump, or an untrusted MCP
+ *  server's response) is stored whole before this cap ever kicks in. Trim each
+ *  value at insertion so MAX_TOOL_OUTPUTS entries stay a bounded footprint
+ *  rather than up to MAX_TOOL_OUTPUTS copies of an unbounded string. */
+export const MAX_TOOL_OUTPUT_CHARS = 2_000_000;
+
 export function createToolOutputMap(): Map<string, string> {
   const map = new Map<string, string>();
   const set = map.set.bind(map);
@@ -21,7 +28,12 @@ export function createToolOutputMap(): Map<string, string> {
       const oldest = map.keys().next().value;
       if (oldest !== undefined) map.delete(oldest);
     }
-    return set(key, value);
+    return set(
+      key,
+      value.length > MAX_TOOL_OUTPUT_CHARS
+        ? value.slice(0, MAX_TOOL_OUTPUT_CHARS)
+        : value,
+    );
   };
   return map;
 }
