@@ -177,6 +177,71 @@ describe("auto-archive sweep", () => {
     expect(second.archived).toBe(0);
   });
 
+  /**
+   * The org-owned board's `archiveColumn()` names a row the foreign key can
+   * hold a card to (#6710/#6723). The sweep must guard the card the same way
+   * `update.ts` does, or it retires the card into that row without the
+   * discriminator the key needs to notice.
+   */
+  it("guards a card the sweep retires into an org-owned archive column", async () => {
+    const orgOwned = "org_archive_owned";
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: orgOwned,
+        name: orgOwned,
+        slug: "org-archive-owned",
+        createdAt: now,
+      })
+      .execute();
+    await new OrganizationSettingsStorage(database.db).upsert(orgOwned, {
+      flags: { org_board_columns: true },
+    });
+    await ctx.storage.boardColumns.replaceAll(orgOwned, [
+      { key: "Retired", title: "Retired" },
+    ]);
+    await ctx.storage.boardColumns.setRole(orgOwned, "Retired", "archived");
+
+    const settled = new Date(Date.now() - 3 * DAY_MS);
+    const item = await taskBoard.create({
+      organizationId: orgOwned,
+      title: "owned-board-archive",
+      status: "done",
+      by: USER,
+    });
+    await database.db
+      .updateTable("task_board_items")
+      .set({ updated_at: settled })
+      .where("id", "=", item.id)
+      .execute();
+    await taskBoard.linkPr({
+      taskBoardItemId: item.id,
+      organizationId: orgOwned,
+      url: `https://github.com/acme/repo/pull/${item.id}`,
+      prNumber: 1,
+      repoOwner: "acme",
+      repoName: "repo",
+    });
+
+    expect(
+      (
+        await archiveMergedForOrg(ctx, orgOwned, [item.id], async () => ({
+          state: "closed" as const,
+          merged: true,
+        }))
+      ).archived,
+    ).toBe(1);
+
+    const row = await database.db
+      .selectFrom("task_board_items")
+      .select(["status", "board_column_org"])
+      .where("id", "=", item.id)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe("Retired");
+    expect(row.board_column_org).toBe(orgOwned);
+  });
+
   it("archives past an abandoned PR, and waits on a second repo", async () => {
     const settled = new Date(Date.now() - 3 * DAY_MS);
     const link = (id: string, prNumber: number, repoName: string) =>

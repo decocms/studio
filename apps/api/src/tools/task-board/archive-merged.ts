@@ -114,13 +114,15 @@ async function archiveIfMerged(
   // The board says where a finished card retires to. A board with nowhere to
   // retire one leaves it in Done rather than filing it under a column it does
   // not have, which would make the card invisible instead of archived.
-  const archived = await (await boardFor(ctx, organizationId)).archiveColumn();
+  const board = await boardFor(ctx, organizationId);
+  const archived = await board.archiveColumn();
   if (!archived) return false;
 
   const updated = await ctx.storage.taskBoard.update(
     itemId,
     organizationId,
-    { status: archived },
+    // Guarded like a manual move: this can file the card under an org's own column too.
+    { status: archived, boardColumnOrg: board.columnOwner() },
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
