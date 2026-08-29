@@ -14,7 +14,7 @@
  * history for free and dragging a card back out un-archives it.
  */
 
-import { boardFor } from "./board-handler";
+import { boardFor, shippedPatch } from "./board-handler";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
@@ -121,8 +121,7 @@ async function archiveIfMerged(
   const updated = await ctx.storage.taskBoard.update(
     itemId,
     organizationId,
-    // Guarded like a manual move: this can file the card under an org's own column too.
-    { status: archived, boardColumnOrg: board.columnOwner() },
+    shippedPatch(board, archived),
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {

@@ -8,6 +8,7 @@ import {
   shippedLane,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
+import { boardFor, shippedPatch } from "./board-handler";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import {
   type ChecksStatus,
@@ -461,10 +462,11 @@ export async function retryAutoMergeIfApproved(
   }
 
   const shipped = shippedLane(settings?.flags);
+  const board = await boardFor(ctx, orgId);
   const done = await ctx.storage.taskBoard.update(
     item.id,
     orgId,
-    { status: shipped },
+    shippedPatch(board, shipped),
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
