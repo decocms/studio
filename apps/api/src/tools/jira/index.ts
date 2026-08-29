@@ -23,13 +23,27 @@ import { JiraClient, normalizeSiteUrl } from "@/jira/client";
 import { syncJiraIntegrationSafe } from "@/jira/sync";
 import type { OrgJiraIntegration } from "@/storage/types";
 
+// Caps the jsonb blob every sync tick re-reads; no real board has more.
+const MAX_STATUS_MAPPING_LANES = 100;
+const MAX_STATUSES_PER_LANE = 100;
+const MAX_STATUS_NAME_LENGTH = 200;
+
 // `partialRecord`, not `record`: a `z.record` over an enum demands EVERY lane
 // be present, so an org mapping three of its columns would fail validation.
 // A plain record now that a board column is any key: `partialRecord` over a
 // closed enum was what forced every lane to be listed, and there is no closed
 // set of lanes to enumerate on a board the org owns.
 const statusMappingSchema = z
-  .record(z.string().min(1), z.array(z.string()))
+  .record(
+    z.string().min(1).max(MAX_STATUS_NAME_LENGTH),
+    z
+      .array(z.string().min(1).max(MAX_STATUS_NAME_LENGTH))
+      .max(MAX_STATUSES_PER_LANE),
+  )
+  .refine(
+    (mapping) => Object.keys(mapping).length <= MAX_STATUS_MAPPING_LANES,
+    `Cannot map more than ${MAX_STATUS_MAPPING_LANES} lanes`,
+  )
   .describe(
     "Board status → its Jira status names, in board order. Several Jira " +
       "statuses may share a lane; the first is where a card entering that lane " +
