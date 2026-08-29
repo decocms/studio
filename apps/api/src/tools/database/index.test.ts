@@ -94,4 +94,24 @@ describe("interpolateParams", () => {
       "CREATE FUNCTION f() RETURNS int AS $body$ SELECT $1 $body$ LANGUAGE sql; SELECT 'x'",
     );
   });
+
+  test("does not let a ? inside a line comment shift later positional params", () => {
+    const result = interpolateParams(
+      "SELECT * FROM t WHERE a = ? -- filter by a, right?\nAND b = ?",
+      [1, 2],
+    );
+    expect(result).toBe(
+      "SELECT * FROM t WHERE a = 1 -- filter by a, right?\nAND b = 2",
+    );
+  });
+
+  test("does not let a ? inside a block comment shift later positional params", () => {
+    const result = interpolateParams(
+      "SELECT * FROM t WHERE a = ? /* is this right? */ AND b = ?",
+      [1, 2],
+    );
+    expect(result).toBe(
+      "SELECT * FROM t WHERE a = 1 /* is this right? */ AND b = 2",
+    );
+  });
 });
