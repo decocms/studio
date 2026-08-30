@@ -12,7 +12,6 @@
  * settings layout, which has no chat panel.
  */
 
-import { useState } from "react";
 import {
   useMCPClient,
   useConnections,
@@ -33,6 +32,7 @@ import {
   TableRow,
 } from "@decocms/ui/components/table.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
+import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
@@ -215,9 +215,6 @@ export function AutomationRunsView({
   const allVirtualMcps = useVirtualMCPs();
   const { data: membersData } = useMembers();
 
-  // By id, not index: a refetch can reorder `runs` while the sheet is open.
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-
   const hasTriggers = triggerIds.length > 0;
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -289,18 +286,8 @@ export function AutomationRunsView({
     isFetchingNextPage,
   );
 
-  const selectedRunIndex =
-    selectedRunId !== null ? runs.findIndex((r) => r.id === selectedRunId) : -1;
-  const selectedRun = selectedRunIndex !== -1 ? runs[selectedRunIndex] : null;
-
-  const handlePrev = () => {
-    const prev = runs[selectedRunIndex - 1];
-    if (selectedRunIndex > 0 && prev) setSelectedRunId(prev.id);
-  };
-  const handleNext = () => {
-    const next = runs[selectedRunIndex + 1];
-    if (selectedRunIndex !== -1 && next) setSelectedRunId(next.id);
-  };
+  const selection = useIdSelection(runs);
+  const selectedRun = selection.selected;
 
   return (
     <div className="flex flex-col gap-5">
@@ -351,7 +338,7 @@ export function AutomationRunsView({
                 key={run.id}
                 run={run}
                 usage={usageMap.get(run.id)}
-                onClick={() => setSelectedRunId(run.id)}
+                onClick={() => selection.select(run.id)}
                 lastRowRef={
                   idx === runs.length - 1
                     ? (lastRowRef as (node: HTMLTableRowElement | null) => void)
@@ -370,9 +357,9 @@ export function AutomationRunsView({
       )}
 
       <Sheet
-        open={selectedRunId !== null}
+        open={selection.isOpen}
         onOpenChange={(open) => {
-          if (!open) setSelectedRunId(null);
+          if (!open) selection.close();
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
@@ -385,10 +372,10 @@ export function AutomationRunsView({
               virtualMcps={allVirtualMcps}
               members={membersData}
               nav={{
-                index: selectedRunIndex,
+                index: selection.index,
                 total: runs.length,
-                onPrev: handlePrev,
-                onNext: handleNext,
+                onPrev: selection.prev,
+                onNext: selection.next,
               }}
             />
           )}
