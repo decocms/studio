@@ -232,6 +232,31 @@ describe("MonitoringTransport emitMonitoringLog", () => {
     expect(emitCalledBeforeEnd).toBe(true);
   });
 
+  it("should not leak inflight entries past MAX_INFLIGHT_REQUESTS when responses never arrive", async () => {
+    const { transport, mockSpan } = createMockTransportAndCtx();
+    const { MAX_INFLIGHT_REQUESTS } = await import("./monitoring");
+
+    transport.onmessage = vi.fn();
+    await transport.start();
+
+    // None of these ever get a response, simulating a connection that drops replies.
+    for (let i = 0; i < MAX_INFLIGHT_REQUESTS + 1; i++) {
+      await transport.send({
+        jsonrpc: "2.0",
+        id: i,
+        method: "tools/call",
+        params: { name: "TOOL", arguments: {} },
+      } as any);
+    }
+
+    expect(
+      (transport as unknown as { inflightRequests: Map<unknown, unknown> })
+        .inflightRequests.size,
+    ).toBe(MAX_INFLIGHT_REQUESTS);
+    // The evicted (oldest) request's span must have been ended, not just dropped.
+    expect(mockSpan.isEnded()).toBe(true);
+  });
+
   it("should not call emitMonitoringLog for non-tool-call methods", async () => {
     const { transport, simulateResponse } = createMockTransportAndCtx();
 
