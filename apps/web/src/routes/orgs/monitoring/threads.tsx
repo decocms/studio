@@ -233,9 +233,8 @@ export function ThreadsTabContent({
   filterStatus,
 }: ThreadsTabContentProps) {
   const t = useT();
-  const [selectedThreadIndex, setSelectedThreadIndex] = useState<number | null>(
-    null,
-  );
+  // By id, not index: sort toggles reorder `displayThreads` in place.
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
   const startDate = dateRange.startDate.toISOString();
   const endDate = dateRange.endDate.toISOString();
@@ -354,10 +353,12 @@ export function ThreadsTabContent({
       })
     : visibleThreads;
 
+  const selectedThreadIndex =
+    selectedThreadId !== null
+      ? displayThreads.findIndex((t) => t.id === selectedThreadId)
+      : -1;
   const selectedThread =
-    selectedThreadIndex !== null
-      ? (displayThreads[selectedThreadIndex] ?? null)
-      : null;
+    selectedThreadIndex !== -1 ? displayThreads[selectedThreadIndex] : null;
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
@@ -375,12 +376,14 @@ export function ThreadsTabContent({
     (filterUserIds?.length ?? 0) > 0 ||
     !!(filterStatus && filterStatus !== "all");
 
-  const handlePrev = () =>
-    setSelectedThreadIndex((i) => (i !== null && i > 0 ? i - 1 : i));
-  const handleNext = () =>
-    setSelectedThreadIndex((i) =>
-      i !== null && i < displayThreads.length - 1 ? i + 1 : i,
-    );
+  const handlePrev = () => {
+    const prev = displayThreads[selectedThreadIndex - 1];
+    if (selectedThreadIndex > 0 && prev) setSelectedThreadId(prev.id);
+  };
+  const handleNext = () => {
+    const next = displayThreads[selectedThreadIndex + 1];
+    if (selectedThreadIndex !== -1 && next) setSelectedThreadId(next.id);
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
@@ -456,7 +459,7 @@ export function ThreadsTabContent({
                           members={membersData}
                           connections={allConnections}
                           virtualMcps={allVirtualMcps}
-                          onClick={() => setSelectedThreadIndex(idx)}
+                          onClick={() => setSelectedThreadId(thread.id)}
                           lastRowRef={
                             idx === displayThreads.length - 1
                               ? (lastRowRef as (
@@ -477,13 +480,13 @@ export function ThreadsTabContent({
       </div>
 
       <Sheet
-        open={selectedThreadIndex !== null}
+        open={selectedThreadId !== null}
         onOpenChange={(open) => {
-          if (!open) setSelectedThreadIndex(null);
+          if (!open) setSelectedThreadId(null);
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedThread && selectedThreadIndex !== null && (
+          {selectedThread && (
             <ThreadSheetBody
               thread={selectedThread}
               client={client}
