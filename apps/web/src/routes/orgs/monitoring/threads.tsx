@@ -21,6 +21,7 @@ import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { ChevronUp, ChevronDown, Container } from "@untitledui/icons";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
@@ -233,9 +234,6 @@ export function ThreadsTabContent({
   filterStatus,
 }: ThreadsTabContentProps) {
   const t = useT();
-  // By id, not index: sort toggles reorder `displayThreads` in place.
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-
   const startDate = dateRange.startDate.toISOString();
   const endDate = dateRange.endDate.toISOString();
 
@@ -353,12 +351,8 @@ export function ThreadsTabContent({
       })
     : visibleThreads;
 
-  const selectedThreadIndex =
-    selectedThreadId !== null
-      ? displayThreads.findIndex((t) => t.id === selectedThreadId)
-      : -1;
-  const selectedThread =
-    selectedThreadIndex !== -1 ? displayThreads[selectedThreadIndex] : null;
+  const selection = useIdSelection(displayThreads);
+  const selectedThread = selection.selected;
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
@@ -375,15 +369,6 @@ export function ThreadsTabContent({
     (filterAgentIds?.length ?? 0) > 0 ||
     (filterUserIds?.length ?? 0) > 0 ||
     !!(filterStatus && filterStatus !== "all");
-
-  const handlePrev = () => {
-    const prev = displayThreads[selectedThreadIndex - 1];
-    if (selectedThreadIndex > 0 && prev) setSelectedThreadId(prev.id);
-  };
-  const handleNext = () => {
-    const next = displayThreads[selectedThreadIndex + 1];
-    if (selectedThreadIndex !== -1 && next) setSelectedThreadId(next.id);
-  };
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
@@ -459,7 +444,7 @@ export function ThreadsTabContent({
                           members={membersData}
                           connections={allConnections}
                           virtualMcps={allVirtualMcps}
-                          onClick={() => setSelectedThreadId(thread.id)}
+                          onClick={() => selection.select(thread.id)}
                           lastRowRef={
                             idx === displayThreads.length - 1
                               ? (lastRowRef as (
@@ -480,9 +465,9 @@ export function ThreadsTabContent({
       </div>
 
       <Sheet
-        open={selectedThreadId !== null}
+        open={selection.isOpen}
         onOpenChange={(open) => {
-          if (!open) setSelectedThreadId(null);
+          if (!open) selection.close();
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
@@ -495,10 +480,10 @@ export function ThreadsTabContent({
               virtualMcps={allVirtualMcps}
               members={membersData}
               nav={{
-                index: selectedThreadIndex,
+                index: selection.index,
                 total: displayThreads.length,
-                onPrev: handlePrev,
-                onNext: handleNext,
+                onPrev: selection.prev,
+                onNext: selection.next,
               }}
             />
           )}

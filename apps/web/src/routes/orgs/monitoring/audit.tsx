@@ -2,7 +2,6 @@
  * Audit Tab — log table with detail sheet.
  */
 
-import { useState } from "react";
 import type { useConnections, useVirtualMCPs } from "@/sdk";
 import { useMCPClient } from "@/sdk";
 import type { useProjectContext } from "@/sdk";
@@ -31,6 +30,7 @@ import {
   type MonitoringLogsResponse,
 } from "@/components/monitoring";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { useT } from "@/i18n/use-t.ts";
@@ -73,9 +73,6 @@ function MonitoringLogsTableContent({
   const t = useT();
   const connections = connectionsData ?? [];
   const virtualMcps = virtualMcpsData ?? [];
-  // By id, not index: a streaming refetch can reorder filteredLogs while the sheet is open.
-  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
-
   const lastLogRef = useInfiniteScroll(onLoadMore, hasMore, isLoadingMore);
 
   const members = getOrgMembers(membersData);
@@ -125,12 +122,8 @@ function MonitoringLogsTableContent({
     );
   }
 
-  const selectedLogIndex =
-    selectedLogId !== null
-      ? filteredLogs.findIndex((log) => log.id === selectedLogId)
-      : -1;
-  const selectedLog =
-    selectedLogIndex !== -1 ? filteredLogs[selectedLogIndex] : null;
+  const selection = useIdSelection(filteredLogs);
+  const selectedLog = selection.selected;
 
   // Lazy-load full input/output when a log is selected (list query omits them)
   const detailQuery = useQuery({
@@ -218,7 +211,7 @@ function MonitoringLogsTableContent({
                   connection={connectionMap.get(log.connectionId)}
                   virtualMcpName={log.virtualMcpName ?? ""}
                   virtualMcpIcon={log.virtualMcpIcon}
-                  onClick={() => setSelectedLogId(log.id)}
+                  onClick={() => selection.select(log.id)}
                   lastLogRef={
                     index === filteredLogs.length - 1 ? lastLogRef : undefined
                   }
@@ -230,9 +223,9 @@ function MonitoringLogsTableContent({
       </div>
 
       <Sheet
-        open={selectedLogId !== null}
+        open={selection.isOpen}
         onOpenChange={(open) => {
-          if (!open) setSelectedLogId(null);
+          if (!open) selection.close();
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
@@ -267,13 +260,8 @@ function MonitoringLogsTableContent({
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() => {
-                        const prev = filteredLogs[selectedLogIndex - 1];
-                        if (selectedLogIndex > 0 && prev) {
-                          setSelectedLogId(prev.id);
-                        }
-                      }}
-                      disabled={selectedLogIndex === 0}
+                      onClick={selection.prev}
+                      disabled={selection.index === 0}
                       className="h-7 w-7 text-muted-foreground"
                       aria-label={t("orgs.audit.previousEntry")}
                     >
@@ -282,13 +270,8 @@ function MonitoringLogsTableContent({
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() => {
-                        const next = filteredLogs[selectedLogIndex + 1];
-                        if (selectedLogIndex !== -1 && next) {
-                          setSelectedLogId(next.id);
-                        }
-                      }}
-                      disabled={selectedLogIndex === filteredLogs.length - 1}
+                      onClick={selection.next}
+                      disabled={selection.index === filteredLogs.length - 1}
                       className="h-7 w-7 text-muted-foreground"
                       aria-label={t("orgs.audit.nextEntry")}
                     >
