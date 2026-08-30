@@ -98,7 +98,7 @@ function ThreadRow({
     minute: "2-digit",
   });
 
-  const statusCfg = getStatusConfig(thread.status ?? undefined);
+  const statusCfg = getStatusConfig(thread.status);
   const StatusIcon = statusCfg.icon;
 
   return (
