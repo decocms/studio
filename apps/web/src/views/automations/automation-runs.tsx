@@ -215,7 +215,8 @@ export function AutomationRunsView({
   const allVirtualMcps = useVirtualMCPs();
   const { data: membersData } = useMembers();
 
-  const [selectedRunIndex, setSelectedRunIndex] = useState<number | null>(null);
+  // By id, not index: a refetch can reorder `runs` while the sheet is open.
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const hasTriggers = triggerIds.length > 0;
 
@@ -288,13 +289,18 @@ export function AutomationRunsView({
     isFetchingNextPage,
   );
 
-  const selectedRun =
-    selectedRunIndex !== null ? (runs[selectedRunIndex] ?? null) : null;
+  const selectedRunIndex =
+    selectedRunId !== null ? runs.findIndex((r) => r.id === selectedRunId) : -1;
+  const selectedRun = selectedRunIndex !== -1 ? runs[selectedRunIndex] : null;
 
-  const handlePrev = () =>
-    setSelectedRunIndex((i) => (i !== null && i > 0 ? i - 1 : i));
-  const handleNext = () =>
-    setSelectedRunIndex((i) => (i !== null && i < runs.length - 1 ? i + 1 : i));
+  const handlePrev = () => {
+    const prev = runs[selectedRunIndex - 1];
+    if (selectedRunIndex > 0 && prev) setSelectedRunId(prev.id);
+  };
+  const handleNext = () => {
+    const next = runs[selectedRunIndex + 1];
+    if (selectedRunIndex !== -1 && next) setSelectedRunId(next.id);
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -345,7 +351,7 @@ export function AutomationRunsView({
                 key={run.id}
                 run={run}
                 usage={usageMap.get(run.id)}
-                onClick={() => setSelectedRunIndex(idx)}
+                onClick={() => setSelectedRunId(run.id)}
                 lastRowRef={
                   idx === runs.length - 1
                     ? (lastRowRef as (node: HTMLTableRowElement | null) => void)
@@ -364,13 +370,13 @@ export function AutomationRunsView({
       )}
 
       <Sheet
-        open={selectedRunIndex !== null}
+        open={selectedRunId !== null}
         onOpenChange={(open) => {
-          if (!open) setSelectedRunIndex(null);
+          if (!open) setSelectedRunId(null);
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedRun && selectedRunIndex !== null && (
+          {selectedRun && (
             <ThreadSheetBody
               thread={selectedRun}
               client={client}
