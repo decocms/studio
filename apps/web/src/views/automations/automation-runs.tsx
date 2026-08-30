@@ -157,7 +157,7 @@ function RunRow({
     minute: "2-digit",
   });
 
-  const statusCfg = getStatusConfig(run.status ?? undefined);
+  const statusCfg = getStatusConfig(run.status);
   const StatusIcon = statusCfg.icon;
 
   return (

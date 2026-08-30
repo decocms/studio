@@ -75,7 +75,11 @@ function isStatusKey(status: string): status is StatusKey {
   return status in STATUS_CONFIG;
 }
 
-export function getStatusConfig(status: string | undefined): StatusConfig {
+export function getStatusConfig(
+  status: string | null | undefined,
+): StatusConfig {
+  // Explicit null (unlike undefined) means a genuinely unknown status, not "no status field yet".
+  if (status === null) return UNKNOWN;
   const key = status ?? "completed";
   return isStatusKey(key) ? STATUS_CONFIG[key] : UNKNOWN;
 }
