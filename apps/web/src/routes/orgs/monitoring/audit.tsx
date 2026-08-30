@@ -73,7 +73,8 @@ function MonitoringLogsTableContent({
   const t = useT();
   const connections = connectionsData ?? [];
   const virtualMcps = virtualMcpsData ?? [];
-  const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
+  // By id, not index: a streaming refetch can reorder filteredLogs while the sheet is open.
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
   const lastLogRef = useInfiniteScroll(onLoadMore, hasMore, isLoadingMore);
 
@@ -124,8 +125,12 @@ function MonitoringLogsTableContent({
     );
   }
 
+  const selectedLogIndex =
+    selectedLogId !== null
+      ? filteredLogs.findIndex((log) => log.id === selectedLogId)
+      : -1;
   const selectedLog =
-    selectedLogIndex !== null ? (filteredLogs[selectedLogIndex] ?? null) : null;
+    selectedLogIndex !== -1 ? filteredLogs[selectedLogIndex] : null;
 
   // Lazy-load full input/output when a log is selected (list query omits them)
   const detailQuery = useQuery({
@@ -213,7 +218,7 @@ function MonitoringLogsTableContent({
                   connection={connectionMap.get(log.connectionId)}
                   virtualMcpName={log.virtualMcpName ?? ""}
                   virtualMcpIcon={log.virtualMcpIcon}
-                  onClick={() => setSelectedLogIndex(index)}
+                  onClick={() => setSelectedLogId(log.id)}
                   lastLogRef={
                     index === filteredLogs.length - 1 ? lastLogRef : undefined
                   }
@@ -225,13 +230,13 @@ function MonitoringLogsTableContent({
       </div>
 
       <Sheet
-        open={selectedLogIndex !== null}
+        open={selectedLogId !== null}
         onOpenChange={(open) => {
-          if (!open) setSelectedLogIndex(null);
+          if (!open) setSelectedLogId(null);
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedLog && selectedLogIndex !== null && (
+          {selectedLog && (
             <>
               <SheetHeader className="px-5 md:px-6 pt-6 pb-5 border-b border-border shrink-0">
                 <div className="flex items-start justify-between gap-3 pr-8">
@@ -262,11 +267,12 @@ function MonitoringLogsTableContent({
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() =>
-                        setSelectedLogIndex((i) =>
-                          i !== null && i > 0 ? i - 1 : i,
-                        )
-                      }
+                      onClick={() => {
+                        const prev = filteredLogs[selectedLogIndex - 1];
+                        if (selectedLogIndex > 0 && prev) {
+                          setSelectedLogId(prev.id);
+                        }
+                      }}
                       disabled={selectedLogIndex === 0}
                       className="h-7 w-7 text-muted-foreground"
                       aria-label={t("orgs.audit.previousEntry")}
@@ -276,11 +282,12 @@ function MonitoringLogsTableContent({
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() =>
-                        setSelectedLogIndex((i) =>
-                          i !== null && i < filteredLogs.length - 1 ? i + 1 : i,
-                        )
-                      }
+                      onClick={() => {
+                        const next = filteredLogs[selectedLogIndex + 1];
+                        if (selectedLogIndex !== -1 && next) {
+                          setSelectedLogId(next.id);
+                        }
+                      }}
                       disabled={selectedLogIndex === filteredLogs.length - 1}
                       className="h-7 w-7 text-muted-foreground"
                       aria-label={t("orgs.audit.nextEntry")}
