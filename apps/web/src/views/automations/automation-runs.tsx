@@ -36,7 +36,7 @@ import { EmptyState } from "@/components/empty-state.tsx";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
-import { STATUS_CONFIG } from "@/lib/task-status";
+import { getStatusConfig } from "@/lib/task-status";
 import { useAutomationRunStats } from "@/hooks/use-automations";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
@@ -157,9 +157,7 @@ function RunRow({
     minute: "2-digit",
   });
 
-  const statusCfg =
-    STATUS_CONFIG[run.status as keyof typeof STATUS_CONFIG] ??
-    STATUS_CONFIG.completed;
+  const statusCfg = getStatusConfig(run.status ?? undefined);
   const StatusIcon = statusCfg.icon;
 
   return (
