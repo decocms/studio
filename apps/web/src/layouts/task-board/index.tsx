@@ -73,15 +73,6 @@ import {
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { LoaderCircle } from "lucide-react";
 import { ReviewerIcon } from "@/components/reviewer-icon";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useConnections,
@@ -92,7 +83,6 @@ import {
   listRepoScopeLabels,
 } from "@decocms/shared/github-repo-scope";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";
-import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -140,6 +130,7 @@ import {
   toEndOfDayIso,
 } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
+import { ConnectGitHubDialog } from "./connect-github-dialog";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
@@ -1531,60 +1522,6 @@ export function TaskBoardPage() {
  * The Super Agent needs GitHub to open a PR, so we connect first. Once the
  * connection lands the card's Auto-fix button works on the next click.
  */
-function ConnectGitHubDialog({
-  open,
-  onOpenChange,
-  onConnected,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** Called after the connect attempt settles, success or failure — the
-   *  caller (the repo picker) has its own auto-install fallback either way. */
-  onConnected: () => void;
-}) {
-  const t = useT();
-  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
-        <div className="flex h-28 items-center justify-center bg-gradient-to-br from-muted via-muted to-accent">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-foreground text-background shadow-sm">
-            <GitHubIcon className="size-7" />
-          </div>
-        </div>
-        <div className="flex flex-col gap-4 p-6">
-          <DialogHeader>
-            <DialogTitle>
-              {t("taskBoard.taskBoard.connectGithubTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {t("taskBoard.taskBoard.connectGithubDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              onClick={async () => {
-                await connect();
-                onOpenChange(false);
-                onConnected();
-              }}
-              disabled={isConnecting}
-              className="gap-2"
-            >
-              {isConnecting ? (
-                <Loading01 size={16} className="animate-spin" />
-              ) : (
-                <GitHubIcon className="size-4" />
-              )}
-              {t("taskBoard.taskBoard.connectGithubButton")}
-            </Button>
-          </DialogFooter>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /**
  * Floating pill toolbar that appears once at least one card is selected —
  * count, a bulk "Actions" menu (move / tag / priority / delete), a quick
