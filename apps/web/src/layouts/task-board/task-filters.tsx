@@ -227,6 +227,22 @@ export function matchesTaskKey(
   return keySeq != null && parseTaskKeySeq(term) === keySeq;
 }
 
+/**
+ * Whether a card belongs to `userId`, delegation included.
+ *
+ * Handing a card to the Super Agent does not hand it away: the board renders
+ * the delegator's avatar beside the capybara, so a card that reads as "mine and
+ * the Super Agent's" has to survive filtering by me. Delegation counts only on
+ * Super Agent cards — `assignedBy` is stamped on every assignee change, so a
+ * card one teammate assigned to another is the assignee's, not the assigner's.
+ */
+function assignedTo(item: TaskBoardItem, userId: string): boolean {
+  if (item.assigneeId === userId) return true;
+  return (
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID && item.assignedBy === userId
+  );
+}
+
 export function taskMatchesFilters(
   item: TaskBoardItem,
   f: TaskFilters,
@@ -244,7 +260,7 @@ export function taskMatchesFilters(
   if (f.assignee !== null) {
     if (f.assignee === UNASSIGNED_FILTER) {
       if (item.assigneeId !== null) return false;
-    } else if (item.assigneeId !== f.assignee) {
+    } else if (!assignedTo(item, f.assignee)) {
       return false;
     }
   }
