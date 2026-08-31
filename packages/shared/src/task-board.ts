@@ -458,3 +458,10 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
  * cache, so a delete on one client clears the card on every open board.
  */
 export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";
+
+/**
+ * Cap on the org's task system prompt. It rides in the system prompt of EVERY
+ * task run, so an unbounded textarea is a per-run token bill. Shared so the
+ * settings tool rejects what the textarea already refuses.
+ */
+export const TASK_SYSTEM_PROMPT_MAX_LENGTH = 4000;

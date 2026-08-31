@@ -538,6 +538,18 @@ export const settings = {
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.description":
+    "Instru\u00e7\u00f5es extras anexadas ao system prompt de todo run de agente iniciado por uma tarefa do quadro.",
+  "settings.taskPrompt.fieldLabel": "Instru\u00e7\u00f5es",
+  "settings.taskPrompt.fieldDescription":
+    "Regras que valem para todo trabalho do quadro \u2014 conven\u00e7\u00f5es, ferramentas preferidas, o que nunca tocar. Deixe vazio para nenhuma.",
+  "settings.taskPrompt.placeholder":
+    "ex.: Use pnpm, nunca npm. Nunca edite arquivos em src/generated/.",
+  "settings.taskPrompt.save": "Salvar",
+  "settings.taskPrompt.saved": "System prompt salvo",
+  "settings.taskPrompt.failed":
+    "N\u00e3o foi poss\u00edvel salvar o system prompt",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
     "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",

@@ -1743,6 +1743,24 @@ export interface TaskBoardColumnTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/**
+ * Instructions appended to the system prompt of every agent run dispatched
+ * from a board card (migration 197). `column_key` null is the org-wide row;
+ * a non-null key scopes the text to one column.
+ *
+ * Distinct from `TaskBoardColumnAutomationTable` below: that one's `prompt` is
+ * the opening USER instruction of the run a column rule fires, this one is
+ * standing context every run carries.
+ */
+export interface TaskBoardPromptTable {
+  id: string;
+  organization_id: string;
+  column_key: string | null;
+  prompt: string;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /** A rule the board runs when a card lands in a column (migration 189). The
  *  row's existence is the switch; `prompt` null means the Super Agent's own
  *  instruction. */
@@ -2308,6 +2326,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_sprints: TaskBoardSprintTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_columns: TaskBoardColumnTable;
+  task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;

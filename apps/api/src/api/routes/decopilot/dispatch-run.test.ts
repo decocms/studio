@@ -11,6 +11,7 @@ import {
   assertSinglePersistedRequestMessage,
   buildAgentSandboxUiStream,
   buildDurableDispatchInput,
+  resolveAgentInstructions,
 } from "./dispatch-run";
 import type { ChatMessage } from "./types";
 
@@ -367,5 +368,49 @@ describe("stream onError takeover guard", () => {
     expect(isRunSuperseded(takeover)).toBe(true);
     expect(isRunSuperseded(replayed)).toBe(true);
     expect(isRunSuperseded(new Error("boom"))).toBe(false);
+  });
+});
+
+describe("resolveAgentInstructions", () => {
+  const agentOwn = { instructions: "You are the org's Super Agent." };
+
+  test("uses the agent's own instructions when the dispatcher overrides nothing", () => {
+    expect(resolveAgentInstructions({}, agentOwn)).toBe(
+      "You are the org's Super Agent.",
+    );
+  });
+
+  test("lets an explicit override REPLACE the agent's own — the reviewer's persona swap", () => {
+    expect(
+      resolveAgentInstructions({ instructions: "You review PRs." }, agentOwn),
+    ).toBe("You review PRs.");
+  });
+
+  /** The board's system prompt is standing context, not a persona: it must add
+   *  to the agent's instructions, never stand in for them. */
+  test("appends to the agent's own instructions without displacing them", () => {
+    expect(
+      resolveAgentInstructions({ appendInstructions: "Use pnpm." }, agentOwn),
+    ).toBe("You are the org's Super Agent.\n\nUse pnpm.");
+  });
+
+  test("appends after an override too, keeping both", () => {
+    expect(
+      resolveAgentInstructions(
+        { instructions: "You review PRs.", appendInstructions: "Use pnpm." },
+        agentOwn,
+      ),
+    ).toBe("You review PRs.\n\nUse pnpm.");
+  });
+
+  test("is the only instruction when the agent has none of its own", () => {
+    expect(
+      resolveAgentInstructions({ appendInstructions: "Use pnpm." }, null),
+    ).toBe("Use pnpm.");
+  });
+
+  test("stays undefined when there is nothing to say", () => {
+    expect(resolveAgentInstructions({}, null)).toBeUndefined();
+    expect(resolveAgentInstructions({}, { instructions: 42 })).toBeUndefined();
   });
 });

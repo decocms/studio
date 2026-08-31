@@ -520,6 +520,17 @@ export const settings = {
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.description":
+    "Extra instructions appended to the system prompt of every agent run started from a task on the board.",
+  "settings.taskPrompt.fieldLabel": "Instructions",
+  "settings.taskPrompt.fieldDescription":
+    "House rules that apply to all board work \u2014 conventions, tools to prefer, things never to touch. Leave it empty for none.",
+  "settings.taskPrompt.placeholder":
+    "e.g. Use pnpm, never npm. Never edit files under src/generated/.",
+  "settings.taskPrompt.save": "Save",
+  "settings.taskPrompt.saved": "System prompt saved",
+  "settings.taskPrompt.failed": "Couldn't save the system prompt",
   "settings.agentTools.title": "Agent tools",
   "settings.agentTools.description":
     "What a coding-agent run reaches beyond the repository it is working in.",
