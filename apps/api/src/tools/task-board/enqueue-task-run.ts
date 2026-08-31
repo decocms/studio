@@ -19,32 +19,32 @@ import {
 import type { TaskRepo } from "./claude-code-task-run";
 
 /**
- * Fold the board's system prompt (Settings → Tasks) into one run's persona.
+ * Fold the board's system prompt (Settings → Board) into one run.
  *
- * Sandbox harnesses APPEND `agent.instructions` to the harness system prompt,
- * which is exactly what this setting is; hosted Decopilot has no such hook —
- * there `agent.instructions` REPLACES the agent's own — so it leads the user
- * prompt instead, the same trick the reviewer enqueue uses. Pure, so both
- * branches are unit-tested without a StudioContext.
+ * Sandbox harness: rides as `agent.appendInstructions`, which dispatch-run adds
+ * to whatever instructions the run resolves to and claude-code then appends to
+ * its OWN preset prompt. Two appends, nothing replaced — the board's house
+ * rules are standing context, not a persona, and must not displace the org
+ * agent's instructions (`agent.instructions` would: the resolution there is
+ * `??`, so setting it on a Super Agent run silently drops the agent's own).
+ *
+ * Hosted Decopilot: it reads `agent.instructions`, not the append field, so the
+ * text leads the user prompt instead — the same trick the reviewer enqueue
+ * uses. Pure, so all three branches are unit-tested without a StudioContext.
  */
 export function withOrgTaskPrompt<
-  A extends { instructions?: string } | undefined,
+  A extends { appendInstructions?: string } | undefined,
 >(
   run: { agent: A; prompt: string },
-  orgPrompt: string | undefined,
+  boardPrompt: string | undefined,
   sandboxed: boolean,
 ): { agent: A; prompt: string } {
-  if (!orgPrompt) return run;
+  if (!boardPrompt) return run;
   if (!sandboxed) {
-    return { agent: run.agent, prompt: `${orgPrompt}\n\n${run.prompt}` };
+    return { agent: run.agent, prompt: `${boardPrompt}\n\n${run.prompt}` };
   }
   return {
-    agent: {
-      ...run.agent,
-      instructions: [run.agent?.instructions, orgPrompt]
-        .filter(Boolean)
-        .join("\n\n"),
-    } as A,
+    agent: { ...run.agent, appendInstructions: boardPrompt } as A,
     prompt: run.prompt,
   };
 }
@@ -78,7 +78,11 @@ export async function enqueueAgentRunForTask(
      * built-in tools it must not have. Only the sandbox-hosted harness reads
      * them; a Decopilot fallback run must carry its persona in the prompt.
      */
-    agent?: { instructions?: string; disallowedTools?: string[] };
+    agent?: {
+      instructions?: string;
+      appendInstructions?: string;
+      disallowedTools?: string[];
+    };
     /**
      * A real git ref this run must land on instead of its own derived branch —
      * the head branch of the pull request a re-run has to update. Without it
