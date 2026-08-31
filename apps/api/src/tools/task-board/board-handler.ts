@@ -261,6 +261,41 @@ export async function boardFor(
   });
 }
 
+/** One warning per org and meaning. A board nobody configured would otherwise
+ *  log on every sweep tick, which is the fastest way to make the signal
+ *  worthless. Capped rather than TTL'd: the key set is bounded by orgs times
+ *  meanings, and a full reset just re-warns once. */
+const warnedLanes = new Set<string>();
+const WARNED_LANES_CAP = 10_000;
+
+/**
+ * Whether this board can express `meaning`, warning once when it cannot.
+ *
+ * A fence that declines for want of a column looks exactly like a fence that
+ * lost a race — both just return null — so an unconfigured board does nothing
+ * and says nothing. This is the line that tells the difference, and it narrows
+ * `lane` to a string for the caller that proceeds.
+ */
+export function boardCan(
+  organizationId: string,
+  meaning: string,
+  lane: string | null,
+  /** What will not happen, in words a person can act on. */
+  what: string,
+): lane is string {
+  if (lane !== null) return true;
+  const key = `${organizationId}:${meaning}`;
+  if (!warnedLanes.has(key)) {
+    if (warnedLanes.size >= WARNED_LANES_CAP) warnedLanes.clear();
+    warnedLanes.add(key);
+    console.warn(
+      `[task-board] no column on this board means "${meaning}", so ${what} ` +
+        `will not happen — set the role on a column in the board's settings`,
+    );
+  }
+  return false;
+}
+
 /**
  * This org's lanes, in one await.
  *

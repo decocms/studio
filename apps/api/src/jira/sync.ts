@@ -28,6 +28,7 @@ import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   boardAutomationFor,
   boardFor,
+  boardCan,
   boardLanes,
 } from "@/tools/task-board/board-handler";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
@@ -346,12 +347,18 @@ async function maybeAutoDelegate(
   // Conditional claim, not a plain update: the cron, a webhook wake-up (its
   // debounce is per-pod) and a manual JIRA_SYNC_RUN can all be mid-sync on the
   // same issue, and a read-then-write would dispatch two paid agent runs on it.
+  const queue = (await boardLanes(ctx, orgId)).queue;
+  if (
+    !boardCan(orgId, "todo", queue, "auto-delegating Jira issues to the agent")
+  ) {
+    return item;
+  }
   const delegated = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(
     item.id,
     orgId,
     integration.createdBy,
     JIRA_SYNC_ACTOR,
-    (await boardLanes(ctx, orgId)).queue,
+    queue,
   );
   if (!delegated) return item;
   await ctx.storage.taskBoard.recordActivity({

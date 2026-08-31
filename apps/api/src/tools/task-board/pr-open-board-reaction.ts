@@ -14,7 +14,7 @@
  */
 
 import { generateObject } from "ai";
-import { type BoardLanes, boardLanes } from "./board-handler";
+import { type BoardLanes, boardCan, boardLanes } from "./board-handler";
 import { z } from "zod";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -164,7 +164,19 @@ export async function applyBoardDecision(
     // alone" here, so reusing it for "nowhere to advance to" would also skip the
     // Super Agent claim and the review cycle without saying why.
     const progressLane = lanes.progress;
-    const advancing = progressLane !== null && ADVANCEABLE.has(target.status);
+    // The LANE, not a boolean: `boardCan` narrows `progressLane` inside this
+    // expression, and a boolean would not carry that to the write below.
+    const advanceTo =
+      ADVANCEABLE.has(target.status) &&
+      boardCan(
+        orgId,
+        "in_progress",
+        progressLane,
+        "moving a card when its PR opens",
+      )
+        ? progressLane
+        : null;
+    const advancing = advanceTo !== null;
     // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's.
     const claimSuperAgent = advancing && target.assigneeId == null;
     item = await storage.update(
@@ -174,7 +186,7 @@ export async function applyBoardDecision(
         // In Progress, not In Review: a reviewer is about to work on this PR,
         // and In Review is what the board says once it is a person's turn.
         // The open cycle below is what puts it on the reviewer's work list.
-        status: advancing ? progressLane : undefined,
+        status: advanceTo ?? undefined,
         ...(claimSuperAgent
           ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
           : {}),

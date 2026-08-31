@@ -8,7 +8,7 @@ import {
 } from "@decocms/shared/task-board";
 import { autoResolveConflictsEnabled } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
-import { boardLanes } from "./board-handler";
+import { boardCan, boardLanes } from "./board-handler";
 import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 
@@ -113,11 +113,24 @@ export async function reactToApprovedPrConflict(
   // bounce; the review cycle resets only when the run advances back to In Review.
   const lanes = await boardLanes(ctx, orgId);
   // The fence moves the card between these two, and the failure path moves it
-  // back. A board missing either cannot express the round trip, so it never
-  // starts one — and narrowing here is what lets the revert below write a
-  // string instead of an "undefined means leave it alone" that would strand
-  // the card mid-fence.
-  if (lanes.review === null || lanes.progress === null) return false;
+  // back. Narrowing here is what lets the revert below write a string rather
+  // than an "undefined means leave it alone" that would strand the card.
+  if (
+    !boardCan(
+      orgId,
+      "in_review",
+      lanes.review,
+      "automatic conflict resolution",
+    ) ||
+    !boardCan(
+      orgId,
+      "in_progress",
+      lanes.progress,
+      "automatic conflict resolution",
+    )
+  ) {
+    return false;
+  }
   const claimed = await ctx.storage.taskBoard.claimConflictResolution(
     item.id,
     orgId,
