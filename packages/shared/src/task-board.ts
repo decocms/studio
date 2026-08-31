@@ -220,6 +220,18 @@ export interface BoardColumn {
   title: string;
   position: number;
   role: string | null;
+  /**
+   * The tracker statuses this column groups, in the tracker's own order.
+   *
+   * A tracker's board column is a bucket of statuses, not a status. The pull
+   * does not care — an issue has one status, which sits in one column — but
+   * the push cannot move without this: "the card is in Em andamento" does not
+   * say which of that column's statuses the issue should become, and the
+   * answer is whichever its workflow can reach.
+   *
+   * Empty for a column Studio defines, which mirrors nothing.
+   */
+  trackerStatuses: string[];
 }
 
 export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";

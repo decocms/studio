@@ -369,7 +369,12 @@ describe("laneHeader", () => {
   test("calls a mirrored column whatever its tracker calls it", () => {
     expect(
       laneHeader("Fazendo", t, [
-        { key: "Fazendo", title: "Em Progresso", position: 0, role: null },
+        {
+          key: "Fazendo",
+          title: "Em Progresso",
+          position: 0,
+          role: null,
+        },
       ]).label,
     ).toBe("Em Progresso");
   });
@@ -390,7 +395,12 @@ describe("laneHeader", () => {
    */
   test("borrows neither our name nor our icon for a status off the board", () => {
     const header = laneHeader("triage", t, [
-      { key: "BACKLOG", title: "BACKLOG", position: 0, role: null },
+      {
+        key: "BACKLOG",
+        title: "BACKLOG",
+        position: 0,
+        role: null,
+      },
     ]);
     expect(header.offBoard).toBe(true);
     expect(header.label).toBe("triage");

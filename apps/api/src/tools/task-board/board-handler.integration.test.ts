@@ -151,9 +151,9 @@ describe("boardHandler — a board whose columns are the org's own", () => {
 
   it("renders the org's own columns, in the order given", async () => {
     await boardColumns.replaceAll(ORG_M, [
-      { key: "BACKLOG", title: "Backlog" },
-      { key: "Fazendo", title: "Em Progresso" },
-      { key: "Code Review", title: "Code Review" },
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
+      { key: "Fazendo", title: "Em Progresso", trackerStatuses: [] },
+      { key: "Code Review", title: "Code Review", trackerStatuses: [] },
     ]);
     expect((await board().columns()).map((c) => c.title)).toEqual([
       "Backlog",
@@ -175,8 +175,8 @@ describe("boardHandler — a board whose columns are the org's own", () => {
    *  not wipe it — the tracker has no idea it exists. */
   it("keeps a role through a re-sync, and drops a column that vanished", async () => {
     await boardColumns.replaceAll(ORG_M, [
-      { key: "BACKLOG", title: "Backlog" },
-      { key: "Code Review", title: "Code Review" },
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
+      { key: "Code Review", title: "Code Review", trackerStatuses: [] },
     ]);
     const after = await board().columns();
     expect(after.map((c) => c.key)).toEqual(["BACKLOG", "Code Review"]);
@@ -216,8 +216,8 @@ describe("boardHandler — a board whose columns are the org's own", () => {
    */
   it("keeps a dropped column that still holds cards, and drops it once empty", async () => {
     await boardColumns.replaceAll(ORG_M, [
-      { key: "BACKLOG", title: "Backlog" },
-      { key: "Retired", title: "Retired" },
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
+      { key: "Retired", title: "Retired", trackerStatuses: [] },
     ]);
     const card = await taskBoard.create({
       organizationId: ORG_M,
@@ -227,7 +227,7 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     });
 
     await boardColumns.replaceAll(ORG_M, [
-      { key: "BACKLOG", title: "Backlog" },
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
     ]);
     expect((await board().columns()).map((c) => c.key)).toEqual([
       "BACKLOG",
@@ -236,7 +236,7 @@ describe("boardHandler — a board whose columns are the org's own", () => {
 
     await taskBoard.update(card.id, ORG_M, { status: "BACKLOG" }, USER_M);
     await boardColumns.replaceAll(ORG_M, [
-      { key: "BACKLOG", title: "Backlog" },
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
     ]);
     expect((await board().columns()).map((c) => c.key)).toEqual(["BACKLOG"]);
   });
@@ -249,7 +249,7 @@ describe("boardHandler — a board whose columns are the org's own", () => {
    */
   it("refuses a card in a column the board does not have, once guarded", async () => {
     await boardColumns.replaceAll(ORG_M, [
-      { key: "BACKLOG", title: "Backlog" },
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
     ]);
     const guarded = taskBoard.create({
       organizationId: ORG_M,

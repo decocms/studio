@@ -62,6 +62,10 @@ const CANONICAL: BoardColumn[] = CANONICAL_COLUMN_KEYS.map((key, position) => ({
   title: key,
   position,
   role: key,
+  // Studio's board mirrors nothing, so it groups no tracker statuses. An org
+  // on this board that also syncs Jira still pushes through its hand-written
+  // status mapping; see `jiraTargetsForLane`.
+  trackerStatuses: [],
 }));
 
 /** The board Studio ships with: a fixed set of columns, and whatever rules the
