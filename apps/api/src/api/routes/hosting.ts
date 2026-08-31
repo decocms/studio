@@ -13,13 +13,22 @@
  *                DELETE) / deploy (POST re-deploy of the current commit)
  *   - E2E:       e2e/runs (list + POST to queue a run) and e2e/runs/:runId
  *                (detail)
- *   - Analytics: analytics/usage (control-plane answers 503 `not_configured`
- *                when analytics isn't set up for the site — propagated as-is)
+ *   - Analytics: lifecycle (status/register/config/disable/usage/delete) proxied
+ *                to the control-plane; PLUS analytics/data — the tenant-scoped
+ *                dashboard views read straight from the Analytics read surface
+ *                (a different upstream), scoped by a warehouse site_id this BFF
+ *                resolves from an owned slug and never from the client.
  *
  * Required env vars (see settings/resolve-config.ts):
  *   CONTROLPLANE_REST_URL        – control-plane REST base, e.g.
  *                                  https://control-plane.infra.deco.cx/api/v1
  *   CONTROLPLANE_SERVICE_TOKEN   – Bearer token for the control-plane REST API
+ *   ANALYTICS_URL                – Analytics read surface base, e.g.
+ *                                  https://analytics.infra.deco.cx (data views)
+ *   ANALYTICS_MASTER_TOKEN       – Bearer token for the read surface; the
+ *                                  warehouse row policies clamp per site as a
+ *                                  backstop, but this token never reaches the
+ *                                  browser
  *
  * When either is unset the routes return 503 "not configured" and the tabs
  * stay hidden (public-config `hostingEnabled` is false).
@@ -152,6 +161,98 @@ async function readJsonBody(
   c: import("hono").Context<{ Variables: Variables }>,
 ): Promise<unknown> {
   return c.req.json().catch(() => ({}));
+}
+
+// --- Analytics read surface (the tenant-scoped /data views) -----------------
+//
+// Registration lives in the control-plane (proxied above). READING does not:
+// the data views come straight from the Deco Analytics read surface, which is a
+// different upstream (ANALYTICS_URL) with its own master token. The spec is
+// explicit — "leitura não passa pelo control-plane".
+//
+// Two things this BFF must get right, because the read surface trusts whoever
+// holds the master token to name any site:
+//   1. It resolves the warehouse site_id (`s<id>`) itself, from a slug the org
+//      OWNS — never from a client-supplied value, which could name another
+//      tenant. The id only exists on the control-plane, so we read it back from
+//      `analytics/status` (`config.id`) and cache it briefly.
+//   2. It refuses to hand back a payload the warehouse did NOT scope: if
+//      `usageScope.tenantScoped` isn't true, or the reader wasn't the
+//      tenant-scoped one, or the scoped site doesn't match, the numbers could be
+//      someone else's — so we 502 rather than render them.
+
+/** Views the customer-facing tab may ask for. `pipeline` is deliberately absent:
+ *  it reads `system.parts`, which cannot carry a tenant row policy, so it is an
+ *  operator-only view and must never reach a customer screen. */
+const ANALYTICS_VIEWS = new Set([
+  "live",
+  "overview",
+  "behaviour",
+  "events",
+  "errors",
+  "experiments",
+  "vitals",
+  "quality",
+  "usage",
+  "install",
+]);
+
+/** The ranges the read surface understands (queries.mjs RANGES). */
+const ANALYTICS_RANGES = new Set([
+  "5m",
+  "15m",
+  "30m",
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+]);
+
+/** slug → warehouse site_id (`s<id>`), memoised briefly. The mapping is stable
+ *  for the life of a registration, so a short TTL keeps a screenful of view
+ *  requests from each re-asking the control-plane while still noticing an
+ *  unregister within a few seconds. `null` (not-registered) is cached too, so an
+ *  unregistered site doesn't hammer the upstream on every expand. */
+const siteIdCache = new Map<string, { id: string | null; exp: number }>();
+const SITE_ID_TTL_MS = 30_000;
+
+async function resolveWarehouseSiteId(
+  org: { id: string },
+  site: string,
+  controlplaneRestUrl: string,
+  controlplaneServiceToken: string,
+): Promise<string | null> {
+  const cacheKey = `${org.id}:${site.toLowerCase()}`;
+  const hit = siteIdCache.get(cacheKey);
+  if (hit && hit.exp > Date.now()) return hit.id;
+
+  let id: string | null = null;
+  try {
+    const res = await fetch(
+      `${controlplaneRestUrl}/sites/${encodeURIComponent(site)}/analytics/status`,
+      {
+        headers: {
+          Authorization: `Bearer ${controlplaneServiceToken}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    const body = (await res.json().catch(() => null)) as {
+      registered?: boolean;
+      config?: { id?: string } | null;
+    } | null;
+    // `config.id` is the `s<id>` and is only present once the site is registered.
+    if (res.ok && body?.registered && body.config?.id) {
+      id = body.config.id;
+    }
+  } catch (err) {
+    console.error(`[analytics] status resolve failed for site="${site}":`, err);
+    // Do not cache a transient failure as "not registered" — leave it uncached.
+    return null;
+  }
+
+  siteIdCache.set(cacheKey, { id, exp: Date.now() + SITE_ID_TTL_MS });
+  return id;
 }
 
 /**
@@ -369,6 +470,136 @@ export const createHostingRoutes = () => {
   app.delete("/:site/analytics", (c) =>
     proxyControlplane(c, "analytics", { method: "DELETE" }),
   );
+
+  // GET /api/:org/hosting/:site/analytics/data?view=&range= — the tenant-scoped
+  // dashboard views, read straight from the Analytics read surface (NOT the
+  // control-plane). Answers `{ registered, siteId, view, range, data }` where
+  // `data` is the read surface's per-view payload with delivery/bundle internals
+  // stripped. `{ registered:false }` when the site has no warehouse id yet, so
+  // the tab shows the Configuration section instead of empty charts.
+  app.get("/:site/analytics/data", async (c) => {
+    const ctx = c.get("studioContext");
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+
+    // Same ownership guard as proxyControlplane: the org must own this slug.
+    // 404 (not 403) so an unowned slug looks like a non-existent one.
+    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
+      site.toLowerCase(),
+      org.id,
+    );
+    if (!ownsSite) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+
+    const {
+      controlplaneRestUrl,
+      controlplaneServiceToken,
+      analyticsDataUrl,
+      analyticsMasterToken,
+    } = getSettings();
+    if (!controlplaneRestUrl || !controlplaneServiceToken) {
+      return c.json({ error: "Hosting integration is not configured" }, 503);
+    }
+    if (!analyticsDataUrl || !analyticsMasterToken) {
+      return c.json({ error: "Analytics data surface is not configured" }, 503);
+    }
+
+    const view = c.req.query("view") ?? "overview";
+    if (!ANALYTICS_VIEWS.has(view)) {
+      return c.json({ error: `unknown or unavailable view: ${view}` }, 400);
+    }
+    const range = c.req.query("range") ?? "24h";
+    if (!ANALYTICS_RANGES.has(range)) {
+      return c.json({ error: `unknown range: ${range}` }, 400);
+    }
+
+    // Resolve the warehouse site_id from a slug the org owns — never trust a
+    // client-supplied id. No id yet ⇒ not registered; the tab shows Configuration.
+    const siteId = await resolveWarehouseSiteId(
+      org,
+      site,
+      controlplaneRestUrl,
+      controlplaneServiceToken,
+    );
+    if (!siteId) {
+      return c.json({ registered: false, view, range });
+    }
+
+    const upstream = new URL(`${analyticsDataUrl}/data`);
+    upstream.searchParams.set("view", view);
+    upstream.searchParams.set("range", range);
+    upstream.searchParams.set("site", siteId);
+
+    let payload: Record<string, unknown> | null;
+    try {
+      const res = await fetch(upstream, {
+        headers: {
+          Authorization: `Bearer ${analyticsMasterToken}`,
+          Accept: "application/json",
+        },
+      });
+      payload = (await res.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      if (!res.ok) {
+        const error =
+          (payload && typeof payload === "object" && "error" in payload
+            ? String((payload as { error: unknown }).error)
+            : null) ?? `Analytics request failed (${res.status})`;
+        const status: ContentfulStatusCode =
+          res.status >= 400 && res.status <= 599
+            ? (res.status as ContentfulStatusCode)
+            : 502;
+        return c.json({ error }, status);
+      }
+    } catch (err) {
+      console.error(`[analytics] data proxy error for site="${site}":`, err);
+      return c.json({ error: "Failed to reach analytics service" }, 502);
+    }
+
+    if (!payload) {
+      return c.json({ error: "analytics returned an empty payload" }, 502);
+    }
+
+    // The read surface trusts our token to name any site, so verify it actually
+    // scoped to THIS tenant before returning. A payload that isn't tenant-scoped
+    // — or was scoped to a different site — could be someone else's numbers under
+    // this customer's name, which is the one outcome that must never render.
+    const scope = (payload.usageScope ?? null) as {
+      site?: string | null;
+      reader?: string;
+      tenantScoped?: boolean;
+    } | null;
+    if (
+      !scope ||
+      scope.tenantScoped !== true ||
+      scope.reader !== "stats_reader" ||
+      scope.site !== siteId
+    ) {
+      console.error(
+        `[analytics] refusing unscoped payload for site="${site}" (${siteId}):`,
+        scope,
+      );
+      return c.json(
+        { error: "analytics did not scope to this site; refusing to render" },
+        502,
+      );
+    }
+
+    // Strip delivery/caching/bundle internals: this tab ships in the open-source
+    // Studio and must expose only what a site owner needs, never how we deliver
+    // or meter. `worker` is the collector's live metrics; `install` carries
+    // bundle bytes and probe results. Reduce usageScope to the fact the client
+    // needs (it's scoped) without leaking the enforced-tables list.
+    delete payload.worker;
+    delete payload.install;
+    payload.usageScope = { site: siteId, tenantScoped: true };
+
+    return c.json({ registered: true, siteId, view, range, data: payload });
+  });
 
   return app;
 };

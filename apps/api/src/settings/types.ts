@@ -198,6 +198,16 @@ export interface Settings {
   /** Bearer service token for the control-plane REST API. Never leaves the
    *  server — the BFF proxy attaches it and returns only the proxied JSON. */
   controlplaneServiceToken: string | undefined;
+  /** Deco Analytics READ surface base URL (e.g.
+   *  https://analytics.infra.deco.cx). Read by the per-site Analytics tab's BFF
+   *  proxy to fetch the tenant-scoped `/data` views. This is the read half of
+   *  Deco Analytics; registration still goes through the control-plane. Unset ⇒
+   *  the data views 503 and the tab falls back to the Configuration section. */
+  analyticsDataUrl: string | undefined;
+  /** Master bearer token for the Analytics read surface. Never leaves the
+   *  server — the BFF attaches it and passes `site=s<id>`; the warehouse's own
+   *  row policies clamp to that tenant as a backstop. */
+  analyticsMasterToken: string | undefined;
   /** Legacy deco.cx analytics warehouse (CDN + shared-infra usage facts) read
    *  by the Infra Billing settings page. A DIFFERENT ClickHouse from
    *  `clickhouseUrl`, which is Studio's own monitoring store. Unset = the

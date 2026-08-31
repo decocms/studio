@@ -1,24 +1,36 @@
 /**
- * AnalyticsTab — per-site Deco Analytics lifecycle (control-plane BFF proxy).
+ * AnalyticsTab — per-site Deco Analytics, tenant-scoped.
  *
- * Mirrors the control-plane `site-analytics.tsx` lifecycle with native Studio
- * components. Fetches `GET /analytics/status` first and branches:
- *   - `configured === false` → the collector isn't wired to this environment.
- *   - `configured && !registered` → a Register card (pick modules + optional
- *     host) that registers the site with the Deco Analytics collector.
- *   - `registered` → a registered view: Active/Paused badge, host + id + modules
- *     + sampling, Pause/Resume + Edit + Unregister actions, and a usage summary.
+ * Two halves, both per-site and both server-proxied so no upstream token ever
+ * reaches the browser:
  *
- * All traffic flows through the same server-side proxy that powers Hosting — at
- * `/api/:org/hosting/:site/analytics/*` — so the control-plane service token
- * never reaches the browser. A 401 anywhere shows the calm "not connected"
- * state; loading shows a Skeleton.
+ *   1. Dashboard — the read surface's `/data` views (overview, behaviour,
+ *      events, …) rendered as collapsible sections. Each section fetches
+ *      `GET /analytics/data?view=&range=` lazily on open. The BFF resolves the
+ *      warehouse site_id from a slug the org owns and refuses any payload the
+ *      warehouse did not scope to this tenant, so a section can only ever show
+ *      this site's numbers. `pipeline` is intentionally not offered — it is an
+ *      operator view with no tenant policy.
+ *
+ *   2. Configuration — the lifecycle (register → configure / pause-resume /
+ *      unregister) that used to be the whole tab, now one collapsible section.
+ *
+ * Status drives the shell: `configured === false` → collector not wired;
+ * `!registered` → the Register card is the whole tab (nothing to chart yet);
+ * `registered` → dashboard sections + a Configuration section. A 401 anywhere
+ * shows the calm "not connected" state; the data surface being unset degrades to
+ * "dashboard unavailable" while configuration still works.
+ *
+ * IMPORTANT: this tab ships in the open-source Studio. It shows only what a site
+ * owner needs — never delivery/caching/billing internals (the BFF strips the
+ * read surface's `worker`/`install` internals before they reach here).
  */
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartSquare02,
+  ChevronDown,
   Pencil01,
   Power03,
   Trash01,
@@ -26,8 +38,28 @@ import {
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@decocms/ui/components/collapsible.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@decocms/ui/components/table.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,11 +79,13 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { toast } from "sonner";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -69,9 +103,15 @@ interface AnalyticsStatus {
   host?: string | null;
   config?: SiteConfig | null;
 }
-interface Usage {
-  series?: unknown[];
-  totals?: Record<string, unknown>;
+
+/** The BFF's `/analytics/data` envelope. `data` is the read surface's per-view
+ *  payload (delivery/bundle internals already stripped server-side). */
+interface AnalyticsDataResponse {
+  registered?: boolean;
+  siteId?: string;
+  view?: string;
+  range?: string;
+  data?: Record<string, unknown>;
 }
 
 // The modules a site can enable. `core` is always on (the collector forces it),
@@ -105,6 +145,55 @@ const MODULES = [
   },
 ] as const;
 
+// The dashboard views, in the order the internal admin UI shows them. `pipeline`
+// and `install` are omitted on purpose: `pipeline` is operator-only (no tenant
+// policy) and `install` carries only the internals the BFF strips, so it would
+// render empty here. Labels come from i18n.
+const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
+  { view: "overview", labelKey: "mainPanelTabs.analyticsTab.viewOverview" },
+  { view: "live", labelKey: "mainPanelTabs.analyticsTab.viewLive" },
+  { view: "behaviour", labelKey: "mainPanelTabs.analyticsTab.viewBehaviour" },
+  { view: "events", labelKey: "mainPanelTabs.analyticsTab.viewEvents" },
+  { view: "errors", labelKey: "mainPanelTabs.analyticsTab.viewErrors" },
+  {
+    view: "experiments",
+    labelKey: "mainPanelTabs.analyticsTab.viewExperiments",
+  },
+  { view: "vitals", labelKey: "mainPanelTabs.analyticsTab.viewVitals" },
+  { view: "quality", labelKey: "mainPanelTabs.analyticsTab.viewQuality" },
+  { view: "usage", labelKey: "mainPanelTabs.analyticsTab.viewUsage" },
+];
+
+const RANGES: ReadonlyArray<{ value: string; labelKey: TranslationKey }> = [
+  { value: "24h", labelKey: "mainPanelTabs.analyticsTab.range24h" },
+  { value: "7d", labelKey: "mainPanelTabs.analyticsTab.range7d" },
+  { value: "30d", labelKey: "mainPanelTabs.analyticsTab.range30d" },
+  { value: "1h", labelKey: "mainPanelTabs.analyticsTab.range1h" },
+  { value: "30m", labelKey: "mainPanelTabs.analyticsTab.range30m" },
+  { value: "15m", labelKey: "mainPanelTabs.analyticsTab.range15m" },
+  { value: "5m", labelKey: "mainPanelTabs.analyticsTab.range5m" },
+];
+
+// Keys in a view payload that are context, not panels — never rendered as data.
+const META_KEYS = new Set([
+  "usageScope",
+  "currency",
+  "currencies",
+  "dimensions",
+  "operators",
+  "goals",
+  "goal",
+  "range",
+  "site",
+  "view",
+  "propKey",
+  "filters",
+  "usageExplained",
+]);
+
+// A column name that reads as a time bucket → the panel is a series.
+const TIME_KEY = /^(t|ts|bucket|minute|min|hour|day|date)$/i;
+
 // --- helpers ----------------------------------------------------------------
 
 /** The pre-token condition: the upstream (or its proxy) answers 401. Rendered as
@@ -114,8 +203,9 @@ function isUnauthorized(error: unknown): boolean {
   return m.includes("unauthorized") || m.includes("401");
 }
 
-/** The control-plane returns 503 `not_configured` when analytics isn't set up
- *  for the site — rendered as a friendly "no data" state, not an error. */
+/** The upstream/proxy answers "not configured" (503) — a friendly "no data"
+ *  state, not an error. Matches both the control-plane's `not_configured` and
+ *  the BFF's "…is not configured" for the data surface. */
 function isNotConfigured(error: unknown): boolean {
   const m = error instanceof Error ? error.message.toLowerCase() : "";
   return m.includes("not_configured") || m.includes("not configured");
@@ -125,9 +215,12 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Turn a totals key (`events_accepted`, `bytes_in`) into a readable label. */
-function metricLabel(key: string): string {
-  const spaced = key.replace(/[_-]+/g, " ").trim();
+/** camelCase / snake_case panel or column key → a readable label. */
+function humanize(key: string): string {
+  const spaced = key
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
@@ -135,6 +228,32 @@ function formatNumber(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return new Intl.NumberFormat().format(n);
+}
+
+/** Render any warehouse cell. Arrays (e.g. `_trunc`) may arrive as `null` on
+ *  some clients — coalesce to a dash rather than reading "no flags" where there
+ *  are flags. Objects are shown compactly; numbers get thousands separators. */
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) {
+    return value.length ? value.map((v) => String(v)).join(", ") : "—";
+  }
+  if (typeof value === "number") return formatNumber(value);
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function isScalar(value: unknown): boolean {
+  return (
+    value === null ||
+    ["string", "number", "boolean"].includes(typeof value)
+  );
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -204,71 +323,255 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-// --- usage summary ----------------------------------------------------------
+/** A collapsible section with a chevron trigger. Children render only while open
+ *  (the caller gates its data fetch on `open`), so a screenful of sections
+ *  doesn't fan out queries until each is expanded. */
+function Section({
+  title,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(Boolean(defaultOpen));
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        onOpenChange?.(next);
+      }}
+      className="rounded-xl border border-border bg-card overflow-hidden"
+    >
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/40">
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+        <span className="text-sm font-medium text-foreground">{title}</span>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-t border-border p-4">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
-/** Usage totals for the registered site — tiles keyed off the `totals` map. */
-function UsageSummary({
+// --- generic panel rendering ------------------------------------------------
+
+/** A tiny dependency-free bar strip for a time series — enough visual signal for
+ *  a design pass without pulling a chart lib. The full table sits below it. */
+function SparkBars({ values }: { values: number[] }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="flex h-16 items-end gap-0.5">
+      {values.map((v, i) => (
+        <div
+          key={i}
+          className="flex-1 rounded-sm bg-primary/60"
+          style={{ height: `${Math.max(2, (v / max) * 100)}%` }}
+          title={formatNumber(v)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DataTable({ rows }: { rows: Array<Record<string, unknown>> }) {
+  const columns = Array.from(
+    rows.reduce<Set<string>>((set, row) => {
+      Object.keys(row).forEach((k) => set.add(k));
+      return set;
+    }, new Set()),
+  );
+  const shown = rows.slice(0, 100);
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((c) => (
+              <TableHead key={c} className="whitespace-nowrap">
+                {humanize(c)}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {shown.map((row, i) => (
+            <TableRow key={i}>
+              {columns.map((c) => (
+                <TableCell key={c} className="whitespace-nowrap tabular-nums">
+                  {formatCell(row[c])}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+/** One panel from a view payload, shape-detected: a single scalar row → stat
+ *  tiles; a time series → sparkline + table; anything else → a table. */
+function PanelBlock({
+  name,
+  rows,
+  t,
+}: {
+  name: string;
+  rows: Array<Record<string, unknown>>;
+  t: TFunction;
+}) {
+  const title = humanize(name);
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+        <p className="text-sm text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.panelEmpty")}
+        </p>
+      </div>
+    );
+  }
+
+  // rows is non-empty here (the length-0 case returned above); `first` is the
+  // shape probe for the whole panel.
+  const first = rows[0] ?? {};
+
+  // Single row of scalars → KPI tiles.
+  if (rows.length === 1 && Object.values(first).every(isScalar)) {
+    const entries = Object.entries(first);
+    return (
+      <div className="flex flex-col gap-2">
+        <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+        <div className="flex flex-wrap gap-3">
+          {entries.map(([k, v]) => (
+            <StatCard key={k} label={humanize(k)} value={formatCell(v)} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const columns = Object.keys(first);
+  const timeKey = columns.find((c) => TIME_KEY.test(c));
+  const metricKey =
+    timeKey &&
+    columns.find((c) => c !== timeKey && typeof first[c] === "number");
+  const series =
+    timeKey && metricKey ? rows.map((r) => Number(r[metricKey]) || 0) : null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+      {series && series.length > 1 && <SparkBars values={series} />}
+      <DataTable rows={rows} />
+    </div>
+  );
+}
+
+/** Render every panel in a view payload. Meta keys and non-array values are
+ *  skipped; the rest become PanelBlocks in payload order. */
+function ViewPanels({
+  payload,
+  t,
+}: {
+  payload: Record<string, unknown>;
+  t: TFunction;
+}) {
+  const panels = Object.entries(payload).filter(
+    ([key, value]) => !META_KEYS.has(key) && Array.isArray(value),
+  ) as Array<[string, Array<Record<string, unknown>>]>;
+
+  const hasAny = panels.some(([, rows]) => rows.length > 0);
+  if (!hasAny) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("mainPanelTabs.analyticsTab.dataEmpty")}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {panels.map(([name, rows]) => (
+        <PanelBlock key={name} name={name} rows={rows} t={t} />
+      ))}
+    </div>
+  );
+}
+
+// --- one dashboard view section ---------------------------------------------
+
+function ViewSection({
   base,
   orgSlug,
   site,
+  view,
+  title,
+  range,
+  defaultOpen,
 }: {
   base: string;
   orgSlug: string;
   site: string;
+  view: string;
+  title: string;
+  range: string;
+  defaultOpen?: boolean;
 }) {
   const t = useT();
-  const usageQuery = useQuery({
-    queryKey: KEYS.analyticsUsage(orgSlug, site),
-    queryFn: () => fetchJson(`${base}/analytics/usage`),
+  const [open, setOpen] = useState(Boolean(defaultOpen));
+
+  const query = useQuery({
+    queryKey: KEYS.analyticsData(orgSlug, site, view, range),
+    queryFn: () =>
+      fetchJson(
+        `${base}/analytics/data?view=${encodeURIComponent(
+          view,
+        )}&range=${encodeURIComponent(range)}`,
+      ),
+    enabled: open,
     retry: false,
     staleTime: 30_000,
   });
 
-  // 401 / not_configured / errors: the registered view still stands on its own,
-  // so a usage miss is silent rather than a red error.
-  if (usageQuery.error) {
-    if (isNotConfigured(usageQuery.error) || isUnauthorized(usageQuery.error)) {
-      return null;
-    }
-  }
-
-  const usage = (usageQuery.data ?? {}) as Usage;
-  const totalEntries = Object.entries(usage.totals ?? {});
+  const response = (query.data ?? {}) as AnalyticsDataResponse;
 
   return (
-    <Card title={t("mainPanelTabs.analyticsTab.usageTitle")}>
-      {usageQuery.isLoading ? (
-        <div className="flex flex-wrap gap-3">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="flex flex-1 min-w-[140px] flex-col gap-2 rounded-xl border border-border bg-card p-4"
-            >
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-7 w-20" />
-            </div>
-          ))}
+    <Section title={title} defaultOpen={defaultOpen} onOpenChange={setOpen}>
+      {query.isLoading ? (
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
-      ) : totalEntries.length === 0 ? (
+      ) : query.error ? (
         <p className="text-sm text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.usageEmpty")}
+          {isNotConfigured(query.error)
+            ? t("mainPanelTabs.analyticsTab.dataNotConfiguredDescription")
+            : t("mainPanelTabs.analyticsTab.dataLoadError")}
         </p>
+      ) : response.data ? (
+        <ViewPanels payload={response.data} t={t} />
       ) : (
-        <div className="flex flex-wrap gap-3">
-          {totalEntries.map(([key, value]) => (
-            <StatCard
-              key={key}
-              label={metricLabel(key)}
-              value={formatNumber(value)}
-            />
-          ))}
-        </div>
+        <p className="text-sm text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.dataEmpty")}
+        </p>
       )}
-    </Card>
+    </Section>
   );
 }
 
-// --- install panel ----------------------------------------------------------
+// --- install / tracking (use-only) ------------------------------------------
 
 /** How to USE analytics for this site — a minimal, use-only summary.
  *  IMPORTANT: this is an internal module surfaced in the (open-source) Studio.
@@ -558,9 +861,12 @@ function EditAnalyticsDialog({
   );
 }
 
-// --- registered view --------------------------------------------------------
+// --- configuration (registered site lifecycle) ------------------------------
 
-function RegisteredView({
+/** The lifecycle controls for a registered site: state badge + host + id +
+ *  modules, pause/resume/edit/unregister, and the tracking summary. Rendered
+ *  inside the collapsible Configuration section. */
+function ConfigurationPanel({
   base,
   orgSlug,
   site,
@@ -673,8 +979,6 @@ function RegisteredView({
         </div>
       </Card>
 
-      <UsageSummary base={base} orgSlug={orgSlug} site={site} />
-
       <InstallPanel />
 
       <EditAnalyticsDialog
@@ -717,6 +1021,74 @@ function RegisteredView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+// --- registered shell: dashboard + configuration ----------------------------
+
+function RegisteredView({
+  base,
+  orgSlug,
+  site,
+  status,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  status: AnalyticsStatus;
+}) {
+  const t = useT();
+  const [range, setRange] = useState("24h");
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-foreground">
+          {t("mainPanelTabs.analyticsTab.dashboardTitle")}
+        </h3>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.rangeLabel")}
+          </span>
+          <Select value={range} onValueChange={setRange}>
+            <SelectTrigger className="h-8 w-[160px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RANGES.map((r) => (
+                <SelectItem key={r.value} value={r.value}>
+                  {t(r.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {DATA_VIEWS.map((v, i) => (
+          <ViewSection
+            key={v.view}
+            base={base}
+            orgSlug={orgSlug}
+            site={site}
+            view={v.view}
+            title={t(v.labelKey)}
+            range={range}
+            defaultOpen={i === 0}
+          />
+        ))}
+      </div>
+
+      <Section title={t("mainPanelTabs.analyticsTab.configSectionTitle")}>
+        <ConfigurationPanel
+          base={base}
+          orgSlug={orgSlug}
+          site={site}
+          status={status}
+        />
+      </Section>
     </div>
   );
 }

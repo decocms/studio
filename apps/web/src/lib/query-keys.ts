@@ -693,6 +693,12 @@ export const KEYS = {
   // BFF at /api/:org/hosting/:site/analytics/usage.
   analyticsUsage: (org: string, site: string) =>
     ["hosting", org, site, "analytics-usage"] as const,
+  // Deco Analytics tab — one tenant-scoped dashboard view (overview, behaviour,
+  // …) for a range, proxied through the BFF at
+  // /api/:org/hosting/:site/analytics/data. Keyed by view+range so each
+  // collapsible section caches independently and refetches on range change.
+  analyticsData: (org: string, site: string, view: string, range: string) =>
+    ["hosting", org, site, "analytics-data", view, range] as const,
 
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,

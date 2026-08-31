@@ -376,6 +376,8 @@ export function resolveConfig(
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
     controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
     controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
+    analyticsDataUrl: envVars.ANALYTICS_URL,
+    analyticsMasterToken: envVars.ANALYTICS_MASTER_TOKEN,
     clickhouseAnalyticsUrl: envVars.CLICKHOUSE_ANALYTICS_ADDRESS,
     clickhouseAnalyticsUsername:
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",
