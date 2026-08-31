@@ -24,6 +24,10 @@ export const taskBoard = {
   "taskBoard.taskBoard.checksPending": "not reviewed yet",
   "taskBoard.taskBoard.checksUnverified": "approved (unverified)",
   "taskBoard.taskBoard.autoFix": "Auto-fix",
+  "taskBoard.taskBoard.autoMergeLabel": "Auto-merge",
+  "taskBoard.taskBoard.autoMergeTitle":
+    "Merge a task's pull request and move the card to Done as soon as every enabled reviewer approves",
+  "taskBoard.taskBoard.autoMergeUpdateError": "Couldn't update auto-merge",
   "taskBoard.taskBoard.rerun": "Re-run",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "The agent is waiting for your input",
