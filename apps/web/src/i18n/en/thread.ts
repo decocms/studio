@@ -6,6 +6,8 @@ export const thread = {
   "thread.branchPicker.couldntLoadPullRequests":
     "Couldn't load pull requests from GitHub.",
   "thread.branchPicker.createBranch": 'Create "{name}"',
+  "thread.branchPicker.newChatHint":
+    "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
   "thread.branchPicker.hiddenForkPrs":
     "{count} PR(s) from forks hidden — open on a branch in this repo",
   "thread.branchPicker.last7Days": "Last 7 days",
