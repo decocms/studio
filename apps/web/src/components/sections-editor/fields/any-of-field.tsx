@@ -409,9 +409,8 @@ export function AnyOfField({
     const handleMakeGlobalSubmit = (blockId: string) => {
       if (!onSaveReferencedBlock) return;
       const trimmed = blockId.trim();
-      const validationError = decofile
-        ? validateBlockId(trimmed, decofile)
-        : null;
+      // Never skip validation just because decofile hasn't loaded yet.
+      const validationError = validateBlockId(trimmed, decofile ?? {});
       if (validationError) {
         toast.error(validationError);
         return;
