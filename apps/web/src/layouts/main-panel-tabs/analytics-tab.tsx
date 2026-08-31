@@ -99,6 +99,9 @@ interface AnalyticsStatus {
   registered?: boolean;
   host?: string | null;
   config?: SiteConfig | null;
+  /** The public declared key (`dq_…`) for a keyed site — it ships in the page,
+   *  so it is shown, not hidden. */
+  key?: string | null;
 }
 
 /** The BFF's `/analytics/data` envelope. `data` is the read surface's per-view
@@ -1112,8 +1115,10 @@ function ActiveView({
 function InstallPanel({ status }: { status: AnalyticsStatus }) {
   const t = useT();
   const id = status.config?.id ?? "";
-  const keySnippet =
-    '<script async src="https://analytics.decocdn.com/_dq/a.js?k=YOUR_TOKEN"></script>';
+  // The declared key is public (it ships in the page's `?k=`), so show the real
+  // one straight from status rather than a placeholder.
+  const token = status.key ?? null;
+  const keySnippet = `<script async src="https://analytics.decocdn.com/_dq/a.js?k=${token ?? "YOUR_TOKEN"}"></script>`;
   return (
     <Card title={t("mainPanelTabs.analyticsTab.installTitle")}>
       <div className="flex flex-col gap-4">
@@ -1134,15 +1139,25 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t("mainPanelTabs.analyticsTab.installKeyTitle")}
           </span>
+          {token && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-1.5">
+              <code className="overflow-x-auto text-xs text-foreground">
+                {token}
+              </code>
+              <CopyButton text={token} />
+            </div>
+          )}
           <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
             <code className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
               {keySnippet}
             </code>
             <CopyButton text={keySnippet} />
           </div>
-          <span className="text-xs text-muted-foreground">
-            {t("mainPanelTabs.analyticsTab.installTokenNote")}
-          </span>
+          {!token && (
+            <span className="text-xs text-muted-foreground">
+              {t("mainPanelTabs.analyticsTab.installTokenNote")}
+            </span>
+          )}
         </div>
 
         <p className="text-xs text-muted-foreground">
