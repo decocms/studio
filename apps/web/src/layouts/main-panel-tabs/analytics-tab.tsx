@@ -389,21 +389,24 @@ function fmtMetric(key: string, value: unknown): string {
 }
 
 /** The KPI row: a single scalar record → a row of stat tiles. */
+// Internal/plumbing metrics that add noise to a customer KPI row.
+const KPI_HIDE = new Set(["min_sampling", "sessions_built"]);
+
 function KpiTiles({ row }: { row: Record<string, unknown> }) {
   const entries = Object.entries(row).filter(
-    ([, v]) => typeof v === "number" || v === null,
+    ([k, v]) => (typeof v === "number" || v === null) && !KPI_HIDE.has(k),
   );
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {entries.map(([k, v]) => (
         <div
           key={k}
-          className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4"
+          className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4"
         >
-          <span className="text-xs font-medium text-muted-foreground">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {humanize(k)}
           </span>
-          <span className="text-2xl font-semibold text-foreground tabular-nums">
+          <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
             {fmtMetric(k, v)}
           </span>
         </div>
@@ -519,30 +522,36 @@ function BarList({
   const total =
     rows.reduce((sum, r) => sum + (Number(r[valueKey]) || 0), 0) || 1;
   return (
-    <div className="flex flex-col gap-1.5">
-      {top.map((r, i) => {
-        const v = Number(r[valueKey]) || 0;
-        return (
-          <div
-            key={i}
-            className="relative flex items-center justify-between gap-3 overflow-hidden rounded-md px-2.5 py-1.5"
-          >
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between px-2.5 pb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span>{humanize(labelKey)}</span>
+        <span>{humanize(valueKey)}</span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {top.map((r, i) => {
+          const v = Number(r[valueKey]) || 0;
+          return (
             <div
-              className="absolute inset-y-0 left-0 rounded-md bg-primary/10"
-              style={{ width: `${(v / max) * 100}%` }}
-            />
-            <span className="relative z-10 truncate text-sm text-foreground">
-              {formatCell(r[labelKey]) || "—"}
-            </span>
-            <span className="relative z-10 shrink-0 text-sm tabular-nums text-muted-foreground">
-              {formatNumber(v)}
-              <span className="ml-2 text-xs opacity-70">
-                {Math.round((v / total) * 100)}%
+              key={i}
+              className="relative flex items-center justify-between gap-3 overflow-hidden rounded-md px-2.5 py-2"
+            >
+              <div
+                className="absolute inset-y-0 left-0 rounded-md bg-muted"
+                style={{ width: `${(v / max) * 100}%` }}
+              />
+              <span className="relative z-10 truncate font-mono text-xs text-foreground">
+                {formatCell(r[labelKey]) || "—"}
               </span>
-            </span>
-          </div>
-        );
-      })}
+              <span className="relative z-10 shrink-0 text-sm tabular-nums text-foreground">
+                {formatNumber(v)}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {Math.round((v / total) * 100)}%
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
