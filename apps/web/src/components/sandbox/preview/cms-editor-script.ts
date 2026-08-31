@@ -354,6 +354,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
 
   window.addEventListener("message", function(e) {
+    // Only Studio's own postMessage (source === this frame's parent) may drive the bridge — forged senders can't trigger the render fetch/swap.
+    if (e.source !== window.parent) return;
     if (e.data && e.data.type === "cms-editor::render" && typeof e.data.src === "string") {
       renderInPlace(e.data.src, e.data.body);
       return;
