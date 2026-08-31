@@ -7,6 +7,7 @@ export const GENERAL_SEO_FIELD_KEYS = [
   "title",
   "description",
   "canonical",
+  "noIndexing",
   "favicon",
   "image",
   "themeColor",
