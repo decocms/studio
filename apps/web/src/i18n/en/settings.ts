@@ -193,6 +193,14 @@ export const settings = {
     'This removes "{name}" and its files. This can\'t be undone.',
   "settings.skills.deleteSuccess": "Skill deleted",
   "settings.skills.deleteError": "Failed to delete skill",
+  "settings.skills.importTooManyFiles":
+    "That folder has {count} files (limit {max}). Import a folder with just the skill's own files.",
+  "settings.skills.importSlugTaken":
+    'A skill named "{slug}" already exists. Delete it first to re-import.',
+  "settings.skills.errorTitle": "Couldn't load skills",
+  "settings.skills.errorDescription":
+    "The skill catalog could not be loaded. You may not have access to this org's files.",
+  "settings.skills.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",

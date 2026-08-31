@@ -199,6 +199,14 @@ export const settings = {
     'Isso remove "{name}" e seus arquivos. Essa a\u00e7\u00e3o n\u00e3o pode ser desfeita.',
   "settings.skills.deleteSuccess": "Skill exclu\u00edda",
   "settings.skills.deleteError": "Falha ao excluir a skill",
+  "settings.skills.importTooManyFiles":
+    "Essa pasta tem {count} arquivos (limite {max}). Importe uma pasta com apenas os arquivos da skill.",
+  "settings.skills.importSlugTaken":
+    'Já existe uma skill chamada "{slug}". Exclua-a antes de reimportar.',
+  "settings.skills.errorTitle": "Não foi possível carregar as skills",
+  "settings.skills.errorDescription":
+    "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
+  "settings.skills.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",

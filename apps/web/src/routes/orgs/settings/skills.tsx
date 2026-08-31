@@ -13,6 +13,7 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   DotsVertical,
   GitBranch01,
   Package,
@@ -48,12 +49,21 @@ import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import {
+  fetchOrgFsStat,
   type OrgFsSkillCatalogEntry,
   useOrgFsMutations,
   useOrgFsSkillCatalog,
 } from "@/hooks/use-org-fs";
 import { browsePathForEntry } from "@/layouts/library/location";
 import { SkillPreviewDialog } from "@/layouts/library/skill-preview";
+import {
+  groupByDestination,
+  importable,
+  MAX_IMPORT_FILES,
+  relativePath,
+  slugify,
+  uploadAllGroups,
+} from "./skills-import.ts";
 
 /** Filter-chip id for "no origin filter". Not a real `source`, so it can't
  *  collide with one. */
@@ -80,39 +90,6 @@ function skillOrigin(source: string, orgName: string) {
     label: source.slice(separator + 1),
     glyph: source.startsWith("repo:") ? GitBranch01 : Package,
   };
-}
-
-function slugify(name: string): string {
-  return (
-    name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "skill"
-  );
-}
-
-/** A picked file's path relative to the folder root the user chose. */
-function relativePath(file: File): string {
-  const [, ...rest] = file.webkitRelativePath.split("/");
-  return rest.length > 0 ? rest.join("/") : file.name;
-}
-
-/**
- * Map a picked folder onto `home/skills/<slug>/…`, grouped by destination
- * directory: the upload endpoint takes one directory plus files whose own
- * `name` completes the path, so nested files must be grouped rather than
- * flattened (which would collapse `references/style.md` onto the root).
- */
-function groupByDestination(files: File[], slug: string): Map<string, File[]> {
-  const groups = new Map<string, File[]>();
-  for (const file of files) {
-    const segments = relativePath(file).split("/");
-    segments.pop();
-    const dir = ["skills", slug, ...segments].join("/");
-    groups.set(dir, [...(groups.get(dir) ?? []), file]);
-  }
-  return groups;
 }
 
 /**
@@ -230,21 +207,40 @@ export default function SettingsSkillsPage() {
   };
 
   async function handleImport(fileList: FileList | null) {
-    const files = [...(fileList ?? [])];
+    const picked = [...(fileList ?? [])];
     // Reset first: picking the same folder twice must re-fire `change`.
     if (folderInputRef.current) folderInputRef.current.value = "";
-    if (files.length === 0) return;
+    if (picked.length === 0) return;
 
-    const folder = files[0]?.webkitRelativePath.split("/")[0] ?? "";
+    const folder = picked[0]?.webkitRelativePath.split("/")[0] ?? "";
+    const files = picked.filter(importable);
     if (!files.some((f) => relativePath(f) === "SKILL.md")) {
       toast.error(t("settings.skills.importMissingSkillMd"));
       return;
     }
+    if (files.length > MAX_IMPORT_FILES) {
+      toast.error(
+        t("settings.skills.importTooManyFiles", {
+          count: String(files.length),
+          max: String(MAX_IMPORT_FILES),
+        }),
+      );
+      return;
+    }
+
+    // Merging would leave the existing skill's unmatched files behind.
+    const slug = slugify(folder);
+    const dir = `skills/${slug}`;
+    if (await fetchOrgFsStat(org.slug, "home", dir)) {
+      toast.error(t("settings.skills.importSlugTaken", { slug }));
+      return;
+    }
 
     try {
-      for (const [dir, group] of groupByDestination(files, slugify(folder))) {
-        await upload.mutateAsync({ dir, files: group });
-      }
+      await uploadAllGroups(
+        groupByDestination(files, slug),
+        upload.mutateAsync,
+      );
       refreshCatalog();
       toast.success(t("settings.skills.importSuccess", { name: folder }));
     } catch (err) {
@@ -268,7 +264,8 @@ export default function SettingsSkillsPage() {
         a.name.localeCompare(b.name),
     );
 
-  // Derived from the catalog — which sets/repos exist is deployment + org config.
+  // Chips come from the whole catalog; only their counts narrow with the search.
+  const allSources = new Set((catalog.data ?? []).map((e) => e.source));
   const counts = new Map<string, number>();
   for (const e of matching) {
     counts.set(e.source, (counts.get(e.source) ?? 0) + 1);
@@ -279,15 +276,15 @@ export default function SettingsSkillsPage() {
       label: t("settings.skills.filterAll"),
       count: matching.length,
     },
-    ...[...counts].map(([entrySource, count]) => ({
+    ...[...allSources].map((entrySource) => ({
       id: entrySource,
       label: skillOrigin(entrySource, org.name).label,
-      count,
+      count: counts.get(entrySource) ?? 0,
     })),
   ];
 
-  // A selection whose source vanished falls back to All, never an empty grid.
-  const activeSource = counts.has(source) ? source : ALL_SOURCES;
+  // Only a source the catalog no longer has at all falls back to All.
+  const activeSource = allSources.has(source) ? source : ALL_SOURCES;
   const filtered =
     activeSource === ALL_SOURCES
       ? matching
@@ -372,6 +369,33 @@ export default function SettingsSkillsPage() {
                     <Skeleton key={i} className="h-[168px] rounded-xl" />
                   ))}
                 </SkillsGrid>
+              </div>
+            ) : catalog.isError ? (
+              /* Never the empty state: "no skills yet" is a different fact. */
+              <div className="flex items-center justify-center py-20">
+                <EmptyState
+                  image={
+                    <AlertTriangle
+                      size={48}
+                      className="text-muted-foreground"
+                    />
+                  }
+                  title={t("settings.skills.errorTitle")}
+                  description={
+                    catalog.error instanceof Error
+                      ? catalog.error.message
+                      : t("settings.skills.errorDescription")
+                  }
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void catalog.refetch()}
+                    >
+                      {t("settings.skills.retry")}
+                    </Button>
+                  }
+                />
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex items-center justify-center py-20">

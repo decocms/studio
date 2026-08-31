@@ -109,6 +109,23 @@ export function useOrgFsList(volume: string, path: string) {
   });
 }
 
+/** Metadata for one entry — null when absent. Imperative twin of {@link useOrgFsStat}. */
+export async function fetchOrgFsStat(
+  orgSlug: string,
+  volume: string,
+  path: string,
+): Promise<OrgFsEntry | null> {
+  const res = await fsFetch(
+    fsUrl(orgSlug, volume, "stat", { path }),
+    undefined,
+    {
+      allow404: true,
+    },
+  );
+  if (res.status === 404) return null;
+  return ((await res.json()) as { entry: OrgFsEntry }).entry;
+}
+
 /** Metadata for one entry — null when absent. Powers the Library preview. */
 export function useOrgFsStat(
   volume: string | null,
@@ -281,6 +298,8 @@ export function useOrgFsSkillCatalog() {
   return useQuery({
     queryKey: KEYS.slashSkills(org.id),
     queryFn: () => fetchOrgFsSkillCatalog(org.slug),
+    // Same window as the picker: a build rescans home + every synced volume.
+    staleTime: 60_000,
   });
 }
 
