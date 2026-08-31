@@ -94,6 +94,8 @@ interface SiteConfig {
   tier?: string;
   modules?: string[];
   domains?: string[];
+  /** Accepted events per calendar month (uncapped when absent). */
+  quota?: number;
 }
 interface AnalyticsStatus {
   configured?: boolean;
@@ -1048,12 +1050,15 @@ function ActiveView({
   site,
   view,
   range,
+  quota,
 }: {
   base: string;
   orgSlug: string;
   site: string;
   view: string;
   range: string;
+  /** The registration's monthly cap, for the Usage & limits banner. */
+  quota?: number;
 }) {
   const t = useT();
   // Realtime is "now": a short window, auto-refreshed. Everything else follows
@@ -1103,7 +1108,71 @@ function ActiveView({
   if (view === "overview") {
     return <OverviewDashboard payload={response.data} />;
   }
+  if (view === "usage") {
+    return (
+      <div className="flex flex-col gap-5">
+        <QuotaBanner quota={quota} payload={response.data} />
+        <ViewPanels payload={response.data} t={t} />
+      </div>
+    );
+  }
   return <ViewPanels payload={response.data} t={t} />;
+}
+
+/** The Usage & limits header: the monthly cap and, when the payload carries an
+ *  accepted total, how much of it this window used. The cap is a CALENDAR-MONTH
+ *  limit, so the bar is only drawn against a month-scoped total; for a shorter
+ *  range it shows the cap and points at the site's control-plane detail for the
+ *  authoritative month-to-date consumption and enforcement state. */
+function QuotaBanner({
+  quota,
+  payload,
+}: {
+  quota?: number;
+  payload: Record<string, unknown>;
+}) {
+  const capped = typeof quota === "number" && quota > 0;
+  // Pull an accepted total out of any scalar row in the payload (the usage view
+  // carries a single-row summary). Best-effort — absent, we show the cap alone.
+  let accepted: number | null = null;
+  for (const v of Object.values(payload)) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const row = v as Record<string, unknown>;
+      const n = row.events_accepted ?? row.accepted ?? row.events;
+      if (typeof n === "number") {
+        accepted = n;
+        break;
+      }
+    }
+  }
+  const fmt = (n: number) => n.toLocaleString();
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Monthly quota
+        </span>
+        <span className="font-mono text-sm tabular-nums text-foreground">
+          {capped ? `${fmt(quota!)} events / month` : "Uncapped"}
+        </span>
+      </div>
+      {capped && accepted !== null && (
+        <p className="text-xs text-muted-foreground">
+          {fmt(accepted)} accepted in the selected range. The cap resets each
+          calendar month; the collector drops events once the site is flagged
+          over. Month-to-date consumption and the over-quota state are on the
+          site's hosting detail.
+        </p>
+      )}
+      {!capped && (
+        <p className="text-xs text-muted-foreground">
+          No monthly cap is set — every accepted event is stored. Set one in
+          Configuration to enforce a limit.
+        </p>
+      )}
+    </div>
+  );
 }
 
 // --- install / tracking (use-only) ------------------------------------------
@@ -1484,10 +1553,18 @@ function EditAnalyticsDialog({
   const [samplingPct, setSamplingPct] = useState<string>(
     String(Math.round((config.sampling ?? 1) * 100)),
   );
+  const [quota, setQuota] = useState<string>(
+    typeof config.quota === "number" && config.quota > 0
+      ? String(config.quota)
+      : "",
+  );
 
   const saveMutation = useMutation({
-    mutationFn: (input: { modules: string[]; sampling: number }) =>
-      mutateJson(`${base}/analytics/config`, "PUT", input),
+    mutationFn: (input: {
+      modules: string[];
+      sampling: number;
+      quota?: number;
+    }) => mutateJson(`${base}/analytics/config`, "PUT", input),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: KEYS.analyticsStatus(orgSlug, site),
@@ -1508,11 +1585,28 @@ function EditAnalyticsDialog({
     });
   };
 
+  const quotaNum = quota.trim() === "" ? null : Number(quota);
+  const quotaError =
+    quotaNum !== null && (!Number.isInteger(quotaNum) || quotaNum < 1)
+      ? "Quota must be a positive whole number of events."
+      : null;
+  const quotaCleared =
+    quota.trim() === "" &&
+    typeof config.quota === "number" &&
+    config.quota > 0;
+
   const handleSave = () => {
+    if (quotaError) return;
     const pct = Number(samplingPct);
     const sampling =
       Number.isFinite(pct) && pct > 0 ? Math.min(pct, 100) / 100 : 1;
-    saveMutation.mutate({ modules: [...selected], sampling });
+    saveMutation.mutate({
+      modules: [...selected],
+      sampling,
+      // Set-only: a blank field can't clear an existing cap (the patch can't
+      // carry `undefined`), so only send quota when a positive value is set.
+      ...(quotaNum !== null ? { quota: quotaNum } : {}),
+    });
   };
 
   return (
@@ -1563,6 +1657,33 @@ function EditAnalyticsDialog({
               {t("mainPanelTabs.analyticsTab.editSamplingHint")}
             </span>
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="analytics-quota">Monthly quota</Label>
+            <Input
+              id="analytics-quota"
+              type="number"
+              min={1}
+              value={quota}
+              placeholder="Uncapped"
+              onChange={(e) => setQuota(e.target.value)}
+              aria-invalid={quotaError != null}
+              className="font-mono text-xs"
+            />
+            {quotaError ? (
+              <span className="text-xs text-destructive">{quotaError}</span>
+            ) : quotaCleared ? (
+              <span className="text-xs text-amber-600 dark:text-amber-500">
+                Leaving this blank keeps the current cap — clearing a quota
+                isn't a patch. Unregister + re-register to make it uncapped.
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                Accepted events per calendar month. Once the reconciler flags the
+                site as over, the collector drops further events. Blank =
+                uncapped.
+              </span>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button
@@ -1576,7 +1697,7 @@ function EditAnalyticsDialog({
           <Button
             type="button"
             onClick={handleSave}
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || quotaError != null}
           >
             {saveMutation.isPending
               ? t("mainPanelTabs.analyticsTab.saving")
@@ -1629,7 +1750,7 @@ function ConfigurationPanel({
     onSuccess: (data) => {
       invalidate();
       setRotated(data);
-      toast.success(t("mainPanelTabs.analyticsTab.rotateToken"));
+      toast.success("Rotate token");
     },
     onError: (err) => toast.error(errorText(err)),
   });
@@ -1691,9 +1812,7 @@ function ConfigurationPanel({
                 onClick={() => rotateMutation.mutate()}
               >
                 <Copy01 className="size-4" />
-                {rotateMutation.isPending
-                  ? t("mainPanelTabs.analyticsTab.rotating")
-                  : t("mainPanelTabs.analyticsTab.rotateToken")}
+                {rotateMutation.isPending ? "Rotating…" : "Rotate token"}
               </Button>
             )}
             <Button
@@ -1908,6 +2027,7 @@ function RegisteredView({
         site={site}
         view={active}
         range={range}
+        quota={cfg.quota}
       />
 
       {/* A naturally-closed row documenting the client API, mirroring the admin

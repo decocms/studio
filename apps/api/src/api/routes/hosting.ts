@@ -372,6 +372,23 @@ export const createHostingRoutes = () => {
     ),
   );
 
+  // PUT /api/:org/hosting/:site/domains — body `{ host }` (idempotent per host;
+  // attaches the custom domain, wired per substrate server-side).
+  app.put("/:site/domains", async (c) =>
+    proxyControlplane(c, "domains", {
+      method: "PUT",
+      body: await readJsonBody(c),
+    }),
+  );
+
+  // DELETE /api/:org/hosting/:site/domains/:host — `:host` is URL-encoded into
+  // the control-plane path.
+  app.delete("/:site/domains/:host", (c) =>
+    proxyControlplane(c, `domains/${encodeURIComponent(c.req.param("host"))}`, {
+      method: "DELETE",
+    }),
+  );
+
   // POST /api/:org/hosting/:site/deploy — body `{ mode: "current" }`
   // re-deploys the current production commit. Control-plane answers 202.
   app.post("/:site/deploy", async (c) =>
@@ -471,7 +488,8 @@ export const createHostingRoutes = () => {
   );
 
   // PUT /api/:org/hosting/:site/analytics/config — body `{ modules?, sampling?,
-  // tier?, domains? }` edits the registered site's config.
+  // tier?, domains?, quota? }` edits the registered site's config. `quota` is
+  // set-only upstream (a blank field can't clear an existing cap).
   app.put("/:site/analytics/config", async (c) =>
     proxyControlplane(c, "analytics/config", {
       method: "PUT",
