@@ -88,7 +88,7 @@ import {
   TASK_TYPES,
   type TaskBoardItemType,
   DEFAULT_TASK_TYPE,
-  laneLabel,
+  laneHeader,
   laneVisual,
   STATUS_CONFIG,
   moveTargets,
@@ -108,7 +108,10 @@ import { summarizeTaskCost } from "./task-cost";
 import { prCardActions } from "./pr-card-actions";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
-import { useBoardSprintIndex } from "@/hooks/use-task-board-items";
+import {
+  useBoardColumns,
+  useBoardSprintIndex,
+} from "@/hooks/use-task-board-items";
 import {
   useTaskBoardActivity,
   type TaskBoardActivity,
@@ -421,6 +424,7 @@ function TaskBoardItemEditor({
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
+  const columns = useBoardColumns();
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -968,23 +972,21 @@ function TaskBoardItemEditor({
                           : laneVisual(status).iconClassName,
                       )}
                     />
-                    {laneLabel(status, t)}
+                    {laneHeader(status, t, columns).label}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {moveTargets(deliveryEnabled).map((s) => {
-                    const Icon = laneVisual(s).icon;
+                  {moveTargets(columns, deliveryEnabled).map((s) => {
+                    const { label, visual } = laneHeader(s, t, columns);
+                    const Icon = visual.icon;
                     return (
                       <DropdownMenuItem
                         key={s}
                         onSelect={() => patch({ status: s })}
                         className="gap-2"
                       >
-                        <Icon
-                          size={16}
-                          className={laneVisual(s).iconClassName}
-                        />
-                        {laneLabel(s, t)}
+                        <Icon size={16} className={visual.iconClassName} />
+                        {label}
                       </DropdownMenuItem>
                     );
                   })}
