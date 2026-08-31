@@ -1060,6 +1060,7 @@ export async function fetchPrCandidateState(
   state: "open" | "closed" | null;
   merged: boolean | null;
   checksStatus: ChecksStatus;
+  conflict: boolean | null;
 }> {
   const obj = await fetchPrGet(ctx, orgId, pr, "candidate");
   return {
@@ -1071,6 +1072,8 @@ export async function fetchPrCandidateState(
           : null,
     merged: typeof obj?.merged === "boolean" ? obj.merged : null,
     checksStatus: checksFromMergeableState(obj?.mergeable_state),
+    // Rides the same `get` — the sweep's conflict signal costs nothing extra.
+    conflict: conflictFromPrGet(obj),
   };
 }
 

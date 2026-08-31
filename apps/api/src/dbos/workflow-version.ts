@@ -80,5 +80,11 @@
  * removed and reordered, so a v8 digest instance replayed against v9 diverges.
  * Cheap to strand: the workflow was a five-minute tick that finishes in
  * milliseconds and holds nothing a user is waiting on.
+ *
+ * Version 10 adds `conflict` to `SweptPrState`, the recorded output of
+ * `taskBoardGithubReadWorkflow`'s `readPrState` step. Same step sequence and
+ * same GitHub call — only the recorded output contract widened, which is still
+ * a v9 instance replaying against a shape it never wrote. Cheap to strand: one
+ * throttled PR read the sweep re-issues on its next pass.
  */
-export const DBOS_WORKFLOW_VERSION = "9";
+export const DBOS_WORKFLOW_VERSION = "10";

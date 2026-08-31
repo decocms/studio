@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_ON_FLAGS, orgFlagEnabled } from "./schema";
+import {
+  autoResolveConflictsEnabled,
+  DEFAULT_ON_FLAGS,
+  orgFlagEnabled,
+} from "./schema";
 
 describe("orgFlagEnabled", () => {
   it("default-on flags read as enabled unless stored exactly false", () => {
@@ -27,6 +31,33 @@ describe("orgFlagEnabled", () => {
     expect(orgFlagEnabled({ auto_merge: null }, "auto_merge")).toBe(false);
     expect(orgFlagEnabled({ auto_merge: false }, "auto_merge")).toBe(false);
     expect(orgFlagEnabled({ auto_merge: true }, "auto_merge")).toBe(true);
+  });
+
+  it("auto_resolve_conflicts inherits auto_merge until set explicitly", () => {
+    expect(autoResolveConflictsEnabled(null)).toBe(false);
+    expect(autoResolveConflictsEnabled({})).toBe(false);
+    expect(autoResolveConflictsEnabled({ auto_merge: true })).toBe(true);
+    expect(autoResolveConflictsEnabled({ auto_merge: false })).toBe(false);
+    // An explicit value wins in BOTH directions — that is the whole split.
+    expect(
+      autoResolveConflictsEnabled({
+        auto_merge: true,
+        auto_resolve_conflicts: false,
+      }),
+    ).toBe(false);
+    expect(
+      autoResolveConflictsEnabled({
+        auto_merge: false,
+        auto_resolve_conflicts: true,
+      }),
+    ).toBe(true);
+    // Raw jsonb bypasses zod: a non-boolean is not "explicit".
+    expect(
+      autoResolveConflictsEnabled({
+        auto_merge: true,
+        auto_resolve_conflicts: "false",
+      }),
+    ).toBe(true);
   });
 
   it("a non-boolean stored value follows the branch's strict comparison", () => {

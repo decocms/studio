@@ -6,6 +6,7 @@ import {
   type ReviewCycleActivity,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import { autoResolveConflictsEnabled } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
@@ -76,7 +77,7 @@ export async function reactToApprovedPrConflict(
 
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const flags = settings?.flags ?? {};
-  if (flags.auto_merge !== true) return false;
+  if (!autoResolveConflictsEnabled(flags)) return false;
 
   // Same gate as the auto-merge: EVERY enabled reviewer must have a
   // token-verified approval in the current cycle. With no reviewer enabled

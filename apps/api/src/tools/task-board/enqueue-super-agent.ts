@@ -15,6 +15,7 @@ import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import type { RunClass } from "@/dispatch-queue/run-priority";
+import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import { fetchPrHeadRef } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
 import {
@@ -315,6 +316,12 @@ export async function enqueueSuperAgentForTask(
     // no repos imported runs Decopilot exactly as before.
     const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
 
+    // Set here, not per caller, so the automatic hand-back and the manual
+    // "Resolve conflict" button land on the same tier.
+    const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
+      ? "conflict"
+      : undefined;
+
     if (choice) {
       harness = "claude-code";
       const repo = "repo" in choice ? choice.repo : null;
@@ -330,6 +337,7 @@ export async function enqueueSuperAgentForTask(
         }),
         temperature: 0.5,
         harnessId: "claude-code",
+        ...(modelClass ? { modelClass } : {}),
         ...(repo ? { repo } : {}),
       });
     } else {

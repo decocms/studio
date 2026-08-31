@@ -166,7 +166,13 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
+      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
+    ),
+  auto_resolve_conflicts: z
+    .boolean()
+    .optional()
+    .describe(
+      "When an approved pull request can't be merged because it conflicts with its base branch, hand it back to the Super Agent to resolve the conflict (check out the branch, merge the base, push). Unset, it follows `auto_merge`; set it explicitly to run one without the other.",
     ),
   cheap_reviewer_model: z
     .boolean()
@@ -235,6 +241,20 @@ export function orgFlagEnabled(
 ): boolean {
   const value = flags?.[flag];
   return DEFAULT_ON_FLAGS.has(flag) ? value !== false : value === true;
+}
+
+/**
+ * Whether an approved-but-conflicting PR is handed back to the Super Agent.
+ * Not `orgFlagEnabled`: unset it INHERITS `auto_merge`, which is the behavior
+ * every org on auto-merge already has — splitting the two must not silently
+ * take conflict resolution away from them. An explicit value wins either way,
+ * so an org can resolve conflicts without auto-merging, or vice versa.
+ */
+export function autoResolveConflictsEnabled(
+  flags: Record<string, unknown> | null | undefined,
+): boolean {
+  const value = flags?.auto_resolve_conflicts;
+  return typeof value === "boolean" ? value : flags?.auto_merge === true;
 }
 
 /**

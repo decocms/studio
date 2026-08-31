@@ -465,7 +465,10 @@ export const settings = {
     "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
+    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+  "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
+  "settings.review.autoResolveConflictsDescription":
+    "When an approved pull request conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
   "settings.review.deliveryLanesTitle": "Show delivery lanes",
   "settings.review.deliveryLanesDescription":
     "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
