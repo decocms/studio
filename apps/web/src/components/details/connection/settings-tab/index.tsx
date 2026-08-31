@@ -64,7 +64,7 @@ interface OAuthAuthenticationStateProps {
 
 export function OAuthAuthenticationState({
   onAuthenticate,
-  buttonText = "Authenticate",
+  buttonText,
 }: OAuthAuthenticationStateProps) {
   const t = useT();
   return (
@@ -79,7 +79,7 @@ export function OAuthAuthenticationState({
           </p>
         </div>
         <Button onClick={onAuthenticate} size="default">
-          {buttonText}
+          {buttonText ?? t("details.settingsTab.authenticate")}
         </Button>
       </div>
     </div>
