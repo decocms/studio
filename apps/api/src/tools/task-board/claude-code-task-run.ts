@@ -287,13 +287,23 @@ export function buildClaudeCodeTaskPrompt(
     // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
-    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path (the dev server hot-reloads, so hit the route it renders) and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+    // A task run's pod is provisioned `harness-run`, which is `cloneOnly`: no
+    // install, no dev server (see `provisionSandbox` in tools/sandbox/start.ts).
+    // The line above used to assert "the dev server hot-reloads, so hit the
+    // route it renders" — an assurance that was simply false here, and runs
+    // acted on it: polling a port nothing listened on for minutes, guessing
+    // `sleep 90`, starting a second server because they assumed the first was
+    // someone else's, and in one case abandoning verification altogether.
+    // State the actual sandbox, and name the cost, so booting one is a
+    // deliberate choice rather than a surprise.
+    "- Nothing is installed and NO dev server is running — this sandbox is a checkout. Usually you don't need one: read the code path end to end, run the repo's tests, and `curl` the LIVE site for how it behaves today. Only start a dev server if you must see YOUR change rendered — it is a cold start, so expect several minutes: launch it ONCE in the background and poll until it answers rather than guessing a sleep.",
     // The sandbox image bakes in chromium + a global playwright-core and wraps
     // them as `qa-screenshot` (packages/sandbox/image/Dockerfile). Nothing told
     // this run about it, so a UI task would `ls node_modules/.bin | grep
     // playwright`, find nothing in the USER's repo, conclude no browser exists,
     // and either hand-roll a CDP client or give up on looking at the change.
-    "- For a VISUAL change that means LOOKING at it: `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders the page in headless Chromium — it reaches your own dev server on localhost, and unlike `curl` it runs the page's JS, so lazily-rendered sections are actually there. Then `Read` the file: a screenshot you never opened is not verification. It is already installed; do NOT look for playwright in the repo's `node_modules` or start a browser yourself.",
+    "- For a VISUAL change that means LOOKING at it: `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders the page in headless Chromium — it reaches a dev server you started on localhost as well as any public URL, and unlike `curl` it runs the page's JS, so lazily-rendered sections are actually there. Then `Read` the file: a screenshot you never opened is not verification. It is already installed; do NOT look for playwright in the repo's `node_modules` or start a browser yourself.",
     // The ONLY reliable way the board learns the PR: Claude Code opens it inside
     // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
     // dispatched from the linked PR, so skipping this strands the card.
