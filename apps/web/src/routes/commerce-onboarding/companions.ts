@@ -26,6 +26,11 @@ export const COMMERCE_COMPANION_MCPS: Record<string, CompanionCopy> = {
     area: "Catálogo",
     headline: "Pedidos, estoque e catálogo direto da sua Shopify.",
   },
+  wake: {
+    registryAppId: "deco/wake",
+    area: "Catálogo",
+    headline: "Pedidos, estoque e catálogo direto da sua Wake.",
+  },
   "google-analytics": {
     registryAppId: "deco/google-analytics",
     area: "Funil",
