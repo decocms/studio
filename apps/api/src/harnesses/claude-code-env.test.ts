@@ -213,11 +213,35 @@ describe("claudeCodeEnvFromCredential", () => {
     ).toBe("anthropic/claude-opus-5");
   });
 
-  test("modelClassFromMetadata only trusts the exact reviewer value", () => {
+  test("modelClassFromMetadata only trusts the exact class values", () => {
     expect(modelClassFromMetadata("reviewer")).toBe("reviewer");
-    for (const value of [undefined, "", "default", "Reviewer", "qa", "cheap"]) {
+    expect(modelClassFromMetadata("conflict")).toBe("conflict");
+    for (const value of [
+      undefined,
+      "",
+      "default",
+      "Reviewer",
+      "Conflict",
+      "qa",
+      "cheap",
+    ]) {
       expect(modelClassFromMetadata(value)).toBe("default");
     }
+  });
+
+  test("a conflict re-run runs on the cheap tier, capped like a reviewer", () => {
+    const env = claudeCodeEnvFromCredential(
+      { providerId: "anthropic", apiKey: "sk-a" },
+      "conflict",
+    );
+    expect(env.CLAUDE_CODE_MODEL).toBe("claude-sonnet-5");
+    expect(env.CLAUDE_CODE_MAX_TURNS).toBe("60");
+    expect(
+      claudeCodeEnvFromCredential(
+        { providerId: "openrouter", apiKey: "sk-o" },
+        "conflict",
+      ).CLAUDE_CODE_MODEL,
+    ).toBe("anthropic/claude-sonnet-5");
   });
 
   test("the error never contains the key", () => {

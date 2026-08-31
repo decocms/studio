@@ -14,6 +14,7 @@ import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io
 
 export type { SimpleModeTier } from "@decocms/shared/organization/schema";
 import {
+  autoResolveConflictsEnabled,
   DEFAULT_ON_FLAGS,
   orgFlagEnabled,
 } from "@decocms/shared/organization/schema";
@@ -256,6 +257,19 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
     orgFlagEnabled(s.flags, flag),
   );
   return data ?? DEFAULT_ON_FLAGS.has(flag);
+}
+
+/**
+ * Whether an approved-but-conflicting PR is auto-handed back to the Super
+ * Agent. Not `useOrgFlag`: unset it inherits `auto_merge` (see
+ * `autoResolveConflictsEnabled`), so the switch must show what the server gate
+ * will actually do rather than a raw `undefined`.
+ */
+export function useAutoResolveConflicts(): boolean {
+  const { data } = useOrganizationSettings((s) =>
+    autoResolveConflictsEnabled(s.flags),
+  );
+  return data ?? false;
 }
 
 /**

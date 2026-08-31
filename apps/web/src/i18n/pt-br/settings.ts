@@ -356,7 +356,7 @@ export const settings = {
   "settings.decoCreditsHero.disconnect": "Desconectar",
   "settings.decoCreditsHero.disconnectButton": "Desconectar",
   "settings.decoCreditsHero.disconnectDescription":
-    "Isso remover\u00e1 o Deco AI Gateway deste espa\u00e7o de trabalho. Seu saldo de cr\u00e9dito \u00e9 preservado e estar\u00e1 dispon\u00edvel se voc\u00ea se reconectar.",
+    "Isso remover\u00e1 o Deco AI Gateway deste espa\u00e7o de trabalho. Seu saldo de cr\u00e9dito \u00e9 preservado e estar\u00e1 dispon\u00edvel se você se reconectar.",
   "settings.decoCreditsHero.disconnectError": "Falha ao desconectar: {message}",
   "settings.decoCreditsHero.disconnectSuccess": "Deco AI Gateway desconectado",
   "settings.decoCreditsHero.disconnectTitle": "Desconectar Deco AI Gateway",
@@ -473,14 +473,18 @@ export const settings = {
     "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
   "settings.review.reviewerTitle": "Ativar Reviewer",
   "settings.review.reviewerDescription":
-    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para voc\u00ea quando n\u00e3o consegue resolver algo.",
+    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para você quando n\u00e3o consegue resolver algo.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
     "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
+    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+  "settings.review.autoResolveConflictsTitle":
+    "Resolver conflitos de merge automaticamente",
+  "settings.review.autoResolveConflictsDescription":
+    "Quando um pull request aprovado conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
   "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
   "settings.review.deliveryLanesDescription":
     "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",

@@ -85,6 +85,7 @@ import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { previewMatchesHead, prReadyForReview } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
+import { reactToApprovedPrConflict } from "./conflict-reaction";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
  *  would take to notice a stuck card, and the work list is one index scan when
@@ -542,6 +543,8 @@ export class TaskBoardReviewSweeper {
     // card that has no reviewer left to enqueue. Gated on verified approval +
     // auto-merge inside, so it can't ship anything the reviewers didn't.
     if (await retryAutoMergeIfApproved(ctx, item)) return true;
+    // With `auto_merge` off there is no refused merge to reveal a conflict.
+    if (await this.resolveConflictFromSweep(ctx, item, live)) return true;
     if (!owned) return false;
 
     if (!prReadyForReview(live)) return false;
@@ -550,6 +553,33 @@ export class TaskBoardReviewSweeper {
       previewMatchesHead: previewMatchesHead(live),
     });
     return true;
+  }
+
+  /**
+   * Hand a swept card's conflicting PR back to the Super Agent, using the
+   * conflict already read by `readPrStateThrottled` — no second GitHub call
+   * (the whole reason `SweptPrState` carries it). Best-effort: a dispatch
+   * failure must not abort the sweep pass for every other card.
+   */
+  private async resolveConflictFromSweep(
+    ctx: StudioContext,
+    item: TaskBoardItem,
+    live: readonly {
+      number: number;
+      url: string;
+      state: "open" | "closed" | null;
+      conflict: boolean | null;
+    }[],
+  ): Promise<boolean> {
+    const pr = live.find((p) => p.state !== "closed" && p.conflict === true);
+    if (!pr) return false;
+    return await reactToApprovedPrConflict(ctx, item.organizationId, item, {
+      pr: { number: pr.number, url: pr.url },
+      conflict: true,
+    }).catch((err) => {
+      console.error("[task-board-review-sweeper] conflict resolve failed", err);
+      return false;
+    });
   }
 
   dispose(): void {

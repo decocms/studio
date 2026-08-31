@@ -45,17 +45,28 @@ const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
  * boards (1,247 vs 707) and took 57% of the spend — all of it at the builder's
  * model. On by default via the `cheap_reviewer_model` flag; an org opts back
  * into reviewing on the builder's model by setting it to exactly `false`.
+ *
+ * `conflict` is the same cheap tier for a merge-conflict re-run. The change is
+ * already written and already approved; the run replays the base branch over it
+ * and reconciles two known texts. That is not the work the builder's model is
+ * priced for, and it is a class of its own rather than `reviewer` so the run
+ * metadata says what the run actually was.
  */
-export type ClaudeCodeModelClass = "default" | "reviewer";
+export type ClaudeCodeModelClass = "default" | "reviewer" | "conflict";
 
 const CLAUDE_CODE_MODEL: Record<
   "anthropic" | "openrouter",
   Record<ClaudeCodeModelClass, string>
 > = {
-  anthropic: { default: "claude-opus-5", reviewer: "claude-sonnet-5" },
+  anthropic: {
+    default: "claude-opus-5",
+    reviewer: "claude-sonnet-5",
+    conflict: "claude-sonnet-5",
+  },
   openrouter: {
     default: "anthropic/claude-opus-5",
     reviewer: "anthropic/claude-sonnet-5",
+    conflict: "anthropic/claude-sonnet-5",
   },
 };
 
@@ -70,7 +81,9 @@ export const MODEL_CLASS_METADATA_KEY = "claudeCodeModelClass";
 export function modelClassFromMetadata(
   value: string | undefined,
 ): ClaudeCodeModelClass {
-  return value === "reviewer" ? "reviewer" : "default";
+  if (value === "reviewer") return "reviewer";
+  if (value === "conflict") return "conflict";
+  return "default";
 }
 
 /**
@@ -105,6 +118,7 @@ export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 32_000;
 const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
   default: null,
   reviewer: 60,
+  conflict: 60,
 };
 
 /** The subset of a resolved model source this needs. */
