@@ -70,6 +70,7 @@ import {
 import { timeAgo } from "@/layouts/library/cards";
 import { isDeliveryLane } from "@/layouts/task-board/config";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { ColumnAutomationSettings } from "./column-automations";
 import { TaskSystemPromptSettings } from "./task-system-prompt";
 
 type BoardStatus = keyof JiraIntegration["statusMapping"];
@@ -807,6 +808,7 @@ export function OrgTasksSettingsPage() {
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
             <TaskSystemPromptSettings />
+            <ColumnAutomationSettings />
             <AgentToolsSettings />
             <SettingsSection
               title={

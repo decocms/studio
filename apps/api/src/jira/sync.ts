@@ -25,20 +25,14 @@
  */
 
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import {
-  boardAutomationFor,
-  boardFor,
-  boardCan,
-  boardLanes,
-} from "@/tools/task-board/board-handler";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { boardFor } from "@/tools/task-board/board-handler";
 import type { StudioContext } from "@/core/studio-context";
 import type {
   OrgJiraIntegration,
   TaskBoardItem,
   TaskBoardItemPriority,
 } from "@/storage/types";
-import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
+import { runColumnAutomation } from "@/tools/task-board/run-column-automation";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import { laneIndex } from "@decocms/shared/jira-status-mapping";
 import {
@@ -327,63 +321,20 @@ function mapPriority(issue: JiraIssue): TaskBoardItemPriority {
   return (name && PRIORITY_MAP[name]) || "medium";
 }
 
-/** The Jira-driven agent trigger: an unassigned card that just landed in the
- *  To Do lane gets the Super Agent, running under the integration's creator
- *  (`enqueueAgentRunForTask` acts as the card's `assigned_by`). A quota
- *  rejection un-delegates — import-route precedent — instead of leaving a
- *  card assigned-but-never-running. */
-async function maybeAutoDelegate(
+/** The Jira-driven leg of the column rule: an issue whose status just changed
+ *  landed the card in a column, and that column may have a rule on it. The
+ *  rule itself is shared with the board's own drag — see
+ *  {@link runColumnAutomation}. Runs as the integration's creator, which is
+ *  what `enqueueAgentRunForTask` records as the card's `assigned_by`. */
+function maybeAutoDelegate(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
   item: TaskBoardItem,
 ): Promise<TaskBoardItem> {
-  if (item.assigneeId) return item;
-  const orgId = integration.organizationId;
-  // The board decides: a column with no rule on it is uneventful. This is also
-  // what replaced `integration.autoDelegate`, which could only ever mean the
-  // Super Agent, on To Do, for an org that had Jira.
-  const automation = await boardAutomationFor(ctx, orgId, item.status);
-  if (!automation) return item;
-  // Conditional claim, not a plain update: the cron, a webhook wake-up (its
-  // debounce is per-pod) and a manual JIRA_SYNC_RUN can all be mid-sync on the
-  // same issue, and a read-then-write would dispatch two paid agent runs on it.
-  const queue = (await boardLanes(ctx, orgId)).queue;
-  if (
-    !boardCan(orgId, "todo", queue, "auto-delegating Jira issues to the agent")
-  ) {
-    return item;
-  }
-  const delegated = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(
-    item.id,
-    orgId,
-    integration.createdBy,
-    JIRA_SYNC_ACTOR,
-    queue,
-  );
-  if (!delegated) return item;
-  await ctx.storage.taskBoard.recordActivity({
-    taskBoardItemId: item.id,
-    action: "assignee_changed",
-    actorId: null,
-    data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
+  return runColumnAutomation(ctx, item, {
+    assignedBy: integration.createdBy,
+    actor: JIRA_SYNC_ACTOR,
   });
-  try {
-    await reactToSuperAgentDelegation(ctx, delegated, {
-      instruction: automation.prompt ?? undefined,
-    });
-  } catch (err) {
-    console.warn(
-      `[jira] auto-delegate of ${item.id} rejected, un-delegating:`,
-      err instanceof Error ? err.message : err,
-    );
-    return await ctx.storage.taskBoard.update(
-      item.id,
-      orgId,
-      { assigneeId: null, assignedBy: null },
-      JIRA_SYNC_ACTOR,
-    );
-  }
-  return delegated;
 }
 
 /** Import a changed issue's comments not yet on the card. The link table is

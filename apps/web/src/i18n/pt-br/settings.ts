@@ -54,6 +54,18 @@ export const settings = {
   "settings.jira.roleInProgress": "Em progresso",
   "settings.jira.roleInReview": "Em revisão",
   "settings.jira.roleArchived": "Arquivo",
+  "settings.columnAutomations.title": "Quando um card chega numa coluna",
+  "settings.columnAutomations.fieldLabel": "Colunas",
+  "settings.columnAutomations.fieldDescription":
+    "Coluna desligada não faz nada — nenhum agente roda quando um card chega nela.",
+  "settings.columnAutomations.description":
+    "Ligue uma coluna e o agente pega todo card que chegar nela, tenha vindo do sync do tracker ou de alguém arrastando.",
+  "settings.columnAutomations.promptPlaceholder":
+    "O que o agente deve fazer aqui (opcional)",
+  "settings.columnAutomations.toggleAriaLabel":
+    "Rodar o agente em cards que chegam em {column}",
+  "settings.columnAutomations.saveFailed":
+    "Não foi possível salvar a regra desta coluna",
   "settings.jira.noColumnsYet":
     "Nenhuma coluna ainda — elas chegam na próxima sincronização.",
   "settings.jira.mappingLabel": "Mapeamento de colunas",

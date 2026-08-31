@@ -44,6 +44,10 @@ export const KEYS = {
   // Task board items (scoped by org)
   taskBoardItems: (locator: ProjectLocator) =>
     [locator, "task-board-items"] as const,
+  /** The rules a board runs when a card lands in a column — not the
+   *  event/cron automations, which key off `automations`. */
+  taskBoardColumnAutomations: (locator: ProjectLocator) =>
+    ["taskBoardColumnAutomations", locator] as const,
 
   // A task's linked pull requests (live state fetched from GitHub)
   taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>

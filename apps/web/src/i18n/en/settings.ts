@@ -52,6 +52,17 @@ export const settings = {
   "settings.jira.roleInProgress": "Being worked on",
   "settings.jira.roleInReview": "Under review",
   "settings.jira.roleArchived": "Archive",
+  "settings.columnAutomations.title": "When a card lands in a column",
+  "settings.columnAutomations.fieldLabel": "Columns",
+  "settings.columnAutomations.fieldDescription":
+    "A column that is off is uneventful — nothing runs when a card arrives there.",
+  "settings.columnAutomations.description":
+    "Turn a column on and the agent picks up every card that arrives there, however it got there — the tracker's sync or someone dragging it.",
+  "settings.columnAutomations.promptPlaceholder":
+    "What the agent should do here (optional)",
+  "settings.columnAutomations.toggleAriaLabel":
+    "Run the agent on cards landing in {column}",
+  "settings.columnAutomations.saveFailed": "Could not save this column's rule",
   "settings.jira.noColumnsYet":
     "No columns yet — they arrive with the next sync.",
   "settings.jira.mappingLabel": "Column mapping",

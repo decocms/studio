@@ -1695,12 +1695,13 @@ export class TaskBoardStorage {
     organizationId: string,
     assignedBy: string,
     by: string,
-    /** This board's queue column — the claim's starting line. Null means the
-     *  board has no column that means "queued", so there is nothing to claim
-     *  and the caller reads it the same as losing the race. */
-    queueLane: string | null,
+    /** The column the card must still be sitting in for the claim to win —
+     *  the one whose rule is firing, not a fixed lane. An automation on any
+     *  other column used to look itself up by the card's status and then fence
+     *  on the queue lane, so it never claimed anything. */
+    fromLane: string | null,
   ): Promise<TaskBoardItem | null> {
-    if (queueLane === null) return null;
+    if (fromLane === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
@@ -1711,7 +1712,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", queueLane)
+      .where("status", "=", fromLane)
       .where("assignee_id", "is", null)
       .returningAll()
       .executeTakeFirst();
