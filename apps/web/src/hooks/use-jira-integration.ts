@@ -100,3 +100,27 @@ export function useRequestJiraResync() {
       queryClient.invalidateQueries({ queryKey: KEYS.jiraIntegration(org.id) }),
   });
 }
+
+/**
+ * Say what one of the board's columns means to Studio.
+ *
+ * Invalidates the board read, not the integration: the roles live on the
+ * columns that read carries, and the settings screen and the board itself are
+ * looking at the same cached list.
+ */
+export function useSetColumnRole() {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { columnKey: string; role: string | null }) =>
+      await studio.call("TASK_BOARD_COLUMN_ROLE_SET", {
+        columnKey: input.columnKey,
+        role: input.role as "in_review" | "archived" | null,
+      }),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardItems(locator),
+      }),
+  });
+}

@@ -6,6 +6,7 @@
  * account.
  */
 
+import { useTaskBoardItems } from "@/hooks/use-task-board-items";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -56,6 +57,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en";
 import {
+  useSetColumnRole,
   type JiraIntegration,
   useDeleteJiraIntegration,
   useJiraBoardColumns,
@@ -245,6 +247,78 @@ function SyncStatusLine({ integration }: { integration: JiraIntegration }) {
           })
         : t("settings.jira.waitingFirstSync")}
     </p>
+  );
+}
+
+/** No role — the honest default for a column nobody has told us about. */
+const NO_ROLE = "__none__";
+
+/**
+ * What each of the board's own columns means to Studio.
+ *
+ * Replaces the status mapping for an org whose board is its own. The mapping
+ * asked a team to restate, lane by lane, something their tracker already knew;
+ * this asks the one thing it could not know — which of THEIR columns is where
+ * review happens, and which retires a card. Most columns mean nothing to us,
+ * and leaving them that way is the safe answer rather than a gap to fill.
+ */
+function ColumnRoleRows() {
+  const t = useT();
+  const { columns, isLoading } = useTaskBoardItems();
+  const setRole = useSetColumnRole();
+
+  if (isLoading) return <Skeleton className="h-24 w-full mt-3" />;
+  if (columns.length === 0) {
+    return (
+      <p className="mt-3 text-xs text-muted-foreground">
+        {t("settings.jira.noColumnsYet")}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col mt-3">
+      {columns.map((column) => (
+        <div
+          key={column.key}
+          className="flex items-center justify-between gap-4 py-2.5 border-b border-border/60 last:border-b-0"
+        >
+          <span className="min-w-0 truncate text-sm">{column.title}</span>
+          <Select
+            value={column.role ?? NO_ROLE}
+            onValueChange={(value) =>
+              setRole.mutate(
+                {
+                  columnKey: column.key,
+                  role: value === NO_ROLE ? null : value,
+                },
+                {
+                  onError: (err) =>
+                    toast.error(
+                      errorMessage(err, t("settings.jira.saveFailed")),
+                    ),
+                },
+              )
+            }
+          >
+            <SelectTrigger className="w-44 shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_ROLE}>
+                {t("settings.jira.roleNone")}
+              </SelectItem>
+              <SelectItem value="in_review">
+                {t("settings.jira.roleInReview")}
+              </SelectItem>
+              <SelectItem value="archived">
+                {t("settings.jira.roleArchived")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -505,12 +579,25 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
 
 function MappingRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
+  const orgOwnedColumns = useOrgFlag("org_board_columns");
   return (
     <SettingsCardItem
-      title={t("settings.jira.mappingLabel")}
-      description={t("settings.jira.mappingDescription")}
+      title={
+        orgOwnedColumns
+          ? t("settings.jira.rolesLabel")
+          : t("settings.jira.mappingLabel")
+      }
+      description={
+        orgOwnedColumns
+          ? t("settings.jira.rolesDescription")
+          : t("settings.jira.mappingDescription")
+      }
     >
-      <ColumnMappingRows integration={integration} />
+      {orgOwnedColumns ? (
+        <ColumnRoleRows />
+      ) : (
+        <ColumnMappingRows integration={integration} />
+      )}
     </SettingsCardItem>
   );
 }
