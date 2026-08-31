@@ -33,6 +33,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { boardFor } from "./board-handler";
 import { nudgeThreadTurn } from "./nudge-thread";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, Thread } from "@/storage/types";
@@ -246,7 +247,7 @@ export async function recoverStalledTasks(
           thread.threadId,
           organizationId,
           ctx.storage.organizationBilling,
-          ctx.db,
+          await (await boardFor(ctx, organizationId)).lanes(),
         );
       } else {
         await nudgeThread(ctx, item, row);

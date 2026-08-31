@@ -293,7 +293,7 @@ export class TaskBoardReviewSweeper {
           this.taskBoard,
           threadId,
           organizationId,
-          this.db,
+          await (await boardForDb(this.db, organizationId)).lanes(),
         );
         await refundUnproductiveTaskClaims(
           this.taskBoard,

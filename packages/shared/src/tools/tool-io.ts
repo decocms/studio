@@ -562,7 +562,10 @@ export interface StudioToolIO {
     output: { removed: boolean };
   };
   TASK_BOARD_COLUMN_ROLE_SET: {
-    input: { columnKey: string; role: "in_review" | "archived" | null };
+    input: {
+      columnKey: string;
+      role: "in_progress" | "todo" | "in_review" | "archived" | null;
+    };
     output: { columnKey: string; role: string | null };
   };
   TASK_BOARD_ITEM_PRS_GET: {

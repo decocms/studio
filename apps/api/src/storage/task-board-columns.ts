@@ -112,7 +112,11 @@ export class BoardColumnStorage {
         title: column.title,
         position,
         role: roleOf.get(column.key) ?? null,
-        tracker_statuses: column.trackerStatuses,
+        // Stringified, not handed over as an array: `pg` serialises a JS array
+        // as a Postgres ARRAY literal (`{a,b}`), which jsonb rejects outright
+        // — and an EMPTY one as `{}`, which it accepts as an empty OBJECT. So
+        // the silent case is the dangerous one.
+        tracker_statuses: JSON.stringify(column.trackerStatuses),
       }));
       await tx
         .insertInto("task_board_columns")
@@ -126,7 +130,13 @@ export class BoardColumnStorage {
           })),
         )
         .execute();
-      return rows.map(toEntity);
+      return all.map((column, position) => ({
+        key: column.key,
+        title: column.title,
+        position,
+        role: roleOf.get(column.key) ?? null,
+        trackerStatuses: column.trackerStatuses,
+      }));
     });
   }
 

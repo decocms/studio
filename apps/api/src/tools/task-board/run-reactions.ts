@@ -31,9 +31,7 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
-import type { Kysely } from "kysely";
-import type { Database } from "@/storage/types";
-import { boardFor, boardForDb } from "./board-handler";
+import { type BoardLanes, boardFor } from "./board-handler";
 import { extractPrFromValue } from "./pr-extract";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -291,12 +289,10 @@ export async function advanceTasksToReviewOnThreadFinish(
   /** Quota bookkeeping (billing/task-quota.ts). Required on purpose: an
    *  optional arg here is a silent way for a caller to stop refunding. */
   billing: OrganizationBillingStorage,
-  /** Resolves this org's board. Passed rather than derived from `taskBoard`,
-   *  which exposes no handle of its own. */
-  db: Kysely<Database>,
+  /** This org's board lanes — see `reactToFailedTaskRun`. */
+  lanes: BoardLanes,
 ): Promise<void> {
   try {
-    const lanes = await (await boardForDb(db, orgId)).lanes();
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
       threadId,
       orgId,
@@ -317,7 +313,7 @@ export async function advanceTasksToReviewOnThreadFinish(
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
   }
-  await reactToFailedTaskRun(taskBoard, threadId, orgId, db);
+  await reactToFailedTaskRun(taskBoard, threadId, orgId, lanes);
   await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
 }
 
@@ -382,10 +378,11 @@ export async function reactToFailedTaskRun(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
-  /** Resolves this org's board — see `advanceTasksToReviewOnThreadFinish`. */
-  db: Kysely<Database>,
+  /** This org's board lanes. Passed rather than resolved here: the caller
+   *  already holds a board or a handle to build one from, and taking the I/O
+   *  out keeps this reaction testable without a database. */
+  lanes: BoardLanes,
 ): Promise<void> {
-  const lanes = await (await boardForDb(db, orgId)).lanes();
   try {
     const failure = await taskBoard.failedRunInfo(threadId, orgId);
     if (!failure) return;
@@ -600,7 +597,14 @@ export async function handTaskToHuman(
   const orgId = item.organizationId;
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   try {
-    await parkReviewedCardForHuman(ctx, item);
+    // Best-effort: parking needs to know the board, and a card must still
+    // reach a person when that read fails.
+    await parkReviewedCardForHuman(ctx, item).catch((err) =>
+      console.warn(
+        `[task-board] parking ${item.id} before hand-off failed`,
+        err,
+      ),
+    );
     // Re-checks the assignee against the DB, not this stale `item`.
     const handed = await ctx.storage.taskBoard.unassignSuperAgent(
       item.id,

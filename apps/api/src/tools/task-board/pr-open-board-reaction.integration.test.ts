@@ -19,6 +19,15 @@ import {
   type BoardDecision,
 } from "./pr-open-board-reaction";
 
+/** Studio's own board, which is what these fixtures run on. */
+const CANON_LANES = {
+  intake: "triage",
+  queue: "todo",
+  progress: "in_progress",
+  review: "in_review",
+  archive: "archived",
+};
+
 const ORG = "org_propen_1";
 const USER = "user_propen_1";
 const PR: ExtractedPr = {
@@ -50,6 +59,7 @@ describe("applyBoardDecision", () => {
       userId: USER,
       threadId: thread,
       pr: PR,
+      lanes: CANON_LANES,
       decision,
       openCards,
     });

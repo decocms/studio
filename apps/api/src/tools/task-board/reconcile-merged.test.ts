@@ -55,6 +55,28 @@ function fakeCtx(
           },
         }),
       },
+      // The org-owned path reads the board's columns to learn which one means
+      // review. Keyed like Studio's lanes on purpose: this fixture is about
+      // the discriminator, not about vocabulary.
+      boardColumns: {
+        listByOrg: async () => [
+          {
+            key: "in_review",
+            title: "in_review",
+            position: 0,
+            role: "in_review",
+            trackerStatuses: [],
+          },
+          {
+            key: "done",
+            title: "done",
+            position: 1,
+            role: null,
+            trackerStatuses: [],
+          },
+        ],
+      },
+      columnAutomations: { get: async () => null },
       taskBoard: {
         hasHumanRejectedDone: async () => over.humanRejectedDone ?? false,
         update: async (

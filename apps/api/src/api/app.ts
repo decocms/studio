@@ -171,6 +171,7 @@ import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-event
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { TaskBoardStorage } from "../storage/task-board";
+import { boardForDb } from "../tools/task-board/board-handler";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
@@ -1131,13 +1132,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     // reaches the projector, so this reactor is its only terminal writer — and
     // owes the board the pass the projector's own terminals already run. Same
     // storages, built here because this wiring precedes theirs.
-    onThreadFinished: (threadId, orgId) =>
+    onThreadFinished: async (threadId, orgId) =>
       advanceTasksToReviewOnThreadFinish(
         new TaskBoardStorage(database.db),
         threadId,
         orgId,
         new OrganizationBillingStorage(database.db),
-        database.db,
+        await (await boardForDb(database.db, orgId)).lanes(),
       ),
   };
 
@@ -1686,7 +1687,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
-          database.db,
+          await (await boardForDb(database.db, orgId)).lanes(),
         );
         // The headless reviewer trigger used to be called here and could never
         // work: this callback runs inside a DBOS step, and the dispatch bottoms
@@ -1721,7 +1722,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
-          database.db,
+          await (await boardForDb(database.db, orgId)).lanes(),
         );
         // No reviewer trigger here either — see completeRunIfNotCompleted above
         // for why it cannot live in a step. `TaskBoardReviewSweeper` owns it.

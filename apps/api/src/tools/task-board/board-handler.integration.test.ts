@@ -285,3 +285,118 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     expect(await board().automationFor("todo")).toBe(null);
   });
 });
+
+/**
+ * The property that makes this seam safe to introduce at all.
+ *
+ * Every lane decision used to be a string literal spelled out at the call
+ * site. Studio's board has to keep answering with exactly those literals, or
+ * the conversion is not a refactor for the orgs that never opted into
+ * mirroring — which is nearly all of them.
+ */
+describe("the canonical board answers what the code used to hardcode", () => {
+  it("gives back Studio's own lane names, unchanged", async () => {
+    const board = boardHandler(ORG, {
+      automations: new ColumnAutomationStorage(database.db),
+      boardColumns: new BoardColumnStorage(database.db),
+      orgOwnedColumns: false,
+    });
+    expect(await board.lanes()).toEqual({
+      intake: "triage",
+      queue: "todo",
+      progress: "in_progress",
+      review: "in_review",
+      archive: "archived",
+    });
+  });
+});
+
+describe("a mirrored board answers with its own columns", () => {
+  const board = () =>
+    boardHandler(ORG, {
+      automations: new ColumnAutomationStorage(database.db),
+      boardColumns: new BoardColumnStorage(database.db),
+      orgOwnedColumns: true,
+    });
+
+  it("names each lane by the role the org gave a column", async () => {
+    await new BoardColumnStorage(database.db).replaceAll(ORG, [
+      { key: "Backlog", title: "Backlog", trackerStatuses: ["BACKLOG"] },
+      { key: "Fazendo", title: "Fazendo", trackerStatuses: ["Fazendo"] },
+      {
+        key: "Code Review",
+        title: "Code Review",
+        trackerStatuses: ["Code Review"],
+      },
+    ]);
+    await new BoardColumnStorage(database.db).setRole(
+      ORG,
+      "Fazendo",
+      "in_progress",
+    );
+    await new BoardColumnStorage(database.db).setRole(
+      ORG,
+      "Code Review",
+      "in_review",
+    );
+
+    expect(await board().lanes()).toEqual({
+      // The leftmost column, not a role: a card has to be born somewhere, and
+      // making intake configurable would make "create a card" a setup step.
+      intake: "Backlog",
+      queue: null,
+      progress: "Fazendo",
+      review: "Code Review",
+      archive: null,
+    });
+  });
+
+  /** Null is the honest answer, and the callers all read it as "do nothing"
+   *  rather than writing one of Studio's keys into a column that is not there. */
+  it("answers null for a meaning nobody assigned", async () => {
+    await new BoardColumnStorage(database.db).replaceAll(ORG, [
+      { key: "Backlog", title: "Backlog", trackerStatuses: ["BACKLOG"] },
+    ]);
+    const lanes = await board().lanes();
+    expect(lanes.intake).toBe("Backlog");
+    expect([lanes.queue, lanes.progress, lanes.review, lanes.archive]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  /**
+   * `tracker_statuses` is jsonb, and `pg` serialises a JS array as a Postgres
+   * ARRAY literal. A populated one is rejected outright; an EMPTY one is
+   * accepted as `{}` — an empty OBJECT — so the failure that shipped was the
+   * silent half. Asserting the shape read back is what catches both.
+   */
+  it("round-trips a column's tracker statuses as an array, not an object", async () => {
+    await new BoardColumnStorage(database.db).replaceAll(ORG, [
+      { key: "Em Progresso", title: "Em Progresso", trackerStatuses: [] },
+      {
+        key: "Code Review",
+        title: "Code Review",
+        trackerStatuses: ["Code Review", "Revisao"],
+      },
+    ]);
+    const columns = await new BoardColumnStorage(database.db).listByOrg(ORG);
+    expect(columns.map((c) => c.trackerStatuses)).toEqual([
+      [],
+      ["Code Review", "Revisao"],
+    ]);
+    expect(Array.isArray(columns[0]?.trackerStatuses)).toBe(true);
+  });
+
+  /** A board nothing has been mirrored onto cannot say where a card is born,
+   *  and inventing an answer would strand whatever is created next. */
+  it("refuses to invent an intake column for an empty board", async () => {
+    await database.db
+      .deleteFrom("task_board_columns")
+      .where("organization_id", "=", ORG)
+      .execute();
+    await expect(board().lanes()).rejects.toThrow(/no columns yet/);
+  });
+});
