@@ -31,6 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartSquare02,
   Check,
+  ChevronRight,
   Copy01,
   Pencil01,
   Power03,
@@ -1908,6 +1909,57 @@ function RegisteredView({
         view={active}
         range={range}
       />
+
+      {/* A naturally-closed row documenting the client API, mirroring the admin
+          UI's install text — collapsed by default so it doesn't crowd the data. */}
+      <details className="group rounded-xl border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/40">
+          <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+          Send custom events from your code
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-sm text-muted-foreground">
+          <p>
+            Analytics is active automatically — pageviews are collected with no
+            code. For custom events, call the public client API on{" "}
+            <span className="font-mono text-foreground">window.__dq</span>:
+          </p>
+          <dl className="flex flex-col gap-2">
+            <div className="flex flex-col gap-0.5">
+              <dt className="font-mono text-xs text-foreground">pageview()</dt>
+              <dd className="text-xs">Record a pageview manually (SPA route change).</dd>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <dt className="font-mono text-xs text-foreground">
+                track(name, props?)
+              </dt>
+              <dd className="text-xs">
+                A custom event. <span className="font-mono">name</span> is
+                lowercase a–z, digits and underscore, up to 40 characters;{" "}
+                <span className="font-mono">props</span> is an optional flat
+                object.
+              </dd>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <dt className="font-mono text-xs text-foreground">
+                purchase(&#123; transactionId, value, currency, items, itemIds
+                &#125;)
+              </dt>
+              <dd className="text-xs">
+                A purchase. <span className="font-mono">transactionId</span>{" "}
+                dedupes a reloaded confirmation page so a sale isn't counted
+                twice.
+              </dd>
+            </div>
+          </dl>
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <code className="whitespace-pre-wrap break-all text-xs text-muted-foreground">
+              {
+                'window.__dq.track("newsletter_signup", { plan: "pro" })\nwindow.__dq.purchase({ transactionId: "A123", value: 99.9, currency: "BRL" })'
+              }
+            </code>
+          </div>
+        </div>
+      </details>
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
