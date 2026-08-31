@@ -155,7 +155,10 @@ export function buildSuperAgentTaskPrompt(
       ? "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, make the change, then commit and push to the pull request named above."
       : "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
     "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
-    "- If a dev server is running it hot-reloads your changes — don't restart it, hunt for its port, or run a full typecheck/build just to verify a small edit.",
+    // "IF a dev server is running" was a condition the run could not evaluate,
+    // on a pod where the answer is always no (`harness-run` => `cloneOnly`), so
+    // it read as an invitation to go looking. State the fact instead.
+    "- No dev server is running and dependencies are NOT installed — this sandbox is a checkout. Don't hunt for a port, and don't run a full typecheck/build just to verify a small edit.",
     "- Change only what the task needs. Don't trace the definition of a pre-existing symbol that's incidental to your change — note it in one line and move on. Prefer one or two broad searches over many narrow retries.",
     "- Only if you hit a genuine blocker a human must clear (see above) may you call `user_ask` — otherwise keep going and finish the task.",
     "",
