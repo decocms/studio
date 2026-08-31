@@ -38,9 +38,16 @@ describe("assertSafeDecoBlockKey", () => {
   });
 
   it("rejects traversal and control characters", () => {
-    for (const bad of ["", "..", "a\\b", "a\0b", "%2e%2e", "a%2fb"]) {
+    for (const bad of ["", "..", "a\\b", "a\0b", "%2e%2e"]) {
       expect(() => assertSafeDecoBlockKey(bad)).toThrow();
     }
+  });
+
+  it("accepts percent-encoded slashes (deco slash-named page keys)", () => {
+    expect(() => assertSafeDecoBlockKey("a%2fb")).not.toThrow();
+    expect(() =>
+      assertSafeDecoBlockKey("pages-Joias%2Fcolecao-862158"),
+    ).not.toThrow();
   });
 });
 

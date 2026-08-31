@@ -25,14 +25,7 @@ function containsPathTraversal(segment: string): boolean {
     ) {
       return true;
     }
-    // A percent-encoded slash (%2f/%2F) decodes to "/" — reject it.
-    // Literal slashes in the original key are safe (encodeURIComponent
-    // escapes them in the filename), but encoded ones indicate smuggling.
-    if (decoded !== segment && decoded.includes("/")) {
-      const originalSlashes = (segment.match(/\//g) ?? []).length;
-      const decodedSlashes = (decoded.match(/\//g) ?? []).length;
-      if (decodedSlashes > originalSlashes) return true;
-    }
+    // `%2F` is a legit deco key (slash-named page, like `%20` for a space); the whole key is re-encoded by blockKeyToFileStem, so only the `..`/`\`/NUL above can traverse.
     return false;
   } catch {
     return true;
