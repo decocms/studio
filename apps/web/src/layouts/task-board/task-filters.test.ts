@@ -125,6 +125,70 @@ describe("taskMatchesFilters — sprint", () => {
   });
 });
 
+describe("taskMatchesFilters — assignee", () => {
+  const SUPER_AGENT = "super-agent";
+
+  test("a member filter keeps the cards assigned to them", () => {
+    expect(
+      taskMatchesFilters(item({ assigneeId: "user-2" }), {
+        ...EMPTY_FILTERS,
+        assignee: "user-2",
+      }),
+    ).toBe(true);
+  });
+
+  /**
+   * The regression: a card handed to the Super Agent renders the delegator's
+   * avatar beside the capybara, so it reads as assigned to both — and used to
+   * vanish the moment you filtered by yourself.
+   */
+  test("a member filter keeps the cards they handed to the Super Agent", () => {
+    expect(
+      taskMatchesFilters(
+        item({ assigneeId: SUPER_AGENT, assignedBy: "user-2" }),
+        { ...EMPTY_FILTERS, assignee: "user-2" },
+      ),
+    ).toBe(true);
+  });
+
+  test("a member filter excludes a Super Agent card someone else delegated", () => {
+    expect(
+      taskMatchesFilters(
+        item({ assigneeId: SUPER_AGENT, assignedBy: "user-3" }),
+        { ...EMPTY_FILTERS, assignee: "user-2" },
+      ),
+    ).toBe(false);
+  });
+
+  /** `assignedBy` is stamped on every assignee change, delegation or not. */
+  test("assigning a card to a teammate does not keep it under the assigner", () => {
+    expect(
+      taskMatchesFilters(item({ assigneeId: "user-3", assignedBy: "user-2" }), {
+        ...EMPTY_FILTERS,
+        assignee: "user-2",
+      }),
+    ).toBe(false);
+  });
+
+  test("the Super Agent filter keeps every card it holds, whoever delegated", () => {
+    expect(
+      taskMatchesFilters(
+        item({ assigneeId: SUPER_AGENT, assignedBy: "user-2" }),
+        { ...EMPTY_FILTERS, assignee: SUPER_AGENT },
+      ),
+    ).toBe(true);
+  });
+
+  test("'unassigned' excludes a card the Super Agent holds", () => {
+    expect(
+      taskMatchesFilters(
+        item({ assigneeId: SUPER_AGENT, assignedBy: "user-2" }),
+        { ...EMPTY_FILTERS, assignee: "__unassigned__" },
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("taskMatchesFilters — due date", () => {
   test("'week' excludes a task that is already overdue", () => {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
