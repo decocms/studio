@@ -19,6 +19,37 @@ import {
 import type { TaskRepo } from "./claude-code-task-run";
 
 /**
+ * Fold the org's task system prompt (Settings → Tasks) into one run's persona.
+ *
+ * Sandbox harnesses APPEND `agent.instructions` to the harness system prompt,
+ * which is exactly what this setting is; hosted Decopilot has no such hook —
+ * there `agent.instructions` REPLACES the agent's own — so it leads the user
+ * prompt instead, the same trick the reviewer enqueue uses. Pure, so both
+ * branches are unit-tested without a StudioContext.
+ */
+export function withOrgTaskPrompt<
+  A extends { instructions?: string } | undefined,
+>(
+  run: { agent: A; prompt: string },
+  orgPrompt: string | undefined,
+  sandboxed: boolean,
+): { agent: A; prompt: string } {
+  if (!orgPrompt) return run;
+  if (!sandboxed) {
+    return { agent: run.agent, prompt: `${orgPrompt}\n\n${run.prompt}` };
+  }
+  return {
+    agent: {
+      ...run.agent,
+      instructions: [run.agent?.instructions, orgPrompt]
+        .filter(Boolean)
+        .join("\n\n"),
+    } as A,
+    prompt: run.prompt,
+  };
+}
+
+/**
  * The single home for the "run the org's agent on a task" plumbing, shared by
  * the Super Agent and the reviewer enqueues (which used to duplicate it): create
  * a fresh thread, link it to the task, persist the seed user turn BEFORE
@@ -78,6 +109,16 @@ export async function enqueueAgentRunForTask(
 
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);
+
+  const orgPrompt = (
+    await ctx.storage.organizationSettings.get(organizationId).catch(() => null)
+  )?.task_system_prompt?.trim();
+  const sandboxed = harnessRunsInSandbox(harnessId);
+  const { agent, prompt } = withOrgTaskPrompt(
+    { agent: opts.agent, prompt: opts.prompt },
+    orgPrompt,
+    sandboxed,
+  );
 
   const thread = await ctx.storage.threads.create({
     ...(opts.fence ? { id: opts.fence.threadId } : {}),
@@ -141,7 +182,7 @@ export async function enqueueAgentRunForTask(
     ? opts.pinnedRef
     : opts.repo
       ? threadBranch(thread.id, opts.repo.connectionId)
-      : harnessRunsInSandbox(harnessId)
+      : sandboxed
         ? threadBranch(thread.id)
         : null;
   await ctx.storage.threads.update(thread.id, {
@@ -157,7 +198,7 @@ export async function enqueueAgentRunForTask(
   const requestMessage = {
     id: crypto.randomUUID(),
     role: "user" as const,
-    parts: [{ type: "text" as const, text: opts.prompt }],
+    parts: [{ type: "text" as const, text: prompt }],
     // The chat POST path gets this from the browser; a dispatched run has no
     // browser, so stamp it here. It rides the mirrored `data-user-message`
     // chunk, which is otherwise timestamp-less — a viewer replaying the stream
@@ -189,7 +230,7 @@ export async function enqueueAgentRunForTask(
           credentialId: model.credentialId,
           thinking: { id: model.modelId, title: model.modelMeta.title },
         },
-        agent: { id: agentId, ...(opts.agent ?? {}) },
+        agent: { id: agentId, ...(agent ?? {}) },
         temperature: opts.temperature,
         toolApprovalLevel: "auto",
         mode: "default",

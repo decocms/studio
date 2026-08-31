@@ -190,6 +190,8 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   main_agent_id: string | null;
+  // Appended to the system prompt of every task board run. See migration 197.
+  task_system_prompt: string | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -203,6 +205,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
+  task_system_prompt: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
