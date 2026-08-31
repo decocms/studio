@@ -3,6 +3,7 @@ package gitx
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -112,6 +113,32 @@ func TestInstallSandboxHooksWritesTheArtifactList(t *testing.T) {
 	}
 	if string(list) != strings.Join(BuildArtifacts, "\n")+"\n" {
 		t.Fatalf("artifact list: got %q", list)
+	}
+}
+
+// InstallSandboxHooks used to overwrite pre-commit unconditionally, which
+// silently dropped a repo's OWN pre-commit hook (lefthook, husky) on every
+// reinstall — the format/lint check a maintainer relies on then never ran
+// inside the sandbox at all.
+func TestPreCommitHookStillRunsARepoOwnHook(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature/x")
+	// Simulate lefthook/husky writing its own pre-commit hook (e.g. during a
+	// postinstall step) before we install ours.
+	localHook := "#!/bin/sh\necho blocked by local hook >&2\nexit 1\n"
+	write(t, repo, ".git/hooks/pre-commit", localHook)
+	if err := os.Chmod(filepath.Join(repo, ".git", "hooks", "pre-commit"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := InstallSandboxHooks(repo); err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, repo, "src/app.tsx", "export const A = 1\n")
+	gitIn(t, repo, "add", "-A")
+	cmd := exec.Command("git", "-C", repo, "commit", "-q", "-m", "feat: bump A")
+	if err := cmd.Run(); err == nil {
+		t.Fatal("commit should have been blocked by the repo's own pre-commit hook")
 	}
 }
 
