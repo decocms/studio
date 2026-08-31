@@ -47,22 +47,22 @@ export const settings = {
   "settings.jira.rolesLabel": "What each column means",
   "settings.jira.rolesDescription":
     "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
+  "settings.boardColumns.title": "Board columns",
+  "settings.boardColumns.description":
+    "Your tracker owns the columns. This is what each one means to Studio, and which of them start the agent.",
+  "settings.boardColumns.fieldLabel": "Columns",
+  "settings.boardColumns.fieldDescription":
+    "A meaning is a place the agent puts a card, not a trigger. Only the switch starts anything.",
+  "settings.boardColumns.promptPlaceholder":
+    "What the agent should do here (optional)",
+  "settings.boardColumns.toggleAriaLabel":
+    "Run the agent on cards landing in {column}",
+  "settings.boardColumns.saveFailed": "Could not save this column",
   "settings.jira.roleNone": "Nothing special",
-  "settings.jira.roleQueued": "Queued for the agent",
+  "settings.jira.roleQueued": "Where the agent gives up",
   "settings.jira.roleInProgress": "Being worked on",
   "settings.jira.roleInReview": "Under review",
   "settings.jira.roleArchived": "Archive",
-  "settings.columnAutomations.title": "When a card lands in a column",
-  "settings.columnAutomations.fieldLabel": "Columns",
-  "settings.columnAutomations.fieldDescription":
-    "A column that is off is uneventful — nothing runs when a card arrives there.",
-  "settings.columnAutomations.description":
-    "Turn a column on and the agent picks up every card that arrives there, however it got there — the tracker's sync or someone dragging it.",
-  "settings.columnAutomations.promptPlaceholder":
-    "What the agent should do here (optional)",
-  "settings.columnAutomations.toggleAriaLabel":
-    "Run the agent on cards landing in {column}",
-  "settings.columnAutomations.saveFailed": "Could not save this column's rule",
   "settings.jira.noColumnsYet":
     "No columns yet — they arrive with the next sync.",
   "settings.jira.mappingLabel": "Column mapping",

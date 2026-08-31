@@ -49,23 +49,22 @@ export const settings = {
   "settings.jira.rolesLabel": "O que cada coluna significa",
   "settings.jira.rolesDescription":
     "As colunas do seu board vêm do Jira. Diga ao Studio qual delas é onde a revisão acontece, e qual arquiva um card — a maioria não significa nada pra ele, e tudo bem.",
+  "settings.boardColumns.title": "Colunas do board",
+  "settings.boardColumns.description":
+    "As colunas são do seu tracker. Aqui você diz o que cada uma significa pro Studio, e quais delas iniciam o agente.",
+  "settings.boardColumns.fieldLabel": "Colunas",
+  "settings.boardColumns.fieldDescription":
+    "Um significado é onde o agente coloca o card, não um gatilho. Só o botão inicia alguma coisa.",
+  "settings.boardColumns.promptPlaceholder":
+    "O que o agente deve fazer aqui (opcional)",
+  "settings.boardColumns.toggleAriaLabel":
+    "Rodar o agente em cards que chegam em {column}",
+  "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",
   "settings.jira.roleNone": "Nada em especial",
-  "settings.jira.roleQueued": "Na fila do agente",
+  "settings.jira.roleQueued": "Pra onde volta se o agente desistir",
   "settings.jira.roleInProgress": "Em progresso",
   "settings.jira.roleInReview": "Em revisão",
   "settings.jira.roleArchived": "Arquivo",
-  "settings.columnAutomations.title": "Quando um card chega numa coluna",
-  "settings.columnAutomations.fieldLabel": "Colunas",
-  "settings.columnAutomations.fieldDescription":
-    "Coluna desligada não faz nada — nenhum agente roda quando um card chega nela.",
-  "settings.columnAutomations.description":
-    "Ligue uma coluna e o agente pega todo card que chegar nela, tenha vindo do sync do tracker ou de alguém arrastando.",
-  "settings.columnAutomations.promptPlaceholder":
-    "O que o agente deve fazer aqui (opcional)",
-  "settings.columnAutomations.toggleAriaLabel":
-    "Rodar o agente em cards que chegam em {column}",
-  "settings.columnAutomations.saveFailed":
-    "Não foi possível salvar a regra desta coluna",
   "settings.jira.noColumnsYet":
     "Nenhuma coluna ainda — elas chegam na próxima sincronização.",
   "settings.jira.mappingLabel": "Mapeamento de colunas",
