@@ -315,14 +315,22 @@ export function ToolSetSelector({
 
   const connectionTools = selectedConnectionData?.tools ?? [];
 
-  // Check if specific tool is enabled
+  // Check if specific tool is enabled. A ["*"] grant means "all tools".
   const isToolSelected = (connectionId: string, toolName: string): boolean => {
-    return toolSet[connectionId]?.includes(toolName) ?? false;
+    const set = toolSet[connectionId];
+    if (!set) return false;
+    return set.includes("*") || set.includes(toolName);
   };
 
   // Toggle a single tool
   const toggleTool = (connectionId: string, toolName: string) => {
-    const currentTools = toolSet[connectionId] ?? [];
+    const rawTools = toolSet[connectionId] ?? [];
+    // Expand an "all tools" sentinel to concrete names first, so toggling one
+    // tool off leaves the rest selected. connectionTools is loaded for the open
+    // (selected) connection, which is the only one whose tools can be toggled.
+    const currentTools = rawTools.includes("*")
+      ? connectionTools.map((tt) => tt.name)
+      : rawTools;
     const isSelected = currentTools.includes(toolName);
 
     const newToolSet = { ...toolSet };
@@ -351,9 +359,11 @@ export function ToolSetSelector({
 
     const currentTools = toolSet[connectionId] ?? [];
     const allToolNames = tools.map((t) => t.name);
+    // A ["*"] grant counts as everything selected.
     const allSelected =
-      currentTools.length > 0 &&
-      allToolNames.every((name) => currentTools.includes(name));
+      currentTools.includes("*") ||
+      (currentTools.length > 0 &&
+        allToolNames.every((name) => currentTools.includes(name)));
 
     const newToolSet = { ...toolSet };
 
@@ -453,7 +463,12 @@ export function ToolSetSelector({
               {filteredConnections.map((connection) => {
                 const isSelected = selectedConnectionId === connection.id;
                 const totalTools = isSelected ? connectionTools.length : 0;
-                const activeTools = toolSet[connection.id]?.length ?? 0;
+                const rawSet = toolSet[connection.id];
+                // "*" means all tools — reflect the full count once known.
+                const activeTools =
+                  rawSet?.includes("*") && isSelected
+                    ? connectionTools.length
+                    : (rawSet?.length ?? 0);
 
                 return (
                   <ConnectionItem
