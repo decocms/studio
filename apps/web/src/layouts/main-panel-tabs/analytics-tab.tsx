@@ -35,6 +35,7 @@ import {
   Copy01,
   Pencil01,
   Power03,
+  Settings01,
   Trash01,
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
@@ -889,7 +890,7 @@ function ViewPanels({
   if (classified.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        {t("mainPanelTabs.analyticsTab.dataEmpty")}
+        {t("mainPanelTabs.analyticsTab.emptyView")}
       </p>
     );
   }
@@ -1102,6 +1103,13 @@ function ViewSection({
           ) : (
             <ViewPanels payload={response.data} t={t} />
           )}
+          {isLive &&
+            (response.data.liveFeed as unknown[] | undefined)?.length ===
+              0 && (
+              <p className="text-sm text-muted-foreground">
+                {t("mainPanelTabs.analyticsTab.emptyLive")}
+              </p>
+            )}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
@@ -1119,14 +1127,42 @@ function ViewSection({
  *  It must NOT demonstrate our delivery / caching / billing internals — only
  *  what the site owner needs: it's active automatically, and custom events are
  *  sent through the public `window.__dq` client API. */
-function InstallPanel() {
+function InstallPanel({ status }: { status: AnalyticsStatus }) {
   const t = useT();
+  const id = status.config?.id ?? "";
+  const keySnippet =
+    '<script async src="https://analytics.decocdn.com/_dq/a.js?k=YOUR_TOKEN"></script>';
   return (
     <Card title={t("mainPanelTabs.analyticsTab.installTitle")}>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.installAuto")}
+          {t("mainPanelTabs.analyticsTab.installHow")}
         </p>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.installHostTitle")}
+          </span>
+          <p className="text-xs text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.installAuto")}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.installKeyTitle")}
+          </span>
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <code className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
+              {keySnippet}
+            </code>
+            <CopyButton text={keySnippet} />
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.installTokenNote")}
+          </span>
+        </div>
+
         <p className="text-xs text-muted-foreground">
           {t("mainPanelTabs.analyticsTab.installTrackPrefix")}
           <span className="font-mono">window.__dq</span> —{" "}
@@ -1134,6 +1170,13 @@ function InstallPanel() {
           <span className="font-mono">track(name, props)</span>,{" "}
           <span className="font-mono">purchase(&#123;…&#125;)</span>.
         </p>
+
+        {id && (
+          <p className="text-xs text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.installSiteId")}:{" "}
+            <span className="font-mono text-foreground">{id}</span>
+          </p>
+        )}
       </div>
     </Card>
   );
@@ -1665,7 +1708,7 @@ function ConfigurationPanel({
         </div>
       </Card>
 
-      <InstallPanel />
+      <InstallPanel status={status} />
 
       <EditAnalyticsDialog
         base={base}
@@ -1726,19 +1769,53 @@ function RegisteredView({
 }) {
   const t = useT();
   const [range, setRange] = useState("24h");
+  const [configOpen, setConfigOpen] = useState(false);
+  const cfg = status.config ?? {};
+  const enabled = cfg.enabled !== false;
+  const modules = cfg.modules ?? ["core"];
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">
-          {t("mainPanelTabs.analyticsTab.dashboardTitle")}
-        </h3>
+      {/* Status + collecting labels on the left, range + a small Configure
+          button on the right — the dashboard is the focus; settings hide behind
+          the gear. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={enabled ? "success" : "outline"}>
+              {enabled
+                ? t("mainPanelTabs.analyticsTab.active")
+                : t("mainPanelTabs.analyticsTab.paused")}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              {t("mainPanelTabs.analyticsTab.collectingUnder", {
+                host: status.host ?? cfg.id ?? "—",
+              })}
+            </span>
+            {cfg.id && (
+              <span className="font-mono text-xs text-muted-foreground/70">
+                {t("mainPanelTabs.analyticsTab.idLabel", { id: cfg.id })}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {modules.map((m) => (
+              <Badge key={m} variant="secondary">
+                {m}
+              </Badge>
+            ))}
+            {typeof cfg.sampling === "number" && cfg.sampling < 1 && (
+              <Badge variant="outline">
+                {t("mainPanelTabs.analyticsTab.sampling", {
+                  percent: String(Math.round(cfg.sampling * 100)),
+                })}
+              </Badge>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {t("mainPanelTabs.analyticsTab.rangeLabel")}
-          </span>
           <Select value={range} onValueChange={setRange}>
-            <SelectTrigger className="h-8 w-[160px] text-xs">
+            <SelectTrigger className="h-8 w-[150px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1749,6 +1826,14 @@ function RegisteredView({
               ))}
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfigOpen(true)}
+          >
+            <Settings01 className="size-4" />
+            {t("mainPanelTabs.analyticsTab.configSectionTitle")}
+          </Button>
         </div>
       </div>
 
@@ -1767,14 +1852,21 @@ function RegisteredView({
         ))}
       </div>
 
-      <Section title={t("mainPanelTabs.analyticsTab.configSectionTitle")}>
-        <ConfigurationPanel
-          base={base}
-          orgSlug={orgSlug}
-          site={site}
-          status={status}
-        />
-      </Section>
+      <Dialog open={configOpen} onOpenChange={setConfigOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {t("mainPanelTabs.analyticsTab.configSectionTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <ConfigurationPanel
+            base={base}
+            orgSlug={orgSlug}
+            site={site}
+            status={status}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
