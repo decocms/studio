@@ -22,6 +22,9 @@ import {
 } from "@/layouts/thread-route";
 import { track } from "@/lib/posthog-client";
 import type { Task } from "@/components/chat/task/types";
+import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { hideAbandonedNewChats } from "@/lib/thread-list-visibility";
+import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 import { useStudioTools } from "@/lib/studio-tools";
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
@@ -97,6 +100,7 @@ export function useThreadsPanel({
   const currentUserId = session?.user?.id;
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const projectDefaultRuntime = useProjectDefaultRuntime();
 
   const {
     threads: allThreads,
@@ -198,10 +202,17 @@ export function useThreadsPanel({
     return threads;
   };
 
-  /** Every agent's threads, mixed — an agent's own list lives on its home view. */
-  const visibleScopedThreads = showAll
-    ? typeFiltered(sortedThreads)
-    : typeFiltered(mineFiltered(sortedThreads));
+  /**
+   * Every agent's threads, mixed — an agent's own list lives on its home view.
+   * Abandoned empty "New chat" rows are dropped (the active one is kept) so the
+   * list isn't buried under chats that were opened but never used.
+   */
+  const visibleScopedThreads = hideAbandonedNewChats(
+    showAll
+      ? typeFiltered(sortedThreads)
+      : typeFiltered(mineFiltered(sortedThreads)),
+    activeTaskId,
+  );
 
   /**
    * The archive itself. Nothing here runs until the reclaim confirm (if any)
@@ -301,17 +312,23 @@ export function useThreadsPanel({
     setTaskId(task.id, task.virtual_mcp_id);
   };
 
-  /**
-   * ALWAYS create a fresh chat on the currently selected agent (the active
-   * thread's agent, else decopilot), inheriting the active thread's branch so it
-   * lands on the same sandbox. We do not reuse an existing empty "New chat".
-   */
+  /** New chat on the current agent — reuse its empty one if any, else create. */
   const newThread = () => {
     const currentAgentId = activeAgentId ?? decopilotId;
-    const currentBranch =
-      allThreads.find((thread) => thread.id === activeTaskId)?.branch ?? null;
     track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
     closeAfterNavigation();
+    const existing = findReusableNewChat(
+      allThreads,
+      currentAgentId,
+      currentUserId,
+      projectDefaultRuntime(currentAgentId),
+    );
+    if (existing) {
+      setTaskId(existing.id, existing.virtual_mcp_id);
+      return;
+    }
+    const currentBranch =
+      allThreads.find((thread) => thread.id === activeTaskId)?.branch ?? null;
     createNewTask(currentAgentId, currentBranch);
   };
 
