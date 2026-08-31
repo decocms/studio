@@ -122,6 +122,7 @@ export const settings = {
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Agentes",
   "settings.nav.automations": "Automações",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Loja",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
@@ -175,6 +176,39 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Importar skill",
+  "settings.skills.importing": "Importando\u2026",
+  "settings.skills.importSuccess": '"{name}" importada',
+  "settings.skills.importError": "Falha ao importar a skill",
+  "settings.skills.importMissingSkillMd":
+    "Essa pasta n\u00e3o tem um SKILL.md na raiz. Selecione a pasta da pr\u00f3pria skill.",
+  "settings.skills.importNeedsFolder":
+    "Selecione uma pasta, não arquivos individuais — este navegador pode não suportar upload de pastas.",
+  "settings.skills.searchPlaceholder": "Pesquisar skills...",
+  "settings.skills.noDescription": "Sem descri\u00e7\u00e3o",
+  "settings.skills.filterAll": "Todas",
+  "settings.skills.emptyTitle": "Nenhuma skill ainda",
+  "settings.skills.emptyDescription":
+    "Importe uma pasta com um SKILL.md para dar aos seus agentes instru\u00e7\u00f5es reutiliz\u00e1veis que eles podem carregar sob demanda.",
+  "settings.skills.noResultsTitle": "Nenhuma skill encontrada",
+  "settings.skills.noResultsDescription":
+    'Nenhuma skill corresponde a "{search}"',
+  "settings.skills.cancel": "Cancelar",
+  "settings.skills.deleteButton": "Excluir",
+  "settings.skills.deleteDialogTitle": "Excluir esta skill?",
+  "settings.skills.deleteDialogDescription":
+    'Isso remove "{name}" e seus arquivos. Essa a\u00e7\u00e3o n\u00e3o pode ser desfeita.',
+  "settings.skills.deleteSuccess": "Skill exclu\u00edda",
+  "settings.skills.deleteError": "Falha ao excluir a skill",
+  "settings.skills.importTooManyFiles":
+    "Essa pasta tem {count} arquivos (limite {max}). Importe uma pasta com apenas os arquivos da skill.",
+  "settings.skills.importSlugTaken":
+    'Já existe uma skill chamada "{slug}". Exclua-a antes de reimportar.',
+  "settings.skills.errorTitle": "Não foi possível carregar as skills",
+  "settings.skills.errorDescription":
+    "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
+  "settings.skills.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",

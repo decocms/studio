@@ -118,6 +118,7 @@ export const settings = {
   "settings.nav.connections": "Connections",
   "settings.nav.agents": "Agents",
   "settings.nav.automations": "Automations",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Store",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
@@ -170,6 +171,38 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Import skill",
+  "settings.skills.importing": "Importing…",
+  "settings.skills.importSuccess": 'Imported "{name}"',
+  "settings.skills.importError": "Failed to import skill",
+  "settings.skills.importMissingSkillMd":
+    "That folder has no SKILL.md at its root. Pick the skill's own folder.",
+  "settings.skills.importNeedsFolder":
+    "Pick a folder, not individual files — this browser may not support folder upload.",
+  "settings.skills.searchPlaceholder": "Search skills...",
+  "settings.skills.noDescription": "No description",
+  "settings.skills.filterAll": "All",
+  "settings.skills.emptyTitle": "No skills yet",
+  "settings.skills.emptyDescription":
+    "Import a folder with a SKILL.md to give your agents reusable instructions they can load on demand.",
+  "settings.skills.noResultsTitle": "No skills found",
+  "settings.skills.noResultsDescription": 'No skills match "{search}"',
+  "settings.skills.cancel": "Cancel",
+  "settings.skills.deleteButton": "Delete",
+  "settings.skills.deleteDialogTitle": "Delete this skill?",
+  "settings.skills.deleteDialogDescription":
+    'This removes "{name}" and its files. This can\'t be undone.',
+  "settings.skills.deleteSuccess": "Skill deleted",
+  "settings.skills.deleteError": "Failed to delete skill",
+  "settings.skills.importTooManyFiles":
+    "That folder has {count} files (limit {max}). Import a folder with just the skill's own files.",
+  "settings.skills.importSlugTaken":
+    'A skill named "{slug}" already exists. Delete it first to re-import.',
+  "settings.skills.errorTitle": "Couldn't load skills",
+  "settings.skills.errorDescription":
+    "The skill catalog could not be loaded. You may not have access to this org's files.",
+  "settings.skills.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",
