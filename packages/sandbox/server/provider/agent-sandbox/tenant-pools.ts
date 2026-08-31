@@ -127,7 +127,7 @@ export function resolveTenantPool(
  * existed; once tenant pools shipped it handed one org's prewarmed pods (repo
  * already cloned) to another org's claim, and the daemon rejected the
  * mismatched workload with `409 immutable: cloneUrl`. Observed in prod
- * 2026-08-07: claims for montecarlo and `ephemeral-*` dispatches bound
+ * 2026-08-07: claims for one tenant and `ephemeral-*` dispatches bound
  * `tenant-electrolux-prod-*` pods.
  */
 export function claimWarmPoolName(

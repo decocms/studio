@@ -519,7 +519,7 @@ const agentsRoute = createRoute({
  * Task board, and the card a URL opens.
  *
  * `{-$taskKey}` is the card's own address, written as the human key it already
- * shows (`DECO-01`, or a synced card's `OS-333` — see `task-route.ts`); no
+ * shows (`DECO-01`, or a synced card's `EX-333` — see `task-route.ts`); no
  * segment is the lanes. The board's filters stay in search because a filter is
  * how this page is laid out, whereas a card is a thing you open.
  *

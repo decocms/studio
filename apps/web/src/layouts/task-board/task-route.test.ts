@@ -6,7 +6,7 @@ const items = [
   { id: "board_def", keySeq: 12, jiraIssueKey: null },
   { id: "board_ghi", keySeq: null, jiraIssueKey: null },
   { id: "board_jkl", keySeq: 333, jiraIssueKey: null },
-  { id: "board_mno", keySeq: 5, jiraIssueKey: "OS-333" },
+  { id: "board_mno", keySeq: 5, jiraIssueKey: "EX-333" },
 ];
 
 describe("taskRouteSegment", () => {
@@ -16,7 +16,7 @@ describe("taskRouteSegment", () => {
   });
 
   test("writes a synced card's tracker key, not a Studio one", () => {
-    expect(taskRouteSegment("deco", items[4]!)).toBe("OS-333");
+    expect(taskRouteSegment("deco", items[4]!)).toBe("EX-333");
   });
 
   test("falls back to the id when the card has no key", () => {
@@ -52,8 +52,8 @@ describe("findTaskByKeyOrId", () => {
    * the same number as a Studio `keySeq`.
    */
   test("resolves a synced card by its tracker key, not by a same-numbered keySeq", () => {
-    expect(findTaskByKeyOrId(items, "OS-333")?.id).toBe("board_mno");
-    expect(findTaskByKeyOrId(items, "os-333")?.id).toBe("board_mno");
+    expect(findTaskByKeyOrId(items, "EX-333")?.id).toBe("board_mno");
+    expect(findTaskByKeyOrId(items, "ex-333")?.id).toBe("board_mno");
   });
 
   test("misses cleanly", () => {

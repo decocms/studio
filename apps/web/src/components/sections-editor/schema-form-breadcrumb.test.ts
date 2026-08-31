@@ -888,7 +888,7 @@ describe("resolveActiveFieldKey", () => {
   });
 
   test("narrows to a PLP loader whose selectedFacets[] item is labelled by key", () => {
-    // ALS/montecarlo/farmrio/osklen: selectedFacets items are {key,value} — the "category-1" label comes from `key`.
+    // Seen on four storefronts: selectedFacets items are {key,value} — the "category-1" label comes from `key`.
     const properties = {
       page: {
         title: "Page",
@@ -969,7 +969,7 @@ describe("resolveActiveFieldKey", () => {
   });
 
   test("two loaders carrying the same facet: bare crumb is ambiguous, ancestor crumb pins it", () => {
-    // Real montecarlo SearchResult: `page` + `RangePriceProps` both carry a selectedFacets item labelled "category-1".
+    // A real storefront SearchResult: `page` + `RangePriceProps` both carry a selectedFacets item labelled "category-1".
     const properties = {
       page: {
         title: "Page",

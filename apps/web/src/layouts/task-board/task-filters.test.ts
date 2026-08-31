@@ -327,36 +327,36 @@ describe("matchesTaskKey", () => {
 
 /**
  * The collision this exists to prevent: `parseTaskKeySeq` ignores a term's
- * prefix, so before the tracker key was consulted, searching `OS-333` resolved
+ * prefix, so before the tracker key was consulted, searching `EX-333` resolved
  * to the number 333 and quietly matched whichever unrelated card held Studio
- * sequence 333 — while missing the card actually named OS-333.
+ * sequence 333 — while missing the card actually named EX-333.
  */
 describe("matchesTaskKey with a tracker key", () => {
   test("finds a synced card by the key it shows, any case", () => {
-    expect(matchesTaskKey("OS-333", 320, "OS-333")).toBe(true);
-    expect(matchesTaskKey("os-333", 320, "OS-333")).toBe(true);
-    expect(matchesTaskKey("  OS-333  ", 320, "OS-333")).toBe(true);
+    expect(matchesTaskKey("EX-333", 320, "EX-333")).toBe(true);
+    expect(matchesTaskKey("ex-333", 320, "EX-333")).toBe(true);
+    expect(matchesTaskKey("  EX-333  ", 320, "EX-333")).toBe(true);
   });
 
   test("does not match a synced card by the sequence it no longer shows", () => {
-    expect(matchesTaskKey("OSKL-320", 320, "OS-333")).toBe(false);
+    expect(matchesTaskKey("ACME-320", 320, "EX-333")).toBe(false);
   });
 
   test("never lets a tracker key match an unrelated card's sequence", () => {
-    expect(matchesTaskKey("OS-333", 333, "OS-999")).toBe(false);
-    expect(matchesTaskKey("OS-333", 333, null)).toBe(true);
+    expect(matchesTaskKey("EX-333", 333, "EX-999")).toBe(false);
+    expect(matchesTaskKey("EX-333", 333, null)).toBe(true);
   });
 
   test("takes a bare number against either vocabulary, ambiguity included", () => {
-    expect(matchesTaskKey("333", 320, "OS-333")).toBe(true);
-    expect(matchesTaskKey("0333", 320, "OS-333")).toBe(true);
-    expect(matchesTaskKey("320", 320, "OS-333")).toBe(false);
+    expect(matchesTaskKey("333", 320, "EX-333")).toBe(true);
+    expect(matchesTaskKey("0333", 320, "EX-333")).toBe(true);
+    expect(matchesTaskKey("320", 320, "EX-333")).toBe(false);
     expect(matchesTaskKey("333", 333, null)).toBe(true);
   });
 
   test("an empty or unparseable term names nothing", () => {
-    expect(matchesTaskKey("", 320, "OS-333")).toBe(false);
-    expect(matchesTaskKey("   ", 320, "OS-333")).toBe(false);
-    expect(matchesTaskKey("schema", 320, "OS-333")).toBe(false);
+    expect(matchesTaskKey("", 320, "EX-333")).toBe(false);
+    expect(matchesTaskKey("   ", 320, "EX-333")).toBe(false);
+    expect(matchesTaskKey("schema", 320, "EX-333")).toBe(false);
   });
 });

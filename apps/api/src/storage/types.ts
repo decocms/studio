@@ -1957,7 +1957,7 @@ export interface TaskBoardItem {
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
   keySeq: number;
-  /** The key this card's issue wears in the tracker (`OS-333`), for a card that
+  /** The key this card's issue wears in the tracker (`EX-333`), for a card that
    *  came from one — attached on reads, null for a card Studio owns. */
   jiraIssueKey: string | null;
   /** Infrastructure retries already spent on this card's runs — the budget
