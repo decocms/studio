@@ -643,6 +643,24 @@ const fastPreviewMetadataField = z
   );
 
 /**
+ * Reusable `metadata.fastPreviewInPlace` field — EXPERIMENTAL, per-agent opt-in
+ * layered on Fast Preview. When on, content edits refresh the preview by POSTing
+ * the merged (unsaved) decofile to the site runtime's `/live/previews` and
+ * swapping the returned HTML into the frame in place — no git commit, no reload
+ * — instead of committing and re-navigating to a `?__draft=@sha` URL. Requires
+ * `fastPreview` (and thus `previewServerUrl`); inert on its own. Deco-runtime
+ * only: the render target must serve `POST /live/previews` with inline
+ * `__decofile`, so this stays a flag to trial per site.
+ */
+const fastPreviewInPlaceMetadataField = z
+  .boolean()
+  .nullable()
+  .optional()
+  .describe(
+    "EXPERIMENTAL: with Fast Preview on, refresh content edits via an in-place /live/previews render (no commit, no reload) instead of a commit + re-navigation. Deco-runtime preview targets only. Requires fastPreview.",
+  );
+
+/**
  * Reusable `metadata.previewServerUrl` field — the deployment the CMS preview
  * renders against. Usually the live production site, but any deco-runtime
  * deployment works (a local `https://localhost:3100` during development, a
@@ -744,6 +762,7 @@ export const VirtualMCPEntitySchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      fastPreviewInPlace: fastPreviewInPlaceMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -856,6 +875,7 @@ export const VirtualMCPCreateDataSchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      fastPreviewInPlace: fastPreviewInPlaceMetadataField,
     })
     .loose()
     .superRefine((metadata, ctx) => {
@@ -958,6 +978,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      fastPreviewInPlace: fastPreviewInPlaceMetadataField,
     })
     .loose()
     .superRefine((metadata, ctx) => {

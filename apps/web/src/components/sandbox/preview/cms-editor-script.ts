@@ -304,7 +304,60 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var submitBlocker = function(e) { e.preventDefault(); };
   document.addEventListener("submit", submitBlocker, true);
 
+  // Fast Preview in-place render: POST merged decofile to /live/previews, swap the HTML in (document/window listeners survive; overlay nodes get re-attached).
+  var renderCtrl = null;
+  var renderQueue = Promise.resolve();
+  var TRANSITION_TAG =
+    "<style id=\\"deco-disable-transitions\\">* { transition: none !important; }</style></head>";
+  var renderInPlace = function(src, body) {
+    if (renderCtrl) renderCtrl.abort();
+    var ctrl = new AbortController();
+    renderCtrl = ctrl;
+    window.parent.postMessage({ type: "cms-editor::render-start" }, "*");
+    renderQueue = renderQueue.then(function() {
+      return fetch(src, {
+        method: "POST",
+        body: body,
+        signal: ctrl.signal,
+        headers: { accept: "text/html", "content-type": "application/json" }
+      }).then(function(res) {
+        if (!res.ok) throw new Error("render " + res.status);
+        return res.text();
+      }).then(function(html) {
+        var swap = function() {
+          document.documentElement.innerHTML = html.replace("</head>", TRANSITION_TAG);
+          document.body.appendChild(highlight);
+          document.body.appendChild(badge);
+          lastSection = null;
+        };
+        var headHtml = html.slice(html.indexOf("<head>"), html.indexOf("</head>") + 7);
+        var doc = new DOMParser().parseFromString(headHtml, "text/html");
+        var sheets = Array.prototype.map.call(
+          doc.head.querySelectorAll("link[rel=\\"stylesheet\\"]"),
+          function(el) { return el.href ? fetch(el.href).catch(function() {}) : null; }
+        );
+        return Promise.all(sheets).then(function() {
+          if (typeof document.startViewTransition === "function") {
+            return document.startViewTransition(swap).finished;
+          }
+          swap();
+        });
+      }).then(function() {
+        var t = document.getElementById("deco-disable-transitions");
+        if (t) t.remove();
+        window.parent.postMessage({ type: "cms-editor::render-end" }, "*");
+      }).catch(function(err) {
+        if (err && err.name === "AbortError") return;
+        window.parent.postMessage({ type: "cms-editor::render-error" }, "*");
+      });
+    });
+  };
+
   window.addEventListener("message", function(e) {
+    if (e.data && e.data.type === "cms-editor::render" && typeof e.data.src === "string") {
+      renderInPlace(e.data.src, e.data.body);
+      return;
+    }
     if (e.data && e.data.type === "cms-editor::set-labels" && Array.isArray(e.data.labels)) {
       sectionLabels = e.data.labels;
       if (Array.isArray(e.data.kinds)) sectionKinds = e.data.kinds;
