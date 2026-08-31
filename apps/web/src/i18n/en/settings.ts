@@ -178,6 +178,8 @@ export const settings = {
   "settings.skills.importError": "Failed to import skill",
   "settings.skills.importMissingSkillMd":
     "That folder has no SKILL.md at its root. Pick the skill's own folder.",
+  "settings.skills.importNeedsFolder":
+    "Pick a folder, not individual files — this browser may not support folder upload.",
   "settings.skills.searchPlaceholder": "Search skills...",
   "settings.skills.noDescription": "No description",
   "settings.skills.filterAll": "All",

@@ -197,6 +197,7 @@ export default function SettingsSkillsPage() {
 
   const [search, setSearch] = useState("");
   const [source, setSource] = useState(ALL_SOURCES);
+  const [importing, setImporting] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] =
     useState<OrgFsSkillCatalogEntry | null>(null);
@@ -212,7 +213,15 @@ export default function SettingsSkillsPage() {
     if (folderInputRef.current) folderInputRef.current.value = "";
     if (picked.length === 0) return;
 
-    const folder = picked[0]?.webkitRelativePath.split("/")[0] ?? "";
+    // Empty means the browser ignored `webkitdirectory` and gave a flat pick,
+    // which would flatten the skill's subdirectories onto its root.
+    const root = picked[0]?.webkitRelativePath ?? "";
+    if (!root) {
+      toast.error(t("settings.skills.importNeedsFolder"));
+      return;
+    }
+
+    const folder = root.split("/")[0] ?? "";
     const files = picked.filter(importable);
     if (!files.some((f) => relativePath(f) === "SKILL.md")) {
       toast.error(t("settings.skills.importMissingSkillMd"));
@@ -228,25 +237,34 @@ export default function SettingsSkillsPage() {
       return;
     }
 
-    // Merging would leave the existing skill's unmatched files behind.
     const slug = slugify(folder);
     const dir = `skills/${slug}`;
-    if (await fetchOrgFsStat(org.slug, "home", dir)) {
-      toast.error(t("settings.skills.importSlugTaken", { slug }));
-      return;
-    }
-
+    // Only true once the probe below proved the tree ours to roll back.
+    let created = false;
+    setImporting(true);
     try {
+      // Merging would leave the existing skill's unmatched files behind.
+      if (await fetchOrgFsStat(org.slug, "home", dir)) {
+        toast.error(t("settings.skills.importSlugTaken", { slug }));
+        return;
+      }
+      created = true;
       await uploadAllGroups(
         groupByDestination(files, slug),
         upload.mutateAsync,
       );
       refreshCatalog();
-      toast.success(t("settings.skills.importSuccess", { name: folder }));
+      toast.success(t("settings.skills.importSuccess", { name: slug }));
     } catch (err) {
+      // A half-written tree would serve agents a broken skill, and its bare
+      // directory would block the retry on the slug probe above.
+      if (created) await remove.mutateAsync(dir).catch(() => {});
+      refreshCatalog();
       toast.error(
         err instanceof Error ? err.message : t("settings.skills.importError"),
       );
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -311,11 +329,11 @@ export default function SettingsSkillsPage() {
   const importButton = (
     <Button
       size="sm"
-      disabled={upload.isPending}
+      disabled={importing}
       onClick={() => folderInputRef.current?.click()}
     >
       <Upload01 size={14} />
-      {upload.isPending
+      {importing
         ? t("settings.skills.importing")
         : t("settings.skills.importButton")}
     </Button>

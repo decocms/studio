@@ -142,15 +142,7 @@ export function useOrgFsStat(
       ? (query) =>
           query.state.data ? false : (opts.refetchIntervalWhenAbsent ?? false)
       : undefined,
-    queryFn: async (): Promise<OrgFsEntry | null> => {
-      const res = await fsFetch(
-        fsUrl(org.slug, volume ?? "", "stat", { path }),
-        undefined,
-        { allow404: true },
-      );
-      if (res.status === 404) return null;
-      return ((await res.json()) as { entry: OrgFsEntry }).entry;
-    },
+    queryFn: () => fetchOrgFsStat(org.slug, volume ?? "", path),
   });
 }
 

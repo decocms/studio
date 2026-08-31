@@ -183,6 +183,8 @@ export const settings = {
   "settings.skills.importError": "Falha ao importar a skill",
   "settings.skills.importMissingSkillMd":
     "Essa pasta n\u00e3o tem um SKILL.md na raiz. Selecione a pasta da pr\u00f3pria skill.",
+  "settings.skills.importNeedsFolder":
+    "Selecione uma pasta, não arquivos individuais — este navegador pode não suportar upload de pastas.",
   "settings.skills.searchPlaceholder": "Pesquisar skills...",
   "settings.skills.noDescription": "Sem descri\u00e7\u00e3o",
   "settings.skills.filterAll": "Todas",
