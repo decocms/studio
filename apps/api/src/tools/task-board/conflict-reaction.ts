@@ -8,6 +8,7 @@ import {
 } from "@decocms/shared/task-board";
 import { autoResolveConflictsEnabled } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
+import { boardCan, boardLanes } from "./board-handler";
 import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 
@@ -110,10 +111,31 @@ export async function reactToApprovedPrConflict(
   // for the single winner only, so the activity log (which feeds the cap count)
   // stays accurate. No `status_changed` entry — mirrors the request_changes
   // bounce; the review cycle resets only when the run advances back to In Review.
+  const lanes = await boardLanes(ctx, orgId);
+  // The fence moves the card between these two, and the failure path moves it
+  // back. Narrowing here is what lets the revert below write a string rather
+  // than an "undefined means leave it alone" that would strand the card.
+  if (
+    !boardCan(
+      orgId,
+      "in_review",
+      lanes.review,
+      "automatic conflict resolution",
+    ) ||
+    !boardCan(
+      orgId,
+      "in_progress",
+      lanes.progress,
+      "automatic conflict resolution",
+    )
+  ) {
+    return false;
+  }
   const claimed = await ctx.storage.taskBoard.claimConflictResolution(
     item.id,
     orgId,
     item.updatedBy,
+    lanes,
   );
   if (!claimed) return false;
   emitTaskBoardUpdated(orgId, claimed);
@@ -132,7 +154,7 @@ export async function reactToApprovedPrConflict(
     // strands the task forever: the guard above only fires on `in_review`,
     // so no future poll or approval retries it. Bounce back so it does.
     await ctx.storage.taskBoard
-      .update(claimed.id, orgId, { status: "in_review" }, "system")
+      .update(claimed.id, orgId, { status: lanes.review }, "system")
       .then((reverted) => emitTaskBoardUpdated(orgId, reverted))
       .catch((revertErr) =>
         console.error(

@@ -31,6 +31,7 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
+import { type BoardLanes, boardCan, boardLanes } from "./board-handler";
 import { extractPrFromValue } from "./pr-extract";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -224,6 +225,7 @@ export async function openReviewCycleForRun(
       const opened = await ctx.storage.taskBoard.openReviewCycleIfInProgress(
         itemId,
         orgId,
+        await boardLanes(ctx, orgId),
       );
       if (!opened) continue;
       emitTaskBoardUpdated(orgId, opened);
@@ -287,11 +289,14 @@ export async function advanceTasksToReviewOnThreadFinish(
   /** Quota bookkeeping (billing/task-quota.ts). Required on purpose: an
    *  optional arg here is a silent way for a caller to stop refunding. */
   billing: OrganizationBillingStorage,
+  /** This org's board lanes — see `reactToFailedTaskRun`. */
+  lanes: BoardLanes,
 ): Promise<void> {
   try {
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
       threadId,
       orgId,
+      lanes,
     );
     for (const item of moved) {
       emitTaskBoardUpdated(orgId, item);
@@ -308,7 +313,7 @@ export async function advanceTasksToReviewOnThreadFinish(
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
   }
-  await reactToFailedTaskRun(taskBoard, threadId, orgId);
+  await reactToFailedTaskRun(taskBoard, threadId, orgId, lanes);
   await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
 }
 
@@ -373,6 +378,10 @@ export async function reactToFailedTaskRun(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
+  /** This org's board lanes. Passed rather than resolved here: the caller
+   *  already holds a board or a handle to build one from, and taking the I/O
+   *  out keeps this reaction testable without a database. */
+  lanes: BoardLanes,
 ): Promise<void> {
   try {
     const failure = await taskBoard.failedRunInfo(threadId, orgId);
@@ -418,6 +427,7 @@ export async function reactToFailedTaskRun(
           orgId,
           attempts + 1,
           new Date(Date.now() + delay),
+          lanes.progress,
         );
         if (!scheduled) continue;
         await taskBoard
@@ -440,6 +450,7 @@ export async function reactToFailedTaskRun(
         itemId,
         orgId,
         item.updatedBy,
+        lanes,
       );
       if (!returned) continue;
       await taskBoard
@@ -532,12 +543,24 @@ export async function parkReviewedCardForHuman(
   ctx: StudioContext,
   item: TaskBoardItem,
 ): Promise<void> {
-  if (item.status !== "in_progress" || !inReviewPhase(item)) return;
+  const lanes = await boardLanes(ctx, item.organizationId);
+  if (item.status !== lanes.progress || !inReviewPhase(item, lanes.review))
+    return;
+  if (
+    !boardCan(
+      item.organizationId,
+      "in_review",
+      lanes.review,
+      "parking a reviewed card for a person",
+    )
+  ) {
+    return;
+  }
   try {
     const parked = await ctx.storage.taskBoard.update(
       item.id,
       item.organizationId,
-      { status: "in_review" },
+      { status: lanes.review },
       item.updatedBy,
     );
     await ctx.storage.taskBoard
@@ -582,7 +605,14 @@ export async function handTaskToHuman(
   const orgId = item.organizationId;
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   try {
-    await parkReviewedCardForHuman(ctx, item);
+    // Best-effort: parking needs to know the board, and a card must still
+    // reach a person when that read fails.
+    await parkReviewedCardForHuman(ctx, item).catch((err) =>
+      console.warn(
+        `[task-board] parking ${item.id} before hand-off failed`,
+        err,
+      ),
+    );
     // Re-checks the assignee against the DB, not this stale `item`.
     const handed = await ctx.storage.taskBoard.unassignSuperAgent(
       item.id,

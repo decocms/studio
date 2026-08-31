@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import { boardFor } from "./board-handler";
+import { boardColumnsOf } from "./board-handler";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "./schema";
 
 const AutomationSchema = z.object({
@@ -65,7 +65,7 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
 
     // Rejected here rather than stored and ignored: a rule on a column this
     // board does not have never fires, and looks configured to whoever set it.
-    const columns = await (await boardFor(ctx, organizationId)).columns();
+    const columns = await boardColumnsOf(ctx, organizationId);
     if (!columns.some((c) => c.key === input.columnKey)) {
       throw new Error(
         `This board has no column "${input.columnKey}" — it has ${columns

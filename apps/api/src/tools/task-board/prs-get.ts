@@ -14,7 +14,7 @@ import { retry, RetryError } from "@decocms/shared/std";
 import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { cardWorkLanded } from "./archive-merged";
-import { boardFor, shippedPatch } from "./board-handler";
+import { boardFor, boardLanes, shippedPatch } from "./board-handler";
 import { recordTaskActivity } from "./activity";
 import { inReviewPhase, movesForward } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -1212,7 +1212,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
     if (
       item &&
-      inReviewPhase(item) &&
+      inReviewPhase(item, (await boardLanes(ctx, organizationId)).review) &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       prReadyForReview(prs)
     ) {

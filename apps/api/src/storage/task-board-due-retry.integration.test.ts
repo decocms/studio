@@ -20,6 +20,15 @@ import {
 } from "../database/test-db-pg";
 import { TaskBoardStorage } from "./task-board";
 
+/** Studio's own board, which is what these fixtures run on. */
+const CANON_LANES = {
+  intake: "triage",
+  queue: "todo",
+  progress: "in_progress",
+  review: "in_review",
+  archive: "archived",
+};
+
 const ORG = "org_due_retry";
 const USER = "user_due_retry";
 
@@ -39,6 +48,7 @@ describe("listItemsDueForRetry (real Postgres)", () => {
       ORG,
       1,
       new Date(Date.now() - 1000),
+      CANON_LANES.progress,
     );
     expect(claimed).toBe(true);
     return task;

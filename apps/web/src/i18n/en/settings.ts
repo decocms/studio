@@ -48,6 +48,8 @@ export const settings = {
   "settings.jira.rolesDescription":
     "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
   "settings.jira.roleNone": "Nothing special",
+  "settings.jira.roleQueued": "Queued for the agent",
+  "settings.jira.roleInProgress": "Being worked on",
   "settings.jira.roleInReview": "Under review",
   "settings.jira.roleArchived": "Archive",
   "settings.jira.noColumnsYet":

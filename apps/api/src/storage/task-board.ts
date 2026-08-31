@@ -697,7 +697,25 @@ export class TaskBoardStorage {
       .where((eb) =>
         eb.or([
           eb("review_cycle_started_at", "is not", null),
+          // The card's OWN board's review column. A pre-filter across orgs
+          // cannot be handed one lane — every row may belong to a different
+          // board — so it reads the same rows the handler reads. An org on
+          // Studio's board has no rows here at all, which is why the literal
+          // stays beside it rather than being replaced by it.
           eb("status", "=", "in_review"),
+          eb(
+            "status",
+            "in",
+            eb
+              .selectFrom("task_board_columns as c")
+              .select("c.key")
+              .whereRef(
+                "c.organization_id",
+                "=",
+                "task_board_items.organization_id",
+              )
+              .where("c.role", "=", "in_review"),
+          ),
         ]),
       )
       .where("dismissed_at", "is", null);
@@ -923,13 +941,17 @@ export class TaskBoardStorage {
     organizationId: string,
     attempts: number,
     retryAt: Date,
+    /** This board's in-progress column. Null means the board has none, so
+     *  there is no card to schedule a retry for. */
+    progressLane: string | null,
   ): Promise<boolean> {
+    if (progressLane === null) return false;
     const rows = await this.db
       .updateTable("task_board_items")
       .set({ retry_at: retryAt, retry_attempts: attempts })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      .where("status", "=", progressLane)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -947,11 +969,16 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     updatedBy: string,
+    /** Where the card is coming from and going to on THIS board. Either being
+     *  null means the board cannot express this move, so it does not happen —
+     *  the run's failure is still on the card's timeline either way. */
+    lanes: { progress: string | null; queue: string | null },
   ): Promise<TaskBoardItem | null> {
+    if (lanes.progress === null || lanes.queue === null) return null;
     const rows = await this.db
       .updateTable("task_board_items")
       .set({
-        status: "todo",
+        status: lanes.queue,
         retry_at: null,
         retry_attempts: 0,
         updated_by: updatedBy,
@@ -959,7 +986,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      .where("status", "=", lanes.progress)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -1351,6 +1378,7 @@ export class TaskBoardStorage {
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
     organizationId: string,
+    lanes: { progress: string | null; review: string | null },
   ): Promise<TaskBoardItem[]> {
     const moved: TaskBoardItem[] = [];
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
@@ -1394,6 +1422,7 @@ export class TaskBoardStorage {
         const opened = await this.openReviewCycleIfInProgress(
           taskId,
           organizationId,
+          lanes,
         );
         if (!opened) continue;
         moved.push(opened);
@@ -1441,10 +1470,14 @@ export class TaskBoardStorage {
   async openReviewCycleIfInProgress(
     id: string,
     organizationId: string,
+    lanes: { progress: string | null; review: string | null },
   ): Promise<TaskBoardItem | null> {
+    // No in-progress column: the review still happens, the card just stays put.
+    if (lanes.progress === null) return null;
+    const reviewLane = lanes.review;
     const row = await this.db
       .updateTable("task_board_items")
-      .set({ review_cycle_started_at: new Date(), status: "in_progress" })
+      .set({ review_cycle_started_at: new Date(), status: lanes.progress })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       // In Review is in here because the PR link can LOSE THE RACE to the
@@ -1466,11 +1499,15 @@ export class TaskBoardStorage {
       // statement — a separate flip could interleave with the sweeper's read.
       .where((eb) =>
         eb.or([
-          eb("status", "=", "in_progress"),
-          eb.and([
-            eb("status", "=", "in_review"),
-            eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
-          ]),
+          eb("status", "=", lanes.progress),
+          ...(reviewLane === null
+            ? []
+            : [
+                eb.and([
+                  eb("status", "=", reviewLane),
+                  eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
+                ]),
+              ]),
         ]),
       )
       .where("review_cycle_started_at", "is", null)
@@ -1594,8 +1631,9 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     by: string,
+    lanes: { review: string | null; progress: string | null },
   ): Promise<TaskBoardItem | null> {
-    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
+    return this.claimInReviewSuperAgentSlot(id, organizationId, by, lanes);
   }
 
   /**
@@ -1610,11 +1648,16 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     by: string,
+    /** The fence's two ends on THIS board. Either being null means the board
+     *  cannot express the claim, so nobody wins it — which reads to the caller
+     *  as "another trigger got there first", the same as losing the race. */
+    lanes: { review: string | null; progress: string | null },
   ): Promise<TaskBoardItem | null> {
+    if (lanes.review === null || lanes.progress === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
-        status: "in_progress",
+        status: lanes.progress,
         // The claim exists to put the card back in the Super Agent's hands to
         // fix something, so the review that just ended is over. Cleared in the
         // SAME statement as the flip: a separate write could lose the race with
@@ -1626,7 +1669,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_review")
+      .where("status", "=", lanes.review)
       .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .returningAll()
       .executeTakeFirst();
@@ -1652,7 +1695,12 @@ export class TaskBoardStorage {
     organizationId: string,
     assignedBy: string,
     by: string,
+    /** This board's queue column — the claim's starting line. Null means the
+     *  board has no column that means "queued", so there is nothing to claim
+     *  and the caller reads it the same as losing the race. */
+    queueLane: string | null,
   ): Promise<TaskBoardItem | null> {
+    if (queueLane === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
@@ -1663,7 +1711,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "todo")
+      .where("status", "=", queueLane)
       .where("assignee_id", "is", null)
       .returningAll()
       .executeTakeFirst();

@@ -14,6 +14,7 @@
  */
 
 import { generateObject } from "ai";
+import { type BoardLanes, boardCan, boardLanes } from "./board-handler";
 import { z } from "zod";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -133,9 +134,11 @@ export async function applyBoardDecision(
     decision: BoardDecision;
     /** The card set the decision was made against (this org's), for taskId validation. */
     openCards: TaskBoardItem[];
+    /** This org's board lanes. */
+    lanes: BoardLanes;
   },
 ): Promise<TaskBoardItem | null> {
-  const { orgId, userId, threadId, pr, decision, openCards } = params;
+  const { orgId, userId, threadId, pr, decision, openCards, lanes } = params;
 
   const linkPr = (taskBoardItemId: string) =>
     storage.linkPr({
@@ -155,8 +158,25 @@ export async function applyBoardDecision(
 
   let item: TaskBoardItem | null;
   if (target) {
-    // Enter the review phase only from an earlier lane; never regress a finished card.
-    const advancing = ADVANCEABLE.has(target.status);
+    // Enter the review phase only from an earlier lane; never regress a finished
+    // card — and only onto a lane this board HAS. Folded into `advancing` rather
+    // than left to a null status: `undefined` already means "leave the status
+    // alone" here, so reusing it for "nowhere to advance to" would also skip the
+    // Super Agent claim and the review cycle without saying why.
+    const progressLane = lanes.progress;
+    // The LANE, not a boolean: `boardCan` narrows `progressLane` inside this
+    // expression, and a boolean would not carry that to the write below.
+    const advanceTo =
+      ADVANCEABLE.has(target.status) &&
+      boardCan(
+        orgId,
+        "in_progress",
+        progressLane,
+        "moving a card when its PR opens",
+      )
+        ? progressLane
+        : null;
+    const advancing = advanceTo !== null;
     // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's.
     const claimSuperAgent = advancing && target.assigneeId == null;
     item = await storage.update(
@@ -166,25 +186,29 @@ export async function applyBoardDecision(
         // In Progress, not In Review: a reviewer is about to work on this PR,
         // and In Review is what the board says once it is a person's turn.
         // The open cycle below is what puts it on the reviewer's work list.
-        status: advancing ? "in_progress" : undefined,
+        status: advanceTo ?? undefined,
         ...(claimSuperAgent
           ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
           : {}),
       },
       userId,
     );
-    if (advancing) await storage.openReviewCycleIfInProgress(target.id, orgId);
+    if (advancing) {
+      await storage.openReviewCycleIfInProgress(target.id, orgId, lanes);
+    }
   } else {
     // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
       organizationId: orgId,
       title: decision.title?.trim() || `PR #${pr.number}`,
-      status: "in_progress",
+      // A card born mid-review with no in-progress column starts at intake —
+      // the one lane every board has.
+      status: lanes.progress ?? lanes.intake,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
       by: userId,
     });
-    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId);
+    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId, lanes);
   }
   if (!item) return null;
 
@@ -241,6 +265,7 @@ export async function reactToPrOpenedForBoard(
     if (!decision) return;
 
     await applyBoardDecision(ctx.storage.taskBoard, {
+      lanes: await boardLanes(ctx, orgId),
       orgId,
       userId,
       threadId,

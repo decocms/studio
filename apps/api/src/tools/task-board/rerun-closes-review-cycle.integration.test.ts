@@ -21,6 +21,15 @@ import {
 } from "../../database/test-db-pg";
 import { TaskBoardStorage } from "../../storage/task-board";
 
+/** Studio's own board, which is what these fixtures run on. */
+const CANON_LANES = {
+  intake: "triage",
+  queue: "todo",
+  progress: "in_progress",
+  review: "in_review",
+  archive: "archived",
+};
+
 const ORG = "org_rerun_cycle_1";
 const USER = "user_rc1";
 
@@ -54,7 +63,11 @@ describe("a re-run closes the review cycle it inherited", () => {
       by: USER,
     });
     // A reviewer already stamped an open cycle — the state a rerun targets.
-    const opened = await taskBoard.openReviewCycleIfInProgress(item.id, ORG);
+    const opened = await taskBoard.openReviewCycleIfInProgress(
+      item.id,
+      ORG,
+      CANON_LANES,
+    );
     expect(opened?.reviewCycleStartedAt).not.toBeNull();
 
     // The exact sequence TASK_BOARD_ITEM_RERUN's handler now runs.
@@ -62,7 +75,11 @@ describe("a re-run closes the review cycle it inherited", () => {
     await taskBoard.update(item.id, ORG, { status: "in_progress" }, USER);
 
     // Without the fix this returns null: the column is still non-null.
-    const reopened = await taskBoard.openReviewCycleIfInProgress(item.id, ORG);
+    const reopened = await taskBoard.openReviewCycleIfInProgress(
+      item.id,
+      ORG,
+      CANON_LANES,
+    );
     expect(reopened).not.toBeNull();
     expect(reopened?.reviewCycleStartedAt).not.toBe(
       opened?.reviewCycleStartedAt,

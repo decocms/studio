@@ -25,7 +25,12 @@
  */
 
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { boardFor } from "@/tools/task-board/board-handler";
+import {
+  boardAutomationFor,
+  boardFor,
+  boardCan,
+  boardLanes,
+} from "@/tools/task-board/board-handler";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type {
@@ -337,18 +342,23 @@ async function maybeAutoDelegate(
   // The board decides: a column with no rule on it is uneventful. This is also
   // what replaced `integration.autoDelegate`, which could only ever mean the
   // Super Agent, on To Do, for an org that had Jira.
-  const automation = await (await boardFor(ctx, orgId)).automationFor(
-    item.status,
-  );
+  const automation = await boardAutomationFor(ctx, orgId, item.status);
   if (!automation) return item;
   // Conditional claim, not a plain update: the cron, a webhook wake-up (its
   // debounce is per-pod) and a manual JIRA_SYNC_RUN can all be mid-sync on the
   // same issue, and a read-then-write would dispatch two paid agent runs on it.
+  const queue = (await boardLanes(ctx, orgId)).queue;
+  if (
+    !boardCan(orgId, "todo", queue, "auto-delegating Jira issues to the agent")
+  ) {
+    return item;
+  }
   const delegated = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(
     item.id,
     orgId,
     integration.createdBy,
     JIRA_SYNC_ACTOR,
+    queue,
   );
   if (!delegated) return item;
   await ctx.storage.taskBoard.recordActivity({

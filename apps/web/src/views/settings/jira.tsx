@@ -259,7 +259,8 @@ const NO_ROLE = "__none__";
  * Replaces the status mapping for an org whose board is its own. The mapping
  * asked a team to restate, lane by lane, something their tracker already knew;
  * this asks the one thing it could not know — which of THEIR columns is where
- * review happens, and which retires a card. Most columns mean nothing to us,
+ * the agent picks work up, where it works, where review happens, and which
+ * retires a card. Most columns mean nothing to us,
  * and leaving them that way is the safe answer rather than a gap to fill.
  */
 function ColumnRoleRows() {
@@ -307,6 +308,12 @@ function ColumnRoleRows() {
             <SelectContent>
               <SelectItem value={NO_ROLE}>
                 {t("settings.jira.roleNone")}
+              </SelectItem>
+              <SelectItem value="todo">
+                {t("settings.jira.roleQueued")}
+              </SelectItem>
+              <SelectItem value="in_progress">
+                {t("settings.jira.roleInProgress")}
               </SelectItem>
               <SelectItem value="in_review">
                 {t("settings.jira.roleInReview")}
