@@ -524,13 +524,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
       } | null;
 
       // Bound the probe — a hanging remote server shouldn't hang this call.
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      let response: Response;
-      try {
-        response = await createNoRedirectFetch()(connection.connection_url, {
+      const response = await createNoRedirectFetch()(
+        connection.connection_url,
+        {
           method: "POST",
-          signal: controller.signal,
+          signal: AbortSignal.timeout(10_000),
           headers: {
             "Content-Type": "application/json",
             ...(connection.connection_token && {
@@ -544,10 +542,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
             method: "ping",
             id: 1,
           }),
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+        },
+      );
 
       return {
         healthy: response.ok || response.status === 404,
