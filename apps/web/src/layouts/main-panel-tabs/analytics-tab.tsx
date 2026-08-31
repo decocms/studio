@@ -61,6 +61,12 @@ import {
   TableRow,
 } from "@decocms/ui/components/table.tsx";
 import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@decocms/ui/components/chart.tsx";
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -312,17 +318,6 @@ function Card({
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-1 min-w-[140px] flex-col gap-1 rounded-xl border border-border bg-card p-4">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className="text-2xl font-semibold text-foreground tabular-nums">
-        {value}
-      </span>
-    </div>
-  );
-}
-
 /** A collapsible section with a chevron trigger. Children render only while open
  *  (the caller gates its data fetch on `open`), so a screenful of sections
  *  doesn't fan out queries until each is expanded. */
@@ -365,20 +360,182 @@ function Section({
 
 // --- generic panel rendering ------------------------------------------------
 
-/** A tiny dependency-free bar strip for a time series — enough visual signal for
- *  a design pass without pulling a chart lib. The full table sits below it. */
-function SparkBars({ values }: { values: number[] }) {
-  const max = Math.max(1, ...values);
+/** Format a metric value for display, keyed on its column name: percentages,
+ *  durations (seconds → `10m 7s`), and plain counts each read differently. */
+function fmtMetric(key: string, value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return formatCell(value);
+  if (/(pct|rate|bounce|ratio)/i.test(key)) return `${Math.round(n)}%`;
+  if (/(_s$|duration|seconds)/i.test(key)) {
+    const m = Math.floor(n / 60);
+    return m ? `${m}m ${Math.round(n % 60)}s` : `${Math.round(n)}s`;
+  }
+  return formatNumber(n);
+}
+
+/** The KPI row: a single scalar record → a row of stat tiles. */
+function KpiTiles({ row }: { row: Record<string, unknown> }) {
+  const entries = Object.entries(row).filter(
+    ([, v]) => typeof v === "number" || v === null,
+  );
   return (
-    <div className="flex h-16 items-end gap-0.5">
-      {values.map((v, i) => (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {entries.map(([k, v]) => (
         <div
-          key={i}
-          className="flex-1 rounded-sm bg-primary/60"
-          style={{ height: `${Math.max(2, (v / max) * 100)}%` }}
-          title={formatNumber(v)}
-        />
+          key={k}
+          className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4"
+        >
+          <span className="text-xs font-medium text-muted-foreground">
+            {humanize(k)}
+          </span>
+          <span className="text-2xl font-semibold text-foreground tabular-nums">
+            {fmtMetric(k, v)}
+          </span>
+        </div>
       ))}
+    </div>
+  );
+}
+
+/** A time series as a filled area chart — the hero visual, modelled on the
+ *  admin monitor's "Usage over time". Plots one metric over the time bucket. */
+function AreaTrend({
+  rows,
+  timeKey,
+  metricKey,
+}: {
+  rows: Array<Record<string, unknown>>;
+  timeKey: string;
+  metricKey: string;
+}) {
+  const gradId = `dq-grad-${metricKey}`;
+  const data = rows.map((r) => ({
+    label: String(r[timeKey] ?? ""),
+    value: Number(r[metricKey]) || 0,
+  }));
+  return (
+    <ChartContainer
+      config={{ value: { label: humanize(metricKey), color: "var(--primary)" } }}
+      className="h-56 w-full"
+    >
+      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.4} />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          minTickGap={40}
+          tickFormatter={(v: string) => v.replace("T", " ").slice(5, 16)}
+          className="text-[10px]"
+        />
+        <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke="var(--primary)"
+          strokeWidth={2}
+          fill={`url(#${gradId})`}
+          dot={false}
+          activeDot={{ r: 3 }}
+          animationDuration={350}
+        />
+      </AreaChart>
+    </ChartContainer>
+  );
+}
+
+/** A ranked breakdown as horizontal bars with value + share — the
+ *  "most viewed pages" / "cache status" pattern. */
+function BarList({
+  rows,
+  labelKey,
+  valueKey,
+}: {
+  rows: Array<Record<string, unknown>>;
+  labelKey: string;
+  valueKey: string;
+}) {
+  const top = [...rows]
+    .sort((a, b) => (Number(b[valueKey]) || 0) - (Number(a[valueKey]) || 0))
+    .slice(0, 10);
+  const max = Math.max(1, ...top.map((r) => Number(r[valueKey]) || 0));
+  const total =
+    rows.reduce((sum, r) => sum + (Number(r[valueKey]) || 0), 0) || 1;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {top.map((r, i) => {
+        const v = Number(r[valueKey]) || 0;
+        return (
+          <div
+            key={i}
+            className="relative flex items-center justify-between gap-3 overflow-hidden rounded-md px-2.5 py-1.5"
+          >
+            <div
+              className="absolute inset-y-0 left-0 rounded-md bg-primary/10"
+              style={{ width: `${(v / max) * 100}%` }}
+            />
+            <span className="relative z-10 truncate text-sm text-foreground">
+              {formatCell(r[labelKey]) || "—"}
+            </span>
+            <span className="relative z-10 shrink-0 text-sm tabular-nums text-muted-foreground">
+              {formatNumber(v)}
+              <span className="ml-2 text-xs opacity-70">
+                {Math.round((v / total) * 100)}%
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The commerce funnel: steps as bars scaled to the first step, each labelled
+ *  with its conversion off the top. */
+function Funnel({ row }: { row: Record<string, unknown> }) {
+  const order = [
+    ["viewed", "Viewed"],
+    ["view_item", "View item"],
+    ["view_item_list", "View list"],
+    ["select_item", "Select item"],
+    ["add_to_cart", "Add to cart"],
+    ["begin_checkout", "Begin checkout"],
+    ["purchase", "Purchase"],
+  ] as const;
+  const steps = order.filter(([k]) => k in row);
+  const base = Number(row[steps[0]?.[0] ?? ""]) || 1;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {steps.map(([k, label]) => {
+        const v = Number(row[k]) || 0;
+        return (
+          <div
+            key={k}
+            className="relative flex items-center justify-between gap-3 overflow-hidden rounded-md px-2.5 py-2"
+          >
+            <div
+              className="absolute inset-y-0 left-0 rounded-md bg-primary/15"
+              style={{ width: `${(v / base) * 100}%` }}
+            />
+            <span className="relative z-10 text-sm text-foreground">
+              {label}
+            </span>
+            <span className="relative z-10 shrink-0 text-sm tabular-nums text-muted-foreground">
+              {formatNumber(v)}
+              <span className="ml-2 text-xs opacity-70">
+                {Math.round((v / base) * 100)}%
+              </span>
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -419,8 +576,10 @@ function DataTable({ rows }: { rows: Array<Record<string, unknown>> }) {
   );
 }
 
-/** One panel from a view payload, shape-detected: a single scalar row → stat
- *  tiles; a time series → sparkline + table; anything else → a table. */
+/** One panel from a view payload, shape-detected and rendered first-class:
+ *  the funnel → a stepped funnel; a single scalar row → KPI tiles; a time
+ *  series → an area chart; a label+value breakdown → a ranked bar list;
+ *  anything else → a table. */
 function PanelBlock({
   name,
   rows,
@@ -431,51 +590,78 @@ function PanelBlock({
   t: TFunction;
 }) {
   const title = humanize(name);
+  const Frame = ({ children }: { children: React.ReactNode }) => (
+    <div className="flex flex-col gap-2.5">
+      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h4>
+      {children}
+    </div>
+  );
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-col gap-2">
-        <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+      <Frame>
         <p className="text-sm text-muted-foreground">
           {t("mainPanelTabs.analyticsTab.panelEmpty")}
         </p>
-      </div>
+      </Frame>
     );
   }
 
-  // rows is non-empty here (the length-0 case returned above); `first` is the
-  // shape probe for the whole panel.
   const first = rows[0] ?? {};
+  const columns = Object.keys(first);
 
-  // Single row of scalars → KPI tiles.
-  if (rows.length === 1 && Object.values(first).every(isScalar)) {
-    const entries = Object.entries(first);
+  // The commerce funnel — a single row of ordered step counts.
+  if (
+    rows.length === 1 &&
+    ("viewed" in first || "purchase" in first || "add_to_cart" in first)
+  ) {
     return (
-      <div className="flex flex-col gap-2">
-        <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
-        <div className="flex flex-wrap gap-3">
-          {entries.map(([k, v]) => (
-            <StatCard key={k} label={humanize(k)} value={formatCell(v)} />
-          ))}
-        </div>
-      </div>
+      <Frame>
+        <Funnel row={first} />
+      </Frame>
     );
   }
 
-  const columns = Object.keys(first);
+  // A single scalar row → KPI tiles.
+  if (rows.length === 1 && Object.values(first).every(isScalar)) {
+    return (
+      <Frame>
+        <KpiTiles row={first} />
+      </Frame>
+    );
+  }
+
+  // A time series → area chart.
   const timeKey = columns.find((c) => TIME_KEY.test(c));
   const metricKey =
     timeKey &&
     columns.find((c) => c !== timeKey && typeof first[c] === "number");
-  const series =
-    timeKey && metricKey ? rows.map((r) => Number(r[metricKey]) || 0) : null;
+  if (timeKey && metricKey && rows.length > 1) {
+    return (
+      <Frame>
+        <AreaTrend rows={rows} timeKey={timeKey} metricKey={metricKey} />
+      </Frame>
+    );
+  }
 
+  // A label + value breakdown → ranked bar list.
+  const labelKey = columns.find((c) => typeof first[c] === "string");
+  const valueKey = columns.find((c) => typeof first[c] === "number");
+  if (labelKey && valueKey && columns.length <= 3) {
+    return (
+      <Frame>
+        <BarList rows={rows} labelKey={labelKey} valueKey={valueKey} />
+      </Frame>
+    );
+  }
+
+  // Fallback: the raw table.
   return (
-    <div className="flex flex-col gap-2">
-      <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
-      {series && series.length > 1 && <SparkBars values={series} />}
+    <Frame>
       <DataTable rows={rows} />
-    </div>
+    </Frame>
   );
 }
 
