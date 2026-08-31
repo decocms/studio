@@ -640,27 +640,46 @@ function classifyPanel(
   if (rows.length === 0) return null;
   const first = rows[0] ?? {};
   const columns = Object.keys(first);
+
+  // The commerce funnel — a single row of ordered step counts.
   if (
     rows.length === 1 &&
     ("viewed" in first || "purchase" in first || "add_to_cart" in first)
   ) {
     return { kind: "funnel" };
   }
-  if (rows.length === 1 && Object.values(first).every(isScalar)) {
-    return { kind: "kpi" };
-  }
+
   const timeKey = columns.find((c) => TIME_KEY.test(c));
   const metricKey =
     timeKey &&
     columns.find((c) => c !== timeKey && typeof first[c] === "number");
+  // A time series → area chart (needs more than one bucket to be a line).
   if (timeKey && metricKey && rows.length > 1) {
     return { kind: "series", timeKey, metricKey };
   }
-  const labelKey = columns.find((c) => typeof first[c] === "string");
+
+  // A breakdown: a NON-time text label + a numeric value. Checked BEFORE the KPI
+  // case so a single-row breakdown ({ k: "Direct", n: 1 }) renders as a one-item
+  // bar list, not as a stack of "N: 1" KPI tiles.
+  const labelKey = columns.find(
+    (c) => c !== timeKey && typeof first[c] === "string",
+  );
   const valueKey = columns.find((c) => typeof first[c] === "number");
   if (labelKey && valueKey && columns.length <= 3) {
     return { kind: "bars", labelKey, valueKey };
   }
+
+  // A KPI card: a single row of named metrics with no text label and no time
+  // column (e.g. the `kpis` panel: visitors/pageviews/sessions/…).
+  if (
+    rows.length === 1 &&
+    !timeKey &&
+    !labelKey &&
+    Object.values(first).every(isScalar)
+  ) {
+    return { kind: "kpi" };
+  }
+
   return { kind: "table" };
 }
 
