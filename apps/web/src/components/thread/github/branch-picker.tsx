@@ -60,6 +60,10 @@ interface Props {
   /** When true, the trigger is disabled — the user can't open the
    *  picker. The tooltip still surfaces the current branch on hover. */
   disabled?: boolean;
+  /** When true, selecting or creating a branch opens a *new* chat on it rather
+   *  than switching in place — the current thread's branch is fixed (its chat
+   *  has messages). Surfaces a hint so the new-chat behavior isn't surprising. */
+  spawnsNewChat?: boolean;
   /** Chat input uses responsive label collapse; header always shows the name. */
   placement?: "chat" | "header";
 }
@@ -86,6 +90,7 @@ export function BranchPicker({
   onChange,
   onCreateBranch,
   disabled = false,
+  spawnsNewChat = false,
   placement = "chat",
 }: Props) {
   const t = useT();
@@ -268,6 +273,11 @@ export function BranchPicker({
               </Button>
             )}
           </div>
+          {spawnsNewChat && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              {t("thread.branchPicker.newChatHint")}
+            </p>
+          )}
           <Tabs
             className="px-2 pt-2 pb-1"
             value={tab}

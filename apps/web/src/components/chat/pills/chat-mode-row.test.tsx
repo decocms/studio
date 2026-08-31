@@ -10,7 +10,14 @@ import type { ReactNode } from "react";
 // network/hook dependencies. The mock just renders a plain <button>
 // so tests can assert the unlocked path forwards to BranchPicker.
 mock.module("../../thread/github/branch-picker", () => ({
-  BranchPicker: () => <button type="button">branch-picker</button>,
+  BranchPicker: ({ spawnsNewChat }: { spawnsNewChat?: boolean }) => (
+    <button
+      type="button"
+      data-spawns-new-chat={spawnsNewChat ? "true" : "false"}
+    >
+      branch-picker
+    </button>
+  ),
 }));
 
 import { ChatModeRowPure } from "./chat-mode-row";
@@ -58,17 +65,20 @@ const BRANCH_PILL_PROPS = {
 } as const;
 
 describe("BranchPill", () => {
-  it("renders the lock chip when locked=true", () => {
-    const { getByTestId } = renderWithQueryClient(
+  it("opens picks/creates in a new chat when locked=true", () => {
+    const { getByRole } = renderWithQueryClient(
       <BranchPill {...BRANCH_PILL_PROPS} locked={true} />,
     );
-    expect(getByTestId("branch-picker-locked")).toBeInTheDocument();
+    expect(getByRole("button")).toHaveAttribute("data-spawns-new-chat", "true");
   });
 
-  it("renders BranchPicker (a button) when locked=false", () => {
+  it("switches in place when locked=false", () => {
     const { getByRole } = renderWithQueryClient(
       <BranchPill {...BRANCH_PILL_PROPS} locked={false} />,
     );
-    expect(getByRole("button")).toBeInTheDocument();
+    expect(getByRole("button")).toHaveAttribute(
+      "data-spawns-new-chat",
+      "false",
+    );
   });
 });
