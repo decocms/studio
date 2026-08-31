@@ -4,6 +4,7 @@ import {
   buildJql,
   isUnchanged,
   rescanContinues,
+  rewritesSprint,
   rewritesStatus,
   runTruncated,
   vanishedLinks,
@@ -223,6 +224,36 @@ describe("runTruncated", () => {
  * holding one of Studio's lanes while the columns are suddenly the tracker's,
  * and a card nobody touched in Jira would render nowhere at all.
  */
+describe("rewritesSprint", () => {
+  const rewrites = (
+    lastSeenJiraSprintId: string | null,
+    jiraSprintId: string | null,
+  ) => rewritesSprint({ lastSeenJiraSprintId, jiraSprintId });
+
+  it("writes when Jira moved the issue to another sprint", () => {
+    expect(rewrites("41", "42")).toBe(true);
+  });
+
+  it("writes when Jira moved the issue out of every sprint", () => {
+    expect(rewrites("42", null)).toBe(true);
+  });
+
+  it("writes when Jira pulled a backlog issue into a sprint", () => {
+    expect(rewrites(null, "42")).toBe(true);
+  });
+
+  /**
+   * The whole point. Someone pulls a card into the sprint in Studio, the push
+   * records its target on the link, and the next tick reads Jira agreeing.
+   * Writing here would be a no-op at best; before the push lands it would undo
+   * the person who moved the card.
+   */
+  it("leaves the card alone when Jira agrees with what we last set", () => {
+    expect(rewrites("42", "42")).toBe(false);
+    expect(rewrites(null, null)).toBe(false);
+  });
+});
+
 describe("rewritesStatus", () => {
   const columns = new Set(["BACKLOG", "Fazendo", "Code Review"]);
 

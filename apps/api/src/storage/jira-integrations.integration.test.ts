@@ -201,6 +201,7 @@ describe("linked issues still on the board", () => {
       jiraIssueKey: `EX-${issueId}`,
       jiraUpdatedAt: new Date(),
       jiraStatus: "BACKLOG",
+      jiraSprintId: null,
     });
     return item;
   }

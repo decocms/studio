@@ -36,7 +36,14 @@ import {
  * links.
  */
 const LOGGED_FIELDS: {
-  field: "status" | "assigneeId" | "priority" | "dueDate" | "title" | "type";
+  field:
+    | "status"
+    | "assigneeId"
+    | "priority"
+    | "dueDate"
+    | "title"
+    | "type"
+    | "sprintId";
   action: TaskBoardActivityAction;
 }[] = [
   { field: "status", action: "status_changed" },
@@ -45,6 +52,7 @@ const LOGGED_FIELDS: {
   { field: "type", action: "type_changed" },
   { field: "dueDate", action: "due_date_changed" },
   { field: "title", action: "title_changed" },
+  { field: "sprintId", action: "sprint_changed" },
 ];
 
 /**
@@ -63,6 +71,7 @@ const UPDATABLE_FIELDS = [
   "repo",
   "dueDate",
   "sortOrder",
+  "sprintId",
   "tagIds",
 ] as const;
 
@@ -215,6 +224,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
+    /** Move the card to this sprint, or null for the backlog. On a card linked
+     *  to a tracker this is pushed there, so pulling one into the sprint here
+     *  is the same act as pulling it there. */
+    sprintId: z.string().nullable().optional(),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
@@ -248,6 +261,17 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
           "https://github.com/<owner>/<repo>/pull/<number>)",
       );
+    }
+
+    // Checked here rather than left to the foreign key: an unknown id would
+    // otherwise surface as `violates foreign key constraint
+    // "task_board_items_sprint_id_fkey"`, which names our schema at a caller
+    // who asked a reasonable question. Null is the backlog and always valid.
+    if (input.sprintId) {
+      const sprints = await ctx.storage.sprints.listByOrg(organizationId);
+      if (!sprints.some((sprint) => sprint.id === input.sprintId)) {
+        throw new Error("sprintId is not a sprint on this board");
+      }
     }
 
     if (input.assigneeId) {
@@ -404,6 +428,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
+          sprintId: input.sprintId,
         },
         getUserId(ctx)!,
       );

@@ -16,6 +16,7 @@ import { buildOrgContext } from "@/tools/task-board/org-context";
 import type { Database, TaskBoardItem } from "@/storage/types";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { TaskBoardStorage } from "@/storage/task-board";
+import { SprintStorage } from "@/storage/sprints";
 import { CredentialVault } from "@/encryption/credential-vault";
 import type { StudioContext } from "@/core/studio-context";
 import { JIRA_PUSH_QUEUE } from "@/dispatch-queue/queue-names";
@@ -65,6 +66,10 @@ function storageFromRuntime(): JiraIntegrationStorage {
 
 function taskBoardFromRuntime(): TaskBoardStorage {
   return new TaskBoardStorage(requireRuntime().db);
+}
+
+function sprintsFromRuntime(): SprintStorage {
+  return new SprintStorage(requireRuntime().db);
 }
 
 /** One integration, folded to a result — the step body must never throw.
@@ -411,6 +416,115 @@ async function executeStatusTransition(
   await storage.touchLink(params.itemId, { jiraStatus: plan.targetName });
 }
 
+/** No sprint snapshot on purpose, same as `JiraStatusPushParams` — the
+ *  workflow reads the card's current sprint. */
+interface JiraSprintPushParams {
+  organizationId: string;
+  itemId: string;
+}
+
+interface SprintMovePlan {
+  jiraIssueId: string;
+  jiraIssueKey: string;
+  /** Jira sprint id to put the issue in, or null for the backlog. */
+  targetSprintId: string | null;
+}
+
+/**
+ * Step 1: plan the move. Null = nothing to do — integration off, card
+ * unlinked, the card's sprint was never mirrored from Jira, or the issue is
+ * already where the card says.
+ */
+async function resolveSprintMove(
+  params: JiraSprintPushParams,
+): Promise<SprintMovePlan | null> {
+  const storage = storageFromRuntime();
+  const integration = await storage.getByOrg(params.organizationId);
+  if (!integration?.enabled) return null;
+  const link = await storage.getLinkByItemId(
+    params.itemId,
+    params.organizationId,
+  );
+  if (!link) return null;
+  // The card's CURRENT sprint, never one captured at enqueue time: the enqueue
+  // runs after an await, so two quick moves can reach the queue out of order
+  // and the stale leg would put the issue back and stick — the pull won't undo
+  // it, because Jira then agrees with `jira_sprint_id`.
+  const item = await taskBoardFromRuntime().getById(
+    params.itemId,
+    params.organizationId,
+  );
+  if (!item) return null;
+  const targetSprintId = item.sprintId
+    ? await sprintsFromRuntime().jiraIdFor(params.organizationId, item.sprintId)
+    : null;
+  // A local-only sprint has no Jira id, and posting the card into the backlog
+  // instead would be inventing a move nobody asked for.
+  if (item.sprintId && targetSprintId === null) {
+    console.warn(
+      `[jira] ${link.jiraIssueKey} is in a sprint that did not come from Jira — not pushing`,
+    );
+    return null;
+  }
+  if (link.jiraSprintId === targetSprintId) return null;
+  return {
+    jiraIssueId: link.jiraIssueId,
+    jiraIssueKey: link.jiraIssueKey,
+    targetSprintId,
+  };
+}
+
+/** Step 2: execute it. Re-checks the link first so a retry after a
+ *  crash-past-the-POST is a no-op instead of a second move. */
+async function executeSprintMove(
+  params: JiraSprintPushParams,
+  plan: SprintMovePlan,
+): Promise<void> {
+  const storage = storageFromRuntime();
+  const integration = await storage.getByOrg(params.organizationId);
+  if (!integration?.enabled) return;
+  const link = await storage.getLinkByItemId(
+    params.itemId,
+    params.organizationId,
+  );
+  if (!link || link.jiraSprintId === plan.targetSprintId) return;
+  const client = new JiraClient(
+    integration.siteUrl,
+    integration.email,
+    integration.apiToken,
+  );
+  // A crash between the POST below and the `touchLink` that records it leaves
+  // the issue moved but the link stale, so ask Jira where the issue actually
+  // is before pushing again.
+  const current = await client.getIssueSprintId(plan.jiraIssueId);
+  if (current !== plan.targetSprintId) {
+    if (plan.targetSprintId === null) {
+      await client.moveIssueToBacklog(plan.jiraIssueId);
+    } else {
+      await client.addIssueToSprint(plan.targetSprintId, plan.jiraIssueId);
+    }
+  }
+  await storage.touchLink(params.itemId, {
+    jiraSprintId: plan.targetSprintId,
+  });
+}
+
+async function jiraSprintPushWorkflowFn(
+  params: JiraSprintPushParams,
+): Promise<void> {
+  const plan = await DBOS.runStep(() => resolveSprintMove(params), {
+    name: "resolveSprintMove",
+    retriesAllowed: true,
+    maxAttempts: 3,
+  });
+  if (!plan) return;
+  await DBOS.runStep(() => executeSprintMove(params, plan), {
+    name: "executeSprintMove",
+    retriesAllowed: true,
+    maxAttempts: 3,
+  });
+}
+
 async function jiraStatusPushWorkflowFn(
   params: JiraStatusPushParams,
 ): Promise<void> {
@@ -431,6 +545,7 @@ let registeredWorkflow: typeof jiraSyncWorkflowFn | null = null;
 let registeredCommentPushWorkflow: typeof jiraCommentPushWorkflowFn | null =
   null;
 let registeredStatusPushWorkflow: typeof jiraStatusPushWorkflowFn | null = null;
+let registeredSprintPushWorkflow: typeof jiraSprintPushWorkflowFn | null = null;
 
 /**
  * Mirror a board card's status onto its linked Jira issue — called from
@@ -460,6 +575,41 @@ export function maybeEnqueueJiraStatusPush(
   })().catch((err) => {
     console.warn(
       `[jira] status push enqueue failed for ${item.id}:`,
+      err instanceof Error ? err.message : err,
+    );
+  });
+}
+
+/**
+ * Mirror a board card's sprint onto its linked Jira issue — same funnel and
+ * same cheap declines as {@link maybeEnqueueJiraStatusPush}, so pulling a card
+ * out of the backlog in Studio reaches Jira.
+ *
+ * Without this the move is undone: the pull only leaves a card's sprint alone
+ * while Jira's sprint matches what we last saw, and nothing else would ever
+ * make Jira agree.
+ */
+export function maybeEnqueueJiraSprintPush(
+  organizationId: string,
+  item: TaskBoardItem,
+): void {
+  if (item.updatedBy === JIRA_SYNC_ACTOR) return;
+  if (!registeredSprintPushWorkflow || !runtime) return;
+  const workflow = registeredSprintPushWorkflow;
+  void (async () => {
+    const link = await storageFromRuntime().getLinkByItemId(
+      item.id,
+      organizationId,
+    );
+    if (!link) return;
+    await DBOS.startWorkflow(workflow, {
+      queueName: JIRA_PUSH_QUEUE,
+      workflowID: `jira-sprint:${item.id}:${item.sprintId ?? "backlog"}:${Date.parse(item.updatedAt)}`,
+      enqueueOptions: { queuePartitionKey: organizationId },
+    })({ organizationId, itemId: item.id });
+  })().catch((err) => {
+    console.warn(
+      `[jira] sprint push enqueue failed for ${item.id}:`,
       err instanceof Error ? err.message : err,
     );
   });
@@ -518,5 +668,9 @@ export function registerJiraSyncWorkflow(): void {
   registeredStatusPushWorkflow = DBOS.registerWorkflow(
     jiraStatusPushWorkflowFn,
     { name: "jiraStatusPushWorkflow" },
+  );
+  registeredSprintPushWorkflow = DBOS.registerWorkflow(
+    jiraSprintPushWorkflowFn,
+    { name: "jiraSprintPushWorkflow" },
   );
 }

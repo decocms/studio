@@ -211,6 +211,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.deleteTask": "Delete",
   "taskBoard.taskDialog.setPriorityButton": "Set priority",
   "taskBoard.taskDialog.someoneLabel": "someone",
+  "taskBoard.taskDialog.sprintGoneLabel": "a sprint that is gone",
   "taskBoard.taskDialog.startedByLabel": "started by",
   "taskBoard.taskDialog.reviewerLabel": "Reviewer",
   // The two-reviewer era's names, still on older cards' timelines.

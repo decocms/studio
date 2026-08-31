@@ -20,6 +20,7 @@ import {
   findSprintFieldIds,
   type JiraSprintRef,
   parseSprintRefs,
+  pickIssueSprint,
   stripOrderBy,
 } from "./sprint-field";
 import {
@@ -562,6 +563,48 @@ export class JiraClient {
         method: "POST",
         body: JSON.stringify({ transition: { id: transitionId } }),
       },
+      { idempotent: false },
+    );
+  }
+
+  /**
+   * The sprint an issue currently sits in, or null for the backlog.
+   *
+   * Read before a sprint push for the reason `getStatusName` is: a crash
+   * between the POST and the bookkeeping leaves Jira right and our link stale,
+   * so the retry has to ask the world rather than re-POST blind.
+   */
+  async getIssueSprintId(issueId: string): Promise<string | null> {
+    const fieldIds = await this.sprintFieldIds();
+    if (fieldIds.length === 0) return null;
+    const issue = await this.request<{ fields?: Record<string, unknown> }>(
+      `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=${fieldIds.join(",")}`,
+    );
+    const fields = issue.fields ?? {};
+    // Only the issue's own project's Sprint field is populated; the rest come
+    // back null. Same first-non-empty rule `searchIssues` uses.
+    const refs =
+      fieldIds
+        .map((field) => parseSprintRefs(fields[field]))
+        .find((found) => found.length > 0) ?? [];
+    return pickIssueSprint(refs)?.id ?? null;
+  }
+
+  /** Put an issue into a sprint. Jira moves it out of whatever sprint or
+   *  backlog it was in, so this is the whole of "pull into the sprint". */
+  async addIssueToSprint(sprintId: string, issueId: string): Promise<void> {
+    await this.request<void>(
+      `/rest/agile/1.0/sprint/${encodeURIComponent(sprintId)}/issue`,
+      { method: "POST", body: JSON.stringify({ issues: [issueId] }) },
+      { idempotent: false },
+    );
+  }
+
+  /** Take an issue out of every sprint, back to the board's backlog. */
+  async moveIssueToBacklog(issueId: string): Promise<void> {
+    await this.request<void>(
+      "/rest/agile/1.0/backlog/issue",
+      { method: "POST", body: JSON.stringify({ issues: [issueId] }) },
       { idempotent: false },
     );
   }

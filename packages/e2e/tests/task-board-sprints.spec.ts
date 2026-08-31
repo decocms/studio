@@ -21,9 +21,14 @@ interface BoardList {
 
 /**
  * Sprints are mirrored from the tracker the board syncs with, never authored
- * here — so what this tier can assert is the shape of that contract and the
- * fact that nothing in Studio can write a card into a sprint. An org with no
- * Jira connected has no sprints, which is exactly the state under test.
+ * here. Which sprint a card is IN is a different question, and one Studio now
+ * answers: pulling a card out of the backlog is a thing a person does here and
+ * the sync pushes onward.
+ *
+ * An org with no Jira connected has no sprints, which is exactly the state
+ * under test — so what this tier reaches is the shape of the contract and the
+ * refusals. That a real sprint sticks is the sync's own ground, covered by
+ * `rewritesSprint` and the push workflow.
  */
 test.describe("task board sprints", () => {
   test("the board read carries a sprint list, and every card names its sprint", async ({
@@ -49,9 +54,9 @@ test.describe("task board sprints", () => {
     expect(listed?.sprintId).toBe(null);
   });
 
-  /** Both the old input name and the column's own: accepting either would let a
-   *  card point at a sprint the tracker never put it in. */
-  test("a card's sprint cannot be set from Studio, however it is spelled", async ({
+  /** A card is born in the backlog. Create takes no sprint, under either the
+   *  old input name or the column's own: planning is a move, not a birth. */
+  test("a card cannot be created straight into a sprint", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -65,14 +70,60 @@ test.describe("task board sprints", () => {
     );
     expect(created.sprintId).toBe(null);
 
-    const { item: updated } = await call<{ item: TaskBoardItem }>(
-      "TASK_BOARD_ITEM_UPDATE",
-      { id: created.id, sprint: 5, sprintId: "sprint_made_up" },
-    );
-    expect(updated.sprintId).toBe(null);
-
     const board = await call<BoardList>("TASK_BOARD_ITEM_LIST", {});
     expect(board.items.find((i) => i.id === created.id)?.sprintId).toBe(null);
+  });
+
+  /**
+   * Inverted from "a card's sprint cannot be set from Studio". It can now, and
+   * that is the point of the backlog screen. What must not happen is a card
+   * pointing at a sprint that does not exist, and the refusal has to say so in
+   * words rather than leak `violates foreign key constraint
+   * "task_board_items_sprint_id_fkey"` at whoever asked.
+   */
+  test("a sprint this board does not have is refused, in words", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const call = <T>(name: string, args: unknown) =>
+      callSelfMcpTool<T>(request, orgSlug, name, args);
+
+    const { item } = await call<{ item: TaskBoardItem }>(
+      "TASK_BOARD_ITEM_CREATE",
+      { title: "Waiting to be planned" },
+    );
+
+    await expect(
+      call("TASK_BOARD_ITEM_UPDATE", {
+        id: item.id,
+        sprintId: "sprint_made_up",
+      }),
+    ).rejects.toThrow(/not a sprint on this board/);
+
+    const board = await call<BoardList>("TASK_BOARD_ITEM_LIST", {});
+    expect(board.items.find((i) => i.id === item.id)?.sprintId).toBe(null);
+  });
+
+  /** Null is the backlog, and always a place a card may go — it needs no
+   *  sprint to exist, so it works on a board that has none. */
+  test("sending a card back to the backlog is always allowed", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const call = <T>(name: string, args: unknown) =>
+      callSelfMcpTool<T>(request, orgSlug, name, args);
+
+    const { item } = await call<{ item: TaskBoardItem }>(
+      "TASK_BOARD_ITEM_CREATE",
+      { title: "Already in the backlog" },
+    );
+    const { item: updated } = await call<{ item: TaskBoardItem }>(
+      "TASK_BOARD_ITEM_UPDATE",
+      { id: item.id, sprintId: null },
+    );
+    expect(updated.sprintId).toBe(null);
   });
 
   /** The cadence write used to replace a stored `sprint_config` whole. There is
