@@ -403,6 +403,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.copy": "Copiar",
   "mainPanelTabs.analyticsTab.copied": "Copiado",
   "mainPanelTabs.analyticsTab.dismiss": "Dispensar",
+  "mainPanelTabs.analyticsTab.liveHint": "Ao vivo · atualiza a cada 5s",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Biblioteca",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Visualização principal",

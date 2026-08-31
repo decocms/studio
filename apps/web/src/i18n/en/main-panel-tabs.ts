@@ -387,6 +387,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.copy": "Copy",
   "mainPanelTabs.analyticsTab.copied": "Copied",
   "mainPanelTabs.analyticsTab.dismiss": "Dismiss",
+  "mainPanelTabs.analyticsTab.liveHint": "Live · refreshes every 5s",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Library",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Main view",

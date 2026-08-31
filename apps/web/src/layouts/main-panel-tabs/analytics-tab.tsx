@@ -781,17 +781,24 @@ function ViewSection({
   const t = useT();
   const [open, setOpen] = useState(Boolean(defaultOpen));
 
+  // The live view is "now": it ignores the range selector (a short window) and
+  // auto-refreshes while the section is open, so it reads as a live feed rather
+  // than a snapshot.
+  const isLive = view === "live";
+  const effectiveRange = isLive ? "5m" : range;
+
   const query = useQuery({
-    queryKey: KEYS.analyticsData(orgSlug, site, view, range),
+    queryKey: KEYS.analyticsData(orgSlug, site, view, effectiveRange),
     queryFn: () =>
       fetchJson(
         `${base}/analytics/data?view=${encodeURIComponent(
           view,
-        )}&range=${encodeURIComponent(range)}`,
+        )}&range=${encodeURIComponent(effectiveRange)}`,
       ),
     enabled: open,
     retry: false,
-    staleTime: 30_000,
+    staleTime: isLive ? 0 : 30_000,
+    refetchInterval: isLive && open ? 5_000 : false,
   });
 
   const response = (query.data ?? {}) as AnalyticsDataResponse;
@@ -810,7 +817,18 @@ function ViewSection({
             : t("mainPanelTabs.analyticsTab.dataLoadError")}
         </p>
       ) : response.data ? (
-        <ViewPanels payload={response.data} t={t} />
+        <div className="flex flex-col gap-4">
+          {isLive && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--chart-1)] opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-[var(--chart-1)]" />
+              </span>
+              {t("mainPanelTabs.analyticsTab.liveHint")}
+            </div>
+          )}
+          <ViewPanels payload={response.data} t={t} />
+        </div>
       ) : (
         <p className="text-sm text-muted-foreground">
           {t("mainPanelTabs.analyticsTab.dataEmpty")}
