@@ -127,6 +127,18 @@ interface BuildLogs {
 interface EnvVar {
   name: string;
   value: string;
+  /** Build phase: "runtime" (default, injected onto the running site) or "build"
+   *  (passed to the build only). Absent ⇒ runtime. */
+  scope?: "runtime" | "build";
+}
+
+/** True when two vars share identity (name + effective scope). A name may exist
+ *  once per scope, so edit/delete must match on both. */
+function sameEnvVar(
+  a: EnvVar,
+  b: { name: string; scope: "runtime" | "build" },
+) {
+  return a.name === b.name && (a.scope ?? "runtime") === b.scope;
 }
 /** Secrets are listed by NAME only — values are write-only and never returned.
  *  `origin`: "control-plane" (in the CP store) or "worker" (bound on the CF
@@ -870,9 +882,16 @@ function EnvSection({
   const queryClient = useQueryClient();
   const [addName, setAddName] = useState("");
   const [addValue, setAddValue] = useState("");
-  const [editingName, setEditingName] = useState<string | null>(null);
+  const [addScope, setAddScope] = useState<"runtime" | "build">("runtime");
+  const [editingKey, setEditingKey] = useState<{
+    name: string;
+    scope: "runtime" | "build";
+  } | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    name: string;
+    scope: "runtime" | "build";
+  } | null>(null);
 
   // The control-plane PUT is a REPLACE-SET: the body is the complete desired
   // list, so every add/edit/delete recomputes it from `envVars` and PUTs.
@@ -893,30 +912,41 @@ function EnvSection({
       toast.error(t("mainPanelTabs.hostingTab.errorEnvNameRequired"));
       return;
     }
-    if (envVars.some((v) => v.name === name)) {
+    // A name may exist once per scope, so the dup check is per (name, scope).
+    if (envVars.some((v) => sameEnvVar(v, { name, scope: addScope }))) {
       toast.error(t("mainPanelTabs.hostingTab.errorEnvNameDuplicate"));
       return;
     }
-    envMutation.mutate([...envVars, { name, value: addValue }], {
-      onSuccess: () => {
-        setAddName("");
-        setAddValue("");
+    envMutation.mutate(
+      [...envVars, { name, value: addValue, scope: addScope }],
+      {
+        onSuccess: () => {
+          setAddName("");
+          setAddValue("");
+          setAddScope("runtime");
+        },
       },
-    });
+    );
   };
 
-  const handleSaveEdit = (name: string) => {
+  const handleSaveEdit = (target: {
+    name: string;
+    scope: "runtime" | "build";
+  }) => {
     envMutation.mutate(
-      envVars.map((v) => (v.name === name ? { name, value: editValue } : v)),
-      { onSuccess: () => setEditingName(null) },
+      envVars.map((v) =>
+        sameEnvVar(v, target)
+          ? { name: target.name, value: editValue, scope: target.scope }
+          : v,
+      ),
+      { onSuccess: () => setEditingKey(null) },
     );
   };
 
   const handleConfirmDelete = () => {
-    const name = deleteTarget;
-    if (!name) return;
+    if (!deleteTarget) return;
     envMutation.mutate(
-      envVars.filter((v) => v.name !== name),
+      envVars.filter((v) => !sameEnvVar(v, deleteTarget)),
       { onSuccess: () => setDeleteTarget(null) },
     );
   };
@@ -943,64 +973,87 @@ function EnvSection({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {envVars.map((e) => (
-                  <TableRow key={e.name}>
-                    <TableCell className="font-mono text-xs align-middle">
-                      {e.name}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground max-w-[360px] align-middle">
-                      {editingName === e.name ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={editValue}
-                            onChange={(ev) => setEditValue(ev.target.value)}
-                            className="h-7 font-mono text-xs"
-                          />
-                          <Button
-                            size="xs"
-                            onClick={() => handleSaveEdit(e.name)}
-                            disabled={envMutation.isPending}
+                {envVars.map((e) => {
+                  const escope = e.scope === "build" ? "build" : "runtime";
+                  const isEditing =
+                    editingKey?.name === e.name && editingKey?.scope === escope;
+                  return (
+                    <TableRow key={`${e.name}:${escope}`}>
+                      <TableCell className="font-mono text-xs align-middle">
+                        <span className="inline-flex items-center gap-2">
+                          {e.name}
+                          <Badge
+                            variant={
+                              escope === "build" ? "outline" : "secondary"
+                            }
+                            className="font-sans text-[10px] capitalize"
                           >
-                            {t("mainPanelTabs.hostingTab.save")}
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => setEditingName(null)}
-                            disabled={envMutation.isPending}
+                            {escope === "build"
+                              ? t("mainPanelTabs.hostingTab.secretScopeBuild")
+                              : t(
+                                  "mainPanelTabs.hostingTab.secretScopeRuntime",
+                                )}
+                          </Badge>
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground max-w-[360px] align-middle">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={editValue}
+                              onChange={(ev) => setEditValue(ev.target.value)}
+                              className="h-7 font-mono text-xs"
+                            />
+                            <Button
+                              size="xs"
+                              onClick={() =>
+                                handleSaveEdit({ name: e.name, scope: escope })
+                              }
+                              disabled={envMutation.isPending}
+                            >
+                              {t("mainPanelTabs.hostingTab.save")}
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => setEditingKey(null)}
+                              disabled={envMutation.isPending}
+                            >
+                              {t("mainPanelTabs.hostingTab.cancel")}
+                            </Button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingKey({ name: e.name, scope: escope });
+                              setEditValue(e.value);
+                            }}
+                            className="block w-full truncate text-left hover:underline"
+                            aria-label={t("mainPanelTabs.hostingTab.editValue")}
                           >
-                            {t("mainPanelTabs.hostingTab.cancel")}
-                          </Button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingName(e.name);
-                            setEditValue(e.value);
-                          }}
-                          className="block w-full truncate text-left hover:underline"
-                          aria-label={t("mainPanelTabs.hostingTab.editValue")}
-                        >
-                          {e.value}
-                        </button>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right align-middle">
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={t(
-                          "mainPanelTabs.hostingTab.deleteVariable",
+                            {e.value}
+                          </button>
                         )}
-                        onClick={() => setDeleteTarget(e.name)}
-                        disabled={envMutation.isPending}
-                      >
-                        <Trash01 className="size-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="text-right align-middle">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={t(
+                            "mainPanelTabs.hostingTab.deleteVariable",
+                          )}
+                          onClick={() =>
+                            setDeleteTarget({ name: e.name, scope: escope })
+                          }
+                          disabled={envMutation.isPending}
+                        >
+                          <Trash01 className="size-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -1019,6 +1072,25 @@ function EnvSection({
               onChange={(e) => setAddValue(e.target.value)}
               className="h-8 flex-1 font-mono text-xs"
             />
+            <Select
+              value={addScope}
+              onValueChange={(v) =>
+                setAddScope(v === "build" ? "build" : "runtime")
+              }
+              disabled={envMutation.isPending}
+            >
+              <SelectTrigger className="h-8 w-[110px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="runtime">
+                  {t("mainPanelTabs.hostingTab.secretScopeRuntime")}
+                </SelectItem>
+                <SelectItem value="build">
+                  {t("mainPanelTabs.hostingTab.secretScopeBuild")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               size="sm"
               aria-label={t("mainPanelTabs.hostingTab.addVariable")}
@@ -1069,7 +1141,7 @@ function EnvSection({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t("mainPanelTabs.hostingTab.confirmDeleteVariableDescription", {
-                name: deleteTarget ?? "",
+                name: deleteTarget?.name ?? "",
               })}
             </AlertDialogDescription>
           </AlertDialogHeader>
