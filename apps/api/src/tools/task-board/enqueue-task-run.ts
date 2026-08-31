@@ -19,7 +19,7 @@ import {
 import type { TaskRepo } from "./claude-code-task-run";
 
 /**
- * Fold the org's task system prompt (Settings → Tasks) into one run's persona.
+ * Fold the board's system prompt (Settings → Tasks) into one run's persona.
  *
  * Sandbox harnesses APPEND `agent.instructions` to the harness system prompt,
  * which is exactly what this setting is; hosted Decopilot has no such hook —
@@ -110,13 +110,16 @@ export async function enqueueAgentRunForTask(
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);
 
-  const orgPrompt = (
-    await ctx.storage.organizationSettings.get(organizationId).catch(() => null)
-  )?.task_system_prompt?.trim();
+  // The board's standing instructions for this card — the org-wide prompt plus
+  // its column's, if either is set. Best-effort: an unreadable row costs the
+  // run its house rules, never the dispatch.
+  const boardPrompt = await ctx.storage.taskBoardPrompts
+    .promptFor(organizationId, task.status)
+    .catch(() => undefined);
   const sandboxed = harnessRunsInSandbox(harnessId);
   const { agent, prompt } = withOrgTaskPrompt(
     { agent: opts.agent, prompt: opts.prompt },
-    orgPrompt,
+    boardPrompt,
     sandboxed,
   );
 

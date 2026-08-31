@@ -17,15 +17,15 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-section";
 import {
-  useSetTaskSystemPrompt,
-  useTaskSystemPrompt,
-} from "@/hooks/use-organization-settings";
+  useOrgTaskBoardPrompt,
+  useSetOrgTaskBoardPrompt,
+} from "@/hooks/use-task-board-prompts";
 import { useT } from "@/i18n/use-t.ts";
 
 export function TaskSystemPromptSettings() {
   const t = useT();
-  const { prompt, isPending } = useTaskSystemPrompt();
-  const save = useSetTaskSystemPrompt();
+  const { prompt, isPending } = useOrgTaskBoardPrompt();
+  const save = useSetOrgTaskBoardPrompt();
 
   // Local draft so typing isn't a write per keystroke. Re-seeded whenever the
   // saved value changes underneath (another member's edit, the first load) —

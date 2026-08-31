@@ -257,6 +257,9 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_AUTOMATION_LIST",
   "TASK_BOARD_AUTOMATION_UPSERT",
   "TASK_BOARD_AUTOMATION_DELETE",
+  "TASK_BOARD_PROMPT_LIST",
+  "TASK_BOARD_PROMPT_UPSERT",
+  "TASK_BOARD_PROMPT_DELETE",
   "TASK_BOARD_COLUMN_ROLE_SET",
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_ITEM_PR_LINK",
@@ -1212,6 +1215,24 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_PROMPT_LIST",
+    description:
+      "List the instructions appended to the system prompt of the board's runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_UPSERT",
+    description:
+      "Set the instructions appended to the system prompt of the board's runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_DELETE",
+    description: "Clear a board system prompt",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
     name: "TASK_BOARD_COLUMN_ROLE_SET",
     description: "Say what one of the board's columns means to Studio",
     category: "Task Board",
@@ -1424,6 +1445,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_AUTOMATION_LIST",
       "TASK_BOARD_AUTOMATION_UPSERT",
       "TASK_BOARD_AUTOMATION_DELETE",
+      "TASK_BOARD_PROMPT_LIST",
+      "TASK_BOARD_PROMPT_UPSERT",
+      "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_COLUMN_ROLE_SET",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_ITEM_PR_LINK",

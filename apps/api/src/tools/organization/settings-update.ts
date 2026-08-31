@@ -8,7 +8,6 @@ import {
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
 } from "@decocms/shared/organization/schema";
-import { TASK_SYSTEM_PROMPT_MAX_LENGTH } from "@decocms/shared/task-board";
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
@@ -43,14 +42,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .describe(
         "Virtual MCP id the org lands on instead of the Super Agent. Pass null to clear.",
       ),
-    task_system_prompt: z
-      .string()
-      .max(TASK_SYSTEM_PROMPT_MAX_LENGTH)
-      .nullable()
-      .optional()
-      .describe(
-        "Instructions appended to the system prompt of every agent run dispatched from a task board card. Pass null (or an empty string) to clear.",
-      ),
   }),
 
   outputSchema: z.object({
@@ -62,7 +53,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
-    task_system_prompt: z.string().nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -90,12 +80,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         default_home_agents: input.default_home_agents,
         flags: input.flags,
         main_agent_id: input.main_agent_id,
-        // A cleared textarea posts "", which must clear the column rather than
-        // store a blank string the prompt builder would then have to trim.
-        task_system_prompt:
-          input.task_system_prompt === undefined
-            ? undefined
-            : input.task_system_prompt?.trim() || null,
       },
     );
 

@@ -31,7 +31,6 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
-    task_system_prompt: z.string().nullable().optional(),
     createdAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
   }),

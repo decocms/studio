@@ -52,7 +52,6 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
-  task_system_prompt: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -66,7 +65,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   default_home_agents: null,
   flags: null,
   main_agent_id: null,
-  task_system_prompt: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -151,7 +149,6 @@ type OrgSettingsUpdateInput = Partial<
     | "default_home_agents"
     | "flags"
     | "main_agent_id"
-    | "task_system_prompt"
   >
 >;
 
@@ -452,30 +449,5 @@ export function useIsRegistryEnabled(): (connectionId: string) => boolean {
     const entry = registryConfig.registries[connectionId];
     if (!entry) return connectionId === decoStoreId;
     return entry.enabled;
-  };
-}
-
-/**
- * The org's task system prompt — appended to the system prompt of every agent
- * run dispatched from a board card. `isPending` so the textarea doesn't render
- * empty then jump once the row loads.
- */
-export function useTaskSystemPrompt(): {
-  prompt: string;
-  isPending: boolean;
-} {
-  const { data, isPending } = useOrganizationSettings(
-    (s) => s.task_system_prompt ?? "",
-  );
-  return { prompt: data ?? "", isPending };
-}
-
-/** Writer for the org's task system prompt. Empty string clears it. */
-export function useSetTaskSystemPrompt() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (prompt: string, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ task_system_prompt: prompt }, options),
   };
 }

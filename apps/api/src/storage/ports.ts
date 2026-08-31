@@ -348,7 +348,6 @@ export interface OrganizationSettingsStoragePort {
         | "default_home_agents"
         | "flags"
         | "main_agent_id"
-        | "task_system_prompt"
       >
     >,
   ): Promise<OrganizationSettings>;

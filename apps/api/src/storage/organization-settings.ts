@@ -46,7 +46,6 @@ export class OrganizationSettingsStorage
       >(record.default_home_agents),
       flags: parseJsonColumn<OrganizationSettings["flags"]>(record.flags),
       main_agent_id: record.main_agent_id ?? null,
-      task_system_prompt: record.task_system_prompt ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -64,7 +63,6 @@ export class OrganizationSettingsStorage
         | "default_home_agents"
         | "flags"
         | "main_agent_id"
-        | "task_system_prompt"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -96,7 +94,6 @@ export class OrganizationSettingsStorage
         default_home_agents: defaultHomeAgentsJson,
         flags: flagsJson,
         main_agent_id: data?.main_agent_id ?? null,
-        task_system_prompt: data?.task_system_prompt ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -118,10 +115,6 @@ export class OrganizationSettingsStorage
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
           main_agent_id: data?.main_agent_id,
-          // Same nullable-text rule as `main_agent_id`: explicit `null` (or
-          // `""` from a cleared textarea, normalized to null by the tool)
-          // clears it; absent skips the column.
-          task_system_prompt: data?.task_system_prompt,
           updatedAt: now,
         }),
       )
@@ -139,7 +132,6 @@ export class OrganizationSettingsStorage
         default_home_agents: data?.default_home_agents ?? null,
         flags: data?.flags ?? null,
         main_agent_id: data?.main_agent_id ?? null,
-        task_system_prompt: data?.task_system_prompt ?? null,
         createdAt: now,
         updatedAt: now,
       };

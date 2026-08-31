@@ -477,6 +477,8 @@ export const KEYS = {
     [locator, "member-tags", memberId] as const,
 
   // Automations (scoped by organization, optionally by project)
+  taskBoardPrompts: (organizationId: string) =>
+    ["task-board-prompts", organizationId] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>
