@@ -388,6 +388,103 @@ function fmtMetric(key: string, value: unknown): string {
   return formatNumber(n);
 }
 
+/** Friendly, product titles for the payload's panel keys — so a breakdown reads
+ *  as "Top pages" / "Referrers" rather than the raw column name. Falls back to a
+ *  humanized key. */
+const PANEL_TITLES: Record<string, string> = {
+  kpis: "Overview",
+  series: "Traffic over time",
+  funnel: "Funnel",
+  sources: "Top sources",
+  pages: "Top pages",
+  entryPages: "Entry pages",
+  exitPages: "Exit pages",
+  devices: "Devices",
+  os: "Operating systems",
+  browser: "Browsers",
+  countries: "Countries",
+  regions: "Regions",
+  cities: "Cities",
+  channels: "Channels",
+  channelConversion: "Channel conversion",
+  campaigns: "Campaigns",
+  campaignNames: "Campaign names",
+  attribution: "Attribution",
+  products: "Top products",
+  events: "Events",
+  errors: "Errors",
+  propKeys: "Property keys",
+  propValues: "Property values",
+  scrollDepth: "Scroll depth",
+  searches: "Site searches",
+  outbound: "Outbound links",
+  downloads: "Downloads",
+  variants: "Experiment variants",
+  vitals: "Web vitals",
+  vitalsByPage: "Vitals by page",
+  liveVisitors: "Live visitors",
+  livePages: "Active pages",
+  liveFeed: "Live feed",
+  liveByMinute: "Visitors per minute",
+  usage: "Usage",
+  usageTrend: "Usage over time",
+  usageSites: "Usage by site",
+};
+
+/** Preferred order for the breakdown grid — the most useful first, then the rest
+ *  in payload order. */
+const PANEL_ORDER = [
+  "pages",
+  "sources",
+  "channels",
+  "devices",
+  "browser",
+  "os",
+  "countries",
+  "regions",
+  "cities",
+  "entryPages",
+  "exitPages",
+  "campaigns",
+  "products",
+  "events",
+  "errors",
+];
+
+function panelTitle(name: string): string {
+  return PANEL_TITLES[name] ?? humanize(name);
+}
+
+/** Within-window trend for a metric's series: the recent half vs the earlier
+ *  half, as a signed percentage. Null when there isn't enough to compare or the
+ *  baseline is zero — a "+∞%" from a zero baseline is noise, not a trend. */
+function trendPct(values: number[]): number | null {
+  if (values.length < 4) return null;
+  const mid = Math.floor(values.length / 2);
+  const older = values.slice(0, mid).reduce((a, b) => a + b, 0);
+  const recent = values.slice(mid).reduce((a, b) => a + b, 0);
+  if (older === 0) return null;
+  return ((recent - older) / older) * 100;
+}
+
+/** A small up/down trend pill. `goodDown` flips the color for metrics where a
+ *  drop is good (bounce rate). */
+function Delta({ pct, goodDown }: { pct: number; goodDown?: boolean }) {
+  const up = pct >= 0;
+  const good = goodDown ? !up : up;
+  return (
+    <span
+      className={cn(
+        "text-xs font-medium tabular-nums",
+        good ? "text-[var(--chart-2,#16a34a)]" : "text-destructive",
+      )}
+    >
+      {up ? "↑" : "↓"}
+      {Math.abs(Math.round(pct))}%
+    </span>
+  );
+}
+
 /** The KPI row: a single scalar record → a row of stat tiles. */
 // Internal/plumbing metrics that add noise to a customer KPI row.
 const KPI_HIDE = new Set(["min_sampling", "sessions_built"]);
@@ -760,9 +857,13 @@ function ViewPanels({
   const wide = classified.filter(
     (p) => p.meta.kind === "series" || p.meta.kind === "funnel",
   );
-  const grid = classified.filter(
-    (p) => p.meta.kind === "bars" || p.meta.kind === "table",
-  );
+  const grid = classified
+    .filter((p) => p.meta.kind === "bars" || p.meta.kind === "table")
+    .sort((a, b) => {
+      const ia = PANEL_ORDER.indexOf(a.name);
+      const ib = PANEL_ORDER.indexOf(b.name);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    });
 
   return (
     <div className="flex flex-col gap-4">
@@ -770,14 +871,14 @@ function ViewPanels({
         <PanelBody key={p.name} rows={p.rows} meta={p.meta} />
       ))}
       {wide.map((p) => (
-        <Card key={p.name} title={humanize(p.name)}>
+        <Card key={p.name} title={panelTitle(p.name)}>
           <PanelBody rows={p.rows} meta={p.meta} />
         </Card>
       ))}
       {grid.length > 0 && (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {grid.map((p) => (
-            <Card key={p.name} title={humanize(p.name)}>
+            <Card key={p.name} title={panelTitle(p.name)}>
               <PanelBody rows={p.rows} meta={p.meta} />
             </Card>
           ))}
@@ -830,6 +931,9 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
         {metrics.map(([k, label]) => {
           const canChart = seriesCols.includes(k);
           const active = selected === k;
+          const trend = canChart
+            ? trendPct(series.map((r) => Number(r[k]) || 0))
+            : null;
           return (
             <button
               key={k}
@@ -849,8 +953,13 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {label}
               </span>
-              <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
-                {fmtMetric(k, kpis[k])}
+              <span className="flex items-baseline gap-2">
+                <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
+                  {fmtMetric(k, kpis[k])}
+                </span>
+                {trend !== null && (
+                  <Delta pct={trend} goodDown={k === "bounce_pct"} />
+                )}
               </span>
             </button>
           );
