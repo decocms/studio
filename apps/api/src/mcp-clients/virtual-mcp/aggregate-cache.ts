@@ -28,6 +28,7 @@
  */
 
 import type { ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
+import { meter } from "../../observability";
 
 /**
  * How long an aggregate may be served without revalidation. Matches
@@ -61,6 +62,68 @@ interface Entry {
 const cache = new Map<string, Entry>();
 
 /**
+ * Instruments, registered lazily on first use.
+ *
+ * `meter` is a live binding that is a Noop until `initObservability()` swaps it
+ * in after SDK start, so an instrument captured at module load would report to
+ * the Noop forever — which is exactly the failure mode that makes a cache
+ * un-debuggable. Registering on first lookup guarantees the real meter is in
+ * place (traffic is what triggers it).
+ *
+ * What each answers:
+ * - `lookups{outcome}` — is this cache doing anything? The storage is per-pod
+ *   and prod fans a client's requests across 6 API processes, so the hit rate
+ *   is the number that decides whether the per-user key is too narrow or the
+ *   30s TTL too short.
+ * - `entries` — is the 500 cap saturating (i.e. is it evicting live entries)?
+ * - `evictions{reason}` — how much of the churn is the cap vs. genuine
+ *   invalidation vs. failed aggregations.
+ */
+let lookups: ReturnType<typeof meter.createCounter> | null = null;
+let evictions: ReturnType<typeof meter.createCounter> | null = null;
+let metricsRegistered = false;
+
+function ensureMetrics(): void {
+  if (metricsRegistered) return;
+  metricsRegistered = true;
+  try {
+    lookups = meter.createCounter("virtual_mcp.aggregate_cache.lookups", {
+      description:
+        "Virtual MCP aggregate tool-list cache lookups by outcome (hit, miss, expired)",
+      unit: "{lookups}",
+    });
+    evictions = meter.createCounter("virtual_mcp.aggregate_cache.evictions", {
+      description:
+        "Virtual MCP aggregate tool-list cache entries dropped, by reason (capacity, invalidated, failed)",
+      unit: "{entries}",
+    });
+    meter
+      .createObservableGauge("virtual_mcp.aggregate_cache.entries", {
+        description:
+          "Live entries in this pod's Virtual MCP aggregate tool-list cache",
+        unit: "{entries}",
+      })
+      .addCallback((r) => r.observe(cache.size));
+  } catch (err) {
+    console.error("[aggregate-cache] failed to register metrics:", err);
+  }
+}
+
+function recordLookup(outcome: "hit" | "miss" | "expired"): void {
+  ensureMetrics();
+  lookups?.add(1, { outcome });
+}
+
+function recordEviction(
+  reason: "capacity" | "invalidated" | "failed",
+  count = 1,
+): void {
+  if (count <= 0) return;
+  ensureMetrics();
+  evictions?.add(count, { reason });
+}
+
+/**
  * Cache key for one aggregation. Every input that can change the resulting
  * tool list has to appear here: the agent (its `selected_tools` config), the
  * acting user (per-user downstream tokens), the superuser bypass, and the exact
@@ -89,11 +152,16 @@ export function getCachedAggregate(
   key: string,
 ): Promise<ListToolsResult> | null {
   const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.at >= TTL_MS) {
-    cache.delete(key);
+  if (!entry) {
+    recordLookup("miss");
     return null;
   }
+  if (Date.now() - entry.at >= TTL_MS) {
+    cache.delete(key);
+    recordLookup("expired");
+    return null;
+  }
+  recordLookup("hit");
   return entry.value;
 }
 
@@ -109,18 +177,24 @@ export function setCachedAggregate(
   // Never cache a failure: a transient aggregation error must not pin an empty
   // tool list for the whole TTL.
   const tracked = value.catch((err: unknown) => {
-    if (cache.get(key)?.value === tracked) cache.delete(key);
+    if (cache.get(key)?.value === tracked) {
+      cache.delete(key);
+      recordEviction("failed");
+    }
     throw err;
   });
 
   cache.delete(key); // re-insert so Map order stays newest-last for eviction
   cache.set(key, { at: Date.now(), deps, value: tracked });
 
+  let evicted = 0;
   while (cache.size > MAX_ENTRIES) {
     const oldest = cache.keys().next();
     if (oldest.done) break;
     cache.delete(oldest.value);
+    evicted++;
   }
+  recordEviction("capacity", evicted);
 
   return tracked;
 }
@@ -132,9 +206,14 @@ export function setCachedAggregate(
  * effect immediately instead of at TTL.
  */
 export function invalidateAggregates(connectionId: string): void {
+  let dropped = 0;
   for (const [key, entry] of cache) {
-    if (entry.deps.includes(connectionId)) cache.delete(key);
+    if (entry.deps.includes(connectionId)) {
+      cache.delete(key);
+      dropped++;
+    }
   }
+  recordEviction("invalidated", dropped);
 }
 
 /** Drop everything. Tests only. */
