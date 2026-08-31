@@ -22,6 +22,7 @@
  */
 
 import { z } from "zod";
+import { boardFor } from "./board-handler";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth, requireOrganization } from "@/core/studio-context";
 import { extractPrFromText } from "./pr-extract";
@@ -92,6 +93,7 @@ export const TASK_BOARD_ITEM_PR_LINK = defineTool({
       await ctx.storage.taskBoard.openReviewCycleIfInProgress(
         taskBoardItemId,
         organizationId,
+        await (await boardFor(ctx, organizationId)).lanes(),
       );
       // The sweeper is what hands the card to the reviewers, and it may have
       // just claimed this card's 5-minute budget while it had no PR to look at.

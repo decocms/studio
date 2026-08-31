@@ -14,6 +14,7 @@
  */
 
 import { generateObject } from "ai";
+import { type BoardLanes, boardFor } from "./board-handler";
 import { z } from "zod";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -133,9 +134,11 @@ export async function applyBoardDecision(
     decision: BoardDecision;
     /** The card set the decision was made against (this org's), for taskId validation. */
     openCards: TaskBoardItem[];
+    /** This org's board lanes. */
+    lanes: BoardLanes;
   },
 ): Promise<TaskBoardItem | null> {
-  const { orgId, userId, threadId, pr, decision, openCards } = params;
+  const { orgId, userId, threadId, pr, decision, openCards, lanes } = params;
 
   const linkPr = (taskBoardItemId: string) =>
     storage.linkPr({
@@ -166,25 +169,29 @@ export async function applyBoardDecision(
         // In Progress, not In Review: a reviewer is about to work on this PR,
         // and In Review is what the board says once it is a person's turn.
         // The open cycle below is what puts it on the reviewer's work list.
-        status: advancing ? "in_progress" : undefined,
+        status: advancing ? (lanes.progress ?? undefined) : undefined,
         ...(claimSuperAgent
           ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
           : {}),
       },
       userId,
     );
-    if (advancing) await storage.openReviewCycleIfInProgress(target.id, orgId);
+    if (advancing) {
+      await storage.openReviewCycleIfInProgress(target.id, orgId, lanes);
+    }
   } else {
     // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
       organizationId: orgId,
       title: decision.title?.trim() || `PR #${pr.number}`,
-      status: "in_progress",
+      // A card born mid-review with no in-progress column starts at intake —
+      // the one lane every board has.
+      status: lanes.progress ?? lanes.intake,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
       by: userId,
     });
-    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId);
+    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId, lanes);
   }
   if (!item) return null;
 
@@ -241,6 +248,7 @@ export async function reactToPrOpenedForBoard(
     if (!decision) return;
 
     await applyBoardDecision(ctx.storage.taskBoard, {
+      lanes: await (await boardFor(ctx, orgId)).lanes(),
       orgId,
       userId,
       threadId,

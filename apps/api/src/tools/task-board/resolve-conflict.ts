@@ -39,6 +39,7 @@ import {
   userInitiatedTaskQuotaConfig,
 } from "@/billing/task-quota";
 import { recordTaskActivity } from "./activity";
+import { boardFor } from "./board-handler";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { fetchPrConflict } from "./prs-get";
@@ -105,10 +106,12 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
 
     // Atomic dispatch fence shared with the automatic reaction (see doc above).
+    const lanes = await (await boardFor(ctx, organizationId)).lanes();
     const claimed = await ctx.storage.taskBoard.claimConflictResolution(
       id,
       organizationId,
       getUserId(ctx)!,
+      lanes,
     );
     if (!claimed) {
       throw new Error(
@@ -128,7 +131,12 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     } catch (err) {
       // Dispatch failed after the fence bounced the status — bounce it back.
       await ctx.storage.taskBoard
-        .update(claimed.id, organizationId, { status: "in_review" }, "system")
+        .update(
+          claimed.id,
+          organizationId,
+          { status: lanes.review ?? undefined },
+          "system",
+        )
         .then((reverted) => emitTaskBoardUpdated(organizationId, reverted))
         .catch((revertErr) =>
           console.error(

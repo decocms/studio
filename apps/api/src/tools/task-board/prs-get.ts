@@ -1212,7 +1212,10 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
     if (
       item &&
-      inReviewPhase(item) &&
+      inReviewPhase(
+        item,
+        (await (await boardFor(ctx, organizationId)).lanes()).review,
+      ) &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       prReadyForReview(prs)
     ) {

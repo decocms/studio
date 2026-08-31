@@ -55,7 +55,8 @@ export async function advanceToDoneIfMerged(
   prs: PrLanding[],
 ): Promise<boolean> {
   const orgId = item.organizationId;
-  if (!inReviewPhase(item)) return false;
+  if (!inReviewPhase(item, (await (await boardFor(ctx, orgId)).lanes()).review))
+    return false;
   if (!cardWorkLanded(prs)) return false;
   if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
     return false;

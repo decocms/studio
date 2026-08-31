@@ -165,13 +165,16 @@ export function closesOwnReview(
   inputStatus: string | undefined,
   previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
   isTaskRun: boolean,
+  /** This board's review column — see `inReviewPhase`. */
+  reviewLane: string | null,
 ): boolean {
   const completesTask =
     inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
   // The PHASE, not the lane: a card whose reviewer is still working reads In
   // Progress since migration 190, and gating on the lane alone would let the
   // author's own run mark its work Done out from under that reviewer.
-  const awaitingReview = previous !== undefined && inReviewPhase(previous);
+  const awaitingReview =
+    previous !== undefined && inReviewPhase(previous, reviewLane);
   return isTaskRun && completesTask && awaitingReview;
 }
 
@@ -338,7 +341,14 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    if (closesOwnReview(input.status, previous ?? undefined, isTaskRun)) {
+    if (
+      closesOwnReview(
+        input.status,
+        previous ?? undefined,
+        isTaskRun,
+        (await board.lanes()).review,
+      )
+    ) {
       throw new Error(
         "This task is under review — a run can't move it to Done or Archived. " +
           "Leave it for the reviewer; only a person, or " +

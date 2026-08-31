@@ -1137,6 +1137,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         threadId,
         orgId,
         new OrganizationBillingStorage(database.db),
+        database.db,
       ),
   };
 
@@ -1626,6 +1627,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     projectorTaskBoard,
     automationContextFactory,
     projectorBilling,
+    database.db,
   );
   if (getSettings().taskBoardReviewSweeperEnabled) {
     taskBoardReviewSweeper.start();
@@ -1684,6 +1686,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
+          database.db,
         );
         // The headless reviewer trigger used to be called here and could never
         // work: this callback runs inside a DBOS step, and the dispatch bottoms
@@ -1718,6 +1721,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
+          database.db,
         );
         // No reviewer trigger here either — see completeRunIfNotCompleted above
         // for why it cannot live in a step. `TaskBoardReviewSweeper` owns it.

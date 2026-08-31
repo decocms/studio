@@ -8,6 +8,7 @@ import {
 } from "@decocms/shared/task-board";
 import { autoResolveConflictsEnabled } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
+import { boardFor } from "./board-handler";
 import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 
@@ -110,10 +111,12 @@ export async function reactToApprovedPrConflict(
   // for the single winner only, so the activity log (which feeds the cap count)
   // stays accurate. No `status_changed` entry — mirrors the request_changes
   // bounce; the review cycle resets only when the run advances back to In Review.
+  const lanes = await (await boardFor(ctx, orgId)).lanes();
   const claimed = await ctx.storage.taskBoard.claimConflictResolution(
     item.id,
     orgId,
     item.updatedBy,
+    lanes,
   );
   if (!claimed) return false;
   emitTaskBoardUpdated(orgId, claimed);
@@ -132,7 +135,12 @@ export async function reactToApprovedPrConflict(
     // strands the task forever: the guard above only fires on `in_review`,
     // so no future poll or approval retries it. Bounce back so it does.
     await ctx.storage.taskBoard
-      .update(claimed.id, orgId, { status: "in_review" }, "system")
+      .update(
+        claimed.id,
+        orgId,
+        { status: lanes.review ?? undefined },
+        "system",
+      )
       .then((reverted) => emitTaskBoardUpdated(orgId, reverted))
       .catch((revertErr) =>
         console.error(

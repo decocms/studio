@@ -443,7 +443,8 @@ export async function retryAutoMergeIfApproved(
   item: TaskBoardItem,
 ): Promise<boolean> {
   const orgId = item.organizationId;
-  if (!inReviewPhase(item)) return false;
+  if (!inReviewPhase(item, (await (await boardFor(ctx, orgId)).lanes()).review))
+    return false;
   const settings = await ctx.storage.organizationSettings.get(orgId);
   if (settings?.flags?.auto_merge !== true) return false;
   // Same human-override guard `review-decision.ts` and `prs-get` honor.

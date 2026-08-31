@@ -246,6 +246,7 @@ export async function recoverStalledTasks(
           thread.threadId,
           organizationId,
           ctx.storage.organizationBilling,
+          ctx.db,
         );
       } else {
         await nudgeThread(ctx, item, row);

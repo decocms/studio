@@ -349,6 +349,7 @@ async function maybeAutoDelegate(
     orgId,
     integration.createdBy,
     JIRA_SYNC_ACTOR,
+    (await (await boardFor(ctx, orgId)).lanes()).queue,
   );
   if (!delegated) return item;
   await ctx.storage.taskBoard.recordActivity({

@@ -31,6 +31,9 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
+import type { Kysely } from "kysely";
+import type { Database } from "@/storage/types";
+import { boardFor, boardForDb } from "./board-handler";
 import { extractPrFromValue } from "./pr-extract";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -224,6 +227,7 @@ export async function openReviewCycleForRun(
       const opened = await ctx.storage.taskBoard.openReviewCycleIfInProgress(
         itemId,
         orgId,
+        await (await boardFor(ctx, orgId)).lanes(),
       );
       if (!opened) continue;
       emitTaskBoardUpdated(orgId, opened);
@@ -287,11 +291,16 @@ export async function advanceTasksToReviewOnThreadFinish(
   /** Quota bookkeeping (billing/task-quota.ts). Required on purpose: an
    *  optional arg here is a silent way for a caller to stop refunding. */
   billing: OrganizationBillingStorage,
+  /** Resolves this org's board. Passed rather than derived from `taskBoard`,
+   *  which exposes no handle of its own. */
+  db: Kysely<Database>,
 ): Promise<void> {
   try {
+    const lanes = await (await boardForDb(db, orgId)).lanes();
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
       threadId,
       orgId,
+      lanes,
     );
     for (const item of moved) {
       emitTaskBoardUpdated(orgId, item);
@@ -308,7 +317,7 @@ export async function advanceTasksToReviewOnThreadFinish(
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
   }
-  await reactToFailedTaskRun(taskBoard, threadId, orgId);
+  await reactToFailedTaskRun(taskBoard, threadId, orgId, db);
   await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
 }
 
@@ -373,7 +382,10 @@ export async function reactToFailedTaskRun(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
+  /** Resolves this org's board — see `advanceTasksToReviewOnThreadFinish`. */
+  db: Kysely<Database>,
 ): Promise<void> {
+  const lanes = await (await boardForDb(db, orgId)).lanes();
   try {
     const failure = await taskBoard.failedRunInfo(threadId, orgId);
     if (!failure) return;
@@ -418,6 +430,7 @@ export async function reactToFailedTaskRun(
           orgId,
           attempts + 1,
           new Date(Date.now() + delay),
+          lanes.progress,
         );
         if (!scheduled) continue;
         await taskBoard
@@ -440,6 +453,7 @@ export async function reactToFailedTaskRun(
         itemId,
         orgId,
         item.updatedBy,
+        lanes,
       );
       if (!returned) continue;
       await taskBoard
@@ -532,12 +546,16 @@ export async function parkReviewedCardForHuman(
   ctx: StudioContext,
   item: TaskBoardItem,
 ): Promise<void> {
-  if (item.status !== "in_progress" || !inReviewPhase(item)) return;
+  const lanes = await (await boardFor(ctx, item.organizationId)).lanes();
+  if (item.status !== lanes.progress || !inReviewPhase(item, lanes.review))
+    return;
+  // No review column on this board: nowhere to park the card.
+  if (lanes.review === null) return;
   try {
     const parked = await ctx.storage.taskBoard.update(
       item.id,
       item.organizationId,
-      { status: "in_review" },
+      { status: lanes.review },
       item.updatedBy,
     );
     await ctx.storage.taskBoard
