@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  addCategoryToPost,
   blockComponentName,
   blocksPostStatus,
   buildBlogBlock,
@@ -14,9 +13,39 @@ import {
   relationPickerState,
   removeCategoryFromPost,
   renameCategoryOnPost,
-  replaceCategoryOnPost,
+  extractBlockProse,
+  filledBrandRules,
+  normalizeBrandRules,
+  selectBrandEvidenceBlocks,
   setPostStatus,
   stampPostModified,
+  dedupeSuggestedThemes,
+  newIdeaKey,
+  scanIdeas,
+  IDEA_KEY_PREFIX,
+  scanPillars,
+  newPillarKey,
+  PILLAR_KEY_PREFIX,
+  PLANNING_POST_KEY_PREFIX,
+  emptyDraftPostPayload,
+  planningMeta,
+  buildPlanningPostBlock,
+  listPlanningPosts,
+  listAllPostsWithMeta,
+  movePostToStatus,
+  planningPostKey,
+  livePostKey,
+  postIdOfKey,
+  buildGeneratedPostPayload,
+  buildPostSections,
+  citedSections,
+  defaultFormatSections,
+  missingBrandForGeneration,
+  postStructures,
+  sectionResolveTypes,
+  slugifyTitle,
+  uniquePostSlug,
+  unknownCitations,
 } from "./blog-data";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
@@ -264,6 +293,7 @@ describe("listPostsWithMeta", () => {
         missing: ["Excerpt", "Cover image"],
         // no `status` on this fixture — posts predating the field are published
         status: "published",
+        form: "live",
       },
     ]);
   });
@@ -395,19 +425,29 @@ describe("blocksPostStatus", () => {
     expect(blocksPostStatus({ status: "draft" }, "published")).toBe(true);
   });
 
-  test("never blocks scheduling — a schedule is a plan, not a release", () => {
-    expect(blocksPostStatus({ status: "draft" }, "scheduled")).toBe(false);
-    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(false);
+  test("blocks scheduling an incomplete post — a live date needs a live post", () => {
+    expect(blocksPostStatus({ status: "awaiting_review" }, "scheduled")).toBe(
+      true,
+    );
+    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(true);
   });
 
-  test("lets an incomplete post be re-scheduled after scheduling was turned off", () => {
-    const off = setPostStatus({ title: "Untitled post" }, "draft", new Date());
-    expect(blocksPostStatus(off, "scheduled")).toBe(false);
+  test("lets a complete post be scheduled", () => {
+    expect(blocksPostStatus({ ...COMPLETE_POST }, "scheduled")).toBe(false);
   });
 
-  test("never blocks dropping to draft", () => {
-    expect(blocksPostStatus({ status: "published" }, "draft")).toBe(false);
-    expect(blocksPostStatus({ status: "scheduled" }, "draft")).toBe(false);
+  test("never blocks pulling a post back to review", () => {
+    expect(blocksPostStatus({ status: "published" }, "awaiting_review")).toBe(
+      false,
+    );
+    expect(blocksPostStatus({ status: "scheduled" }, "awaiting_review")).toBe(
+      false,
+    );
+  });
+
+  test("never blocks archiving — archived is not a live state", () => {
+    expect(blocksPostStatus({ status: "published" }, "archived")).toBe(false);
+    expect(blocksPostStatus({ status: "draft" }, "archived")).toBe(false);
   });
 
   test("does not block the state the post is already in", () => {
@@ -429,21 +469,29 @@ describe("postStatus", () => {
     expect(postStatus({ status: 1 })).toBe("published");
   });
 
-  test("is case- and whitespace-sensitive: only exact values match", () => {
-    expect(postStatus({ status: "Published" })).toBe("draft");
-    expect(postStatus({ status: " published " })).toBe("draft");
-    expect(postStatus({ status: " scheduled " })).toBe("draft");
+  test("is case- and whitespace-sensitive: an inexact value is unrecognized", () => {
+    expect(postStatus({ status: "Published" })).toBe("awaiting_review");
+    expect(postStatus({ status: " published " })).toBe("awaiting_review");
+    expect(postStatus({ status: " scheduled " })).toBe("awaiting_review");
   });
 
-  test("reads the three editable states", () => {
-    expect(postStatus({ status: "published" })).toBe("published");
-    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+  // Every value must round-trip: this is the blog app's own PostStatus union.
+  test("reads the six lifecycle states", () => {
     expect(postStatus({ status: "draft" })).toBe("draft");
+    expect(postStatus({ status: "generating" })).toBe("generating");
+    expect(postStatus({ status: "awaiting_review" })).toBe("awaiting_review");
+    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+    expect(postStatus({ status: "published" })).toBe("published");
+    expect(postStatus({ status: "archived" })).toBe("archived");
   });
 
-  test("reads states the CMS doesn't edit as draft", () => {
-    expect(postStatus({ status: "generating" })).toBe("draft");
-    expect(postStatus({ status: "awaiting_review" })).toBe("draft");
+  test("reads the legacy Studio-only names as their app equivalents", () => {
+    expect(postStatus({ status: "idea" })).toBe("draft");
+    expect(postStatus({ status: "in_review" })).toBe("awaiting_review");
+  });
+
+  test("reads an unrecognized status as awaiting_review, never live", () => {
+    expect(postStatus({ status: "nonsense" })).toBe("awaiting_review");
   });
 
   test("reads scheduled from the status alone, with no datetime", () => {
@@ -496,13 +544,13 @@ describe("setPostStatus", () => {
     expect(new Date(next.scheduledDatetime as string).getDate()).toBe(22);
   });
 
-  test("clears the instant when leaving scheduled for draft", () => {
+  test("clears the instant when leaving scheduled for review", () => {
     const next = setPostStatus(
       { status: "scheduled", scheduledDatetime: new Date().toISOString() },
-      "draft",
+      "awaiting_review",
       now,
     );
-    expect(next.status).toBe("draft");
+    expect(next.status).toBe("awaiting_review");
     expect(next.scheduledDatetime).toBe("");
   });
 
@@ -520,6 +568,177 @@ describe("setPostStatus", () => {
     const payload = { status: "draft", title: "Hello" };
     setPostStatus(payload, "scheduled", now);
     expect(payload).toEqual({ status: "draft", title: "Hello" });
+  });
+});
+
+describe("scanPillars", () => {
+  test("reads pillars newest-first with their formats", () => {
+    const pillars = scanPillars({
+      [`${PILLAR_KEY_PREFIX}a`]: {
+        title: "Product updates",
+        body: "What shipped.",
+        createdAt: "2026-01-01",
+        formats: ["Changelog", "Deep dive"],
+      },
+      [`${PILLAR_KEY_PREFIX}b`]: {
+        title: "Customer cases",
+        body: "How they win.",
+        createdAt: "2026-02-01",
+        formats: [],
+      },
+    });
+    expect(pillars.map((p) => p.title)).toEqual([
+      "Customer cases",
+      "Product updates",
+    ]);
+    expect(pillars[1]?.formats).toEqual(["Changelog", "Deep dive"]);
+  });
+
+  test("leaves the ideas queue alone — those blocks were always ideas", () => {
+    const pillars = scanPillars({
+      [`${PILLAR_KEY_PREFIX}a`]: { title: "New pillar", createdAt: "2026-02" },
+      [`${IDEA_KEY_PREFIX}b`]: { title: "An idea", createdAt: "2026-01" },
+    });
+    expect(pillars.map((p) => p.title)).toEqual(["New pillar"]);
+  });
+
+  test("ignores non-object and unrelated blocks", () => {
+    expect(scanPillars({ [`${PILLAR_KEY_PREFIX}x`]: "corrupt" })).toEqual([]);
+    expect(scanPillars({ "blog-manager-brand": { title: "nope" } })).toEqual(
+      [],
+    );
+  });
+});
+
+describe("newPillarKey", () => {
+  test("is under the pillars prefix and unique", () => {
+    const a = newPillarKey();
+    const b = newPillarKey();
+    expect(a.startsWith(PILLAR_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("emptyDraftPostPayload / planningMeta", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+
+  test("starts a post as a briefing with no body", () => {
+    const payload = emptyDraftPostPayload({
+      title: "How to read a label",
+      planning: { pillarKey: "p1", brief: "Angle." },
+      now,
+    });
+    expect(payload.status).toBe("draft");
+    expect(payload.sections).toEqual([]);
+    expect(postStatus(payload)).toBe("draft");
+    expect(planningMeta(payload).brief).toBe("Angle.");
+    expect(planningMeta(payload).pillarKey).toBe("p1");
+  });
+
+  test("planningMeta tolerates a missing planning object", () => {
+    expect(planningMeta({})).toEqual({});
+  });
+});
+
+describe("listPlanningPosts / listAllPostsWithMeta", () => {
+  test("planning posts are read by prefix and excluded from the live list", () => {
+    const decofile = {
+      [`${PLANNING_POST_KEY_PREFIX}1`]: buildPlanningPostBlock(
+        `${PLANNING_POST_KEY_PREFIX}1`,
+        { title: "An idea", status: "draft" },
+      ),
+      ...decofileWithPosts({
+        "collections/blog/posts/2": { title: "Live", status: "published" },
+      }),
+    };
+    expect(listPlanningPosts(decofile).map((p) => p.payload.title)).toEqual([
+      "An idea",
+    ]);
+    // The live-only list never sees planning posts.
+    expect(listPostsWithMeta(decofile).map((p) => p.title)).toEqual(["Live"]);
+    const all = listAllPostsWithMeta(decofile);
+    expect(
+      Object.fromEntries(all.map((p) => [p.title, [p.status, p.form]])),
+    ).toEqual({
+      "An idea": ["draft", "planning"],
+      Live: ["published", "live"],
+    });
+  });
+});
+
+describe("movePostToStatus", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+  const complete = {
+    title: "Hello",
+    slug: "hello",
+    categories: ["news"],
+    excerpt: "A short summary.",
+    image: "https://cdn/cover.jpg",
+  };
+
+  test("promotes a planning post to a live block, preserving id and slug", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "awaiting_review" } },
+      "scheduled",
+      now,
+    );
+    const targetKey = livePostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect(block.__resolveType).toBe("blog/loaders/Blogpost.ts");
+    const post = block.post as Record<string, unknown>;
+    expect(post.slug).toBe("hello");
+    expect(post.status).toBe("scheduled");
+    expect(typeof post.scheduledDatetime).toBe("string");
+  });
+
+  test("demotes a live post back to a planning block with no resolveType", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "scheduled" } },
+      "awaiting_review",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    const post = block.post as Record<string, unknown>;
+    expect(post.status).toBe("awaiting_review");
+    expect(post.scheduledDatetime).toBe("");
+  });
+
+  test("a within-planning move rewrites in place with nothing to delete", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { title: "T", status: "draft" } },
+      "awaiting_review",
+      now,
+    );
+    expect(move.deletes).toEqual([]);
+    expect(Object.keys(move.writes)).toEqual([key]);
+  });
+
+  test("archiving a live post demotes it, so the site stops rendering it", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "published" } },
+      "archived",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    expect((block.post as Record<string, unknown>).status).toBe("archived");
+  });
+});
+
+describe("postIdOfKey", () => {
+  test("reads the shared id from either form's key", () => {
+    expect(postIdOfKey(planningPostKey("xyz"))).toBe("xyz");
+    expect(postIdOfKey(livePostKey("xyz"))).toBe("xyz");
   });
 });
 
@@ -660,68 +879,6 @@ describe("emptyBlogPayload", () => {
   });
 });
 
-describe("addCategoryToPost", () => {
-  test("appends a new category and keeps existing ones", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(next.categories).toEqual([
-      { name: "News", slug: "news" },
-      { name: "Tips", slug: "tips" },
-    ]);
-  });
-
-  test("initializes categories when the post has none", () => {
-    const next = addCategoryToPost(
-      { title: "P" },
-      { name: "News", slug: "news" },
-    );
-    expect(next).toEqual({
-      title: "P",
-      categories: [{ name: "News", slug: "news" }],
-    });
-  });
-
-  test("is idempotent — adding a present slug does not duplicate", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("does not mutate the input payload", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(payload.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-});
-
-describe("replaceCategoryOnPost", () => {
-  test("replaces all categories with the chosen one", () => {
-    const payload = {
-      categories: [
-        { name: "News", slug: "news" },
-        { name: "Tips", slug: "tips" },
-      ],
-    };
-    const next = replaceCategoryOnPost(payload, {
-      name: "Guides",
-      slug: "guides",
-    });
-    expect(next.categories).toEqual([{ name: "Guides", slug: "guides" }]);
-  });
-
-  test("sets the category when the post had none", () => {
-    const next = replaceCategoryOnPost({}, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("is a no-op when it already has exactly that category", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    expect(replaceCategoryOnPost(payload, { name: "News", slug: "news" })).toBe(
-      payload,
-    );
-  });
-});
-
 describe("renameCategoryOnPost", () => {
   test("rewrites the matching slug and name, preserving others and order", () => {
     const payload = {
@@ -822,5 +979,689 @@ describe("removeCategoryFromPost", () => {
     const payload = { categories: [{ name: "Old", slug: "old" }] };
     removeCategoryFromPost(payload, "old");
     expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
+  });
+});
+
+describe("normalizeBrandRules", () => {
+  test("promotes a legacy flat string to a rule name", () => {
+    expect(
+      normalizeBrandRules(["Nunca escreva preço em bloco de texto"]),
+    ).toEqual([{ name: "Nunca escreva preço em bloco de texto", value: "" }]);
+  });
+
+  test("passes a well-formed rule through", () => {
+    const rule = { name: "Preços", value: "Use **ProductCard**." };
+    expect(normalizeBrandRules([rule])).toEqual([rule]);
+  });
+
+  test("handles a list that mixes both shapes — a half-migrated block", () => {
+    expect(
+      normalizeBrandRules(["antiga", { name: "nova", value: "corpo" }]),
+    ).toEqual([
+      { name: "antiga", value: "" },
+      { name: "nova", value: "corpo" },
+    ]);
+  });
+
+  test("keeps a rule that has only a body", () => {
+    expect(normalizeBrandRules([{ value: "só o corpo" }])).toEqual([
+      { name: "", value: "só o corpo" },
+    ]);
+  });
+
+  test("keeps a blank object — it's a row the user just added", () => {
+    expect(normalizeBrandRules([{ name: "", value: "" }])).toEqual([
+      { name: "", value: "" },
+    ]);
+    expect(normalizeBrandRules([{}])).toEqual([{ name: "", value: "" }]);
+  });
+
+  test("drops blank legacy strings and anything that isn't an object", () => {
+    expect(normalizeBrandRules(["", "   ", null, 42])).toEqual([]);
+  });
+
+  test("returns empty for a non-array, including the absent field", () => {
+    expect(normalizeBrandRules(undefined)).toEqual([]);
+    expect(normalizeBrandRules("nao é lista")).toEqual([]);
+    expect(normalizeBrandRules({ name: "solto" })).toEqual([]);
+  });
+});
+
+describe("extractBlockProse", () => {
+  test("drops asset urls, keeps the prose beside them", () => {
+    const block = {
+      video: { src: "https://player.vimeo.com/progressive_redirect/x.mp4" },
+      thumbnail: "https://cdn.example.com/site/2024/banner-mobile.jpg",
+      alt: "do rio pro mundo",
+    };
+    const out = extractBlockProse(block);
+
+    expect(out).toContain("do rio pro mundo");
+    expect(out).not.toContain("vimeo");
+    expect(out).not.toContain("cdn.example.com");
+  });
+
+  test("drops identifiers and dimension labels, not phrases", () => {
+    const out = extractBlockProse({
+      __resolveType: "site/sections/Layout/Flex.tsx",
+      gap: "20px",
+      title: "encontre a loja mais próxima de você",
+    });
+
+    expect(out).not.toContain("Flex.tsx");
+    expect(out).not.toContain("20px");
+    expect(out).toContain("encontre a loja mais próxima de você");
+  });
+
+  test("keeps the prop name, so the model knows what kind of copy it is", () => {
+    expect(extractBlockProse({ alt: "92% de funcionárias" })).toBe(
+      "alt: 92% de funcionárias",
+    );
+  });
+
+  test("keeps html stored as a string", () => {
+    const html = "<p>verifique os detalhes direto na sua mochila</p>";
+    expect(extractBlockProse({ text: html })).toContain("sua mochila");
+  });
+
+  test("drops exact duplicates — a banner repeats across a whole site", () => {
+    const out = extractBlockProse([
+      { text: "vem pro app e ganhe desconto" },
+      { text: "vem pro app e ganhe desconto" },
+    ]);
+    expect(out.split("\n")).toHaveLength(1);
+  });
+
+  test("keeps casing variants — the inconsistency is a fact about the brand", () => {
+    const out = extractBlockProse([
+      { text: "O custo pode mudar" },
+      { text: "o custo pode mudar" },
+    ]);
+    expect(out.split("\n")).toHaveLength(2);
+  });
+});
+
+describe("selectBrandEvidenceBlocks", () => {
+  test("ranks a prose-heavy page above a url-heavy one", () => {
+    const decofile = {
+      "pages/plp": {
+        path: "/roupas",
+        sections: [{ src: "https://cdn.example.com/a-very-long-asset.jpg" }],
+      },
+      "pages/sobre": {
+        path: "/sobre",
+        sections: [{ text: "a biodiversidade brasileira acende em nós" }],
+      },
+    };
+
+    expect(
+      selectBrandEvidenceBlocks(decofile, ["pages/plp", "pages/sobre"]).map(
+        (b) => b.key,
+      ),
+    ).toEqual(["pages/sobre", "pages/plp"]);
+  });
+
+  test("ranks posts before categories before pages", () => {
+    const decofile = {
+      ...decofileWithPosts({
+        "collections/blog/posts/a": { content: "prose" },
+      }),
+      "collections/blog/categories/c": buildBlogBlock(
+        "collections/blog/categories/c",
+        "categories",
+        { name: "News", slug: "news" },
+      ),
+      "pages/home": { path: "/", sections: [] },
+    };
+
+    expect(
+      selectBrandEvidenceBlocks(decofile, ["pages/home"]).map((b) => b.key),
+    ).toEqual([
+      "collections/blog/posts/a",
+      "collections/blog/categories/c",
+      "pages/home",
+    ]);
+  });
+
+  test("puts the post with the most prose first", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/short": { content: "oi" },
+      "collections/blog/posts/long": { content: "prosa da marca ".repeat(50) },
+    });
+
+    expect(selectBrandEvidenceBlocks(decofile, []).map((b) => b.key)).toEqual([
+      "collections/blog/posts/long",
+      "collections/blog/posts/short",
+    ]);
+  });
+
+  test("stops once the char budget is spent instead of sending everything", () => {
+    const posts: Record<string, Record<string, unknown>> = {};
+    for (let i = 0; i < 20; i++) {
+      posts[`collections/blog/posts/p${i}`] = {
+        content: "prosa da marca ".repeat(1_000),
+      };
+    }
+
+    const selected = selectBrandEvidenceBlocks(decofileWithPosts(posts), []);
+    const total = selected.reduce((sum, b) => sum + b.content.length, 0);
+
+    expect(selected.length).toBeLessThan(20);
+    expect(total).toBeLessThanOrEqual(60_000);
+  });
+
+  test("returns nothing for a site with no content", () => {
+    expect(selectBrandEvidenceBlocks({}, [])).toEqual([]);
+  });
+
+  test("skips page keys the decofile doesn't have", () => {
+    expect(selectBrandEvidenceBlocks({}, ["pages/ghost"])).toEqual([]);
+  });
+});
+
+describe("scanIdeas", () => {
+  test("reads only theme blocks, newest first", () => {
+    const ideas = scanIdeas({
+      [`${IDEA_KEY_PREFIX}b`]: {
+        title: "Segundo",
+        body: "briefing b",
+        createdAt: "2026-02-01T00:00:00.000Z",
+      },
+      [`${IDEA_KEY_PREFIX}a`]: {
+        title: "Primeiro",
+        body: "briefing a",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      "blog-manager-brand": { companyName: "Marca" },
+      "collections/blog/posts/x": {
+        __resolveType: "blog/loaders/Blogpost.ts",
+        post: { title: "Post" },
+      },
+    });
+
+    expect(ideas.map((idea) => idea.title)).toEqual(["Segundo", "Primeiro"]);
+    expect(ideas[0]?.key).toBe(`${IDEA_KEY_PREFIX}b`);
+    expect(ideas[1]?.body).toBe("briefing a");
+  });
+
+  test("an idea still being written has empty fields, not missing ones", () => {
+    const ideas = scanIdeas({ [`${IDEA_KEY_PREFIX}new`]: {} });
+    expect(ideas).toEqual([
+      {
+        key: `${IDEA_KEY_PREFIX}new`,
+        title: "",
+        body: "",
+        pillarKey: undefined,
+        createdAt: "",
+      },
+    ]);
+  });
+
+  test("ideas without a date sort last, and ties break by title", () => {
+    const dated = "2026-01-01T00:00:00.000Z";
+    const ideas = scanIdeas({
+      [`${IDEA_KEY_PREFIX}1`]: { title: "Sem data" },
+      [`${IDEA_KEY_PREFIX}2`]: { title: "Bravo", createdAt: dated },
+      [`${IDEA_KEY_PREFIX}3`]: { title: "Alfa", createdAt: dated },
+    });
+    expect(ideas.map((idea) => idea.title)).toEqual([
+      "Alfa",
+      "Bravo",
+      "Sem data",
+    ]);
+  });
+
+  test("ignores a non-object at an idea key", () => {
+    expect(scanIdeas({ [`${IDEA_KEY_PREFIX}x`]: "corrupted" })).toEqual([]);
+  });
+
+  test("returns nothing for a site with no ideas", () => {
+    expect(scanIdeas({})).toEqual([]);
+  });
+});
+
+describe("newIdeaKey", () => {
+  test("is prefixed and unique", () => {
+    const a = newIdeaKey();
+    expect(a.startsWith(IDEA_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(newIdeaKey());
+  });
+});
+
+describe("dedupeSuggestedThemes", () => {
+  test("drops what already exists, ignoring case, accents and spacing", () => {
+    const fresh = dedupeSuggestedThemes(
+      ["Como ler a etiqueta de composição"],
+      [
+        { title: "  como LER a etiqueta de COMPOSICAO  " },
+        { title: "Por que o linho amassa" },
+      ],
+    );
+    expect(fresh.map((t) => t.title)).toEqual(["Por que o linho amassa"]);
+  });
+
+  test("drops duplicates within the same batch", () => {
+    const fresh = dedupeSuggestedThemes(
+      [],
+      [{ title: "Tecidos naturais" }, { title: "tecidos naturais" }],
+    );
+    expect(fresh).toHaveLength(1);
+  });
+
+  test("drops a blank title — it can't be told apart from another blank", () => {
+    expect(dedupeSuggestedThemes([], [{ title: "   " }])).toEqual([]);
+  });
+
+  test("keeps everything when nothing exists yet", () => {
+    const suggested = [{ title: "Um" }, { title: "Dois" }];
+    expect(dedupeSuggestedThemes([], suggested)).toEqual(suggested);
+  });
+
+  test("carries the whole suggestion through, not just the title", () => {
+    expect(
+      dedupeSuggestedThemes([], [{ title: "Um", body: "briefing" }]),
+    ).toEqual([{ title: "Um", body: "briefing" }]);
+  });
+});
+
+describe("postStructures", () => {
+  test("reads each post's section sequence as component names, in order", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        title: "Guia",
+        sections: [
+          { __resolveType: "blog/sections/blocks/Heading.tsx" },
+          { __resolveType: "site/sections/Blog/Post/Paragraph.tsx" },
+          { __resolveType: "blog/sections/blocks/ProductShelf.tsx" },
+        ],
+      },
+    });
+    expect(postStructures(decofile)).toEqual([
+      {
+        key: "collections/blog/posts/a",
+        title: "Guia",
+        sections: ["Heading", "Paragraph", "ProductShelf"],
+      },
+    ]);
+  });
+
+  test("a post with no sections still reports its title", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/empty": { title: "Vazio" },
+    });
+    expect(postStructures(decofile)[0]?.sections).toEqual([]);
+  });
+
+  test("skips sections without a resolveType instead of emitting blanks", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        sections: [
+          { __resolveType: "blog/sections/blocks/Heading.tsx" },
+          { text: "orphan" },
+          "not an object",
+        ],
+      },
+    });
+    expect(postStructures(decofile)[0]?.sections).toEqual(["Heading"]);
+  });
+
+  test("caps at 40 posts so the suggestion prompt stays bounded", () => {
+    const posts: Record<string, Record<string, unknown>> = {};
+    for (let i = 0; i < 60; i++) {
+      posts[`collections/blog/posts/p${i}`] = { title: `Post ${i}` };
+    }
+    expect(postStructures(decofileWithPosts(posts))).toHaveLength(40);
+  });
+});
+
+describe("citedSections", () => {
+  test("collects distinct @mentions", () => {
+    expect(
+      citedSections("Abre com @Heading, depois @Paragraph e mais @Paragraph."),
+    ).toEqual(["Heading", "Paragraph"]);
+  });
+
+  test("ignores an @ inside a word, so an email is not a citation", () => {
+    expect(citedSections("fale com contato@marca.com.br")).toEqual([]);
+  });
+
+  test("reads a citation after a bracket or at the start of a line", () => {
+    expect(citedSections("@Heading\n- (@Cta) no fim")).toEqual([
+      "Heading",
+      "Cta",
+    ]);
+  });
+
+  test("stops at punctuation but keeps dashes inside the name", () => {
+    expect(citedSections("use @Product-Card.")).toEqual(["Product-Card"]);
+  });
+
+  test("finds nothing in prose without mentions", () => {
+    expect(citedSections("Um formato de guia prático.")).toEqual([]);
+  });
+});
+
+describe("unknownCitations", () => {
+  test("reports only the citations the site does not have", () => {
+    expect(
+      unknownCitations("@Heading e @Removida", ["Heading", "Paragraph"]),
+    ).toEqual(["Removida"]);
+  });
+
+  test("nothing to report when every citation resolves", () => {
+    expect(unknownCitations("@Heading", ["Heading"])).toEqual([]);
+  });
+
+  test("every citation is unknown on a site with no blog sections", () => {
+    expect(unknownCitations("@Heading e @Cta", [])).toEqual(["Heading", "Cta"]);
+  });
+});
+
+describe("defaultFormatSections", () => {
+  test("keeps the preferred order and drops what the site lacks", () => {
+    expect(
+      defaultFormatSections(["Cta", "Paragraph", "Heading", "Shelf"]),
+    ).toEqual(["Heading", "Paragraph", "Cta"]);
+  });
+
+  test("returns nothing when the site has none of them", () => {
+    expect(defaultFormatSections(["Shelf"])).toEqual([]);
+  });
+});
+
+describe("filledBrandRules", () => {
+  test("drops the blank row the editor keeps, so a prompt never sees it", () => {
+    expect(
+      filledBrandRules([
+        { name: "Preços", value: "Use ProductCard." },
+        { name: "", value: "" },
+      ]),
+    ).toEqual([{ name: "Preços", value: "Use ProductCard." }]);
+  });
+
+  test("whitespace is not substance", () => {
+    expect(filledBrandRules([{ name: "  ", value: "\n" }])).toEqual([]);
+  });
+
+  test("a name alone or a body alone counts as written", () => {
+    const rules = [
+      { name: "só nome", value: "" },
+      { name: "", value: "só corpo" },
+    ];
+    expect(filledBrandRules(rules)).toEqual(rules);
+  });
+});
+
+describe("missingBrandForGeneration", () => {
+  const complete = {
+    companyName: "Marca",
+    language: "pt-BR",
+    description: "Vende roupa",
+    tone: "Segunda pessoa, sem humor",
+    targetAudience: "Quem procura linho",
+    dos: [{ name: "Abertura", value: "Comece pelo leitor" }],
+    avoid: [{ name: "Preço", value: "Nunca em bloco de texto" }],
+  };
+
+  test("nothing missing when the three required tabs are filled", () => {
+    expect(missingBrandForGeneration(complete)).toEqual([]);
+  });
+
+  test("an absent block is missing everything", () => {
+    expect(missingBrandForGeneration(undefined)).toEqual([
+      "companyName",
+      "language",
+      "description",
+      "tone",
+      "targetAudience",
+      "dos",
+      "avoid",
+    ]);
+  });
+
+  test("whitespace does not satisfy a text field", () => {
+    expect(missingBrandForGeneration({ ...complete, tone: "   " })).toEqual([
+      "tone",
+    ]);
+  });
+
+  test("a rule list holding only the blank editor row counts as missing", () => {
+    expect(
+      missingBrandForGeneration({
+        ...complete,
+        dos: [{ name: "", value: "" }],
+      }),
+    ).toEqual(["dos"]);
+  });
+
+  test("values, categories and competitors are not required", () => {
+    expect(
+      missingBrandForGeneration({
+        ...complete,
+        values: [],
+        categories: [],
+        competitors: [],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("sectionResolveTypes", () => {
+  test("maps a component name to this site's own resolveType", () => {
+    expect(
+      sectionResolveTypes(metaWith(["site/sections/Blog/Post/Heading.tsx"])),
+    ).toEqual({ Heading: "site/sections/Blog/Post/Heading.tsx" });
+  });
+
+  test("one name wins when app and site both define it", () => {
+    const map = sectionResolveTypes(
+      metaWith([
+        "blog/sections/blocks/Paragraph.tsx",
+        "site/sections/Blog/Post/Paragraph.tsx",
+      ]),
+    );
+    expect(Object.keys(map)).toEqual(["Paragraph"]);
+  });
+
+  test("a site with no post sections maps nothing", () => {
+    expect(sectionResolveTypes(metaWith(["site/sections/Header.tsx"]))).toEqual(
+      {},
+    );
+  });
+});
+
+describe("buildPostSections", () => {
+  const types = {
+    Heading: "blog/sections/blocks/Heading.tsx",
+    Paragraph: "blog/sections/blocks/Paragraph.tsx",
+    List: "blog/sections/blocks/List.tsx",
+    Quote: "blog/sections/blocks/Quote.tsx",
+    Callout: "blog/sections/blocks/Callout.tsx",
+    Cta: "blog/sections/blocks/Cta.tsx",
+    Divider: "blog/sections/blocks/Divider.tsx",
+  };
+
+  test("a List stores its items newline-joined, not as an array", () => {
+    expect(
+      buildPostSections(
+        [{ type: "List", items: ["um", "dois"], style: "ordered" }],
+        types,
+      ),
+    ).toEqual([
+      { __resolveType: types.List, items: "um\ndois", style: "ordered" },
+    ]);
+  });
+
+  test("fills each kind's own props", () => {
+    expect(
+      buildPostSections(
+        [
+          { type: "Heading", text: "Título", level: "3" },
+          { type: "Paragraph", html: "<strong>oi</strong>" },
+          { type: "Quote", quote: "citação" },
+          { type: "Callout", title: "Dica", body: "corpo", variant: "tip" },
+          { type: "Cta", text: "Ver", href: "/colecao" },
+          { type: "Divider" },
+        ],
+        types,
+      ),
+    ).toEqual([
+      { __resolveType: types.Heading, text: "Título", level: "3" },
+      { __resolveType: types.Paragraph, html: "<strong>oi</strong>" },
+      { __resolveType: types.Quote, quote: "citação" },
+      {
+        __resolveType: types.Callout,
+        title: "Dica",
+        body: "corpo",
+        variant: "tip",
+      },
+      { __resolveType: types.Cta, text: "Ver", href: "/colecao" },
+      { __resolveType: types.Divider },
+    ]);
+  });
+
+  test("defaults the enums rather than writing undefined", () => {
+    expect(buildPostSections([{ type: "Heading", text: "T" }], types)).toEqual([
+      { __resolveType: types.Heading, text: "T", level: "2" },
+    ]);
+    expect(buildPostSections([{ type: "List", items: ["a"] }], types)).toEqual([
+      { __resolveType: types.List, items: "a", style: "unordered" },
+    ]);
+  });
+
+  test("drops a kind this site cannot render", () => {
+    expect(
+      buildPostSections(
+        [
+          { type: "Heading", text: "fica" },
+          { type: "Callout", title: "sai", body: "sai" },
+        ],
+        { Heading: types.Heading },
+      ),
+    ).toEqual([{ __resolveType: types.Heading, text: "fica", level: "2" }]);
+  });
+
+  test("keeps the reading order", () => {
+    const built = buildPostSections(
+      [
+        { type: "Heading", text: "a" },
+        { type: "Paragraph", html: "b" },
+        { type: "Heading", text: "c" },
+      ],
+      types,
+    );
+    expect(built.map((b) => b.__resolveType)).toEqual([
+      types.Heading,
+      types.Paragraph,
+      types.Heading,
+    ]);
+  });
+});
+
+describe("slugifyTitle", () => {
+  test("folds accents and drops punctuation", () => {
+    expect(slugifyTitle("Como ler a etiqueta de composição!")).toBe(
+      "como-ler-a-etiqueta-de-composicao",
+    );
+  });
+
+  test("collapses runs and trims the edges", () => {
+    expect(slugifyTitle("  --  Linho   &   Algodão -- ")).toBe("linho-algodao");
+  });
+
+  test("a title with nothing slug-worthy yields empty", () => {
+    expect(slugifyTitle("!!! ???")).toBe("");
+  });
+});
+
+describe("uniquePostSlug", () => {
+  test("uses the plain slug when it's free", () => {
+    expect(uniquePostSlug("Linho no verão", [])).toBe("linho-no-verao");
+  });
+
+  test("suffixes past a collision", () => {
+    expect(uniquePostSlug("Linho", ["linho"])).toBe("linho-2");
+    expect(uniquePostSlug("Linho", ["linho", "linho-2"])).toBe("linho-3");
+  });
+
+  test("falls back to a random slug for an unslugifiable title", () => {
+    expect(uniquePostSlug("!!!", [])).toMatch(/^post-[0-9a-f]{6}$/);
+  });
+});
+
+describe("buildGeneratedPostPayload", () => {
+  const args = {
+    draft: {
+      title: "Por que o linho amassa",
+      excerpt: "E o que isso diz sobre a peça.",
+      seo: { title: "Por que o linho amassa", description: "Entenda a fibra." },
+      categorySlugs: ["tecidos"],
+      authorEmails: ["ana@marca.com"],
+      sections: [{ type: "Paragraph" as const, html: "corpo" }],
+    },
+    resolveTypes: { Paragraph: "blog/sections/blocks/Paragraph.tsx" },
+    categories: [
+      { name: "Tecidos", slug: "tecidos" },
+      { name: "Outra", slug: "outra" },
+    ],
+    authors: [
+      { name: "Ana", email: "ana@marca.com" },
+      { name: "Bruno", email: "bruno@marca.com" },
+    ],
+    takenSlugs: [],
+    now: new Date("2026-08-21T12:00:00.000Z"),
+  };
+
+  test("lands in review, never scheduled or published", () => {
+    const payload = buildGeneratedPostPayload(args);
+    expect(payload.status).toBe("awaiting_review");
+    expect(payload.scheduledDatetime).toBe("");
+  });
+
+  test("the editorial date is the day it was generated", () => {
+    expect(buildGeneratedPostPayload(args).date).toBe("2026-08-21");
+  });
+
+  test("resolves only the chosen categories into stored refs", () => {
+    expect(buildGeneratedPostPayload(args).categories).toEqual([
+      { name: "Tecidos", slug: "tecidos" },
+    ]);
+  });
+
+  test("resolves only the chosen authors into stored refs", () => {
+    expect(buildGeneratedPostPayload(args).authors).toEqual([
+      { name: "Ana", email: "ana@marca.com" },
+    ]);
+  });
+
+  test("an unmatched pick attributes nobody rather than inventing an author", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      draft: { ...args.draft, authorEmails: ["ghost@marca.com"] },
+    });
+    expect(payload.authors).toEqual([]);
+  });
+
+  test("keeps the briefing, so the card still shows its pillar and format", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      planning: { pillarTitle: "Casos de clientes", brief: "Angle." },
+    });
+    expect(planningMeta(payload).pillarTitle).toBe("Casos de clientes");
+  });
+
+  test("leaves the cover image empty, so the reviewer is told", () => {
+    const payload = buildGeneratedPostPayload(args);
+    expect(payload.image).toBe("");
+    expect(missingPostFields(payload)).toEqual(["Cover image"]);
+  });
+
+  test("avoids a slug another post already holds", () => {
+    expect(
+      buildGeneratedPostPayload({
+        ...args,
+        takenSlugs: ["por-que-o-linho-amassa"],
+      }).slug,
+    ).toBe("por-que-o-linho-amassa-2");
   });
 });

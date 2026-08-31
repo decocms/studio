@@ -20,6 +20,7 @@ function post(overrides: Partial<PostMeta> = {}): PostMeta {
     authorEmails: [],
     missing: [],
     status: "published",
+    form: "live",
     ...overrides,
   };
 }

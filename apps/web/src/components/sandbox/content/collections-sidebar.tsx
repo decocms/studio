@@ -9,9 +9,8 @@ import {
   Grid01,
   LayoutAlt01,
   Settings01,
-  Tag01,
+  Stars02,
   CreditCardSearch,
-  Users01,
   Zap,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -114,27 +113,18 @@ export function CollectionsSidebar({
               {t("sandbox.collectionsSidebar.blog")}
             </div>
             <CollectionRow
+              id="context"
+              icon={Stars02}
+              label={t("sandbox.collectionsSidebar.context")}
+              active={active === "context"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
               id="posts"
               icon={File02}
               label={t("sandbox.collectionsSidebar.posts")}
               count={counts.posts}
               active={active === "posts"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="authors"
-              icon={Users01}
-              label={t("sandbox.collectionsSidebar.authors")}
-              count={counts.authors}
-              active={active === "authors"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="categories"
-              icon={Tag01}
-              label={t("sandbox.collectionsSidebar.categories")}
-              count={counts.categories}
-              active={active === "categories"}
               onSelect={onSelect}
             />
             <CollectionRow

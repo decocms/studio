@@ -970,6 +970,151 @@ export interface StudioToolIO {
         | undefined;
     };
   };
+  BLOG_BRAND_EXTRACT: {
+    input: { blocks: { key: string; content: string }[] };
+    output: {
+      companyName: string;
+      description: string;
+      language: string;
+      tone: string;
+      targetAudience: string;
+      values: { name: string; value: string }[];
+      dos: { name: string; value: string }[];
+      avoid: { name: string; value: string }[];
+      categories: string[];
+      competitors: { name: string; value: string }[];
+      sources: string[];
+      searchedCompetitors: boolean;
+    };
+  };
+  BLOG_PILLAR_SUGGEST: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        tone?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+      };
+      existingPillars?: string[] | undefined;
+      categories?: string[] | undefined;
+      guidance?: string | undefined;
+      count?: number | undefined;
+    };
+    output: { pillars: { title: string; body: string }[] };
+  };
+  BLOG_THEME_SUGGEST: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        tone?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+      };
+      existingTitles?: string[] | undefined;
+      categories?: string[] | undefined;
+      guidance?: string | undefined;
+      pillar?: { title: string; body: string } | undefined;
+      formats?: string[] | undefined;
+      count?: number | undefined;
+    };
+    output: { themes: { title: string; body: string }[]; searched: boolean };
+  };
+  BLOG_FORMAT_SUGGEST: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        tone?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+      };
+      sections?:
+        | { name: string; title: string; description?: string | undefined }[]
+        | undefined;
+      postStructures?: { title: string; sections: string[] }[] | undefined;
+      count?: number | undefined;
+    };
+    output: { formats: { name: string; value: string }[] };
+  };
+  BLOG_POST_DRAFT: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        tone?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+      };
+      theme: { title: string; body: string };
+      format: { name: string; value: string };
+      sections: {
+        type:
+          | "Heading"
+          | "Paragraph"
+          | "List"
+          | "Quote"
+          | "Callout"
+          | "Cta"
+          | "Divider";
+        purpose?: string | undefined;
+      }[];
+      pillar?: { title: string; body: string } | undefined;
+      categories?: { name: string; slug: string }[] | undefined;
+      authors?:
+        | { name: string; email: string; bio?: string | undefined }[]
+        | undefined;
+      extraInstructions?: string | undefined;
+    };
+    output: {
+      title: string;
+      excerpt: string;
+      seo: { title: string; description: string };
+      categorySlugs: string[];
+      authorEmails: string[];
+      sections: {
+        type:
+          | "Heading"
+          | "Paragraph"
+          | "List"
+          | "Quote"
+          | "Callout"
+          | "Cta"
+          | "Divider";
+        text?: string | undefined;
+        level?: "1" | "2" | "3" | undefined;
+        html?: string | undefined;
+        items?: string[] | undefined;
+        style?: "ordered" | "unordered" | undefined;
+        quote?: string | undefined;
+        title?: string | undefined;
+        body?: string | undefined;
+        variant?: "info" | "tip" | "warning" | "product" | undefined;
+        href?: string | undefined;
+      }[];
+    };
+  };
   BRAND_GET: {
     input: { id?: string | undefined };
     output: {
@@ -3961,7 +4106,7 @@ export interface StudioToolIO {
         id: string;
         thread_id: string;
         parts: Record<string, unknown>[];
-        role: "user" | "assistant" | "system";
+        role: "user" | "system" | "assistant";
         created_at: string;
         updated_at: string;
         metadata?: unknown;
@@ -4027,7 +4172,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -4101,7 +4246,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -7095,7 +7240,7 @@ export interface StudioToolIO {
         htmlUrl: string;
         author: string;
         draft: boolean;
-        mergeableState: "unknown" | "clean" | "dirty" | "blocked";
+        mergeableState: "unknown" | "dirty" | "clean" | "blocked";
         unresolvedConversations: number;
         missingRequiredApprovals: boolean;
         changedFiles: number;

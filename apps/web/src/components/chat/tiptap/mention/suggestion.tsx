@@ -20,7 +20,7 @@ import {
 } from "@floating-ui/react";
 import { PluginKey } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
-import type { Ref } from "react";
+import type { ReactNode, Ref } from "react";
 import { PropsWithChildren, Suspense } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -59,6 +59,14 @@ interface SuggestionSelectProps<T extends BaseItem> {
   }) => boolean;
   /** Called when the menu opens or closes */
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Replaces the contents of each row. The row itself — selection styling,
+   * click, scroll-into-view — stays, so a caller only supplies the visual.
+   * Without it, rows render the chat's agent-avatar layout.
+   */
+  renderItem?: (item: T) => ReactNode;
+  /** Empty state, for menus that aren't listing chat items. */
+  emptyLabel?: string;
 }
 
 interface MentionItemProps<T extends BaseItem> {
@@ -67,6 +75,7 @@ interface MentionItemProps<T extends BaseItem> {
   onSelect: () => void;
   isLoading: boolean;
   ref?: Ref<HTMLDivElement>;
+  renderItem?: (item: T) => ReactNode;
 }
 
 interface MentionItemListProps<T extends BaseItem> {
@@ -74,6 +83,8 @@ interface MentionItemListProps<T extends BaseItem> {
   queryKey: readonly unknown[];
   queryFn: (props: { query: string }) => Promise<T[]>;
   onSelect: (props: OnSelectProps<T>) => void | false | Promise<void | false>;
+  renderItem?: (item: T) => ReactNode;
+  emptyLabel?: string;
 }
 
 /**
@@ -142,6 +153,7 @@ const MentionItem = <T extends BaseItem>({
   onSelect,
   isLoading,
   ref,
+  renderItem,
 }: MentionItemProps<T>) => {
   const clientId = getGatewayClientId((item as Record<string, unknown>)._meta);
   const name = item.title || displayToolName(item.name, clientId);
@@ -160,26 +172,32 @@ const MentionItem = <T extends BaseItem>({
         isLoading && "pointer-events-none opacity-50",
       )}
     >
-      {icon !== undefined && (
-        <AgentAvatar icon={icon} name={name} size="xs" className="mr-2" />
-      )}
-      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-medium flex items-center truncate capitalize">
-            {name}
-          </span>
-          {isLoading && <Spinner size="xs" />}
-        </div>
-        {description && (
-          <div className="text-xs text-muted-foreground line-clamp-1">
-            {description}
+      {renderItem ? (
+        renderItem(item)
+      ) : (
+        <>
+          {icon !== undefined && (
+            <AgentAvatar icon={icon} name={name} size="xs" className="mr-2" />
+          )}
+          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium flex items-center truncate capitalize">
+                {name}
+              </span>
+              {isLoading && <Spinner size="xs" />}
+            </div>
+            {description && (
+              <div className="text-xs text-muted-foreground line-clamp-1">
+                {description}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      {item.drillable && (
-        <kbd className="shrink-0 ml-2 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted border border-border rounded">
-          ↵
-        </kbd>
+          {item.drillable && (
+            <kbd className="shrink-0 ml-2 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted border border-border rounded">
+              ↵
+            </kbd>
+          )}
+        </>
       )}
     </div>
   );
@@ -190,6 +208,8 @@ const MentionItemList = <T extends BaseItem>({
   queryKey,
   queryFn,
   onSelect,
+  renderItem,
+  emptyLabel,
 }: MentionItemListProps<T>) => {
   const t = useT();
   const {
@@ -207,7 +227,7 @@ const MentionItemList = <T extends BaseItem>({
   if (!items.length) {
     return (
       <div className="min-w-[360px] max-w-[520px] bg-popover text-popover-foreground rounded-md border shadow-md p-3 text-sm">
-        {t("chat.mention.noItemsFound")}
+        {emptyLabel ?? t("chat.mention.noItemsFound")}
       </div>
     );
   }
@@ -239,6 +259,7 @@ const MentionItemList = <T extends BaseItem>({
             }
             onSelect={() => handleSelect(item, index)}
             isLoading={selectedItem?.name === item.name}
+            renderItem={renderItem}
           />
         ))}
       </div>
@@ -278,6 +299,8 @@ export function Suggestion<T extends BaseItem>({
   onSelect,
   allow,
   onOpenChange,
+  renderItem,
+  emptyLabel,
 }: SuggestionSelectProps<T>) {
   const { state, dispatch } = useMentionState({
     editor,
@@ -297,6 +320,8 @@ export function Suggestion<T extends BaseItem>({
             queryKey={queryKey}
             queryFn={queryFn}
             onSelect={onSelect}
+            renderItem={renderItem}
+            emptyLabel={emptyLabel}
           />
         </Suspense>
       </MentionAnchor>

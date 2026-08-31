@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { Selection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { Attachment01, Loading02 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { Suggestion } from "@/components/chat/tiptap/mention";
 import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
 import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
@@ -82,6 +83,85 @@ function insertUpload(
 }
 
 /**
+ * One `@`-mentionable item. `name` is inserted into the markdown verbatim, so
+ * it has to be a single word — tiptap's suggestion stops at the first space.
+ */
+export interface MarkdownMention {
+  name: string;
+  title?: string;
+  description?: string;
+}
+
+export interface MarkdownMentions {
+  items: MarkdownMention[];
+  /** Shown under the editor, to make the `@` discoverable at all. */
+  hint?: string;
+  emptyLabel?: string;
+}
+
+/**
+ * The `@` picker for a fixed list, inserting PLAIN TEXT (`@Name`).
+ *
+ * Distinct from the org-member picker in `mention-suggestion.tsx`, which
+ * inserts a node that serializes to a markdown link. Here the literal `@Name`
+ * in the markdown IS the contract — a blog format's brief cites a section, and
+ * both the prompt that reads it and `citedSections` match on that text.
+ *
+ * ponytail: two `@` implementations on one component is real duplication.
+ * Folding this into the member picker means making its item source, its item
+ * row and its insert all injectable — worth doing, but not during a merge, and
+ * that file is under active change.
+ */
+function SectionMentionMenu({
+  editor,
+  mentions,
+}: {
+  editor: Editor;
+  mentions: MarkdownMentions;
+}) {
+  const items = mentions.items;
+  return (
+    <Suggestion<MarkdownMention>
+      editor={editor}
+      char="@"
+      pluginKey="markdownMentionMenu"
+      queryKey={["markdown-editor-mentions"]}
+      queryFn={({ query }) => {
+        const term = query.trim().toLowerCase();
+        return Promise.resolve(
+          term
+            ? items.filter((item) =>
+                `${item.name} ${item.title ?? ""}`.toLowerCase().includes(term),
+              )
+            : items,
+        );
+      }}
+      emptyLabel={mentions.emptyLabel}
+      renderItem={(item) => (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-medium">
+            {item.title ?? item.name}
+          </span>
+          {item.description && (
+            <span className="line-clamp-1 text-xs text-muted-foreground">
+              {item.description}
+            </span>
+          )}
+        </div>
+      )}
+      onSelect={({ range, item }) => {
+        editor
+          .chain()
+          .focus()
+          /** A JSON text node — `insertContent` with a string parses HTML. */
+          .insertContentAt(range, [{ type: "text", text: `@${item.name} ` }])
+          .run();
+      }}
+    />
+  );
+}
+
+/**
  * WYSIWYG editor that reads and writes plain markdown.
  *
  * Markdown, not HTML, is the value: descriptions are fed to agents as prompt
@@ -98,6 +178,8 @@ export function MarkdownEditor({
   onChange,
   placeholder,
   editable = true,
+  attachments = true,
+  mentions,
 }: {
   defaultValue: string;
   onChange: (markdown: string) => void;
@@ -105,6 +187,10 @@ export function MarkdownEditor({
   /** Read at creation time only — remount (via `key`) to change it, same as
    *  `defaultValue`. */
   editable?: boolean;
+  /** Off for text-only fields: hides the picker and ignores pasted/dropped files. */
+  attachments?: boolean;
+  /** When set, `@` opens a picker that inserts the item's name as plain text. */
+  mentions?: MarkdownMentions;
 }) {
   const t = useT();
   const { uploadFile, pending } = useEditorFileUpload();
@@ -122,7 +208,7 @@ export function MarkdownEditor({
   uploadRef.current = uploadFile;
 
   const uploadInto = (view: EditorView, files: File[], at: number) => {
-    if (files.length === 0) return false;
+    if (!attachments || files.length === 0) return false;
     void (async () => {
       let pos = at;
       for (const file of files) {
@@ -143,7 +229,11 @@ export function MarkdownEditor({
   };
 
   const editor = useEditor({
-    extensions: markdownEditorExtensions(placeholder, mentionStore),
+    // Both pickers answer to `@`, so only one gets installed.
+    extensions: markdownEditorExtensions(
+      placeholder,
+      mentions ? undefined : mentionStore,
+    ),
     content: unwrapListContinuations(defaultValue),
     contentType: "markdown",
     editable,
@@ -200,16 +290,20 @@ export function MarkdownEditor({
   return (
     <div className="flex flex-col">
       <BubbleToolbar editor={editor} />
-      <MentionMenu store={mentionStore} />
+      {!mentions && <MentionMenu store={mentionStore} />}
       <EditorContent
         editor={editor}
         className="text-[15px] text-muted-foreground"
       />
+      {editable && mentions && (
+        <SectionMentionMenu editor={editor} mentions={mentions} />
+      )}
       {/* Sits clear of the description body so it reads as a control on the
           editor, not as the last line of the text. Hidden when read-only —
           nothing here would do anything. */}
-      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-        {editable && (
+      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground empty:mt-0">
+        {editable && mentions?.hint && <span>{mentions.hint}</span>}
+        {editable && attachments && (
           <Button
             type="button"
             variant="ghost"
