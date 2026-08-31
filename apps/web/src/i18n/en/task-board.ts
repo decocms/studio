@@ -47,6 +47,9 @@ export const taskBoard = {
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.hideColumn": "Hide",
   "taskBoard.taskBoard.hiddenColumns": "Hidden columns",
+  "taskBoard.taskBoard.offBoardLaneBadge": "off board",
+  "taskBoard.taskBoard.offBoardLaneTooltip":
+    "No column on this board is “{status}”. These cards are shown here so they aren\u2019t lost — move them to a column to file them.",
   "taskBoard.taskBoard.showColumn": "Show",
   "taskBoard.taskBoard.selectedCount": "{count} selected",
   "taskBoard.taskBoard.clearSelectionButton": "Clear",

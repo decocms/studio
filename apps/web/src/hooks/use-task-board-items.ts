@@ -55,6 +55,29 @@ export function useBoardSprintIndex(): Map<string, Sprint> {
   return new Map((data?.sprints ?? []).map((sprint) => [sprint.id, sprint]));
 }
 
+/**
+ * The board's columns, read from the same cached list the board loads.
+ *
+ * Exists for the reason `useBoardSprintIndex` does: `useTaskBoardItems` also
+ * opens the board's SSE subscriptions, and a dialog that only needs to know
+ * which lanes this board HAS should not pay for a stream per render.
+ */
+export function useBoardColumns(): TaskBoardData["columns"] {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const { data } = useQuery({
+    queryKey: KEYS.taskBoardItems(locator),
+    queryFn: async (): Promise<TaskBoardData> => {
+      const { items, sprints, columns } = await studio.call(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      return { items, sprints, columns };
+    },
+  });
+  return data?.columns ?? [];
+}
+
 export function useTaskBoardItems() {
   const { org, locator } = useProjectContext();
   const studio = useStudioTools();
