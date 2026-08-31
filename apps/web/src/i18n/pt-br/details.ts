@@ -32,6 +32,7 @@ export const details = {
     "Nenhuma atividade neste período",
   "details.connectionActivity.toolCalls": "Chamadas de ferramenta",
   "details.connectionActivity.topErrors": "Principais erros",
+  "details.connectionAgentsPanel.usedByAgents": "Usado por agentes",
   "details.connectionCapabilities.capabilities": "Capacidades",
   "details.connectionCapabilities.noCapabilitiesDiscovered":
     "Nenhuma capacidade descoberta ainda. A conexão ainda pode estar se conectando.",
