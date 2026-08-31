@@ -11,6 +11,7 @@
  */
 
 import { Hono } from "hono";
+import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
 import type { StudioContext } from "../../core/studio-context";
 import { getUserId, requireOrganization } from "../../core/studio-context";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
@@ -512,6 +513,19 @@ export const createDecoSitesOrgRoutes = () => {
     const userId = getUserId(ctx);
     if (!email || !userId) {
       return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    // Same permission gate as COLLECTION_CONNECTIONS_CREATE.
+    try {
+      await ctx.access.check("COLLECTION_CONNECTIONS_CREATE");
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        return c.json({ error: err.message }, 401);
+      }
+      if (err instanceof ForbiddenError) {
+        return c.json({ error: err.message }, 403);
+      }
+      throw err;
     }
 
     let body: { siteName: string; orgId?: string };
