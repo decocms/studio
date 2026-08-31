@@ -591,6 +591,10 @@ export const sandbox = {
     "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
+  "sandbox.cmsSettings.fastPreviewInPlace.label":
+    "Preview instantâneo (experimental)",
+  "sandbox.cmsSettings.fastPreviewInPlace.description":
+    "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em servidores de preview com runtime deco.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
     "Se este agente oferece um CMS e onde o preview abre quando oferece.",

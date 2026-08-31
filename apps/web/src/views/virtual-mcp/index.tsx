@@ -83,6 +83,7 @@ import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
+import { InPlaceRenderField } from "@/components/sandbox/runtime-card/in-place-render-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
@@ -1124,6 +1125,10 @@ function VirtualMcpDetailViewWithData({
                         previewServerUrl={form.watch(
                           "metadata.previewServerUrl",
                         )}
+                      />
+                      <InPlaceRenderField
+                        control={form.control}
+                        fastPreview={form.watch("metadata.fastPreview")}
                       />
                     </CardContent>
 

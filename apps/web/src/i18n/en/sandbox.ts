@@ -567,6 +567,10 @@ export const sandbox = {
     "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
+  "sandbox.cmsSettings.fastPreviewInPlace.label":
+    "Instant preview (experimental)",
+  "sandbox.cmsSettings.fastPreviewInPlace.description":
+    "Refresh edits in place, without waiting for a save — much faster, but only works on deco-runtime preview servers.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.cmsSettings.contentEditing.description":
     "Whether this agent offers a CMS, and where the preview lands when it does.",
