@@ -8,7 +8,7 @@ import {
   shippedLane,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { boardFor, shippedPatch } from "./board-handler";
+import { boardFor, boardLanes, shippedPatch } from "./board-handler";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import {
   type ChecksStatus,
@@ -443,8 +443,7 @@ export async function retryAutoMergeIfApproved(
   item: TaskBoardItem,
 ): Promise<boolean> {
   const orgId = item.organizationId;
-  if (!inReviewPhase(item, (await (await boardFor(ctx, orgId)).lanes()).review))
-    return false;
+  if (!inReviewPhase(item, (await boardLanes(ctx, orgId)).review)) return false;
   const settings = await ctx.storage.organizationSettings.get(orgId);
   if (settings?.flags?.auto_merge !== true) return false;
   // Same human-override guard `review-decision.ts` and `prs-get` honor.

@@ -61,7 +61,7 @@
  */
 
 import type { StudioContextFactory } from "@/automations/fire";
-import { boardForDb } from "./board-handler";
+import { boardLanesForDb } from "./board-handler";
 import type { Kysely } from "kysely";
 import type { Database } from "@/storage/types";
 import type { StudioContext } from "@/core/studio-context";
@@ -293,7 +293,7 @@ export class TaskBoardReviewSweeper {
           this.taskBoard,
           threadId,
           organizationId,
-          await (await boardForDb(this.db, organizationId)).lanes(),
+          await boardLanesForDb(this.db, organizationId),
         );
         await refundUnproductiveTaskClaims(
           this.taskBoard,
@@ -386,8 +386,7 @@ export class TaskBoardReviewSweeper {
             organizationId,
             attempts,
             new Date(Date.now() + REARM_DELAY_MS),
-            (await (await boardForDb(this.db, organizationId)).lanes())
-              .progress,
+            (await boardLanesForDb(this.db, organizationId)).progress,
           )
           .catch((rearmErr) =>
             console.error(
@@ -412,7 +411,7 @@ export class TaskBoardReviewSweeper {
     reason: string,
   ): Promise<void> {
     try {
-      const lanes = await (await boardForDb(this.db, organizationId)).lanes();
+      const lanes = await boardLanesForDb(this.db, organizationId);
       const item = await this.taskBoard.getById(id, organizationId);
       if (!item || item.status !== "in_progress") return;
       const returned = await this.taskBoard.returnToTodoAfterFailure(
@@ -492,7 +491,7 @@ export class TaskBoardReviewSweeper {
     // Re-check against the fresh row: `listItemsPendingReview` scanned a
     // possibly-stale snapshot, and a human can bounce the card between that scan
     // and this reconcile.
-    const lanes = await (await boardForDb(this.db, organizationId)).lanes();
+    const lanes = await boardLanesForDb(this.db, organizationId);
     if (!inReviewPhase(item, lanes.review)) return false;
     // Everything below EXCEPT the merge retry needs the Super Agent to still own
     // the card — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own

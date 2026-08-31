@@ -8,7 +8,7 @@ import {
 } from "@decocms/shared/task-board";
 import { autoResolveConflictsEnabled } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
-import { boardFor } from "./board-handler";
+import { boardLanes } from "./board-handler";
 import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 
@@ -111,7 +111,7 @@ export async function reactToApprovedPrConflict(
   // for the single winner only, so the activity log (which feeds the cap count)
   // stays accurate. No `status_changed` entry — mirrors the request_changes
   // bounce; the review cycle resets only when the run advances back to In Review.
-  const lanes = await (await boardFor(ctx, orgId)).lanes();
+  const lanes = await boardLanes(ctx, orgId);
   const claimed = await ctx.storage.taskBoard.claimConflictResolution(
     item.id,
     orgId,

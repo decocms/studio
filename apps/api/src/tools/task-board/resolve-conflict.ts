@@ -39,7 +39,7 @@ import {
   userInitiatedTaskQuotaConfig,
 } from "@/billing/task-quota";
 import { recordTaskActivity } from "./activity";
-import { boardFor } from "./board-handler";
+import { boardLanes } from "./board-handler";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { fetchPrConflict } from "./prs-get";
@@ -106,7 +106,7 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
 
     // Atomic dispatch fence shared with the automatic reaction (see doc above).
-    const lanes = await (await boardFor(ctx, organizationId)).lanes();
+    const lanes = await boardLanes(ctx, organizationId);
     const claimed = await ctx.storage.taskBoard.claimConflictResolution(
       id,
       organizationId,

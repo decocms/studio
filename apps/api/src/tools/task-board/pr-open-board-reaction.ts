@@ -14,7 +14,7 @@
  */
 
 import { generateObject } from "ai";
-import { type BoardLanes, boardFor } from "./board-handler";
+import { type BoardLanes, boardLanes } from "./board-handler";
 import { z } from "zod";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -248,7 +248,7 @@ export async function reactToPrOpenedForBoard(
     if (!decision) return;
 
     await applyBoardDecision(ctx.storage.taskBoard, {
-      lanes: await (await boardFor(ctx, orgId)).lanes(),
+      lanes: await boardLanes(ctx, orgId),
       orgId,
       userId,
       threadId,

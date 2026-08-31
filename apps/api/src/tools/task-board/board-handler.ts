@@ -262,6 +262,38 @@ export async function boardFor(
 }
 
 /**
+ * This org's lanes, in one await.
+ *
+ * `(await boardLanes(ctx, org)).review` is what asking the long
+ * way looks like, and almost every caller wants exactly this. Naming the
+ * question is cheaper than reading the nesting.
+ */
+export async function boardLanes(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<BoardLanes> {
+  return await (await boardFor(ctx, organizationId)).lanes();
+}
+
+/** What this org's board runs when a card lands in `columnKey`, in one await.
+ *  See {@link boardLanes}. */
+export async function boardAutomationFor(
+  ctx: StudioContext,
+  organizationId: string,
+  columnKey: string,
+): Promise<ColumnAutomation | null> {
+  return await (await boardFor(ctx, organizationId)).automationFor(columnKey);
+}
+
+/** This org's columns, in one await. See {@link boardLanes}. */
+export async function boardColumnsOf(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<BoardColumn[]> {
+  return await (await boardFor(ctx, organizationId)).columns();
+}
+
+/**
  * The same board, for the callers that have no `StudioContext`.
  *
  * The projector wiring, the sweeper and the thread-finish reactions run with a
@@ -270,7 +302,7 @@ export async function boardFor(
  * forgot would silently reintroduce Studio's vocabulary on someone else's
  * board. Building the same handler from the same rows keeps one answer.
  */
-export async function boardForDb(
+async function boardForDb(
   db: Kysely<Database>,
   organizationId: string,
 ): Promise<BoardHandler> {
@@ -282,6 +314,14 @@ export async function boardForDb(
     boardColumns: new BoardColumnStorage(db),
     orgOwnedColumns: orgFlagEnabled(settings?.flags, "org_board_columns"),
   });
+}
+
+/** This org's lanes from a database handle. See {@link boardLanes}. */
+export async function boardLanesForDb(
+  db: Kysely<Database>,
+  organizationId: string,
+): Promise<BoardLanes> {
+  return await (await boardForDb(db, organizationId)).lanes();
 }
 
 /**

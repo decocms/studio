@@ -31,7 +31,7 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
-import { type BoardLanes, boardFor } from "./board-handler";
+import { type BoardLanes, boardLanes } from "./board-handler";
 import { extractPrFromValue } from "./pr-extract";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -225,7 +225,7 @@ export async function openReviewCycleForRun(
       const opened = await ctx.storage.taskBoard.openReviewCycleIfInProgress(
         itemId,
         orgId,
-        await (await boardFor(ctx, orgId)).lanes(),
+        await boardLanes(ctx, orgId),
       );
       if (!opened) continue;
       emitTaskBoardUpdated(orgId, opened);
@@ -543,7 +543,7 @@ export async function parkReviewedCardForHuman(
   ctx: StudioContext,
   item: TaskBoardItem,
 ): Promise<void> {
-  const lanes = await (await boardFor(ctx, item.organizationId)).lanes();
+  const lanes = await boardLanes(ctx, item.organizationId);
   if (item.status !== lanes.progress || !inReviewPhase(item, lanes.review))
     return;
   // No review column on this board: nowhere to park the card.
