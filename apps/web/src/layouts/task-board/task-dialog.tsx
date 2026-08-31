@@ -1237,8 +1237,10 @@ function TaskBoardItemEditor({
                 </PopoverContent>
               </Popover>
 
-              {/* Read-only: sprint membership is owned by the tracker the
-                  board mirrors (see apps/api/src/jira/sync.ts). */}
+              {/* Read-only HERE, not read-only in principle: a card's sprint
+                  is writable and pushes to the tracker, but planning is a
+                  backlog gesture rather than a field on one card, so this
+                  stays a label until that surface exists. */}
               {cardSprint && (
                 <span className={cn(PROPERTY_BUTTON, "cursor-default")}>
                   <Repeat04 size={16} className="text-muted-foreground" />

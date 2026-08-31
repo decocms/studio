@@ -182,7 +182,9 @@ export const TaskBoardItemSchema = z.object({
   repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
   /** The sprint this card belongs to — an id from `TASK_BOARD_ITEM_LIST`'s
-   *  `sprints`. Null = backlog. Mirrored from the tracker, not writable here. */
+   *  `sprints`. Null = backlog. The sprints themselves are mirrored from the
+   *  tracker and cannot be authored here; which one a card is IN is writable
+   *  through `TASK_BOARD_ITEM_UPDATE`, and pushed onward. */
   sprintId: z.string().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),

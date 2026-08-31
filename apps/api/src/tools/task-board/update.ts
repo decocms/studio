@@ -263,6 +263,17 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
     }
 
+    // Checked here rather than left to the foreign key: an unknown id would
+    // otherwise surface as `violates foreign key constraint
+    // "task_board_items_sprint_id_fkey"`, which names our schema at a caller
+    // who asked a reasonable question. Null is the backlog and always valid.
+    if (input.sprintId) {
+      const sprints = await ctx.storage.sprints.listByOrg(organizationId);
+      if (!sprints.some((sprint) => sprint.id === input.sprintId)) {
+        throw new Error("sprintId is not a sprint on this board");
+      }
+    }
+
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
