@@ -30,7 +30,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartSquare02,
+  Check,
   ChevronDown,
+  Copy01,
   Pencil01,
   Power03,
   Trash01,
@@ -118,6 +120,18 @@ interface AnalyticsDataResponse {
   view?: string;
   range?: string;
   data?: Record<string, unknown>;
+}
+
+/** The one-time result of a registration. `key`/`snippet` come back once, at
+ *  creation, and only for a token (key) registration; `notes` carries the
+ *  collector's warnings (e.g. `deco` auto-added, or the `_dq` route not yet
+ *  reachable). */
+interface AnalyticsRegisterResult {
+  registered?: boolean;
+  host?: string | null;
+  key?: string | null;
+  snippet?: string | null;
+  notes?: string[];
 }
 
 // The modules a site can enable. `core` is always on (the collector forces it),
@@ -786,16 +800,99 @@ function InstallPanel() {
 
 // --- register (not yet registered) ------------------------------------------
 
+/** Copy-to-clipboard button for the one-time snippet/token. */
+function CopyButton({ text }: { text: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => {
+        navigator.clipboard?.writeText(text).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          },
+          () => {},
+        );
+      }}
+    >
+      {copied ? <Check className="size-4" /> : <Copy01 className="size-4" />}
+      {copied
+        ? t("mainPanelTabs.analyticsTab.copied")
+        : t("mainPanelTabs.analyticsTab.copy")}
+    </Button>
+  );
+}
+
+/** The one-time registration result: the server-built snippet, any notes, and —
+ *  for a token registration only — the public token, shown ONCE. Rendered at the
+ *  tab level so it survives the flip to the registered view. */
+function RegistrationResult({
+  result,
+  onDismiss,
+}: {
+  result: AnalyticsRegisterResult;
+  onDismiss: () => void;
+}) {
+  const t = useT();
+  const notes = result.notes ?? [];
+  const hasKey = Boolean(result.key);
+  if (!hasKey && !result.snippet && notes.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="text-sm font-medium text-foreground">
+          {hasKey
+            ? t("mainPanelTabs.analyticsTab.tokenTitle")
+            : t("mainPanelTabs.analyticsTab.registeredOk")}
+        </h3>
+        <Button variant="ghost" size="sm" onClick={onDismiss}>
+          {t("mainPanelTabs.analyticsTab.dismiss")}
+        </Button>
+      </div>
+      {hasKey && (
+        <p className="text-xs text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.tokenOnce")}
+        </p>
+      )}
+      {result.snippet && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+          <code className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
+            {result.snippet}
+          </code>
+          <CopyButton text={result.snippet} />
+        </div>
+      )}
+      {notes.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {notes.map((n, i) => (
+            <li
+              key={i}
+              className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+            >
+              {n}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function RegisterCard({
   base,
   orgSlug,
   site,
   host,
+  onRegistered,
 }: {
   base: string;
   orgSlug: string;
   site: string;
   host: string | null;
+  onRegistered: (result: AnalyticsRegisterResult) => void;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -803,14 +900,27 @@ function RegisterCard({
     new Set(["core", "commerce", "vitals"]),
   );
   const [hostOverride, setHostOverride] = useState("");
+  // Token (key) mode: an owned site not on our CDN. The token is public and
+  // events are NOT billable, so it is opt-in and clearly marked.
+  const [useKey, setUseKey] = useState(false);
+  const [domainsText, setDomainsText] = useState("");
 
-  const registerMutation = useMutation({
-    mutationFn: (input: { modules: string[]; host?: string }) =>
-      mutateJson(`${base}/analytics/register`, "POST", input),
-    onSuccess: () => {
+  const registerMutation = useMutation<
+    AnalyticsRegisterResult,
+    Error,
+    Record<string, unknown>
+  >({
+    mutationFn: (input) =>
+      mutateJson(
+        `${base}/analytics/register`,
+        "POST",
+        input,
+      ) as Promise<AnalyticsRegisterResult>,
+    onSuccess: (data) => {
       queryClient.invalidateQueries({
         queryKey: KEYS.analyticsStatus(orgSlug, site),
       });
+      onRegistered(data);
       toast.success(t("mainPanelTabs.analyticsTab.toastRegistered"));
     },
     onError: (err) => toast.error(errorText(err)),
@@ -826,7 +936,21 @@ function RegisterCard({
     });
   };
 
+  // Split on commas/whitespace so a pasted list works either way.
+  const domains = domainsText
+    .split(/[\s,]+/)
+    .map((d) => d.trim())
+    .filter(Boolean);
+
   const handleRegister = () => {
+    if (useKey) {
+      registerMutation.mutate({
+        key: true,
+        domains,
+        modules: [...selected],
+      });
+      return;
+    }
     const trimmed = hostOverride.trim();
     registerMutation.mutate({
       modules: [...selected],
@@ -844,7 +968,7 @@ function RegisterCard({
       <div className="flex flex-col gap-5">
         <p className="text-sm text-muted-foreground">
           {t("mainPanelTabs.analyticsTab.registerDescription", {
-            host: effectiveHost,
+            host: useKey ? domains[0] || "your domains" : effectiveHost,
           })}
         </p>
 
@@ -879,22 +1003,56 @@ function RegisterCard({
           </div>
         </div>
 
-        {!host && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:border-border/70">
+          <Checkbox
+            checked={useKey}
+            onCheckedChange={(v) => setUseKey(Boolean(v))}
+            className="mt-0.5"
+          />
+          <span className="flex flex-col">
+            <span className="text-sm font-medium text-foreground">
+              {t("mainPanelTabs.analyticsTab.registerByKey")}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {t("mainPanelTabs.analyticsTab.registerByKeyHint")}
+            </span>
+          </span>
+        </label>
+
+        {useKey ? (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="analytics-host">
-              {t("mainPanelTabs.analyticsTab.hostLabel")}
+            <Label htmlFor="analytics-domains">
+              {t("mainPanelTabs.analyticsTab.domainsLabel")}
             </Label>
             <Input
-              id="analytics-host"
-              value={hostOverride}
-              onChange={(e) => setHostOverride(e.target.value)}
-              placeholder={t("mainPanelTabs.analyticsTab.hostPlaceholder")}
+              id="analytics-domains"
+              value={domainsText}
+              onChange={(e) => setDomainsText(e.target.value)}
+              placeholder={t("mainPanelTabs.analyticsTab.domainsPlaceholder")}
               className="font-mono text-xs"
             />
             <span className="text-xs text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.hostHint")}
+              {t("mainPanelTabs.analyticsTab.domainsHint")}
             </span>
           </div>
+        ) : (
+          !host && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="analytics-host">
+                {t("mainPanelTabs.analyticsTab.hostLabel")}
+              </Label>
+              <Input
+                id="analytics-host"
+                value={hostOverride}
+                onChange={(e) => setHostOverride(e.target.value)}
+                placeholder={t("mainPanelTabs.analyticsTab.hostPlaceholder")}
+                className="font-mono text-xs"
+              />
+              <span className="text-xs text-muted-foreground">
+                {t("mainPanelTabs.analyticsTab.hostHint")}
+              </span>
+            </div>
+          )
         )}
 
         <p className="text-xs text-muted-foreground">
@@ -905,7 +1063,8 @@ function RegisterCard({
           <Button
             onClick={handleRegister}
             disabled={
-              registerMutation.isPending || (!host && !hostOverride.trim())
+              registerMutation.isPending ||
+              (useKey ? domains.length === 0 : !host && !hostOverride.trim())
             }
           >
             {registerMutation.isPending
@@ -1299,6 +1458,13 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
     staleTime: 30_000,
   });
 
+  // The one-time registration result (snippet/notes, and the token for a keyed
+  // site). Held here so it survives the flip to the registered view — a token
+  // shown once must not vanish when the register card unmounts.
+  const [registered, setRegistered] = useState<AnalyticsRegisterResult | null>(
+    null,
+  );
+
   if (!siteSlug) {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
@@ -1342,6 +1508,13 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
           </p>
         </div>
 
+        {registered && (
+          <RegistrationResult
+            result={registered}
+            onDismiss={() => setRegistered(null)}
+          />
+        )}
+
         {statusQuery.isLoading ? (
           <div className="flex flex-col gap-3">
             <Skeleton className="h-8 w-full" />
@@ -1373,6 +1546,7 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
             orgSlug={org.slug}
             site={siteSlug}
             host={status.host ?? null}
+            onRegistered={setRegistered}
           />
         )}
       </div>

@@ -386,6 +386,23 @@ export const mainPanelTabs = {
     "Painel indisponível",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "A superfície de dados de analytics ainda não está ligada a este ambiente — a configuração abaixo continua funcionando.",
+  // Registro por token (chave)
+  "mainPanelTabs.analyticsTab.registerByKey":
+    "Registrar por token (site fora do nosso CDN)",
+  "mainPanelTabs.analyticsTab.registerByKeyHint":
+    "Para dev, staging ou site fora do CDN. A tag carrega um token público e os eventos não são faturáveis.",
+  "mainPanelTabs.analyticsTab.domainsLabel": "Domínios",
+  "mainPanelTabs.analyticsTab.domainsPlaceholder":
+    "loja.com.br, staging.loja.com.br",
+  "mainPanelTabs.analyticsTab.domainsHint":
+    "Domínios que o collector aceita (checagem de Origin); o primeiro é o principal. Obrigatório para um token.",
+  "mainPanelTabs.analyticsTab.tokenTitle": "Token criado — copie agora",
+  "mainPanelTabs.analyticsTab.tokenOnce":
+    "Mostrado uma vez. É público (vai no script), então identifica mas nunca autentica — os eventos não são faturáveis.",
+  "mainPanelTabs.analyticsTab.registeredOk": "Registrado",
+  "mainPanelTabs.analyticsTab.copy": "Copiar",
+  "mainPanelTabs.analyticsTab.copied": "Copiado",
+  "mainPanelTabs.analyticsTab.dismiss": "Dispensar",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Biblioteca",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Visualização principal",

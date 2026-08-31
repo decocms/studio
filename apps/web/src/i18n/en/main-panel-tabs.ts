@@ -370,6 +370,23 @@ export const mainPanelTabs = {
     "Dashboard isn't available",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "The analytics data surface isn't wired to this environment yet — configuration below still works.",
+  // Token (key) registration
+  "mainPanelTabs.analyticsTab.registerByKey":
+    "Register by token (site not on our CDN)",
+  "mainPanelTabs.analyticsTab.registerByKeyHint":
+    "For a dev, staging, or off-CDN site. The tag carries a public token and events are not billable.",
+  "mainPanelTabs.analyticsTab.domainsLabel": "Domains",
+  "mainPanelTabs.analyticsTab.domainsPlaceholder":
+    "loja.com.br, staging.loja.com.br",
+  "mainPanelTabs.analyticsTab.domainsHint":
+    "Domains the collector accepts (Origin check); the first is primary. Required for a token.",
+  "mainPanelTabs.analyticsTab.tokenTitle": "Token created — copy it now",
+  "mainPanelTabs.analyticsTab.tokenOnce":
+    "Shown once. It is public (it ships in the script), so it identifies but never authenticates — events are not billable.",
+  "mainPanelTabs.analyticsTab.registeredOk": "Registered",
+  "mainPanelTabs.analyticsTab.copy": "Copy",
+  "mainPanelTabs.analyticsTab.copied": "Copied",
+  "mainPanelTabs.analyticsTab.dismiss": "Dismiss",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Library",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Main view",
