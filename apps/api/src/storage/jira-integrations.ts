@@ -44,6 +44,8 @@ export interface TaskBoardItemJiraLink {
   jiraIssueKey: string;
   jiraUpdatedAt: string;
   jiraStatus: string | null;
+  /** Jira sprint id, or null for the backlog. See `jira_sprint_id`. */
+  jiraSprintId: string | null;
 }
 
 export class JiraIntegrationStorage {
@@ -280,6 +282,7 @@ export class JiraIntegrationStorage {
           jiraIssueKey: row.jira_issue_key,
           jiraUpdatedAt: toIso(row.jira_updated_at),
           jiraStatus: row.jira_status,
+          jiraSprintId: row.jira_sprint_id,
         },
       ]),
     );
@@ -292,6 +295,7 @@ export class JiraIntegrationStorage {
     jiraIssueKey: string;
     jiraUpdatedAt: Date;
     jiraStatus: string;
+    jiraSprintId: string | null;
   }): Promise<void> {
     await this.db
       .insertInto("task_board_item_jira_links")
@@ -302,13 +306,20 @@ export class JiraIntegrationStorage {
         jira_issue_key: params.jiraIssueKey,
         jira_updated_at: params.jiraUpdatedAt,
         jira_status: params.jiraStatus,
+        jira_sprint_id: params.jiraSprintId,
       })
       .execute();
   }
 
   async touchLink(
     itemId: string,
-    patch: { jiraUpdatedAt?: Date; jiraStatus?: string },
+    patch: {
+      jiraUpdatedAt?: Date;
+      jiraStatus?: string;
+      /** Explicit null moves the issue to the backlog, so `undefined` (leave
+       *  alone) and `null` (no sprint) are different patches here. */
+      jiraSprintId?: string | null;
+    },
   ): Promise<void> {
     await this.db
       .updateTable("task_board_item_jira_links")
@@ -318,6 +329,9 @@ export class JiraIntegrationStorage {
           : {}),
         ...(patch.jiraStatus !== undefined
           ? { jira_status: patch.jiraStatus }
+          : {}),
+        ...(patch.jiraSprintId !== undefined
+          ? { jira_sprint_id: patch.jiraSprintId }
           : {}),
       })
       .where("item_id", "=", itemId)
@@ -342,6 +356,7 @@ export class JiraIntegrationStorage {
       jiraIssueKey: row.jira_issue_key,
       jiraUpdatedAt: toIso(row.jira_updated_at),
       jiraStatus: row.jira_status,
+      jiraSprintId: row.jira_sprint_id,
     };
   }
 

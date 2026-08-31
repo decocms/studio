@@ -90,6 +90,7 @@ import {
   DEFAULT_TASK_TYPE,
   laneHeader,
   laneVisual,
+  type Sprint,
   STATUS_CONFIG,
   moveTargets,
   statusIconClassName,
@@ -2286,6 +2287,7 @@ function describeActivity(
   a: TaskBoardActivity,
   t: ReturnType<typeof useT>,
   memberByUserId: Map<string, Member>,
+  sprintById: Map<string, Sprint>,
 ): ReactNode {
   const statusChip = (s: unknown) => {
     const cfg =
@@ -2371,6 +2373,19 @@ function describeActivity(
     <ValueChip
       icon={<ReviewerIcon size={14} />}
       label={reviewerName(reviewer, t)}
+    />
+  );
+  /** A sprint by its local id. Null is the backlog, and a sprint the board no
+   *  longer has still gets a chip — the move happened either way. */
+  const sprintChip = (sprintId: unknown) => (
+    <ValueChip
+      icon={<Repeat04 size={14} />}
+      label={
+        typeof sprintId === "string"
+          ? (sprintById.get(sprintId)?.name ??
+            t("taskBoard.taskDialog.sprintGoneLabel"))
+          : t("taskBoard.taskFilters.sprintBacklog")
+      }
     />
   );
 
@@ -2513,6 +2528,11 @@ function describeActivity(
             : t("taskBoard.taskDialog.activityMergeFailed");
       }
     }
+    case "sprint_changed":
+      return interleaveChips(
+        t("taskBoard.taskDialog.activityMovedFromTo", { from, to }),
+        { from: sprintChip(d.from), to: sprintChip(d.to) },
+      );
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);
@@ -2535,6 +2555,7 @@ function TimelineBlock({
   memberByUserId: Map<string, Member>;
 }) {
   const t = useT();
+  const sprintById = useBoardSprintIndex();
   const [expanded, setExpanded] = useState(false);
 
   const actorName = (actorId: string | null) => {
@@ -2583,7 +2604,8 @@ function TimelineBlock({
         <div key={a.id} className="relative flex items-center gap-2.5">
           {actorAvatar(a.actorId)}
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {actorName(a.actorId)} {describeActivity(a, t, memberByUserId)}
+            {actorName(a.actorId)}{" "}
+            {describeActivity(a, t, memberByUserId, sprintById)}
             <span className="text-muted-foreground/60">
               {" · "}
               {formatTimeAgo(new Date(a.occurredAt))}

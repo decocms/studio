@@ -68,7 +68,8 @@ function captureTaskRunEvent(
 
 /** Push a task board item change to every SSE listener on its org. Also the
  *  one funnel every board write passes through, so it feeds the Jira status
- *  push — dynamic import because the jira sync itself imports this module. */
+ *  and sprint pushes — dynamic import because the jira sync itself imports
+ *  this module. */
 export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
   sseHub.emit(orgId, {
     id: crypto.randomUUID(),
@@ -79,11 +80,14 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
     time: new Date().toISOString(),
   });
   void import("@/jira/dbos-jira-sync")
-    .then((jira) => jira.maybeEnqueueJiraStatusPush(orgId, item))
+    .then((jira) => {
+      jira.maybeEnqueueJiraStatusPush(orgId, item);
+      jira.maybeEnqueueJiraSprintPush(orgId, item);
+    })
     .catch((err) => {
-      // Swallowing this silently would make the whole Jira status push dead on
-      // arrival with no signal anywhere — the enqueue logs its own failures.
-      console.warn("[jira] status push hook unavailable:", err);
+      // Swallowing this silently would make the whole Jira push dead on
+      // arrival with no signal anywhere — the enqueues log their own failures.
+      console.warn("[jira] push hooks unavailable:", err);
     });
 }
 

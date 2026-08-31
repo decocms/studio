@@ -482,6 +482,7 @@ export interface StudioToolIO {
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
+      sprintId?: string | null | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
       prUrl?: string | null | undefined;
@@ -638,7 +639,8 @@ export interface StudioToolIO {
           | "tags_changed"
           | "review_verdict_requested"
           | "merge_conflict_resolution"
-          | "type_changed";
+          | "type_changed"
+          | "sprint_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

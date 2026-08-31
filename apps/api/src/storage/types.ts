@@ -2145,6 +2145,15 @@ export interface TaskBoardItemJiraLinkTable {
     string | null | undefined,
     string | null
   >;
+  /** Last Jira sprint id SEEN OR SET on the Jira side, same job as
+   *  `jira_status` one field over: the pull applies sprint only when this
+   *  changed, and the sprint push records its target here so the echo is a
+   *  no-op. Null means never seen, so the next pull is authoritative. */
+  jira_sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 

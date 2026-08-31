@@ -221,6 +221,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.deleteTask": "Excluir",
   "taskBoard.taskDialog.setPriorityButton": "Definir prioridade",
   "taskBoard.taskDialog.someoneLabel": "alguém",
+  "taskBoard.taskDialog.sprintGoneLabel": "uma sprint que n\u00e3o existe mais",
   "taskBoard.taskDialog.startedByLabel": "iniciado por",
   "taskBoard.taskDialog.reviewerLabel": "Reviewer",
   "taskBoard.taskDialog.qaAgentLabel": "QA Agent",

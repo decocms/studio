@@ -177,6 +177,30 @@ async function mirrorBoardColumns(
  * those cards and stops for each one the moment it lands somewhere real, so it
  * is a conversion path rather than a standing override.
  */
+/**
+ * Whether the pull writes the card's sprint, or leaves it where it is.
+ *
+ * Only when Jira's own sprint changed since we last looked, so someone pulling
+ * a card into the sprint from Studio is not undone by the next tick reading
+ * Jira's not-yet-updated sprint back over them. The pull used to write it
+ * unconditionally, which cost nothing while the sync was the only writer.
+ *
+ * Deliberately NOT the mirror of {@link rewritesStatus}: that one re-homes a
+ * card stranded in a column the board does not have, because a card has to be
+ * SOMEWHERE. A card in no sprint is in the backlog, which is a real place.
+ */
+export function rewritesSprint({
+  lastSeenJiraSprintId,
+  jiraSprintId,
+}: {
+  /** `jira_sprint_id` on the link: the sprint we last saw or set on Jira. */
+  lastSeenJiraSprintId: string | null;
+  /** Where the issue is in Jira right now. Null is the backlog. */
+  jiraSprintId: string | null;
+}): boolean {
+  return lastSeenJiraSprintId !== jiraSprintId;
+}
+
 export function rewritesStatus({
   jiraStatusChanged,
   currentStatus,
@@ -665,11 +689,11 @@ async function runSync(
       }
 
       const jiraStatusName = issue.fields.status.name;
+      const jiraSprint = pickIssueSprint(issue.sprints);
       const fields = {
         title: issue.fields.summary,
         description: await cardDescription(integration.siteUrl, issue, users),
         priority: mapPriority(issue),
-        sprintId: await sprints.localIdFor(pickIssueSprint(issue.sprints)),
         // Asked of the board, not recomputed from the flag: one answer for
         // every writer, so a card cannot be guarded by one path and not by
         // another. A card the sync has not reached yet stays unguarded rather
@@ -680,6 +704,13 @@ async function runSync(
       if (link) {
         // Status applies only when it changed ON JIRA'S SIDE, so an unrelated issue edit can't yank back a card the agent already advanced.
         const statusChangedOnJira = link.jiraStatus !== jiraStatusName;
+        // Sprint gets the same guard for the same reason: someone pulling a
+        // card into the sprint from Studio must not have it undone by the next
+        // tick reading Jira's not-yet-updated sprint back over them.
+        const sprintChangedOnJira = rewritesSprint({
+          lastSeenJiraSprintId: link.jiraSprintId,
+          jiraSprintId: jiraSprint?.id ?? null,
+        });
         const before = await ctx.storage.taskBoard.getById(link.itemId, orgId);
         const writeStatus = rewritesStatus({
           jiraStatusChanged: statusChangedOnJira,
@@ -689,11 +720,18 @@ async function runSync(
         let item = await ctx.storage.taskBoard.update(
           link.itemId,
           orgId,
-          { ...fields, ...(writeStatus ? { status } : {}) },
+          {
+            ...fields,
+            ...(writeStatus ? { status } : {}),
+            ...(sprintChangedOnJira
+              ? { sprintId: await sprints.localIdFor(jiraSprint) }
+              : {}),
+          },
           JIRA_SYNC_ACTOR,
         );
         await ctx.storage.jiraIntegrations.touchLink(link.itemId, {
           jiraStatus: jiraStatusName,
+          jiraSprintId: jiraSprint?.id ?? null,
         });
         if (before && writeStatus && before.status !== status) {
           await ctx.storage.taskBoard.recordActivity({
@@ -729,6 +767,7 @@ async function runSync(
           organizationId: orgId,
           ...fields,
           status,
+          sprintId: await sprints.localIdFor(jiraSprint),
           by: JIRA_SYNC_ACTOR,
         });
         try {
@@ -743,6 +782,7 @@ async function runSync(
             // unchanged even if the comment pull below never finished.
             jiraUpdatedAt: new Date(0),
             jiraStatus: jiraStatusName,
+            jiraSprintId: jiraSprint?.id ?? null,
           });
         } catch (err) {
           // 23505: a concurrent run won the link's UNIQUE — drop our orphan card.

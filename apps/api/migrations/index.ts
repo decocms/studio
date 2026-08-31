@@ -192,6 +192,8 @@ import * as migration190taskboardreviewcyclestartedat from "./190-task-board-rev
 import * as migration191taskboardcolumns from "./191-task-board-columns.ts";
 import * as migration192taskboardverdictnudgeactivity from "./192-task-board-verdict-nudge-activity.ts";
 import * as migration193taskboardstatuscolumnfk from "./193-task-board-status-column-fk.ts";
+import * as migration194jiralinksprint from "./194-jira-link-sprint.ts";
+import * as migration195taskboardsprintactivity from "./195-task-board-sprint-activity.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -417,6 +419,8 @@ const migrations: Record<string, Migration> = {
   "192-task-board-verdict-nudge-activity":
     migration192taskboardverdictnudgeactivity,
   "193-task-board-status-column-fk": migration193taskboardstatuscolumnfk,
+  "194-jira-link-sprint": migration194jiralinksprint,
+  "195-task-board-sprint-activity": migration195taskboardsprintactivity,
 };
 
 export default migrations;
