@@ -64,7 +64,7 @@ interface RegistryItemDialogProps {
 }
 
 const REMOTE_TYPES = new Set(["http", "sse", "stdio"]);
-const ID_PATTERN = /^[a-z0-9]+(?:[/-][a-z0-9._-]+)*$/;
+const ID_PATTERN = /^[a-z0-9]+(?:[/-][a-z0-9._]+)*$/;
 const DEFAULT_TAGS = [
   "internal",
   "automation",
