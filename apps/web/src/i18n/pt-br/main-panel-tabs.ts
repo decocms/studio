@@ -123,6 +123,13 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.secretValuePlaceholder": "valor",
   "mainPanelTabs.hostingTab.secretValueHidden": "••••••",
   "mainPanelTabs.hostingTab.secretOnWorker": "No worker",
+  "mainPanelTabs.hostingTab.secretScope": "Escopo",
+  "mainPanelTabs.hostingTab.secretScopeRuntime": "Runtime",
+  "mainPanelTabs.hostingTab.secretScopeBuild": "Build",
+  "mainPanelTabs.hostingTab.secretScopeRuntimeHint":
+    "Injetado em tempo de execução (o ambiente de runtime do site).",
+  "mainPanelTabs.hostingTab.secretScopeBuildHint":
+    "Montado apenas no build (ex.: token de registry privado) — nunca exposto em runtime.",
   "mainPanelTabs.hostingTab.deleteSecret": "Excluir segredo",
   "mainPanelTabs.hostingTab.confirmDeleteSecretTitle": "Excluir segredo?",
   "mainPanelTabs.hostingTab.confirmDeleteSecretDescription":

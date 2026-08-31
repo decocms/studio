@@ -134,6 +134,9 @@ interface EnvVar {
 interface Secret {
   name: string;
   origin?: "control-plane" | "worker";
+  /** Build phase: "runtime" (runtime bundle / CF Worker store) or "build"
+   *  (mounted by the build Job only). Absent ⇒ runtime. */
+  scope?: "runtime" | "build";
   boundOnWorker?: boolean;
 }
 interface Redirect {
@@ -1113,7 +1116,11 @@ function SecretsSection({
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addValue, setAddValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [addScope, setAddScope] = useState<"runtime" | "build">("runtime");
+  const [deleteTarget, setDeleteTarget] = useState<{
+    name: string;
+    scope: "runtime" | "build";
+  } | null>(null);
 
   const invalidate = () =>
     queryClient.invalidateQueries({
@@ -1121,21 +1128,29 @@ function SecretsSection({
     });
 
   const putMutation = useMutation({
-    mutationFn: (input: { name: string; value: string }) =>
-      mutateJson(`${base}/secrets`, "PUT", input),
+    mutationFn: (input: {
+      name: string;
+      value: string;
+      scope: "runtime" | "build";
+    }) => mutateJson(`${base}/secrets`, "PUT", input),
     onSuccess: () => {
       invalidate();
       toast.success(t("mainPanelTabs.hostingTab.toastSecretSaved"));
       setAddOpen(false);
       setAddName("");
       setAddValue("");
+      setAddScope("runtime");
     },
     onError: (err) => toast.error(errorText(err)),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (name: string) =>
-      mutateJson(`${base}/secrets/${encodeURIComponent(name)}`, "DELETE"),
+    // A name may exist in both scopes, so DELETE carries the scope as a query param.
+    mutationFn: (target: { name: string; scope: "runtime" | "build" }) =>
+      mutateJson(
+        `${base}/secrets/${encodeURIComponent(target.name)}?scope=${target.scope}`,
+        "DELETE",
+      ),
     onSuccess: () => {
       invalidate();
       toast.success(t("mainPanelTabs.hostingTab.toastSecretDeleted"));
@@ -1154,7 +1169,7 @@ function SecretsSection({
       toast.error(t("mainPanelTabs.hostingTab.errorSecretValueRequired"));
       return;
     }
-    putMutation.mutate({ name, value: addValue });
+    putMutation.mutate({ name, value: addValue, scope: addScope });
   };
 
   const addButton = (
@@ -1186,37 +1201,48 @@ function SecretsSection({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {secrets.map((s) => (
-              <TableRow key={s.name}>
-                <TableCell className="font-mono text-xs align-middle">
-                  <span className="inline-flex items-center gap-2">
-                    {s.name}
-                    {s.origin === "worker" && (
+            {secrets.map((s) => {
+              const scope = s.scope === "build" ? "build" : "runtime";
+              return (
+                <TableRow key={`${s.name}:${scope}`}>
+                  <TableCell className="font-mono text-xs align-middle">
+                    <span className="inline-flex items-center gap-2">
+                      {s.name}
                       <Badge
-                        variant="secondary"
-                        className="font-sans text-[10px]"
+                        variant={scope === "build" ? "outline" : "secondary"}
+                        className="font-sans text-[10px] capitalize"
                       >
-                        {t("mainPanelTabs.hostingTab.secretOnWorker")}
+                        {scope === "build"
+                          ? t("mainPanelTabs.hostingTab.secretScopeBuild")
+                          : t("mainPanelTabs.hostingTab.secretScopeRuntime")}
                       </Badge>
-                    )}
-                  </span>
-                </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground align-middle">
-                  {t("mainPanelTabs.hostingTab.secretValueHidden")}
-                </TableCell>
-                <TableCell className="text-right align-middle">
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={t("mainPanelTabs.hostingTab.deleteSecret")}
-                    onClick={() => setDeleteTarget(s.name)}
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash01 className="size-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+                      {s.origin === "worker" && (
+                        <Badge
+                          variant="secondary"
+                          className="font-sans text-[10px]"
+                        >
+                          {t("mainPanelTabs.hostingTab.secretOnWorker")}
+                        </Badge>
+                      )}
+                    </span>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground align-middle">
+                    {t("mainPanelTabs.hostingTab.secretValueHidden")}
+                  </TableCell>
+                  <TableCell className="text-right align-middle">
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={t("mainPanelTabs.hostingTab.deleteSecret")}
+                      onClick={() => setDeleteTarget({ name: s.name, scope })}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash01 className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}
@@ -1261,6 +1287,33 @@ function SecretsSection({
                 disabled={putMutation.isPending}
               />
             </div>
+            <div className="flex flex-col gap-2">
+              <Label>{t("mainPanelTabs.hostingTab.secretScope")}</Label>
+              <Select
+                value={addScope}
+                onValueChange={(v) =>
+                  setAddScope(v === "build" ? "build" : "runtime")
+                }
+                disabled={putMutation.isPending}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="runtime">
+                    {t("mainPanelTabs.hostingTab.secretScopeRuntime")}
+                  </SelectItem>
+                  <SelectItem value="build">
+                    {t("mainPanelTabs.hostingTab.secretScopeBuild")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {addScope === "build"
+                  ? t("mainPanelTabs.hostingTab.secretScopeBuildHint")
+                  : t("mainPanelTabs.hostingTab.secretScopeRuntimeHint")}
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -1298,7 +1351,7 @@ function SecretsSection({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t("mainPanelTabs.hostingTab.confirmDeleteSecretDescription", {
-                name: deleteTarget ?? "",
+                name: deleteTarget?.name ?? "",
               })}
             </AlertDialogDescription>
           </AlertDialogHeader>
