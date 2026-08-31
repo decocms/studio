@@ -198,7 +198,7 @@ describe("linked issues still on the board", () => {
       itemId: item.id,
       organizationId: ORG_R,
       jiraIssueId: issueId,
-      jiraIssueKey: `OS-${issueId}`,
+      jiraIssueKey: `EX-${issueId}`,
       jiraUpdatedAt: new Date(),
       jiraStatus: "BACKLOG",
     });
