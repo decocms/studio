@@ -64,6 +64,8 @@ import {
 } from "@decocms/ui/components/table.tsx";
 import {
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
@@ -523,36 +525,39 @@ function formatAxisValue(value: number): string {
   return String(value);
 }
 
-/** A time series as a filled area chart, styled like the Studio monitor's
- *  KPIChart: `--chart-1` accent, gradient fill, dashed horizontal grid, a
- *  right-hand y-axis, and muted 11px ticks. */
+/** A time series as one or more filled area lines, styled like the Studio
+ *  monitor's KPIChart: `--chart-N` accents, gradient fills, dashed horizontal
+ *  grid, a right-hand y-axis, muted 11px ticks, and a legend when there's more
+ *  than one metric. */
 function AreaTrend({
   rows,
   timeKey,
-  metricKey,
+  metricKeys,
 }: {
   rows: Array<Record<string, unknown>>;
   timeKey: string;
-  metricKey: string;
+  metricKeys: string[];
 }) {
-  const color = "var(--chart-1)";
-  const gradId = `dq-grad-${metricKey}`;
-  const data = rows.map((r) => ({
-    label: String(r[timeKey] ?? ""),
-    value: Number(r[metricKey]) || 0,
-  }));
-  const max = Math.max(0, ...data.map((d) => d.value));
+  const keys = metricKeys.filter(Boolean).slice(0, 4);
+  const colors = keys.map((_, i) => `var(--chart-${(i % 5) + 1})`);
+  const data = rows.map((r) => {
+    const o: Record<string, unknown> = { label: String(r[timeKey] ?? "") };
+    for (const k of keys) o[k] = Number(r[k]) || 0;
+    return o;
+  });
+  const config = Object.fromEntries(
+    keys.map((k, i) => [k, { label: humanize(k), color: colors[i] }]),
+  );
   return (
-    <ChartContainer
-      config={{ value: { label: humanize(metricKey), color } }}
-      className="h-64 w-full"
-    >
+    <ChartContainer config={config} className="h-64 w-full">
       <AreaChart data={data} margin={{ top: 8, right: -8, bottom: 8, left: 0 }}>
         <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.2} />
-            <stop offset="100%" stopColor={color} stopOpacity={0} />
-          </linearGradient>
+          {keys.map((k, i) => (
+            <linearGradient key={k} id={`dq-grad-${k}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={colors[i]} stopOpacity={0.2} />
+              <stop offset="100%" stopColor={colors[i]} stopOpacity={0} />
+            </linearGradient>
+          ))}
         </defs>
         <CartesianGrid
           strokeDasharray="4 4"
@@ -577,25 +582,28 @@ function AreaTrend({
           tick={{ fontSize: 11, fill: "var(--muted-foreground)", opacity: 0.7 }}
           tickFormatter={formatAxisValue}
           width={40}
-          domain={[0, max > 0 ? "auto" : 10]}
           tickCount={5}
         />
         <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
-        <Area
-          type="linear"
-          dataKey="value"
-          stroke={color}
-          strokeWidth={2}
-          fill={`url(#${gradId})`}
-          dot={false}
-          activeDot={{
-            r: 4,
-            fill: color,
-            stroke: "var(--background)",
-            strokeWidth: 2,
-          }}
-          animationDuration={300}
-        />
+        {keys.map((k, i) => (
+          <Area
+            key={k}
+            type="linear"
+            dataKey={k}
+            stroke={colors[i]}
+            strokeWidth={2}
+            fill={`url(#dq-grad-${k})`}
+            dot={false}
+            activeDot={{
+              r: 4,
+              fill: colors[i],
+              stroke: "var(--background)",
+              strokeWidth: 2,
+            }}
+            animationDuration={300}
+          />
+        ))}
+        {keys.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
       </AreaChart>
     </ChartContainer>
   );
@@ -703,14 +711,31 @@ function DataTable({ rows }: { rows: Array<Record<string, unknown>> }) {
       return set;
     }, new Set()),
   );
-  const shown = rows.slice(0, 100);
+  // A numeric column is right-aligned and formatted like a metric; everything
+  // else stays left. Sort the visible rows by the first numeric column so the
+  // table reads as a ranking, not raw order.
+  const numeric = new Set(
+    columns.filter((c) => rows.some((r) => typeof r[c] === "number")),
+  );
+  const firstNum = columns.find((c) => numeric.has(c));
+  const shown = [...rows]
+    .sort((a, b) =>
+      firstNum ? (Number(b[firstNum]) || 0) - (Number(a[firstNum]) || 0) : 0,
+    )
+    .slice(0, 50);
   return (
     <div className="overflow-x-auto">
       <Table>
         <TableHeader>
-          <TableRow>
+          <TableRow className="border-border hover:bg-transparent">
             {columns.map((c) => (
-              <TableHead key={c} className="whitespace-nowrap">
+              <TableHead
+                key={c}
+                className={cn(
+                  "h-8 whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+                  numeric.has(c) && "text-right",
+                )}
+              >
                 {humanize(c)}
               </TableHead>
             ))}
@@ -718,10 +743,20 @@ function DataTable({ rows }: { rows: Array<Record<string, unknown>> }) {
         </TableHeader>
         <TableBody>
           {shown.map((row, i) => (
-            <TableRow key={i}>
+            <TableRow key={i} className="border-border/50">
               {columns.map((c) => (
-                <TableCell key={c} className="whitespace-nowrap tabular-nums">
-                  {formatCell(row[c])}
+                <TableCell
+                  key={c}
+                  className={cn(
+                    "whitespace-nowrap py-1.5 text-sm tabular-nums",
+                    numeric.has(c)
+                      ? "text-right text-foreground"
+                      : "font-mono text-xs text-muted-foreground",
+                  )}
+                >
+                  {typeof row[c] === "number"
+                    ? fmtMetric(c, row[c])
+                    : formatCell(row[c])}
                 </TableCell>
               ))}
             </TableRow>
@@ -742,7 +777,13 @@ type PanelKind = "kpi" | "series" | "funnel" | "bars" | "table";
  *  show. Empty panels are dropped so the layout stays dense. */
 function classifyPanel(
   rows: Array<Record<string, unknown>>,
-): { kind: PanelKind; timeKey?: string; metricKey?: string; labelKey?: string; valueKey?: string } | null {
+): {
+  kind: PanelKind;
+  timeKey?: string;
+  metricKeys?: string[];
+  labelKey?: string;
+  valueKey?: string;
+} | null {
   if (rows.length === 0) return null;
   const first = rows[0] ?? {};
   const columns = Object.keys(first);
@@ -756,12 +797,12 @@ function classifyPanel(
   }
 
   const timeKey = columns.find((c) => TIME_KEY.test(c));
-  const metricKey =
-    timeKey &&
-    columns.find((c) => c !== timeKey && typeof first[c] === "number");
+  const metricKeys = timeKey
+    ? columns.filter((c) => c !== timeKey && typeof first[c] === "number")
+    : [];
   // A time series → area chart (needs more than one bucket to be a line).
-  if (timeKey && metricKey && rows.length > 1) {
-    return { kind: "series", timeKey, metricKey };
+  if (timeKey && metricKeys.length > 0 && rows.length > 1) {
+    return { kind: "series", timeKey, metricKeys };
   }
 
   // A breakdown: a NON-time text label + a numeric value. Checked BEFORE the KPI
@@ -808,7 +849,7 @@ function PanelBody({
         <AreaTrend
           rows={rows}
           timeKey={meta.timeKey ?? ""}
-          metricKey={meta.metricKey ?? ""}
+          metricKeys={meta.metricKeys ?? []}
         />
       );
     case "bars":
@@ -968,7 +1009,7 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
 
       {selected && series.length > 0 && (
         <Card title={`${humanize(selected)} over time`}>
-          <AreaTrend rows={series} timeKey="t" metricKey={selected} />
+          <AreaTrend rows={series} timeKey="t" metricKeys={[selected]} />
         </Card>
       )}
 
