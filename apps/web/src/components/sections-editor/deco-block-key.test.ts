@@ -42,12 +42,21 @@ describe("deco-block-key", () => {
     ).not.toThrow();
   });
 
-  it("rejects percent-encoded slashes in block keys", () => {
-    expect(() => assertSafeDecoBlockKey("foo%2fbar")).toThrow(
-      /Invalid block key/,
-    );
-    expect(() => assertSafeDecoBlockKey("foo%2Fbar")).toThrow(
-      /Invalid block key/,
-    );
+  it("allows percent-encoded slashes (deco slash-named page keys)", () => {
+    expect(() => assertSafeDecoBlockKey("foo%2fbar")).not.toThrow();
+    expect(() => assertSafeDecoBlockKey("foo%2Fbar")).not.toThrow();
+    expect(() =>
+      assertSafeDecoBlockKey(
+        "pages-Joias%2Fcolecao%2Freligiosos%2Fcruz-862158",
+      ),
+    ).not.toThrow();
+  });
+
+  it("round-trips a slash-named page key through the file stem", () => {
+    const key = "pages-Joias%2Fcolecao%2Freligiosos%2Fcruz-862158";
+    const stem = "pages-Joias%252Fcolecao%252Freligiosos%252Fcruz-862158";
+    expect(blockKeyToFileStem(key)).toBe(stem);
+    expect(decoBlockKeyFromFileStem(stem)).toBe(key);
+    expect(decoBlockFilePath(key)).toBe(`.deco/blocks/${stem}.json`);
   });
 });

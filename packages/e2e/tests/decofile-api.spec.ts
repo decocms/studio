@@ -619,6 +619,50 @@ test.describe("decofile API", () => {
     }
   });
 
+  test("PATCH accepts a slash-named page key (%2F) and stores it in a flat file", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: { main: { files: {} } },
+      });
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const url = decofileUrl(project, "main");
+
+      // Deco keys a slash-named page as `pages-Joias%2Fcolecao-<id>`, like `%20` for a space.
+      const key = "pages-Joias%2Fcolecao%2Freligiosos%2Fcruz-862158";
+      const page = {
+        __resolveType: "website/pages/Page.tsx",
+        name: "/religiosos/cruz",
+        path: "/religiosos/cruz",
+      };
+      const patchRes = await ctx.patch(url, { data: { set: { [key]: page } } });
+      expect(patchRes.status()).toBe(200);
+
+      // The `%` is escaped in the on-disk stem — a single flat file, no escape.
+      const stem = "pages-Joias%252Fcolecao%252Freligiosos%252Fcruz-862158";
+      const inspected = await inspectStubRepo(ctx, owner, repo);
+      expect(
+        inspected.branches["main"]?.files[`.deco/blocks/${stem}.json`],
+      ).toBe(blockFileContent(page));
+
+      // The key round-trips back through GET exactly as sent.
+      const after = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      expect(after.decofile[key]).toEqual(page);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test("PATCH batches set+delete into one commit and delete removes every alias file", async ({
     playwright,
   }) => {
