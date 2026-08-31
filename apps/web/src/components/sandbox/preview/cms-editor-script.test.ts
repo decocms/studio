@@ -134,6 +134,29 @@ describe("CMS_EDITOR_SCRIPT", () => {
     expect(CMS_EDITOR_SCRIPT).toContain("cms-editor::render-end");
   });
 
+  it("drops a bridge message whose source isn't this frame's parent", () => {
+    const start = CMS_EDITOR_SCRIPT.indexOf(
+      'window.addEventListener("message", function(e)',
+    );
+    const bodyStart = CMS_EDITOR_SCRIPT.indexOf("{", start) + 1;
+    const guardEnd = CMS_EDITOR_SCRIPT.indexOf(
+      "if (e.data && e.data.type",
+      bodyStart,
+    );
+    expect(bodyStart).toBeGreaterThan(0);
+    expect(guardEnd).toBeGreaterThan(bodyStart);
+    const guard = CMS_EDITOR_SCRIPT.slice(bodyStart, guardEnd);
+    const runGuard = new Function(
+      "window",
+      "e",
+      `${guard}; return "reached";`,
+    ) as (window: unknown, e: unknown) => string | undefined;
+
+    const parent = {};
+    expect(runGuard({ parent }, { source: { evil: true } })).toBeUndefined();
+    expect(runGuard({ parent }, { source: parent })).toBe("reached");
+  });
+
   it("runs the embedded alignment against a stubbed DOM", () => {
     // The embedded copy, on the regression case (a section that rendered no node).
     const start = CMS_EDITOR_SCRIPT.indexOf("var alignSections = ");
