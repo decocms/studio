@@ -158,6 +158,20 @@ interface Redirect {
   type?: "permanent" | "temporary";
   source?: string;
 }
+interface Domain {
+  host: string;
+  canonical?: boolean;
+  /** Neutral, client-facing status from the BFF (the substrate is hidden). */
+  status?: "active" | "pending" | "action-required";
+  /** A stable code for extra context (e.g. `zone-not-onboarded`), i18n-mapped. */
+  detail?: string;
+  /** The exact registrar records to create, computed by the BFF. */
+  dns?: { type: string; name: string; value: string }[];
+}
+interface DomainsResult {
+  dnsTemplate?: { type: string; name: string; value: string }[];
+  items?: Domain[];
+}
 
 type Translate = ReturnType<typeof useT>;
 
@@ -1885,6 +1899,327 @@ function RedirectsSection({
   );
 }
 
+// --- domains ----------------------------------------------------------------
+
+interface DnsRecord {
+  type: string;
+  name: string;
+  value: string;
+}
+
+/** The registrar records to create, exactly as the control-plane BFF computed
+ *  them (substrate-correct, substrate-hidden). Studio only renders them. */
+function DomainDnsPanel({
+  records,
+  t,
+}: {
+  records: DnsRecord[];
+  t: Translate;
+}) {
+  if (records.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
+      <div className="flex items-center gap-2">
+        <Globe01 className="size-4 text-muted-foreground" />
+        <span className="text-xs font-medium">
+          {t("mainPanelTabs.hostingTab.dnsSetupTitle")}
+        </span>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t("mainPanelTabs.hostingTab.dnsColType")}</TableHead>
+            <TableHead>{t("mainPanelTabs.hostingTab.dnsColName")}</TableHead>
+            <TableHead>{t("mainPanelTabs.hostingTab.dnsColValue")}</TableHead>
+            <TableHead className="w-[1%]" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {records.map((r) => (
+            <TableRow key={`${r.type}-${r.name}-${r.value}`}>
+              <TableCell className="font-mono text-xs align-middle">
+                {r.type}
+              </TableCell>
+              <TableCell className="font-mono text-xs align-middle">
+                {r.name}
+              </TableCell>
+              <TableCell className="font-mono text-xs align-middle">
+                {r.value}
+              </TableCell>
+              <TableCell className="text-right align-middle">
+                <CopyValueButton value={r.value} t={t} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+/** Neutral, client-facing status — the control-plane hides which substrate wired
+ *  the domain; we show only whether it's live, provisioning, or needs action. */
+function DomainStatusBadge({ domain, t }: { domain: Domain; t: Translate }) {
+  const status = domain.status ?? "pending";
+  const label =
+    status === "active"
+      ? t("mainPanelTabs.hostingTab.statusActive")
+      : status === "action-required"
+        ? t("mainPanelTabs.hostingTab.statusActionRequired")
+        : t("mainPanelTabs.hostingTab.statusPending");
+  const detail =
+    domain.detail === "zone-not-onboarded"
+      ? t("mainPanelTabs.hostingTab.detailZoneNotOnboarded")
+      : undefined;
+  return (
+    <Badge variant={status === "active" ? "secondary" : "outline"} title={detail}>
+      {label}
+    </Badge>
+  );
+}
+
+function DomainsSection({
+  base,
+  orgSlug,
+  site,
+  domains,
+  dnsTemplate,
+  isLoading,
+  error,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  domains: Domain[];
+  dnsTemplate: DnsRecord[];
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formHost, setFormHost] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [dnsOpenHost, setDnsOpenHost] = useState<string | null>(null);
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({
+      queryKey: KEYS.hostingDomains(orgSlug, site),
+    });
+
+  const putMutation = useMutation({
+    mutationFn: (input: { host: string }) =>
+      mutateJson(`${base}/domains`, "PUT", input),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.hostingTab.toastDomainSaved"));
+      setDialogOpen(false);
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (host: string) =>
+      mutateJson(`${base}/domains/${encodeURIComponent(host)}`, "DELETE"),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.hostingTab.toastDomainDeleted"));
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+
+  const openAdd = () => {
+    setFormHost("");
+    setDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    const host = formHost.trim().toLowerCase();
+    if (!host) {
+      toast.error(t("mainPanelTabs.hostingTab.errorDomainHostRequired"));
+      return;
+    }
+    putMutation.mutate({ host });
+  };
+
+  // The attach-form DNS preview: the site's substrate-correct template with the
+  // record name swapped to the host the operator is typing.
+  const previewRecords = dnsTemplate.map((r) => ({
+    ...r,
+    name: formHost.trim().toLowerCase() || r.name,
+  }));
+
+  const addButton = (
+    <Button size="sm" variant="secondary" onClick={openAdd}>
+      <Plus className="size-4" />
+      {t("mainPanelTabs.hostingTab.addDomain")}
+    </Button>
+  );
+
+  return (
+    <Section
+      title={t("mainPanelTabs.hostingTab.domains")}
+      count={domains.length}
+      action={addButton}
+    >
+      {isLoading ? (
+        <RowsSkeleton cols={3} />
+      ) : error ? (
+        <Muted>{t("mainPanelTabs.hostingTab.domainsError")}</Muted>
+      ) : domains.length === 0 ? (
+        <EmptyState
+          icon={<Globe01 className="size-5" />}
+          title={t("mainPanelTabs.hostingTab.noDomains")}
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("mainPanelTabs.hostingTab.colHost")}</TableHead>
+              <TableHead>{t("mainPanelTabs.hostingTab.colStatus")}</TableHead>
+              <TableHead className="w-[1%]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {domains.map((d, i) => (
+              <Fragment key={`${d.host}-${i}`}>
+                <TableRow>
+                  <TableCell className="font-mono text-xs align-middle">
+                    {d.host}
+                    {d.canonical && (
+                      <Badge variant="outline" className="ml-2">
+                        {t("mainPanelTabs.hostingTab.canonical")}
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="align-middle">
+                    <DomainStatusBadge domain={d} t={t} />
+                  </TableCell>
+                  <TableCell className="text-right align-middle whitespace-nowrap">
+                    {!d.canonical && (
+                      <>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={t("mainPanelTabs.hostingTab.dnsSetup")}
+                          onClick={() =>
+                            setDnsOpenHost(dnsOpenHost === d.host ? null : d.host)
+                          }
+                        >
+                          <Globe01 className="size-4" />
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={t("mainPanelTabs.hostingTab.deleteDomain")}
+                          onClick={() => setDeleteTarget(d.host)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash01 className="size-4" />
+                        </Button>
+                      </>
+                    )}
+                  </TableCell>
+                </TableRow>
+                {dnsOpenHost === d.host && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="bg-muted/10">
+                      <DomainDnsPanel records={d.dns ?? []} t={t} />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      {/* Add domain dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t("mainPanelTabs.hostingTab.addDomainTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="domain-host">
+                {t("mainPanelTabs.hostingTab.colHost")}
+              </Label>
+              <Input
+                id="domain-host"
+                placeholder={t("mainPanelTabs.hostingTab.domainHostPlaceholder")}
+                value={formHost}
+                onChange={(e) => setFormHost(e.target.value)}
+                className="font-mono text-xs"
+                disabled={putMutation.isPending}
+              />
+            </div>
+            {formHost.trim() && <DomainDnsPanel records={previewRecords} t={t} />}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setDialogOpen(false)}
+              disabled={putMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={putMutation.isPending || !formHost.trim()}
+            >
+              {putMutation.isPending
+                ? t("mainPanelTabs.hostingTab.saving")
+                : t("mainPanelTabs.hostingTab.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete domain confirm */}
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("mainPanelTabs.hostingTab.confirmDeleteDomainTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("mainPanelTabs.hostingTab.confirmDeleteDomainDescription", {
+                host: deleteTarget ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t("mainPanelTabs.hostingTab.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteTarget) deleteMutation.mutate(deleteTarget);
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {t("mainPanelTabs.hostingTab.deleteDomain")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Section>
+  );
+}
+
 // --- tab --------------------------------------------------------------------
 
 export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
@@ -1925,6 +2260,13 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
     retry: false,
     staleTime: 30_000,
   });
+  const domainsQuery = useQuery({
+    queryKey: KEYS.hostingDomains(org.slug, siteSlug ?? ""),
+    queryFn: () => fetchJson(`${base}/domains`),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  });
 
   if (!siteSlug) {
     return (
@@ -1961,6 +2303,9 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
   const codeVars = list<EnvVar>(envQuery.data, "codeVars");
   const secrets = list<Secret>(secretsQuery.data, "secrets");
   const redirects = list<Redirect>(redirectsQuery.data, "items");
+  const domainsData = domainsQuery.data as DomainsResult | undefined;
+  const domains = domainsData?.items ?? [];
+  const dnsTemplate = domainsData?.dnsTemplate ?? [];
   const framework = frameworkLabel(
     deployments.find((d) => d.framework)?.framework,
   );
@@ -2014,6 +2359,17 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
           secrets={secrets}
           isLoading={secretsQuery.isLoading}
           error={secretsQuery.error}
+        />
+
+        {/* Custom domains (per-substrate: knative DecoDomain vs CF Worker Route) */}
+        <DomainsSection
+          base={base}
+          orgSlug={org.slug}
+          site={siteSlug}
+          domains={domains}
+          dnsTemplate={dnsTemplate}
+          isLoading={domainsQuery.isLoading}
+          error={domainsQuery.error}
         />
 
         {/* Redirects (interactive) */}

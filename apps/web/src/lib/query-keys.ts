@@ -666,6 +666,8 @@ export const KEYS = {
     ["hosting", org, site, "env"] as const,
   hostingRedirects: (org: string, site: string) =>
     ["hosting", org, site, "redirects"] as const,
+  hostingDomains: (org: string, site: string) =>
+    ["hosting", org, site, "domains"] as const,
   // Secret NAMES only (values are write-only, never returned by the BFF).
   hostingSecrets: (org: string, site: string) =>
     ["hosting", org, site, "secrets"] as const,
