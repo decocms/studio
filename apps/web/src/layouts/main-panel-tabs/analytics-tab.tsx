@@ -594,93 +594,79 @@ function DataTable({ rows }: { rows: Array<Record<string, unknown>> }) {
  *  the funnel → a stepped funnel; a single scalar row → KPI tiles; a time
  *  series → an area chart; a label+value breakdown → a ranked bar list;
  *  anything else → a table. */
-function PanelBlock({
-  name,
-  rows,
-  t,
-}: {
-  name: string;
-  rows: Array<Record<string, unknown>>;
-  t: TFunction;
-}) {
-  const title = humanize(name);
-  const Frame = ({ children }: { children: React.ReactNode }) => (
-    <div className="flex flex-col gap-2.5">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {title}
-      </h4>
-      {children}
-    </div>
-  );
+type PanelKind = "kpi" | "series" | "funnel" | "bars" | "table";
 
-  if (rows.length === 0) {
-    return (
-      <Frame>
-        <p className="text-sm text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.panelEmpty")}
-        </p>
-      </Frame>
-    );
-  }
-
+/** Shape-detect a panel into a visual kind, or null when there's nothing to
+ *  show. Empty panels are dropped so the layout stays dense. */
+function classifyPanel(
+  rows: Array<Record<string, unknown>>,
+): { kind: PanelKind; timeKey?: string; metricKey?: string; labelKey?: string; valueKey?: string } | null {
+  if (rows.length === 0) return null;
   const first = rows[0] ?? {};
   const columns = Object.keys(first);
-
-  // The commerce funnel — a single row of ordered step counts.
   if (
     rows.length === 1 &&
     ("viewed" in first || "purchase" in first || "add_to_cart" in first)
   ) {
-    return (
-      <Frame>
-        <Funnel row={first} />
-      </Frame>
-    );
+    return { kind: "funnel" };
   }
-
-  // A single scalar row → KPI tiles.
   if (rows.length === 1 && Object.values(first).every(isScalar)) {
-    return (
-      <Frame>
-        <KpiTiles row={first} />
-      </Frame>
-    );
+    return { kind: "kpi" };
   }
-
-  // A time series → area chart.
   const timeKey = columns.find((c) => TIME_KEY.test(c));
   const metricKey =
     timeKey &&
     columns.find((c) => c !== timeKey && typeof first[c] === "number");
   if (timeKey && metricKey && rows.length > 1) {
-    return (
-      <Frame>
-        <AreaTrend rows={rows} timeKey={timeKey} metricKey={metricKey} />
-      </Frame>
-    );
+    return { kind: "series", timeKey, metricKey };
   }
-
-  // A label + value breakdown → ranked bar list.
   const labelKey = columns.find((c) => typeof first[c] === "string");
   const valueKey = columns.find((c) => typeof first[c] === "number");
   if (labelKey && valueKey && columns.length <= 3) {
-    return (
-      <Frame>
-        <BarList rows={rows} labelKey={labelKey} valueKey={valueKey} />
-      </Frame>
-    );
+    return { kind: "bars", labelKey, valueKey };
   }
-
-  // Fallback: the raw table.
-  return (
-    <Frame>
-      <DataTable rows={rows} />
-    </Frame>
-  );
+  return { kind: "table" };
 }
 
-/** Render every panel in a view payload. Meta keys and non-array values are
- *  skipped; the rest become PanelBlocks in payload order. */
+/** One classified panel's inner content (no wrapper). */
+function PanelBody({
+  rows,
+  meta,
+}: {
+  rows: Array<Record<string, unknown>>;
+  meta: NonNullable<ReturnType<typeof classifyPanel>>;
+}) {
+  const first = rows[0] ?? {};
+  switch (meta.kind) {
+    case "kpi":
+      return <KpiTiles row={first} />;
+    case "funnel":
+      return <Funnel row={first} />;
+    case "series":
+      return (
+        <AreaTrend
+          rows={rows}
+          timeKey={meta.timeKey ?? ""}
+          metricKey={meta.metricKey ?? ""}
+        />
+      );
+    case "bars":
+      return (
+        <BarList
+          rows={rows}
+          labelKey={meta.labelKey ?? ""}
+          valueKey={meta.valueKey ?? ""}
+        />
+      );
+    default:
+      return <DataTable rows={rows} />;
+  }
+}
+
+/** Render a view payload as a designed dashboard: the KPI row on top, the time
+ *  series and funnel full width beneath it, and the ranked breakdowns in a
+ *  two-column grid — modelled on the admin monitor rather than a flat stack.
+ *  Empty panels are dropped. */
 function ViewPanels({
   payload,
   t,
@@ -688,12 +674,17 @@ function ViewPanels({
   payload: Record<string, unknown>;
   t: TFunction;
 }) {
-  const panels = Object.entries(payload).filter(
-    ([key, value]) => !META_KEYS.has(key) && Array.isArray(value),
-  ) as Array<[string, Array<Record<string, unknown>>]>;
+  const classified = (
+    Object.entries(payload).filter(
+      ([key, value]) => !META_KEYS.has(key) && Array.isArray(value),
+    ) as Array<[string, Array<Record<string, unknown>>]>
+  )
+    .map(([name, rows]) => ({ name, rows, meta: classifyPanel(rows) }))
+    .filter((p): p is typeof p & { meta: NonNullable<typeof p.meta> } =>
+      Boolean(p.meta),
+    );
 
-  const hasAny = panels.some(([, rows]) => rows.length > 0);
-  if (!hasAny) {
+  if (classified.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
         {t("mainPanelTabs.analyticsTab.dataEmpty")}
@@ -701,11 +692,33 @@ function ViewPanels({
     );
   }
 
+  const kpis = classified.filter((p) => p.meta.kind === "kpi");
+  const wide = classified.filter(
+    (p) => p.meta.kind === "series" || p.meta.kind === "funnel",
+  );
+  const grid = classified.filter(
+    (p) => p.meta.kind === "bars" || p.meta.kind === "table",
+  );
+
   return (
-    <div className="flex flex-col gap-6">
-      {panels.map(([name, rows]) => (
-        <PanelBlock key={name} name={name} rows={rows} t={t} />
+    <div className="flex flex-col gap-4">
+      {kpis.map((p) => (
+        <PanelBody key={p.name} rows={p.rows} meta={p.meta} />
       ))}
+      {wide.map((p) => (
+        <Card key={p.name} title={humanize(p.name)}>
+          <PanelBody rows={p.rows} meta={p.meta} />
+        </Card>
+      ))}
+      {grid.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {grid.map((p) => (
+            <Card key={p.name} title={humanize(p.name)}>
+              <PanelBody rows={p.rows} meta={p.meta} />
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
