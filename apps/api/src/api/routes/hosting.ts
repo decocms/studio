@@ -320,6 +320,10 @@ export const createHostingRoutes = () => {
   // GET /api/:org/hosting/:site/redirects
   app.get("/:site/redirects", (c) => proxyControlplane(c, "redirects"));
 
+  // GET /api/:org/hosting/:site/domains — client-safe DTOs; the control-plane
+  // resolves the substrate server-side and returns only host/status/dns.
+  app.get("/:site/domains", (c) => proxyControlplane(c, "domains"));
+
   // GET /api/:org/hosting/:site/secrets — NAMES ONLY (values are never read
   // back); the control-plane answers `{ items: [{ name }] }`.
   app.get("/:site/secrets", (c) => proxyControlplane(c, "secrets"));
@@ -442,6 +446,16 @@ export const createHostingRoutes = () => {
   // sampling? }` registers the site with the Deco Analytics collector.
   app.post("/:site/analytics/register", async (c) =>
     proxyControlplane(c, "analytics/register", {
+      method: "POST",
+      body: await readJsonBody(c),
+    }),
+  );
+
+  // POST /api/:org/hosting/:site/analytics/rotate-key — rotate a keyed site's
+  // public token (delete + re-register by key under the same warehouse id).
+  // Returns the new key + snippet once. 422 for a host-resolved site.
+  app.post("/:site/analytics/rotate-key", async (c) =>
+    proxyControlplane(c, "analytics/rotate-key", {
       method: "POST",
       body: await readJsonBody(c),
     }),

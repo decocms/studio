@@ -1594,11 +1594,29 @@ function ConfigurationPanel({
   const enabled = cfg.enabled !== false;
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [rotated, setRotated] = useState<AnalyticsRegisterResult | null>(null);
+  // A token exists only for a keyed site (host sites are injected). Keyed sites
+  // carry their Origin allowlist in `domains`, so that's the tell.
+  const isKeyed = (cfg.domains?.length ?? 0) > 0;
 
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: KEYS.analyticsStatus(orgSlug, site),
     });
+
+  const rotateMutation = useMutation<AnalyticsRegisterResult, Error, void>({
+    mutationFn: () =>
+      mutateJson(
+        `${base}/analytics/rotate-key`,
+        "POST",
+      ) as Promise<AnalyticsRegisterResult>,
+    onSuccess: (data) => {
+      invalidate();
+      setRotated(data);
+      toast.success(t("mainPanelTabs.analyticsTab.rotateToken"));
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
 
   const toggleMutation = useMutation({
     mutationFn: (nextEnabled: boolean) =>
@@ -1624,6 +1642,12 @@ function ConfigurationPanel({
 
   return (
     <div className="flex flex-col gap-6">
+      {rotated && (
+        <RegistrationResult
+          result={rotated}
+          onDismiss={() => setRotated(null)}
+        />
+      )}
       <Card
         title={t("mainPanelTabs.analyticsTab.collection")}
         action={
@@ -1643,6 +1667,19 @@ function ConfigurationPanel({
               <Pencil01 className="size-4" />
               {t("mainPanelTabs.analyticsTab.edit")}
             </Button>
+            {isKeyed && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={rotateMutation.isPending}
+                onClick={() => rotateMutation.mutate()}
+              >
+                <Copy01 className="size-4" />
+                {rotateMutation.isPending
+                  ? t("mainPanelTabs.analyticsTab.rotating")
+                  : t("mainPanelTabs.analyticsTab.rotateToken")}
+              </Button>
+            )}
             <Button
               size="icon-sm"
               variant="ghost"
