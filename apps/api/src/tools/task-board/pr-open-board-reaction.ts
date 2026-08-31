@@ -158,8 +158,13 @@ export async function applyBoardDecision(
 
   let item: TaskBoardItem | null;
   if (target) {
-    // Enter the review phase only from an earlier lane; never regress a finished card.
-    const advancing = ADVANCEABLE.has(target.status);
+    // Enter the review phase only from an earlier lane; never regress a finished
+    // card — and only onto a lane this board HAS. Folded into `advancing` rather
+    // than left to a null status: `undefined` already means "leave the status
+    // alone" here, so reusing it for "nowhere to advance to" would also skip the
+    // Super Agent claim and the review cycle without saying why.
+    const progressLane = lanes.progress;
+    const advancing = progressLane !== null && ADVANCEABLE.has(target.status);
     // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's.
     const claimSuperAgent = advancing && target.assigneeId == null;
     item = await storage.update(
@@ -169,7 +174,7 @@ export async function applyBoardDecision(
         // In Progress, not In Review: a reviewer is about to work on this PR,
         // and In Review is what the board says once it is a person's turn.
         // The open cycle below is what puts it on the reviewer's work list.
-        status: advancing ? (lanes.progress ?? undefined) : undefined,
+        status: advancing ? progressLane : undefined,
         ...(claimSuperAgent
           ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
           : {}),
