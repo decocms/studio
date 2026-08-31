@@ -67,7 +67,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -414,6 +414,18 @@ function KpiTiles({ row }: { row: Record<string, unknown> }) {
 
 /** A time series as a filled area chart — the hero visual, modelled on the
  *  admin monitor's "Usage over time". Plots one metric over the time bucket. */
+/** Compact axis number: 12.3k, 4.5M — matches the monitor's y-axis. */
+function formatAxisValue(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(value);
+}
+
+/** A time series as a filled area chart, styled like the Studio monitor's
+ *  KPIChart: `--chart-1` accent, gradient fill, dashed horizontal grid, a
+ *  right-hand y-axis, and muted 11px ticks. */
 function AreaTrend({
   rows,
   timeKey,
@@ -423,42 +435,66 @@ function AreaTrend({
   timeKey: string;
   metricKey: string;
 }) {
+  const color = "var(--chart-1)";
   const gradId = `dq-grad-${metricKey}`;
   const data = rows.map((r) => ({
     label: String(r[timeKey] ?? ""),
     value: Number(r[metricKey]) || 0,
   }));
+  const max = Math.max(0, ...data.map((d) => d.value));
   return (
     <ChartContainer
-      config={{ value: { label: humanize(metricKey), color: "var(--primary)" } }}
-      className="h-56 w-full"
+      config={{ value: { label: humanize(metricKey), color } }}
+      className="h-64 w-full"
     >
-      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <AreaChart data={data} margin={{ top: 8, right: -8, bottom: 8, left: 0 }}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.02} />
+            <stop offset="0%" stopColor={color} stopOpacity={0.2} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.4} />
+        <CartesianGrid
+          strokeDasharray="4 4"
+          stroke="var(--border)"
+          strokeOpacity={0.5}
+          vertical={false}
+        />
         <XAxis
           dataKey="label"
-          tickLine={false}
           axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 11, fill: "var(--muted-foreground)", opacity: 0.7 }}
+          tickMargin={8}
           minTickGap={40}
+          interval="preserveStartEnd"
           tickFormatter={(v: string) => v.replace("T", " ").slice(5, 16)}
-          className="text-[10px]"
+        />
+        <YAxis
+          orientation="right"
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 11, fill: "var(--muted-foreground)", opacity: 0.7 }}
+          tickFormatter={formatAxisValue}
+          width={40}
+          domain={[0, max > 0 ? "auto" : 10]}
+          tickCount={5}
         />
         <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
         <Area
-          type="monotone"
+          type="linear"
           dataKey="value"
-          stroke="var(--primary)"
+          stroke={color}
           strokeWidth={2}
           fill={`url(#${gradId})`}
           dot={false}
-          activeDot={{ r: 3 }}
-          animationDuration={350}
+          activeDot={{
+            r: 4,
+            fill: color,
+            stroke: "var(--background)",
+            strokeWidth: 2,
+          }}
+          animationDuration={300}
         />
       </AreaChart>
     </ChartContainer>
@@ -711,7 +747,7 @@ function ViewPanels({
         </Card>
       ))}
       {grid.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {grid.map((p) => (
             <Card key={p.name} title={humanize(p.name)}>
               <PanelBody rows={p.rows} meta={p.meta} />
@@ -1508,7 +1544,7 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <BarChartSquare02 className="size-[18px] text-muted-foreground" />
