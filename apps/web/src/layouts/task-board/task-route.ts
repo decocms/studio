@@ -18,7 +18,7 @@ export interface TaskRouteItem {
 
 /**
  * The segment a link to this card carries: the human key it already shows
- * (`DECO-01`, or the tracker's own `OS-333`), which is the whole point of
+ * (`DECO-01`, or the tracker's own `EX-333`), which is the whole point of
  * putting the card in the path.
  *
  * A row written before the key backfill has no key, so it falls back to its
@@ -30,10 +30,10 @@ export function taskRouteSegment(orgSlug: string, item: TaskRouteItem): string {
 
 /**
  * The card a segment names: by human key (`DECO-01`, a synced card's tracker
- * key like `OS-333`, `deco-1`, `1`) or by raw id.
+ * key like `EX-333`, `deco-1`, `1`) or by raw id.
  *
  * The exact tracker key is checked first, ahead of `matchesTaskKey`'s looser
- * keySeq fallback, so an exact `OS-333` always wins over an unrelated card
+ * keySeq fallback, so an exact `EX-333` always wins over an unrelated card
  * that merely shares its number.
  *
  * The id fallback exists because a card written before the key backfill has

@@ -872,7 +872,7 @@ describe("JiraClient.addAttachment", () => {
     );
     try {
       expect(
-        await client().addAttachment("OS-1", {
+        await client().addAttachment("EX-1", {
           name: "shot.png",
           bytes: new Uint8Array([1, 2, 3]),
           contentType: "image/png",
@@ -881,7 +881,7 @@ describe("JiraClient.addAttachment", () => {
 
       const upload = stub.calls[0];
       expect(upload?.url).toBe(
-        "https://acme.atlassian.net/rest/api/3/issue/OS-1/attachments",
+        "https://acme.atlassian.net/rest/api/3/issue/EX-1/attachments",
       );
       expect(upload?.init.body).toBeInstanceOf(FormData);
       const headers = (upload?.init.headers ?? {}) as Record<string, string>;
@@ -910,7 +910,7 @@ describe("JiraClient.addAttachment", () => {
     try {
       expect(
         (
-          await client().addAttachment("OS-1", {
+          await client().addAttachment("EX-1", {
             name: "shot.png",
             bytes: new Uint8Array([1]),
           })
@@ -929,7 +929,7 @@ describe("JiraClient.addAttachment", () => {
     );
     try {
       expect(
-        await client().addAttachment("OS-1", {
+        await client().addAttachment("EX-1", {
           name: "shot.png",
           bytes: new Uint8Array([1]),
         }),
@@ -945,7 +945,7 @@ describe("JiraClient.addAttachment", () => {
     );
     try {
       await expect(
-        client().addAttachment("OS-1", {
+        client().addAttachment("EX-1", {
           name: "shot.png",
           bytes: new Uint8Array([1]),
         }),
@@ -1063,7 +1063,7 @@ describe("JiraClient issue reads", () => {
             issues: [
               {
                 id: "1",
-                key: "OS-1",
+                key: "EX-1",
                 fields: {
                   summary: "s",
                   status: { name: "BACKLOG" },
@@ -1114,7 +1114,7 @@ describe("JiraClient issue reads", () => {
             issues: [
               {
                 id: "1",
-                key: "OS-1",
+                key: "EX-1",
                 fields: {
                   summary: "s",
                   status: { name: "BACKLOG" },
@@ -1165,7 +1165,7 @@ describe("JiraClient issue reads", () => {
             issues: [
               {
                 id: "1",
-                key: "OS-1",
+                key: "EX-1",
                 fields: {
                   summary: "s",
                   status: { name: "BACKLOG" },

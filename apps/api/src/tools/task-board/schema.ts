@@ -188,7 +188,7 @@ export const TaskBoardItemSchema = z.object({
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.
   keySeq: z.number().nullable(),
-  // The key this card's issue wears in the tracker (`OS-333`), for a card that
+  // The key this card's issue wears in the tracker (`EX-333`), for a card that
   // came from one. It is what the card shows, because it is what people say
   // out loud about it. Null for a card Studio owns.
   jiraIssueKey: z.string().nullable(),

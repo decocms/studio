@@ -21,7 +21,7 @@ export function taskKeyPrefix(orgSlug: string): string {
  * from one.
  *
  * A synced card wears the tracker's key because that is the name it already
- * has: the issue is `OS-333` in Jira, in the branch, in the PR title and in
+ * has: the issue is `EX-333` in Jira, in the branch, in the PR title and in
  * everything anyone says about it, and a second Studio-only number is one
  * translation step every reader has to make. The internal `keySeq` is
  * unaffected — it is still allocated, still unique per org, and still what the

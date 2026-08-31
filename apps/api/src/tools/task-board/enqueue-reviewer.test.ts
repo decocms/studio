@@ -260,7 +260,7 @@ describe("reviewerHandledThisCycle", () => {
 });
 
 describe("a reviewer that completed without recording a verdict", () => {
-  // OS-303 (osklen): the run finished while it was still "standing by" for a
+  // Seen in production: the run finished while it was still "standing by" for a
   // background task, so it never called the decision tool. The card sat In
   // Review at 0/1 with nothing to move it — no re-dispatch, no hand-off.
   const completed = taskWith([

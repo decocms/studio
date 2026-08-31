@@ -204,7 +204,7 @@ const BARE_SEQ = /^0*(\d+)$/;
  *
  * A card synced from a tracker shows the tracker's key, so that is the only
  * lettered key it answers to. Falling through to the sequence would be worse
- * than useless: `parseTaskKeySeq` ignores the prefix, so searching `OS-333`
+ * than useless: `parseTaskKeySeq` ignores the prefix, so searching `EX-333`
  * would quietly match whichever unrelated card happens to hold Studio sequence
  * 333, and miss the one actually named that.
  *

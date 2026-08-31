@@ -198,7 +198,7 @@ describe("linked issues still on the board", () => {
       itemId: item.id,
       organizationId: ORG_R,
       jiraIssueId: issueId,
-      jiraIssueKey: `OS-${issueId}`,
+      jiraIssueKey: `EX-${issueId}`,
       jiraUpdatedAt: new Date(),
       jiraStatus: "BACKLOG",
     });
@@ -214,7 +214,7 @@ describe("linked issues still on the board", () => {
     expect(listed[0]).toEqual({
       itemId: live.id,
       jiraIssueId: "9001",
-      jiraIssueKey: "OS-9001",
+      jiraIssueKey: "EX-9001",
     });
   });
 
@@ -241,13 +241,13 @@ describe("linked issues still on the board", () => {
     });
 
     expect((await taskBoard.getById(synced.id, ORG_R))?.jiraIssueKey).toBe(
-      "OS-9100",
+      "EX-9100",
     );
     expect((await taskBoard.getById(own.id, ORG_R))?.jiraIssueKey).toBe(null);
 
     const listed = await taskBoard.list(ORG_R);
     const byId = new Map(listed.map((i) => [i.id, i.jiraIssueKey]));
-    expect(byId.get(synced.id)).toBe("OS-9100");
+    expect(byId.get(synced.id)).toBe("EX-9100");
     expect(byId.get(own.id)).toBe(null);
   });
 
