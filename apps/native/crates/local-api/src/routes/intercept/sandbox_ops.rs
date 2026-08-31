@@ -231,8 +231,12 @@ async fn preview_fetch(target: &AppState, query: Option<&str>) -> Response {
         return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response();
     };
 
-    let url = format!("http://127.0.0.1:{port}/{}", path.trim_start_matches('/'));
-    super::dev_server::send_and_mirror(reqwest::Client::new().get(&url), None).await
+    let path = path.trim_start_matches('/').to_string();
+    super::dev_server::send_and_mirror(
+        |host| reqwest::Client::new().get(format!("http://{host}:{port}/{path}")),
+        None,
+    )
+    .await
 }
 
 #[cfg(test)]
