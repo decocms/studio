@@ -585,10 +585,10 @@ impl TaskRegistry {
     /// the live send.
     pub async fn append_output(&self, id: &str, stream: OutputStream, data: &str) -> bool {
         if data.is_empty()
-            || !self
+            || self
                 .lock()
                 .get(id)
-                .is_some_and(|entry| !entry.summary.status.is_terminal())
+                .is_none_or(|entry| entry.summary.status.is_terminal())
         {
             return false;
         }
