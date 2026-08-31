@@ -58,12 +58,45 @@ function estimatePayloadBytes(value: unknown, budget: number): number {
 // untrusted, so sanitize it here at the storage boundary rather than trusting
 // every producer. Clean strings are returned unchanged, so ids derived from the
 // serialized payload stay stable.
+//
+// The same pass redacts credentials (below) — this table is the one place every
+// harness's output funnels through on its way to durable storage, so it is the
+// only guard that cannot be bypassed by a new producer.
 const NUL = /\u0000/g;
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
+// A URL's userinfo. The sandbox's `origin` remote is
+// `https://x-access-token:ghs_…@github.com/owner/repo`, and the Super Agent
+// prompt points the agent AT that token as its REST fallback — so a run that
+// does no more than `git remote -v` lands a live GitHub App token in this
+// table, in plaintext, readable by anyone who can read the thread. A push is
+// irreversible and a leak is not undone by deleting the row, so this strips at
+// the write: one guard covers every producer, present and future.
+//
+// `[^\s/@]` cannot cross a path separator, so a credential-less URL that
+// merely contains an `@` (`https://github.com/a@b`) is left alone.
+//
+// BOTH quantifiers are bounded, and that is load-bearing, not tidiness: an
+// unbounded `[a-z0-9+.-]*` or `[^\s/@]+` scans to the end of the string and
+// backtracks at EVERY start offset, which is quadratic. Payloads here reach
+// tens of MB (see the large-payload tests), so the unbounded form hangs the
+// projector — the sole writer of terminal thread status — and strands the run.
+// No real scheme exceeds 30 chars and no real credential 512.
+const URL_USERINFO = /([a-z][a-z0-9+.-]{0,30}:\/\/)[^\s/@]{1,512}@/gi;
+// The same secrets reach a log with no URL around them — an env dump, an
+// `Authorization:` header, a `.netrc`. GitHub's prefixes are unambiguous, and
+// the 20-char floor keeps an ordinary identifier like `ghs_count` readable.
+// Deliberately only GitHub's formats: a general secret scanner at this boundary
+// would redact chat content the user needs to read.
+const GITHUB_TOKEN = /\b(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g;
+
 function sanitizeForPg(value: string): string {
-  return value.replace(NUL, "").replace(LONE_SURROGATE, "\uFFFD");
+  return value
+    .replace(NUL, "")
+    .replace(LONE_SURROGATE, "\uFFFD")
+    .replace(URL_USERINFO, "$1***@")
+    .replace(GITHUB_TOKEN, "$1***");
 }
 
 export function serializePayload(payload: unknown): string {
