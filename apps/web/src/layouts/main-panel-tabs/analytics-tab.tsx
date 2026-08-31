@@ -31,7 +31,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartSquare02,
   Check,
-  ChevronDown,
   Copy01,
   Pencil01,
   Power03,
@@ -41,20 +40,8 @@ import {
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@decocms/ui/components/collapsible.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
 import {
   Table,
   TableBody,
@@ -96,7 +83,6 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import type { TranslationKey } from "@/i18n/en/index.ts";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -168,34 +154,24 @@ const MODULES = [
   },
 ] as const;
 
-// The dashboard views, in the order the internal admin UI shows them. `pipeline`
-// and `install` are omitted on purpose: `pipeline` is operator-only (no tenant
-// policy) and `install` carries only the internals the BFF strips, so it would
-// render empty here. Labels come from i18n.
-const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
-  { view: "overview", labelKey: "mainPanelTabs.analyticsTab.viewOverview" },
-  { view: "live", labelKey: "mainPanelTabs.analyticsTab.viewLive" },
-  { view: "behaviour", labelKey: "mainPanelTabs.analyticsTab.viewBehaviour" },
-  { view: "events", labelKey: "mainPanelTabs.analyticsTab.viewEvents" },
-  { view: "errors", labelKey: "mainPanelTabs.analyticsTab.viewErrors" },
-  {
-    view: "experiments",
-    labelKey: "mainPanelTabs.analyticsTab.viewExperiments",
-  },
-  { view: "vitals", labelKey: "mainPanelTabs.analyticsTab.viewVitals" },
-  { view: "quality", labelKey: "mainPanelTabs.analyticsTab.viewQuality" },
-  { view: "usage", labelKey: "mainPanelTabs.analyticsTab.viewUsage" },
+// The dashboard views, as a horizontal tab bar in the order the internal admin
+// UI shows them. Labels are the admin's product names (kept literal — the shared
+// i18n file is churning under another workstream). `pipeline` (operator-only, no
+// tenant policy) and `install` (only stripped internals) are omitted.
+const DATA_VIEWS: ReadonlyArray<{ view: string; label: string }> = [
+  { view: "live", label: "Realtime" },
+  { view: "overview", label: "Overview" },
+  { view: "behaviour", label: "Pages & sources" },
+  { view: "events", label: "Events & props" },
+  { view: "errors", label: "Errors" },
+  { view: "experiments", label: "Experiments" },
+  { view: "vitals", label: "Web Vitals" },
+  { view: "quality", label: "Data quality" },
+  { view: "usage", label: "Usage & limits" },
 ];
 
-const RANGES: ReadonlyArray<{ value: string; labelKey: TranslationKey }> = [
-  { value: "24h", labelKey: "mainPanelTabs.analyticsTab.range24h" },
-  { value: "7d", labelKey: "mainPanelTabs.analyticsTab.range7d" },
-  { value: "30d", labelKey: "mainPanelTabs.analyticsTab.range30d" },
-  { value: "1h", labelKey: "mainPanelTabs.analyticsTab.range1h" },
-  { value: "30m", labelKey: "mainPanelTabs.analyticsTab.range30m" },
-  { value: "15m", labelKey: "mainPanelTabs.analyticsTab.range15m" },
-  { value: "5m", labelKey: "mainPanelTabs.analyticsTab.range5m" },
-];
+// Range pills, shortest first — the admin's 5m…30d selector.
+const RANGE_PILLS = ["5m", "15m", "30m", "1h", "24h", "7d", "30d"] as const;
 
 // Keys in a view payload that are context, not panels — never rendered as data.
 const META_KEYS = new Set([
@@ -332,46 +308,6 @@ function Card({
       </header>
       <div className="p-4">{children}</div>
     </section>
-  );
-}
-
-/** A collapsible section with a chevron trigger. Children render only while open
- *  (the caller gates its data fetch on `open`), so a screenful of sections
- *  doesn't fan out queries until each is expanded. */
-function Section({
-  title,
-  defaultOpen,
-  onOpenChange,
-  children,
-}: {
-  title: string;
-  defaultOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(Boolean(defaultOpen));
-  return (
-    <Collapsible
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        onOpenChange?.(next);
-      }}
-      className="rounded-xl border border-border bg-card overflow-hidden"
-    >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/40">
-        <ChevronDown
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
-        <span className="text-sm font-medium text-foreground">{title}</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="border-t border-border p-4">
-        {children}
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
 
@@ -1030,31 +966,94 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
-// --- one dashboard view section ---------------------------------------------
+// --- realtime: the curated "now" view ---------------------------------------
 
-function ViewSection({
+/** The Realtime view, modelled on the admin monitor: Visitors / Pageviews /
+ *  Events / Last event headline cards, then the live feed and the pages active
+ *  right now. Fed by the `live` payload (a 5m window, auto-refreshed). */
+function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
+  const t = useT();
+  const rowsOf = (k: string) =>
+    (Array.isArray(payload[k]) ? payload[k] : []) as Array<
+      Record<string, unknown>
+    >;
+  const kpi = rowsOf("liveVisitors")[0] ?? {};
+  const feed = rowsOf("liveFeed");
+  const pages = rowsOf("livePages");
+  const cards: ReadonlyArray<[string, string]> = [
+    ["visitors", "Visitors"],
+    ["pageviews", "Pageviews"],
+    ["events", "Events"],
+    ["last_event", "Last event"],
+  ];
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="relative flex size-2">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--chart-1)] opacity-75" />
+          <span className="relative inline-flex size-2 rounded-full bg-[var(--chart-1)]" />
+        </span>
+        {t("mainPanelTabs.analyticsTab.liveHint")}
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {cards.map(([k, label]) => (
+          <div
+            key={k}
+            className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4"
+          >
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {label}
+            </span>
+            <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
+              {k === "last_event"
+                ? formatCell(kpi[k])
+                : fmtMetric(k, kpi[k])}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Live feed">
+          {feed.length > 0 ? (
+            <DataTable rows={feed} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {t("mainPanelTabs.analyticsTab.emptyLive")}
+            </p>
+          )}
+        </Card>
+        <Card title="Pages right now">
+          {pages.length > 0 ? (
+            <BarList rows={pages} labelKey="k" valueKey="n" />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {t("mainPanelTabs.analyticsTab.emptyView")}
+            </p>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// --- the active view (one at a time, driven by the tab bar) ------------------
+
+function ActiveView({
   base,
   orgSlug,
   site,
   view,
-  title,
   range,
-  defaultOpen,
 }: {
   base: string;
   orgSlug: string;
   site: string;
   view: string;
-  title: string;
   range: string;
-  defaultOpen?: boolean;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(Boolean(defaultOpen));
-
-  // The live view is "now": it ignores the range selector (a short window) and
-  // auto-refreshes while the section is open, so it reads as a live feed rather
-  // than a snapshot.
+  // Realtime is "now": a short window, auto-refreshed. Everything else follows
+  // the selected range as a snapshot.
   const isLive = view === "live";
   const effectiveRange = isLive ? "5m" : range;
 
@@ -1066,58 +1065,41 @@ function ViewSection({
           view,
         )}&range=${encodeURIComponent(effectiveRange)}`,
       ),
-    enabled: open,
     retry: false,
     staleTime: isLive ? 0 : 30_000,
-    refetchInterval: isLive && open ? 5_000 : false,
+    refetchInterval: isLive ? 5_000 : false,
   });
 
+  if (query.isLoading) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+  if (query.error) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {isNotConfigured(query.error)
+          ? t("mainPanelTabs.analyticsTab.dataNotConfiguredDescription")
+          : t("mainPanelTabs.analyticsTab.dataLoadError")}
+      </p>
+    );
+  }
   const response = (query.data ?? {}) as AnalyticsDataResponse;
-
-  return (
-    <Section title={title} defaultOpen={defaultOpen} onOpenChange={setOpen}>
-      {query.isLoading ? (
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-24 w-full" />
-        </div>
-      ) : query.error ? (
-        <p className="text-sm text-muted-foreground">
-          {isNotConfigured(query.error)
-            ? t("mainPanelTabs.analyticsTab.dataNotConfiguredDescription")
-            : t("mainPanelTabs.analyticsTab.dataLoadError")}
-        </p>
-      ) : response.data ? (
-        <div className="flex flex-col gap-4">
-          {isLive && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--chart-1)] opacity-75" />
-                <span className="relative inline-flex size-2 rounded-full bg-[var(--chart-1)]" />
-              </span>
-              {t("mainPanelTabs.analyticsTab.liveHint")}
-            </div>
-          )}
-          {view === "overview" ? (
-            <OverviewDashboard payload={response.data} />
-          ) : (
-            <ViewPanels payload={response.data} t={t} />
-          )}
-          {isLive &&
-            (response.data.liveFeed as unknown[] | undefined)?.length ===
-              0 && (
-              <p className="text-sm text-muted-foreground">
-                {t("mainPanelTabs.analyticsTab.emptyLive")}
-              </p>
-            )}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.dataEmpty")}
-        </p>
-      )}
-    </Section>
-  );
+  if (!response.data) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("mainPanelTabs.analyticsTab.emptyView")}
+      </p>
+    );
+  }
+  if (isLive) return <RealtimeDashboard payload={response.data} />;
+  if (view === "overview") {
+    return <OverviewDashboard payload={response.data} />;
+  }
+  return <ViewPanels payload={response.data} t={t} />;
 }
 
 // --- install / tracking (use-only) ------------------------------------------
@@ -1769,14 +1751,16 @@ function RegisteredView({
 }) {
   const t = useT();
   const [range, setRange] = useState("24h");
+  const [active, setActive] = useState("overview");
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
   const enabled = cfg.enabled !== false;
   const modules = cfg.modules ?? ["core"];
+  const isLive = active === "live";
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Status + collecting labels on the left, range + a small Configure
+    <div className="flex flex-col gap-5">
+      {/* Status + collecting labels on the left, range pills + a small Configure
           button on the right — the dashboard is the focus; settings hide behind
           the gear. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1814,18 +1798,26 @@ function RegisteredView({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={range} onValueChange={setRange}>
-            <SelectTrigger className="h-8 w-[150px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RANGES.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {t(r.labelKey)}
-                </SelectItem>
+          {/* Range pills — hidden on Realtime, which is always "now". */}
+          {!isLive && (
+            <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+              {RANGE_PILLS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRange(r)}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-medium tabular-nums transition-colors",
+                    range === r
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {r}
+                </button>
               ))}
-            </SelectContent>
-          </Select>
+            </div>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1837,20 +1829,33 @@ function RegisteredView({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {DATA_VIEWS.map((v, i) => (
-          <ViewSection
+      {/* Horizontal view tab bar — one view at a time, like the admin monitor. */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-border">
+        {DATA_VIEWS.map((v) => (
+          <button
             key={v.view}
-            base={base}
-            orgSlug={orgSlug}
-            site={site}
-            view={v.view}
-            title={t(v.labelKey)}
-            range={range}
-            defaultOpen={i === 0}
-          />
+            type="button"
+            onClick={() => setActive(v.view)}
+            className={cn(
+              "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+              active === v.view
+                ? "border-[var(--chart-1)] text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {v.label}
+          </button>
         ))}
       </div>
+
+      <ActiveView
+        key={active}
+        base={base}
+        orgSlug={orgSlug}
+        site={site}
+        view={active}
+        range={range}
+      />
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
