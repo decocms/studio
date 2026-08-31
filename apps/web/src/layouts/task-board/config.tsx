@@ -1,7 +1,4 @@
-import type {
-  BoardColumn,
-  CanonicalColumnKey,
-} from "@decocms/shared/task-board";
+import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
   AlertCircle,
   AlertOctagon,
@@ -36,6 +33,15 @@ export {
 } from "@decocms/shared/task-board";
 
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
+/**
+ * A board column as the SERVER sends it.
+ *
+ * The wire type, not shared's `BoardColumn`: that one also carries the tracker
+ * statuses a column groups, which exist for the Jira push and are nobody's
+ * business in a browser. Deriving from the contract is what keeps the two from
+ * drifting apart silently.
+ */
+export type BoardColumn = ToolOutput<"TASK_BOARD_ITEM_LIST">["columns"][number];
 export type { Sprint };
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];

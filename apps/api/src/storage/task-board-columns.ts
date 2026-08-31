@@ -12,7 +12,16 @@ type Row = {
   title: string;
   position: number;
   role: string | null;
+  tracker_statuses: string[];
 };
+
+const toEntity = (row: Row): BoardColumn => ({
+  key: row.key,
+  title: row.title,
+  position: row.position,
+  role: row.role,
+  trackerStatuses: row.tracker_statuses,
+});
 
 export class BoardColumnStorage {
   constructor(private readonly db: Kysely<Database>) {}
@@ -21,11 +30,11 @@ export class BoardColumnStorage {
   async listByOrg(organizationId: string): Promise<BoardColumn[]> {
     const rows = await this.db
       .selectFrom("task_board_columns")
-      .select(["key", "title", "position", "role"])
+      .select(["key", "title", "position", "role", "tracker_statuses"])
       .where("organization_id", "=", organizationId)
       .orderBy("position", "asc")
       .execute();
-    return rows as Row[];
+    return (rows as Row[]).map(toEntity);
   }
 
   /**
@@ -38,12 +47,12 @@ export class BoardColumnStorage {
    */
   async replaceAll(
     organizationId: string,
-    columns: { key: string; title: string }[],
+    columns: { key: string; title: string; trackerStatuses: string[] }[],
   ): Promise<BoardColumn[]> {
     return await this.db.transaction().execute(async (tx) => {
       const existing = await tx
         .selectFrom("task_board_columns")
-        .select(["key", "title", "role"])
+        .select(["key", "title", "role", "tracker_statuses"])
         .where("organization_id", "=", organizationId)
         .execute();
       const roleOf = new Map(existing.map((r) => [r.key, r.role]));
@@ -83,9 +92,16 @@ export class BoardColumnStorage {
 
       const all = [
         ...columns,
+        // A kept-but-dropped column keeps the statuses it last mirrored. They
+        // are stale by definition, and that is the honest value: the tracker
+        // no longer says anything about this column at all.
         ...orphaned
           .filter((row) => keep.has(row.key))
-          .map((row) => ({ key: row.key, title: row.title })),
+          .map((row) => ({
+            key: row.key,
+            title: row.title,
+            trackerStatuses: row.tracker_statuses,
+          })),
       ];
       if (all.length === 0) return [];
 
@@ -96,6 +112,7 @@ export class BoardColumnStorage {
         title: column.title,
         position,
         role: roleOf.get(column.key) ?? null,
+        tracker_statuses: column.trackerStatuses,
       }));
       await tx
         .insertInto("task_board_columns")
@@ -104,16 +121,12 @@ export class BoardColumnStorage {
           oc.columns(["organization_id", "key"]).doUpdateSet((eb) => ({
             title: eb.ref("excluded.title"),
             position: eb.ref("excluded.position"),
+            tracker_statuses: eb.ref("excluded.tracker_statuses"),
             updated_at: new Date(),
           })),
         )
         .execute();
-      return rows.map(({ key, title, position, role }) => ({
-        key,
-        title,
-        position,
-        role,
-      }));
+      return rows.map(toEntity);
     });
   }
 

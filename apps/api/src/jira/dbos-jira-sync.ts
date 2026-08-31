@@ -17,11 +17,14 @@ import type { Database, TaskBoardItem } from "@/storage/types";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { SprintStorage } from "@/storage/sprints";
+import { BoardColumnStorage } from "@/storage/task-board-columns";
 import { CredentialVault } from "@/encryption/credential-vault";
 import type { StudioContext } from "@/core/studio-context";
 import { JIRA_PUSH_QUEUE } from "@/dispatch-queue/queue-names";
 import {
+  type JiraStatusMapping,
   planStatusPush,
+  pushTargetsForLane,
   statusPushNoop,
 } from "@decocms/shared/jira-status-mapping";
 import { JiraClient } from "./client";
@@ -349,10 +352,13 @@ async function resolveStatusTransition(
     params.organizationId,
   );
   if (!item) return null;
+  const targets = await jiraTargetsForLane(
+    params.organizationId,
+    item.status,
+    integration.statusMapping,
+  );
   // Settles the common cases without paying for a `listTransitions` call.
-  if (statusPushNoop(integration.statusMapping, item.status, link.jiraStatus)) {
-    return null;
-  }
+  if (statusPushNoop(targets, link.jiraStatus)) return null;
 
   const client = new JiraClient(
     integration.siteUrl,
@@ -361,8 +367,7 @@ async function resolveStatusTransition(
   );
   const transitions = await client.listTransitions(link.jiraIssueId);
   const plan = planStatusPush({
-    mapping: integration.statusMapping,
-    lane: item.status,
+    targets,
     currentJiraStatus: link.jiraStatus,
     availableTransitions: transitions.map((t) => t.to.name),
   });
@@ -414,6 +419,33 @@ async function executeStatusTransition(
   }
   await client.transitionIssue(plan.jiraIssueId, plan.transitionId);
   await storage.touchLink(params.itemId, { jiraStatus: plan.targetName });
+}
+
+/**
+ * Which tracker statuses a lane accepts, best first.
+ *
+ * A mirrored board answers this itself: its columns ARE the tracker's columns,
+ * and a column carries the statuses it groups. The hand-written mapping is the
+ * fallback, and only a board still using Studio's lanes reaches it.
+ *
+ * Before this, the push always went through the mapping — which on a mirrored
+ * board is keyed by lanes that no longer exist, so every lookup came back
+ * empty and read as "unmapped". Moving a card in Studio silently never reached
+ * Jira, and the next pull put the card back where the issue still was.
+ */
+async function jiraTargetsForLane(
+  organizationId: string,
+  lane: string,
+  mapping: JiraStatusMapping,
+): Promise<readonly string[]> {
+  const columns = await new BoardColumnStorage(requireRuntime().db).listByOrg(
+    organizationId,
+  );
+  return pushTargetsForLane({
+    column: columns.find((c) => c.key === lane),
+    mapping,
+    lane,
+  });
 }
 
 /** No sprint snapshot on purpose, same as `JiraStatusPushParams` — the

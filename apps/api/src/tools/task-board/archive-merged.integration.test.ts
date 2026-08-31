@@ -199,7 +199,7 @@ describe("auto-archive sweep", () => {
       flags: { org_board_columns: true },
     });
     await ctx.storage.boardColumns.replaceAll(orgOwned, [
-      { key: "Retired", title: "Retired" },
+      { key: "Retired", title: "Retired", trackerStatuses: [] },
     ]);
     await ctx.storage.boardColumns.setRole(orgOwned, "Retired", "archived");
 

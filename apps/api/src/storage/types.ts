@@ -1735,6 +1735,10 @@ export interface TaskBoardColumnTable {
   title: string;
   position: number;
   role: string | null;
+  /** Tracker statuses this column groups, in the tracker's own order. A Jira
+   *  column is a bucket of statuses, not one status, so the push needs the
+   *  whole list to pick a reachable transition. Empty for Studio's columns. */
+  tracker_statuses: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

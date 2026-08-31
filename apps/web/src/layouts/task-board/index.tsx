@@ -109,6 +109,7 @@ import {
   statusIconClassName,
   dropLane,
   LANE_DROPPABLE_PREFIX,
+  type BoardColumn,
   laneHeader,
   laneVisual,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -124,7 +125,6 @@ import {
   useOrgFlag,
   useReviewerEnabled,
 } from "@/hooks/use-organization-settings";
-import type { BoardColumn } from "@decocms/shared/task-board";
 import type { Sprint } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {

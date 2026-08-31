@@ -151,7 +151,13 @@ async function mirrorBoardColumns(
   const columns = await client.getBoardColumns(boardId);
   await ctx.storage.boardColumns.replaceAll(
     integration.organizationId,
-    columns.map((column) => ({ key: column.name, title: column.name })),
+    columns.map((column) => ({
+      key: column.name,
+      title: column.name,
+      // The push's whole reason for existing: a column groups several
+      // statuses, and only the tracker knows which and in what order.
+      trackerStatuses: column.statuses,
+    })),
   );
   const index = new Map<string, string>();
   for (const column of columns) {

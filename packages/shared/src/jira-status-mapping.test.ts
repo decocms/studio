@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   jiraStatusesForLane,
+  pushTargetsForLane,
   laneIndex,
   normalizeStatusMapping,
   planStatusPush,
@@ -77,6 +78,69 @@ describe("jiraStatusesForLane", () => {
   });
 });
 
+describe("pushTargetsForLane", () => {
+  /**
+   * The case this exists for, and it is not the exotic one: a tracker's board
+   * column is named separately from the status it holds, so they routinely
+   * differ. A real board has a column "In Progress" whose only status is
+   * called "Doing". Our lane key is the COLUMN name, so without the column's
+   * own status list the push has no idea what to transition the issue to.
+   */
+  it("uses the column's tracker status, not the column's name", () => {
+    expect(
+      pushTargetsForLane({
+        column: { trackerStatuses: ["Doing"] },
+        mapping: MAPPING,
+        lane: "In Progress",
+      }),
+    ).toEqual(["Doing"]);
+  });
+
+  /** A column can group several statuses; order is the tracker's, and it is
+   *  what decides which one the push aims for first. */
+  it("keeps the tracker's order when a column groups several statuses", () => {
+    expect(
+      pushTargetsForLane({
+        column: { trackerStatuses: ["Doing", "In Progress", "Dev"] },
+        mapping: MAPPING,
+        lane: "In Progress",
+      }),
+    ).toEqual(["Doing", "In Progress", "Dev"]);
+  });
+
+  /**
+   * Studio's own columns are constants that mirror nothing, so their empty
+   * list means "not a mirrored column" rather than "accepts no status". Read
+   * the other way, every push on a board using Studio's lanes would die as
+   * `unmapped` — which is exactly the bug on the mirrored side, inverted.
+   */
+  it("falls back to the hand-written mapping for a column that mirrors nothing", () => {
+    expect(
+      pushTargetsForLane({
+        column: { trackerStatuses: [] },
+        mapping: MAPPING,
+        lane: "in_review",
+      }),
+    ).toEqual(["Code Review", "QA"]);
+  });
+
+  it("falls back for a lane this board has no column for at all", () => {
+    expect(
+      pushTargetsForLane({ column: undefined, mapping: MAPPING, lane: "done" }),
+    ).toEqual(["Released", "Closed"]);
+  });
+
+  it("has nothing to aim at when neither side knows the lane", () => {
+    expect(
+      pushTargetsForLane({
+        column: undefined,
+        mapping: MAPPING,
+        lane: "a lane nobody configured",
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("planStatusPush", () => {
   const plan = (over: {
     lane: string;
@@ -84,8 +148,7 @@ describe("planStatusPush", () => {
     availableTransitions?: string[];
   }) =>
     planStatusPush({
-      mapping: MAPPING,
-      lane: over.lane,
+      targets: jiraStatusesForLane(MAPPING, over.lane),
       currentJiraStatus: over.currentJiraStatus ?? null,
       availableTransitions: over.availableTransitions ?? [
         "Backlog",

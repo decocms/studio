@@ -114,11 +114,10 @@ export type StatusPushPlan =
  * moving within its lane's own statuses hits `already-in-lane` every tick.
  */
 export function statusPushNoop(
-  mapping: JiraStatusMapping,
-  lane: string,
+  /** The tracker statuses this lane accepts, best first. */
+  targets: readonly string[],
   currentJiraStatus: string | null,
 ): "unmapped" | "already-in-lane" | null {
-  const targets = jiraStatusesForLane(mapping, lane);
   if (targets.length === 0) return "unmapped";
   if (currentJiraStatus && targets.includes(currentJiraStatus)) {
     return "already-in-lane";
@@ -126,24 +125,50 @@ export function statusPushNoop(
   return null;
 }
 
-export function planStatusPush(args: {
+/**
+ * Which tracker statuses a lane accepts, and who gets to say so.
+ *
+ * A mirrored board answers for itself: its columns ARE the tracker's columns,
+ * and a column carries the statuses it groups, in the tracker's order. Nobody
+ * types that list.
+ *
+ * The hand-written mapping is the fallback, reached only by a board still on
+ * Studio's own lanes. An EMPTY `trackerStatuses` falls through to it rather
+ * than reading as "this lane accepts nothing": Studio's columns are constants
+ * that mirror nothing, so empty there means "not a mirrored column", not "a
+ * mirrored column with no statuses".
+ */
+export function pushTargetsForLane(args: {
+  /** This board's column for the lane, or undefined when it has none. */
+  column: { trackerStatuses: readonly string[] } | undefined;
   mapping: JiraStatusMapping;
   lane: string;
+}): readonly string[] {
+  return args.column?.trackerStatuses.length
+    ? args.column.trackerStatuses
+    : jiraStatusesForLane(args.mapping, args.lane);
+}
+
+export function planStatusPush(args: {
+  /**
+   * The tracker statuses this lane accepts, best first.
+   *
+   * Passed in rather than looked up from a mapping, because where the list
+   * comes from is now the board's business: a mirrored board reads it off the
+   * tracker's own column configuration, and only a board using Studio's lanes
+   * still needs a person to have written one.
+   */
+  targets: readonly string[];
   /** Where the linked issue was last known to be. */
   currentJiraStatus: string | null;
   /** Status names the issue can transition to right now. */
   availableTransitions: string[];
 }): StatusPushPlan {
-  const reason = statusPushNoop(
-    args.mapping,
-    args.lane,
-    args.currentJiraStatus,
-  );
+  const reason = statusPushNoop(args.targets, args.currentJiraStatus);
   if (reason) return { kind: "noop", reason };
-  const targets = jiraStatusesForLane(args.mapping, args.lane);
   const reachable = new Set(args.availableTransitions);
-  const targetName = targets.find((t) => reachable.has(t));
+  const targetName = args.targets.find((t) => reachable.has(t));
   return targetName
     ? { kind: "transition", targetName }
-    : { kind: "unreachable", targets };
+    : { kind: "unreachable", targets: [...args.targets] };
 }
