@@ -107,6 +107,23 @@ func changedPaths(status WorkingTreeStatus) []string {
 // run's MCP bearer token, which a push would leak into the repo's history.
 var NeverCommit = []string{".deco/tools/"}
 
+// BuildArtifacts are generated files some repos track anyway. A sandbox must
+// never commit one: it holds a DEV build (a `deno task dev` writes minified
+// Tailwind where the repo tracks the expanded release build), so committing it
+// is a large, meaningless reformat that every descendant branch then inherits.
+//
+// A repo tracking its own build output is the underlying bug, and gitignoring
+// it there is the real fix — this is the sandbox-side belt so no run makes it
+// worse in the meantime. Named paths, not patterns: a pattern would eventually
+// swallow something a user meant to commit.
+//
+// Note `.deco/metadata/` (a generated manifest), NOT `.deco/blocks/` — those
+// are decofile content and the whole point of many changes.
+var BuildArtifacts = []string{
+	"static/tailwind.css",
+	".deco/metadata/",
+}
+
 // dotenvName reports whether a file name is a `.env` variant — `.env` itself or
 // `.env.<anything>` (`.env.local`, `.env.production`). NOT `.envrc`, which repos
 // commit on purpose.
@@ -134,6 +151,14 @@ func dropNeverCommit(paths []string) []string {
 		for _, deny := range NeverCommit {
 			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
 				reason = "daemon-managed path"
+				break
+			}
+		}
+		// The pre-commit hook covers the agent's own `git add -A`; publish
+		// pushes with --no-verify, so it needs the same list in code.
+		for _, deny := range BuildArtifacts {
+			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+				reason = "generated build artifact"
 				break
 			}
 		}

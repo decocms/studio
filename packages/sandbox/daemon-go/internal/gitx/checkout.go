@@ -130,7 +130,37 @@ func ProtectedBranches(repoDir string) []string {
 	return out
 }
 
-func InstallProtectedBranchHook(repoDir string) error {
+// Same shape as the pre-push hook above: the path list is a data file, never
+// interpolated into the script.
+//
+// This exists because the agent commits through Bash (`git add -A && git
+// commit`), which no daemon-side publish filter can see. One deco site's
+// `deno task dev` rewrote its tracked, compiled `static/tailwind.css` in
+// minified form; an agent's `git add -A` swallowed it; and because every
+// thread's synthetic branch descends from the last one, EVERY later pull
+// request on that repo carried the same 30k-line reformat — and later runs
+// spent turns proving it wasn't theirs before reverting it.
+//
+// Unstaging (rather than failing the commit) is deliberate: the artifact is
+// never what the agent meant to commit, so there is nothing for it to fix, and
+// a hard failure would just cost a turn. If the artifact was the ONLY staged
+// change, git then reports "no changes added to commit", which is the correct
+// answer to that commit.
+const buildArtifactHook = `#!/bin/sh
+artifacts="$(dirname "$0")/build-artifacts"
+[ -f "$artifacts" ] || exit 0
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  git restore --staged -- "$p" 2>/dev/null || true
+done < "$artifacts"
+exit 0
+`
+
+// InstallSandboxHooks writes the local-only git hooks a sandbox checkout needs:
+// pre-push branch protection and pre-commit build-artifact unstaging. Called
+// again after any install step, whose scripts (lefthook, husky postinstall)
+// overwrite `.git/hooks`.
+func InstallSandboxHooks(repoDir string) error {
 	hooksDir := filepath.Join(repoDir, ".git", "hooks")
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return err
@@ -139,7 +169,14 @@ func InstallProtectedBranchHook(repoDir string) error {
 		return err
 	}
 	list := strings.Join(ProtectedBranches(repoDir), "\n") + "\n"
-	return os.WriteFile(filepath.Join(hooksDir, "protected-branches"), []byte(list), 0o644)
+	if err := os.WriteFile(filepath.Join(hooksDir, "protected-branches"), []byte(list), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), []byte(buildArtifactHook), 0o755); err != nil {
+		return err
+	}
+	artifacts := strings.Join(BuildArtifacts, "\n") + "\n"
+	return os.WriteFile(filepath.Join(hooksDir, "build-artifacts"), []byte(artifacts), 0o644)
 }
 
 func ConfigureGitIdentity(repoDir, userName, userEmail string) error {

@@ -637,10 +637,11 @@ func (o *Orchestrator) stepInstallInner() bool {
 	o.mu.Unlock()
 
 	// Install scripts (postinstall/prepare — lefthook, husky) can overwrite
-	// .git/hooks/pre-push; reinstall so branch protection survives.
+	// .git/hooks; reinstall so branch protection and build-artifact unstaging
+	// survive.
 	if o.deps.RepoDir != "" {
-		if err := gitx.InstallProtectedBranchHook(o.deps.RepoDir); err != nil {
-			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall protected-branch hook: %s\r\n", err.Error()))
+		if err := gitx.InstallSandboxHooks(o.deps.RepoDir); err != nil {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall sandbox git hooks: %s\r\n", err.Error()))
 		}
 	}
 
@@ -681,11 +682,11 @@ func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSourc
 		return
 	}
 	// The relink can run install scripts (postinstall/prepare — lefthook,
-	// husky), which overwrite .git/hooks/pre-push; reinstall so branch
-	// protection survives, same as the full-install path.
+	// husky), which overwrite .git/hooks; reinstall them, same as the
+	// full-install path.
 	if o.deps.RepoDir != "" {
-		if err := gitx.InstallProtectedBranchHook(o.deps.RepoDir); err != nil {
-			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall protected-branch hook: %s\r\n", err.Error()))
+		if err := gitx.InstallSandboxHooks(o.deps.RepoDir); err != nil {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall sandbox git hooks: %s\r\n", err.Error()))
 		}
 	}
 }
@@ -857,8 +858,8 @@ func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: git identity setup failed: %s\r\n", err.Error()))
 		}
 	}
-	if err := gitx.InstallProtectedBranchHook(o.deps.RepoDir); err != nil {
-		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not install protected-branch hook: %s\r\n", err.Error()))
+	if err := gitx.InstallSandboxHooks(o.deps.RepoDir); err != nil {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not install sandbox git hooks: %s\r\n", err.Error()))
 	}
 	branch := cfg.Branch()
 	if branch != "" && !config.IsSyntheticBranch(branch) {
