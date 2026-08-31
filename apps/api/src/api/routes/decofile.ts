@@ -22,7 +22,10 @@
 
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import type { GithubRepo } from "@decocms/shared/sdk/types";
-import { assertSafeDecoBlockKey } from "@decocms/shared/decofile";
+import {
+  assertSafeDecoBlockKey,
+  isReservedResolverBlockKey,
+} from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
@@ -348,6 +351,15 @@ export function createDecofileRoutes() {
     for (const [key, value] of Object.entries(patch.set ?? {})) {
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         return c.json({ error: `Block "${key}" must be a JSON object` }, 400);
+      }
+      // Deletes of resolver-shaped keys stay allowed above so a shadow is repairable.
+      if (isReservedResolverBlockKey(key)) {
+        return c.json(
+          {
+            error: `Block key "${key}" collides with a framework resolver module and cannot be written`,
+          },
+          400,
+        );
       }
     }
 

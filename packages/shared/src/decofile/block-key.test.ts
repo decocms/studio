@@ -4,6 +4,7 @@ import {
   blockKeyToFileStem,
   decoBlockFilePath,
   decoBlockKeyFromFileStem,
+  isReservedResolverBlockKey,
 } from "./block-key";
 
 describe("blockKeyToFileStem / decoBlockKeyFromFileStem", () => {
@@ -39,6 +40,32 @@ describe("assertSafeDecoBlockKey", () => {
   it("rejects traversal and control characters", () => {
     for (const bad of ["", "..", "a\\b", "a\0b", "%2e%2e", "a%2fb"]) {
       expect(() => assertSafeDecoBlockKey(bad)).toThrow();
+    }
+  });
+});
+
+describe("isReservedResolverBlockKey", () => {
+  it("flags framework resolver module paths", () => {
+    for (const key of [
+      "website/flags/multivariate/section.ts",
+      "website/flags/multivariate.ts",
+      "site/sections/UI/VerticalCardsWithTabs.tsx",
+      "apps/deco/mod.ts",
+      "deco-sites/std/loaders/x.js",
+    ]) {
+      expect(isReservedResolverBlockKey(key)).toBe(true);
+    }
+  });
+
+  it("allows ordinary block ids and names", () => {
+    for (const key of [
+      "Compre Junto",
+      "Navegue por categoria",
+      "pages-Home%20Page-123",
+      "Estampas / Flags",
+      "site",
+    ]) {
+      expect(isReservedResolverBlockKey(key)).toBe(false);
     }
   });
 });

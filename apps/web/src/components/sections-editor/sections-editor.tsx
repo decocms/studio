@@ -35,7 +35,7 @@ import {
 import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
-import { unwrapSection } from "./unwrap-section";
+import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema } from "./resolve-schema";
@@ -742,12 +742,10 @@ export function SectionsEditor({
       const parsed = latestParsedSections[sectionIndex];
       if (!parsed) return;
 
-      // Saved block: write the block entry directly
+      // Saved block: write the block entry directly (savedBlockKey unwraps hidden wrappers).
       if (parsed.isSavedBlock) {
-        const blockKey = parsed.isLazy
-          ? ((rawSection.section?.__resolveType as string) ??
-            rawSection.__resolveType)
-          : rawSection.__resolveType;
+        const blockKey = savedBlockKey(rawSection, parsed);
+        if (!blockKey) return;
         saveBlock.mutate(
           { blockKey, data: nextValue },
           {
