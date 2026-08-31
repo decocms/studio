@@ -1035,8 +1035,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       pathTemplate: currentPath,
     });
     if (!req) return;
+    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
+    const src = withVariantMatcherOverride(
+      req.src,
+      workspace.state.variantOverride ?? [],
+    );
     win.postMessage(
-      { type: "cms-editor::render", src: req.src, body: req.body },
+      { type: "cms-editor::render", src, body: req.body },
       origin,
     );
   };
