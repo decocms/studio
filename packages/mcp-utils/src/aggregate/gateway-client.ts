@@ -239,13 +239,15 @@ export class GatewayClient extends Client {
   }
 
   /**
-   * Resolve a tool name to [clientKey, originalName].
-   * Fast path: parse namespace prefix. Fallback: search aggregated tools
-   * for an un-namespaced match (supports callers that don't know about
-   * namespacing, e.g. workflow tool steps).
+   * Resolve a namespaced tool/prompt name to [clientKey, originalName].
+   * Fast path: parse namespace prefix. Fallback: search the aggregated
+   * `items` for an un-namespaced match (supports callers that don't know
+   * about namespacing, e.g. workflow tool steps).
    */
-  private async resolveToolTarget(
+  private async resolveNamespacedTarget(
     name: string,
+    kind: "tool" | "prompt",
+    items: () => Promise<Array<{ name: string; _meta?: unknown }>>,
   ): Promise<[clientKey: string, originalName: string]> {
     // Fast path: namespace prefix matches a known client
     const sep = name.indexOf("_");
@@ -257,12 +259,11 @@ export class GatewayClient extends Client {
       }
     }
 
-    // Fallback: search aggregated tools by original (un-namespaced) name
-    const { tools } = await this.listTools();
-    for (const tool of tools) {
-      const clientId = getGatewayClientId(tool._meta);
+    // Fallback: search aggregated items by original (un-namespaced) name
+    for (const item of await items()) {
+      const clientId = getGatewayClientId(item._meta);
       if (!clientId) continue;
-      if (stripToolNamespace(tool.name, clientId) === name) {
+      if (stripToolNamespace(item.name, clientId) === name) {
         return [clientId, name];
       }
     }
@@ -270,7 +271,7 @@ export class GatewayClient extends Client {
     // Nothing matched — throw the original-style error
     if (sep === -1) {
       throw new Error(
-        `GatewayClient: could not resolve tool "${name}" — no namespace prefix and not found in any client`,
+        `GatewayClient: could not resolve ${kind} "${name}" — no namespace prefix and not found in any client`,
       );
     }
     throw new Error(
@@ -278,40 +279,23 @@ export class GatewayClient extends Client {
     );
   }
 
-  /**
-   * Resolve a prompt name to [clientKey, originalName].
-   * Same logic as resolveToolTarget but searches prompts.
-   */
-  private async resolvePromptTarget(
+  private resolveToolTarget(
     name: string,
   ): Promise<[clientKey: string, originalName: string]> {
-    // Fast path: namespace prefix matches a known client
-    const sep = name.indexOf("_");
-    if (sep !== -1) {
-      const slug = name.slice(0, sep);
-      const clientKey = this.slugToKey.get(slug);
-      if (clientKey) {
-        return [clientKey, name.slice(sep + 1)];
-      }
-    }
+    return this.resolveNamespacedTarget(
+      name,
+      "tool",
+      async () => (await this.listTools()).tools,
+    );
+  }
 
-    // Fallback: search aggregated prompts by original (un-namespaced) name
-    const { prompts } = await this.listPrompts();
-    for (const prompt of prompts) {
-      const clientId = getGatewayClientId(prompt._meta);
-      if (!clientId) continue;
-      if (stripToolNamespace(prompt.name, clientId) === name) {
-        return [clientId, name];
-      }
-    }
-
-    if (sep === -1) {
-      throw new Error(
-        `GatewayClient: could not resolve prompt "${name}" — no namespace prefix and not found in any client`,
-      );
-    }
-    throw new Error(
-      `GatewayClient: unknown namespace "${name.slice(0, sep)}" in "${name}" and not found by original name in any client`,
+  private resolvePromptTarget(
+    name: string,
+  ): Promise<[clientKey: string, originalName: string]> {
+    return this.resolveNamespacedTarget(
+      name,
+      "prompt",
+      async () => (await this.listPrompts()).prompts,
     );
   }
 
