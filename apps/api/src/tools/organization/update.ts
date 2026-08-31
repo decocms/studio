@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 
 export const ORGANIZATION_UPDATE = defineTool({
   name: "ORGANIZATION_UPDATE",
@@ -19,7 +19,6 @@ export const ORGANIZATION_UPDATE = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    id: z.string(),
     name: z.string().min(1).max(255).optional(),
     description: z.string().optional(),
   }),
@@ -40,12 +39,9 @@ export const ORGANIZATION_UPDATE = defineTool({
     // Check authorization
     await ctx.access.check();
 
-    // Reject a target org the caller isn't authenticated against (see member-remove.ts).
-    if (input.id !== ctx.organization?.id) {
-      throw new Error(
-        "Organization ID does not match authenticated organization",
-      );
-    }
+    // The target org is the one resolved from the URL path; the input carries
+    // no id, so there is nothing to compare and nothing to spoof.
+    const org = requireOrganization(ctx);
 
     // Build update data
     // Slug is intentionally NOT updatable: it anchors org URLs (/api/:org/...)
@@ -58,7 +54,7 @@ export const ORGANIZATION_UPDATE = defineTool({
 
     // Update organization via Better Auth
     const result = await ctx.boundAuth.organization.update({
-      organizationId: input.id,
+      organizationId: org.id,
       data: updateData,
     });
 

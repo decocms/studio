@@ -31,7 +31,7 @@ describe("ORGANIZATION_DELETE", () => {
   it("preserves existing metadata when archiving", async () => {
     const ctx = makeCtx({ description: "an acme org" });
 
-    await ORGANIZATION_DELETE.handler({ id: "org-1" }, ctx);
+    await ORGANIZATION_DELETE.handler({}, ctx);
 
     const call = ctx.update.mock.calls[0]?.[0] as {
       data: { metadata: Record<string, unknown> };
@@ -44,7 +44,7 @@ describe("ORGANIZATION_DELETE", () => {
   it("archives fine when there's no prior metadata", async () => {
     const ctx = makeCtx(undefined);
 
-    await ORGANIZATION_DELETE.handler({ id: "org-1" }, ctx);
+    await ORGANIZATION_DELETE.handler({}, ctx);
 
     const call = ctx.update.mock.calls[0]?.[0] as {
       data: { metadata: Record<string, unknown> };
@@ -52,14 +52,15 @@ describe("ORGANIZATION_DELETE", () => {
     expect(call.data.metadata.archived).toBe(true);
   });
 
-  it("rejects deleting an organization other than the authenticated one", async () => {
-    const ctx = makeCtx({ description: "an acme org" });
+  it("archives the organization resolved from the request context", async () => {
+    const ctx = makeCtx(undefined);
 
-    await expect(
-      ORGANIZATION_DELETE.handler({ id: "org-2" }, ctx),
-    ).rejects.toThrow(
-      "Organization ID does not match authenticated organization",
-    );
-    expect(ctx.update.mock.calls.length).toBe(0);
+    await ORGANIZATION_DELETE.handler({}, ctx);
+
+    expect(ctx.get).toHaveBeenCalledWith("org-1");
+    expect(
+      (ctx.update.mock.calls[0]?.[0] as { organizationId: string })
+        .organizationId,
+    ).toBe("org-1");
   });
 });
