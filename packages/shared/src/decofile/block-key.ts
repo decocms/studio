@@ -45,6 +45,19 @@ export function assertSafeDecoBlockKey(blockKey: string): void {
   }
 }
 
+/**
+ * A block key that collides with a framework resolver module — e.g.
+ * `website/flags/multivariate/section.ts`, `site/sections/Foo.tsx`,
+ * `apps/deco/mod.ts`. Real decofile block ids are names/ids and never carry a
+ * source-file extension, so a `set` under such a key writes a
+ * `.deco/blocks/<encoded>.json` that shadows the native resolver for the whole
+ * site. Writes (create/update) must reject these; deletes must NOT — an
+ * already-shadowed resolver has to be removable to repair the site.
+ */
+export function isReservedResolverBlockKey(blockKey: string): boolean {
+  return /\.(?:tsx?|jsx?|mts|cts|mjs|cjs)$/.test(blockKey);
+}
+
 /** Block key from an on-disk `.deco/blocks/<stem>.json` filename stem. */
 export function decoBlockKeyFromFileStem(stem: string): string {
   try {
