@@ -787,6 +787,98 @@ function ViewPanels({
   );
 }
 
+// --- overview: the curated, GA4/OneDollar-style home ------------------------
+
+/** Headline metrics, in display order. Labels are analytics-standard names
+ *  (kept literal rather than i18n for now). Only the ones the payload actually
+ *  carries are shown; the ones that also have a time series are clickable and
+ *  drive the hero chart. */
+const OVERVIEW_METRICS: ReadonlyArray<[string, string]> = [
+  ["visitors", "Visitors"],
+  ["pageviews", "Pageviews"],
+  ["sessions", "Sessions"],
+  ["bounce_pct", "Bounce rate"],
+  ["duration_s", "Avg duration"],
+];
+
+/** The Overview rendered as a real analytics home: clickable headline metrics
+ *  driving one hero time-series, then the ranked breakdowns and the funnel —
+ *  the GA4 / OneDollarStats shape, not a generic panel dump. */
+function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
+  const rowsOf = (k: string) =>
+    (Array.isArray(payload[k]) ? payload[k] : []) as Array<
+      Record<string, unknown>
+    >;
+  const kpis = rowsOf("kpis")[0] ?? {};
+  const series = rowsOf("series");
+  const sources = rowsOf("sources");
+  const funnel = rowsOf("funnel")[0];
+
+  const seriesCols = series[0]
+    ? Object.keys(series[0]).filter(
+        (c) => !TIME_KEY.test(c) && typeof series[0]?.[c] === "number",
+      )
+    : [];
+  const metrics = OVERVIEW_METRICS.filter(([k]) => k in kpis);
+  const [selected, setSelected] = useState<string>(
+    metrics.find(([k]) => seriesCols.includes(k))?.[0] ?? seriesCols[0] ?? "",
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {metrics.map(([k, label]) => {
+          const canChart = seriesCols.includes(k);
+          const active = selected === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              disabled={!canChart}
+              onClick={() => canChart && setSelected(k)}
+              className={cn(
+                "flex flex-col gap-1.5 rounded-xl border p-4 text-left transition-colors",
+                active
+                  ? "border-[var(--chart-1)] bg-[var(--chart-1)]/5"
+                  : "border-border bg-card",
+                canChart
+                  ? "cursor-pointer hover:border-[var(--chart-1)]/60"
+                  : "cursor-default",
+              )}
+            >
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {label}
+              </span>
+              <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
+                {fmtMetric(k, kpis[k])}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {selected && series.length > 0 && (
+        <Card title={`${humanize(selected)} over time`}>
+          <AreaTrend rows={series} timeKey="t" metricKey={selected} />
+        </Card>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {sources.length > 0 && (
+          <Card title="Top sources">
+            <BarList rows={sources} labelKey="k" valueKey="n" />
+          </Card>
+        )}
+        {funnel && (
+          <Card title="Funnel">
+            <Funnel row={funnel} />
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- one dashboard view section ---------------------------------------------
 
 function ViewSection({
@@ -855,7 +947,11 @@ function ViewSection({
               {t("mainPanelTabs.analyticsTab.liveHint")}
             </div>
           )}
-          <ViewPanels payload={response.data} t={t} />
+          {view === "overview" ? (
+            <OverviewDashboard payload={response.data} />
+          ) : (
+            <ViewPanels payload={response.data} t={t} />
+          )}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
