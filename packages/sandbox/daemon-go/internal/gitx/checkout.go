@@ -146,8 +146,20 @@ func ProtectedBranches(repoDir string) []string {
 // a hard failure would just cost a turn. If the artifact was the ONLY staged
 // change, git then reports "no changes added to commit", which is the correct
 // answer to that commit.
-const buildArtifactHook = `#!/bin/sh
-artifacts="$(dirname "$0")/build-artifacts"
+//
+// This wrapper runs a repo's OWN pre-commit hook first (saved as
+// `pre-commit.local` below), if the install step that ran just before us wrote
+// one — lefthook/husky format-and-lint-on-commit is exactly the kind of check
+// an agent's commit inside the sandbox should still be held to, and the naive
+// unconditional overwrite silently dropped it project-wide.
+const buildArtifactHookMarker = "# decocms-sandbox-build-artifact-hook"
+
+const buildArtifactHook = "#!/bin/sh\n" + buildArtifactHookMarker + `
+here="$(dirname "$0")"
+if [ -x "$here/pre-commit.local" ]; then
+  "$here/pre-commit.local" "$@" || exit $?
+fi
+artifacts="$here/build-artifacts"
 [ -f "$artifacts" ] || exit 0
 while IFS= read -r p; do
   [ -n "$p" ] || continue
@@ -172,7 +184,17 @@ func InstallSandboxHooks(repoDir string) error {
 	if err := os.WriteFile(filepath.Join(hooksDir, "protected-branches"), []byte(list), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), []byte(buildArtifactHook), 0o755); err != nil {
+	// An install step (lefthook, husky) may have just written its OWN
+	// pre-commit hook; preserve it under a fixed name so our wrapper can still
+	// run it, instead of silently replacing it every time we reinstall.
+	preCommitPath := filepath.Join(hooksDir, "pre-commit")
+	if existing, err := os.ReadFile(preCommitPath); err == nil &&
+		!strings.Contains(string(existing), buildArtifactHookMarker) {
+		if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit.local"), existing, 0o755); err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(preCommitPath, []byte(buildArtifactHook), 0o755); err != nil {
 		return err
 	}
 	artifacts := strings.Join(BuildArtifacts, "\n") + "\n"
