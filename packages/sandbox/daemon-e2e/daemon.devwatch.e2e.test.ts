@@ -135,6 +135,83 @@ describe("daemon e2e: dev-server liveness watchdog", () => {
   );
 });
 
+// `start-failed` is a verdict the watchdog reaches by giving up while its last
+// respawn is still booting — so the boot it gave up on can, and on a large repo
+// does, come up minutes later. When it does, the sandbox is working and the
+// phase has to say so. It used to latch instead: a montecarlo dev server served
+// from 17:37 onward while the UI showed "Blocos indisponíveis" until someone
+// hit a button that threw the working server away and paid another cold boot.
+//
+// Black-box shape: shrink both watchdog windows so the give-up happens in
+// seconds, and make the respawned dev server bind slowly enough to lose the
+// race — the same ordering as production, compressed.
+describe("daemon e2e: a serving dev server clears start-failed", () => {
+  let d: Daemon;
+  let repo: BareRepo;
+  let devPort: number;
+  let marker: string;
+
+  beforeEach(async () => {
+    devPort = await freePort();
+    marker = join(tmpdir(), `devwatch-recover-${devPort}`);
+    rmSync(marker, { force: true });
+    // First run serves immediately (so the daemon reaches `running` and the
+    // watchdog arms). Every run after it sleeps past the restart window before
+    // binding, so the watchdog exhausts its budget mid-boot and gives up.
+    repo = setupBareRepo({
+      withPackageJson: true,
+      scripts: {
+        dev: `node -e "const fs=require('fs'),m='${marker.replace(/\\/g, "\\\\")}';const s=()=>require('http').createServer((_q,r)=>{r.setHeader('content-type','text/html');r.end('<html>ok</html>')}).listen(process.env.PORT);if(fs.existsSync(m)){setTimeout(s,8000)}else{fs.writeFileSync(m,'1');s()}"`,
+      },
+    });
+    d = await startDaemon({
+      SANDBOX_PROBE_FAST_MS: "300",
+      SANDBOX_PROBE_SLOW_MS: "1000",
+      SANDBOX_DEV_WATCH_GRACE_MS: "1000",
+      SANDBOX_DEV_WATCH_RESTART_GRACE_MS: "1000",
+      SANDBOX_DEV_WATCH_MAX_RESTARTS: "1",
+      SANDBOX_DEV_WATCH_TICK_MS: "500",
+    });
+  }, HOOK_TIMEOUT_MS);
+
+  afterEach(async () => {
+    await stopDaemon(d);
+    repo.cleanup();
+    rmSync(marker, { force: true });
+  }, HOOK_TIMEOUT_MS);
+
+  it(
+    "returns to running when the boot it gave up on finally serves",
+    async () => {
+      expect(
+        (
+          await bootstrapRepo(d, repo.url, {
+            application: { packageManager: { name: "npm" }, port: devPort },
+            env: { npm_config_offline: "true", PORT: String(devPort) },
+          })
+        ).status,
+      ).toBe(200);
+      await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+      await waitForPhaseOf(d, (p) => p === "running", "running");
+
+      const killed = await fetch(url(d, "/_sandbox/exec/dev/kill"), {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      expect(killed.status).toBe(200);
+
+      // The budget (1 restart) is spent while the slow respawn is still
+      // sleeping, so the watchdog gives up.
+      await waitForPhaseOf(d, (p) => p === "start-failed", "start-failed");
+      expect(d.stdout.value).toContain("giving up");
+
+      // …and then that same respawn binds. The phase must follow the facts.
+      await waitForPhaseOf(d, (p) => p === "running", "running-again", 30_000);
+    },
+    SETUP_TIMEOUT_MS,
+  );
+});
+
 // Fix #2: a dev server that crashed (non-zero exit) latches `status:"error"` +
 // `start-failed`; a later reclaim/branch-change must clear that latch so the
 // start step runs again — without it, `stepStartInner` silently skips every

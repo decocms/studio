@@ -21,6 +21,33 @@ export class ConfigRequestError extends Error {
   }
 }
 
+/**
+ * Fetch a daemon endpoint, labelling a transport failure with the endpoint that
+ * failed.
+ *
+ * `AbortSignal.timeout()` rejects with a bare DOMException whose message is
+ * "The operation timed out." — no URL, no endpoint, no hint that a sandbox was
+ * even involved. Unwrapped, that string is what a run surfaces to the user: a
+ * montecarlo run failed with exactly `Error: The operation timed out.` and
+ * nothing anywhere — not the thread row, not the logs — recorded what had timed
+ * out. Every other timeout on this path already says what it was waiting for;
+ * these are the ones that did not.
+ */
+async function daemonFetch(
+  url: string,
+  init: RequestInit,
+  endpoint: string,
+): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`sandbox daemon ${endpoint} request failed: ${message}`, {
+      cause: err,
+    });
+  }
+}
+
 const HEALTH_PROBE_TIMEOUT_MS = 500;
 // Config application can run a cold clone + install on a heavy sandbox; 10s was
 // too tight and routinely tripped `AbortSignal.timeout()`, surfacing benign
@@ -137,15 +164,19 @@ async function configRequest(
 ): Promise<ConfigResponse> {
   const wire: Record<string, unknown> = { ...payload };
   if (auth && auth.rotateToken !== undefined) wire.auth = auth;
-  const res = await fetch(`${daemonUrl}/_sandbox/config`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await daemonFetch(
+    `${daemonUrl}/_sandbox/config`,
+    {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(wire),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
     },
-    body: JSON.stringify(wire),
-    signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
-  });
+    "/_sandbox/config",
+  );
   const body = await res.text();
   if (!res.ok) {
     throw new ConfigRequestError(res.status, body);
@@ -164,11 +195,15 @@ export async function postSetupStep(
   token: string,
   step: "clone" | "install" | "start",
 ): Promise<void> {
-  const res = await fetch(`${daemonUrl}/_sandbox/setup/${step}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
-  });
+  const res = await daemonFetch(
+    `${daemonUrl}/_sandbox/setup/${step}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+    },
+    `/_sandbox/setup/${step}`,
+  );
   if (!res.ok) {
     throw new Error(
       `sandbox daemon /_sandbox/setup/${step} returned ${res.status}: ${await res.text()}`,
@@ -188,15 +223,19 @@ export async function postOrgFsConfig(
   token: string,
   configJson: string,
 ): Promise<{ written: boolean }> {
-  const res = await fetch(`${daemonUrl}/_sandbox/orgfs-config`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await daemonFetch(
+    `${daemonUrl}/_sandbox/orgfs-config`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: configJson,
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
     },
-    body: configJson,
-    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
-  });
+    "/_sandbox/orgfs-config",
+  );
   const body = await res.text();
   if (!res.ok) {
     throw new Error(

@@ -27,7 +27,18 @@ const FAILURE_PATTERNS: ReadonlyArray<{
   {
     kind: "sandbox_unreachable",
     reason: "Run stopped: its sandbox became unreachable mid-run",
-    match: /\[SANDBOX_UNREACHABLE\]|sandbox stream broke/i,
+    match: /\[SANDBOX_UNREACHABLE\]|sandbox stream broke|Daemon unreachable/i,
+  },
+  {
+    // Before this, a montecarlo run that died waiting on its sandbox persisted
+    // "Run ended with an error — see the run's messages" and the messages held
+    // exactly `Error: The operation timed out.` — a dead end in both places.
+    // Sits below sandbox_unreachable so a message that names the sandbox keeps
+    // the more specific kind, and above the generic patterns because a timeout
+    // is a better answer than "the provider said something".
+    kind: "timeout",
+    reason: "Run stopped: an operation it was waiting on timed out",
+    match: /\boperation timed out\b|\btimed out\b|\bETIMEDOUT\b/i,
   },
   {
     kind: "cancelled",
