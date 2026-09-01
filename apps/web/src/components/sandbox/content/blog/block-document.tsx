@@ -52,13 +52,21 @@ export function BlockDocument({
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     value.map((blk) => ({ id: uid(), block: blk })),
   );
+  // Re-seed when `value` changes for a reason other than our own onChange echo.
+  const [lastEmitted, setLastEmitted] = useState(value);
+  if (value !== lastEmitted) {
+    setLastEmitted(value);
+    setBlockItems(value.map((blk) => ({ id: uid(), block: blk })));
+  }
 
   const ids = blockItems.map((x) => x.id);
   const blocks = blockItems.map((x) => x.block);
 
   const syncBlocks = (items: BlockItem[]) => {
     setBlockItems(items);
-    onChange(items.map((x) => x.block));
+    const next = items.map((x) => x.block);
+    setLastEmitted(next);
+    onChange(next);
   };
 
   const insertAt = (index: number, resolveType: string) => {
