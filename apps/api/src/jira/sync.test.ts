@@ -7,6 +7,7 @@ import {
   rewritesSprint,
   rewritesStatus,
   runTruncated,
+  triggersColumnAutomation,
   vanishedLinks,
 } from "./sync";
 
@@ -322,5 +323,39 @@ describe("rewritesStatus", () => {
         }),
       ).toBe(false);
     }
+  });
+});
+
+describe("triggersColumnAutomation", () => {
+  it("fires when the issue's board column actually changed", () => {
+    expect(
+      triggersColumnAutomation({
+        previousStatus: "BACKLOG",
+        newStatus: "In Progress",
+        isRescan: false,
+      }),
+    ).toBe(true);
+  });
+
+  /** Two Jira statuses ("In Review (Dev)", "In Review (QA)") can map to the
+   *  same board column — the card never left it, so its rule must not refire. */
+  it("does not fire when two Jira statuses map onto the same board column", () => {
+    expect(
+      triggersColumnAutomation({
+        previousStatus: "In Review",
+        newStatus: "In Review",
+        isRescan: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("never fires on a rescan, however the column reads", () => {
+    expect(
+      triggersColumnAutomation({
+        previousStatus: "BACKLOG",
+        newStatus: "In Progress",
+        isRescan: true,
+      }),
+    ).toBe(false);
   });
 });
