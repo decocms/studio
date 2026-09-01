@@ -374,11 +374,12 @@ export function useMainPanelTabs(ctx: {
       title: t("common.mainPanelTabs.reviewChanges"),
     });
   }
-  // Only shown once you're actually on one of these views, not on every screen.
+  // activeTab defaults to "settings" while chat is showing, so also require the panel to be open.
   const onSettingsOrAutomations =
-    activeTab === "settings" ||
-    activeTab === "automations" ||
-    automationTabParsed !== null;
+    mainOpen &&
+    (activeTab === "settings" ||
+      activeTab === "automations" ||
+      automationTabParsed !== null);
   if (onSettingsOrAutomations) {
     if (canManageAgents) {
       systemTabs.push({
