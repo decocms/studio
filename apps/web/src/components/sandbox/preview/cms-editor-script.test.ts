@@ -134,6 +134,16 @@ describe("CMS_EDITOR_SCRIPT", () => {
     expect(CMS_EDITOR_SCRIPT).toContain("cms-editor::render-end");
   });
 
+  it("hides the stale overlay on swap instead of leaving it floating over the new page", () => {
+    const start = CMS_EDITOR_SCRIPT.indexOf("var swap = function()");
+    const end = CMS_EDITOR_SCRIPT.indexOf("var headHtml = html.slice", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const swap = CMS_EDITOR_SCRIPT.slice(start, end);
+    expect(swap).toContain('highlight.style.display = "none"');
+    expect(swap).toContain('badge.style.display = "none"');
+  });
+
   it("drops a bridge message whose source isn't this frame's parent", () => {
     const start = CMS_EDITOR_SCRIPT.indexOf(
       'window.addEventListener("message", function(e)',

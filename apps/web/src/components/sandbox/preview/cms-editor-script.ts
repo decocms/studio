@@ -328,6 +328,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
           document.documentElement.innerHTML = html.replace("</head>", TRANSITION_TAG);
           document.body.appendChild(highlight);
           document.body.appendChild(badge);
+          // Old section is gone; hide the overlay until the next hover repositions it.
+          highlight.style.display = "none";
+          badge.style.display = "none";
           lastSection = null;
         };
         var headHtml = html.slice(html.indexOf("<head>"), html.indexOf("</head>") + 7);
