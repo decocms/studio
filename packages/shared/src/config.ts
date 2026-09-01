@@ -64,6 +64,13 @@ export interface PublicConfig {
    */
   hostingControlPlaneGa?: boolean;
   /**
+   * Deployment-wide GA switch for the Monitor tab (env `MONITOR_GA`),
+   * independent of the control-plane trio: when true Monitor is offered to
+   * every org at once, not just deco.cx staff, local dev, or orgs with the
+   * `monitor_enabled` flag.
+   */
+  monitorGa?: boolean;
+  /**
    * Whether the native CDN Monitor tab is available (the stats-lake ClickHouse
    * warehouse is wired). Independent of `hostingEnabled` — it reads the
    * warehouse directly, not the control-plane. GA: any org that owns the site

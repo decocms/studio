@@ -67,9 +67,11 @@ function TabBody({
   >["automationTabParsed"];
 }) {
   const controlPlaneViews = useControlPlaneViews();
-  // Native CDN Monitor tab gate — GA (warehouse wired), independent of the
-  // control-plane. Ownership is enforced by the BFF; this only guards the
-  // deep-link `?main=cdn` against a deployment with no warehouse.
+  // Native CDN Monitor tab gate — warehouse wired, independent of the
+  // control-plane. Ownership is enforced by the BFF; combined with
+  // `controlPlaneViews.monitor` below this guards the deep-link `?main=cdn`
+  // against a deployment with no warehouse AND against a client the org's
+  // `monitor_enabled` flag hasn't opted in.
   const monitorEnabled =
     usePublicConfig().monitorEnabled === true ||
     usePublicConfig().auth.localMode === true;
@@ -136,7 +138,7 @@ function TabBody({
   if (activeTab === "analytics" && controlPlaneViews.analytics) {
     return <AnalyticsTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "cdn" && monitorEnabled) {
+  if (activeTab === "cdn" && monitorEnabled && controlPlaneViews.monitor) {
     return <CdnTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {

@@ -134,6 +134,7 @@ export interface StudioToolIO {
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }
@@ -211,6 +212,7 @@ export interface StudioToolIO {
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }
@@ -288,6 +290,7 @@ export interface StudioToolIO {
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }

@@ -204,6 +204,11 @@ export interface Settings {
    *  that view's flag (`hosting_enabled` / `deco_analytics_enabled` /
    *  `e2e_enabled`). Exposed to the browser via /api/config. */
   hostingControlPlaneGa: boolean;
+  /** Deployment-wide GA switch for the Monitor tab (env `MONITOR_GA`),
+   *  independent of the control-plane trio: true opens Monitor to every org at
+   *  once. Off by default, where it shows only for deco.cx staff, local dev, or
+   *  an org with the `monitor_enabled` flag. Exposed via /api/config. */
+  monitorGa: boolean;
   /** Deco Analytics READ surface base URL (e.g.
    *  https://analytics.infra.deco.cx). Read by the per-site Analytics tab's BFF
    *  proxy to fetch the tenant-scoped `/data` views. This is the read half of

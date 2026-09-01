@@ -183,14 +183,13 @@ export function useMainPanelTabs(ctx: {
   // Per-site Hosting tab: only surfaces when the deployment wired the
   // control-plane BFF proxy (public config `hostingEnabled`).
   const hostingEnabled = usePublicConfig().hostingEnabled === true;
-  // Native CDN Monitor tab: surfaces when the stats-lake warehouse is wired
-  // (public config `monitorEnabled`), independent of the control-plane. GA — no
-  // internal org flag — but still requires org ownership of the resolved site
-  // (`hostingOwned`, from the same `/access` probe), so a site the org doesn't
-  // own never shows it.
+  // Warehouse-wired prerequisite for the CDN Monitor tab (public config
+  // `monitorEnabled` = stats-lake ClickHouse creds set), independent of the
+  // control-plane. The product gate (deco.cx staff / MONITOR_GA / the org's
+  // `monitor_enabled` flag) is layered on top at the tab push via
+  // `controlPlaneViews.monitor`; ownership is enforced by `hostingOwned`.
   // Local dev opens the tab even without warehouse creds so the shell can be
-  // validated; it then renders its own "warehouse not wired" state. Mirrors how
-  // the control-plane tabs open in local mode (see useControlPlaneViews).
+  // validated; it then renders its own "warehouse not wired" state.
   const monitorEnabled =
     usePublicConfig().monitorEnabled === true ||
     usePublicConfig().auth.localMode === true;
@@ -443,11 +442,14 @@ export function useMainPanelTabs(ctx: {
     }
   }
   // Native CDN Monitor tab — the first-class replacement for the old admin
-  // "Monitor" iframe. GA (no internal flag), gated only on the warehouse being
-  // wired (`monitorEnabled`) and org ownership of the site (`hostingOwned`).
-  // Independent of `hostingEnabled`: it reads the stats-lake warehouse directly,
-  // not the control-plane, so a deployment can offer CDN without hosting.
-  if (monitorEnabled && hostingOwned) {
+  // "Monitor" iframe. Gated on the warehouse being wired (`monitorEnabled`), org
+  // ownership of the site (`hostingOwned`), AND the per-view product gate
+  // (`controlPlaneViews.monitor`: local dev / deco.cx staff / MONITOR_GA / the
+  // org's `monitor_enabled` flag) so a client never sees it until deco.cx opts
+  // that org in. Independent of `hostingEnabled`: it reads the stats-lake
+  // warehouse directly, not the control-plane, so a deployment can offer CDN
+  // without hosting.
+  if (monitorEnabled && hostingOwned && controlPlaneViews.monitor) {
     systemTabs.push({
       id: "cdn",
       title: t("common.mainPanelTabs.cdn"),

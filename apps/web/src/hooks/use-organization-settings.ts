@@ -271,6 +271,7 @@ export interface ControlPlaneViews {
   hosting: boolean;
   analytics: boolean;
   e2e: boolean;
+  monitor: boolean;
 }
 
 /**
@@ -279,28 +280,34 @@ export interface ControlPlaneViews {
  *  - local mode — always in local dev (deco-infra feature, never self-hosted,
  *    so no reason to hide it from a developer whose deployment wired the BFF);
  *  - deco.cx staff (by email) — always, while the surface rolls out;
- *  - the deployment-wide `hostingControlPlaneGa` — the "open every view to every
- *    org at once" switch (public config, env `HOSTING_CONTROL_PLANE_GA`);
+ *  - a deployment-wide GA switch — the "open to every org at once" env: the
+ *    control-plane trio (Hosting/Analytics/E2E) shares `HOSTING_CONTROL_PLANE_GA`;
+ *    Monitor has its own `MONITOR_GA`;
  *  - the view's own org flag (`hosting_enabled` / `deco_analytics_enabled` /
- *    `e2e_enabled`) — the per-client lever set via `organization_settings`.
+ *    `e2e_enabled` / `monitor_enabled`) — the per-client lever set via
+ *    `organization_settings`.
  *
- * Product gating only — the BFF still enforces deployment wiring, per-site
- * ownership, and org membership server-side.
+ * A client never sees a view — even an org admin — until deco.cx turns that
+ * view's flag (or GA) on; deco.cx controls the rollout. Product gating only —
+ * the BFF still enforces deployment wiring, per-site ownership, and org
+ * membership server-side.
  */
 export function useControlPlaneViews(): ControlPlaneViews {
   const { data: session } = authClient.useSession();
   const config = usePublicConfig();
-  const alwaysOn =
-    config.hostingControlPlaneGa === true ||
-    config.auth.localMode === true ||
-    isDecoStaffEmail(session?.user?.email);
+  const staffOrLocal =
+    config.auth.localMode === true || isDecoStaffEmail(session?.user?.email);
+  const controlPlaneGa = config.hostingControlPlaneGa === true;
+  const monitorGa = config.monitorGa === true;
   const hostingFlag = useOrgFlag("hosting_enabled");
   const analyticsFlag = useOrgFlag("deco_analytics_enabled");
   const e2eFlag = useOrgFlag("e2e_enabled");
+  const monitorFlag = useOrgFlag("monitor_enabled");
   return {
-    hosting: alwaysOn || hostingFlag,
-    analytics: alwaysOn || analyticsFlag,
-    e2e: alwaysOn || e2eFlag,
+    hosting: staffOrLocal || controlPlaneGa || hostingFlag,
+    analytics: staffOrLocal || controlPlaneGa || analyticsFlag,
+    e2e: staffOrLocal || controlPlaneGa || e2eFlag,
+    monitor: staffOrLocal || monitorGa || monitorFlag,
   };
 }
 
