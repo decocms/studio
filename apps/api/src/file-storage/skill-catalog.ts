@@ -15,6 +15,7 @@
  */
 
 import { parseSkillMd } from "@/harnesses/lib/skills/skill-md";
+import { mapWithConcurrency } from "@/tools/connection/map-with-concurrency";
 import type { StudioContext } from "../core/studio-context";
 import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../object-storage/dev-object-storage";
@@ -47,8 +48,23 @@ export interface SkillCatalogEntry {
   path: string;
 }
 
-/** Total SKILL.md reads per build — a backstop against a pathological tree. */
+/**
+ * SKILL.md reads per build across the org's OWN volumes (home + synced repos)
+ * — a backstop against a pathological tenant tree.
+ *
+ * Public sets carry their own budget below rather than sharing this one: they
+ * are a fixed deployment-level set behind a process cache, so charging them
+ * here made a tenant's cap depend on whether that cache happened to be warm.
+ */
 const MAX_SKILLS = 200;
+/** The same backstop for the deployment's public sets. */
+const MAX_PUBLIC_SKILLS = 200;
+/**
+ * Ceiling on SKILL.md reads in flight at once. The reads are issued together
+ * for latency, but a wide org (or several rebuilding at once) should not turn
+ * that into an unbounded burst against the storage client.
+ */
+const MAX_CONCURRENT_READS = 16;
 /** Public sets are global + change only on the ~10-min sync; cache process-wide. */
 const PUBLIC_TTL_MS = 5 * 60_000;
 const HOME_VOLUME = "home";
@@ -70,19 +86,23 @@ export interface DetectedSkill {
   description: string | null;
 }
 
+/** One claimed skill folder, awaiting its `SKILL.md` read. */
+interface SkillDir {
+  volume: string;
+  dirPath: string;
+}
+
 /**
- * Detect skill folders directly under `(volume, base)`: list immediate child
- * dirs, batch-probe `<dir>/SKILL.md`, read + parse the hits. One listDir + one
- * filesExist + one read per skill, the reads issued together. Best-effort —
- * returns [] on any storage error and skips individual unreadable skills.
- * `budget` caps total reads.
+ * Immediate child dirs of `(volume, base)` that contain a `SKILL.md`, sorted
+ * by path. One listDir + one filesExist and no per-skill reads, so this is
+ * cheap enough to run for every scope up front — before the budget decides
+ * which of them can afford to be read. Best-effort: [] on any storage error.
  */
-export async function detectSkills(
+async function probeSkillDirs(
   fs: OrgFs,
   volume: string,
   base: string,
-  budget: { remaining: number },
-): Promise<DetectedSkill[]> {
+): Promise<string[]> {
   try {
     const dirs = (await fs.listDir(volume, base)).filter(
       (e) => e.kind === "dir",
@@ -92,49 +112,94 @@ export async function detectSkills(
       volume,
       dirs.map((d) => `${d.path}/SKILL.md`),
     );
-
-    // Claim the whole slice before the first read starts. `buildSkillCatalog`
-    // runs these scans concurrently, so a counter decremented between awaits
-    // would let them race past the cap together.
-    const skills = dirs.filter((d) => found.has(`${d.path}/SKILL.md`));
-    const claimed = skills.slice(0, Math.max(0, budget.remaining));
-    budget.remaining -= claimed.length;
-
-    // ponytail: unbounded fan-out, bounded only by MAX_SKILLS (200) and by
-    // whatever the storage client's own connection pool admits at once. Add a
-    // semaphore here if a wide org is ever seen starving other callers.
-    const read = await Promise.all(
-      claimed.map(async (d): Promise<DetectedSkill | null> => {
-        try {
-          const bytes = await fs.read(volume, `${d.path}/SKILL.md`);
-          const meta = parseSkillMd(new TextDecoder().decode(bytes));
-          return {
-            dirPath: d.path,
-            name: meta.name ?? basename(d.path),
-            description: meta.description,
-          };
-        } catch {
-          // Skill dir without a readable SKILL.md (sync race, vanished file) —
-          // skip it rather than fail the whole catalog.
-          return null;
-        }
-      }),
-    );
-    return read.filter((s) => s !== null);
+    // Sorted, not listing order: this is the order the budget is spent in.
+    return dirs
+      .map((d) => d.path)
+      .filter((path) => found.has(`${path}/SKILL.md`))
+      .toSorted();
   } catch (err) {
     console.warn(`[skill-catalog] scan failed (${volume}:${base || "/"})`, err);
     return [];
   }
 }
 
+/**
+ * Read + parse every claimed `SKILL.md`, at most {@link MAX_CONCURRENT_READS}
+ * in flight. Bounded rather than a plain `Promise.all`: a miss can claim up to
+ * `MAX_SKILLS` folders, and concurrent misses across orgs multiply that into
+ * one burst against the storage client. Results keep `dirs` order; an
+ * individual unreadable skill is skipped, never fatal.
+ */
+async function readSkills(
+  fs: OrgFs,
+  dirs: SkillDir[],
+): Promise<Array<SkillDir & DetectedSkill>> {
+  const out = new Array<(SkillDir & DetectedSkill) | null>(dirs.length).fill(
+    null,
+  );
+  await mapWithConcurrency(
+    dirs.map((dir, index) => ({ dir, index })),
+    MAX_CONCURRENT_READS,
+    async ({ dir, index }) => {
+      try {
+        const bytes = await fs.read(dir.volume, `${dir.dirPath}/SKILL.md`);
+        const meta = parseSkillMd(new TextDecoder().decode(bytes));
+        out[index] = {
+          ...dir,
+          name: meta.name ?? basename(dir.dirPath),
+          description: meta.description,
+        };
+      } catch {
+        // Skill dir without a readable SKILL.md (sync race, vanished file) —
+        // skip it rather than fail the whole catalog.
+      }
+    },
+  );
+  return out.filter((s) => s !== null);
+}
+
+/**
+ * Detect skill folders directly under `(volume, base)`: probe, claim what the
+ * budget allows, read + parse. Best-effort — returns [] on any storage error
+ * and skips individual unreadable skills.
+ *
+ * The claim is a slice taken before the first read: with the reads issued
+ * together there is no longer a decrement between them to serialize on, so
+ * two concurrent scans sharing a budget would otherwise both see the same
+ * remaining count.
+ */
+export async function detectSkills(
+  fs: OrgFs,
+  volume: string,
+  base: string,
+  budget: { remaining: number },
+): Promise<DetectedSkill[]> {
+  const dirPaths = await probeSkillDirs(fs, volume, base);
+  const claimed = dirPaths.slice(0, Math.max(0, budget.remaining));
+  budget.remaining -= claimed.length;
+  const read = await readSkills(
+    fs,
+    claimed.map((dirPath) => ({ volume, dirPath })),
+  );
+  // Drop the volume `readSkills` threads through for the multi-volume caller —
+  // a single-volume scan already knows it, and leaking it widens the shape.
+  return read.map(({ dirPath, name, description }) => ({
+    dirPath,
+    name,
+    description,
+  }));
+}
+
 /** Public sets are org-independent (shared system scope); build once + cache. */
 async function buildPublicEntries(
   ctx: StudioContext,
-  budget: { remaining: number },
 ): Promise<SkillCatalogEntry[]> {
   if (publicCache && publicCache.expires > Date.now())
     return publicCache.entries;
 
+  // Sets are walked in `getPublicSets()` order so an over-budget deployment
+  // truncates the same way every time.
+  const budget = { remaining: MAX_PUBLIC_SKILLS };
   const pub = buildPublicOrgFs(ctx);
   const entries: SkillCatalogEntry[] = [];
   for (const { set } of getPublicSets()) {
@@ -171,55 +236,68 @@ function buildOrgFs(ctx: StudioContext, orgId: string): OrgFs {
   return new OrgFs(storage, ctx.storage.orgFsEntries, orgId);
 }
 
-/** Repo-sync skills: bounded probe of each synced volume's root. */
-async function buildSyncedEntries(
+/**
+ * The org's own skills: `home/*`, `home/skills/*`, and the root of every
+ * enabled synced repo volume.
+ *
+ * All scopes are probed together, then claimed in a FIXED scope order, then
+ * read together. The fixed order is what makes an over-budget tree truncate to
+ * the same set on every build — spending the budget in whichever order the
+ * storage calls happened to return let two builds of one org expose different
+ * repos, and the catalog is supposed to be byte-stable for the prompt prefix.
+ */
+async function buildOrgEntries(
   ctx: StudioContext,
   orgId: string,
-  budget: { remaining: number },
 ): Promise<SkillCatalogEntry[]> {
-  const volumes = await ctx.storage.orgRepoSyncs
-    .listEnabledVolumes(orgId)
-    .catch(() => [] as string[]);
-  if (volumes.length === 0) return [];
-  const fs = buildOrgFs(ctx, orgId);
-  // Scanned together — an org with several synced repos used to pay each
-  // volume's listing and reads end to end.
-  const perVolume = await Promise.all(
-    volumes.map(async (volume) =>
-      (await detectSkills(fs, volume, "", budget)).map((s) => ({
-        id: `repo/${volume}/${s.dirPath}`,
-        name: s.name,
-        description: s.description,
-        source: `repo:${volume}`,
-        sandboxPath: orgFsSandboxPath(volume, s.dirPath),
-        volume,
-        path: s.dirPath,
-      })),
-    ),
-  );
-  return perVolume.flat();
-}
+  const volumes = (
+    await ctx.storage.orgRepoSyncs
+      .listEnabledVolumes(orgId)
+      .catch(() => [] as string[])
+  ).toSorted(); // the query promises no order; the claim order has to be ours
 
-/** Home skills: bounded probe of `org/home/*` and `org/home/skills/*`. */
-async function buildHomeEntries(
-  ctx: StudioContext,
-  orgId: string,
-  budget: { remaining: number },
-): Promise<SkillCatalogEntry[]> {
-  const home = buildOrgFs(ctx, orgId);
-  const [top, nested] = await Promise.all([
-    detectSkills(home, HOME_VOLUME, "", budget),
-    detectSkills(home, HOME_VOLUME, "skills", budget),
-  ]);
-  return [...top, ...nested].map((s) => ({
-    id: `home/${s.dirPath}`,
-    name: s.name,
-    description: s.description,
-    source: "home",
-    sandboxPath: orgFsSandboxPath(HOME_VOLUME, s.dirPath),
-    volume: HOME_VOLUME,
-    path: s.dirPath,
-  }));
+  const fs = buildOrgFs(ctx, orgId);
+  const scopes = [
+    { volume: HOME_VOLUME, base: "" },
+    { volume: HOME_VOLUME, base: "skills" },
+    ...volumes.map((volume) => ({ volume, base: "" })),
+  ];
+
+  const probed = await Promise.all(
+    scopes.map((s) => probeSkillDirs(fs, s.volume, s.base)),
+  );
+
+  let remaining = MAX_SKILLS;
+  const claimed: SkillDir[] = [];
+  for (const [index, dirPaths] of probed.entries()) {
+    const take = dirPaths.slice(0, remaining);
+    remaining -= take.length;
+    for (const dirPath of take) {
+      claimed.push({ volume: scopes[index]!.volume, dirPath });
+    }
+  }
+
+  return (await readSkills(fs, claimed)).map((s) =>
+    s.volume === HOME_VOLUME
+      ? {
+          id: `home/${s.dirPath}`,
+          name: s.name,
+          description: s.description,
+          source: "home",
+          sandboxPath: orgFsSandboxPath(HOME_VOLUME, s.dirPath),
+          volume: HOME_VOLUME,
+          path: s.dirPath,
+        }
+      : {
+          id: `repo/${s.volume}/${s.dirPath}`,
+          name: s.name,
+          description: s.description,
+          source: `repo:${s.volume}`,
+          sandboxPath: orgFsSandboxPath(s.volume, s.dirPath),
+          volume: s.volume,
+          path: s.dirPath,
+        },
+  );
 }
 
 /**
@@ -237,21 +315,20 @@ export async function buildSkillCatalog(
   orgId: string,
 ): Promise<SkillCatalogEntry[]> {
   const cache = getSkillCatalogCache();
-  const cached = await cache?.get(orgId);
-  if (cached) return cached;
+  const cached = (await cache?.get(orgId)) ?? { catalog: null };
+  if (cached.catalog) return cached.catalog;
   recordSkillCatalogMiss();
 
-  const budget = { remaining: MAX_SKILLS };
-  const [pub, home, synced] = await Promise.all([
-    buildPublicEntries(ctx, budget),
-    buildHomeEntries(ctx, orgId, budget),
-    buildSyncedEntries(ctx, orgId, budget),
+  const [pub, own] = await Promise.all([
+    buildPublicEntries(ctx),
+    buildOrgEntries(ctx, orgId),
   ]);
-  const catalog = [...pub, ...home, ...synced].sort(
+  const catalog = [...pub, ...own].sort(
     (a, b) => a.source.localeCompare(b.source) || a.id.localeCompare(b.id),
   );
-  // Not awaited: the caller already has its answer, and a failed put only
-  // costs the next reader a rebuild.
-  cache?.set(orgId, catalog).catch(() => {});
+  // Not awaited: the caller already has its answer, and a lost publish only
+  // costs the next reader a rebuild. Carries the revision the miss was read
+  // at, so a write that landed mid-build wins over this now-stale result.
+  cache?.set(orgId, catalog, cached.revision).catch(() => {});
   return catalog;
 }

@@ -160,4 +160,23 @@ describe("detectSkills (integration)", () => {
     expect(top.length + nested.length).toBe(2);
     expect(shared.remaining).toBe(0);
   });
+
+  it("truncates an over-budget tree to the same set every time", async () => {
+    // The catalog feeds a cached prompt prefix, so an org past the cap has to
+    // lose the SAME skills on every build. Spending the budget in whatever
+    // order storage answered in made that depend on the network.
+    for (const n of ["e", "d", "c", "b", "a"]) {
+      await fs.write(VOL, `${n}/SKILL.md`, `# ${n}\n\nd\n`, { actor: ACTOR });
+    }
+
+    const runs = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        detectSkills(fs, VOL, "", { remaining: 3 }),
+      ),
+    );
+
+    for (const run of runs) {
+      expect(run.map((s) => s.dirPath)).toEqual(["a", "b", "c"]);
+    }
+  });
 });

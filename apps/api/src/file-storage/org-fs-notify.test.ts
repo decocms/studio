@@ -32,7 +32,7 @@ describe("org-fs NATS compatibility subjects", () => {
   test("invalidates the org's skill catalog even with no NATS connection", async () => {
     const invalidated: string[] = [];
     setSkillCatalogCache({
-      get: async () => null,
+      get: async () => ({ catalog: null }),
       set: async () => {},
       invalidate: async (orgId) => {
         invalidated.push(orgId);
