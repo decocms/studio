@@ -271,6 +271,36 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     expect(card.status).toBe("not_a_column");
   });
 
+  /** Delegation used to write Studio's `"todo"` here regardless of whose
+   *  columns the board has — the shape that made assigning to the Super Agent
+   *  fail outright once the key was awake. */
+  it("refuses Studio's queue lane on a guarded card, and takes the board's own", async () => {
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
+      { key: "Refinamento", title: "Refinamento", trackerStatuses: [] },
+    ]);
+    await boardColumns.setRole(ORG_M, "Refinamento", "todo");
+    const card = await taskBoard.create({
+      organizationId: ORG_M,
+      title: "delegated",
+      status: "BACKLOG",
+      boardColumnOrg: ORG_M,
+      by: USER_M,
+    });
+    await expect(
+      taskBoard.update(card.id, ORG_M, { status: "todo" }, USER_M),
+    ).rejects.toThrow(/foreign key|violates/i);
+    const queue = (await board().lanes()).queue;
+    expect(queue).toBe("Refinamento");
+    const queued = await taskBoard.update(
+      card.id,
+      ORG_M,
+      { status: queue!, boardColumnOrg: ORG_M },
+      USER_M,
+    );
+    expect(queued.status).toBe("Refinamento");
+  });
+
   /** The value every writer asks for instead of recomputing. Getting it from
    *  the board is what stops one path guarding a card and another not. */
   it("names itself as the owner a guarded card is held to", () => {
