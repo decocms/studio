@@ -379,12 +379,22 @@ export function useMainPanelTabs(ctx: {
   // An agent whose default is a hosting/e2e/analytics/cdn the current user can't
   // see would otherwise make every fallback below resolve to that same hidden
   // id; drop to the base default ("settings", never gated) in that case.
+  //
+  // Gate on the default view's TYPE (the NATIVE control-plane view), not on the
+  // resolved id: an agent-declared ext-app whose id merely collides with
+  // "analytics"/"hosting"/etc. is not the native gated view and must still open.
+  // And, like `controlPlaneTabHidden` below, only drop once ownership is known
+  // (`!hostingAccessPending`) — `hostingOwned` is false while the probe is in
+  // flight, so without this guard the default (and `leadTabId`) would flip from
+  // "settings" back to the gated tab after load, reordering the bar.
   const configuredDefaultTabId = resolveDefaultTabId(layoutForDefault);
+  const defaultViewType = effectiveDefaultMainView?.type;
   const defaultTabHidden =
-    (configuredDefaultTabId === "hosting" && !showHostingTab) ||
-    (configuredDefaultTabId === "e2e" && !showE2eTab) ||
-    (configuredDefaultTabId === "analytics" && !showAnalyticsTab) ||
-    (configuredDefaultTabId === "cdn" && !showCdnTab);
+    !hostingAccessPending &&
+    ((defaultViewType === "hosting" && !showHostingTab) ||
+      (defaultViewType === "e2e" && !showE2eTab) ||
+      (defaultViewType === "analytics" && !showAnalyticsTab) ||
+      (defaultViewType === "cdn" && !showCdnTab));
   const visibleDefaultTabId = defaultTabHidden
     ? resolveDefaultTabId(null)
     : configuredDefaultTabId;

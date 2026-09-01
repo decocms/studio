@@ -496,6 +496,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.compare": "Compare",
   "mainPanelTabs.cdnTab.mapView": "Map",
   "mainPanelTabs.cdnTab.listView": "List",
+  "mainPanelTabs.cdnTab.countryMapLabel": "Requests by country",
   "mainPanelTabs.cdnTab.today": "Today",
   "mainPanelTabs.cdnTab.yesterday": "Yesterday",
   "mainPanelTabs.cdnTab.last7d": "Last 7 days",

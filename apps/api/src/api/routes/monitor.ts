@@ -1151,10 +1151,13 @@ export const createMonitorRoutes = () => {
         report === "kpis" ||
         (report === "timeseries" && c.req.query("compare") === "1");
       if (wantsPrevious) {
-        const prevUntil = since;
-        const prevSince = toIsoDate(
-          new Date(Date.parse(`${since}T00:00:00Z`) - window.days * 86400000),
-        );
+        const sinceMs = Date.parse(`${since}T00:00:00Z`);
+        const dayMs = 86400000;
+        // Windows are inclusive, so the previous period must END the day BEFORE
+        // `since` (leaving prevUntil at `since` would overlap the current period
+        // by one day) while keeping its length equal to the current window.
+        const prevUntil = toIsoDate(new Date(sinceMs - dayMs));
+        const prevSince = toIsoDate(new Date(sinceMs - window.days * dayMs));
         previous = await runOd([prevSince, prevUntil]).catch(() => undefined);
       }
       return c.json({

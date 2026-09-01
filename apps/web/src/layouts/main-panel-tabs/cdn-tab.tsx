@@ -500,6 +500,7 @@ const MAP_PATH = geoPath(MAP_PROJECTION);
  *  The topojson keys countries by numeric ISO id; convert it to alpha-2
  *  (i18n-iso-countries) to join the alpha-2 breakdown data. */
 function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
+  const t = useT();
   const byCode = new Map<string, number>();
   for (const r of rows) if (r.key) byCode.set(r.key.toUpperCase(), r.value);
   const max = Math.max(1, ...rows.map((r) => r.value));
@@ -509,12 +510,21 @@ function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
     x: number;
     y: number;
   } | null>(null);
+  // Accessible name + a short spoken summary of the leading countries, so the
+  // choropleth isn't just an unlabeled graphic to a screen reader.
+  const summary = rows
+    .slice(0, 5)
+    .filter((r) => r.key)
+    .map((r) => `${formatCountry(r.key)}: ${formatNumber(r.value)}`)
+    .join(", ");
+  const mapLabel = t("mainPanelTabs.cdnTab.countryMapLabel");
   return (
     <div className="relative w-full" onMouseLeave={() => setTip(null)}>
       <svg
         viewBox="0 0 800 520"
         style={{ width: "100%", height: "auto" }}
         role="img"
+        aria-label={summary ? `${mapLabel} — ${summary}` : mapLabel}
       >
         {WORLD_FEATURES.map((geo, i) => {
           const id = String(geo.id ?? "").padStart(3, "0");
