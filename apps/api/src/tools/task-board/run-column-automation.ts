@@ -79,7 +79,13 @@ export async function runColumnAutomation(
       orgId,
       by.actor,
     );
-    return undelegated ?? delegated;
+    // Fence lost: a human owns the card now. Returning `delegated` would emit a
+    // snapshot that reads as their reassignment reverted, so re-read the row.
+    return (
+      undelegated ??
+      (await ctx.storage.taskBoard.getById(item.id, orgId)) ??
+      delegated
+    );
   }
   return delegated;
 }

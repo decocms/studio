@@ -130,6 +130,27 @@ describe("claimUnassignedForSuperAgent (real Postgres)", () => {
     ).toBeNull();
   });
 
+  /** The un-delegate side of the same fence: a rejected claim must not leave
+   *  the failed delegation's `assigned_by` on a now-unassigned card, and must
+   *  not touch the card at all once a human has taken it. */
+  it("clears assignedBy when it wins, and leaves a human's card alone", async () => {
+    const task = await card("Fazendo");
+    await taskBoard.claimUnassignedForSuperAgent(
+      task.id,
+      ORG,
+      USER,
+      USER,
+      "Fazendo",
+    );
+    const undelegated = await taskBoard.unassignSuperAgent(task.id, ORG, USER);
+    expect(undelegated?.assigneeId).toBeNull();
+    expect(undelegated?.assignedBy).toBeNull();
+
+    await taskBoard.update(task.id, ORG, { assigneeId: USER }, USER);
+    expect(await taskBoard.unassignSuperAgent(task.id, ORG, USER)).toBeNull();
+    expect((await taskBoard.getById(task.id, ORG))?.assigneeId).toBe(USER);
+  });
+
   /** Null is "this board has no such column", which cannot be claimed in. */
   it("refuses when the board has no column for the rule", async () => {
     const task = await card("Fazendo");

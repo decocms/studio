@@ -1731,7 +1731,8 @@ export class TaskBoardStorage {
 
   /**
    * Atomically hand a task from the Super Agent to a human: clear
-   * `assigneeId` ONLY if it's still the Super Agent, returning the updated
+   * `assigneeId` and `assignedBy` ONLY if it's still the Super Agent — an
+   * unassigned card keeps no delegation metadata — returning the updated
    * item, or null if it already changed. `handTaskToHuman`'s caller re-checks
    * a stale, previously-read `item.assigneeId` before calling this — several
    * dead-end paths (a bounce limit, a burned reviewer retry, a PR-less card)
@@ -1749,6 +1750,7 @@ export class TaskBoardStorage {
       .updateTable("task_board_items")
       .set({
         assignee_id: null,
+        assigned_by: null,
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
