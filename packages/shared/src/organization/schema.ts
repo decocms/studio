@@ -185,6 +185,24 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
+  hosting_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site Hosting tab (deployments, domains, deploy outcomes). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
+    ),
+  deco_analytics_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site Deco Analytics tab (traffic, realtime, usage & limits). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
+    ),
+  e2e_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site E2E tab (end-to-end test runs). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

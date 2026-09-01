@@ -55,6 +55,7 @@ app.get("/", (c) => {
     hostingEnabled:
       !!getSettings().controlplaneRestUrl &&
       !!getSettings().controlplaneServiceToken,
+    hostingControlPlaneGa: getSettings().hostingControlPlaneGa,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY?.trim() || null,

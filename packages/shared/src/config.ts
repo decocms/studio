@@ -56,6 +56,13 @@ export interface PublicConfig {
   brandExtractEnabled?: boolean;
   /** Whether the per-site Hosting tab (control-plane BFF proxy) is available. */
   hostingEnabled?: boolean;
+  /**
+   * Deployment-wide GA switch for the control-plane views (Hosting · E2E · Deco
+   * Analytics): when true all three are offered to every org at once, not just
+   * deco.cx staff, local dev, or orgs with a view's own flag
+   * (`hosting_enabled` / `deco_analytics_enabled` / `e2e_enabled`).
+   */
+  hostingControlPlaneGa?: boolean;
   auth: AuthConfig;
   posthog: { key: string; host: string } | null;
   googleMapsApiKey: string | null;

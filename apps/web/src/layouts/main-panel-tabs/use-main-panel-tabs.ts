@@ -66,7 +66,11 @@ import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-co
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
+import {
+  useControlPlaneViews,
+  useNavV2,
+  useReportsOnly,
+} from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -174,6 +178,11 @@ export function useMainPanelTabs(ctx: {
   const { granted: canManageAgents } = useCapability("agents:manage");
   const reportsOnly = useReportsOnly();
   const navV2 = useNavV2();
+  // Per-view product gate for the control-plane tabs (Hosting · E2E · Deco
+  // Analytics) while the surface rolls out: local dev / deco.cx staff / GA turn
+  // all three on; otherwise each view follows its own org flag. Layered ON TOP
+  // of the deployment/ownership gates below — not a replacement for them.
+  const controlPlaneViews = useControlPlaneViews();
   // Per-site Hosting tab: only surfaces when the deployment wired the
   // control-plane BFF proxy (public config `hostingEnabled`).
   const hostingEnabled = usePublicConfig().hostingEnabled === true;
@@ -413,24 +422,32 @@ export function useMainPanelTabs(ctx: {
       title: t("common.mainPanelTabs.assets"),
     });
   }
+  // Hosting, E2E, and Deco Analytics are peers over the same control-plane
+  // connection, ordered Hosting · E2E · Deco Analytics — but each is gated by
+  // its own org flag (see useControlPlaneViews), so a client can get one without
+  // the others. All still require org ownership of the resolved site
+  // (`hostingOwned`), not just the deployment-wide `hostingEnabled`, so a site
+  // the org doesn't own never surfaces them (matching the BFF's per-site
+  // isolation guard).
   if (hostingEnabled && hostingOwned) {
-    // Hosting, E2E, and Deco Analytics are peers over the same control-plane
-    // connection — one gate, one order (Hosting · E2E · Deco Analytics). Gated
-    // on org ownership of the resolved site (`hostingOwned`), not just the
-    // deployment-wide `hostingEnabled`, so a site the org doesn't own never
-    // surfaces these tabs (matching the BFF's per-site isolation guard).
-    systemTabs.push({
-      id: "hosting",
-      title: t("common.mainPanelTabs.hosting"),
-    });
-    systemTabs.push({
-      id: "e2e",
-      title: t("common.mainPanelTabs.e2e"),
-    });
-    systemTabs.push({
-      id: "analytics",
-      title: t("common.mainPanelTabs.analytics"),
-    });
+    if (controlPlaneViews.hosting) {
+      systemTabs.push({
+        id: "hosting",
+        title: t("common.mainPanelTabs.hosting"),
+      });
+    }
+    if (controlPlaneViews.e2e) {
+      systemTabs.push({
+        id: "e2e",
+        title: t("common.mainPanelTabs.e2e"),
+      });
+    }
+    if (controlPlaneViews.analytics) {
+      systemTabs.push({
+        id: "analytics",
+        title: t("common.mainPanelTabs.analytics"),
+      });
+    }
   }
   if (gitTabVisible) {
     systemTabs.push({

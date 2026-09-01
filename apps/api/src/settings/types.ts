@@ -198,6 +198,12 @@ export interface Settings {
   /** Bearer service token for the control-plane REST API. Never leaves the
    *  server — the BFF proxy attaches it and returns only the proxied JSON. */
   controlplaneServiceToken: string | undefined;
+  /** Deployment-wide GA switch for the control-plane views (Hosting · E2E ·
+   *  Deco Analytics): true opens them to every org at once. Off by default,
+   *  where each view shows only for deco.cx staff, local dev, or an org with
+   *  that view's flag (`hosting_enabled` / `deco_analytics_enabled` /
+   *  `e2e_enabled`). Exposed to the browser via /api/config. */
+  hostingControlPlaneGa: boolean;
   /** Deco Analytics READ surface base URL (e.g.
    *  https://analytics.infra.deco.cx). Read by the per-site Analytics tab's BFF
    *  proxy to fetch the tenant-scoped `/data` views. This is the read half of

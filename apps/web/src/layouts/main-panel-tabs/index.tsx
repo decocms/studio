@@ -39,6 +39,7 @@ import {
   parsePinnedViewTabId,
 } from "./tab-id";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -63,6 +64,8 @@ function TabBody({
     typeof useMainPanelTabs
   >["automationTabParsed"];
 }) {
+  const controlPlaneViews = useControlPlaneViews();
+
   // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
   // crash the active tab and exercise the ErrorBoundary recovery flow.
   // Dead-stripped from real production builds; alive in dev and in the e2e
@@ -112,13 +115,17 @@ function TabBody({
   if (activeTab === "assets") {
     return <AssetsTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "hosting") {
+  // Control-plane tabs are behind the same per-view product gate as their tab
+  // buttons (see useControlPlaneViews) so a deep-link `?main=hosting` can't
+  // bypass it while the surface rolls out. Access to the data itself is enforced
+  // by the BFF.
+  if (activeTab === "hosting" && controlPlaneViews.hosting) {
     return <HostingTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "e2e") {
+  if (activeTab === "e2e" && controlPlaneViews.e2e) {
     return <E2eTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "analytics") {
+  if (activeTab === "analytics" && controlPlaneViews.analytics) {
     return <AnalyticsTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {

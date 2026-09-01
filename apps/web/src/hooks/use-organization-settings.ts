@@ -1,4 +1,6 @@
 import { useProjectContext, WellKnownOrgMCPId } from "@/sdk";
+import { authClient } from "@/lib/auth-client";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import {
   useMutation,
   useQuery,
@@ -271,6 +273,49 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
     orgFlagEnabled(s.flags, flag),
   );
   return data ?? DEFAULT_ON_FLAGS.has(flag);
+}
+
+/** deco.cx staff — the internal audience the in-flight surfaces open to first. */
+function isDecoStaffEmail(email: string | null | undefined): boolean {
+  return !!email && email.trim().toLowerCase().endsWith("@deco.cx");
+}
+
+/** The three control-plane views, each toggled by its own org flag. */
+export interface ControlPlaneViews {
+  hosting: boolean;
+  analytics: boolean;
+  e2e: boolean;
+}
+
+/**
+ * Per-view gate for the Deco control-plane tabs (Hosting · Deco Analytics ·
+ * E2E). Each view is enabled when ANY of these is on:
+ *  - local mode — always in local dev (deco-infra feature, never self-hosted,
+ *    so no reason to hide it from a developer whose deployment wired the BFF);
+ *  - deco.cx staff (by email) — always, while the surface rolls out;
+ *  - the deployment-wide `hostingControlPlaneGa` — the "open every view to every
+ *    org at once" switch (public config, env `HOSTING_CONTROL_PLANE_GA`);
+ *  - the view's own org flag (`hosting_enabled` / `deco_analytics_enabled` /
+ *    `e2e_enabled`) — the per-client lever set via `organization_settings`.
+ *
+ * Product gating only — the BFF still enforces deployment wiring, per-site
+ * ownership, and org membership server-side.
+ */
+export function useControlPlaneViews(): ControlPlaneViews {
+  const { data: session } = authClient.useSession();
+  const config = usePublicConfig();
+  const alwaysOn =
+    config.hostingControlPlaneGa === true ||
+    config.auth.localMode === true ||
+    isDecoStaffEmail(session?.user?.email);
+  const hostingFlag = useOrgFlag("hosting_enabled");
+  const analyticsFlag = useOrgFlag("deco_analytics_enabled");
+  const e2eFlag = useOrgFlag("e2e_enabled");
+  return {
+    hosting: alwaysOn || hostingFlag,
+    analytics: alwaysOn || analyticsFlag,
+    e2e: alwaysOn || e2eFlag,
+  };
 }
 
 /**
