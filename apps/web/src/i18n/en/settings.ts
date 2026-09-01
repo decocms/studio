@@ -52,14 +52,15 @@ export const settings = {
     "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
   "settings.boardColumns.fieldLabel": "Columns",
   "settings.boardColumns.fieldDescription":
-    "Moving a card here is something Studio does to it. Running the agent is something the card does when it arrives.",
+    "Studio moves a card here when the thing you pick happens. Running the agent is separate: that is what the card does on arrival.",
   "settings.boardColumns.moveHereWhen": "Move cards here when",
-  "settings.boardColumns.whenNever": "Never — I move them myself",
-  "settings.boardColumns.whenAgentStarts": "The agent starts working on it",
-  "settings.boardColumns.whenAgentFinishes":
-    "The agent is done and needs a person",
-  "settings.boardColumns.whenWorkShipped": "The work has shipped and settled",
-  "settings.boardColumns.whenAgentGivesUp": "The agent gave up on it",
+  "settings.boardColumns.whenNever": "Nothing — I move cards here myself",
+  "settings.boardColumns.whenRunStarts":
+    "A run starts on it, or a pull request opens",
+  "settings.boardColumns.whenRunFinishes": "The agent's run finishes",
+  "settings.boardColumns.whenMergedAndSettled":
+    "Its pull requests merged and it sat untouched for five days",
+  "settings.boardColumns.whenRunFailsOut": "A run fails with no retries left",
   "settings.boardColumns.addAutomation":
     "Run the agent on cards that arrive here",
   "settings.boardColumns.automationOn":

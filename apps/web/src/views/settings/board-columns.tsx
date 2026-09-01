@@ -5,11 +5,13 @@
  * One card per column, answering the two questions a column raises, in the
  * words of what actually happens rather than in the words of the schema:
  *
- *   "Move cards here when …"   — the column's role, phrased as the EVENT we
- *                                detect, because that is what a person is
- *                                choosing. A role is a destination, never a
- *                                trigger, and naming it after the event is
- *                                what keeps that from reading backwards.
+ *   "Move cards here when …"   — the column's role, named by the EVENT Studio
+ *                                actually detects, not by a paraphrase of it.
+ *                                A role is a destination, never a trigger, and
+ *                                spelling out the event is what keeps it from
+ *                                reading backwards. Where a role has several
+ *                                triggers the label names them, because one of
+ *                                them alone would be concrete and wrong.
  *   "Run the agent …"          — an automation you add and delete, not a
  *                                switch. Adding it opens the instruction box;
  *                                deleting it is how you turn it off, which is
@@ -51,13 +53,13 @@ import { useT } from "@/i18n/use-t.ts";
 /** Nothing moves a card here on its own. */
 const NO_TRIGGER = "__none__";
 
-/** Each role, named by the moment Studio detects — which is the thing being
- *  chosen. Ordered the way work flows, so the list reads as a sequence. */
+/** Each role, named by the moment Studio detects. Ordered the way work flows,
+ *  so the list reads as a sequence. */
 const TRIGGERS: { value: string; labelKey: TranslationKey }[] = [
-  { value: "in_progress", labelKey: "settings.boardColumns.whenAgentStarts" },
-  { value: "in_review", labelKey: "settings.boardColumns.whenAgentFinishes" },
-  { value: "archived", labelKey: "settings.boardColumns.whenWorkShipped" },
-  { value: "todo", labelKey: "settings.boardColumns.whenAgentGivesUp" },
+  { value: "in_progress", labelKey: "settings.boardColumns.whenRunStarts" },
+  { value: "in_review", labelKey: "settings.boardColumns.whenRunFinishes" },
+  { value: "archived", labelKey: "settings.boardColumns.whenMergedAndSettled" },
+  { value: "todo", labelKey: "settings.boardColumns.whenRunFailsOut" },
 ];
 
 export function BoardColumnSettings() {

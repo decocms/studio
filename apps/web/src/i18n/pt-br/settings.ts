@@ -54,15 +54,16 @@ export const settings = {
     "As colunas são do seu tracker. Diga o que deve mover um card para cada uma, e quais delas devem colocar o agente para trabalhar.",
   "settings.boardColumns.fieldLabel": "Colunas",
   "settings.boardColumns.fieldDescription":
-    "Mover o card para cá é algo que o Studio faz com ele. Rodar o agente é algo que o card faz ao chegar.",
+    "O Studio move o card para cá quando a coisa que você escolher acontecer. Rodar o agente é separado: é o que o card faz ao chegar.",
   "settings.boardColumns.moveHereWhen": "Mover cards para cá quando",
-  "settings.boardColumns.whenNever": "Nunca — eu movo na mão",
-  "settings.boardColumns.whenAgentStarts": "O agente começar a trabalhar nele",
-  "settings.boardColumns.whenAgentFinishes":
-    "O agente terminar e precisar de uma pessoa",
-  "settings.boardColumns.whenWorkShipped":
-    "O trabalho tiver subido e assentado",
-  "settings.boardColumns.whenAgentGivesUp": "O agente desistir dele",
+  "settings.boardColumns.whenNever": "Nada — eu movo os cards para cá na mão",
+  "settings.boardColumns.whenRunStarts":
+    "Um run começa nele, ou um pull request é aberto",
+  "settings.boardColumns.whenRunFinishes": "O run do agente termina",
+  "settings.boardColumns.whenMergedAndSettled":
+    "Os pull requests dele mergeiam e ele fica cinco dias sem ninguém mexer",
+  "settings.boardColumns.whenRunFailsOut":
+    "Um run falha sem tentativas restantes",
   "settings.boardColumns.addAutomation":
     "Rodar o agente nos cards que chegarem aqui",
   "settings.boardColumns.automationOn": "O agente roda em todo card que chega",
