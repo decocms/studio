@@ -430,7 +430,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.installKeyTitle": "Fora do CDN (token)",
   "mainPanelTabs.analyticsTab.installTokenNote":
     "O token é mostrado uma vez, no registro. Re-registre (desregistrar e habilitar por token) para gerar um novo.",
-  "mainPanelTabs.analyticsTab.installSiteId": "Site id no warehouse",
+  "mainPanelTabs.analyticsTab.installSiteId": "Site ID (onde os eventos caem)",
+  "mainPanelTabs.analyticsTab.rotateToken": "Rotacionar token",
+  "mainPanelTabs.analyticsTab.rotating": "Rotacionando…",
   "mainPanelTabs.analyticsTab.emptyLive": "Nenhum visitante nos últimos minutos.",
   "mainPanelTabs.analyticsTab.emptyView": "Nada coletado para este período ainda.",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",

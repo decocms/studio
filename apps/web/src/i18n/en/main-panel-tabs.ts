@@ -414,7 +414,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.installKeyTitle": "Off our CDN (token)",
   "mainPanelTabs.analyticsTab.installTokenNote":
     "Your token is shown once, at registration. Re-register (unregister then enable by token) to get a new one.",
-  "mainPanelTabs.analyticsTab.installSiteId": "Warehouse site id",
+  "mainPanelTabs.analyticsTab.installSiteId": "Site ID (where events land)",
+  "mainPanelTabs.analyticsTab.rotateToken": "Rotate token",
+  "mainPanelTabs.analyticsTab.rotating": "Rotating…",
   "mainPanelTabs.analyticsTab.emptyLive": "No visitors in the last few minutes.",
   "mainPanelTabs.analyticsTab.emptyView": "Nothing collected for this range yet.",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
