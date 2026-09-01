@@ -116,6 +116,8 @@ interface E2eViewportRun {
   viewport?: string;
   durationMs?: number;
   verdict?: string;
+  /** Funnel-level verdict (distinct from the step verdict); shown when it differs. */
+  funnelVerdict?: string;
   steps?: E2eStep[];
   console?: E2eConsoleEntry[];
   network?: E2eNetworkEntry[];
@@ -125,9 +127,13 @@ interface E2eViewportRun {
 interface E2ePage {
   url?: string;
   viewport?: string;
+  /** HTTP status the page load returned. */
+  status?: number;
   vitals?: E2eVitals;
 }
 interface E2eReport {
+  /** The runner platform the check ran on (e.g. "cloudflare"). */
+  platform?: string;
   viewports?: string[];
   verdict?: string;
   totalDurationMs?: number;
@@ -235,6 +241,28 @@ function StepStatusIcon({ status }: { status: string | null | undefined }) {
   if (isSkipped(status))
     return <MinusCircle className="size-4 shrink-0 text-muted-foreground" />;
   return <Circle className="size-4 shrink-0 text-muted-foreground/60" />;
+}
+
+/** At-a-glance status strip: one status-toned dot per step. */
+function stepDotClass(status: string | null | undefined): string {
+  if (isPass(status)) return "bg-success";
+  if (isFail(status)) return "bg-destructive";
+  if (isSkipped(status)) return "bg-muted-foreground/40";
+  return "bg-muted-foreground/25";
+}
+function StepDots({ steps }: { steps: E2eStep[] }) {
+  if (steps.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {steps.map((s, i) => (
+        <span
+          key={i}
+          title={s.name ?? `step ${i + 1}`}
+          className={cn("size-1.5 rounded-full", stepDotClass(s.status))}
+        />
+      ))}
+    </div>
+  );
 }
 
 // --- web vitals -------------------------------------------------------------
@@ -532,13 +560,28 @@ function ViewportPanel({
     <div className="flex flex-col gap-4 pt-4">
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <VerdictBadge status={run.verdict} t={t} />
+        {run.funnelVerdict && run.funnelVerdict !== run.verdict && (
+          <span>
+            {t("mainPanelTabs.e2eTab.funnel")}:{" "}
+            <span className="font-medium text-foreground">
+              {run.funnelVerdict}
+            </span>
+          </span>
+        )}
         {run.durationMs != null && (
           <span className="flex items-center gap-1 tabular-nums">
             <Clock className="size-3" />
             {fmtMs(run.durationMs)}
           </span>
         )}
+        {page?.status != null && (
+          <Badge variant={page.status < 400 ? "secondary" : "destructive"}>
+            HTTP {page.status}
+          </Badge>
+        )}
       </div>
+
+      {steps.length > 0 && <StepDots steps={steps} />}
 
       {page?.vitals && (
         <section className="flex flex-col gap-2">
@@ -644,6 +687,75 @@ function ViewportPanel({
   );
 }
 
+// --- artifacts (junit.xml, raw files, screenshots) --------------------------
+
+/** Downloadable run artifacts. PNG artifacts render as an inline image grid
+ *  (so reportless runs still show screenshots); everything else is a file link.
+ *  When empty, shows a hint (used by the reportless fallback). */
+function ArtifactsSection({
+  artifacts,
+  t,
+}: {
+  artifacts: E2eArtifact[];
+  t: Translate;
+}) {
+  const images = artifacts.filter((a) => /\.png$/i.test(a.name ?? ""));
+  const files = artifacts.filter((a) => !/\.png$/i.test(a.name ?? ""));
+  return (
+    <section className="flex flex-col gap-2">
+      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {t("mainPanelTabs.e2eTab.artifacts")}
+      </h4>
+      {artifacts.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {t("mainPanelTabs.e2eTab.noArtifacts")}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {images.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {images.map((a, i) => (
+                <a
+                  key={`${a.name ?? "img"}-${i}`}
+                  href={a.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={
+                    a.name ?? t("mainPanelTabs.e2eTab.viewScreenshot")
+                  }
+                >
+                  <img
+                    src={a.url}
+                    alt={a.name ?? "screenshot"}
+                    loading="lazy"
+                    className="w-full rounded-lg border border-border"
+                  />
+                </a>
+              ))}
+            </div>
+          )}
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {files.map((a, i) => (
+                <a
+                  key={`${a.name ?? "artifact"}-${i}`}
+                  href={a.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 font-mono text-[11px] text-foreground/80 hover:bg-muted/40"
+                >
+                  {a.name ?? t("mainPanelTabs.e2eTab.openArtifact")}
+                  <LinkExternal01 className="size-3 text-muted-foreground" />
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // --- checks fallback (no rich report) ---------------------------------------
 
 function ChecksFallback({
@@ -701,31 +813,7 @@ function ChecksFallback({
         </p>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {t("mainPanelTabs.e2eTab.artifacts")}
-        </h4>
-        {artifacts.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {t("mainPanelTabs.e2eTab.noArtifacts")}
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {artifacts.map((a, i) => (
-              <a
-                key={`${a.name ?? "artifact"}-${i}`}
-                href={a.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 font-mono text-[11px] text-foreground/80 hover:bg-muted/40"
-              >
-                {a.name ?? t("mainPanelTabs.e2eTab.openArtifact")}
-                <LinkExternal01 className="size-3 text-muted-foreground" />
-              </a>
-            ))}
-          </div>
-        )}
-      </section>
+      <ArtifactsSection artifacts={artifacts} t={t} />
     </div>
   );
 }
@@ -749,38 +837,45 @@ function DetailBody({ data, t }: { data: E2eRunDetailData; t: Translate }) {
   const firstRun = runs[0];
   if (report && firstRun) {
     return (
-      <Tabs variant="underline" defaultValue={viewportValue(firstRun, 0)}>
-        <TabsList className="flex-wrap">
+      <div className="flex flex-col gap-5">
+        <Tabs variant="underline" defaultValue={viewportValue(firstRun, 0)}>
+          <TabsList className="flex-wrap">
+            {runs.map((run, i) => {
+              const value = viewportValue(run, i);
+              return (
+                <TabsTrigger key={value} value={value} className="gap-1.5">
+                  {isFail(run.verdict) ? (
+                    <XCircle className="size-3.5 text-destructive" />
+                  ) : (
+                    <CheckCircle className="size-3.5 text-success" />
+                  )}
+                  {run.viewport ??
+                    `${t("mainPanelTabs.e2eTab.viewport")} ${i + 1}`}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
           {runs.map((run, i) => {
             const value = viewportValue(run, i);
             return (
-              <TabsTrigger key={value} value={value} className="gap-1.5">
-                {isFail(run.verdict) ? (
-                  <XCircle className="size-3.5 text-destructive" />
-                ) : (
-                  <CheckCircle className="size-3.5 text-success" />
-                )}
-                {run.viewport ??
-                  `${t("mainPanelTabs.e2eTab.viewport")} ${i + 1}`}
-              </TabsTrigger>
+              <TabsContent key={value} value={value}>
+                <ViewportPanel
+                  run={run}
+                  page={
+                    run.viewport ? pageByViewport.get(run.viewport) : undefined
+                  }
+                  t={t}
+                />
+              </TabsContent>
             );
           })}
-        </TabsList>
-        {runs.map((run, i) => {
-          const value = viewportValue(run, i);
-          return (
-            <TabsContent key={value} value={value}>
-              <ViewportPanel
-                run={run}
-                page={
-                  run.viewport ? pageByViewport.get(run.viewport) : undefined
-                }
-                t={t}
-              />
-            </TabsContent>
-          );
-        })}
-      </Tabs>
+        </Tabs>
+        {/* Raw artifacts (junit.xml, screenshots, …) stay reachable even with a
+            rich report — otherwise the report branch hides them entirely. */}
+        {artifacts.length > 0 && (
+          <ArtifactsSection artifacts={artifacts} t={t} />
+        )}
+      </div>
     );
   }
 
@@ -838,6 +933,7 @@ export function E2eRunDetail({
   const command = run?.summary?.command ?? null;
   const url = run?.summary?.url ?? null;
   const totalDuration = data?.report?.totalDurationMs ?? null;
+  const platform = data?.report?.platform ?? null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -855,6 +951,11 @@ export function E2eRunDetail({
                 <span>
                   {t("mainPanelTabs.e2eTab.command")}{" "}
                   <span className="font-medium text-foreground">{command}</span>
+                </span>
+              )}
+              {platform && (
+                <span className="font-medium text-foreground/70">
+                  {platform}
                 </span>
               )}
               {totalDuration != null && (
