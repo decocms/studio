@@ -137,4 +137,27 @@ describe("detectSkills (integration)", () => {
     const out = await detectSkills(fs, VOL, "", { remaining: 2 });
     expect(out.length).toBe(2);
   });
+
+  it("holds the budget across concurrent scans", async () => {
+    // `buildSkillCatalog` fans its volume scans out with Promise.all over one
+    // shared budget. Now that each scan issues its reads together there is no
+    // longer a decrement between them to serialize on, so the slice has to be
+    // claimed up front — without that, both scans read the same remaining
+    // count and together return more than the cap.
+    await fs.write(VOL, "top/SKILL.md", "# top\n\nd\n", { actor: ACTOR });
+    for (const n of ["a", "b", "c"]) {
+      await fs.write(VOL, `skills/${n}/SKILL.md`, `# ${n}\n\nd\n`, {
+        actor: ACTOR,
+      });
+    }
+
+    const shared = { remaining: 2 };
+    const [top, nested] = await Promise.all([
+      detectSkills(fs, VOL, "", shared),
+      detectSkills(fs, VOL, "skills", shared),
+    ]);
+
+    expect(top.length + nested.length).toBe(2);
+    expect(shared.remaining).toBe(0);
+  });
 });
