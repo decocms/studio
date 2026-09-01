@@ -73,11 +73,18 @@ export async function runColumnAutomation(
       `[task-board] column rule on ${item.status} rejected for ${item.id}, un-delegating:`,
       err instanceof Error ? err.message : err,
     );
-    return await ctx.storage.taskBoard.update(
+    // Same conditional fence as `handTaskToHuman` — never stomp a concurrent reassignment.
+    const undelegated = await ctx.storage.taskBoard.unassignSuperAgent(
       item.id,
       orgId,
-      { assigneeId: null, assignedBy: null },
       by.actor,
+    );
+    // Fence lost: a human owns the card now. Returning `delegated` would emit a
+    // snapshot that reads as their reassignment reverted, so re-read the row.
+    return (
+      undelegated ??
+      (await ctx.storage.taskBoard.getById(item.id, orgId)) ??
+      delegated
     );
   }
   return delegated;
