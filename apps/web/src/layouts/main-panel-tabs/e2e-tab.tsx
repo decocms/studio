@@ -24,6 +24,7 @@ import {
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import {
   AlertDialog,
@@ -312,6 +313,9 @@ function RunTestButton({
   const [open, setOpen] = useState(false);
   const [command, setCommand] = useState<string>("");
   const [schedule, setSchedule] = useState<string>(SCHEDULE_ONCE);
+  // Optional target URL override — blank uses the site's production URL (resolved
+  // server-side). Lets you point a check at a specific path (e.g. a PDP).
+  const [url, setUrl] = useState<string>("");
 
   // Types are fetched lazily — only once the dialog opens.
   const typesQuery = useQuery({
@@ -324,12 +328,15 @@ function RunTestButton({
   const types = list<E2eType>(typesQuery.data, "items");
 
   const runMutation = useMutation({
-    mutationFn: (input: { command: string; schedule: string }) => {
+    mutationFn: (input: { command: string; schedule: string; url: string }) => {
       // The sentinel one-shot sends no schedule; a cron string makes it recurring.
       const cron = input.schedule === SCHEDULE_ONCE ? "" : input.schedule;
+      const target = input.url.trim();
       return mutateJson(`${base}/e2e/runs`, "POST", {
         command: input.command,
         ...(cron ? { schedule: cron } : {}),
+        // Blank ⇒ omit ⇒ the server uses the site's production URL.
+        ...(target ? { url: target } : {}),
       });
     },
     onSuccess: () => {
@@ -344,6 +351,7 @@ function RunTestButton({
       setOpen(false);
       setCommand("");
       setSchedule(SCHEDULE_ONCE);
+      setUrl("");
     },
     onError: (error) => toast.error(errorText(error)),
   });
@@ -365,6 +373,24 @@ function RunTestButton({
             <p className="text-sm text-muted-foreground">
               {t("mainPanelTabs.e2eTab.runTestDescription")}
             </p>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="e2e-url">
+                {t("mainPanelTabs.e2eTab.targetUrl")}
+              </Label>
+              <Input
+                id="e2e-url"
+                type="url"
+                inputMode="url"
+                placeholder={t("mainPanelTabs.e2eTab.targetUrlPlaceholder")}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="font-mono text-xs"
+                disabled={runMutation.isPending}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("mainPanelTabs.e2eTab.targetUrlHint")}
+              </p>
+            </div>
             <div className="flex flex-col gap-2">
               <Label>{t("mainPanelTabs.e2eTab.selectType")}</Label>
               {typesQuery.isLoading ? (
@@ -437,7 +463,7 @@ function RunTestButton({
             <Button
               type="button"
               onClick={() =>
-                command && runMutation.mutate({ command, schedule })
+                command && runMutation.mutate({ command, schedule, url })
               }
               disabled={!command || runMutation.isPending}
             >
