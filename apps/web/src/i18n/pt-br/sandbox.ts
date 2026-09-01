@@ -766,6 +766,7 @@ export const sandbox = {
   "sandbox.submoduleCredentialsField.tokenLabel": "Token de acesso pessoal",
   "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
   "sandbox.toolbar.closeTab": "Fechar {tab}",
+  "sandbox.toolbar.moreActions": "Mais ações",
   "sandbox.toolbar.noScriptsFound": "Nenhum script encontrado",
   "sandbox.toolbar.restart": "Reiniciar",
   "sandbox.toolbar.resume": "Retomar",
