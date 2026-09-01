@@ -539,11 +539,7 @@ export const settings = {
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
   "settings.taskPrompt.title": "System prompt",
-  "settings.taskPrompt.description":
-    "Instru\u00e7\u00f5es extras anexadas ao system prompt de todo run de agente iniciado por uma tarefa do quadro.",
   "settings.taskPrompt.fieldLabel": "Instru\u00e7\u00f5es",
-  "settings.taskPrompt.fieldDescription":
-    "Regras que valem para todo trabalho do quadro \u2014 conven\u00e7\u00f5es, ferramentas preferidas, o que nunca tocar. Deixe vazio para nenhuma.",
   "settings.taskPrompt.placeholder":
     "ex.: Use pnpm, nunca npm. Nunca edite arquivos em src/generated/.",
   "settings.taskPrompt.save": "Salvar",
