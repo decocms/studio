@@ -5,11 +5,12 @@
  * Returns a discriminated union so the consumer can render the right UI:
  *   - { status: "loading" }   — waiting on initial snapshot or fetch
  *   - { status: "creating" }  — create mutation in flight
- *   - { status: "ready", task: Task | null } — resolved (null when id is empty)
+ *   - { status: "ready", task: Task | null } — resolved (null when id is null)
  *   - { status: "error", error: Error } — non-recoverable failure
  *
- * Empty id is a no-op: returns ready with `task: null` so routes that don't
- * carry a taskId (e.g. /$org/) can call the hook unconditionally.
+ * A `null` id is a no-op: returns ready with `task: null` so routes that name
+ * no thread (every destination until one is opened) can call the hook
+ * unconditionally without creating a row nobody asked for.
  *
  * Read path: the `ThreadManagerStore.threads` slot is the only source of
  * truth. The `/watch` snapshot populates it on app boot and `manager.create`
@@ -43,7 +44,7 @@ type State =
   | { status: "ready"; task: Task | null }
   | { status: "error"; error: Error };
 
-export function useEnsureTask(id: string, virtualMcpId: string): State {
+export function useEnsureTask(id: string | null, virtualMcpId: string): State {
   const manager = useThreadManager();
   const { locator } = useProjectContext();
   const threads = useSyncExternalStore(
@@ -55,9 +56,10 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
     manager.threadsStatus.get,
   );
   /** Skips a `/watch` synthetic: it carries no metadata, so it can't answer the session's runtime. */
-  const localHit = id
-    ? (threads.find((t) => t.id === id && !t.partial) ?? null)
-    : null;
+  const localHit =
+    id === null
+      ? null
+      : (threads.find((t) => t.id === id && !t.partial) ?? null);
 
   // fetchedTask tracks the result of manager.fetchThread:
   //   undefined  = not yet attempted
@@ -80,7 +82,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   // page 0 or to archived threads.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
-    if (!id) return;
+    if (id === null) return;
     if (localHit) return;
     if (threadsStatus.kind === "loading") return;
     if (fetchedTask !== undefined) return; // already tried or in progress
@@ -114,7 +116,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   // INSERT … ON CONFLICT handles duplicates.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
-    if (!id) return;
+    if (id === null) return;
     if (localHit) return;
     if (fetchedTask !== null) return; // wait for fetchThread to resolve to not-found
     if (threadsStatus.kind === "loading") return;
@@ -123,7 +125,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
     ensureCreate.mutate(id);
   }, [id, localHit, fetchedTask, threadsStatus.kind, ensureCreate]);
 
-  if (!id) return { status: "ready", task: null };
+  if (id === null) return { status: "ready", task: null };
   if (localHit) return { status: "ready", task: localHit };
   if (fetchedTask && typeof fetchedTask === "object") {
     return { status: "ready", task: fetchedTask };

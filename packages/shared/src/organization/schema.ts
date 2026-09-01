@@ -137,35 +137,48 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
-  nav_v2: z
+  org_board_columns: z
     .boolean()
     .optional()
     .describe(
-      "First-class navigation: the sidebar lists destinations (Reports, Library, Tasks) instead of chat threads, and the thread list moves into a menu at the top of the chat panel. Seeded on for newly created orgs (see NEW_ORG_DEFAULT_FLAGS) and defaults on for reports_only orgs; an explicit false wins over both.",
+      "The task board's columns are this org's own, mirrored from its tracker, rather than the set Studio ships. Off means the canonical lanes, which is the only board most orgs want.",
     ),
+  reviewer_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run the Reviewer on a task's pull request once it's In Review — it reviews the code with the repo's stack-appropriate skills, fixes what it finds on the PR's own branch, then exercises the change on the deploy preview and approves or hands the card to a human.",
+    ),
+  /** @deprecated Superseded by `reviewer_enabled` — the QA Agent and Code
+   *  Reviewer are one run now. Kept readable (a `z.object` strips unknown keys)
+   *  so an org that turned BOTH off keeps no automated review; see
+   *  `reviewerEnabled`. Drop both keys once no org has them stored. */
   qa_agent_enabled: z
     .boolean()
     .optional()
-    .describe(
-      "Run the QA Agent on a task's pull request once it's In Review — it verifies the task actually solved the problem (exercises the feature, not just the diff).",
-    ),
+    .describe("Deprecated: see reviewer_enabled."),
+  /** @deprecated See `qa_agent_enabled`. */
   code_reviewer_enabled: z
     .boolean()
     .optional()
-    .describe(
-      "Run the Code Reviewer on a task's pull request once it's In Review — it reviews the code using the repo's stack-appropriate review skills.",
-    ),
+    .describe("Deprecated: see reviewer_enabled."),
   auto_merge: z
     .boolean()
     .optional()
     .describe(
-      "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
+      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
+    ),
+  auto_resolve_conflicts: z
+    .boolean()
+    .optional()
+    .describe(
+      "When an approved pull request can't be merged because it conflicts with its base branch, hand it back to the Super Agent to resolve the conflict (check out the branch, merge the base, push). Unset, it follows `auto_merge`; set it explicitly to run one without the other.",
     ),
   cheap_reviewer_model: z
     .boolean()
     .optional()
     .describe(
-      "Run the QA Agent and Code Reviewer on a cheaper model than the Super Agent. A review reads a diff and reaches a verdict; it does not need the model that wrote the code. Off by default — turning it on trades some review depth for cost.",
+      "Run the Reviewer on a cheaper model than the Super Agent that wrote the code. On by default — turning it off trades cost for some review depth.",
     ),
   coding_agent_org_mcps: z
     .boolean()
@@ -203,6 +216,18 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Per-site E2E tab (end-to-end test runs). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
     ),
+  delivery_lanes_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Board lanes for shipping: Approved, Merged and Post-deploy Validation sit between In Review and Done, and a merged pull request lands on Merged instead of Done. For teams whose release process continues after the merge. Off by default — with it off the board and the state machine behave exactly as if the lanes did not exist.",
+    ),
+  cms_auto_fresh_branch: z
+    .boolean()
+    .optional()
+    .describe(
+      "When a user opens the CMS on a branch whose last commit is older than the staleness window (2 days), move the session to a freshly minted branch cut from the default branch. The stale branch is left intact on GitHub. Off by default.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
@@ -213,28 +238,19 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
  * off). New orgs get these behaviors without opting in — a team opts OUT by
  * toggling the flag off, which persists an explicit `false`.
  *
- * The automated reviewers live here: the QA Agent and Code Reviewer run on a
- * task's PR by default; disabling one is the deliberate action.
+ * The automated Reviewer lives here: it runs on a task's PR by default;
+ * disabling it is the deliberate action.
  */
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
-  "qa_agent_enabled",
-  "code_reviewer_enabled",
+  "reviewer_enabled",
+  "cheap_reviewer_model",
 ]);
-
-/**
- * Flags STORED in a new org's bag at creation (`seedOrgDefaultFlags`, apps/api).
- * Unlike {@link DEFAULT_ON_FLAGS} — a read-time rule that retroactively changes
- * every org — this only reaches orgs created after it ships.
- */
-export const NEW_ORG_DEFAULT_FLAGS: OrgFlags = {
-  nav_v2: true,
-};
 
 /**
  * Resolve one org flag to its effective boolean. Honors {@link DEFAULT_ON_FLAGS}
  * — a default-on flag is enabled unless stored as exactly `false`; every other
  * flag is enabled only when stored as exactly `true`. The single reader shared
- * by the server gate (`enabledReviewerKinds`) and the web hook (`useOrgFlag`),
+ * by the server gate (`reviewerEnabled`) and the web hook (`useOrgFlag`),
  * so both agree on what "unset" means.
  */
 export function orgFlagEnabled(
@@ -243,6 +259,20 @@ export function orgFlagEnabled(
 ): boolean {
   const value = flags?.[flag];
   return DEFAULT_ON_FLAGS.has(flag) ? value !== false : value === true;
+}
+
+/**
+ * Whether an approved-but-conflicting PR is handed back to the Super Agent.
+ * Not `orgFlagEnabled`: unset it INHERITS `auto_merge`, which is the behavior
+ * every org on auto-merge already has — splitting the two must not silently
+ * take conflict resolution away from them. An explicit value wins either way,
+ * so an org can resolve conflicts without auto-merging, or vice versa.
+ */
+export function autoResolveConflictsEnabled(
+  flags: Record<string, unknown> | null | undefined,
+): boolean {
+  const value = flags?.auto_resolve_conflicts;
+  return typeof value === "boolean" ? value : flags?.auto_merge === true;
 }
 
 /**

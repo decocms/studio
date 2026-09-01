@@ -61,6 +61,9 @@
  */
 
 import type { StudioContextFactory } from "@/automations/fire";
+import { boardLanesForDb } from "./board-handler";
+import type { Kysely } from "kysely";
+import type { Database } from "@/storage/types";
 import type { StudioContext } from "@/core/studio-context";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import type { TaskBoardStorage } from "@/storage/task-board";
@@ -72,6 +75,7 @@ import {
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
+import { inReviewPhase } from "./lanes";
 import { advanceToDoneIfMerged } from "./reconcile-merged";
 import {
   emitTaskBoardUpdated,
@@ -84,6 +88,7 @@ import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { previewMatchesHead, prReadyForReview } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
+import { reactToApprovedPrConflict } from "./conflict-reaction";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
  *  would take to notice a stuck card, and the work list is one index scan when
@@ -168,6 +173,9 @@ export class TaskBoardReviewSweeper {
     private readonly taskBoard: TaskBoardStorage,
     private readonly contextFactory: StudioContextFactory,
     private readonly billing: OrganizationBillingStorage,
+    /** Resolves each card's own board — the sweep spans orgs, so the lane a
+     *  status has to match is per row, not per tick. */
+    private readonly db: Kysely<Database>,
     private readonly options: TaskBoardReviewSweeperOptions = {},
   ) {}
 
@@ -281,7 +289,12 @@ export class TaskBoardReviewSweeper {
         console.warn(
           `[task-board-review-sweeper] reacting to an unhandled failure on ${id}`,
         );
-        await reactToFailedTaskRun(this.taskBoard, threadId, organizationId);
+        await reactToFailedTaskRun(
+          this.taskBoard,
+          threadId,
+          organizationId,
+          await boardLanesForDb(this.db, organizationId),
+        );
         await refundUnproductiveTaskClaims(
           this.taskBoard,
           this.billing,
@@ -373,6 +386,7 @@ export class TaskBoardReviewSweeper {
             organizationId,
             attempts,
             new Date(Date.now() + REARM_DELAY_MS),
+            (await boardLanesForDb(this.db, organizationId)).progress,
           )
           .catch((rearmErr) =>
             console.error(
@@ -397,12 +411,14 @@ export class TaskBoardReviewSweeper {
     reason: string,
   ): Promise<void> {
     try {
+      const lanes = await boardLanesForDb(this.db, organizationId);
       const item = await this.taskBoard.getById(id, organizationId);
       if (!item || item.status !== "in_progress") return;
       const returned = await this.taskBoard.returnToTodoAfterFailure(
         id,
         organizationId,
         item.updatedBy,
+        lanes,
       );
       if (!returned) return;
       await this.taskBoard
@@ -443,7 +459,14 @@ export class TaskBoardReviewSweeper {
       item.id,
       item.organizationId,
     );
-    if (!noPrHandoffDue(reviewCycleStart(activity), Date.now())) return;
+    if (
+      !noPrHandoffDue(
+        reviewCycleStart(activity, item.reviewCycleStartedAt),
+        Date.now(),
+      )
+    ) {
+      return;
+    }
     await handTaskToHuman(
       ctx,
       item,
@@ -468,7 +491,8 @@ export class TaskBoardReviewSweeper {
     // Re-check against the fresh row: `listItemsPendingReview` scanned a
     // possibly-stale snapshot, and a human can bounce the card between that scan
     // and this reconcile.
-    if (item.status !== "in_review") return false;
+    const lanes = await boardLanesForDb(this.db, organizationId);
+    if (!inReviewPhase(item, lanes.review)) return false;
     // Everything below EXCEPT the merge retry needs the Super Agent to still own
     // the card — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own
     // `enqueueEnabledReviewers` call. A handed-off card burns no agent runs, but
@@ -534,6 +558,8 @@ export class TaskBoardReviewSweeper {
     // card that has no reviewer left to enqueue. Gated on verified approval +
     // auto-merge inside, so it can't ship anything the reviewers didn't.
     if (await retryAutoMergeIfApproved(ctx, item)) return true;
+    // With `auto_merge` off there is no refused merge to reveal a conflict.
+    if (await this.resolveConflictFromSweep(ctx, item, live)) return true;
     if (!owned) return false;
 
     if (!prReadyForReview(live)) return false;
@@ -542,6 +568,33 @@ export class TaskBoardReviewSweeper {
       previewMatchesHead: previewMatchesHead(live),
     });
     return true;
+  }
+
+  /**
+   * Hand a swept card's conflicting PR back to the Super Agent, using the
+   * conflict already read by `readPrStateThrottled` — no second GitHub call
+   * (the whole reason `SweptPrState` carries it). Best-effort: a dispatch
+   * failure must not abort the sweep pass for every other card.
+   */
+  private async resolveConflictFromSweep(
+    ctx: StudioContext,
+    item: TaskBoardItem,
+    live: readonly {
+      number: number;
+      url: string;
+      state: "open" | "closed" | null;
+      conflict: boolean | null;
+    }[],
+  ): Promise<boolean> {
+    const pr = live.find((p) => p.state !== "closed" && p.conflict === true);
+    if (!pr) return false;
+    return await reactToApprovedPrConflict(ctx, item.organizationId, item, {
+      pr: { number: pr.number, url: pr.url },
+      conflict: true,
+    }).catch((err) => {
+      console.error("[task-board-review-sweeper] conflict resolve failed", err);
+      return false;
+    });
   }
 
   dispose(): void {

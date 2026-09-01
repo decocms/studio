@@ -121,6 +121,42 @@ describe("CMS_EDITOR_SCRIPT", () => {
     expect(CMS_EDITOR_SCRIPT).not.toMatch(/alignSections\s*=\s*\(0,/);
   });
 
+  it("handles the in-place render message and swaps the document via POST", () => {
+    expect(CMS_EDITOR_SCRIPT).toContain('e.data.type === "cms-editor::render"');
+    expect(CMS_EDITOR_SCRIPT).toContain("var renderInPlace = function");
+    // The swap and its no-reload contract: POST for HTML, replace the document.
+    expect(CMS_EDITOR_SCRIPT).toContain('method: "POST"');
+    expect(CMS_EDITOR_SCRIPT).toContain("document.documentElement.innerHTML");
+    // The overlay nodes live on the old body — re-attach after the swap.
+    expect(CMS_EDITOR_SCRIPT).toContain("document.body.appendChild(highlight)");
+    // Status contract the parent listens for to drive the nav indicator.
+    expect(CMS_EDITOR_SCRIPT).toContain("cms-editor::render-start");
+    expect(CMS_EDITOR_SCRIPT).toContain("cms-editor::render-end");
+  });
+
+  it("drops a bridge message whose source isn't this frame's parent", () => {
+    const start = CMS_EDITOR_SCRIPT.indexOf(
+      'window.addEventListener("message", function(e)',
+    );
+    const bodyStart = CMS_EDITOR_SCRIPT.indexOf("{", start) + 1;
+    const guardEnd = CMS_EDITOR_SCRIPT.indexOf(
+      "if (e.data && e.data.type",
+      bodyStart,
+    );
+    expect(bodyStart).toBeGreaterThan(0);
+    expect(guardEnd).toBeGreaterThan(bodyStart);
+    const guard = CMS_EDITOR_SCRIPT.slice(bodyStart, guardEnd);
+    const runGuard = new Function(
+      "window",
+      "e",
+      `${guard}; return "reached";`,
+    ) as (window: unknown, e: unknown) => string | undefined;
+
+    const parent = {};
+    expect(runGuard({ parent }, { source: { evil: true } })).toBeUndefined();
+    expect(runGuard({ parent }, { source: parent })).toBe("reached");
+  });
+
   it("runs the embedded alignment against a stubbed DOM", () => {
     // The embedded copy, on the regression case (a section that rendered no node).
     const start = CMS_EDITOR_SCRIPT.indexOf("var alignSections = ");

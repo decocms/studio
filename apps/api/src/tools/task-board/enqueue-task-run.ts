@@ -19,6 +19,37 @@ import {
 import type { TaskRepo } from "./claude-code-task-run";
 
 /**
+ * Fold the board's system prompt (Settings → Board) into one run.
+ *
+ * Sandbox harness: rides as `agent.appendInstructions`, which dispatch-run adds
+ * to whatever instructions the run resolves to and claude-code then appends to
+ * its OWN preset prompt. Two appends, nothing replaced — the board's house
+ * rules are standing context, not a persona, and must not displace the org
+ * agent's instructions (`agent.instructions` would: the resolution there is
+ * `??`, so setting it on a Super Agent run silently drops the agent's own).
+ *
+ * Hosted Decopilot: it reads `agent.instructions`, not the append field, so the
+ * text leads the user prompt instead — the same trick the reviewer enqueue
+ * uses. Pure, so all three branches are unit-tested without a StudioContext.
+ */
+export function withOrgTaskPrompt<
+  A extends { appendInstructions?: string } | undefined,
+>(
+  run: { agent: A; prompt: string },
+  boardPrompt: string | undefined,
+  sandboxed: boolean,
+): { agent: A; prompt: string } {
+  if (!boardPrompt) return run;
+  if (!sandboxed) {
+    return { agent: run.agent, prompt: `${boardPrompt}\n\n${run.prompt}` };
+  }
+  return {
+    agent: { ...run.agent, appendInstructions: boardPrompt } as A,
+    prompt: run.prompt,
+  };
+}
+
+/**
  * The single home for the "run the org's agent on a task" plumbing, shared by
  * the Super Agent and the reviewer enqueues (which used to duplicate it): create
  * a fresh thread, link it to the task, persist the seed user turn BEFORE
@@ -47,7 +78,11 @@ export async function enqueueAgentRunForTask(
      * built-in tools it must not have. Only the sandbox-hosted harness reads
      * them; a Decopilot fallback run must carry its persona in the prompt.
      */
-    agent?: { instructions?: string; disallowedTools?: string[] };
+    agent?: {
+      instructions?: string;
+      appendInstructions?: string;
+      disallowedTools?: string[];
+    };
     /**
      * A real git ref this run must land on instead of its own derived branch —
      * the head branch of the pull request a re-run has to update. Without it
@@ -78,6 +113,19 @@ export async function enqueueAgentRunForTask(
 
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);
+
+  // The board's standing instructions for this card — the org-wide prompt plus
+  // its column's, if either is set. Best-effort: an unreadable row costs the
+  // run its house rules, never the dispatch.
+  const boardPrompt = await ctx.storage.taskBoardPrompts
+    .promptFor(organizationId, task.status)
+    .catch(() => undefined);
+  const sandboxed = harnessRunsInSandbox(harnessId);
+  const { agent, prompt } = withOrgTaskPrompt(
+    { agent: opts.agent, prompt: opts.prompt },
+    boardPrompt,
+    sandboxed,
+  );
 
   const thread = await ctx.storage.threads.create({
     ...(opts.fence ? { id: opts.fence.threadId } : {}),
@@ -141,7 +189,7 @@ export async function enqueueAgentRunForTask(
     ? opts.pinnedRef
     : opts.repo
       ? threadBranch(thread.id, opts.repo.connectionId)
-      : harnessRunsInSandbox(harnessId)
+      : sandboxed
         ? threadBranch(thread.id)
         : null;
   await ctx.storage.threads.update(thread.id, {
@@ -157,7 +205,12 @@ export async function enqueueAgentRunForTask(
   const requestMessage = {
     id: crypto.randomUUID(),
     role: "user" as const,
-    parts: [{ type: "text" as const, text: opts.prompt }],
+    parts: [{ type: "text" as const, text: prompt }],
+    // The chat POST path gets this from the browser; a dispatched run has no
+    // browser, so stamp it here. It rides the mirrored `data-user-message`
+    // chunk, which is otherwise timestamp-less — a viewer replaying the stream
+    // then sorts this turn by arrival time, i.e. after the reply it triggered.
+    metadata: { created_at: new Date().toISOString() },
   };
 
   // Persist the user turn BEFORE dispatch (as POST /messages does) so it lands
@@ -184,7 +237,7 @@ export async function enqueueAgentRunForTask(
           credentialId: model.credentialId,
           thinking: { id: model.modelId, title: model.modelMeta.title },
         },
-        agent: { id: agentId, ...(opts.agent ?? {}) },
+        agent: { id: agentId, ...(agent ?? {}) },
         temperature: opts.temperature,
         toolApprovalLevel: "auto",
         mode: "default",

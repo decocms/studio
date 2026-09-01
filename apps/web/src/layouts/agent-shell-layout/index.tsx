@@ -25,26 +25,32 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
+  useSyncExternalStore,
   use,
   Suspense,
   type ReactNode,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Chat, useChatTask } from "@/components/chat/index";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  decofileStatusQueryOptions,
+  isBranchStale,
+} from "@/components/sections-editor/decofile-api";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { AlertCircle, Loading01 } from "@untitledui/icons";
-import {
-  getWellKnownDecopilotVirtualMCP,
-  useProjectContext,
-  useVirtualMCP,
-  parseBranchMap,
-} from "@/sdk";
+import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import { useThreadManager } from "@/components/chat/store/hooks";
+import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
@@ -70,6 +76,9 @@ import {
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
+import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
+import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -101,13 +110,20 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const runtimeAdapter = useAgentRuntimeAdapter();
-  const defaultContent = isDesktopApp ? (
-    runtimeAdapter ? (
-      <runtimeAdapter.SidePanel />
-    ) : null
-  ) : (
-    <ChatSidePanel />
-  );
+  /**
+   * The native terminal panel renders a session, and there is no session until
+   * a thread exists. Until then both runtimes show the structured composer,
+   * whose first send mints the thread the terminal then attaches to.
+   */
+  const hasThread = useRouteThreadId() !== null;
+  const defaultContent =
+    isDesktopApp && hasThread ? (
+      runtimeAdapter ? (
+        <runtimeAdapter.SidePanel />
+      ) : null
+    ) : (
+      <ChatSidePanel />
+    );
   return (
     <ErrorBoundary
       fallback={
@@ -127,15 +143,24 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
 }
 
 function ActiveTaskRuntimeProvider({
-  taskId,
+  threadId,
   children,
 }: {
-  taskId: string;
+  threadId: string | null;
   children: ReactNode;
 }) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const runtimeAdapter = useAgentRuntimeAdapter();
+
+  /**
+   * No thread means no runtime to own: nothing to stream, nothing to attach a
+   * terminal to. The threadless provider installs the same stream shape the
+   * panel consumes and mints the thread on the first send.
+   */
+  if (threadId === null) {
+    return <Chat.ThreadlessProvider>{children}</Chat.ThreadlessProvider>;
+  }
 
   if (isDesktopApp) {
     if (!runtimeAdapter) {
@@ -149,14 +174,14 @@ function ActiveTaskRuntimeProvider({
       );
     }
     return (
-      <runtimeAdapter.ActiveTaskProvider taskId={taskId}>
+      <runtimeAdapter.ActiveTaskProvider taskId={threadId}>
         {children}
       </runtimeAdapter.ActiveTaskProvider>
     );
   }
 
   return (
-    <Chat.ActiveTaskProvider taskId={taskId}>
+    <Chat.ActiveTaskProvider taskId={threadId}>
       {children}
     </Chat.ActiveTaskProvider>
   );
@@ -258,13 +283,58 @@ function VmEventsBridge({
     );
   }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
 
+  /**
+   * Auto-fresh-branch (org-gated, off by default): opening the CMS on a branch
+   * whose last commit predates the staleness window moves the session to a
+   * freshly minted branch off the default branch. The stale branch is left on
+   * GitHub. One switch per thread per tab, mirroring the adopt guard above.
+   */
+  const { org } = useProjectContext();
+  const autoFreshBranchEnabled = useOrgFlag("cms_auto_fresh_branch");
+  const sessionState = useSessionRuntime(virtualMcpId);
+  const freshBranchForThreadRef = useRef<string | null>(null);
+  const staleCheckEnabled =
+    autoFreshBranchEnabled &&
+    sessionState.resolved &&
+    sessionState.runtime === "cms" &&
+    !!org?.slug &&
+    !!currentBranch &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
+    freshBranchForThreadRef.current !== (activeTask?.id ?? null);
+  const staleStatusQuery = useQuery({
+    ...decofileStatusQueryOptions({
+      orgSlug: org?.slug ?? "",
+      virtualMcpId,
+      branch: currentBranch ?? "",
+    }),
+    enabled: staleCheckEnabled,
+  });
+  const staleLastCommitAt = staleStatusQuery.data?.lastCommitAt ?? null;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot branch switch gated on the resolved CMS status; no render-time equivalent
+  useEffect(() => {
+    if (!staleCheckEnabled || !activeTask) return;
+    if (!isBranchStale(staleLastCommitAt, Date.now())) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't switch twice
+    freshBranchForThreadRef.current = activeTask.id;
+    setCurrentTaskBranch(
+      generateBranchName(
+        session?.user?.name || session?.user?.email?.split("@")[0],
+      ),
+    );
+  }, [
+    staleCheckEnabled,
+    staleLastCommitAt,
+    activeTask,
+    session,
+    setCurrentTaskBranch,
+  ]);
+
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
   // Gate instead on a registered sandboxMap entry, or an in-flight
   // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
   // auto-start shares this mutation key, so `useIsSandboxStartPending`
   // observes it).
-  const sessionState = useSessionRuntime(virtualMcpId);
   /** `null` until the answer is real — never act on the project default. */
   const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
   const isStartPending = useIsSandboxStartPending(
@@ -397,9 +467,9 @@ function DesktopTaskWorkspace({
       <Suspense fallback={<Chat.Skeleton />}>
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
-          taskId={layout.taskId}
+          taskId={layout.threadId}
           entity={entity}
-          sidePanel={layout.sidePanel}
+          sidePanelOpen={layout.sidePanelOpen}
           mainOpen={layout.mainOpen}
           toggleSidePanel={layout.toggleSidePanel}
           toggleMain={layout.toggleMain}
@@ -421,7 +491,10 @@ function MobileTaskWorkspace({
 }) {
   const t = useT();
   const mobileSurface = resolveMobileSurface({
-    visibility: { sidePanel: layout.sidePanel, mainOpen: layout.mainOpen },
+    visibility: {
+      sidePanelOpen: layout.sidePanelOpen,
+      mainOpen: layout.mainOpen,
+    },
     sidePanelParamPresent: layout.sidePanelParamPresent,
   });
 
@@ -433,7 +506,7 @@ function MobileTaskWorkspace({
       <Toolbar.Tabs>
         <MobileMainPanelTabSelect
           virtualMcpId={virtualMcpId}
-          taskId={layout.taskId}
+          taskId={layout.threadId}
         />
       </Toolbar.Tabs>
       <NewTaskBridge
@@ -465,7 +538,7 @@ function MobileTaskWorkspace({
               >
                 <div data-testid="main-panel" className="h-full">
                   <MainPanelWithDrawer
-                    taskId={layout.taskId}
+                    taskId={layout.threadId}
                     virtualMcpId={virtualMcpId}
                   />
                 </div>
@@ -493,24 +566,29 @@ function AgentInsetProvider() {
 
   useStatusSounds(org.slug);
 
-  const params = useParams({ strict: false }) as {
-    org?: string;
-    taskId?: string;
-    pluginId?: string;
-  };
+  const params = useParams({ strict: false });
   const orgSlug = params.org ?? "";
 
-  const search = useSearch({ strict: false }) as {
-    virtualmcpid?: string;
-  };
-  const virtualMcpId =
-    search.virtualmcpid ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+  const routeThreadId = useRouteThreadId();
+  /** The agent is the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
+  const virtualMcpId = useRouteVirtualMcpId();
+  /** A stable thread id to mint when a repo-backed editor arrives with none and
+   *  the user has no idle empty chat to reuse, so a re-render before the URL
+   *  catches up reuses it instead of looping through fresh ones. Generated once
+   *  per mount; only used by the redirect below. */
+  const [generatedThreadId] = useState(() => crypto.randomUUID());
+  const { data: session } = authClient.useSession();
+  const threadManager = useThreadManager();
+  const threads = useSyncExternalStore(
+    threadManager.threads.subscribe,
+    threadManager.threads.get,
+  );
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
   // "Creating task…" state until the row is persisted. Without this the
   // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(params.taskId ?? "", virtualMcpId);
+  const ensureState = useEnsureTask(routeThreadId, virtualMcpId);
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
   // sandboxMap bound by load_repo after the panel snapshot) so the preview
@@ -534,7 +612,6 @@ function AgentInsetProvider() {
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
   const layout = useWorkspaceLayoutState(entityMetadata, {
     virtualMcpId,
-    orgSlug,
     isAgentRoute: true,
   });
 
@@ -551,6 +628,32 @@ function AgentInsetProvider() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, []);
+
+  /**
+   * A repo-backed editor's branch is a thread field, so it must run on a thread;
+   * mint one into `?thread=` before mounting when the URL names none (#6667). The
+   * Super Agent (no repo) keeps its lazy threadless composer.
+   */
+  if (routeThreadId === null && hasActiveGithubRepo) {
+    // Focus the user's idle empty chat for this agent, else mint one — as useNavigateToAgent does.
+    const threadId =
+      findReusableNewChat(
+        threads,
+        virtualMcpId,
+        session?.user?.id,
+        defaultThreadRuntime(entity.metadata),
+      )?.id ?? generatedThreadId;
+    return (
+      <Navigate
+        to="."
+        replace
+        search={(prev: Record<string, unknown>) => ({
+          ...prev,
+          thread: threadId,
+        })}
+      />
+    );
+  }
 
   const chatVirtualMcpId = virtualMcpId;
 
@@ -643,8 +746,8 @@ function AgentInsetProvider() {
               sandboxMap={entity?.metadata?.sandboxMap}
             >
               <ActiveTaskRuntimeProvider
-                key={layout.taskId}
-                taskId={layout.taskId}
+                key={layout.providerKey}
+                threadId={layout.threadId}
               >
                 <Suspense fallback={<Chat.Skeleton />}>
                   <MobileTaskWorkspace
@@ -682,8 +785,8 @@ function AgentInsetProvider() {
                 runtime-setup prompt lives only in the side panel; the tabs
                 stay navigable regardless. */}
             <ActiveTaskRuntimeProvider
-              key={layout.taskId}
-              taskId={layout.taskId}
+              key={layout.providerKey}
+              threadId={layout.threadId}
             >
               <Suspense fallback={<Chat.Skeleton />}>
                 <DesktopTaskWorkspace
@@ -712,6 +815,10 @@ function AgentInsetProvider() {
 export default function AgentShellLayout() {
   return (
     <Suspense fallback={<ShellRouteLoading />}>
+      {/* Rewrites a legacy `/$org/$taskId` URL into the first-class shape,
+          without unmounting anything below it. */}
+      <LegacyThreadRedirect />
+      <LegacyMainRedirect />
       <OrgFileOpenProvider>
         <AgentInsetProvider />
         <OrgFilePreviewMount />

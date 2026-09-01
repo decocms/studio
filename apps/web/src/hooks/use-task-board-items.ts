@@ -25,6 +25,9 @@ type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 type TaskBoardData = {
   items: TaskBoardItem[];
   sprints: ToolOutput<"TASK_BOARD_ITEM_LIST">["sprints"];
+  /** The board's own columns. Studio's lanes for most orgs; an org that owns
+   *  its board sends its own, which is why the client cannot assume the set. */
+  columns: ToolOutput<"TASK_BOARD_ITEM_LIST">["columns"];
 };
 
 /**
@@ -32,10 +35,9 @@ type TaskBoardData = {
  * loads — so a card can name its sprint without the sprint being threaded down
  * through every lane and row.
  *
- * Shares `useTaskBoardItems`' query key and fetcher (as `useTaskForThread`
- * does) rather than calling `useTaskBoardItems` itself: that hook also
- * subscribes to the board's SSE streams, and one subscription per rendered card
- * is not what a lookup should cost.
+ * Shares `useTaskBoardItems`' query key and fetcher rather than calling that
+ * hook itself: it also subscribes to the board's SSE streams, and one
+ * subscription per rendered card is not what a lookup should cost.
  */
 export function useBoardSprintIndex(): Map<string, Sprint> {
   const { locator } = useProjectContext();
@@ -43,11 +45,37 @@ export function useBoardSprintIndex(): Map<string, Sprint> {
   const { data } = useQuery({
     queryKey: KEYS.taskBoardItems(locator),
     queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
-      return { items, sprints };
+      const { items, sprints, columns } = await studio.call(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      return { items, sprints, columns };
     },
   });
   return new Map((data?.sprints ?? []).map((sprint) => [sprint.id, sprint]));
+}
+
+/**
+ * The board's columns, read from the same cached list the board loads.
+ *
+ * Exists for the reason `useBoardSprintIndex` does: `useTaskBoardItems` also
+ * opens the board's SSE subscriptions, and a dialog that only needs to know
+ * which lanes this board HAS should not pay for a stream per render.
+ */
+export function useBoardColumns(): TaskBoardData["columns"] {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const { data } = useQuery({
+    queryKey: KEYS.taskBoardItems(locator),
+    queryFn: async (): Promise<TaskBoardData> => {
+      const { items, sprints, columns } = await studio.call(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      return { items, sprints, columns };
+    },
+  });
+  return data?.columns ?? [];
 }
 
 export function useTaskBoardItems() {
@@ -59,8 +87,11 @@ export function useTaskBoardItems() {
   const query = useQuery({
     queryKey,
     queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
-      return { items, sprints };
+      const { items, sprints, columns } = await studio.call(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      return { items, sprints, columns };
     },
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
@@ -71,6 +102,15 @@ export function useTaskBoardItems() {
   useTaskBoardEvents({
     orgSlug: org.slug,
     onUpdate: (item) => {
+      // A list refetch already in flight was issued BEFORE this push, so its
+      // answer predates the transition below and would overwrite it. That is
+      // the "click Auto fix, the card jumps to In Progress and falls back to
+      // To Do until F5" bug: `TASK_BOARD_ITEM_UPDATE` returns with the card
+      // still in `todo` (the run worker writes `in_progress` later, in
+      // `advanceTaskBoardForRun`), the mutation invalidates on that response,
+      // and the refetch lands after this push. Cancelling drops the stale
+      // response; the query is left stale, so the 60s backstop re-syncs.
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) => {
         if (!prev) return prev;
         return {
@@ -91,8 +131,9 @@ export function useTaskBoardItems() {
     onResync: () => {
       queryClient.invalidateQueries({ queryKey });
     },
-    // Live deletes: drop the removed card so it clears on every open board.
+    // Live deletes: drop the removed card, canceling a stale in-flight refetch first (same race as onUpdate above).
     onDelete: (id) => {
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
         prev ? { ...prev, items: prev.items.filter((t) => t.id !== id) } : prev,
       );
@@ -109,6 +150,8 @@ export function useTaskBoardItems() {
     onTaskStatus: (event) => {
       const threadId = event.subject;
       const status = event.data.status;
+      // Same race as onUpdate/onDelete above: cancel a stale in-flight refetch first.
+      queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
         prev
           ? {
@@ -132,6 +175,7 @@ export function useTaskBoardItems() {
   return {
     items: query.data?.items ?? [],
     sprints: query.data?.sprints ?? [],
+    columns: query.data?.columns ?? [],
     isLoading: query.isLoading,
     error: query.error,
   };

@@ -5,6 +5,7 @@ import type { StatusGroupData } from "./group-threads";
 import { useGroupExpanded } from "./use-group-expanded";
 import type { Task } from "@/components/chat/task/types";
 import { STATUS_CONFIG } from "@/lib/task-status";
+import { useT } from "@/i18n/use-t.ts";
 import { ShowMoreButton } from "./show-more-button";
 import type { SidebarFilters } from "./next-page-offset";
 import { useGroupShowMore } from "./use-group-show-more";
@@ -90,6 +91,7 @@ export function StatusGroup({
   canArchive: boolean;
   filters: SidebarFilters;
 }) {
+  const t = useT();
   const config = STATUS_CONFIG[status];
   const StatusIcon = config.icon;
   const [expanded, setExpanded] = useGroupExpanded(`status-${status}`, false);
@@ -122,7 +124,7 @@ export function StatusGroup({
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
         </div>
-        <span className="flex-1 truncate">{config.label}</span>
+        <span className="flex-1 truncate">{t(config.labelKey)}</span>
         <div className="size-5 shrink-0 flex items-center justify-center">
           <span className="text-xs text-muted-foreground tabular-nums">
             {threads.length}

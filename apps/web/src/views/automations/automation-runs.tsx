@@ -12,7 +12,6 @@
  * settings layout, which has no chat panel.
  */
 
-import { useState } from "react";
 import {
   useMCPClient,
   useConnections,
@@ -33,18 +32,19 @@ import {
   TableRow,
 } from "@decocms/ui/components/table.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
+import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
-import { STATUS_CONFIG } from "@/lib/task-status";
+import { getStatusConfig } from "@/lib/task-status";
 import { useAutomationRunStats } from "@/hooks/use-automations";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
 import {
   ThreadSheetBody,
   type ThreadEntity,
-  type ThreadUsage,
-} from "@/routes/orgs/monitoring/threads.tsx";
+} from "@/components/thread/thread-sheet-body.tsx";
+import type { ThreadUsage } from "@/routes/orgs/monitoring/threads.tsx";
 import {
   formatCompactNumber,
   formatUsd,
@@ -146,6 +146,7 @@ function RunRow({
   onClick: () => void;
   lastRowRef?: (node: HTMLTableRowElement | null) => void;
 }) {
+  const t = useT();
   const date = new Date(run.created_at);
   const dateStr = date.toLocaleDateString("en-US", {
     month: "short",
@@ -156,9 +157,7 @@ function RunRow({
     minute: "2-digit",
   });
 
-  const statusCfg =
-    STATUS_CONFIG[run.status as keyof typeof STATUS_CONFIG] ??
-    STATUS_CONFIG.completed;
+  const statusCfg = getStatusConfig(run.status);
   const StatusIcon = statusCfg.icon;
 
   return (
@@ -174,7 +173,7 @@ function RunRow({
         <div className="flex items-center gap-1.5">
           <StatusIcon size={14} className={statusCfg.iconClassName} />
           <span className={cn("text-sm", statusCfg.labelColor)}>
-            {statusCfg.label}
+            {t(statusCfg.labelKey)}
           </span>
         </div>
       </TableCell>
@@ -215,8 +214,6 @@ export function AutomationRunsView({
   const allConnections = useConnections();
   const allVirtualMcps = useVirtualMCPs();
   const { data: membersData } = useMembers();
-
-  const [selectedRunIndex, setSelectedRunIndex] = useState<number | null>(null);
 
   const hasTriggers = triggerIds.length > 0;
 
@@ -289,13 +286,8 @@ export function AutomationRunsView({
     isFetchingNextPage,
   );
 
-  const selectedRun =
-    selectedRunIndex !== null ? (runs[selectedRunIndex] ?? null) : null;
-
-  const handlePrev = () =>
-    setSelectedRunIndex((i) => (i !== null && i > 0 ? i - 1 : i));
-  const handleNext = () =>
-    setSelectedRunIndex((i) => (i !== null && i < runs.length - 1 ? i + 1 : i));
+  const selection = useIdSelection(runs);
+  const selectedRun = selection.selected;
 
   return (
     <div className="flex flex-col gap-5">
@@ -346,7 +338,7 @@ export function AutomationRunsView({
                 key={run.id}
                 run={run}
                 usage={usageMap.get(run.id)}
-                onClick={() => setSelectedRunIndex(idx)}
+                onClick={() => selection.select(run.id)}
                 lastRowRef={
                   idx === runs.length - 1
                     ? (lastRowRef as (node: HTMLTableRowElement | null) => void)
@@ -365,13 +357,13 @@ export function AutomationRunsView({
       )}
 
       <Sheet
-        open={selectedRunIndex !== null}
+        open={selection.isOpen}
         onOpenChange={(open) => {
-          if (!open) setSelectedRunIndex(null);
+          if (!open) selection.close();
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedRun && selectedRunIndex !== null && (
+          {selectedRun && (
             <ThreadSheetBody
               thread={selectedRun}
               client={client}
@@ -379,10 +371,12 @@ export function AutomationRunsView({
               connections={allConnections}
               virtualMcps={allVirtualMcps}
               members={membersData}
-              selectedIndex={selectedRunIndex}
-              total={runs.length}
-              onPrev={handlePrev}
-              onNext={handleNext}
+              nav={{
+                index: selection.index,
+                total: runs.length,
+                onPrev: selection.prev,
+                onNext: selection.next,
+              }}
             />
           )}
         </SheetContent>

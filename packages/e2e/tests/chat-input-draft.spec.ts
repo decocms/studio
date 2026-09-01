@@ -178,38 +178,40 @@ async function gotoThreadIdle(
   await waitForChatInput(page);
 }
 
+/** The open thread's id, from `?thread=` on a destination route or from the
+ *  legacy `/<org>/<taskId>` path segment. `null` when the URL names none. */
+function readThreadId(rawUrl: string, orgSlug: string): string | null {
+  const url = new URL(rawUrl);
+  const fromSearch = url.searchParams.get("thread");
+  if (fromSearch && TASK_ID_REGEX.test(fromSearch)) return fromSearch;
+  const segments = url.pathname.split("/").filter(Boolean);
+  if (segments[0] !== orgSlug) return null;
+  const candidate = segments[1];
+  return candidate && TASK_ID_REGEX.test(candidate) ? candidate : null;
+}
+
 /** Type a message in the home composer, submit, and wait until URL contains a taskId. Returns the taskId. */
 async function openNewThread(
   page: Page,
   orgSlug: string,
   seed: string,
 ): Promise<string> {
-  await page.goto(`/${orgSlug}`);
+  await page.goto(`/${orgSlug}?sidepanel=true`);
   await waitForChatInput(page);
   await typeInComposer(page, seed);
   await submitComposer(page);
-  // After submit, the URL becomes /<orgSlug>/<taskId> via homeSubmit's
-  // navigate() call. Wait until the first path segment after the org slug
-  // looks like a UUID (the task id) — avoids matching sub-routes like
-  // /<orgSlug>/settings.
+  // After submit the URL names the new thread, in whichever half this org's navigation flavour uses (see readThreadId).
   await page.waitForURL(
-    (url) => {
-      const segments = new URL(url).pathname.split("/").filter(Boolean);
-      return (
-        segments[0] === orgSlug &&
-        !!segments[1] &&
-        TASK_ID_REGEX.test(segments[1])
-      );
+    (url) => readThreadId(url.toString(), orgSlug) !== null,
+    {
+      timeout: 20_000,
     },
-    { timeout: 20_000 },
   );
-  const match = new URL(page.url()).pathname.match(
-    new RegExp(`^/${orgSlug}/([^/]+)`),
-  );
-  if (!match || !match[1] || !TASK_ID_REGEX.test(match[1])) {
+  const taskId = readThreadId(page.url(), orgSlug);
+  if (!taskId) {
     throw new Error(`could not extract taskId from ${page.url()}`);
   }
-  return match[1];
+  return taskId;
 }
 
 test.describe("chat input draft persistence", () => {
@@ -271,7 +273,7 @@ test.describe("chat input draft persistence", () => {
 
   test("home composer draft survives page refresh", async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
-    await page.goto(`/${orgSlug}`);
+    await page.goto(`/${orgSlug}?sidepanel=true`);
     await waitForChatInput(page);
 
     await typeInComposer(page, "home composer draft");

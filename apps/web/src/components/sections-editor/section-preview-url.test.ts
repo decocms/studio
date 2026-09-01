@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildFastPreviewDraftUrl,
+  buildPageRenderRequest,
   DRAFT_OFF,
   resolveSectionPreviewBase,
   withDraftPointer,
@@ -216,5 +217,63 @@ describe("DRAFT_OFF", () => {
       ),
     );
     expect(url.searchParams.getAll("__draft")).toEqual(["off"]);
+  });
+});
+
+describe("buildPageRenderRequest", () => {
+  const PAGE_BLOCK = {
+    __resolveType: "website/pages/Page.tsx",
+    path: "/",
+    sections: [{ __resolveType: "site/sections/Hero.tsx" }],
+  };
+  const DECOFILE = {
+    "pages-Home-1": PAGE_BLOCK,
+    "site/sections/Hero.tsx": { title: "edited" },
+  };
+
+  it("POSTs to /live/previews/:pageResolveType on the frame origin", () => {
+    const req = buildPageRenderRequest({
+      previewBaseUrl: `${PROD}/whatever?ignored=1`,
+      pageBlock: PAGE_BLOCK,
+      decofile: DECOFILE,
+      path: "/",
+      pathTemplate: "/",
+    });
+    const url = new URL(req!.src);
+    expect(url.origin).toBe(PROD);
+    expect(url.pathname).toBe(
+      `/live/previews/${encodeURIComponent("website/pages/Page.tsx")}`,
+    );
+    expect(url.searchParams.get("__decoFBT")).toBe("0");
+    expect(url.searchParams.get("path")).toBe("/");
+    expect(url.searchParams.get("pathTemplate")).toBe("/");
+  });
+
+  it("carries the merged decofile and the page props (sans __resolveType) in the body", () => {
+    const req = buildPageRenderRequest({
+      previewBaseUrl: PROD,
+      pageBlock: PAGE_BLOCK,
+      decofile: DECOFILE,
+      path: "/",
+      pathTemplate: "/",
+    });
+    const body = JSON.parse(req!.body);
+    expect(body.__props).toEqual({
+      path: "/",
+      sections: [{ __resolveType: "site/sections/Hero.tsx" }],
+    });
+    expect(body.__props.__resolveType).toBeUndefined();
+    expect(body.__decofile).toEqual(DECOFILE);
+  });
+
+  it("returns null when the page block has no __resolveType", () => {
+    const req = buildPageRenderRequest({
+      previewBaseUrl: PROD,
+      pageBlock: { path: "/" },
+      decofile: DECOFILE,
+      path: "/",
+      pathTemplate: "/",
+    });
+    expect(req).toBeNull();
   });
 });

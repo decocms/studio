@@ -11,12 +11,11 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
+import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement } from "react";
 import {
-  COMMERCE_DISCOVERY_ICON,
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getCommerceDiscoveryAgentId,
   getDevConnectionId,
   useConnections,
@@ -24,7 +23,6 @@ import {
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
-  WellKnownOrgMCPId,
 } from "@/sdk";
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
@@ -53,14 +51,15 @@ import {
   resolveTabClickTarget,
   type AutomationTabParsed,
 } from "./tab-id";
+import { useActivePanelTabId, usePanelNavigate } from "./use-panel-navigate";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
 import { useTaskMetadata } from "./use-task-metadata";
+import { keepAttachedPinnedViews } from "./attached-pinned-views";
 import { resolvePreviewSource } from "./preview-source";
 import {
   getSourceSystemTabs,
   shouldDeepLinkSourceTab,
 } from "./source-system-tabs";
-import { useCapability } from "@/hooks/use-capability";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
@@ -68,7 +67,6 @@ import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import {
   useControlPlaneViews,
-  useNavV2,
   useReportsOnly,
 } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
@@ -112,13 +110,14 @@ export interface MainPanelTabs {
 
 export function useMainPanelTabs(ctx: {
   virtualMcpId: string;
-  taskId: string;
+  /** The open thread, or `null` on a destination route that names none. */
+  taskId: string | null;
 }): MainPanelTabs {
   const t = useT();
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as {
-    main?: string | 0;
-  };
+  const { openPanel, closePanel } = usePanelNavigate();
+  const search = useSearch({ strict: false }) as { mainpanel?: boolean };
+  const panelTabId = useActivePanelTabId();
+  const routeDefaultMain = useRouteDefaultMain();
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
@@ -175,9 +174,7 @@ export function useMainPanelTabs(ctx: {
   const hasClonableSource =
     agentHasClonableSource(entity?.metadata) ||
     agentHasClonableSource(metadata);
-  const { granted: canManageAgents } = useCapability("agents:manage");
   const reportsOnly = useReportsOnly();
-  const navV2 = useNavV2();
   // Per-view product gate for the control-plane tabs (Hosting · E2E · Deco
   // Analytics) while the surface rolls out: local dev / deco.cx staff / GA turn
   // all three on; otherwise each view follows its own org flag. Layered ON TOP
@@ -259,7 +256,12 @@ export function useMainPanelTabs(ctx: {
           }))
       : [];
   const firstDevView = devViews[0];
-  const pinnedViews = firstDevView ? devViews : (entityUI?.pinnedViews ?? []);
+  const pinnedViews = firstDevView
+    ? devViews
+    : keepAttachedPinnedViews(
+        entityUI?.pinnedViews ?? [],
+        (entity?.connections ?? []).map((c) => c.connection_id),
+      );
   const effectiveDefaultMainView =
     firstDevView && devConnId
       ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
@@ -290,7 +292,7 @@ export function useMainPanelTabs(ctx: {
   // Preview toolbar's CMS toggle. `off` takes the Content tab with it.
   const cmsOff = resolveCmsMode(entityLayout) === "off";
   const showContentTab = !cmsOff && hasEditableDecoContent(decofile, meta);
-  // Don't bounce a deep-linked `?main=content` before the first load resolves —
+  // Don't bounce a deep-linked Content view before the first load resolves —
   // unless the CMS is off, where the answer can't change.
   const contentTabPending =
     !cmsOff && !!decofileFetchParams && (decofileIsPending || metaIsPending);
@@ -332,12 +334,14 @@ export function useMainPanelTabs(ctx: {
     fileConfigsQuery.data?.configs ?? [],
     siteSlug,
   );
-  // Don't bounce a deep-linked `?main=assets` away before the first config load resolves.
+  // Don't bounce a deep-linked Assets view away before the first config load resolves.
   const assetsTabPending = fileConfigsQuery.isPending;
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
-      mainParam: search.main,
+      panelTabId,
+      mainPanelParam: search.mainpanel,
+      routeDefaultMain,
       metadata:
         effectiveDefaultMainView || entityLayout
           ? {
@@ -372,33 +376,8 @@ export function useMainPanelTabs(ctx: {
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
-  // Unified "settings" tab bundles instructions, connections, and layout
-  // into a single detail view. On GitHub-linked vMCPs the contextual
-  // work tabs (Preview, git) come first so they're closest to the panel;
-  // Settings + Automations stay anchored at the right.
-  // The Overview view (the Super Agent's default) leads the bar so it reads as
-  // the agent's home. Data-driven off the configured default view — no
-  // per-agent special-case. Source tabs (Preview · Code) share one capability
-  // gate via getSourceSystemTabs; Blocks is an editing mode inside Preview.
+  // Source tabs (Preview · Code) lead the bar; other surfaces are sidebar destinations.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
-  // Library / Tasks are agent-independent overlays; MainPanelTabsBar folds them
-  // into the button row itself, so they are NOT part of this per-agent list.
-  //
-  // Overview (the Super Agent's home board) is agent-independent — it renders
-  // in place on any shell (see MainPanelContent's `overview` branch). Reports-
-  // only orgs pin it as the first tab on EVERY agent, so the top bar stays a
-  // stable Overview · Preview · Code · Report set regardless of which agent the
-  // thread happens to be on. Clicking it never switches agents.
-  // Under the first-class navigation Overview is the sidebar's "Home".
-  if (
-    (effectiveDefaultMainView?.type === "overview" || reportsOnly) &&
-    !navV2
-  ) {
-    leadingSystemTabs.push({
-      id: "overview",
-      title: t("common.mainPanelTabs.overview"),
-    });
-  }
   // Reports-only orgs get a persistent Preview/Code entry point to their
   // storefront regardless of which agent/screen they're on — visibility is
   // keyed to the settled org flag, not to whether the current agent happens to
@@ -480,21 +459,6 @@ export function useMainPanelTabs(ctx: {
       title: t("common.mainPanelTabs.reviewChanges"),
     });
   }
-  /** Reports-only orgs and the first-class navigation both get a curated top
-   *  bar: no Automations, no Settings — both live in the Settings section. */
-  if (!reportsOnly && !navV2) {
-    systemTabs.push({
-      id: "automations",
-      title: t("common.mainPanelTabs.automations"),
-    });
-    if (canManageAgents) {
-      systemTabs.push({
-        id: "settings",
-        title: t("common.mainPanelTabs.settings"),
-      });
-    }
-  }
-
   // Merge pinned views + per-task expanded tools into a single list keyed
   // by the pinned-view tab id. Pinned views win on dedupe so the
   // virtual-MCP–configured label/icon survives even if the same tool was
@@ -531,31 +495,7 @@ export function useMainPanelTabs(ctx: {
     });
   }
 
-  // Reports-only orgs surface the Report app on EVERY agent, not just the
-  // Report Agent. It renders in place from the Commerce Discovery connection —
-  // AppViewContent fetches that connection directly, so no aggregation into the
-  // current agent (and no agent switch) is needed. On the Report Agent itself
-  // the loop above already added it with its configured label/icon, so this is
-  // a no-op there (dedup by tab id).
-  // Under the first-class navigation the Report is a sidebar destination.
-  if (reportsOnly && !navV2) {
-    const reportConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
-    const reportTabId = formatPinnedViewTabId(
-      reportConnectionId,
-      COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-    );
-    if (!pinnedTabMap.has(reportTabId)) {
-      pinnedTabMap.set(reportTabId, {
-        id: reportTabId,
-        title: t("common.mainPanelTabs.report"),
-        appId: reportConnectionId,
-        iconKey: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-        iconUrl: COMMERCE_DISCOVERY_ICON,
-      });
-    }
-  }
-
-  // Ephemeral file-preview tab (`?main=file:<key>`): surfaces as a pill
+  // Ephemeral file-preview tab (the `file` view): surfaces as a pill
   // while open — like the Figma artifact pill — so the open file is
   // visible in the bar and click-to-toggle closes it. Not persisted:
   // once closed, recovery is via the chat's file rows / files panel.
@@ -578,7 +518,7 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
-  // Ephemeral live-HTML preview tab (`?main=deck:<path>` — decks AND
+  // Ephemeral live-HTML preview tab (the `deck` view — decks AND
   // standalone pages from the org home volume): same pill semantics as
   // file previews. Title is the file stem; icon follows the artifact dir.
   const deckTabParsed = parseDeckTabId(activeTab);
@@ -602,7 +542,7 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
-  // Ephemeral Library file-preview tab (`?main=library-file:<path>`): an org
+  // Ephemeral Library file-preview tab (the `library-file` view): an org
   // file referenced from a chat message, opened as a side panel on desktop.
   // Same pill semantics as file/deck previews; title is the basename.
   const libraryFileTabParsed = parseLibraryFileTabId(activeTab);
@@ -698,10 +638,10 @@ export function useMainPanelTabs(ctx: {
     // preview the current agent, which has no source. On the Report Agent
     // itself this falls through to the normal tab-toggle below.
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
-      navigate({
-        to: "/$org/$taskId",
-        params: { org: org.slug, taskId: crypto.randomUUID() },
-        search: { virtualmcpid: getCommerceDiscoveryAgentId(org.id), main: id },
+      openPanel(id, {
+        project: getCommerceDiscoveryAgentId(org.id),
+        /** Another agent's conversation does not follow the view over. */
+        search: (prev) => ({ ...prev, thread: undefined }),
       });
       return;
     }
@@ -710,14 +650,8 @@ export function useMainPanelTabs(ctx: {
       activeTab,
       mainOpen,
     });
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: target,
-      }),
-      replace: true,
-    });
+    if ("close" in target) closePanel();
+    else openPanel(target.tabId);
   };
 
   return {

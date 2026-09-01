@@ -143,7 +143,7 @@ export function TaskRow({
               onArchive && "group-hover/row:opacity-0",
             )}
             aria-label={t("tasksPanel.taskRow.statusLabel", {
-              status: config.label,
+              status: t(config.labelKey),
             })}
           >
             <StatusIcon

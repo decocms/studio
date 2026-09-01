@@ -1,10 +1,11 @@
 /**
  * Per-thread layout memory.
  *
- * The workspace tab layout (`?main=<tabId>` + `?sidepanel=`) lives in the URL,
- * so switching threads drops it and the target thread opens on its agent
- * default. This module remembers each thread's last layout, keyed by task id,
- * so returning to a thread restores the tabs/side-panel the user left it with.
+ * The workspace layout — which view is showing (the chat route's `{-$panel}`
+ * segment) plus whether each panel is open — lives in the URL, so switching
+ * threads drops it and the target thread opens on its agent default. This
+ * module remembers each thread's last layout, keyed by task id, so returning to
+ * a thread restores the view and panels the user left it with.
  *
  * Storage is **sessionStorage**: layout is a within-session working state, not a
  * durable preference. Per-tab isolation is intentional — the same thread open in
@@ -15,16 +16,20 @@
  * write is wrapped. A read failure means "no memory", never a crash.
  */
 
-const STORAGE_KEY = "studio:thread-layout:v1";
+/** v3: `main` (a tab id or the `0` closed sentinel) split into `tab` and
+ *  `mainpanel`, so a remembered v2 entry no longer describes this shape. */
+const STORAGE_KEY = "studio:thread-layout:v3";
 
 /** LRU cap. Bounds growth within a session; oldest threads evict first. */
 const MAX_THREADS = 50;
 
 export interface ThreadLayout {
-  /** `?main` value: a tab id, or `0` for the closed main panel. */
-  main?: string | 0;
-  /** `?sidepanel` value: `"chat"` open, or `0` closed. */
-  sidepanel?: "chat" | 0;
+  /** The main-panel view, as a tab id. */
+  tab?: string;
+  /** `?mainpanel` value: whether the main panel is open. */
+  mainpanel?: boolean;
+  /** `?sidepanel` value: whether the chat side panel is open. */
+  sidepanel?: boolean;
 }
 
 /** Most-recent entry last, so `.shift()` evicts the least-recently-saved. */
@@ -37,10 +42,10 @@ type StoredEntry = [taskId: string, layout: ThreadLayout];
  */
 export function sanitizeThreadLayout(layout: ThreadLayout): ThreadLayout {
   const clean: ThreadLayout = {};
-  if (layout.main === 0 || typeof layout.main === "string") {
-    clean.main = layout.main;
-  }
-  if (layout.sidepanel === 0 || layout.sidepanel === "chat") {
+  if (layout === null || typeof layout !== "object") return clean;
+  if (typeof layout.tab === "string") clean.tab = layout.tab;
+  if (typeof layout.mainpanel === "boolean") clean.mainpanel = layout.mainpanel;
+  if (typeof layout.sidepanel === "boolean") {
     clean.sidepanel = layout.sidepanel;
   }
   return clean;

@@ -124,7 +124,7 @@ async function commitBatch(batch: Batch): Promise<string> {
     // materialize it here (a save can race ahead of the editor's first read).
     const headSha = await resolveOrCreateHead(client, branch);
     const baseTreeSha = await client.getCommitTreeSha(headSha);
-    const tree = await client.getTreeRecursive(baseTreeSha);
+    const tree = await client.getDecofileTree(baseTreeSha, packagePath);
     const entries = blockEntriesInTree(tree, packagePath);
 
     const writes: TreeWriteEntry[] = [];

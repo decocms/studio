@@ -16,7 +16,7 @@ import { ArrowUpRight, Tool02, Users03 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
 import type { SubtaskToolPart } from "../../../types.ts";
 import { useSubtaskRun } from "../../../subtask-runs-context.tsx";
-import { useChatTask } from "../../../context.tsx";
+import { useOptionalChatTask } from "../../../context.tsx";
 import { useProjectContext } from "@/sdk";
 import { useSubtaskStream } from "./use-subtask-stream.ts";
 import { MemoizedMarkdown } from "../../../markdown.tsx";
@@ -148,10 +148,13 @@ function isFlippable(part: SubtaskToolPart): boolean {
 /** Returns a callback that flips the given (still-running) subtask call to the
  *  background, freeing the thread so the user can keep chatting. The server
  *  fans the request out to the pod running the turn. */
-function useFlipToBackground(toolCallId: string): () => Promise<void> {
-  const { taskId: threadId } = useChatTask();
+function useFlipToBackground(toolCallId: string): (() => Promise<void>) | null {
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const { org } = useProjectContext();
+  if (!threadId) return null;
   return async () => {
+    // Unreachable: a subtask part only renders inside a thread's own message.
+    if (threadId === null) return;
     const res = await fetch(
       `/api/${encodeURIComponent(org.slug)}/decopilot/flip/${encodeURIComponent(threadId)}`,
       {
@@ -453,7 +456,7 @@ function BackgroundSubtaskBody({
 function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
   const t = useT();
   const jobId = (part.output as { jobId?: string } | undefined)?.jobId;
-  const { taskId: threadId } = useChatTask();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const { org } = useProjectContext();
   const [open, setOpen] = useState(false);
 
@@ -462,9 +465,9 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
   // Live tail — only while the panel is open.
   const live = useSubtaskStream({
     orgSlug: org.slug,
-    threadId,
+    threadId: threadId ?? "",
     jobId,
-    enabled: open,
+    enabled: open && !!threadId,
   });
 
   const liveItems = live.messages.flatMap((m) => m.parts ?? []);
@@ -528,7 +531,7 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
       state={state}
       usage={usage}
       latency={props.latency}
-      onFlip={isFlippable(props.part) ? onFlip : undefined}
+      onFlip={onFlip && isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
     </SubtaskCard>
@@ -568,7 +571,7 @@ export function SubtaskPart(props: SubtaskPartProps) {
       state={state}
       usage={usage}
       latency={props.latency}
-      onFlip={isFlippable(props.part) ? onFlip : undefined}
+      onFlip={onFlip && isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
     </SubtaskCard>

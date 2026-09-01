@@ -118,6 +118,7 @@ export const sectionsEditor = {
   "sectionsEditor.multivariateFieldWrapper.addVariant": "Adicionar variante",
   "sectionsEditor.multivariateFieldWrapper.ruleLabel": "Regra",
   "sectionsEditor.multivariateFieldWrapper.variantN": "Variante {n}",
+  "sectionsEditor.pageJsonDialog.close": "Fechar",
   "sectionsEditor.pageJsonDialog.copied": "Copiado",
   "sectionsEditor.pageJsonDialog.copy": "Copiar",
   "sectionsEditor.pageJsonDialog.invalidJsonError":
@@ -128,6 +129,7 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.saveSuccess": "Page JSON salvo.",
   "sectionsEditor.pageJsonDialog.saving": "Salvando…",
   "sectionsEditor.pageJsonDialog.title": "Page JSON",
+  "sectionsEditor.pageJsonDialog.titleShort": "JSON",
   "sectionsEditor.pageTemplateSelect.blankPageDefaultLabel": "Página em branco",
   "sectionsEditor.pageTemplateSelect.blankPageLabel": "Página em branco",
   "sectionsEditor.pageTemplateSelect.noPagesFoundMessage":

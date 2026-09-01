@@ -13,8 +13,8 @@
  * is sent to `/login?next=/choose-editor?…` and bounced back with params intact.
  */
 
-import { useState } from "react";
 import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useQuery } from "@tanstack/react-query";
 import { Loading01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -140,13 +140,11 @@ function EditorRedirect({
   projectId: string;
   pageSearch: Record<string, string>;
 }) {
-  // Stable across re-renders so the redirect target doesn't churn.
-  const [taskId] = useState(() => crypto.randomUUID());
   return (
     <Navigate
-      to="/$org/$taskId"
-      params={{ org: orgSlug, taskId }}
-      search={{ virtualmcpid: projectId, main: "content", ...pageSearch }}
+      to={DESTINATION_ROUTE.agents}
+      params={{ org: orgSlug, project: projectId, panel: "content" }}
+      search={pageSearch}
       replace
     />
   );
@@ -163,13 +161,13 @@ function EditorChooser({
   const navigate = useNavigate();
   const open = (match: EditorMatch) => {
     navigate({
-      to: "/$org/$taskId",
-      params: { org: match.orgSlug, taskId: crypto.randomUUID() },
-      search: {
-        virtualmcpid: match.project.id,
-        main: "content",
-        ...pageSearch,
+      to: DESTINATION_ROUTE.agents,
+      params: {
+        org: match.orgSlug,
+        project: match.project.id,
+        panel: "content",
       },
+      search: pageSearch,
     });
   };
   return (

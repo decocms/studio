@@ -180,6 +180,15 @@ export interface GitDataClient {
   getDefaultBranch(): Promise<string>;
   getHeadSha(branch: string): Promise<string>;
   /**
+   * Branch head sha + the head commit's committer date, in one call. Git stores
+   * no ref-creation time, so this date is the branch's last-activity signal: a
+   * branch that was edited carries its last edit's date; a branch cut from the
+   * default branch and never touched carries the base commit's date (old the
+   * moment it lags behind an advancing default branch). The CMS staleness check
+   * reads it. Throws GitHubApiError(404) for a branch not yet on GitHub.
+   */
+  getBranchHead(branch: string): Promise<{ sha: string; committedAt: string }>;
+  /**
    * Gzipped tar of the repo at `ref`, as a stream — ONE request for every
    * file, vs one blob request per block. The preferred cold-read path. The
    * body is NEVER buffered here (golden rule 1: the archive must not touch
@@ -189,7 +198,35 @@ export interface GitDataClient {
    */
   getTarballStream(ref: string): Promise<ReadableStream<Uint8Array>>;
   getCommitTreeSha(commitSha: string): Promise<string>;
-  getTreeRecursive(treeSha: string): Promise<TreeEntry[]>;
+  /**
+   * Block-dir view of a commit's tree WITHOUT a whole-repo recursive read.
+   * A whole-repo recursive read on the root tree of a large repo trips GitHub's
+   * 100k-entry / 7MB recursive cap (`truncated: true` → hard 502), which broke
+   * every decofile read/write on big storefronts. Instead this walks
+   * `<packagePath>/.deco/` non-recursively and returns only the block sources
+   * (`<dir>/.deco/blocks/*.json`) plus the merged artifact
+   * (`<dir>/.deco/blocks.gen.json`) when the repo commits it — the whole set the
+   * decofile read/merge and the commit coalescer consume. Paths are full and
+   * repo-relative, so `blockEntriesInTree` and the gen-file check operate on the
+   * result unchanged. Empty when the project has no `.deco/` yet.
+   */
+  getDecofileTree(
+    commitTreeSha: string,
+    packagePath: string | null,
+  ): Promise<TreeEntry[]>;
+  /**
+   * Blob entries for a bounded, caller-known set of paths — the same
+   * 502-on-large-repo cap `getDecofileTree` dodges for decofile reads, but for
+   * callers that already know exactly which paths they need (discard's
+   * `filepaths`, the branch-wins merge's changed-file list) instead of a
+   * whole subdirectory. Walks only the directories those paths live in, so
+   * cost scales with the path set, never with repo size. A path absent at
+   * this commit (deleted, or never existed) is omitted from the map.
+   */
+  getBlobsAtPaths(
+    commitTreeSha: string,
+    paths: string[],
+  ): Promise<Map<string, TreeEntry>>;
   getBlobText(blobSha: string): Promise<string>;
   /**
    * One file's text at a ref, addressed by PATH rather than blob sha — null when
@@ -261,6 +298,44 @@ export interface GitDataClient {
      */
     commitMessages: string[];
   }>;
+}
+
+/**
+ * `getBlobsAtPaths`'s directory-scoped walk, factored out for testing: given
+ * how to list a subtree's direct children, resolve each path to its blob
+ * entry by visiting only the directories the paths actually live in (cached
+ * per directory, so siblings share one listing call).
+ */
+export async function resolveBlobsAtPaths(
+  rootTreeSha: string,
+  paths: string[],
+  ops: {
+    resolveSubtreeSha: (
+      rootTreeSha: string,
+      segments: string[],
+    ) => Promise<string | null>;
+    treeShallow: (treeSha: string) => Promise<TreeEntry[]>;
+  },
+): Promise<Map<string, TreeEntry>> {
+  const result = new Map<string, TreeEntry>();
+  const dirListings = new Map<string, TreeEntry[] | null>();
+  for (const path of paths) {
+    const slash = path.lastIndexOf("/");
+    const dir = slash === -1 ? "" : path.slice(0, slash);
+    const base = slash === -1 ? path : path.slice(slash + 1);
+    let listing = dirListings.get(dir);
+    if (listing === undefined) {
+      const subtreeSha = await ops.resolveSubtreeSha(
+        rootTreeSha,
+        dir === "" ? [] : dir.split("/"),
+      );
+      listing = subtreeSha === null ? null : await ops.treeShallow(subtreeSha);
+      dirListings.set(dir, listing);
+    }
+    const entry = listing?.find((e) => e.type === "blob" && e.path === base);
+    if (entry) result.set(path, { ...entry, path });
+  }
+  return result;
 }
 
 export function createGitDataClient(params: {
@@ -349,6 +424,43 @@ export function createGitDataClient(params: {
     return Buffer.from(json.content, "base64").toString("utf-8");
   }
 
+  /** One tree's DIRECT children (non-recursive). GitHub returns subdirectories
+   * as `type: "tree"` entries carrying their own sha; the entry `path` is the
+   * bare child name, not a repo-relative path. */
+  async function treeShallow(treeSha: string): Promise<TreeEntry[]> {
+    const { json } = await call<{ tree: TreeEntry[]; truncated: boolean }>(
+      "GET",
+      `${repoBase}/git/trees/${treeSha}`,
+    );
+    if (json.truncated) {
+      // One directory over the cap: unreachable once scoped, but fail loud.
+      throw new GitHubApiError(
+        502,
+        "GET",
+        `${repoBase}/git/trees/${treeSha}`,
+        "tree listing truncated by GitHub; directory too large",
+      );
+    }
+    return json.tree;
+  }
+
+  /** Walk `segments` from `rootTreeSha`, returning the final subtree's sha, or
+   * null when any segment is missing or is not a directory. */
+  async function resolveSubtreeSha(
+    rootTreeSha: string,
+    segments: string[],
+  ): Promise<string | null> {
+    let sha = rootTreeSha;
+    for (const segment of segments) {
+      const child = (await treeShallow(sha)).find(
+        (e) => e.type === "tree" && e.path === segment,
+      );
+      if (!child) return null;
+      sha = child.sha;
+    }
+    return sha;
+  }
+
   return {
     owner,
     repo,
@@ -373,6 +485,16 @@ export function createGitDataClient(params: {
         `${repoBase}/git/ref/heads/${encodeRefPath(branch)}`,
       );
       return json.object.sha;
+    },
+
+    async getBranchHead(branch) {
+      const { json } = await call<{
+        commit: { sha: string; commit: { committer: { date: string } } };
+      }>("GET", `${repoBase}/branches/${encodeRefPath(branch)}`);
+      return {
+        sha: json.commit.sha,
+        committedAt: json.commit.commit.committer.date,
+      };
     },
 
     async getTarballStream(ref) {
@@ -406,22 +528,38 @@ export function createGitDataClient(params: {
       return json.tree.sha;
     },
 
-    async getTreeRecursive(treeSha) {
-      const { json } = await call<{ tree: TreeEntry[]; truncated: boolean }>(
-        "GET",
-        `${repoBase}/git/trees/${treeSha}?recursive=1`,
+    async getDecofileTree(commitTreeSha, packagePath) {
+      const decoSegments = [
+        ...(packagePath ? packagePath.split("/") : []),
+        ".deco",
+      ];
+      const decoTreeSha = await resolveSubtreeSha(commitTreeSha, decoSegments);
+      if (decoTreeSha === null) return []; // no `.deco/` in this project yet
+      const decoDir = packagePath ? `${packagePath}/.deco` : ".deco";
+      const decoChildren = await treeShallow(decoTreeSha);
+      const out: TreeEntry[] = [];
+      // The merged artifact, only when this repo commits it (usually gitignored).
+      const gen = decoChildren.find(
+        (e) => e.type === "blob" && e.path === "blocks.gen.json",
       );
-      if (json.truncated) {
-        // 100k-entry / 7MB response cap. A repo this size needs pagination by
-        // subtree; fail loudly rather than serving a silently partial decofile.
-        throw new GitHubApiError(
-          502,
-          "GET",
-          `${repoBase}/git/trees/${treeSha}`,
-          "tree listing truncated by GitHub; repo too large for recursive read",
-        );
+      if (gen) out.push({ ...gen, path: `${decoDir}/blocks.gen.json` });
+      const blocksDir = decoChildren.find(
+        (e) => e.type === "tree" && e.path === "blocks",
+      );
+      if (blocksDir) {
+        for (const child of await treeShallow(blocksDir.sha)) {
+          if (child.type !== "blob") continue;
+          out.push({ ...child, path: `${decoDir}/blocks/${child.path}` });
+        }
       }
-      return json.tree;
+      return out;
+    },
+
+    getBlobsAtPaths(commitTreeSha, paths) {
+      return resolveBlobsAtPaths(commitTreeSha, paths, {
+        resolveSubtreeSha,
+        treeShallow,
+      });
     },
 
     getBlobText(blobSha) {

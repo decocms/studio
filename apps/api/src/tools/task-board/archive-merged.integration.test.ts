@@ -8,6 +8,9 @@
  * connection — every other part of the path is the real one.
  */
 
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
+import { BoardColumnStorage } from "@/storage/task-board-columns";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
@@ -81,7 +84,14 @@ describe("auto-archive sweep", () => {
     ctx = {
       auth: { user: { id: USER, email: "a1@archive.test", name: USER } },
       organization: { id: ORG, slug: "org-archive-1", name: ORG },
-      storage: { taskBoard },
+      storage: {
+        taskBoard,
+        // The sweep now asks the board where a finished card retires to, and
+        // the board asks the org which board it is.
+        organizationSettings: new OrganizationSettingsStorage(database.db),
+        columnAutomations: new ColumnAutomationStorage(database.db),
+        boardColumns: new BoardColumnStorage(database.db),
+      },
     } as unknown as StudioContext;
   });
 
@@ -108,6 +118,32 @@ describe("auto-archive sweep", () => {
     expect(groupByOrg(candidates)).toEqual([
       { organizationId: ORG, itemIds: [qualifies] },
     ]);
+  });
+
+  // The delivery lanes sit BEFORE Done, so a card parked in one is still in flight.
+  it("never sweeps a card resting in a delivery lane", async () => {
+    const settled = new Date(Date.now() - 3 * DAY_MS);
+    const lanes = ["approved", "merged", "post_deploy_validation"] as const;
+    const parked = await Promise.all(
+      lanes.map((lane) => seed(lane, settled, true)),
+    );
+
+    const candidates = await taskBoard.listItemsAwaitingArchive(
+      new Date(Date.now() - DAY_MS),
+      200,
+    );
+    const ids = candidates.map((c) => c.id);
+    for (const id of parked) expect(ids).not.toContain(id);
+
+    // And the write path refuses too, even when handed the id directly.
+    const swept = await archiveMergedForOrg(ctx, ORG, parked, async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
+    expect(swept.archived).toBe(0);
+    for (const [i, id] of parked.entries()) {
+      expect((await taskBoard.getById(id, ORG))?.status).toBe(lanes[i]);
+    }
   });
 
   it("archives a merged card, logs it, and won't archive it twice", async () => {
@@ -139,6 +175,71 @@ describe("auto-archive sweep", () => {
       merged: true,
     }));
     expect(second.archived).toBe(0);
+  });
+
+  /**
+   * The org-owned board's `archiveColumn()` names a row the foreign key can
+   * hold a card to (#6710/#6723). The sweep must guard the card the same way
+   * `update.ts` does, or it retires the card into that row without the
+   * discriminator the key needs to notice.
+   */
+  it("guards a card the sweep retires into an org-owned archive column", async () => {
+    const orgOwned = "org_archive_owned";
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: orgOwned,
+        name: orgOwned,
+        slug: "org-archive-owned",
+        createdAt: now,
+      })
+      .execute();
+    await new OrganizationSettingsStorage(database.db).upsert(orgOwned, {
+      flags: { org_board_columns: true },
+    });
+    await ctx.storage.boardColumns.replaceAll(orgOwned, [
+      { key: "Retired", title: "Retired", trackerStatuses: [] },
+    ]);
+    await ctx.storage.boardColumns.setRole(orgOwned, "Retired", "archived");
+
+    const settled = new Date(Date.now() - 3 * DAY_MS);
+    const item = await taskBoard.create({
+      organizationId: orgOwned,
+      title: "owned-board-archive",
+      status: "done",
+      by: USER,
+    });
+    await database.db
+      .updateTable("task_board_items")
+      .set({ updated_at: settled })
+      .where("id", "=", item.id)
+      .execute();
+    await taskBoard.linkPr({
+      taskBoardItemId: item.id,
+      organizationId: orgOwned,
+      url: `https://github.com/acme/repo/pull/${item.id}`,
+      prNumber: 1,
+      repoOwner: "acme",
+      repoName: "repo",
+    });
+
+    expect(
+      (
+        await archiveMergedForOrg(ctx, orgOwned, [item.id], async () => ({
+          state: "closed" as const,
+          merged: true,
+        }))
+      ).archived,
+    ).toBe(1);
+
+    const row = await database.db
+      .selectFrom("task_board_items")
+      .select(["status", "board_column_org"])
+      .where("id", "=", item.id)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe("Retired");
+    expect(row.board_column_org).toBe(orgOwned);
   });
 
   it("archives past an abandoned PR, and waits on a second repo", async () => {

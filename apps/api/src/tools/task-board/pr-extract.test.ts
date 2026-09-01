@@ -3,12 +3,12 @@ import { extractPrFromText, extractPrFromValue } from "./pr-extract";
 
 describe("extractPrFromText", () => {
   test("gh pr create stdout (bare html URL)", () => {
-    const out = "https://github.com/deco-sites/farmrio/pull/1006\n";
+    const out = "https://github.com/deco-sites/example-store/pull/1006\n";
     expect(extractPrFromText(out)).toEqual({
-      url: "https://github.com/deco-sites/farmrio/pull/1006",
+      url: "https://github.com/deco-sites/example-store/pull/1006",
       number: 1006,
       owner: "deco-sites",
-      repo: "farmrio",
+      repo: "example-store",
     });
   });
 

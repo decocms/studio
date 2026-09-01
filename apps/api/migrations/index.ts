@@ -185,6 +185,17 @@ import * as migration183dropjirajqlfilter from "./183-drop-jira-jql-filter.ts";
 import * as migration184jirarescanafterscopechange from "./184-jira-rescan-after-scope-change.ts";
 import * as migration185jirarescanexistingcards from "./185-jira-rescan-existing-cards.ts";
 import * as migration186jirarescanpendingflag from "./186-jira-rescan-pending-flag.ts";
+import * as migration187taskboardcommentthread from "./187-task-board-comment-thread.ts";
+import * as migration188invitationautoaccept from "./188-invitation-auto-accept.ts";
+import * as migration189taskboardcolumnautomations from "./189-task-board-column-automations.ts";
+import * as migration190taskboardreviewcyclestartedat from "./190-task-board-review-cycle-started-at.ts";
+import * as migration191taskboardcolumns from "./191-task-board-columns.ts";
+import * as migration192taskboardverdictnudgeactivity from "./192-task-board-verdict-nudge-activity.ts";
+import * as migration193taskboardstatuscolumnfk from "./193-task-board-status-column-fk.ts";
+import * as migration194jiralinksprint from "./194-jira-link-sprint.ts";
+import * as migration195taskboardsprintactivity from "./195-task-board-sprint-activity.ts";
+import * as migration196taskboardcolumntrackerstatuses from "./196-task-board-column-tracker-statuses.ts";
+import * as migration197taskboardprompts from "./197-task-board-prompts.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -401,6 +412,20 @@ const migrations: Record<string, Migration> = {
   "184-jira-rescan-after-scope-change": migration184jirarescanafterscopechange,
   "185-jira-rescan-existing-cards": migration185jirarescanexistingcards,
   "186-jira-rescan-pending-flag": migration186jirarescanpendingflag,
+  "187-task-board-comment-thread": migration187taskboardcommentthread,
+  "188-invitation-auto-accept": migration188invitationautoaccept,
+  "189-task-board-column-automations": migration189taskboardcolumnautomations,
+  "190-task-board-review-cycle-started-at":
+    migration190taskboardreviewcyclestartedat,
+  "191-task-board-columns": migration191taskboardcolumns,
+  "192-task-board-verdict-nudge-activity":
+    migration192taskboardverdictnudgeactivity,
+  "193-task-board-status-column-fk": migration193taskboardstatuscolumnfk,
+  "194-jira-link-sprint": migration194jiralinksprint,
+  "195-task-board-sprint-activity": migration195taskboardsprintactivity,
+  "196-task-board-column-tracker-statuses":
+    migration196taskboardcolumntrackerstatuses,
+  "197-task-board-prompts": migration197taskboardprompts,
 };
 
 export default migrations;

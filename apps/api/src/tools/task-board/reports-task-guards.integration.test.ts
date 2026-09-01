@@ -6,6 +6,9 @@
  * explicit config, since the tool reads frozen global settings.
  */
 
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
+import { BoardColumnStorage } from "@/storage/task-board-columns";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
@@ -60,6 +63,11 @@ describe("reports-task guards", () => {
       storage: {
         taskBoard,
         organizationBilling: new OrganizationBillingStorage(database.db),
+        // A write now asks the board which columns it has, and the board asks
+        // the org which one it is.
+        organizationSettings: new OrganizationSettingsStorage(database.db),
+        columnAutomations: new ColumnAutomationStorage(database.db),
+        boardColumns: new BoardColumnStorage(database.db),
       },
       access: {
         granted: () => true,

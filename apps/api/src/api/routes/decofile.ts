@@ -22,7 +22,10 @@
 
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import type { GithubRepo } from "@decocms/shared/sdk/types";
-import { assertSafeDecoBlockKey } from "@decocms/shared/decofile";
+import {
+  assertSafeDecoBlockKey,
+  isReservedResolverBlockKey,
+} from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
@@ -349,6 +352,15 @@ export function createDecofileRoutes() {
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         return c.json({ error: `Block "${key}" must be a JSON object` }, 400);
       }
+      // Deletes of resolver-shaped keys stay allowed above so a shadow is repairable.
+      if (isReservedResolverBlockKey(key)) {
+        return c.json(
+          {
+            error: `Block key "${key}" collides with a framework resolver module and cannot be written`,
+          },
+          400,
+        );
+      }
     }
 
     try {
@@ -431,20 +443,35 @@ export function createDecofileRoutes() {
     try {
       const client = await gitDataClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
+      // Null lastCommitAt == "no age, never auto-switch off this branch".
       if (baseBranch === scope.branch) {
-        return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
+        return c.json({
+          baseBranch,
+          aheadBy: 0,
+          behindBy: 0,
+          lastCommitAt: null,
+        });
       }
       try {
-        const { aheadBy, behindBy } = await client.compare(
+        const [{ aheadBy, behindBy }, head] = await Promise.all([
+          client.compare(baseBranch, scope.branch),
+          client.getBranchHead(scope.branch),
+        ]);
+        return c.json({
           baseBranch,
-          scope.branch,
-        );
-        return c.json({ baseBranch, aheadBy, behindBy });
+          aheadBy,
+          behindBy,
+          lastCommitAt: head.committedAt,
+        });
       } catch (err) {
-        // A thread-minted branch that hasn't been materialized yet (first
-        // read/write creates it) trivially has no drift.
+        // A thread-minted branch not materialized yet has no drift and no age.
         if (err instanceof GitHubApiError && err.status === 404) {
-          return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
+          return c.json({
+            baseBranch,
+            aheadBy: 0,
+            behindBy: 0,
+            lastCommitAt: null,
+          });
         }
         throw err;
       }

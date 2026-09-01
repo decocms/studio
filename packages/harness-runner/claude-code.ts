@@ -33,7 +33,32 @@ const ENVS = {
   // colon-separated. Set by the daemon, not by Studio: it is the daemon that
   // knows where it wrote them, and the value must not outlive that pod.
   PLUGIN_DIRS_ENV: "CLAUDE_CODE_PLUGIN_DIRS",
+  MAX_TURNS_ENV: "CLAUDE_CODE_MAX_TURNS",
 };
+
+/**
+ * The turn cap for this run, or `undefined` for the SDK's own default. Set by
+ * Studio per model class (see `claude-code-env.ts`); a non-numeric or
+ * non-positive value is treated as unset rather than failing the run — an
+ * uncapped run is a cost problem, a refused one is a broken board.
+ */
+function maxTurnsFromEnv(): number | undefined {
+  const parsed = Number(process.env[ENVS.MAX_TURNS_ENV]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * Told to the model, because a cap it cannot see is a cap it walks into. With
+ * the budget in the prompt it front-loads the work and commits a verdict.
+ */
+function turnBudgetInstruction(maxTurns: number): string {
+  return (
+    `You have at most ${maxTurns} turns for this run, and the run is cut off ` +
+    `when they are spent. Plan for that budget: gather what you need in as ` +
+    `few, as broad steps as you can, and reach and record your conclusion ` +
+    `well before the last turn rather than exploring until you are stopped.`
+  );
+}
 
 /**
  * One frame of a turn's output. `error` accompanies whatever the turn managed
@@ -201,7 +226,12 @@ export function buildOptions(args: {
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
   const model = process.env[ENVS.MODEL_ENV];
-  const instructionsWithSkills = [instructions, skillsInstruction()]
+  const maxTurns = maxTurnsFromEnv();
+  const instructionsWithSkills = [
+    instructions,
+    skillsInstruction(),
+    maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
+  ]
     .filter(Boolean)
     .join("\n\n");
   const executable = process.env[ENVS.EXECUTABLE_ENV];
@@ -233,8 +263,16 @@ export function buildOptions(args: {
         }
       : {}),
     ...(model ? { model } : {}),
+    ...(maxTurns === undefined ? {} : { maxTurns }),
     // ponytail: fixed, not configurable — raise it here if runs come back thin.
     effort: "low",
+    // Token-level streaming. Without this the SDK yields only COMPLETE
+    // assistant messages, so a paragraph reaches the UI as one 5KB frame after
+    // the model finished writing it — the run reads as frozen while it is in
+    // fact mid-sentence. `to-ui-chunks.ts` folds the resulting `stream_event`
+    // deltas into the same chunk vocabulary, and `push` coalesces them, so
+    // nothing downstream sees a per-token frame.
+    includePartialMessages: true,
     // Per-dispatch tool subtraction (a reviewer run is read-only; the Super
     // Agent's is not). `disallowedTools` is enforced by the harness itself, so
     // it holds under `bypassPermissions`.
@@ -352,6 +390,205 @@ const MCP_ATTEMPTS = 8;
 const MCP_BACKOFF_BASE_MS = 2_000;
 
 /**
+ * Retries allowed against a rejecting upstream model provider, and the base of
+ * the equal-jittered backoff between them (0.5-1s, 1-2s, 2-4s).
+ *
+ * OpenRouter fronts one Claude model with several upstreams (Anthropic, Bedrock,
+ * Vertex, Azure) and picks one per request, so a request it relays as
+ * `400 Provider returned error` is a property of the upstream it happened to
+ * pick, not of the request: on production threads the SAME prompt in the SAME
+ * pod failed and then completed 87 seconds later, untouched. The SDK will not
+ * retry it for us — a 400 is a permanent client error by every Anthropic SDK's
+ * rules, which is the right default and the wrong one here.
+ *
+ * Three retries because one is only worth anything if it lands on a different
+ * upstream, which it does immediately; waiting longer buys nothing.
+ * The jitter is not decoration — these failures arrive in bursts (14 threads in
+ * one hour on one org), so an unjittered backoff would retry them in lockstep.
+ */
+const PROVIDER_RETRIES = 3;
+const PROVIDER_BACKOFF_BASE_MS = 1_000;
+
+/**
+ * Whether an SDK throw is the upstream provider failing rather than the request
+ * being wrong.
+ *
+ * Matched on OpenRouter's own relay wording, not on the status code: a 400 whose
+ * body describes the request (`messages.0: text content blocks must be
+ * non-empty`) is a bug a retry would only repeat, and must stay fatal. Exported
+ * for the unit test — pure.
+ */
+export function isTransientProviderRejection(message: string): boolean {
+  return /provider returned error/i.test(message);
+}
+
+/**
+ * Equal-jitter exponential backoff for {@link PROVIDER_RETRIES}.
+ *
+ * Hand-rolled rather than `exponentialBackoffWithJitter` from
+ * `@decocms/shared/std`, which every other retry in the repo uses: this package
+ * is installed into the sandbox image from a tarball and so can only depend on
+ * published packages, which a private workspace module is not. Same reason
+ * `Bun.sleep` stands in for `sleep` here and on the MCP path above.
+ */
+function providerBackoffMs(attempt: number): number {
+  const exponential = PROVIDER_BACKOFF_BASE_MS * 2 ** (attempt - 1);
+  return Math.round(exponential * (0.5 + Math.random() / 2));
+}
+
+/**
+ * A live-only progress chunk telling the UI what this pause is.
+ *
+ * The shape is the `data-run-status` contract owned by
+ * `apps/api/src/api/routes/decopilot/run-status-stage.ts`, restated here rather
+ * than imported: this package is installed into the sandbox image from a tarball
+ * (`packages/sandbox/image/Dockerfile`) and can only depend on published
+ * packages, so the process boundary is the wall. Studio drops these from the
+ * durable projection (`isTransientControlChunk`), so a retry the user watched
+ * happen leaves nothing behind in the thread.
+ */
+function retryingProviderChunk(): Record<string, unknown> {
+  return {
+    type: "data-run-status",
+    id: "run-status",
+    data: { stage: "retrying-provider" },
+  };
+}
+
+/**
+ * Drops a `text-end` / `reasoning-end` whose part the consumer does not have
+ * open, and mirrors the AI SDK reducer's own part lifecycle to decide that.
+ *
+ * The reducer throws on an orphan end — `Received reasoning-end for missing
+ * reasoning part with ID "stream-2"` — and that throw kills the stream
+ * mid-run. Observed live: an agent that had cloned its repo and was still
+ * working in its pod had its Studio-side run torn down after two tool calls,
+ * while the pod kept going for minutes, oblivious.
+ *
+ * Two things upstream can separate an end from its start, and neither is a
+ * bug this can be fixed at:
+ *
+ *  - **A restart drops the start.** `pending` buffers everything until the
+ *    turn's message id is known, and an abandoned attempt clears it wholesale
+ *    (`pending.length = 0`) along with the coalescer — but `UiChunkTranslator`
+ *    keeps its `openStreamBlocks`, so the next `message_start` closes a block
+ *    whose start went in the bin.
+ *  - **A `finish-step` lands between them.** The reducer CLEARS its open parts
+ *    on that boundary, so every end after it is an orphan by definition. The
+ *    step-boundary call sites close open blocks first for exactly this reason;
+ *    this is the backstop for the next call site that forgets.
+ *
+ * Rather than chase each path, this sits at the one place every chunk reaches
+ * the consumer and enforces the reducer's rule directly: a start opens an id,
+ * an end closes it, and `finish-step` clears them all. An end with no open id
+ * is dropped — the part it referred to is already closed or was never opened,
+ * so dropping it costs nothing and keeps the run alive.
+ */
+export function createOrphanEndGuard(): (chunks: unknown[]) => unknown[] {
+  const open = new Set<string>();
+  return (chunks) =>
+    chunks.filter((chunk) => {
+      if (typeof chunk !== "object" || chunk === null) return true;
+      const { type, id } = chunk as { type?: unknown; id?: unknown };
+      if (type === "finish-step") {
+        open.clear();
+        return true;
+      }
+      if (typeof type !== "string" || typeof id !== "string") return true;
+      // Keyed on KIND and id, like the coalescer's merge check: ids are minted
+      // distinctly today, so a `reasoning-end` landing on a `text` part's id
+      // means something upstream is confused, and closing that part on its
+      // behalf would corrupt it rather than just misorder it.
+      if (type === "text-start" || type === "reasoning-start") {
+        open.add(`${type.slice(0, -"-start".length)}:${id}`);
+        return true;
+      }
+      // `delete` returns whether it was open — exactly the keep/drop answer.
+      if (type === "text-end" || type === "reasoning-end") {
+        return open.delete(`${type.slice(0, -"-end".length)}:${id}`);
+      }
+      return true;
+    });
+}
+
+/**
+ * Coalesces adjacent text/reasoning deltas so token-level streaming does not
+ * become token-level *framing*.
+ *
+ * `includePartialMessages` makes the SDK yield one message per token, and the
+ * caller turns every emission into one dispatch frame — forwarding them 1:1
+ * would push tens of thousands of ~60-byte frames per run through the daemon,
+ * JetStream and every open SSE connection. Deltas on the same block concatenate
+ * losslessly, so they are held until they are worth a frame.
+ *
+ * Ordering is preserved exactly: a non-delta chunk flushes whatever is held
+ * before it goes out, so `text-end` can never overtake its own text.
+ *
+ * ponytail: size-based, no timer. ~200 chars is well under a second at model
+ * output rates, and a timer would need a flush race at every turn exit for no
+ * visible gain. If a slow model ever feels chunky, add the timer here.
+ */
+export function createDeltaCoalescer(flushChars = 200): {
+  push(chunks: unknown[]): unknown[];
+  drain(): unknown[];
+  discard(): void;
+} {
+  let held: { type: string; id: string; delta: string } | null = null;
+
+  const asDelta = (
+    chunk: unknown,
+  ): { type: string; id: string; delta: string } | null => {
+    if (typeof chunk !== "object" || chunk === null) return null;
+    const record = chunk as Record<string, unknown>;
+    if (record.type !== "text-delta" && record.type !== "reasoning-delta") {
+      return null;
+    }
+    if (typeof record.id !== "string" || typeof record.delta !== "string") {
+      return null;
+    }
+    return { type: record.type, id: record.id, delta: record.delta };
+  };
+
+  return {
+    push(chunks) {
+      const out: unknown[] = [];
+      for (const chunk of chunks) {
+        const delta = asDelta(chunk);
+        if (!delta) {
+          if (held) out.push(held);
+          held = null;
+          out.push(chunk);
+          continue;
+        }
+        // Both type AND id: ids are minted distinctly today, but merging a
+        // reasoning delta into a text part on an id collision would corrupt
+        // the part rather than just misorder it.
+        if (held && held.type === delta.type && held.id === delta.id) {
+          held.delta += delta.delta;
+        } else {
+          if (held) out.push(held);
+          held = delta;
+        }
+        if (held.delta.length >= flushChars) {
+          out.push(held);
+          held = null;
+        }
+      }
+      return out;
+    },
+    drain() {
+      if (!held) return [];
+      const chunk = held;
+      held = null;
+      return [chunk];
+    },
+    discard() {
+      held = null;
+    },
+  };
+}
+
+/**
  * Run one turn, emitting its chunks as the SDK produces them. An SDK throw
  * becomes a final `error` frame after whatever the turn had already emitted, so
  * a crash mid-turn still shows the work instead of an empty message.
@@ -380,20 +617,45 @@ export async function runClaudeCode(
   // produces before the first assistant message waits here, never longer.
   const pending: unknown[] = [];
   let started = false;
+  const guard = createOrphanEndGuard();
   const startTurn = (id: string) => {
     if (started) return;
     started = true;
-    emit({ chunks: [...turnStartChunks(id), ...pending.splice(0)] });
+    emit({ chunks: guard([...turnStartChunks(id), ...pending.splice(0)]) });
+  };
+  /**
+   * Whether a failed attempt can be restarted without duplicating work.
+   *
+   * `started` flips on the turn's first assistant message, and a tool call is
+   * part of one — so an un-started turn has run no tool and side-effected
+   * nothing, and restarting it loses only the request that failed. Past that
+   * point a restart would re-run work and splice two generations into one
+   * message, which is a worse failure than the one it recovers from.
+   */
+  const canRestartCleanly = () => !started;
+  const coalescer = createDeltaCoalescer();
+  const send = (chunks: unknown[]) => {
+    if (chunks.length === 0) return;
+    // Buffered chunks are guarded when `startTurn` flushes them, not here: an
+    // end whose start is still sitting in `pending` is not an orphan, and
+    // `pending` is dropped WHOLESALE on a restart, so what survives is only
+    // decidable at the emit that actually sends it.
+    if (started) {
+      const guarded = guard(chunks);
+      if (guarded.length > 0) emit({ chunks: guarded });
+    } else pending.push(...chunks);
   };
   const push = (chunks: unknown[]) => {
     if (chunks.length === 0) return;
-    if (started) emit({ chunks });
-    else pending.push(...chunks);
+    send(coalescer.push(chunks));
   };
+  /** Emit whatever the coalescer is still holding. Every turn exit owes this. */
+  const drain = () => send(coalescer.drain());
 
   try {
     let forkedForSession = false;
     let restartedWithoutResume = false;
+    let providerRetries = 0;
     for (let attempt = 1; ; attempt++) {
       let broken: string | null;
       try {
@@ -423,6 +685,28 @@ export async function runClaudeCode(
           );
           sessionId = crypto.randomUUID();
           resumeSession = false;
+          attempt = 0;
+          continue;
+        }
+        if (
+          canRestartCleanly() &&
+          providerRetries < PROVIDER_RETRIES &&
+          isTransientProviderRejection(msg)
+        ) {
+          providerRetries++;
+          const waitMs = providerBackoffMs(providerRetries);
+          console.error(
+            `[claude-code] provider rejected the request (${msg}) — retrying ` +
+              `in ${waitMs}ms (attempt ${providerRetries}/${PROVIDER_RETRIES})`,
+          );
+          // Straight to `emit`: `push` buffers until the turn starts.
+          emit({ chunks: [retryingProviderChunk()] });
+          // What the dead attempt buffered is not part of the next one.
+          pending.length = 0;
+          // Nor is a delta it left half-coalesced — discard it, don't drain it.
+          coalescer.discard();
+          await Bun.sleep(waitMs);
+          if (!resumeSession) sessionId = crypto.randomUUID();
           attempt = 0;
           continue;
         }
@@ -571,7 +855,15 @@ export async function runClaudeCode(
         if (!messageId && typeof id === "string" && id.length > 0) {
           messageId = id;
         }
-        if (started) push([{ type: "finish-step" }, { type: "start-step" }]);
+        // Close whatever `stream_event` left open BEFORE the step boundary —
+        // the SDK reducer drops its open parts on `finish-step`, so an end
+        // emitted after it is an orphan that throws and kills the run.
+        if (started)
+          push([
+            ...translator.closeOpenStreamBlocks(),
+            { type: "finish-step" },
+            { type: "start-step" },
+          ]);
         else startTurn(messageId ?? `msg_${message.uuid}`);
       }
       push([...translator.translate(message)]);
@@ -582,6 +874,7 @@ export async function runClaudeCode(
       // which fails the whole run instead of just forgetting.
       await Bun.write(file, sessionId);
       startTurn(messageId ?? `msg_${message.uuid}`);
+      drain();
       emit({
         chunks: [
           ...turnFinishChunks(
@@ -599,17 +892,35 @@ export async function runClaudeCode(
   /** Close whatever the turn had emitted, then report what ended it. */
   function fail(message: string) {
     const error = { code: "harness_crashed", message };
+    drain();
     if (!started && pending.length === 0) {
       emit({ chunks: [], error });
       return;
     }
     startTurn(messageId ?? `msg_${Date.now()}`);
     emit({
-      chunks: [
-        { type: "finish-step" },
-        { type: "finish", finishReason: "error" },
-      ],
+      chunks: errorFinishChunks(translator),
       error,
     });
   }
+}
+
+/**
+ * Chunks for an aborted turn: close whatever `stream_event` left open, then
+ * finish the step and the run.
+ *
+ * Same orphan-end hazard the step boundary above guards against — the AI SDK
+ * reducer clears its open text/reasoning parts on `finish-step`, so an end
+ * emitted after it throws and drops the stream. An SDK throw mid-block (a
+ * network drop, a crash) reaches `fail()` with a block `stream_event` opened
+ * and never closed; without this, `finish-step` went out first and the part
+ * was left open forever instead of throwing — no crash, but a message that
+ * reads as still streaming after the run has already failed.
+ */
+export function errorFinishChunks(translator: UiChunkTranslator): unknown[] {
+  return [
+    ...translator.closeOpenStreamBlocks(),
+    { type: "finish-step" },
+    { type: "finish", finishReason: "error" },
+  ];
 }

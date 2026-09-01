@@ -131,6 +131,28 @@ describe("AccessControl", () => {
       expect(mockBoundAuth.hasPermission).not.toHaveBeenCalled();
     });
 
+    it("grants a STUDIO_PUBLIC_ tool by name alone, with no auth at all", async () => {
+      const ac = new AccessControl(undefined, "STUDIO_PUBLIC_TOOL");
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+
+    it("does NOT trust the STUDIO_PUBLIC_ prefix when the tool name is untrusted", async () => {
+      // A downstream connection could name its own tool this to spoof the prefix.
+      const ac = new AccessControl(
+        "user_1",
+        "STUDIO_PUBLIC_TOOL",
+        createMockBoundAuth({}), // no permissions
+        "user",
+        "self",
+        undefined,
+        undefined,
+        false, // trustPublicPrefix
+      );
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
+      expect(ac.granted()).toBe(false);
+    });
+
     it("should bypass checks for admin role", async () => {
       const ac = new AccessControl(
         "user_1",

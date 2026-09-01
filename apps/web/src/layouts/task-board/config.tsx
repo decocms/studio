@@ -1,3 +1,4 @@
+import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
   AlertCircle,
   AlertOctagon,
@@ -11,12 +12,15 @@ import {
   Lightbulb02,
   Loading02,
   PlusCircle,
+  Rocket01,
   Settings01,
   Shield01,
+  ShieldTick,
+  ThumbsUp,
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
-import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
+import { DEFAULT_TAG_COLOR, DELIVERY_LANES } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import type { Sprint } from "@decocms/shared/sprints";
 import type { ComponentType } from "react";
@@ -29,6 +33,15 @@ export {
 } from "@decocms/shared/task-board";
 
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
+/**
+ * A board column as the SERVER sends it.
+ *
+ * The wire type, not shared's `BoardColumn`: that one also carries the tracker
+ * statuses a column groups, which exist for the Jira push and are nobody's
+ * business in a browser. Deriving from the contract is what keeps the two from
+ * drifting apart silently.
+ */
+export type BoardColumn = ToolOutput<"TASK_BOARD_ITEM_LIST">["columns"][number];
 export type { Sprint };
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
@@ -37,6 +50,36 @@ export type TaskBoardItemThread = TaskBoardItem["threads"][number];
 export type TaskBoardItemTag = TaskBoardItem["tags"][number];
 export type TaskBoardItemPr =
   ToolOutput<"TASK_BOARD_ITEM_PRS_GET">["prs"][number];
+
+/**
+ * An infrastructure retry is not news. Each one wrote its own
+ * `In Progress → In Progress` activity ("scheduled retry 1 of 1 — error"), so a
+ * card that burned its budget read as a wall of retry chatter with the actual
+ * story buried in it. The retry is still counted — the terminal
+ * `activityRetriesExhausted` line ("moved to To Do after N failed retries") is
+ * the part a person acts on, and it survives this filter.
+ */
+export function isFeedWorthyActivity(a: {
+  action: string;
+  data?: Record<string, unknown> | null;
+}): boolean {
+  return !(a.action === "status_changed" && typeof a.data?.retry === "number");
+}
+
+/**
+ * The same noise from the other side: every retry spawns a fresh thread, and
+ * each one rendered its own card, so three attempts meant three near-identical
+ * "Retried" cards stacked above the one that matters.
+ *
+ * `superseded` means a NEWER attempt replaced this one, so a superseded thread
+ * can never be the newest — the live (or last) run always survives this filter,
+ * and with it the link to a transcript.
+ */
+export function isLiveAttempt(thread: {
+  failureKind?: string | null;
+}): boolean {
+  return thread.failureKind !== "superseded";
+}
 
 /** Org tag, as returned by TAGS_LIST/TAGS_CREATE (same shape a task's `tags`
  *  snapshot is drawn from). */
@@ -110,7 +153,7 @@ export function cardNeedsAttention(item: TaskBoardItem): boolean {
 export function statusIconClassName(item: TaskBoardItem): string {
   return item.status === "in_progress" && isTaskBlocked(item)
     ? "text-warning animate-pulse"
-    : STATUS_CONFIG[item.status].iconClassName;
+    : laneVisual(item.status).iconClassName;
 }
 
 /**
@@ -179,24 +222,18 @@ export type Member = {
   user?: { name?: string | null; image?: string | null };
 };
 
-export const STATUSES: TaskBoardItemStatus[] = [
-  "triage",
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-  "archived",
-];
-
 /**
  * Lanes that don't earn a board column by default — they sit collapsed under
- * "Hidden columns" until shown. They stay in `STATUSES`, so "Move to", drag
- * targets and status validation still know about them.
+ * "Hidden columns" until shown. They stay a column of the board, so "Move to",
+ * drag targets and status validation still know about them.
  */
-export const HIDDEN_STATUSES: TaskBoardItemStatus[] = ["archived"];
+export const HIDDEN_STATUSES: string[] = ["archived"];
 
+/** Keyed by Studio's OWN lanes, not by a card's status. Exhaustive on purpose:
+ *  adding a lane is a compile error here. A card's status is any column key,
+ *  which is what `laneVisual` and `laneLabel` are for. */
 export const STATUS_CONFIG: Record<
-  TaskBoardItemStatus,
+  CanonicalColumnKey,
   { labelKey: TranslationKey; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
@@ -219,6 +256,21 @@ export const STATUS_CONFIG: Record<
     icon: Eye,
     iconClassName: "text-warning",
   },
+  approved: {
+    labelKey: "taskBoard.config.statusApproved",
+    icon: ThumbsUp,
+    iconClassName: "text-success",
+  },
+  merged: {
+    labelKey: "taskBoard.config.statusMerged",
+    icon: Rocket01,
+    iconClassName: "text-primary",
+  },
+  post_deploy_validation: {
+    labelKey: "taskBoard.config.statusPostDeployValidation",
+    icon: ShieldTick,
+    iconClassName: "text-warning",
+  },
   done: {
     labelKey: "taskBoard.config.statusDone",
     icon: CheckCircle,
@@ -230,6 +282,76 @@ export const STATUS_CONFIG: Record<
     iconClassName: "text-muted-foreground",
   },
 };
+
+/** What a lane looks like, for a status we may not recognise. */
+export type LaneVisual = {
+  icon: typeof Circle;
+  iconClassName: string;
+};
+
+/** Neutral stand-in for a column Studio did not name. An org board's columns
+ *  come from its tracker, so there is no icon of ours and no translation. */
+const UNKNOWN_LANE: LaneVisual = {
+  icon: Circle,
+  iconClassName: "text-muted-foreground",
+};
+
+/** Widened on purpose. `STATUS_CONFIG` is exhaustive over Studio's own lanes —
+ *  that is what makes adding one a compile error — but a card's status is any
+ *  column key, and indexing the closed Record would let the compiler believe
+ *  every lookup hits. */
+const LANE_VISUALS: Record<string, LaneVisual> = STATUS_CONFIG;
+
+export function laneVisual(status: string): LaneVisual {
+  return LANE_VISUALS[status] ?? UNKNOWN_LANE;
+}
+
+/**
+ * What to call a lane.
+ *
+ * Studio's own lanes are translated; a column mirrored from a tracker is
+ * called whatever that tracker calls it, which is not ours to translate.
+ *
+ * Module-private on purpose: naming a lane requires knowing whether the board
+ * even HAS a column for it, and every caller that skipped that question got a
+ * canonical translation for a status the board could not place. Go through
+ * {@link laneHeader}.
+ */
+function laneLabel(
+  status: string,
+  t: (key: TranslationKey) => string,
+  title: string,
+): string {
+  const known = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG];
+  return known ? t(known.labelKey) : title;
+}
+
+/**
+ * How a lane reads on THIS board.
+ *
+ * A column the board owns is drawn with its own name and, when it is one of
+ * Studio's, our icon. A status no column accounts for gets neither: it is
+ * named by its raw key and drawn with the neutral visual, because borrowing
+ * ours is exactly what let an unplaceable card pass for a column somebody
+ * configured. A `triage` card stranded on a Jira board rendered as "Backlog" —
+ * a second one, next to the tracker's real Backlog, that nobody could act on
+ * because it does not exist over there.
+ */
+export function laneHeader(
+  status: string,
+  t: (key: TranslationKey) => string,
+  columns: readonly BoardColumn[],
+): { label: string; visual: LaneVisual; offBoard: boolean } {
+  const column = columns.find((c) => c.key === status);
+  if (!column) {
+    return { label: status, visual: UNKNOWN_LANE, offBoard: true };
+  }
+  return {
+    label: laneLabel(status, t, column.title),
+    visual: laneVisual(status),
+    offBoard: false,
+  };
+}
 
 export const TASK_TYPES: TaskBoardItemType[] = [
   "bug",
@@ -286,6 +408,124 @@ export const TASK_TYPE_CONFIG: Record<
     iconClassName: "text-purple-500",
   },
 };
+
+/** True for one of the post-merge delivery lanes. */
+export function isDeliveryLane(status: string): boolean {
+  return (DELIVERY_LANES as string[]).includes(status);
+}
+
+/**
+ * Lanes a card may be MOVED to — "Move to", the status dropdown.
+ *
+ * The board's own columns, not Studio's: on a board mirrored from a tracker
+ * every canonical lane is a column that does not exist, and the server rejects
+ * the write, so the menu was offering a list of ways to fail. With the delivery
+ * lanes off they aren't offered either, so nobody can put a card somewhere the
+ * org's state machine doesn't ship to.
+ */
+export function moveTargets(
+  columns: readonly BoardColumn[],
+  deliveryEnabled: boolean,
+): string[] {
+  return columns
+    .map((column) => column.key)
+    .filter((key) => deliveryEnabled || !isDeliveryLane(key));
+}
+
+/**
+ * Which lanes the board draws as columns, and which collapse into the "Hidden
+ * columns" drawer. A lane hides when it's hidden by default (`HIDDEN_STATUSES`)
+ * or is a delivery lane the board doesn't run; `shownLanes` overrides either.
+ * `occupied` is what keeps a card from getting stuck: an unrun delivery lane is
+ * absent while empty, but reappears in the drawer the moment a card sits in it.
+ */
+export function laneVisibility({
+  columns,
+  deliveryEnabled,
+  shownLanes,
+  occupied,
+}: {
+  /** The board's own columns, left to right, as the server sent them. Empty
+   *  only while the read is in flight — an org that owns its board and has no
+   *  columns yet genuinely has an empty board, and rendering Studio's lanes
+   *  instead would file its cards under lanes nobody chose. */
+  columns: readonly { key: string }[];
+  deliveryEnabled: boolean;
+  /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
+  shownLanes: readonly string[];
+  occupied: readonly string[];
+}): {
+  lanes: string[];
+  hidden: string[];
+  hideable: string[];
+  /** Lanes that exist only because cards are stuck in them — see below. Kept
+   *  separate so the board can draw them as what they are, and refuse drops
+   *  into a lane that is not a column. */
+  unplaced: string[];
+} {
+  const known = columns
+    .map((column) => column.key)
+    .filter(
+      (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
+    );
+  const hideable = known.filter(
+    (s) =>
+      HIDDEN_STATUSES.includes(s) || (!deliveryEnabled && isDeliveryLane(s)),
+  );
+  const hidden = hideable.filter((s) => !shownLanes.includes(s));
+
+  // A status no column accounts for, but cards are sitting in. Appended as its
+  // own lane rather than hidden or re-filed: a card the board cannot place is
+  // still the org's card, and rendering it under a column we picked would be
+  // us deciding something only they can. Deliberately not hideable — hiding it
+  // is the invisibility this exists to prevent. It goes away when the last card
+  // leaves, the same way a column the tracker dropped does.
+  const placed = new Set(known);
+  const unplaced = [...new Set(occupied)].filter((s) => !placed.has(s)).sort();
+
+  return {
+    lanes: [...known.filter((s) => !hidden.includes(s)), ...unplaced],
+    hidden,
+    hideable,
+    unplaced,
+  };
+}
+
+/** dnd-kit id prefix for a lane's own droppable — the empty space below the
+ *  last card. Anything else `over` reports is a card id. */
+export const LANE_DROPPABLE_PREFIX = "lane:";
+
+/**
+ * Where a drag currently sits, or null when it sits nowhere it may land.
+ *
+ * Two ways to be over a lane — its own droppable, or a card in it — and one
+ * rule over both: the landing has to be a column this board HAS.
+ *
+ * Both halves of that were wrong. The droppable was matched against Studio's
+ * canonical statuses, which on a board mirrored from a tracker match no column
+ * at all, so dragging into an empty column resolved to null and the card
+ * sprang back. And a card in an off-board lane resolved to that lane, which is
+ * not a column either — the server rejects the write, so the drop only looked
+ * like it worked until the list refetched.
+ */
+export function dropLane({
+  overId,
+  columnKeys,
+  statusOf,
+}: {
+  overId: string | number | undefined;
+  /** Keys of the board's own columns. */
+  columnKeys: ReadonlySet<string>;
+  /** A card's lane, by card id. */
+  statusOf: (cardId: string) => string | undefined;
+}): string | null {
+  if (overId === undefined) return null;
+  const id = String(overId);
+  const status = id.startsWith(LANE_DROPPABLE_PREFIX)
+    ? id.slice(LANE_DROPPABLE_PREFIX.length)
+    : statusOf(id);
+  return status !== undefined && columnKeys.has(status) ? status : null;
+}
 
 export const PRIORITIES: TaskBoardItemPriority[] = [
   "none",

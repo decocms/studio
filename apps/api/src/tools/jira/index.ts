@@ -22,12 +22,28 @@ import {
 import { JiraClient, normalizeSiteUrl } from "@/jira/client";
 import { syncJiraIntegrationSafe } from "@/jira/sync";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { TaskBoardItemStatusSchema } from "../task-board/schema";
+
+// Caps the jsonb blob every sync tick re-reads; no real board has more.
+const MAX_STATUS_MAPPING_LANES = 100;
+const MAX_STATUSES_PER_LANE = 100;
+const MAX_STATUS_NAME_LENGTH = 200;
 
 // `partialRecord`, not `record`: a `z.record` over an enum demands EVERY lane
 // be present, so an org mapping three of its columns would fail validation.
+// A plain record now that a board column is any key: `partialRecord` over a
+// closed enum was what forced every lane to be listed, and there is no closed
+// set of lanes to enumerate on a board the org owns.
 const statusMappingSchema = z
-  .partialRecord(TaskBoardItemStatusSchema, z.array(z.string()))
+  .record(
+    z.string().min(1).max(MAX_STATUS_NAME_LENGTH),
+    z
+      .array(z.string().min(1).max(MAX_STATUS_NAME_LENGTH))
+      .max(MAX_STATUSES_PER_LANE),
+  )
+  .refine(
+    (mapping) => Object.keys(mapping).length <= MAX_STATUS_MAPPING_LANES,
+    `Cannot map more than ${MAX_STATUS_MAPPING_LANES} lanes`,
+  )
   .describe(
     "Board status → its Jira status names, in board order. Several Jira " +
       "statuses may share a lane; the first is where a card entering that lane " +
@@ -44,7 +60,6 @@ const integrationSchema = z.object({
   boardId: z.string().nullable(),
   boardName: z.string().nullable(),
   statusMapping: statusMappingSchema,
-  autoDelegate: z.boolean(),
   webhookSecret: z.string(),
   enabled: z.boolean(),
   lastSyncedAt: z.string().nullable(),
@@ -74,7 +89,6 @@ function toOutput(
     boardId: integration.boardId,
     boardName: integration.boardName,
     statusMapping: integration.statusMapping,
-    autoDelegate: integration.autoDelegate,
     webhookSecret: integration.webhookSecret,
     enabled: integration.enabled,
     lastSyncedAt: integration.lastSyncedAt,
@@ -141,12 +155,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
       .optional()
       .describe("Display name of that board"),
     statusMapping: statusMappingSchema.optional(),
-    autoDelegate: z
-      .boolean()
-      .optional()
-      .describe(
-        "Assign the Super Agent when an issue lands in a To Do-mapped column",
-      ),
     enabled: z.boolean().optional(),
   }),
   outputSchema: z.object({ integration: integrationSchema }),
@@ -210,7 +218,9 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
           ? input.boardName
           : (existing?.boardName ?? null),
       statusMapping,
-      autoDelegate: input.autoDelegate ?? existing?.autoDelegate ?? false,
+      // Superseded by column automations; the column stays until a later
+      // migration drops it, so writes keep it at its current value.
+      autoDelegate: existing?.autoDelegate ?? false,
       enabled,
       createdBy: existing?.createdBy ?? userId,
     });
@@ -313,5 +323,32 @@ export const JIRA_SYNC_RUN = defineTool({
     }
     const result = await syncJiraIntegrationSafe(ctx, integration);
     return { result };
+  },
+});
+
+export const JIRA_RESYNC_REQUEST = defineTool({
+  name: "JIRA_RESYNC_REQUEST",
+  description:
+    "Mark the whole board for a re-scan. Does NOT sync — it drops the sync's " +
+    "watermark, so the next scheduled run re-reads every issue in scope " +
+    "instead of only what changed. Use it after changing what the sync DOES " +
+    "with an issue (a widened status mapping, a fixed body renderer), since " +
+    "issues behind the watermark are otherwise never asked for again. Use " +
+    "JIRA_SYNC_RUN to pull the recent changes right now.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ queued: z.literal(true) }),
+  handler: async (_input, ctx) => {
+    requireAuth(ctx);
+    await ctx.access.check();
+    const organization = requireOrganization(ctx);
+    const integration = await requireIntegration(ctx, organization.id);
+    // Deliberately does not run the scan. A full board is thousands of Jira
+    // reads paced across ticks by MAX_ISSUES_PER_RUN and `rescan_pending`,
+    // which is the scheduler's job — holding an HTTP request open for it would
+    // time out on exactly the boards big enough to need it, and a run dropped
+    // by a recycled process would leave no trace that a re-scan was wanted.
+    // The cleared watermark IS the durable record of the request.
+    await ctx.storage.jiraIntegrations.clearWatermark(integration.id);
+    return { queued: true as const };
   },
 });

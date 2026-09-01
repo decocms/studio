@@ -11,7 +11,7 @@
  * Covered:
  *   1. Org without the CD connection → no banner, home intact.
  *   2. Completed diagnostic → "ready" banner; click navigates to the
- *      report app (new task URL with virtualmcpid + pinned main tab).
+ *      report app (the CD project's chat path, a fresh `?thread=` and a pinned main tab).
  *   3. Live run → "generating" banner.
  *   4. CD connection whose MCP is unreachable → no banner, home intact.
  */
@@ -165,13 +165,12 @@ test.describe("commerce report banner", () => {
       await expect(banner).toContainText("minha-loja.example");
 
       await banner.click();
-      // New task URL: /$org/<uuid>?virtualmcpid=commerce-discovery_<orgId>&main=...<tool>
+      // Agent and view are both path here; only the view's param stays search.
       await expect(page).toHaveURL(
-        new RegExp(
-          `/${orgSlug}/[0-9a-f-]{36}.*virtualmcpid=commerce-discovery_[^&]+.*${REPORT_TOOL}`,
-        ),
+        new RegExp(`/${orgSlug}/agents/commerce-discovery_[^/?]+/app\\?`),
         { timeout: 15_000 },
       );
+      expect(new URL(page.url()).searchParams.get("tool")).toBe(REPORT_TOOL);
     } finally {
       await mcp.stop();
     }

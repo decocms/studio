@@ -87,6 +87,10 @@ const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
  * how one NATS pod restart darkened chat cluster-wide on 2026-08-26. 3 matches
  * the cluster size so a single node loss keeps quorum.
  *
+ * This is the *requested* count, not a guarantee: `init()` clamps it to what
+ * the connected server can host (`supportedReplicas`). Local `bun run dev`,
+ * self-hosts and the multi-pod/resilience test clusters all run one NATS node.
+ *
  * Env-overridable for rollback without a deploy — `init()` applies the value
  * through `streams.update`, and JetStream scales replicas online, so setting
  * `DECOPILOT_STREAM_REPLICAS=1` reverts on the next pod start.
@@ -102,7 +106,7 @@ const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop stream
  * stream survives a NATS restart, with a retention SLA and a time-based dedup
  * window. Extracted from `init()` so it can be unit-tested without a connection.
  */
-export function decopilotStreamConfig() {
+export function decopilotStreamConfig(replicas: number = STREAM_REPLICAS) {
   return {
     name: DECOPILOT_STREAM_NAME,
     subjects: [`${DECOPILOT_STREAM_SUBJECT_PREFIX}.>`],
@@ -113,7 +117,7 @@ export function decopilotStreamConfig() {
     discard: DiscardPolicy.Old,
     retention: RetentionPolicy.Limits,
     duplicate_window: DUPLICATE_WINDOW_NS, // time-based Nats-Msg-Id dedup (spec §10.2)
-    num_replicas: STREAM_REPLICAS,
+    num_replicas: replicas,
   };
 }
 
@@ -229,6 +233,44 @@ export interface NatsStreamBufferOptions {
   getJetStreamManager?: () => Promise<JetStreamManager>;
 }
 
+/**
+ * Clamp the requested replica count to what the connected server can host.
+ *
+ * `streams.add` rejects `num_replicas > 1` on a non-clustered server, but
+ * `streams.update` ACCEPTS it: it persists `num_replicas: 3` into the stream's
+ * on-disk `meta.inf` and reports success. The server then cannot recover that
+ * stream on its next boot and serves 503 from `/healthz` forever, which in
+ * Kubernetes means the startup probe never passes, so the pod never joins the
+ * Service and no client can reach it to undo the damage. Because `update`
+ * returns no error, `isReplicaUnsupportedError` cannot catch this — the count
+ * has to be clamped before any config is written.
+ *
+ * `ServerInfo.cluster` carries the cluster name and is only present when the
+ * server runs a `cluster{}` block; a single node reports nothing. Peer counts
+ * are deliberately not used: `connect_urls` is empty whenever `advertise` is
+ * off, which is the norm behind a Service.
+ */
+function supportedReplicas(nc: NatsConnection, requested: number): number {
+  return nc.info?.cluster ? requested : 1;
+}
+
+/**
+ * The server cannot satisfy the requested replica count. A single-node
+ * (non-clustered) JetStream rejects `replicas > 1` outright; a cluster with
+ * fewer peers than requested rejects it as insufficient resources. Both are
+ * legitimate deployments — local dev, self-hosts and the test clusters all run
+ * one NATS node — so the stream must still be created there, just unreplicated.
+ * Anything else is a real config error and has to surface.
+ */
+function isReplicaUnsupportedError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (/non-clustered/i.test(err.message)) return true;
+  return (
+    /replicas?\b/i.test(err.message) &&
+    /not supported|can ?not|exceed|insufficient|greater than/i.test(err.message)
+  );
+}
+
 export class NatsStreamBuffer implements StreamBuffer {
   private js: JetStreamClient | null = null;
   private jsm: JetStreamManager | null = null;
@@ -246,43 +288,66 @@ export class NatsStreamBuffer implements StreamBuffer {
       );
       return;
     }
-    const config = decopilotStreamConfig();
-
     // The JS-API round-trips below (manager handshake + stream ensure) can time
     // out transiently if JetStream is briefly slow at boot. Init only re-runs on
     // a NATS `onReady` (reconnect); when the connection stays up, a single
     // startup timeout would otherwise leave `this.js` null for the pod's whole
     // life — every run then fails at `publishRawChunk`. Retry the transient
     // failures in place instead of relying on a reconnect that may never come.
+    const ensureStream = async (
+      mgr: JetStreamManager,
+      replicas: number,
+    ): Promise<void> => {
+      const config = decopilotStreamConfig(replicas);
+      try {
+        await mgr.streams.info(DECOPILOT_STREAM_NAME);
+        await mgr.streams.update(DECOPILOT_STREAM_NAME, config);
+      } catch (err: unknown) {
+        const isNotFound =
+          err instanceof Error && err.message.includes("stream not found");
+        if (isNotFound) {
+          await mgr.streams.add(config);
+          // `add` onto a directory left by an unrecoverable stream reuses it
+          // and leaves the old `meta.inf`, so the next boot fails to recover
+          // again. `update` is what rewrites it.
+          await mgr.streams.update(DECOPILOT_STREAM_NAME, config);
+        } else {
+          // JetStream cannot change a stream's `storage` in place, so flipping
+          // the legacy Memory stream to File makes `update` reject. The stream
+          // is ephemeral run-scratch (it only holds in-flight chunks), so a
+          // one-time delete + add at deploy is safe: drop the old stream and
+          // recreate it file-backed. Any other error is real — rethrow.
+          const isStorageMismatch =
+            err instanceof Error &&
+            /can ?not change.*storage|storage type/i.test(err.message);
+          if (isStorageMismatch) {
+            await mgr.streams.delete(DECOPILOT_STREAM_NAME);
+            await mgr.streams.add(config);
+          } else {
+            throw err;
+          }
+        }
+      }
+    };
+
     const jsm = await retry(
       async () => {
         const mgr = this.options.getJetStreamManager
           ? await this.options.getJetStreamManager()
           : await jetstreamManager(nc);
+        const replicas = supportedReplicas(nc, STREAM_REPLICAS);
         try {
-          await mgr.streams.info(DECOPILOT_STREAM_NAME);
-          await mgr.streams.update(DECOPILOT_STREAM_NAME, config);
+          await ensureStream(mgr, replicas);
         } catch (err: unknown) {
-          const isNotFound =
-            err instanceof Error && err.message.includes("stream not found");
-          if (isNotFound) {
-            await mgr.streams.add(config);
-          } else {
-            // JetStream cannot change a stream's `storage` in place, so flipping
-            // the legacy Memory stream to File makes `update` reject. The stream
-            // is ephemeral run-scratch (it only holds in-flight chunks), so a
-            // one-time delete + add at deploy is safe: drop the old stream and
-            // recreate it file-backed. Any other error is real — rethrow.
-            const isStorageMismatch =
-              err instanceof Error &&
-              /can ?not change.*storage|storage type/i.test(err.message);
-            if (isStorageMismatch) {
-              await mgr.streams.delete(DECOPILOT_STREAM_NAME);
-              await mgr.streams.add(config);
-            } else {
-              throw err;
-            }
-          }
+          // A single-node NATS can't hold a replicated stream. Streaming at all
+          // beats streaming with failover: retry unreplicated rather than leave
+          // `js` null, which silently drops every chunk of every run.
+          if (replicas <= 1 || !isReplicaUnsupportedError(err)) throw err;
+          console.warn(
+            `[Decopilot] StreamBuffer: NATS rejected num_replicas=${replicas} ` +
+              `(${(err as Error).message}); falling back to an unreplicated stream`,
+          );
+          await ensureStream(mgr, 1);
         }
         return mgr;
       },

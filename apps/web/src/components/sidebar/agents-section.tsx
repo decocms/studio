@@ -6,12 +6,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  Link,
-  useNavigate,
-  useParams,
-  useSearch,
-} from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useRouteAgentId, useRouteThreadId } from "@/layouts/thread-route";
 import {
   SidebarMenuButton,
   SidebarMenuItem,
@@ -256,24 +252,27 @@ function BrowseAgentsEmptyHint({ children }: { children: ReactElement }) {
 
 /**
  * Hook for "spawn task on this vMCP" buttons (used by the browse-agents
- * popover). When the user clicks a vMCP that matches the URL's current
- * virtualmcpid, the active task's branch is carried into the new thread
- * so the new task lands on the same warm sandbox. When the clicked vMCP
- * differs, no branch is passed and the server picks the most-recently-
- * touched sandboxMap entry for that vMCP.
+ * popover). When the user clicks the vMCP the route already names, the active
+ * thread's branch is carried into the new thread so the new task lands on the
+ * same warm sandbox. When the clicked vMCP differs, no branch is passed and the
+ * server picks the most-recently-touched sandboxMap entry for that vMCP.
+ *
+ * Both reads go through the route resolvers rather than the raw URL: the agent
+ * is the `{-$project}` segment (`?virtualmcpid=` is legacy-only), and the
+ * thread is `?thread=` everywhere except the legacy route's path param.
  */
 function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
   const navigate = useNavigate();
   const { create } = useThreadActions();
   const { locator } = useProjectContext();
-  const params = useParams({ strict: false }) as { taskId?: string };
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
+  const routeThreadId = useRouteThreadId();
+  const routeAgentId = useRouteAgentId();
 
   return async (clickedVirtualMcpId: string) => {
     const taskId = crypto.randomUUID();
     const carryBranch =
-      clickedVirtualMcpId === search.virtualmcpid
-        ? readCachedTaskBranch(orgSlug, locator, params.taskId ?? "")
+      clickedVirtualMcpId === routeAgentId
+        ? readCachedTaskBranch(orgSlug, locator, routeThreadId ?? "")
         : null;
     try {
       await create({

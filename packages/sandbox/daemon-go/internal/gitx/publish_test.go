@@ -53,9 +53,9 @@ func TestPublishRefusesProtectedBranch(t *testing.T) {
 	}
 }
 
-func TestInstallProtectedBranchHookWritesTheBranchList(t *testing.T) {
+func TestInstallSandboxHooksWritesTheBranchList(t *testing.T) {
 	repo := initRepoOnBranch(t, "feature/x")
-	if err := InstallProtectedBranchHook(repo); err != nil {
+	if err := InstallSandboxHooks(repo); err != nil {
 		t.Fatal(err)
 	}
 	hook := filepath.Join(repo, ".git", "hooks", "pre-push")

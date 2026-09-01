@@ -5,8 +5,11 @@ import {
   enabledReviewerKinds,
   isReviewerThreadTitle,
   PR_DIFF_RECIPE,
+  NO_VISUAL_SURFACE,
+  REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewCycleStart,
+  reviewCycleVerdicts,
   SHALLOW_CHECKOUT_NOTE,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
@@ -19,6 +22,11 @@ import {
 } from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 import { mintReviewToken } from "./review-token";
+import {
+  sandboxUploadHint,
+  uploadsAsSandboxPaths,
+} from "./description-uploads";
+import { nudgeThreadTurn } from "./nudge-thread";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 
@@ -27,8 +35,8 @@ import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
 
 /**
- * True when a reviewer thread is genuinely still running: non-terminal status
- * AND a heartbeat inside the stall window.
+ * True when a run thread is genuinely still running: non-terminal status AND a
+ * heartbeat inside the stall window.
  *
  * Status alone is not liveness. A reviewer whose pod died mid-run stays
  * `in_progress` forever — the in-memory idle reaper is per-pod, and
@@ -37,7 +45,7 @@ const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
  * reaped by nobody. Uses the same heartbeat and window as the rest of the
  * codebase (`isThreadRunStale`), so "how long is too long" has one definition.
  */
-function isReviewerThreadLive(
+function isThreadRunLive(
   thr: TaskBoardItem["threads"][number],
   now: number,
 ): boolean {
@@ -51,61 +59,90 @@ function isReviewerThreadLive(
 }
 
 /**
- * Built-in harness tools each reviewer must NOT have — the enforcement behind
- * "you are reviewing, not implementing", which until now was prompt-only.
+ * True while the task's author — the Super Agent, i.e. any run thread that
+ * isn't a reviewer's — is still going.
  *
- * Neither reviewer can rewrite an existing file. QA keeps `Write` because
- * exercising a change means scratch files (a curl script, a throwaway spec);
- * the Code Reviewer reads the diff and has no reason to touch the checkout at
- * all. Both keep `Bash` — a review is `git diff` / `gh pr view`, and QA has to
- * actually run the thing.
- *
- * These are SDK tool NAMES, which is all `disallowedTools` matches. "Don't
- * push" stays a prompt rule on purpose: a permission pattern like
- * `Bash(git push:*)` is not a tool name (it would be a silent no-op here), and
- * any command-level denylist is bypassable from a shell anyway.
+ * The Super Agent is told to link the PR and set In Review *while still
+ * running* (`claude-code-task-run.ts`), so the card is reviewable long before
+ * the run that owns the branch is finished. Title is the discriminator the rest
+ * of the board already uses (`resolveReviewRunToolNames`); liveness is
+ * {@link isThreadRunLive}, so a dead author's stall window releases the card
+ * rather than stranding it.
  */
-export const REVIEWER_DISALLOWED_TOOLS: Record<ReviewerKind, string[]> = {
-  qa: ["Edit", "NotebookEdit"],
-  code_review: ["Write", "Edit", "NotebookEdit"],
-};
+export function authorRunLive(task: TaskBoardItem, now: number): boolean {
+  return task.threads.some(
+    (thr) =>
+      !REVIEWER_KINDS.some((kind) => isReviewerThreadTitle(thr.title, kind)) &&
+      isThreadRunLive(thr, now),
+  );
+}
 
-/** The review instructions unique to each reviewer. Shared scaffolding (load
- *  the PR, don't push code, end with a decision) lives in the prompt builder. */
+/** The reviewer's instructions. Shared scaffolding (load the PR, end with a
+ *  decision) lives in the prompt builder; this is the persona, and the ORDER in
+ *  it is load-bearing — see `ReviewerKind`. No `disallowedTools`: the reviewer
+ *  is the last run on the task, so it has to be able to fix what it finds. */
 const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
-  // prompt-region:start qa-agent
-  qa:
-    "You are the QA Agent. Your job is to confirm the task ACTUALLY SOLVED THE " +
-    "PROBLEM — not to review code style. Exercise the feature/behavior the task " +
-    "describes, check the acceptance criteria implied by the title and " +
-    "description, and look for regressions in the affected flow. Judge outcomes, " +
-    "not the diff — and NEVER approve on inspection alone: an approval must be " +
-    "backed by evidence you actually exercised the change.\n" +
-    "Exercise the change on the PR's deploy preview, deep-linked to the specific " +
-    "page/route the task affects (not just its root). For any VISUAL change, " +
-    "capture the affected view BEFORE (the current production / base-branch site) " +
-    "and AFTER (the preview) so the two can be compared, and for a responsive " +
-    "change capture BOTH a desktop and a real mobile view (a phone viewport AND a " +
-    "mobile user-agent — not a narrowed desktop). The How-to steps below name the " +
-    "exact screenshot tool for your run.\n" +
-    "If the preview will not render (303s, hangs, blank) or you otherwise cannot " +
-    "exercise the change, do NOT approve: request changes stating what is blocking " +
-    "and what is needed to unblock. An unverified preview is not a pass.\n" +
-    "RECORD your QA pass as a task comment BEFORE the decision — a durable record, " +
-    "separate from the short decision summary. Structure it: the acceptance " +
-    "criteria / scenarios you checked with a pass/fail on each, a before→after " +
-    "pointer to the screenshots, the exact URL(s) and viewport you exercised, and " +
-    "anything you could not verify and why.",
-  // prompt-region:end qa-agent
-  // prompt-region:start code-reviewer
-  code_review:
-    "You are the Code Reviewer. Review the code changes for correctness, " +
-    "security, and quality. FIRST look for a review skill/command appropriate " +
-    "to this repository's stack (e.g. a `/review`, `code-review`, or " +
-    "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) and " +
-    "use it. Read the diff critically and flag concrete issues with file/line " +
-    "references.",
-  // prompt-region:end code-reviewer
+  // prompt-region:start reviewer
+  reviewer:
+    "You are the Reviewer, the LAST automated run on this task. Your job is to " +
+    "confirm the task ACTUALLY SOLVED THE PROBLEM, fix what is wrong with how " +
+    "it was solved, and then ship or hand over. Nothing picks up findings you " +
+    "only describe, so an issue you write down and leave is an issue that " +
+    "ships.\n" +
+    "Do it in THIS ORDER — the order is the point:\n" +
+    "1. REVIEW the code. FIRST look for a review skill/command appropriate to " +
+    "this repository's stack (e.g. a `/review`, `code-review`, or " +
+    "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) " +
+    "and use it. Read the diff critically for correctness, security and " +
+    "quality, and note concrete issues with file/line references.\n" +
+    "2. FIX what you found, on the PR's OWN branch, and push to that same pull " +
+    "request — never a new branch, never a new pull request, never a force " +
+    "push, and never any other ref. Keep the fixes scoped to what your review " +
+    "found; do not redesign the change. Before you push, run the repository's " +
+    "own checks (its type-check / lint / test / format scripts) and make them " +
+    "pass — you are approving this code, so an unverified fix of yours is the " +
+    "same defect as the one you were fixing. If a fix does not hold, revert it " +
+    "and describe it instead of pushing it.\n" +
+    "3. EXERCISE the change on the PR's deploy preview, AFTER your push, on the " +
+    "preview of the commit you actually pushed — the earlier preview is a " +
+    "different build and a verdict on it is a verdict on bytes that will not " +
+    "ship. Wait for it if it is still building. Deep-link to the specific " +
+    "page/route the task affects (not just its root), check the acceptance " +
+    "criteria implied by the title and description, and look for regressions " +
+    "in the affected flow. Judge OUTCOMES, not the diff — NEVER approve on " +
+    "inspection alone. For any VISUAL change capture the affected view BEFORE " +
+    "(the current production / base-branch site) and AFTER (the preview), and " +
+    "for a responsive change capture BOTH a desktop and a real mobile view (a " +
+    "phone viewport AND a mobile user-agent — not a narrowed desktop). The " +
+    "How-to steps below name the exact screenshot tool for your run.\n" +
+    "If the preview will not render (303s, hangs, blank) or you otherwise " +
+    "cannot exercise the change, do NOT approve: request changes stating what " +
+    "is blocking and what is needed to unblock. An unverified preview is not a " +
+    "pass.\n" +
+    "4. RECORD the whole pass as a task comment BEFORE the decision — a " +
+    "durable record, separate from the short decision summary, and REQUIRED: a " +
+    "verdict with no comment is an incomplete run and you will be asked for " +
+    "one. Structure it: what you read and the concrete issues with file/line " +
+    "references, WHICH of them you fixed (with the commits), the acceptance " +
+    "criteria / scenarios you exercised with a pass/fail on each, a " +
+    "before→after pointer to the screenshots, the exact URL(s) and viewport, " +
+    "and anything you did not review or could not verify and why.\n" +
+    "That comment must ALWAYS carry the visual change: embed the before/after " +
+    "screenshots in it whenever the change has any visual surface. If it has " +
+    `none, write the exact words \`${NO_VISUAL_SURFACE}\` in the comment and ` +
+    "name why (backend-only, config, test-only) — that literal is what a " +
+    "machine check looks for, so no paraphrase of it counts, and silence about " +
+    "screenshots is not an acceptable answer either way.\n" +
+    "5. DECIDE. Approve once the pull request is in the state you would " +
+    "approve. Only `request_changes` for something you genuinely cannot settle " +
+    "here (a product decision, a missing credential, an approach that needs " +
+    "rethinking) — that hands the card to a human, it does not start another " +
+    "agent round. NEVER end your run without having called " +
+    "`TASK_BOARD_REVIEW_DECISION`: a run that stops to wait on a background " +
+    "task, or that runs low on room, must decide on what it knows first. An " +
+    "unrecorded verdict strands the card and is the one failure this run " +
+    "cannot leave behind.",
+  // prompt-region:end reviewer
 };
 
 /**
@@ -117,12 +154,12 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
  * timeline entry. Best-effort per reviewer.
  */
 /**
- * How long QA waits for the PR's deploy preview to catch up with its head
- * commit before the card goes to a person.
+ * How long the reviewer waits for the PR's deploy preview to catch up with its
+ * head commit before the card goes to a person.
  *
  * A deploy takes minutes, so this is mostly slack; what it really bounds is the
  * case that has no end (a build broken account-wide, a deploy misconfigured).
- * Without it, gating QA would swap one silent strand for another: no verdict, no
+ * Without it, gating the reviewer would swap one silent strand for another: no verdict, no
  * hand-off, a card that reads as "in review" forever.
  */
 const STALE_PREVIEW_HANDOFF_GRACE_MS = 30 * 60 * 1000;
@@ -143,7 +180,8 @@ export async function enqueueEnabledReviewers(
   task: TaskBoardItem,
   opts?: {
     /** Whether the deploy preview shows the PR's head commit
-     *  (`previewMatchesHead`). `false` holds QA back — see the gate below.
+     *  (`previewMatchesHead`). `false` holds the reviewer back — see the gate
+     *  below.
      *  Omitted means "not checked", which dispatches as it always did. */
     previewMatchesHead?: boolean;
   },
@@ -153,6 +191,8 @@ export async function enqueueEnabledReviewers(
   );
   const enabled = enabledReviewerKinds(settings?.flags);
   if (enabled.length === 0) return;
+  // Deferred, not dropped — both callers re-poll; above the hand-offs on purpose.
+  if (authorRunLive(task, Date.now())) return;
   const modelClass: ClaudeCodeModelClass = orgFlagEnabled(
     settings?.flags,
     "cheap_reviewer_model",
@@ -161,20 +201,57 @@ export async function enqueueEnabledReviewers(
     : "default";
 
   // A reviewer belongs to the current cycle if its thread is still live, or was
-  // created since the task last entered In Review — either way don't re-enqueue.
+  // created since the cycle opened — either way don't re-enqueue.
   // A stale thread from a PRIOR cycle (before a Super Agent re-run bounced the
   // task back and forward) does NOT count, so reviewers re-run on re-review.
-  const lastInReviewAt = await lastInReviewTime(ctx, task);
+  // The timeline is read unconditionally (`reviewCycleStartedAt` alone would do
+  // for the boundary): the verdicts and the verdict asks below only exist here.
+  const activity = await ctx.storage.taskBoard.listActivity(
+    task.id,
+    task.organizationId,
+  );
+  const cycleStartedAt = task.reviewCycleStartedAt;
+  const lastInReviewAt = reviewCycleStart(activity, cycleStartedAt);
   const cycleAt = new Date(lastInReviewAt);
+  // Which reviewers actually ruled this cycle. A reviewer thread that completed
+  // without one is a spent attempt, not a review — see `isSpentAttempt`.
+  const decided = reviewCycleVerdicts(activity, { cycleStartedAt });
 
-  // Each reviewer's enqueue is independent (its own fence id), so run them
-  // CONCURRENTLY — this is on TASK_BOARD_ITEM_PRS_GET's synchronous poll path,
-  // and serial awaits doubled its latency once both QA and Code Reviewer are
-  // enabled.
+  // One reviewer today, but the enqueue stays a fan-out over `enabled`: each
+  // dispatch is independent (its own fence id), and this runs on
+  // TASK_BOARD_ITEM_PRS_GET's synchronous poll path, where serial awaits showed
+  // up as latency when there were two.
   await Promise.all(
     enabled.map(async (kind) => {
+      const verdictRecorded = decided.has(kind);
+      // Ask before spending: a run that ended undecided still has everything it
+      // reviewed in its session, so one more turn on its own thread is both
+      // cheaper and better-informed than a fresh reviewer.
+      if (!verdictRecorded) {
+        const asked = verdictNudgedThreads(activity, lastInReviewAt);
+        const owed = undecidedReviewerThread(task, kind, lastInReviewAt, asked);
+        if (owed) {
+          await requestMissingVerdict(ctx, task, kind, owed).catch((err) =>
+            console.error(`[task-board] ${kind} verdict nudge failed`, err),
+          );
+          return;
+        }
+        // Asked, not yet answered: the follow-up run lands on the reviewer's own
+        // thread, so between the dispatch and its first heartbeat the thread
+        // still reads `completed` and everything below would spend an attempt on
+        // a reviewer that is about to speak.
+        if (awaitingVerdictNudge(asked, Date.now())) return;
+      }
       // A dead end, not a wait — see `reviewerAttemptsExhausted`.
-      if (reviewerAttemptsExhausted(task, kind, lastInReviewAt)) {
+      if (
+        reviewerAttemptsExhausted(
+          task,
+          kind,
+          lastInReviewAt,
+          Date.now(),
+          verdictRecorded,
+        )
+      ) {
         await handTaskToHuman(
           ctx,
           task,
@@ -184,24 +261,40 @@ export async function enqueueEnabledReviewers(
         return;
       }
       // Would be a verdict on the wrong bytes — see `previewMatchesHead`.
-      if (kind === "qa" && opts?.previewMatchesHead === false) {
+      if (opts?.previewMatchesHead === false) {
         if (stalePreviewHandoffDue(lastInReviewAt, Date.now())) {
           await handTaskToHuman(
             ctx,
             task,
             "the pull request's deploy preview is not showing its latest " +
-              "commit (its checks never went green), so QA cannot verify this " +
-              "change against what the PR actually does",
+              "commit (its checks never went green), so the Reviewer cannot " +
+              "verify this change against what the PR actually does",
           );
         }
         return;
       }
-      if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;
+      if (
+        reviewerHandledThisCycle(
+          task,
+          kind,
+          lastInReviewAt,
+          Date.now(),
+          verdictRecorded,
+        )
+      ) {
+        return;
+      }
       // Getting here with a dead reviewer thread from THIS cycle means the last
       // attempt failed (see `reviewerHandledThisCycle`), so this dispatch is a
       // RETRY and needs a fence of its own — the previous attempt's thread id
       // is taken, and reusing it would collapse the retry onto the corpse.
-      const attempt = spentAttemptsThisCycle(task, kind, lastInReviewAt);
+      const attempt = spentAttemptsThisCycle(
+        task,
+        kind,
+        lastInReviewAt,
+        Date.now(),
+        verdictRecorded,
+      );
       await enqueueReviewerForTask(
         ctx,
         task,
@@ -234,11 +327,12 @@ export function spentAttemptsThisCycle(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): number {
   return task.threads.filter(
     (thr) =>
       isReviewerThreadTitle(thr.title, kind) &&
-      isSpentAttempt(thr, now) &&
+      isSpentAttempt(thr, now, verdictRecorded) &&
       new Date(thr.createdAt).getTime() >= lastInReviewAt,
   ).length;
 }
@@ -294,18 +388,28 @@ export function priorCycleReviewAt(
   return times.length === 0 ? 0 : Math.max(...times);
 }
 
-/** A reviewer attempt that produced no verdict and never will: it failed, or it
- *  is non-terminal with a heartbeat past the stall window. */
+/** A reviewer attempt that produced no verdict and never will: it failed, it
+ *  ended in any other terminal state without recording one, or it is
+ *  non-terminal with a heartbeat past the stall window.
+ *
+ *  `verdictRecorded` is whether this reviewer has a verdict on the CURRENT
+ *  cycle's timeline. A run that reaches a decision records it and then
+ *  completes, so a `completed` thread used to be taken as proof of a review —
+ *  but a reviewer can also run out of turns, or stop while it waits on a
+ *  background task, and complete having decided nothing. That card was then
+ *  stranded In Review at `0/1` forever: nothing re-dispatched it (the thread
+ *  read as handled) and nothing handed it over (the attempts read as unspent).
+ *  Defaults true so callers without the timeline keep the old reading. */
 function isSpentAttempt(
   thr: TaskBoardItem["threads"][number],
   now: number,
+  verdictRecorded = true,
 ): boolean {
   if (thr.status === "failed") return true;
-  return (
-    thr.status !== null &&
-    !TERMINAL_THREAD_STATUSES.has(thr.status) &&
-    !isReviewerThreadLive(thr, now)
-  );
+  if (thr.status !== null && TERMINAL_THREAD_STATUSES.has(thr.status)) {
+    return !verdictRecorded;
+  }
+  return thr.status !== null && !isThreadRunLive(thr, now);
 }
 
 /** The reviewer's threads belonging to the current cycle: created since the
@@ -320,7 +424,7 @@ function reviewerThreadsThisCycle(
   return task.threads.filter((thr) => {
     if (!isReviewerThreadTitle(thr.title, kind)) return false;
     return (
-      isReviewerThreadLive(thr, now) ||
+      isThreadRunLive(thr, now) ||
       new Date(thr.createdAt).getTime() >= lastInReviewAt
     );
   });
@@ -335,7 +439,7 @@ function reviewerThreadsThisCycle(
  * therefore never coming and the all-approved gate can never close,
  * so the caller hands the card to a person instead of letting the sweeper visit
  * it forever. Two cards sat In Review for six days on exactly this: one
- * approval each, and a QA Agent that had died twice.
+ * approval each, and a reviewer that had died twice.
  *
  * Pure — unit-tested.
  */
@@ -344,6 +448,7 @@ export function reviewerAttemptsExhausted(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): boolean {
   const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   return (
@@ -351,7 +456,7 @@ export function reviewerAttemptsExhausted(
     // A hung attempt counts as spent, not just a failed one — otherwise a
     // reviewer whose pod keeps dying is re-dispatched forever, which is the
     // opposite mistake to the deadlock this replaced.
-    thisCycle.every((thr) => isSpentAttempt(thr, now)) &&
+    thisCycle.every((thr) => isSpentAttempt(thr, now, verdictRecorded)) &&
     thisCycle.length >= MAX_REVIEWER_ATTEMPTS
   );
 }
@@ -383,6 +488,7 @@ export function reviewerHandledThisCycle(
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
+  verdictRecorded = true,
 ): boolean {
   const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   if (thisCycle.length === 0) return false;
@@ -392,27 +498,138 @@ export function reviewerHandledThisCycle(
   // nothing re-dispatches, and the merge gate waits on a verdict that will
   // never come. One sat that way while its co-reviewer had approved in 68
   // seconds.
-  if (thisCycle.some((thr) => isReviewerThreadLive(thr, now))) return true;
-  const spent = thisCycle.filter((thr) => isSpentAttempt(thr, now));
+  if (thisCycle.some((thr) => isThreadRunLive(thr, now))) return true;
+  const spent = thisCycle.filter((thr) =>
+    isSpentAttempt(thr, now, verdictRecorded),
+  );
   // Every attempt spent and the budget is gone — stop, a human owns it now.
   if (spent.length >= MAX_REVIEWER_ATTEMPTS) return true;
-  // Anything that finished without failing IS a review (a reviewer records its
-  // decision and completes), so the cycle is handled.
+  // Anything that finished and left a verdict IS a review, so the cycle is
+  // handled. A run that completed without one is spent, not handled.
   return spent.length !== thisCycle.length;
 }
 
-/** When the task most recently entered In Review (ms), else 0. Drawn from the
- *  activity timeline (shared reducer) so it survives across the many-to-many
- *  thread links and stays in lockstep with the merge gate + ship button. */
-async function lastInReviewTime(
+/**
+ * The reviewer's completed thread that owes this cycle a verdict and has not
+ * been asked for one yet, else null.
+ *
+ * A reviewer that runs out of turns, or stops while it waits on a background
+ * task, completes having decided nothing — and until it is asked, nothing on
+ * the card can tell that apart from a review. Only `completed` threads qualify:
+ * a failed run has no session left to answer with, and a live one is still
+ * working. Pure — unit-tested.
+ */
+export function undecidedReviewerThread(
+  task: TaskBoardItem,
+  kind: ReviewerKind,
+  lastInReviewAt: number,
+  alreadyAsked: ReadonlyMap<string, number>,
+  now: number = Date.now(),
+): TaskBoardItem["threads"][number] | null {
+  return (
+    task.threads.find(
+      (thr) =>
+        isReviewerThreadTitle(thr.title, kind) &&
+        thr.status === "completed" &&
+        !isThreadRunLive(thr, now) &&
+        new Date(thr.createdAt).getTime() >= lastInReviewAt &&
+        !alreadyAsked.has(thr.threadId),
+    ) ?? null
+  );
+}
+
+/** The reviewer threads already asked for a verdict this cycle. The timeline is
+ *  the marker, so the ask survives a pod restart and can only happen once per
+ *  thread. Pure — unit-tested. */
+export function verdictNudgedThreads(
+  activity: readonly {
+    action: string;
+    data?: Record<string, unknown> | null;
+    occurredAt: string;
+  }[],
+  lastInReviewAt: number,
+): Map<string, number> {
+  const asked = new Map<string, number>();
+  for (const a of activity) {
+    if (a.action !== "review_verdict_requested") continue;
+    const at = new Date(a.occurredAt).getTime();
+    if (at < lastInReviewAt) continue;
+    const threadId = (a.data as { threadId?: unknown } | null | undefined)
+      ?.threadId;
+    if (typeof threadId === "string") asked.set(threadId, at);
+  }
+  return asked;
+}
+
+/** How long an unanswered ask holds the reviewer's attempts back. Long enough
+ *  to cover the queue wait before the follow-up run's first heartbeat, short
+ *  enough that a card whose follow-up never ran still moves within one sweep or
+ *  two. */
+const VERDICT_NUDGE_GRACE_MS = 10 * 60 * 1000;
+
+/** True while an ask made this cycle is still young enough that its follow-up
+ *  run may not have started. Pure — unit-tested. */
+export function awaitingVerdictNudge(
+  asked: ReadonlyMap<string, number>,
+  now: number,
+): boolean {
+  for (const at of asked.values()) {
+    if (now - at < VERDICT_NUDGE_GRACE_MS) return true;
+  }
+  return false;
+}
+
+/** What the reviewer is told when it ended without deciding. Deliberately
+ *  narrow: it is not being asked to review again, only to state the verdict its
+ *  own run already reached. */
+function missingVerdictPrompt(kind: ReviewerKind): string {
+  return [
+    `Your ${REVIEWER_LABEL[kind]} run ended without recording a decision, so the task is stuck: nothing ships and nobody is told why. A review that reaches no verdict is not a review.`,
+    "",
+    "Do exactly ONE thing in this run and then stop:",
+    "- Call `TASK_BOARD_REVIEW_DECISION` now, with the verdict your review already reached and notes that say what you checked.",
+    "- Approve ONLY if you actually exercised the change and it holds. If you could not finish — a check never came back, a preview never rendered, you ran out of room — `request_changes` and say exactly what is unresolved. That hands the card to a person, which is the correct outcome for an unfinished review.",
+    "- Do NOT re-run the review, do NOT change any code, and do NOT wait on any background task: whatever you know right now is the verdict.",
+  ].join("\n");
+}
+
+/**
+ * Ask a reviewer run that finished without a verdict for one, on its OWN
+ * thread.
+ *
+ * The ask is recorded on the timeline BEFORE the dispatch, and both are keyed
+ * to the thread: the record is what stops a second ask (and what lets
+ * `isSpentAttempt` treat a still-undecided thread as spent afterwards), so a
+ * dispatch that throws must not look un-asked forever — the run is retried by
+ * the next reviewer attempt, not by asking again.
+ */
+async function requestMissingVerdict(
   ctx: StudioContext,
   task: TaskBoardItem,
-): Promise<number> {
-  const activity = await ctx.storage.taskBoard.listActivity(
-    task.id,
-    task.organizationId,
+  kind: ReviewerKind,
+  owed: TaskBoardItem["threads"][number],
+): Promise<void> {
+  const thread = await ctx.storage.threads.get(owed.threadId);
+  // Only a v2 thread can take a new turn — dispatch nulls the part emitter for
+  // v1 (same gate as `ensureReviewerCommented`).
+  if (!thread || thread.message_storage_version !== 2) return;
+
+  await ctx.storage.taskBoard.recordActivity({
+    taskBoardItemId: task.id,
+    action: "review_verdict_requested",
+    actorId: null,
+    data: { reviewer: kind, threadId: owed.threadId },
+  });
+  console.warn(
+    `[task-board] ${kind} reviewer on ${task.id} completed with no verdict — ` +
+      `asking for one`,
   );
-  return reviewCycleStart(activity);
+  await nudgeThreadTurn(ctx, task, thread, {
+    messageId: `review-verdict-${owed.threadId}`,
+    prompt: missingVerdictPrompt(kind),
+    workflowID: `review-verdict:${owed.threadId}`,
+    runClass: "reviewer",
+  });
 }
 
 /**
@@ -511,16 +728,27 @@ async function enqueueReviewerForTask(
       "truly cannot judge the outcome) — that should be rare. When in doubt " +
       "between asking and deciding, DECIDE.",
     "",
-    "Do NOT push commits, merge, or change the code to fix what you find. You " +
-      "are reviewing, not implementing — the tools that would let you rewrite " +
-      "the checkout are removed from this run on purpose. Report what you find " +
-      "in your decision instead.",
+    "Do NOT merge the pull request — the board does that itself once your " +
+      "approval is in. Pushing fixes to the PR's own branch is expected of " +
+      "you; opening a second pull request, force-pushing, or touching any " +
+      "other ref is not.",
   ].join("\n");
+
+  // Sandboxed only — `uploadsAsSandboxPaths` points at an org-fs mount the hosted harness lacks.
+  const reviewerDescription =
+    task.description && sandboxed
+      ? uploadsAsSandboxPaths(task.description)
+      : task.description;
+  const reviewerUploadHint =
+    task.description && reviewerDescription
+      ? sandboxUploadHint(task.description, reviewerDescription)
+      : null;
 
   const prompt = [
     ...(sandboxed ? [] : [instructions, ""]),
     `Task title: ${task.title}`,
-    task.description ? `\nTask description:\n${task.description}\n` : "",
+    reviewerDescription ? `\nTask description:\n${reviewerDescription}\n` : "",
+    ...(reviewerUploadHint ? [reviewerUploadHint, ""] : []),
     "How to work:",
     `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
     repo
@@ -535,28 +763,22 @@ async function enqueueReviewerForTask(
     `- ${PR_DIFF_RECIPE}`,
     ...(priorReviewAt > 0
       ? [
-          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes; the Super Agent has pushed more commits since. Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
+          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
         ]
       : []),
-    ...(kind === "qa"
-      ? [
-          `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
-          // Two paths because the harnesses differ: the sandbox has a real
-          // browser baked in (`qa-screenshot`, which can also reach its own dev
-          // server on localhost); hosted Decopilot has no sandbox and uses its
-          // Browserless-backed built-in, which streams the image into the thread.
-          sandboxed
-            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` too for a responsive change."
-            : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
-          sandboxed
-            ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`
-            : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
-        ]
-      : []),
+    `- Fix the issues you find on the PR's branch, run the repository's own checks, and push to that same PR. You are the last automated run on this task — nothing picks up findings you only describe.`,
+    `- THEN exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`) — re-read it after your push so you get the preview of YOUR commit, and wait for it if it is still building. Deep-link to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+    // One path now: the browser lives in the sandbox image, and BOTH harnesses
+    // have a sandbox to run it in — the hosted one gets its own once the repo
+    // is loaded, which this prompt already tells it to do. Unlike a hosted
+    // capture service, a local browser can also reach the run's OWN dev server
+    // on localhost.
+    "- For a VISUAL change, capture before/after by running `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>] [--console]` (headless Chromium, baked into the sandbox; also works against a dev server you started on localhost — none is running by default, this pod is a checkout). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). Add `--mobile` too for a responsive change, and `--console` to catch the runtime errors a screenshot alone reports as a pass. WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them: a screenshot you never opened is not verification.",
+    `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`,
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
-    "  - `request_changes` when something is wrong or missing. Include specific, actionable notes — the task goes back to the Super Agent with your notes.",
+    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
     `- \`${decisionTool}\` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.`,
     "",
@@ -578,10 +800,7 @@ async function enqueueReviewerForTask(
       ? {
           harnessId: "claude-code" as const,
           modelClass,
-          agent: {
-            instructions,
-            disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind],
-          },
+          agent: { instructions },
         }
       : {}),
     ...(repo ? { repo } : {}),

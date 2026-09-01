@@ -3,7 +3,7 @@
  *
  * Provides dynamic context for the AI assistant based on:
  * - Current route parameters (connection, collection, item)
- * - The Library file the user currently has open (`?main=library-file:…`
+ * - The Library file the user currently has open (the `library-file` view
  *   side tab, or `?preview=`/`?skill=`/`?brand=` panel/dialog)
  * - Selected virtual MCP (agent) and its custom instructions
  *
@@ -14,6 +14,7 @@
 import { useMatch, useSearch } from "@tanstack/react-router";
 import { basename, orgFsMountPath } from "@/layouts/library/location";
 import { parseLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
+import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 
 /**
  * Hook that generates context for the AI assistant based on current state
@@ -28,21 +29,17 @@ export function useContext(virtualMcpId?: string | null): string {
     shouldThrow: false,
   });
 
-  // Library file the user currently has open. Desktop opens it as a
-  // main-panel side tab (`?main=library-file:<encoded browse path>`); the
-  // Library's own right panel and the mobile dialog use the raw browse-path
-  // params (`?preview=`/`?skill=`/`?brand=`). Precedence mirrors the panel's
-  // own (preview › skill › brand); the side tab wins when both are set.
+  /** The open Library file. Desktop uses the `library-file` view; the panel and
+   *  mobile dialog use `?preview=`/`?skill=`/`?brand=`. Precedence mirrors the
+   *  panel's own (preview › skill › brand), and the view wins over both. */
   const search = useSearch({ strict: false }) as {
-    main?: string | 0;
     preview?: string;
     skill?: string;
     brand?: string;
   };
+  const activeTabId = useActivePanelTabId();
   const openFilePath =
-    (typeof search.main === "string"
-      ? parseLibraryFileTabId(search.main)?.path
-      : undefined) ??
+    parseLibraryFileTabId(activeTabId)?.path ??
     search.preview ??
     search.skill ??
     search.brand ??

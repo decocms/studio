@@ -14,6 +14,7 @@
  * history for free and dragging a card back out un-archives it.
  */
 
+import { boardFor, shippedPatch } from "./board-handler";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
@@ -110,17 +111,24 @@ async function archiveIfMerged(
   );
   if (!cardWorkLanded(landings)) return false;
 
+  // The board says where a finished card retires to. A board with nowhere to
+  // retire one leaves it in Done rather than filing it under a column it does
+  // not have, which would make the card invisible instead of archived.
+  const board = await boardFor(ctx, organizationId);
+  const archived = await board.archiveColumn();
+  if (!archived) return false;
+
   const updated = await ctx.storage.taskBoard.update(
     itemId,
     organizationId,
-    { status: "archived" },
+    shippedPatch(board, archived),
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
     taskBoardItemId: itemId,
     action: "status_changed",
     actorId: null,
-    data: { from: "done", to: "archived", reason: "merged_pr_auto_archive" },
+    data: { from: "done", to: archived, reason: "merged_pr_auto_archive" },
   });
   emitTaskBoardUpdated(organizationId, updated);
   return true;

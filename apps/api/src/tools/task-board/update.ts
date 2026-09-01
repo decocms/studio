@@ -1,11 +1,9 @@
+import { assertBoardHasColumn, boardFor } from "./board-handler";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
-import type {
-  TaskBoardActivityAction,
-  TaskBoardItem,
-  TaskBoardItemStatus,
-} from "@/storage/types";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import type { TaskBoardActivityAction, TaskBoardItem } from "@/storage/types";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
   MAX_TASK_REPO_LENGTH,
@@ -16,6 +14,7 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
+import { inReviewPhase, isDeliveryLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
@@ -37,7 +36,14 @@ import {
  * links.
  */
 const LOGGED_FIELDS: {
-  field: "status" | "assigneeId" | "priority" | "dueDate" | "title" | "type";
+  field:
+    | "status"
+    | "assigneeId"
+    | "priority"
+    | "dueDate"
+    | "title"
+    | "type"
+    | "sprintId";
   action: TaskBoardActivityAction;
 }[] = [
   { field: "status", action: "status_changed" },
@@ -46,6 +52,7 @@ const LOGGED_FIELDS: {
   { field: "type", action: "type_changed" },
   { field: "dueDate", action: "due_date_changed" },
   { field: "title", action: "title_changed" },
+  { field: "sprintId", action: "sprint_changed" },
 ];
 
 /**
@@ -64,6 +71,7 @@ const UPDATABLE_FIELDS = [
   "repo",
   "dueDate",
   "sortOrder",
+  "sprintId",
   "tagIds",
 ] as const;
 
@@ -140,8 +148,13 @@ export function delegatesToSuperAgent(
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
  *  lands here it's out of the review loop, same as "done" — `archived` skips
- *  review just as effectively as completing it does. */
-const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
+ *  review just as effectively as completing it does. The delivery lanes count
+ *  too: they sit past In Review, so a run setting `merged` would escape this
+ *  guard and drop the card out of `listItemsPendingReview`. */
+const REVIEW_CLOSING_STATUSES = new Set<string>([
+  "approved",
+  "merged",
+  "post_deploy_validation",
   "done",
   "archived",
 ]);
@@ -149,14 +162,42 @@ const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
 /** `task-run-context` withholds REVIEW_DECISION and PROMOTE_TO_PRODUCTION for this
  *  invariant; this tool sets `status` freely, so it needs the same guard. */
 export function closesOwnReview(
-  inputStatus: TaskBoardItemStatus | undefined,
-  previousStatus: TaskBoardItemStatus | undefined,
+  inputStatus: string | undefined,
+  previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
   isTaskRun: boolean,
+  /** This board's review column — see `inReviewPhase`. */
+  reviewLane: string | null,
 ): boolean {
   const completesTask =
     inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
-  const awaitingReview = previousStatus === "in_review";
+  // The PHASE, not the lane: a card whose reviewer is still working reads In
+  // Progress since migration 190, and gating on the lane alone would let the
+  // author's own run mark its work Done out from under that reviewer.
+  const awaitingReview =
+    previous !== undefined && inReviewPhase(previous, reviewLane);
   return isTaskRun && completesTask && awaitingReview;
+}
+
+/**
+ * A delivery lane (Approved, Merged, Post-deploy Validation) is a status that
+ * only exists for an org running `delivery_lanes_enabled` — the schema still
+ * accepts it unconditionally (adding a lane is a compile-time exhaustiveness
+ * concern, not a runtime one), so this tool is the one place that has to
+ * refuse it directly when the flag is off. Without this, any raw
+ * TASK_BOARD_ITEM_UPDATE call (an MCP client, a script, a stale agent) could
+ * park a card in a lane the flag's own description promises "behaves exactly
+ * as if it did not exist" — the board's `moveTargets`/`laneVisibility` only
+ * gate the UI's own drag/dropdown, not the tool underneath them.
+ */
+export function rejectsUngatedDeliveryLane(
+  inputStatus: string | undefined,
+  deliveryLanesEnabled: boolean,
+): boolean {
+  return (
+    inputStatus !== undefined &&
+    isDeliveryLane(inputStatus) &&
+    !deliveryLanesEnabled
+  );
 }
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
@@ -186,6 +227,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
+    /** Move the card to this sprint, or null for the backlog. On a card linked
+     *  to a tracker this is pushed there, so pulling one into the sprint here
+     *  is the same act as pulling it there. */
+    sprintId: z.string().nullable().optional(),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
@@ -196,8 +241,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       .optional()
       .describe(
         "GitHub pull request URL to link to this task, e.g. " +
-          "https://github.com/owner/repo/pull/123. Pass this with " +
-          '`status: "in_review"` after opening a PR for an existing card.',
+          "https://github.com/owner/repo/pull/123. Pass it after opening a " +
+          "PR for an existing card; linking one is what starts its review.",
       ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
@@ -219,6 +264,17 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
           "https://github.com/<owner>/<repo>/pull/<number>)",
       );
+    }
+
+    // Checked here rather than left to the foreign key: an unknown id would
+    // otherwise surface as `violates foreign key constraint
+    // "task_board_items_sprint_id_fkey"`, which names our schema at a caller
+    // who asked a reasonable question. Null is the backlog and always valid.
+    if (input.sprintId) {
+      const sprints = await ctx.storage.sprints.listByOrg(organizationId);
+      if (!sprints.some((sprint) => sprint.id === input.sprintId)) {
+        throw new Error("sprintId is not a sprint on this board");
+      }
     }
 
     if (input.assigneeId) {
@@ -262,11 +318,40 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       throw new Error(`Task board item not found: ${input.id}`);
     }
 
+    const board = await boardFor(ctx, organizationId);
+    if (input.status !== undefined) {
+      await assertBoardHasColumn(board, input.status);
+    }
+
+    if (input.status !== undefined && isDeliveryLane(input.status)) {
+      const settings =
+        await ctx.storage.organizationSettings.get(organizationId);
+      if (
+        rejectsUngatedDeliveryLane(
+          input.status,
+          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
+        )
+      ) {
+        throw new Error(
+          "Delivery lanes are not enabled for this organization — enable " +
+            "them in Settings before moving a task to Approved, Merged, or " +
+            "Post-deploy Validation.",
+        );
+      }
+    }
+
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    if (closesOwnReview(input.status, previous?.status, isTaskRun)) {
+    if (
+      closesOwnReview(
+        input.status,
+        previous ?? undefined,
+        isTaskRun,
+        (await board.lanes()).review,
+      )
+    ) {
       throw new Error(
-        "This task is In Review — a run can't move it to Done or Archived. " +
-          "Leave it in in_review for the reviewer; only a person, or " +
+        "This task is under review — a run can't move it to Done or Archived. " +
+          "Leave it for the reviewer; only a person, or " +
           "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, closes out a " +
           "task under review.",
       );
@@ -336,6 +421,11 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           title: input.title,
           description: input.description,
           status: becameSuperAgent ? "todo" : input.status,
+          // Written with the status it describes, so a card cannot end up in a
+          // column of the org's own while still unguarded.
+          ...(input.status !== undefined || becameSuperAgent
+            ? { boardColumnOrg: board.columnOwner() }
+            : {}),
           priority: input.priority,
           type: input.type,
           assigneeId: input.assigneeId,
@@ -348,6 +438,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
+          sprintId: input.sprintId,
         },
         getUserId(ctx)!,
       );

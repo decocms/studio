@@ -28,16 +28,14 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   blockRefLoaderConfigHasData,
+  blockRefOptionLabel,
   detectBlockRefType,
   enrichBlockRefOptions,
   lazyWrappedInner,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
 } from "../block-ref-field-utils";
-import {
-  embeddedUnionBlockId,
-  isEmbeddedUnionResolveType,
-} from "../block-type-utils";
+import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import { labelFromResolveType } from "../section-types";
 import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
@@ -411,9 +409,8 @@ export function AnyOfField({
     const handleMakeGlobalSubmit = (blockId: string) => {
       if (!onSaveReferencedBlock) return;
       const trimmed = blockId.trim();
-      const validationError = decofile
-        ? validateBlockId(trimmed, decofile)
-        : null;
+      // Never skip validation just because decofile hasn't loaded yet.
+      const validationError = validateBlockId(trimmed, decofile ?? {});
       if (validationError) {
         toast.error(validationError);
         return;
@@ -440,20 +437,14 @@ export function AnyOfField({
             virtualMcpId={sandbox?.virtualMcpId}
           />
           <Select value={activeRt || undefined} onValueChange={handleRefChange}>
-            <SelectTrigger id={path}>
+            <SelectTrigger id={path} className="w-full min-w-0">
               <SelectValue
                 placeholder={t("sectionsEditor.anyOfField.selectPlaceholder")}
               />
             </SelectTrigger>
             <SelectContent>
               {refs.map((ref) => {
-                // If title is a file path (contains "/"), derive a human label
-                // from the resolveType instead (e.g. "DeliveryPromiseProductListingPage").
-                const displayTitle =
-                  ref.title && !ref.title.includes("/")
-                    ? ref.title
-                    : (embeddedUnionBlockId(ref.resolveType) ??
-                      labelFromResolveType(ref.resolveType));
+                const displayTitle = blockRefOptionLabel(ref);
                 return (
                   <SelectItem key={ref.resolveType} value={ref.resolveType}>
                     {displayTitle}

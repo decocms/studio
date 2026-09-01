@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -106,20 +107,63 @@ func changedPaths(status WorkingTreeStatus) []string {
 // run's MCP bearer token, which a push would leak into the repo's history.
 var NeverCommit = []string{".deco/tools/"}
 
+// BuildArtifacts are generated files some repos track anyway. A sandbox must
+// never commit one: it holds a DEV build (a `deno task dev` writes minified
+// Tailwind where the repo tracks the expanded release build), so committing it
+// is a large, meaningless reformat that every descendant branch then inherits.
+//
+// A repo tracking its own build output is the underlying bug, and gitignoring
+// it there is the real fix — this is the sandbox-side belt so no run makes it
+// worse in the meantime. Named paths, not patterns: a pattern would eventually
+// swallow something a user meant to commit.
+//
+// Note `.deco/metadata/` (a generated manifest), NOT `.deco/blocks/` — those
+// are decofile content and the whole point of many changes.
+var BuildArtifacts = []string{
+	"static/tailwind.css",
+	".deco/metadata/",
+}
+
+// dotenvName reports whether a file name is a `.env` variant — `.env` itself or
+// `.env.<anything>` (`.env.local`, `.env.production`). NOT `.envrc`, which repos
+// commit on purpose.
+func dotenvName(base string) bool {
+	return base == ".env" || strings.HasPrefix(base, ".env.")
+}
+
 // dropNeverCommit filters {@link NeverCommit} paths out of a publish's file list.
+//
+// Also drops `.env` files anywhere in the tree. They only reach this list when
+// the repo forgot to ignore them, but then they hold live credentials and the
+// autosave loop (autosave.go) pushes unattended every couple of minutes — so a
+// secret the agent wrote and would have deleted before finishing reaches the
+// branch, and GitHub, first. A push is irreversible (a force-push does not undo
+// a leak), which is what makes dropping them the safe default even though it
+// means a repo that genuinely tracks a `.env` cannot change it from a sandbox.
 func dropNeverCommit(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
 		rel := strings.TrimPrefix(filepath.ToSlash(p), "./")
-		skip := false
+		reason := ""
+		if dotenvName(path.Base(rel)) {
+			reason = "dotenv file"
+		}
 		for _, deny := range NeverCommit {
 			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
-				skip = true
+				reason = "daemon-managed path"
 				break
 			}
 		}
-		if skip {
-			slog.Warn("skipping from sync", "reason", "daemon-managed path", "path", rel)
+		// The pre-commit hook covers the agent's own `git add -A`; publish
+		// pushes with --no-verify, so it needs the same list in code.
+		for _, deny := range BuildArtifacts {
+			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+				reason = "generated build artifact"
+				break
+			}
+		}
+		if reason != "" {
+			slog.Warn("skipping from sync", "reason", reason, "path", rel)
 			continue
 		}
 		out = append(out, p)

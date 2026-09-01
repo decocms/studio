@@ -11,6 +11,7 @@ export const RESERVED_ORGANIZATION_SLUGS: ReadonlySet<string> = new Set([
   "_admin",
   "api",
   "auth",
+  "choose-editor",
   "cli",
   "commerce-onboarding",
   "dbos-queue-depth",

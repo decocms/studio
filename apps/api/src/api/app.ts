@@ -171,6 +171,7 @@ import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-event
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { TaskBoardStorage } from "../storage/task-board";
+import { boardLanesForDb } from "../tools/task-board/board-handler";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
@@ -1131,12 +1132,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     // reaches the projector, so this reactor is its only terminal writer — and
     // owes the board the pass the projector's own terminals already run. Same
     // storages, built here because this wiring precedes theirs.
-    onThreadFinished: (threadId, orgId) =>
+    onThreadFinished: async (threadId, orgId) =>
       advanceTasksToReviewOnThreadFinish(
         new TaskBoardStorage(database.db),
         threadId,
         orgId,
         new OrganizationBillingStorage(database.db),
+        await boardLanesForDb(database.db, orgId),
       ),
   };
 
@@ -1626,6 +1628,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     projectorTaskBoard,
     automationContextFactory,
     projectorBilling,
+    database.db,
   );
   if (getSettings().taskBoardReviewSweeperEnabled) {
     taskBoardReviewSweeper.start();
@@ -1684,6 +1687,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
+          await boardLanesForDb(database.db, orgId),
         );
         // The headless reviewer trigger used to be called here and could never
         // work: this callback runs inside a DBOS step, and the dispatch bottoms
@@ -1718,6 +1722,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
+          await boardLanesForDb(database.db, orgId),
         );
         // No reviewer trigger here either — see completeRunIfNotCompleted above
         // for why it cannot live in a step. `TaskBoardReviewSweeper` owns it.
@@ -1870,13 +1875,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
   }
 
-  // Expired API key cleanup (e.g. short-lived claude-code-session keys)
+  // Expired API key cleanup — the api-key plugin's own sweep, not a raw query.
   const cleanupExpiredApiKeys = () =>
-    database.db
-      .deleteFrom("apikey" as any)
-      .where("expiresAt" as any, "<", new Date())
-      .execute()
-      .then(() => {})
+    auth.api
+      .deleteAllExpiredApiKeys()
       .catch((err: unknown) =>
         console.error("[auth] Expired API key cleanup failed:", err),
       );

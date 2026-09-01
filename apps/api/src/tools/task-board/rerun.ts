@@ -43,6 +43,8 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
+import { boardLanes } from "./board-handler";
+import { inReviewPhase } from "./lanes";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
 import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
@@ -207,8 +209,9 @@ const MERGE_RETRY_GRACE_MS = 15 * 60 * 1000;
 export function mergeRetryExpired(
   activity: ReviewCycleActivity[],
   nowMs: number,
+  cycleStartedAt: string | null,
 ): boolean {
-  const cycleStart = reviewCycleStart(activity);
+  const cycleStart = reviewCycleStart(activity, cycleStartedAt);
   let latestApproval = 0;
   for (const a of activity) {
     if (a.action !== "review_approved") continue;
@@ -249,9 +252,15 @@ export function mergeRetryExpired(
  */
 export async function refuseIfMergePending(
   ctx: StudioContext,
-  item: { id: string; status: string; organizationId: string },
+  item: {
+    id: string;
+    status: string;
+    organizationId: string;
+    reviewCycleStartedAt: string | null;
+  },
 ): Promise<void> {
-  if (item.status !== "in_review") return;
+  const reviewLane = (await boardLanes(ctx, item.organizationId)).review;
+  if (!inReviewPhase(item, reviewLane)) return;
   const settings = await ctx.storage.organizationSettings.get(
     item.organizationId,
   );
@@ -265,7 +274,8 @@ export async function refuseIfMergePending(
   const activity = await ctx.storage.taskBoard
     .listActivity(item.id, item.organizationId)
     .catch(() => []);
-  if (mergeRetryExpired(activity, Date.now())) return;
+  if (mergeRetryExpired(activity, Date.now(), item.reviewCycleStartedAt))
+    return;
   if (await mergeIsDeadlocked(ctx, item, activity)) return;
   throw new Error(
     "Every reviewer approved this task and its merge is retrying — re-running " +
@@ -357,6 +367,9 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
       await stopSupersededRun(ctx, threadId, organizationId);
     }
 
+    // Whatever a reviewer decided was about the pre-rerun work — same reasoning as `reopenLinkedTasksOnThreadRun`.
+    await ctx.storage.taskBoard.closeReviewCycle(id, organizationId);
+
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
     // chunk lands. `enqueueSuperAgentForTask` claims quota itself (idempotent
@@ -364,12 +377,15 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
     // best-effort: a swallowed failure here is exactly the silent no-op this
     // tool exists to remove.
-    const updated = await ctx.storage.taskBoard.update(
-      id,
-      organizationId,
-      { status: "in_progress" },
-      getUserId(ctx)!,
-    );
+    const progress = (await boardLanes(ctx, organizationId)).progress;
+    const updated = progress
+      ? await ctx.storage.taskBoard.update(
+          id,
+          organizationId,
+          { status: progress },
+          getUserId(ctx)!,
+        )
+      : item;
 
     await recordTaskActivity(ctx, {
       taskBoardItemId: id,

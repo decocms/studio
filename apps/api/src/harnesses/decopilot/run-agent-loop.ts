@@ -44,7 +44,7 @@ import { assembleAgentTools } from "./assemble-agent-tools";
 import type { BuiltinToolParams } from "./built-in-tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import {
-  advanceTaskBoardForRun,
+  openReviewCycleForRun,
   capturePrForRun,
   isPrCreateBashCommand,
 } from "@/tools/task-board/run-reactions";
@@ -225,9 +225,9 @@ export async function runAgentLoop(
     : createLanguageModel(opts.provider, opts.models.thinking);
 
   // Watch each step's bash calls for `gh pr create` (or a REST fallback) and
-  // move a linked task card to In Review. The scan itself is a cheap per-step
+  // open a linked task card's review cycle. The scan itself is a cheap per-step
   // array walk, so it's unconditional — a normal run never has a `bash` call
-  // matching the PR regexes, and `advanceTaskBoardForRun` hits the DB only when
+  // matching the PR regexes, and `openReviewCycleForRun` hits the DB only when
   // one does: a link SELECT to resolve the target, then a write only if that
   // run is actually task-linked (a non-task match reads nothing to update).
   // (The GitHub MCP tool path is caught separately via
@@ -243,11 +243,7 @@ export async function runAgentLoop(
         command &&
         isPrCreateBashCommand(command)
       ) {
-        void advanceTaskBoardForRun(
-          opts.ctx,
-          "in_review",
-          opts.currentThreadId,
-        );
+        void openReviewCycleForRun(opts.ctx, opts.currentThreadId);
         // Link the PR too — its URL is in the bash call's stdout (`gh pr create`
         // prints it; a `curl … /pulls` POST returns it in the response body).
         // Only parse the matched call's own output, never every bash stdout.

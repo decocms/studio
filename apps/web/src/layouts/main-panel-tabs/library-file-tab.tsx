@@ -1,6 +1,6 @@
 /**
  * LibraryFileTab — main-panel side preview of an org Library file referenced
- * from a chat message (`?main=library-file:<encoded browse path>`).
+ * from a chat message (`/agents/{-$project}/library-file?path=…`).
  *
  * Thin adapter over the shared LibraryPreviewPanel — the SAME side panel the
  * desktop Library uses — with the "See in library" jump enabled since the
@@ -8,20 +8,12 @@
  * dialog form (OrgFilePreviewMount) instead, mirroring the Library's split.
  */
 
-import { useNavigate } from "@tanstack/react-router";
 import { LibraryPreviewPanel } from "@/layouts/library/preview-panel";
+import { usePanelNavigate } from "./use-panel-navigate";
 
 export function LibraryFileTab({ path }: { path: string }) {
-  const navigate = useNavigate();
-  const onClose = () =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: 0 as const,
-      }),
-      replace: true,
-    });
+  const { closePanel } = usePanelNavigate();
+  const onClose = () => closePanel();
   return (
     <LibraryPreviewPanel
       previewPath={path}

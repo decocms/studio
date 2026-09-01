@@ -2,20 +2,27 @@
  * Super Agent run → task board status reactions.
  *
  * A task delegated to the Super Agent rides its run's lifecycle:
- *   enqueued            → todo         (create/update tool, synchronous)
- *   loop starts         → in_progress  (runHostedHarness)
- *   agent opens a PR    → in_review    (github MCP tool call OR bash `gh pr create`)
- *   thread finishes,    → in_review    (projector terminal → thread-finish hook)
+ *   enqueued            → todo          (create/update tool, synchronous)
+ *   loop starts         → in_progress    (runHostedHarness)
+ *   agent opens a PR    → review cycle   (github MCP tool call OR bash `gh pr create`)
+ *                         opens, lane
+ *                         stays in_progress
+ *   thread finishes,    → in_review      (projector terminal → thread-finish hook)
  *     no repo loaded
- *   user re-prompts a   → in_progress  (runHostedHarness, thread-run hook)
+ *   reviewer decides    → in_review      (`parkReviewedCardForHuman`)
+ *   user re-prompts a   → in_progress    (runHostedHarness, thread-run hook)
  *     reviewed task
  *
- * The last two are LINK-based (`task_board_item_threads`), not runMetadata-based,
- * so they hold for a re-prompted thread that carries no run metadata.
+ * A PR does NOT move the card. Since migration 190 the review cycle is a column
+ * (`review_cycle_started_at`), not a lane, so an agent reviewer can work on a
+ * card that still truthfully reads In Progress; In Review is reserved for "it
+ * is a person's turn". `inReviewPhase` is the predicate that spans both.
  *
- * The PR-open path resolves the item from `ctx.metadata.runMetadata.taskBoardItemId`
- * (set at enqueue) first, falling back to the same thread link when that's absent —
- * so a repo-backed task's SECOND PR, opened after a re-prompt, still lands In Review.
+ * The link-based transitions use `task_board_item_threads`, not runMetadata, so
+ * they hold for a re-prompted thread that carries no run metadata. The PR-open
+ * path resolves the item from `ctx.metadata.runMetadata.taskBoardItemId` (set at
+ * enqueue) first, falling back to the same thread link when that's absent — so a
+ * repo-backed task's SECOND PR, opened after a re-prompt, still opens a cycle.
  * Each transition also pushes the updated item over SSE for a real-time board.
  */
 
@@ -24,6 +31,7 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
+import { type BoardLanes, boardCan, boardLanes } from "./board-handler";
 import { extractPrFromValue } from "./pr-extract";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -35,18 +43,9 @@ import {
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
+import { LANE_RANK, inReviewPhase, laneRank } from "./lanes";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
-
-/** Board lane order — a transition only moves a card forward, never back. */
-const RANK: Record<TaskBoardItemStatus, number> = {
-  triage: 0,
-  todo: 1,
-  in_progress: 2,
-  in_review: 3,
-  done: 4,
-  archived: 5,
-};
+import type { TaskBoardItem } from "@/storage/types";
 
 /** Run-lifecycle funnel events (auto-fix leg of the PLG funnel). System
  *  actions with no acting user — org identity, person processing off.
@@ -70,7 +69,8 @@ function captureTaskRunEvent(
 
 /** Push a task board item change to every SSE listener on its org. Also the
  *  one funnel every board write passes through, so it feeds the Jira status
- *  push — dynamic import because the jira sync itself imports this module. */
+ *  and sprint pushes — dynamic import because the jira sync itself imports
+ *  this module. */
 export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
   sseHub.emit(orgId, {
     id: crypto.randomUUID(),
@@ -81,11 +81,14 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
     time: new Date().toISOString(),
   });
   void import("@/jira/dbos-jira-sync")
-    .then((jira) => jira.maybeEnqueueJiraStatusPush(orgId, item))
+    .then((jira) => {
+      jira.maybeEnqueueJiraStatusPush(orgId, item);
+      jira.maybeEnqueueJiraSprintPush(orgId, item);
+    })
     .catch((err) => {
-      // Swallowing this silently would make the whole Jira status push dead on
-      // arrival with no signal anywhere — the enqueue logs its own failures.
-      console.warn("[jira] status push hook unavailable:", err);
+      // Swallowing this silently would make the whole Jira push dead on
+      // arrival with no signal anywhere — the enqueues log their own failures.
+      console.warn("[jira] push hooks unavailable:", err);
     });
 }
 
@@ -148,7 +151,7 @@ export async function resolveRunTaskTargets(
  */
 export async function advanceTaskBoardForRun(
   ctx: StudioContext,
-  status: TaskBoardItemStatus,
+  status: string,
   threadId?: string,
 ): Promise<void> {
   const orgId = ctx.organization?.id;
@@ -159,9 +162,12 @@ export async function advanceTaskBoardForRun(
       // ponytail: read-then-write rank guard. A single run's transitions are
       // sequential, so the race window is negligible; it buys idempotency (a
       // repeated PR tool call, or in_progress re-fired on a DBOS retry, won't
-      // regress a card that's already further along). Upgrade to a conditional
-      // UPDATE ... WHERE status-rank < new-rank only if concurrency ever bites.
-      if (!current || RANK[status] <= RANK[current.status]) continue;
+      // regress a card that's already further along). A status with no rank is
+      // a column Studio did not define, and inventing an order for someone
+      // else's columns would be worse than not guarding.
+      const to = laneRank(status);
+      const from = laneRank(current?.status ?? "");
+      if (!current || (to !== null && from !== null && to <= from)) continue;
       const item = await ctx.storage.taskBoard.update(
         itemId,
         orgId,
@@ -181,18 +187,55 @@ export async function advanceTaskBoardForRun(
           console.error("[task-board] activity log write failed", err),
         );
       emitTaskBoardUpdated(orgId, item);
-      if (status === "in_progress" || status === "in_review") {
-        captureTaskRunEvent(
-          status === "in_progress" ? "task_run_started" : "task_run_completed",
-          orgId,
-          item,
-          // in_review lands here only from the PR-open hook (see module doc).
-          { from: current.status, via: "pr_open" },
-        );
+      // The PR-open hook no longer comes through here — it opens a review
+      // cycle instead (`openReviewCycleForRun`) and emits its own event — so
+      // the only advance left to report is the run starting.
+      if (status === "in_progress") {
+        captureTaskRunEvent("task_run_started", orgId, item, {
+          from: current.status,
+        });
       }
     }
   } catch (err) {
     console.error("[task-board] run transition failed", err);
+  }
+}
+
+/**
+ * A run opened a GitHub PR — open the review cycle on its linked task(s).
+ *
+ * This is the real-time trigger: the card gets a reviewer the moment the PR
+ * exists, mid-run, rather than waiting for the thread-finish backstop. It does
+ * NOT move the card — an agent is still the one working on it, so it stays In
+ * Progress until a verdict lands (`parkReviewedCardForHuman`).
+ *
+ * Idempotent by construction: `openReviewCycleIfInProgress` only stamps a card
+ * that has no cycle open, so a run that opens two PRs, or a tool hook that
+ * fires twice, cannot move a boundary that already has verdicts behind it.
+ * Best-effort — a failure here never disturbs the agent run.
+ */
+export async function openReviewCycleForRun(
+  ctx: StudioContext,
+  threadId?: string,
+): Promise<void> {
+  const orgId = ctx.organization?.id;
+  if (!orgId) return;
+  try {
+    for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
+      const opened = await ctx.storage.taskBoard.openReviewCycleIfInProgress(
+        itemId,
+        orgId,
+        await boardLanes(ctx, orgId),
+      );
+      if (!opened) continue;
+      emitTaskBoardUpdated(orgId, opened);
+      captureTaskRunEvent("task_run_completed", orgId, opened, {
+        from: "in_progress",
+        via: "pr_open",
+      });
+    }
+  } catch (err) {
+    console.error("[task-board] review-cycle open failed", err);
   }
 }
 
@@ -246,11 +289,14 @@ export async function advanceTasksToReviewOnThreadFinish(
   /** Quota bookkeeping (billing/task-quota.ts). Required on purpose: an
    *  optional arg here is a silent way for a caller to stop refunding. */
   billing: OrganizationBillingStorage,
+  /** This org's board lanes — see `reactToFailedTaskRun`. */
+  lanes: BoardLanes,
 ): Promise<void> {
   try {
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
       threadId,
       orgId,
+      lanes,
     );
     for (const item of moved) {
       emitTaskBoardUpdated(orgId, item);
@@ -267,8 +313,28 @@ export async function advanceTasksToReviewOnThreadFinish(
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
   }
-  await reactToFailedTaskRun(taskBoard, threadId, orgId);
+  await reactToFailedTaskRun(taskBoard, threadId, orgId, lanes);
   await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
+}
+
+/**
+ * True when a card has demonstrably produced something a person can look at:
+ * it reached In Review or beyond, or it is still In Progress with a review
+ * cycle open — which since migration 190 is exactly where a card sits while an
+ * agent reviews its pull request.
+ *
+ * Rank alone used to answer this, and would now read a card mid-review as
+ * having delivered nothing: it would refund its own quota claim and relabel a
+ * lost stream as a plain failure.
+ */
+function cardDelivered(item: {
+  status: string;
+  reviewCycleStartedAt: string | null;
+}): boolean {
+  return (
+    (laneRank(item.status) ?? -1) >= LANE_RANK.in_review ||
+    Boolean(item.reviewCycleStartedAt)
+  );
 }
 
 /** The per-failure retry budget lives in `transient-failure.ts`
@@ -312,6 +378,10 @@ export async function reactToFailedTaskRun(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
+  /** This org's board lanes. Passed rather than resolved here: the caller
+   *  already holds a board or a handle to build one from, and taking the I/O
+   *  out keeps this reaction testable without a database. */
+  lanes: BoardLanes,
 ): Promise<void> {
   try {
     const failure = await taskBoard.failedRunInfo(threadId, orgId);
@@ -320,13 +390,22 @@ export async function reactToFailedTaskRun(
     for (const itemId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(itemId, orgId);
       if (!item) continue;
-      // The run moved the card itself and only THEN lost its stream.
-      if (item.status === "in_review" || item.status === "done") {
+      // The run moved the card itself and only THEN lost its stream. By rank, so
+      // a card the merged-PR reconcile pushed further still counts as delivered
+      // — as does one still In Progress with a review cycle open, which since
+      // migration 190 is what a card with a PR under review looks like.
+      if (cardDelivered(item)) {
         await taskBoard
           .relabelDeliveredFailure(threadId, orgId, DELIVERED_FAILURE_REASON)
           .catch(() => {});
       }
       if (item.status !== "in_progress") continue;
+      // A REVIEWER's run failed, not the author's: the card is In Progress only
+      // because that is where a card under review sits now. Retrying it here
+      // would dispatch a fresh Super Agent run over a PR that is waiting for a
+      // verdict, or park a reviewed card back on To Do. The reviewer has its
+      // own budget (`spentAttemptsThisCycle`), and the sweeper spends it.
+      if (item.reviewCycleStartedAt) continue;
       // Another of this card's threads is still working — its outcome decides
       // the card, not this one's.
       if (
@@ -348,6 +427,7 @@ export async function reactToFailedTaskRun(
           orgId,
           attempts + 1,
           new Date(Date.now() + delay),
+          lanes.progress,
         );
         if (!scheduled) continue;
         await taskBoard
@@ -370,6 +450,7 @@ export async function reactToFailedTaskRun(
         itemId,
         orgId,
         item.updatedBy,
+        lanes,
       );
       if (!returned) continue;
       await taskBoard
@@ -424,7 +505,7 @@ export async function refundUnproductiveTaskClaims(
     for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(taskId, orgId);
       if (!item) continue;
-      if (RANK[item.status] >= RANK.in_review) continue;
+      if (cardDelivered(item)) continue;
       const stillRunning = item.threads.some(
         (t) =>
           t.hasMessages &&
@@ -438,6 +519,61 @@ export async function refundUnproductiveTaskClaims(
     }
   } catch (err) {
     console.error("[task-board] quota refund pass failed", err);
+  }
+}
+
+/**
+ * The agent side of a review is over — move the card into In Review, where a
+ * person picks it up.
+ *
+ * This is the OTHER half of migration 190. A card whose reviewer is still
+ * running reads In Progress, because that is the truthful thing to say while an
+ * agent is working; In Review means "it is your turn". Something has to make
+ * that second transition, and it is this: every terminal of the review —
+ * a verdict, an exhausted retry budget, a hand-off — comes through here.
+ *
+ * A no-op unless the card is actually mid-cycle In Progress, so it can neither
+ * drag a card backward out of a delivery lane nor re-park one a human already
+ * moved. The cycle stays OPEN (In Review is inside the review phase), which is
+ * what keeps the verdict that just landed valid.
+ *
+ * Best-effort: never fail a verdict over the lane it lands in.
+ */
+export async function parkReviewedCardForHuman(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+): Promise<void> {
+  const lanes = await boardLanes(ctx, item.organizationId);
+  if (item.status !== lanes.progress || !inReviewPhase(item, lanes.review))
+    return;
+  if (
+    !boardCan(
+      item.organizationId,
+      "in_review",
+      lanes.review,
+      "parking a reviewed card for a person",
+    )
+  ) {
+    return;
+  }
+  try {
+    const parked = await ctx.storage.taskBoard.update(
+      item.id,
+      item.organizationId,
+      { status: lanes.review },
+      item.updatedBy,
+    );
+    await ctx.storage.taskBoard
+      .recordActivity({
+        taskBoardItemId: item.id,
+        action: "status_changed",
+        actorId: null,
+        data: { from: item.status, to: "in_review" },
+      })
+      .catch(() => {});
+    emitTaskBoardUpdated(item.organizationId, parked);
+  } catch (err) {
+    console.error(`[task-board] parking ${item.id} for review failed`, err);
   }
 }
 
@@ -457,7 +593,9 @@ export async function refundUnproductiveTaskClaims(
  * requires the Super Agent as assignee, so a handed-over card is visited once
  * and then left alone. Deliberately leaves the STATUS untouched — In Review is
  * where a human wants to pick a reviewed card up, and moving it would lose the
- * reviewers' notes' context. Returns true when this call did the handover.
+ * reviewers' notes' context — `parkReviewedCardForHuman` is what settles the
+ * lane, and it runs first here so a handed-off card never reads as still being
+ * worked on. Returns true when this call did the handover.
  */
 export async function handTaskToHuman(
   ctx: StudioContext,
@@ -467,6 +605,14 @@ export async function handTaskToHuman(
   const orgId = item.organizationId;
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   try {
+    // Best-effort: parking needs to know the board, and a card must still
+    // reach a person when that read fails.
+    await parkReviewedCardForHuman(ctx, item).catch((err) =>
+      console.warn(
+        `[task-board] parking ${item.id} before hand-off failed`,
+        err,
+      ),
+    );
     // Re-checks the assignee against the DB, not this stale `item`.
     const handed = await ctx.storage.taskBoard.unassignSuperAgent(
       item.id,

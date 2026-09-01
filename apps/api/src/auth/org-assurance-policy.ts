@@ -82,7 +82,7 @@ export function domainDisplayName(domain: string): string {
 
 /**
  * Derives a human display name from an email local-part, e.g.
- * `stephanie.moraes@montecarlo.com.br` -> "Stephanie Moraes".
+ * `ana.ribeiro@example.com` -> "Ana Ribeiro".
  *
  * Used to backfill `user.name` at signup for flows that never collect one
  * (email OTP, magic link, email/password), so invited members don't render

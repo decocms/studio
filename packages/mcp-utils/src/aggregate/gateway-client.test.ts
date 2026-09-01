@@ -656,4 +656,131 @@ describe("GatewayClient", () => {
       expect(client.listTools).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("fan-out concurrency", () => {
+    // A slow client makes latency observable: with a sequential fan-out the
+    // aggregation costs the SUM of every client's latency, which is what blew
+    // past MCP clients' connect timeouts on multi-connection agents.
+    const slowClient = (tool: string, delayMs: number): IClient => {
+      const client = createMockClient([{ name: tool }]);
+      const inner = client.listTools;
+      client.listTools = (async (...args: unknown[]) => {
+        await new Promise((r) => setTimeout(r, delayMs));
+        return (inner as (...a: unknown[]) => unknown)(...args);
+      }) as IClient["listTools"];
+      return client;
+    };
+
+    it("lists every client concurrently, not one after another", async () => {
+      const gw = new GatewayClient({
+        a: { client: slowClient("a", 120) },
+        b: { client: slowClient("b", 120) },
+        c: { client: slowClient("c", 120) },
+      });
+
+      const started = Date.now();
+      const { tools } = await gw.listTools();
+      const elapsed = Date.now() - started;
+
+      expect(tools.map((t) => t.name).sort()).toEqual(
+        [ns("a", "a"), ns("b", "b"), ns("c", "c")].sort(),
+      );
+      // Sequential would be >=360ms. Assert well under the sum but above one
+      // client's latency, so the bound is meaningful on a loaded CI box.
+      expect(elapsed).toBeLessThan(330);
+    });
+
+    it("preserves client key order in the aggregated list", async () => {
+      const gw = new GatewayClient({
+        slow: { client: slowClient("slow", 80) },
+        fast: { client: createMockClient([{ name: "fast" }]) },
+      });
+
+      const { tools } = await gw.listTools();
+
+      // "slow" resolves last in wall-clock but is declared first.
+      expect(tools.map((t) => t.name)).toEqual([
+        ns("slow", "slow"),
+        ns("fast", "fast"),
+      ]);
+    });
+
+    it("resolves duplicate resources by client key order, not response order", async () => {
+      const first = createMockClient(
+        [],
+        [{ uri: "file://dup", name: "from-first" }],
+      );
+      const firstList = first.listResources;
+      first.listResources = (async (...args: unknown[]) => {
+        await new Promise((r) => setTimeout(r, 60));
+        return (firstList as (...a: unknown[]) => unknown)(...args);
+      }) as IClient["listResources"];
+
+      const gw = new GatewayClient({
+        first: { client: first },
+        second: {
+          client: createMockClient(
+            [],
+            [{ uri: "file://dup", name: "from-second" }],
+          ),
+        },
+      });
+
+      const { resources } = await gw.listResources();
+
+      expect(resources).toHaveLength(1);
+      expect(resources[0]?.name).toBe("from-first");
+    });
+  });
+
+  describe("per-client list deadline", () => {
+    const hangingClient = (): IClient => {
+      const client = createMockClient([{ name: "never" }]);
+      client.listTools = (() => new Promise(() => {})) as IClient["listTools"];
+      return client;
+    };
+
+    it("skips a client that exceeds listTimeoutMs and keeps the others", async () => {
+      const gw = new GatewayClient(
+        {
+          hung: { client: hangingClient() },
+          ok: { client: createMockClient([{ name: "works" }]) },
+        },
+        { listTimeoutMs: 50 },
+      );
+
+      const { tools } = await gw.listTools();
+
+      expect(tools.map((t) => t.name)).toEqual([ns("ok", "works")]);
+    });
+
+    it("returns within the deadline rather than waiting on the hung client", async () => {
+      const gw = new GatewayClient(
+        { hung: { client: hangingClient() } },
+        { listTimeoutMs: 50 },
+      );
+
+      const started = Date.now();
+      const { tools } = await gw.listTools();
+
+      expect(tools).toEqual([]);
+      expect(Date.now() - started).toBeLessThan(1000);
+    });
+
+    it("bounds a client that resolves lazily via a throwing factory too", async () => {
+      const gw = new GatewayClient(
+        {
+          slowFactory: {
+            client: () => new Promise<IClient>(() => {}),
+          },
+          ok: { client: createMockClient([{ name: "works" }]) },
+        },
+        { listTimeoutMs: 50 },
+      );
+
+      const { tools } = await gw.listTools();
+
+      expect(tools.map((t) => t.name)).toEqual([ns("ok", "works")]);
+    });
+  });
 });

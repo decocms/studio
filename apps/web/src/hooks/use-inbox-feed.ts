@@ -150,7 +150,9 @@ export function useInboxFeed(): InboxFeed {
     /** `ids: undefined` is the server's "all of mine in this org". */
     mutationFn: (ids: string[] | null) =>
       studio.call("NOTIFICATION_MARK_READ", ids ? { ids } : {}),
-    onMutate: (ids) => {
+    onMutate: async (ids) => {
+      // Cancel a stale in-flight refetch, or it can resurrect the row this drops.
+      await queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData<InfiniteData<Page>>(queryKey, (data) =>
         dropLocally(data, ids),
       );

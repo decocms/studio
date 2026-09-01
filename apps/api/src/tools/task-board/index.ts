@@ -3,6 +3,17 @@ export { TASK_BOARD_ITEM_CREATE } from "./create";
 export { TASK_BOARD_ITEM_LIST } from "./list";
 export { TASK_BOARD_ITEM_UPDATE } from "./update";
 export { TASK_BOARD_ITEM_DELETE } from "./delete";
+export { TASK_BOARD_COLUMN_ROLE_SET } from "./column-roles";
+export {
+  TASK_BOARD_AUTOMATION_DELETE,
+  TASK_BOARD_AUTOMATION_LIST,
+  TASK_BOARD_AUTOMATION_UPSERT,
+} from "./automations";
+export {
+  TASK_BOARD_PROMPT_DELETE,
+  TASK_BOARD_PROMPT_LIST,
+  TASK_BOARD_PROMPT_UPSERT,
+} from "./prompts";
 export { TASK_BOARD_ITEM_PRS_GET } from "./prs-get";
 export { TASK_BOARD_ITEM_PR_LINK } from "./pr-link";
 export { TASK_BOARD_ITEM_RERUN } from "./rerun";

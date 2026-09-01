@@ -83,10 +83,16 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         sandboxMap={virtualMcp?.metadata?.sandboxMap}
         value={currentBranch}
         onChange={(next) => {
-          if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+          // Locked chat's branch is fixed: open a new chat on the picked branch.
+          if (locked && createTask) {
+            createTask({ branch: next });
+          } else if (setCurrentTaskBranch) {
+            void setCurrentTaskBranch(next);
+          }
         }}
         onCreateBranch={(next) => {
-          if (createBranchAsCms && createTask) {
+          // Locked or CMS→sandbox: branch off into a fresh thread, don't re-point.
+          if ((locked || createBranchAsCms) && createTask) {
             createTask({ branch: next });
           } else if (setCurrentTaskBranch) {
             void setCurrentTaskBranch(next);

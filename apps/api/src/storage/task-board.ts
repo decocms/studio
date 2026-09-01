@@ -21,7 +21,7 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { DEFAULT_TASK_TYPE } from "@decocms/shared/task-board";
+import { DEFAULT_TASK_TYPE, DELIVERY_LANES } from "@decocms/shared/task-board";
 import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
@@ -47,6 +47,10 @@ export interface TaskBoardComment {
   taskBoardItemId: string;
   parentId: string | null;
   authorId: string;
+  /** The agent run that wrote it; null for a human's comment. It is what tells
+   *  one agent's comments from another's — every agent comment shares the same
+   *  synthetic author id. */
+  threadId: string | null;
   body: string;
   resolved: boolean;
   createdAt: string;
@@ -66,6 +70,7 @@ function commentFromDbRow(row: {
   task_board_item_id: string;
   parent_id: string | null;
   author_id: string;
+  thread_id: string | null;
   body: string;
   resolved: boolean;
   created_at: Date | string;
@@ -77,6 +82,7 @@ function commentFromDbRow(row: {
     taskBoardItemId: row.task_board_item_id,
     parentId: row.parent_id,
     authorId: row.author_id,
+    threadId: row.thread_id,
     body: row.body,
     resolved: row.resolved,
     createdAt: iso(row.created_at),
@@ -100,6 +106,11 @@ function extractPartText(payload: unknown): string | null {
   }
   return null;
 }
+
+/** The lanes a review cycle may span: an agent reviewer runs while the card
+ *  reads In Progress, and the card sits In Review once it is a person's turn.
+ *  Moving to any OTHER lane ends the cycle — see `update()`. */
+const REVIEW_PHASE_LANES = new Set<string>(["in_progress", "in_review"]);
 
 /** Thread run statuses that mean the run is over (not running / not paused on a
  *  user_ask). `requires_action` and `in_progress` are deliberately excluded. */
@@ -128,7 +139,7 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  */
 export function shouldAdvanceToReview(
   item: {
-    status: TaskBoardItemStatus;
+    status: string;
     repo?: string | null;
     threads: { status: string | null; hasMessages: boolean }[];
   },
@@ -206,6 +217,11 @@ function newestIso(
   return new Date(Math.max(a, b)).toISOString();
 }
 
+/** Lanes a merged PR can leave a card on, and therefore where the merged-tag
+ *  sweep has to look. `archived` is deliberately absent: a card that far along
+ *  is history, and tagging it moves nothing. */
+const TAGGABLE_MERGED_STATUSES: string[] = [...DELIVERY_LANES, "done"];
+
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
 
@@ -260,7 +276,11 @@ export class TaskBoardStorage {
     organizationId: string;
     title: string;
     description?: string | null;
-    status?: TaskBoardItemStatus;
+    status?: string;
+    /** Set to the org id when the card's status names a row in
+     *  `task_board_columns`, which is what wakes the optional foreign key.
+     *  Null while the status is one of Studio's own lanes. */
+    boardColumnOrg?: string | null;
     priority?: TaskBoardItemPriority;
     type?: TaskBoardItemType;
     assigneeId?: string | null;
@@ -294,6 +314,7 @@ export class TaskBoardStorage {
           title: params.title,
           description: params.description ?? null,
           status,
+          board_column_org: params.boardColumnOrg ?? null,
           priority: params.priority ?? "medium",
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
@@ -340,7 +361,11 @@ export class TaskBoardStorage {
     data: {
       title?: string;
       description?: string | null;
-      status?: TaskBoardItemStatus;
+      status?: string;
+      /** Set to the org id when the card's status names a row in
+       *  `task_board_columns`, which is what wakes the optional foreign key.
+       *  Null while the status is one of Studio's own lanes. */
+      boardColumnOrg?: string | null;
       priority?: TaskBoardItemPriority;
       type?: TaskBoardItemType;
       assigneeId?: string | null;
@@ -371,7 +396,18 @@ export class TaskBoardStorage {
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
+        ...(data.boardColumnOrg !== undefined
+          ? { board_column_org: data.boardColumnOrg }
+          : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
+        // Any move OUT of the two lanes a review can span closes the cycle.
+        // Done here rather than at the call sites so it covers every one of
+        // them — the ship paths, a human dragging a card back to To Do, the
+        // archive — present and future. Leaving a cycle open on a shipped card
+        // would keep it in the sweeper's work list forever.
+        ...(data.status !== undefined && !REVIEW_PHASE_LANES.has(data.status)
+          ? { review_cycle_started_at: null }
+          : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
@@ -625,8 +661,14 @@ export class TaskBoardStorage {
    * without bounding what the sweep can ever reach.
    */
   /**
-   * The review sweeper's work list: cards parked In Review that are DUE a
-   * sweep, i.e. never swept or last swept before `dueBefore`.
+   * The review sweeper's work list: cards with an OPEN REVIEW CYCLE that are
+   * DUE a sweep, i.e. never swept or last swept before `dueBefore`.
+   *
+   * An open cycle, not the In Review lane: a card whose reviewer is still
+   * working reads In Progress on the board, and the sweeper is what dispatches
+   * and re-dispatches that reviewer, so keying it on the lane would leave the
+   * card with nothing watching it. `review_cycle_started_at` is the durable
+   * "a reviewer owns this" fact; see migration 190.
    *
    * That predicate is what bounds the sweeper's GitHub cost. Without it the same
    * cards came back on every tick of every replica — a card whose checks never
@@ -646,7 +688,36 @@ export class TaskBoardStorage {
     let query = this.db
       .selectFrom("task_board_items")
       .select(["id", "organization_id as organizationId", "updated_at"])
-      .where("status", "=", "in_review")
+      // Mirrors `inReviewPhase`: an OPEN CYCLE (a reviewer is working, and the
+      // card still reads In Progress) OR the In Review lane (parked for a
+      // person — its approvals stand and it stays merge-eligible). Either one
+      // alone leaves a real case unswept: cycle-only drops a card a conflict
+      // bounce put back In Review with no cycle, and lane-only drops every card
+      // currently under review, which is the whole point of migration 190.
+      .where((eb) =>
+        eb.or([
+          eb("review_cycle_started_at", "is not", null),
+          // The card's OWN board's review column. A pre-filter across orgs
+          // cannot be handed one lane — every row may belong to a different
+          // board — so it reads the same rows the handler reads. An org on
+          // Studio's board has no rows here at all, which is why the literal
+          // stays beside it rather than being replaced by it.
+          eb("status", "=", "in_review"),
+          eb(
+            "status",
+            "in",
+            eb
+              .selectFrom("task_board_columns as c")
+              .select("c.key")
+              .whereRef(
+                "c.organization_id",
+                "=",
+                "task_board_items.organization_id",
+              )
+              .where("c.role", "=", "in_review"),
+          ),
+        ]),
+      )
       .where("dismissed_at", "is", null);
     if (dueBefore) {
       // A never-swept card (NULL) is always due — `<` alone would exclude it.
@@ -746,7 +817,11 @@ export class TaskBoardStorage {
     const rows = await this.db
       .selectFrom("task_board_items as i")
       .select(["i.id", "i.organization_id as organizationId"])
-      .where("i.status", "=", "done")
+      // Not just Done: with the delivery lanes on a merge lands the card on
+      // `merged`, and gating on Done alone would mean no card is ever tagged
+      // until a human drags it the rest of the way — days after the tag was
+      // worth seeing, which is the whole reason this sweep is not the archive's.
+      .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
       .where((eb) =>
         eb.exists(
@@ -866,13 +941,17 @@ export class TaskBoardStorage {
     organizationId: string,
     attempts: number,
     retryAt: Date,
+    /** This board's in-progress column. Null means the board has none, so
+     *  there is no card to schedule a retry for. */
+    progressLane: string | null,
   ): Promise<boolean> {
+    if (progressLane === null) return false;
     const rows = await this.db
       .updateTable("task_board_items")
       .set({ retry_at: retryAt, retry_attempts: attempts })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      .where("status", "=", progressLane)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -890,11 +969,16 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     updatedBy: string,
+    /** Where the card is coming from and going to on THIS board. Either being
+     *  null means the board cannot express this move, so it does not happen —
+     *  the run's failure is still on the card's timeline either way. */
+    lanes: { progress: string | null; queue: string | null },
   ): Promise<TaskBoardItem | null> {
+    if (lanes.progress === null || lanes.queue === null) return null;
     const rows = await this.db
       .updateTable("task_board_items")
       .set({
-        status: "todo",
+        status: lanes.queue,
         retry_at: null,
         retry_attempts: 0,
         updated_by: updatedBy,
@@ -902,7 +986,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      .where("status", "=", lanes.progress)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -1279,40 +1363,72 @@ export class TaskBoardStorage {
   }
 
   /**
-   * A linked thread reached a terminal run status — advance any of its tasks
-   * that qualify (see `shouldAdvanceToReview`) to In Review. Returns the items
-   * that actually moved so the caller can broadcast them over SSE.
+   * A linked thread reached a terminal run status — settle any of its tasks
+   * that qualify (see `shouldAdvanceToReview`). Returns the items that actually
+   * moved so the caller can broadcast them over SSE.
+   *
+   * Two landings, because two different things are waiting:
+   *  - a REPO-BACKED task with a PR opens a review cycle and STAYS In Progress.
+   *    An agent reviewer is about to work on it, and In Review is what the
+   *    board says when it is a person's turn — see migration 190.
+   *  - a repo-less task goes to In Review. Its answer IS its deliverable, no
+   *    reviewer is ever dispatched (that needs a PR), so the only thing left is
+   *    a human reading it.
    */
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
     organizationId: string,
+    lanes: { progress: string | null; review: string | null },
   ): Promise<TaskBoardItem[]> {
     const moved: TaskBoardItem[] = [];
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;
-      // Only query PRs for a repo-backed task — that's the one gate that needs it.
-      const hasPr =
-        item.repo != null &&
-        (await this.listPrs(taskId, organizationId)).length > 0;
+      // A LINKED PR is the whole test. It used to be `item.repo != null && …`,
+      // as a cheap way to skip the query for a card that could not have one —
+      // but `repo` is only stamped on a card created against a repository, and
+      // a run that finds its own with `TASK_ADD_REPO` links a pull request
+      // without ever setting it. Those cards read as repo-less forever, so this
+      // took the "its answer IS its deliverable" branch and parked them In
+      // Review — on top of an already-open review cycle, for the whole reviewer
+      // run. Three consecutive prod cards landed that way; the fourth, created
+      // against a repo, stayed In Progress exactly as intended.
+      const hasPr = (await this.listPrs(taskId, organizationId)).length > 0;
       if (!shouldAdvanceToReview(item, hasPr)) continue;
-      // The status flip is a CONDITIONAL update guarded on the status we just
-      // read, so exactly one concurrent caller can win it.
+      // Belt and braces for the same failure: whatever the PR read says, a card
+      // with a cycle already open is mid-review and this backstop has nothing
+      // to add. Only the repo-less branch below can move a card, and moving one
+      // out from under its reviewer is the bug this whole change exists to fix.
+      if (item.reviewCycleStartedAt) continue;
+
+      // Both writes below are CONDITIONAL updates guarded on what we just
+      // read, so exactly one concurrent caller can win either.
       //
-      // It used to be an unconditional `update()`, and the read-then-write above
-      // is not atomic: `recoverStalledTasks` runs fire-and-forget on EVERY
+      // The flip used to be an unconditional `update()`, and the read-then-write
+      // above is not atomic: `recoverStalledTasks` runs fire-and-forget on EVERY
       // `TASK_BOARD_ITEM_LIST` over the list that read already loaded, so N
       // overlapping board reads (multiple tabs, a refocus burst, the Super
       // Agent calling the tool itself) each saw `in_progress` and each wrote.
       // One prod item collected 42 of these; another took 27 inside 112 ms.
       //
-      // The duplicate ROW was not the real damage — the duplicate ACTIVITY was.
-      // `reviewCycleStart` reads the newest `status_changed→in_review` as the
-      // start of the current review cycle, so every redundant stamp invalidated
-      // every approval recorded before it: the verified-approval gate stopped
-      // seeing a complete set, auto-merge never fired, and the card sat In
-      // Review forever. In prod all 13 items holding an approval had been
-      // stranded this way, one of them 15 seconds after approving.
+      // The duplicate ROW was not the real damage — the duplicate CYCLE STAMP
+      // was. Every redundant stamp invalidated every approval recorded before
+      // it: the verified-approval gate stopped seeing a complete set, auto-merge
+      // never fired, and the card sat waiting forever. In prod all 13 items
+      // holding an approval had been stranded this way, one of them 15 seconds
+      // after approving. `openReviewCycleIfInProgress` carries that guarantee
+      // now — it only stamps a card that has NO cycle open.
+      if (hasPr) {
+        const opened = await this.openReviewCycleIfInProgress(
+          taskId,
+          organizationId,
+          lanes,
+        );
+        if (!opened) continue;
+        moved.push(opened);
+        continue;
+      }
+
       const advanced = await this.advanceToReviewIfInProgress(
         taskId,
         organizationId,
@@ -1320,13 +1436,8 @@ export class TaskBoardStorage {
       );
       if (!advanced) continue;
       moved.push(advanced);
-      // Record the transition — the reviewer flow keys its "current review
-      // cycle" off the newest `status_changed→in_review` activity, and a
-      // re-review (Super Agent pushed a fix to the same PR, no new PR opened)
-      // re-enters In Review only through THIS path. Without the activity row
-      // the cycle boundary would stay stale and reviewers would never re-run.
       // Machine-driven, hence a null actor. Best-effort. Reached only by the
-      // caller that won the flip above, so it writes exactly once per cycle.
+      // caller that won the flip above, so it writes exactly once.
       await this.recordActivity({
         taskBoardItemId: taskId,
         action: "status_changed",
@@ -1337,6 +1448,98 @@ export class TaskBoardStorage {
       );
     }
     return moved;
+  }
+
+  /**
+   * Open a review cycle on a task that has none open, leaving it In Progress —
+   * where a card whose reviewer is working belongs — and returning the updated
+   * item, or null when there was nothing to do.
+   *
+   * The `review_cycle_started_at IS NULL` predicate is what makes it safe to
+   * call from every trigger that notices reviewable work (the PR-open hook, the
+   * MCP tool hook, the thread-finish backstop): re-stamping an OPEN cycle would
+   * move its boundary forward and silently invalidate verdicts already recorded
+   * against it. Closing the cycle is the only way to start a new one, and that
+   * is `closeReviewCycle`, which every bounce-back-to-work path calls.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`, so a dismissed card whose linked thread finishes
+   * afterward would otherwise get resurrected into the reviewer's work list.
+   */
+  async openReviewCycleIfInProgress(
+    id: string,
+    organizationId: string,
+    lanes: { progress: string | null; review: string | null },
+  ): Promise<TaskBoardItem | null> {
+    // No in-progress column: the review still happens, the card just stays put.
+    if (lanes.progress === null) return null;
+    const reviewLane = lanes.review;
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({ review_cycle_started_at: new Date(), status: lanes.progress })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      // In Review is in here because the PR link can LOSE THE RACE to the
+      // thread-finish backstop. `advanceLinkedTasksToReviewOnThreadFinish`
+      // reads `listPrs` to decide repo-backed vs repo-less, and a run that
+      // links its PR moments after its thread goes terminal is read as
+      // repo-less and parked In Review. The link then lands on a card that is
+      // no longer In Progress, this update matched nothing, and the cycle
+      // never opened at all: the card sat In Review for the whole reviewer run
+      // — the exact thing migration 189 exists to prevent — with every verdict
+      // falling back to the legacy activity scan. Observed at 52 seconds
+      // between the two on a real board.
+      //
+      // Taking the card BACK to In Progress is safe precisely because the
+      // cycle is still null: a card whose cycle never opened has had no
+      // reviewer and no verdict, so there is nothing behind it to invalidate,
+      // and the Super Agent guard keeps it off a card a person has taken over
+      // (`handTaskToHuman` clears the assignee). Both columns move in ONE
+      // statement — a separate flip could interleave with the sweeper's read.
+      .where((eb) =>
+        eb.or([
+          eb("status", "=", lanes.progress),
+          ...(reviewLane === null
+            ? []
+            : [
+                eb.and([
+                  eb("status", "=", reviewLane),
+                  eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
+                ]),
+              ]),
+        ]),
+      )
+      .where("review_cycle_started_at", "is", null)
+      .where("dismissed_at", "is", null)
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
+   * Close a task's review cycle — no reviewer owns it any more.
+   *
+   * Called by every path that sends a card back to work (a rerun, a
+   * conflict-resolution claim, a human re-engaging the thread) and by every
+   * path that ends the review (the verdict, a merge). It is what allows the
+   * NEXT `openReviewCycleIfInProgress` to stamp a fresh boundary, so forgetting
+   * it does not corrupt anything — it strands the card in the old cycle, where
+   * the previous verdict still stands.
+   *
+   * Not conditional on status: the callers each have their own fence, and a
+   * clear is idempotent.
+   */
+  async closeReviewCycle(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ review_cycle_started_at: null })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
   }
 
   /**
@@ -1380,6 +1583,10 @@ export class TaskBoardStorage {
   /**
    * A new run is starting on a thread — pull any linked task sitting in In
    * Review back to In Progress (the user re-engaged it). Returns moved items.
+   *
+   * Closes the review cycle too: whatever a reviewer decided was about the code
+   * as it stood, and a fresh run is about to change it. Leaving the cycle open
+   * would carry that verdict onto work it never saw.
    */
   async reopenLinkedTasksOnThreadRun(
     threadId: string,
@@ -1389,6 +1596,7 @@ export class TaskBoardStorage {
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item || item.status !== "in_review") continue;
+      await this.closeReviewCycle(taskId, organizationId);
       moved.push(
         await this.update(
           taskId,
@@ -1423,34 +1631,13 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     by: string,
+    lanes: { review: string | null; progress: string | null },
   ): Promise<TaskBoardItem | null> {
-    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
+    return this.claimInReviewSuperAgentSlot(id, organizationId, by, lanes);
   }
 
   /**
-   * Atomically claim a task for a reviewer's `request_changes` bounce: move it
-   * from In Review to In Progress ONLY if it's still In Review AND still
-   * assigned to the Super Agent, returning the updated item to the single
-   * winner and null to everyone else. QA and Code Reviewer run concurrently,
-   * and either can independently decide changes are needed — without this
-   * fence both would bounce the task and each enqueue its own Super Agent run
-   * on the SAME PR, racing to push conflicting commits. The assignee re-check
-   * closes a second race: a human can reassign the task away from the Super
-   * Agent while a reviewer run is still in flight, and that reviewer's later
-   * `request_changes` must not yank the task back and re-enqueue the Super
-   * Agent out from under the new owner. Same atomic-conditional-UPDATE pattern
-   * as `claimConflictResolution`.
-   */
-  claimReviewChangesBounce(
-    id: string,
-    organizationId: string,
-    by: string,
-  ): Promise<TaskBoardItem | null> {
-    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
-  }
-
-  /**
-   * Shared fence behind both claim methods above: move a task from In Review
+   * The fence behind `claimConflictResolution`: move a task from In Review
    * to In Progress ONLY if it's still In Review AND still assigned to the
    * Super Agent, returning the updated item to the single winner and null to
    * everyone else. A single conditional UPDATE is atomic under READ
@@ -1461,17 +1648,28 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     by: string,
+    /** The fence's two ends on THIS board. Either being null means the board
+     *  cannot express the claim, so nobody wins it — which reads to the caller
+     *  as "another trigger got there first", the same as losing the race. */
+    lanes: { review: string | null; progress: string | null },
   ): Promise<TaskBoardItem | null> {
+    if (lanes.review === null || lanes.progress === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
-        status: "in_progress",
+        status: lanes.progress,
+        // The claim exists to put the card back in the Super Agent's hands to
+        // fix something, so the review that just ended is over. Cleared in the
+        // SAME statement as the flip: a separate write could lose the race with
+        // the PR push that opens the next cycle, and an open cycle from the
+        // previous round would then swallow that push's fresh boundary.
+        review_cycle_started_at: null,
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_review")
+      .where("status", "=", lanes.review)
       .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .returningAll()
       .executeTakeFirst();
@@ -1497,7 +1695,12 @@ export class TaskBoardStorage {
     organizationId: string,
     assignedBy: string,
     by: string,
+    /** This board's queue column — the claim's starting line. Null means the
+     *  board has no column that means "queued", so there is nothing to claim
+     *  and the caller reads it the same as losing the race. */
+    queueLane: string | null,
   ): Promise<TaskBoardItem | null> {
+    if (queueLane === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
@@ -1508,7 +1711,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "todo")
+      .where("status", "=", queueLane)
       .where("assignee_id", "is", null)
       .returningAll()
       .executeTakeFirst();
@@ -1565,6 +1768,7 @@ export class TaskBoardStorage {
     await this.inTransaction(async (db) => {
       await this.attachThreads(db, items, organizationId);
       await this.attachTags(db, items);
+      await this.attachJiraKeys(db, items);
       await this.attachReviewVerdicts(db, items);
     });
   }
@@ -1691,6 +1895,32 @@ export class TaskBoardStorage {
 
   /** Populate each item's `tags`, name ascending. One batched query. Items are
    *  already org-scoped by the caller, so the join needs no org filter. */
+  /**
+   * Populate each item's `jiraIssueKey` — the key the issue wears in the
+   * tracker, which is what people say out loud about a synced card.
+   *
+   * One batched query, not a join on the item read: the link is one-to-one but
+   * lives in its own table, and every other ref on a card is attached here for
+   * the same reason. Cards Studio owns have no row and stay null.
+   */
+  private async attachJiraKeys(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_item_jira_links")
+      .select(["item_id as itemId", "jira_issue_key as jiraIssueKey"])
+      .where("item_id", "in", ids)
+      .execute();
+
+    const byItem = new Map(rows.map((row) => [row.itemId, row.jiraIssueKey]));
+    for (const item of items) {
+      item.jiraIssueKey = byItem.get(item.id) ?? null;
+    }
+  }
+
   private async attachTags(
     db: Kysely<Database>,
     items: TaskBoardItem[],
@@ -1777,8 +2007,10 @@ export class TaskBoardStorage {
 
     for (const item of items) {
       const activity = byItem.get(item.id) ?? [];
-      const verdicts = reviewCycleVerdicts(activity);
+      const cycleStartedAt = item.reviewCycleStartedAt;
+      const verdicts = reviewCycleVerdicts(activity, { cycleStartedAt });
       const verifiedApprovals = reviewCycleVerdicts(activity, {
+        cycleStartedAt,
         verifiedOnly: true,
       });
       item.reviewVerdicts = REVIEWER_KINDS.flatMap((reviewer) => {
@@ -1974,7 +2206,9 @@ export class TaskBoardStorage {
   }
 
   /** A null actor is a machine path; a `reason` marks a move that meant something
-   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`). */
+   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`).
+   *  `merged` counts as leaving Done — with the delivery lanes on, that is
+   *  where a merged PR lands. */
   async hasHumanRejectedDone(
     taskBoardItemId: string,
     organizationId: string,
@@ -1991,7 +2225,7 @@ export class TaskBoardStorage {
       .where("a.task_board_item_id", "=", taskBoardItemId)
       .where("a.action", "=", "status_changed")
       .where(byMember, "is not", null)
-      .where(laneLeft, "=", "done")
+      .where(laneLeft, "in", ["done", "merged"])
       .where(moveReason, "is", null)
       .limit(1)
       .executeTakeFirst();
@@ -2023,6 +2257,8 @@ export class TaskBoardStorage {
     organizationId: string;
     parentId?: string | null;
     authorId: string;
+    /** The agent run writing it, when one is. */
+    threadId?: string | null;
     body: string;
   }): Promise<TaskBoardComment | null> {
     const task = await this.db
@@ -2054,6 +2290,7 @@ export class TaskBoardStorage {
         task_board_item_id: params.taskBoardItemId,
         parent_id: parentId,
         author_id: params.authorId,
+        thread_id: params.threadId ?? null,
         body: params.body,
       })
       .returningAll()
@@ -2165,6 +2402,7 @@ export class TaskBoardStorage {
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
+    review_cycle_started_at?: string | Date | null;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -2189,7 +2427,12 @@ export class TaskBoardStorage {
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
-      // Populated by attachRefs for reads; empty for a fresh create.
+      reviewCycleStartedAt:
+        row.review_cycle_started_at instanceof Date
+          ? row.review_cycle_started_at.toISOString()
+          : (row.review_cycle_started_at ?? null),
+      // Populated by attachRefs for reads; null/empty for a fresh create.
+      jiraIssueKey: null,
       threads: [],
       tags: [],
       reviewVerdicts: [],

@@ -35,7 +35,7 @@ import {
 import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
-import { unwrapSection } from "./unwrap-section";
+import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema } from "./resolve-schema";
@@ -167,7 +167,7 @@ export function SectionsEditor({
    * view (passing the decofile block key) instead of the built-in JSON modal.
    * Hosts without a file surface (Content tab) omit this and get the modal.
    */
-  onViewJsonFile?: (pageKey: string) => void;
+  onViewJsonFile?: () => void;
   /**
    * Called when the selected section variant changes so the host can force the
    * preview iframe to render that variant via `x-deco-matchers-override`.
@@ -742,12 +742,10 @@ export function SectionsEditor({
       const parsed = latestParsedSections[sectionIndex];
       if (!parsed) return;
 
-      // Saved block: write the block entry directly
+      // Saved block: write the block entry directly (savedBlockKey unwraps hidden wrappers).
       if (parsed.isSavedBlock) {
-        const blockKey = parsed.isLazy
-          ? ((rawSection.section?.__resolveType as string) ??
-            rawSection.__resolveType)
-          : rawSection.__resolveType;
+        const blockKey = savedBlockKey(rawSection, parsed);
+        if (!blockKey) return;
         saveBlock.mutate(
           { blockKey, data: nextValue },
           {
@@ -2656,7 +2654,7 @@ export function SectionsEditor({
                   className="size-7 shrink-0"
                   onClick={() =>
                     onViewJsonFile && activePageKey
-                      ? onViewJsonFile(activePageKey)
+                      ? onViewJsonFile()
                       : setJsonOpen(true)
                   }
                 >

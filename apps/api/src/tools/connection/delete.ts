@@ -113,8 +113,7 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     getMcpListCache()
       ?.invalidate(input.id)
       .catch(() => {});
-    // Drop cached read content and tool results for this connection across ALL
-    // replicas (per-pod caches → NATS broadcast).
+    // Drops caches and revalidation state across ALL replicas (NATS broadcast).
     invalidateConnectionCaches(input.id);
 
     const userId = getUserId(ctx);

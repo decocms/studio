@@ -13,21 +13,25 @@
  * both gate on `status === "done"` already, so they never see these cards.
  *
  * This is the missing reconcile: if the linked PRs have all landed, move the
- * card to Done and record the transition. It runs from the review sweeper (see
+ * card forward (Merged with the delivery lanes on, else Done) and record the
+ * transition. It runs from the review sweeper (see
  * `review-sweeper.ts`), which already visits exactly these cards on their own
  * five-minute interval and already knows each PR's live merged state.
  */
 
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
+import { shippedLane } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { cardWorkLanded, type PrLanding } from "./archive-merged";
+import { boardFor, boardLanes, shippedPatch } from "./board-handler";
+import { inReviewPhase } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 /**
- * Move `item` to Done if its work landed on GitHub (see {@link cardWorkLanded}
- * for what "landed" means once a card carries more than one PR). Returns
- * whether it moved.
+ * Move `item` past review if its work landed on GitHub — to Merged with the
+ * delivery lanes on, else to Done. See {@link cardWorkLanded} for what "landed"
+ * means once a card carries more than one PR. Returns whether it moved.
  *
  * Takes the live PR states rather than reading GitHub itself: its one caller,
  * the sweeper, already reads every linked PR through the rate-limited queue
@@ -51,27 +55,31 @@ export async function advanceToDoneIfMerged(
   prs: PrLanding[],
 ): Promise<boolean> {
   const orgId = item.organizationId;
-  if (item.status !== "in_review") return false;
+  if (!inReviewPhase(item, (await boardLanes(ctx, orgId)).review)) return false;
   if (!cardWorkLanded(prs)) return false;
   if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
     return false;
   }
 
+  // Read only once the card is actually shipping.
+  const settings = await ctx.storage.organizationSettings.get(orgId);
+  const shipped = shippedLane(settings?.flags);
+  const board = await boardFor(ctx, orgId);
   const done = await ctx.storage.taskBoard.update(
     item.id,
     orgId,
-    { status: "done" },
+    shippedPatch(board, shipped),
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
     taskBoardItemId: item.id,
     action: "status_changed",
     actorId: null,
-    data: { from: item.status, to: "done", reason: "pr_merged" },
+    data: { from: item.status, to: shipped, reason: "pr_merged" },
   });
   emitTaskBoardUpdated(orgId, done);
   console.log(
-    `[task-board-review-sweeper] ${item.id}: linked PR already merged — moved to done`,
+    `[task-board-review-sweeper] ${item.id}: linked PR already merged — moved to ${shipped}`,
   );
   return true;
 }

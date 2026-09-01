@@ -20,7 +20,7 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@/sdk";
-import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { KEYS } from "@/lib/query-keys";
 import { unwrapToolResult } from "@/routes/commerce-onboarding/companions-core";
 import {
@@ -152,21 +152,23 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
 }
 
 /** Navigate args that open the Commerce Discovery report app (where the unlock /
- *  checkout lives) as a pinned view on a fresh thread. Shared by the home banner
- *  and the board paywall so the target stays identical. */
+ *  checkout lives) as the report agent's `app` view. Shared by the home banner
+ *  and the board paywall so the target stays identical. The report needs no
+ *  thread of its own, so none is minted: the chat opens an empty composer. */
 export function commerceReportNavTarget(
   org: { id: string; slug: string },
   connectionId: string,
 ) {
   return {
-    to: "/$org/$taskId" as const,
-    params: { org: org.slug, taskId: crypto.randomUUID() },
-    search: {
-      virtualmcpid: getCommerceDiscoveryAgentId(org.id),
-      main: formatPinnedViewTabId(
-        connectionId,
-        COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-      ),
+    to: DESTINATION_ROUTE.agents,
+    params: {
+      org: org.slug,
+      project: getCommerceDiscoveryAgentId(org.id),
+      panel: "app",
     },
-  };
+    search: {
+      connection: connectionId,
+      tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+    },
+  } as const;
 }

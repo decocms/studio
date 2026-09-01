@@ -59,7 +59,7 @@ function TabBody({
 }: {
   activeTab: string;
   virtualMcpId: string;
-  taskId: string;
+  taskId: string | null;
   layoutTabs: ReturnType<typeof useMainPanelTabs>["layoutTabs"];
   expandedTools: ReturnType<typeof useMainPanelTabs>["expandedTools"];
   automationTabParsed: ReturnType<
@@ -92,7 +92,7 @@ function TabBody({
     return <OverviewTab />;
   }
   if (activeTab === "board") {
-    // Task board opened next to chat via the Tasks toggle (`?main=board`).
+    // Task board opened next to chat, as the Tasks destination's own view.
     // The main panel already supplies the card chrome, so the page only needs
     // a full-height flex column around it.
     return (
@@ -147,7 +147,7 @@ function TabBody({
     return <ReportsTab />;
   }
   if (activeTab === "connect-sources") {
-    // Report app hand-off (`?main=connect-sources`) for a client who skipped
+    // Report app hand-off (the `connect-sources` view) for a client who skipped
     // a data source during onboarding — see project-app-navigate.ts.
     return <ConnectSourcesTab />;
   }
@@ -212,7 +212,7 @@ export function MainPanelContent({
   taskId,
   virtualMcpId,
 }: {
-  taskId: string;
+  taskId: string | null;
   virtualMcpId: string;
 }) {
   const { activeTab, layoutTabs, expandedTools, automationTabParsed } =

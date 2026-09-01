@@ -99,6 +99,11 @@ test("decopilot stream is replicated so one node loss keeps the run streaming", 
   expect(decopilotStreamConfig().num_replicas).toBe(3);
 });
 
+test("decopilot stream config honours an explicit replica count", () => {
+  // The single-node fallback in `init()` re-issues the config with 1.
+  expect(decopilotStreamConfig(1).num_replicas).toBe(1);
+});
+
 describe("NatsStreamBuffer", () => {
   it("purge is a no-op when jsm is not initialized (no throw)", () => {
     const buffer = new NatsStreamBuffer({
@@ -241,6 +246,126 @@ describe("NatsStreamBuffer", () => {
     } as never);
     expect(ok).toBe(true);
     expect(publishMock).toHaveBeenCalled();
+  });
+
+  it("init never writes a replicated config to a non-clustered NATS", async () => {
+    // Regression: `streams.update` ACCEPTS num_replicas>1 on a single node and
+    // persists it to the stream's on-disk meta.inf, which the server then
+    // cannot recover on its next boot (503 from /healthz forever). No error is
+    // raised, so the error-driven fallback below can't catch it — the count
+    // must be clamped from the connection's topology before anything is written.
+    const configs: Array<{ num_replicas: number }> = [];
+    const streamUpdateMock = mock(
+      (_name: string, config: { num_replicas: number }) => {
+        configs.push(config);
+        return Promise.resolve({});
+      },
+    );
+    const mockJsm = {
+      streams: {
+        info: mock(() => Promise.resolve({})),
+        update: streamUpdateMock,
+        add: mock(() => Promise.resolve({})),
+      },
+    };
+    const publishMock = mock(() => Promise.resolve({ seq: 1 }));
+
+    const buffer = new NatsStreamBuffer({
+      // A single-node server sends no `cluster` in its INFO.
+      getConnection: () => ({ info: {} }) as never,
+      getJetStream: () => ({ publish: publishMock }) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
+    });
+
+    await buffer.init();
+
+    expect(configs.map((c) => c.num_replicas)).toEqual([1]);
+    // Unreplicated, but streaming — not wedged at js=null.
+    expect(
+      await buffer.publishRawChunk("thrd_x", { type: "text" } as never),
+    ).toBe(true);
+  });
+
+  it("init requests a replicated stream on a clustered NATS", async () => {
+    const configs: Array<{ num_replicas: number }> = [];
+    const streamUpdateMock = mock(
+      (_name: string, config: { num_replicas: number }) => {
+        configs.push(config);
+        return Promise.resolve({});
+      },
+    );
+    const mockJsm = {
+      streams: {
+        info: mock(() => Promise.resolve({})),
+        update: streamUpdateMock,
+        add: mock(() => Promise.resolve({})),
+      },
+    };
+
+    const buffer = new NatsStreamBuffer({
+      getConnection: () => ({ info: { cluster: "deco-nats" } }) as never,
+      getJetStream: () => ({}) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
+    });
+
+    await buffer.init();
+
+    expect(configs.map((c) => c.num_replicas)).toEqual([3]);
+  });
+
+  it("init rewrites a stale meta.inf by following add with update", async () => {
+    // `add` onto the directory left behind by an unrecoverable stream reuses it
+    // and keeps the old meta.inf, so without the trailing `update` the very next
+    // NATS boot fails to recover the stream again.
+    const streamAddMock = mock(() => Promise.resolve({}));
+    const streamUpdateMock = mock((_name: string, _config: unknown) =>
+      Promise.resolve({}),
+    );
+    const mockJsm = {
+      streams: {
+        info: mock(() => Promise.reject(new Error("stream not found"))),
+        update: streamUpdateMock,
+        add: streamAddMock,
+      },
+    };
+
+    const buffer = new NatsStreamBuffer({
+      getConnection: () => ({ info: {} }) as never,
+      getJetStream: () => ({}) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
+    });
+
+    await buffer.init();
+
+    expect(streamAddMock).toHaveBeenCalledTimes(1);
+    expect(streamUpdateMock).toHaveBeenCalledTimes(1);
+    expect(streamUpdateMock.mock.calls[0]?.[0]).toBe("DECOPILOT_STREAMS");
+  });
+
+  it("init does NOT fall back to 1 replica on an unrelated update failure", async () => {
+    // The fallback is scoped to replica rejections; a real config error must
+    // still surface instead of silently shipping an unreplicated stream.
+    const streamUpdateMock = mock(() =>
+      Promise.reject(new Error("invalid stream config: bad subject")),
+    );
+    const mockJsm = {
+      streams: {
+        info: mock(() => Promise.resolve({})),
+        update: streamUpdateMock,
+        add: mock(() => Promise.resolve({})),
+      },
+    };
+
+    const buffer = new NatsStreamBuffer({
+      // Clustered, so the clamp keeps 3 and the replica predicate is what
+      // decides — which is the branch this test is about.
+      getConnection: () => ({ info: { cluster: "deco-nats" } }) as never,
+      getJetStream: () => ({}) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
+    });
+
+    await expect(buffer.init()).rejects.toThrow("invalid stream config");
+    expect(streamUpdateMock).toHaveBeenCalledTimes(1);
   });
 
   it("init does NOT retry a non-transient (semantic) error", async () => {

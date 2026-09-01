@@ -52,6 +52,33 @@ describe("TaskBoardStorage comments", () => {
     await closeTestPgDatabase(database);
   });
 
+  it("round-trips the writing run's thread id", async () => {
+    // What tells one agent's comments from another's — they all share the
+    // synthetic author id, so the `update()` whitelist dropping this column
+    // would silently break the reviewer-comment check.
+    const agent = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "super-agent",
+      threadId: "thrd_qa_run",
+      body: "QA pass recorded",
+    });
+    expect(agent?.threadId).toBe("thrd_qa_run");
+
+    const human = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_1",
+      body: "looks fine",
+    });
+    expect(human?.threadId).toBeNull();
+
+    const listed = await storage.listComments(itemId, "org_test");
+    expect(listed.find((c) => c.id === agent!.id)?.threadId).toBe(
+      "thrd_qa_run",
+    );
+  });
+
   it("lets only the author edit a comment's body", async () => {
     const comment = await storage.createComment({
       taskBoardItemId: itemId,

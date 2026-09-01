@@ -31,21 +31,58 @@ const item = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
     id: "item-1",
     organizationId: "org-1",
     status: "in_review",
+    reviewCycleStartedAt: null,
     updatedBy: "user-1",
     ...over,
   }) as TaskBoardItem;
 
-function fakeCtx(over: { humanRejectedDone?: boolean } = {}) {
-  const updates: { status: string }[] = [];
+function fakeCtx(
+  over: {
+    humanRejectedDone?: boolean;
+    deliveryLanes?: boolean;
+    orgOwnedColumns?: boolean;
+  } = {},
+) {
+  const updates: { status: string; boardColumnOrg: string | null }[] = [];
   const activity: Record<string, unknown>[] = [];
   const ctx = {
     storage: {
+      organizationSettings: {
+        get: async () => ({
+          flags: {
+            delivery_lanes_enabled: over.deliveryLanes ?? false,
+            org_board_columns: over.orgOwnedColumns ?? false,
+          },
+        }),
+      },
+      // The org-owned path reads the board's columns to learn which one means
+      // review. Keyed like Studio's lanes on purpose: this fixture is about
+      // the discriminator, not about vocabulary.
+      boardColumns: {
+        listByOrg: async () => [
+          {
+            key: "in_review",
+            title: "in_review",
+            position: 0,
+            role: "in_review",
+            trackerStatuses: [],
+          },
+          {
+            key: "done",
+            title: "done",
+            position: 1,
+            role: null,
+            trackerStatuses: [],
+          },
+        ],
+      },
+      columnAutomations: { get: async () => null },
       taskBoard: {
         hasHumanRejectedDone: async () => over.humanRejectedDone ?? false,
         update: async (
           _id: string,
           _org: string,
-          patch: { status: string },
+          patch: { status: string; boardColumnOrg: string | null },
         ) => {
           updates.push(patch);
           return item({ status: "done" });
@@ -60,10 +97,10 @@ function fakeCtx(over: { humanRejectedDone?: boolean } = {}) {
 }
 
 describe("advanceToDoneIfMerged", () => {
-  it("moves a card whose PR landed outside Studio, and says why", async () => {
+  it("moves a card whose PR landed outside Studio to Done, and says why", async () => {
     const { ctx, updates, activity } = fakeCtx();
     expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
-    expect(updates).toEqual([{ status: "done" }]);
+    expect(updates).toEqual([{ status: "done", boardColumnOrg: null }]);
     expect(activity).toEqual([
       {
         taskBoardItemId: "item-1",
@@ -72,6 +109,23 @@ describe("advanceToDoneIfMerged", () => {
         data: { from: "in_review", to: "done", reason: "pr_merged" },
       },
     ]);
+  });
+
+  // With the lanes on a merged PR is DEPLOYED, not finished.
+  it("lands on Merged when the org runs the delivery lanes", async () => {
+    const { ctx, updates, activity } = fakeCtx({ deliveryLanes: true });
+    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
+    expect(updates).toEqual([{ status: "merged", boardColumnOrg: null }]);
+    expect(activity[0]).toMatchObject({
+      data: { from: "in_review", to: "merged", reason: "pr_merged" },
+    });
+  });
+
+  // The org-owned board needs the same discriminator a manual move sets (#6725).
+  it("guards a card it ships into an org-owned board", async () => {
+    const { ctx, updates } = fakeCtx({ orgOwnedColumns: true });
+    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
+    expect(updates).toEqual([{ status: "done", boardColumnOrg: "org-1" }]);
   });
 
   it("leaves an unmerged card alone", async () => {
@@ -100,7 +154,7 @@ describe("advanceToDoneIfMerged", () => {
     expect(await advanceToDoneIfMerged(ctx, item(), [abandoned, merged])).toBe(
       true,
     );
-    expect(updates).toEqual([{ status: "done" }]);
+    expect(updates).toEqual([{ status: "done", boardColumnOrg: null }]);
   });
 
   it("does nothing for a card with no linked PR", async () => {
@@ -108,13 +162,31 @@ describe("advanceToDoneIfMerged", () => {
     expect(await advanceToDoneIfMerged(ctx, item(), [])).toBe(false);
   });
 
-  it("only ever moves a card that is still In Review", async () => {
+  it("only ever moves a card that is still in the review phase", async () => {
     const { ctx } = fakeCtx();
     expect(
       await advanceToDoneIfMerged(ctx, item({ status: "in_progress" }), [
         merged,
       ]),
     ).toBe(false);
+  });
+
+  // A card whose reviewer is still working reads In Progress since migration
+  // 189, and a PR merged out from under it must still catch the card up —
+  // gating on the lane alone would leave it behind forever.
+  it("moves an In Progress card whose review cycle is open", async () => {
+    const { ctx, updates } = fakeCtx();
+    expect(
+      await advanceToDoneIfMerged(
+        ctx,
+        item({
+          status: "in_progress",
+          reviewCycleStartedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        [merged],
+      ),
+    ).toBe(true);
+    expect(updates).toEqual([{ status: "done", boardColumnOrg: null }]);
   });
 
   // A person who pulled the card back out of Done outranks a merged PR.

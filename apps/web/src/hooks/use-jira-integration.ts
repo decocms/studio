@@ -84,3 +84,43 @@ export function useRunJiraSync() {
       queryClient.invalidateQueries({ queryKey: KEYS.jiraIntegration(org.id) }),
   });
 }
+
+/**
+ * Ask for a full re-scan. Returns as soon as the request is recorded — the
+ * scan itself is the scheduler's, paced across ticks, because a whole board is
+ * far more Jira reads than a request should hold open.
+ */
+export function useRequestJiraResync() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => await studio.call("JIRA_RESYNC_REQUEST", {}),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: KEYS.jiraIntegration(org.id) }),
+  });
+}
+
+/**
+ * Say what one of the board's columns means to Studio.
+ *
+ * Invalidates the board read, not the integration: the roles live on the
+ * columns that read carries, and the settings screen and the board itself are
+ * looking at the same cached list.
+ */
+export function useSetColumnRole() {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { columnKey: string; role: string | null }) =>
+      await studio.call("TASK_BOARD_COLUMN_ROLE_SET", {
+        columnKey: input.columnKey,
+        role: input.role as "in_review" | "archived" | null,
+      }),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardItems(locator),
+      }),
+  });
+}

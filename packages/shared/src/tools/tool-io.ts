@@ -121,10 +121,12 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
+            org_board_columns?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
+            auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
@@ -132,6 +134,8 @@ export interface StudioToolIO {
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
+            cms_auto_fresh_branch?: boolean | undefined;
           }
         | null
         | undefined;
@@ -194,10 +198,12 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
+            org_board_columns?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
+            auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
@@ -205,6 +211,8 @@ export interface StudioToolIO {
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
+            cms_auto_fresh_branch?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -267,10 +275,12 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            nav_v2?: boolean | undefined;
+            org_board_columns?: boolean | undefined;
+            reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
+            auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
@@ -278,6 +288,8 @@ export interface StudioToolIO {
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
+            cms_auto_fresh_branch?: boolean | undefined;
           }
         | null
         | undefined;
@@ -326,14 +338,7 @@ export interface StudioToolIO {
     input: {
       title: string;
       description?: string | null | undefined;
-      status?:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "archived"
-        | undefined;
+      status?: string | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
@@ -348,13 +353,7 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status:
-          | "done"
-          | "triage"
-          | "todo"
-          | "in_progress"
-          | "in_review"
-          | "archived";
+        status: string;
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
@@ -364,7 +363,9 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
+        reviewCycleStartedAt: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -393,7 +394,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -412,13 +413,7 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status:
-          | "done"
-          | "triage"
-          | "todo"
-          | "in_progress"
-          | "in_review"
-          | "archived";
+        status: string;
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
@@ -428,7 +423,9 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
+        reviewCycleStartedAt: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -457,7 +454,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -474,6 +471,12 @@ export interface StudioToolIO {
         startsAt: string | null;
         endsAt: string | null;
       }[];
+      columns: {
+        key: string;
+        title: string;
+        position: number;
+        role: string | null;
+      }[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {
@@ -481,20 +484,14 @@ export interface StudioToolIO {
       id: string;
       title?: string | undefined;
       description?: string | null | undefined;
-      status?:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "archived"
-        | undefined;
+      status?: string | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
+      sprintId?: string | null | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
       prUrl?: string | null | undefined;
@@ -505,13 +502,7 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status:
-          | "done"
-          | "triage"
-          | "todo"
-          | "in_progress"
-          | "in_review"
-          | "archived";
+        status: string;
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
@@ -521,7 +512,9 @@ export interface StudioToolIO {
         sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
+        jiraIssueKey: string | null;
         retryAttempts: number;
+        reviewCycleStartedAt: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -550,7 +543,7 @@ export interface StudioToolIO {
           createdAt: string;
         }[];
         reviewVerdicts: {
-          reviewer: "qa" | "code_review";
+          reviewer: "reviewer";
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
@@ -564,6 +557,37 @@ export interface StudioToolIO {
   TASK_BOARD_ITEM_DELETE: {
     input: { id: string };
     output: { success: boolean };
+  };
+  TASK_BOARD_AUTOMATION_LIST: {
+    input: { [x: string]: never };
+    output: { automations: { columnKey: string; prompt: string | null }[] };
+  };
+  TASK_BOARD_AUTOMATION_UPSERT: {
+    input: { columnKey: string; prompt?: string | null | undefined };
+    output: { automation: { columnKey: string; prompt: string | null } };
+  };
+  TASK_BOARD_AUTOMATION_DELETE: {
+    input: { columnKey: string };
+    output: { removed: boolean };
+  };
+  TASK_BOARD_PROMPT_LIST: {
+    input: { [x: string]: never };
+    output: { prompts: { columnKey: string | null; prompt: string }[] };
+  };
+  TASK_BOARD_PROMPT_UPSERT: {
+    input: { prompt: string; columnKey?: string | null | undefined };
+    output: { prompt: { columnKey: string | null; prompt: string } };
+  };
+  TASK_BOARD_PROMPT_DELETE: {
+    input: { columnKey?: string | null | undefined };
+    output: { removed: boolean };
+  };
+  TASK_BOARD_COLUMN_ROLE_SET: {
+    input: {
+      columnKey: string;
+      role: "in_progress" | "todo" | "in_review" | "archived" | null;
+    };
+    output: { columnKey: string; role: string | null };
   };
   TASK_BOARD_ITEM_PRS_GET: {
     input: { taskBoardItemId: string };
@@ -607,34 +631,16 @@ export interface StudioToolIO {
   TASK_BOARD_REVIEW_DECISION: {
     input: {
       taskBoardItemId: string;
-      reviewer: "qa" | "code_review";
+      reviewer: "reviewer" | "qa" | "code_review";
       decision: "approve" | "request_changes";
       notes: string;
       reviewToken?: string | undefined;
     };
-    output: {
-      status:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "archived";
-      merged: boolean;
-    };
+    output: { status: string; merged: boolean };
   };
   TASK_BOARD_PROMOTE_TO_PRODUCTION: {
     input: { taskBoardItemId: string };
-    output: {
-      status:
-        | "done"
-        | "triage"
-        | "todo"
-        | "in_progress"
-        | "in_review"
-        | "archived";
-      merged: boolean;
-    };
+    output: { status: string; merged: boolean };
   };
   TASK_BOARD_ACTIVITY_LIST: {
     input: { taskBoardItemId: string };
@@ -655,8 +661,10 @@ export interface StudioToolIO {
           | "title_changed"
           | "description_changed"
           | "tags_changed"
+          | "review_verdict_requested"
           | "merge_conflict_resolution"
-          | "type_changed";
+          | "type_changed"
+          | "sprint_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -2146,6 +2154,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2333,6 +2342,7 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              fastPreviewInPlace?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -2505,6 +2515,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2693,6 +2704,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2872,6 +2884,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -3024,6 +3037,7 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              fastPreviewInPlace?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -3204,6 +3218,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -3381,6 +3396,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -4415,6 +4431,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -4900,18 +4917,7 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Partial<
-          Record<
-            | "done"
-            | "triage"
-            | "todo"
-            | "in_progress"
-            | "in_review"
-            | "archived",
-            string[]
-          >
-        >;
-        autoDelegate: boolean;
+        statusMapping: Record<string, string[]>;
         webhookSecret: string;
         enabled: boolean;
         lastSyncedAt: string | null;
@@ -4927,20 +4933,7 @@ export interface StudioToolIO {
       apiToken?: string | undefined;
       boardId?: string | null | undefined;
       boardName?: string | null | undefined;
-      statusMapping?:
-        | Partial<
-            Record<
-              | "done"
-              | "triage"
-              | "todo"
-              | "in_progress"
-              | "in_review"
-              | "archived",
-              string[]
-            >
-          >
-        | undefined;
-      autoDelegate?: boolean | undefined;
+      statusMapping?: Record<string, string[]> | undefined;
       enabled?: boolean | undefined;
     };
     output: {
@@ -4950,18 +4943,7 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Partial<
-          Record<
-            | "done"
-            | "triage"
-            | "todo"
-            | "in_progress"
-            | "in_review"
-            | "archived",
-            string[]
-          >
-        >;
-        autoDelegate: boolean;
+        statusMapping: Record<string, string[]>;
         webhookSecret: string;
         enabled: boolean;
         lastSyncedAt: string | null;
@@ -5004,6 +4986,10 @@ export interface StudioToolIO {
           }
         | { error: string };
     };
+  };
+  JIRA_RESYNC_REQUEST: {
+    input: { [x: string]: never };
+    output: { queued: true };
   };
   LIST_OBJECTS: {
     input: {

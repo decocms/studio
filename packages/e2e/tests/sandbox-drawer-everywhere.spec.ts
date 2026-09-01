@@ -60,9 +60,9 @@ test.describe("sandbox drawer is available on every main-panel tab", () => {
     // we deliberately don't try to start the sandbox.
     const sandboxToolbarTab = page.getByRole("button", { name: /^sandbox$/i });
 
-    // Active tab is driven by ?main=… (see tab-id.ts grammar). Start on the
-    // settings tab — the most common non-preview tab and a strong signal
-    // that the drawer has been hoisted out of PreviewContent.
+    /** Settings is the most common non-preview tab, so landing the drawer there
+     *  proves it was hoisted out of PreviewContent. The legacy `?main=` URL is
+     *  translated on entry, which this pins too. */
     await page.goto(
       `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=settings`,
     );

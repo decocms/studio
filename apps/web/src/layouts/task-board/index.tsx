@@ -1,5 +1,5 @@
 /**
- * Task board (`?main=board`) — the org's own board of tasks (title,
+ * Task board — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
  * Rendered as a main-panel overlay tab; there is no standalone route.
  */
@@ -72,17 +72,7 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { LoaderCircle } from "lucide-react";
-import { QaAgentIcon } from "@/components/qa-agent-icon";
-import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
+import { ReviewerIcon } from "@/components/reviewer-icon";
 import {
   getWellKnownDecopilotVirtualMCP,
   useConnections,
@@ -93,10 +83,10 @@ import {
   listRepoScopeLabels,
 } from "@decocms/shared/github-repo-scope";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";
-import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
+  useBoardColumns,
   useBoardSprintIndex,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
@@ -111,27 +101,39 @@ import {
   isTaskBlocked,
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
+  laneVisibility,
+  moveTargets,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
   statusIconClassName,
-  STATUS_CONFIG,
-  STATUSES,
+  dropLane,
+  LANE_DROPPABLE_PREFIX,
+  type BoardColumn,
+  laneHeader,
+  laneVisual,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
   TASK_TYPES,
   type TaskBoardItem,
   type TaskBoardItemPriority,
-  type TaskBoardItemStatus,
   type TaskBoardItemTag,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  useOrgFlag,
+  useReviewerEnabled,
+} from "@/hooks/use-organization-settings";
 import type { Sprint } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
-import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
+import {
+  TaskBoardItemDetail,
+  TaskBoardItemDialog,
+  toEndOfDayIso,
+} from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
+import { ConnectGitHubDialog } from "./connect-github-dialog";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
@@ -157,7 +159,12 @@ import {
 } from "./task-filters";
 import { useBoardSearch } from "./filters-search";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import {
+  findTaskByKeyOrId,
+  taskRouteSegment,
+} from "@/layouts/task-board/task-route";
 import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
@@ -430,7 +437,7 @@ function FooterDueDate({
   );
 }
 
-/** The card's one run action, as a footer glyph. Its slot is always reserved, so revealing it on hover shifts nothing and covers nothing. */
+/** The card's one run action, as a written footer button. Revealed on hover; its collapsed width keeps the resting footer uncluttered. */
 function CardActionGlyph({
   action,
 }: {
@@ -439,17 +446,17 @@ function CardActionGlyph({
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
-      title={action.label}
+      size="sm"
       aria-label={action.label}
       onClick={(e) => {
         e.stopPropagation();
         action.onClick();
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      className="-m-1.5 pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="-my-1.5 h-7 gap-1.5 px-2 text-xs font-medium pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
+      {action.label}
     </Button>
   );
 }
@@ -483,7 +490,7 @@ function CardFooter({
   onDueDateChange?: (iso: string) => void;
 }) {
   const { org } = useProjectContext();
-  const key = taskKey(org.slug, item.keySeq);
+  const key = taskKey(org.slug, item.keySeq, item.jiraIssueKey);
   return (
     // No inset of its own: the footer shares the card's padding, so the type glyph starts on the same left edge as the title and the labels.
     <div className="mt-auto flex shrink-0 items-center justify-between gap-2 pt-1">
@@ -606,12 +613,7 @@ function ChecksChip({
     <span className="flex flex-col gap-0.5">
       {enabled.map((kind) => {
         const verdict = verdicts.find((v) => v.reviewer === kind);
-        const Glyph = kind === "qa" ? QaAgentIcon : CodeReviewerIcon;
-        const name = t(
-          kind === "qa"
-            ? "taskBoard.taskDialog.qaAgentLabel"
-            : "taskBoard.taskDialog.codeReviewerLabel",
-        );
+        const name = t("taskBoard.taskDialog.reviewerLabel");
         const state = !verdict
           ? t("taskBoard.taskBoard.checksPending")
           : verdict.verdict === "changes_requested"
@@ -626,7 +628,7 @@ function ChecksChip({
             key={kind}
             className="flex items-center gap-1.5 whitespace-nowrap"
           >
-            <Glyph size={12} />
+            <ReviewerIcon size={12} />
             {name} — {state}
           </span>
         );
@@ -693,17 +695,23 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
 /**
  * The card's checks indicator, or null when there is nothing to say: this org
  * runs no reviewers, or the task has not reached review yet (a To Do card with
- * `0/2` would be reporting a failure that hasn't had a chance to happen).
+ * `0/1` would be reporting a failure that hasn't had a chance to happen).
+ *
+ * "Reached review" is the open cycle, not the In Review lane. Since migration
+ * 189 a card whose reviewer is working reads In Progress, and that is exactly
+ * when the pending chip earns its place — the lane alone would hide the checks
+ * for the whole time they are actually being decided.
  */
 function useCardChecks(item: TaskBoardItem): {
   summary: ChecksSummary;
   enabled: ReviewerKind[];
 } | null {
-  const enabled = enabledReviewers({
-    qa: useOrgFlag("qa_agent_enabled"),
-    codeReview: useOrgFlag("code_reviewer_enabled"),
-  });
-  if (item.reviewVerdicts.length === 0 && item.status !== "in_review") {
+  const enabled = enabledReviewers(useReviewerEnabled());
+  if (
+    item.reviewVerdicts.length === 0 &&
+    item.status !== "in_review" &&
+    !item.reviewCycleStartedAt
+  ) {
     return null;
   }
   const summary = checksSummary(item.reviewVerdicts, enabled);
@@ -816,7 +824,7 @@ function AssigneeDisplay({
 
 export function TaskBoardPage() {
   const t = useT();
-  const { items, sprints, isLoading } = useTaskBoardItems();
+  const { items, sprints, columns, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -925,7 +933,7 @@ export function TaskBoardPage() {
       else next.add(id);
       return next;
     });
-  const selectAllInLane = (status: TaskBoardItemStatus) =>
+  const selectAllInLane = (status: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
       for (const item of visibleItems)
@@ -938,33 +946,53 @@ export function TaskBoardPage() {
     setFilters(next);
     clearSelection();
   };
+  // Create only: an existing card is addressed by its path, not by state.
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
   // Status a newly-created task should start in (set by a lane's "+"); null for
   // the generic "New task" button.
-  const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
-    null,
-  );
+  const [createStatus, setCreateStatus] = useState<string | null>(null);
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
-  // Deep link: `?main=board&task=<id>` opens that task's modal (from a linked
-  // chat's "open in board" button). Derived, so it opens as soon as the item
-  // loads without an effect.
-  const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
-    task?: string;
+  /**
+   * `/$org/tasks/DECO-01` renders that card in place of the lanes — the one
+   * address a task has, whether it was reached by clicking its card, by the
+   * short `/$org/t/DECO-01` link, or by a legacy `?task=`.
+   *
+   * The segment is the whole of the open-task state: resolving the row out of
+   * the SSE-patched list on every render is what lets a thread or status
+   * linked while the task is on screen flow straight in.
+   *
+   * `strict: false` because the board also renders as an overlay view
+   * on destinations that have no such param, where it reads `undefined` and
+   * shows the lanes.
+   */
+  const { taskKey: openTaskKey } = useParams({ strict: false }) as {
+    taskKey?: string;
   };
-  const deepLinkItem = deepLinkTaskId
-    ? (items.find((i) => i.id === deepLinkTaskId) ?? null)
-    : null;
+  const openItem = findTaskByKeyOrId(items, openTaskKey) ?? null;
+  /** A deleted (or never-visible) card leaves the segment dangling; land on
+   *  the board rather than an empty pane. */
+  const staleTaskKey = !!openTaskKey && !openItem && !isLoading;
+  /** The key the card actually wears, so a link minted from an id or from
+   *  `deco-1` settles on the shareable form instead of preserving whatever
+   *  spelling it arrived as. */
+  const canonicalKey = openItem ? taskRouteSegment(org.slug, openItem) : null;
 
-  const clearDeepLink = () => {
-    if (deepLinkTaskId)
+  /**
+   * Leaving a task replaces its entry rather than stacking a second one.
+   * Opening pushes, so back from a task lands on the board; if closing pushed
+   * too, back from the board would re-open the task just closed, and a cycle
+   * of opens would bury the page the board was reached from.
+   */
+  const closeTask = () => {
+    if (openTaskKey)
       navigate({
-        to: ".",
-        search: ({ task: _task, ...rest }: Record<string, unknown>) => rest,
+        to: DESTINATION_ROUTE.tasks,
+        params: { org: org.slug, taskKey: undefined },
+        search: (prev: Record<string, unknown>) => prev,
         replace: true,
       });
   };
@@ -1008,7 +1036,6 @@ export function TaskBoardPage() {
       ],
     };
     writeChatDraft(sessionStorage, locator, newId, doc);
-    setDialogOpen(false);
     try {
       await create({ id: newId, virtual_mcp_id: agentId });
       // Best-effort — a link failure shouldn't block navigating into the chat.
@@ -1031,49 +1058,36 @@ export function TaskBoardPage() {
   );
 
   const openCreate = () => {
-    setEditingItem(null);
     setCreateStatus(null);
     setDialogOpen(true);
   };
 
-  const openCreateInLane = (status: TaskBoardItemStatus) => {
-    setEditingItem(null);
+  const openCreateInLane = (status: string) => {
     setCreateStatus(status);
     setDialogOpen(true);
   };
 
-  const openEdit = (item: TaskBoardItem) => {
-    setEditingItem(item);
-    setDialogOpen(true);
-    // Keep the URL shareable regardless of how the modal was opened.
+  /**
+   * Open a card: a navigation to the card's own URL, not a modal. Pushed
+   * rather than replaced so browser back lands on the board the card was
+   * clicked from.
+   *
+   * Named as the tasks route rather than `"."` because the board also renders
+   * as an overlay view elsewhere, and a card has exactly one address
+   * wherever it was clicked. The board's filters ride along; anything the
+   * tasks route does not declare is dropped by its schema.
+   */
+  const openTask = (item: TaskBoardItem) => {
     navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, task: item.id }),
-      replace: true,
+      to: DESTINATION_ROUTE.tasks,
+      params: { org: org.slug, taskKey: taskRouteSegment(org.slug, item) },
+      search: (prev: Record<string, unknown>) => prev,
     });
   };
 
-  // Opening a card always opens the task modal. The modal's activity area is
-  // what navigates into the run's chat (see onOpenThread below).
-  const openTask = openEdit;
-
-  // The task the modal is editing — a locally-opened card, or the deep-linked
-  // one. Resolve the LIVE row from the SSE-patched list by id (falling back to
-  // the click-time snapshot if it's momentarily absent) so threads/status
-  // linked while the modal is open — e.g. the QA Agent session handed off
-  // mid-view — flow in without reopening. The snapshot alone would freeze the
-  // item at open time.
-  const activeItem =
-    (editingItem && items.find((i) => i.id === editingItem.id)) ??
-    editingItem ??
-    deepLinkItem;
-  const modalOpen = dialogOpen || !!deepLinkItem;
-
-  const closeDialog = () => {
+  const closeCreate = () => {
     setDialogOpen(false);
-    setEditingItem(null);
     setCreateStatus(null);
-    clearDeepLink();
   };
 
   if (isLoading && items.length === 0) {
@@ -1084,26 +1098,44 @@ export function TaskBoardPage() {
     );
   }
 
-  return (
-    // Full-width so each region's scroll container spans the whole panel — the
-    // max-width lives on the *content* inside (header + lanes), so the mouse can
-    // sit in the empty margins on wide monitors and still scroll the board.
-    <div
-      ref={trackBoardOpenRef}
-      className="relative flex min-h-0 flex-1 flex-col"
-    >
+  if (staleTaskKey) {
+    return (
+      <Navigate
+        to={DESTINATION_ROUTE.tasks}
+        params={{ org: org.slug, taskKey: undefined }}
+        search={(prev: Record<string, unknown>) => prev}
+        replace
+      />
+    );
+  }
+
+  if (canonicalKey && canonicalKey !== openTaskKey) {
+    return (
+      <Navigate
+        to={DESTINATION_ROUTE.tasks}
+        params={{ org: org.slug, taskKey: canonicalKey }}
+        search={(prev: Record<string, unknown>) => prev}
+        replace
+      />
+    );
+  }
+
+  /** The board itself — header, toolbar, lanes. Hoisted so wrapping it
+   *  below does not reindent every line of it. */
+  const boardContent = (
+    <>
       {/* Header — capped + centered to the same width as the board content so
-          they line up; content-capped, not scroll-capped. */}
+        they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
         <h1 className="text-xl font-medium text-foreground">
           {t("taskBoard.taskBoard.tasksTitle")}
         </h1>
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
-            diagnostic is paid. The board stays usable in the meantime. */}
+          diagnostic is paid. The board stays usable in the meantime. */}
 
         {/* Toolbar — filters on the left (inline bar on desktop, a single
-            drawer button on mobile), view toggle + New task on the right. */}
+          drawer button on mobile), view toggle + New task on the right. */}
         <div className="flex flex-wrap items-center gap-2">
           {items.length > 0 && (
             <>
@@ -1182,6 +1214,8 @@ export function TaskBoardPage() {
         </div>
       ) : layout === "board" ? (
         <Lanes
+          visible={!openItem}
+          columns={columns}
           items={visibleItems}
           members={members}
           memberByUserId={memberByUserId}
@@ -1256,120 +1290,118 @@ export function TaskBoardPage() {
           </div>
         </div>
       )}
+    </>
+  );
 
-      <TaskBoardItemDialog
-        key={
-          modalOpen
-            ? (activeItem?.id ?? `new-${createStatus ?? "default"}`)
-            : "closed"
-        }
-        open={modalOpen}
-        onClose={closeDialog}
-        item={activeItem ?? undefined}
-        defaultStatus={createStatus ?? undefined}
-        isSaving={actions.create.isPending || actions.update.isPending}
-        onSubmit={(input) => {
-          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
-            closeDialog();
-            return;
-          }
-          if (activeItem) {
-            // Reports-generated tasks reject a write touching title/
-            // description/priority (their content is owned by the reports
-            // sync) — the dialog locks those fields, but still round-trips
-            // their unchanged values here, so drop them instead of sending a
-            // payload the server would 500 on. Board interactions
-            // (status/assignee/dueDate/tagIds) always go through.
+  /** Full-width so each region's scroll container spans the whole panel — the
+   *  max-width lives on the *content* inside (header + lanes), so the mouse can
+   *  sit in the empty margins on wide monitors and still scroll the board. */
+  return (
+    <div
+      ref={trackBoardOpenRef}
+      className="relative flex min-h-0 flex-1 flex-col"
+    >
+      {/* Hidden rather than unmounted while a task is open: lane scroll, the
+          horizontal board scroll and dnd-kit's state all survive the trip into
+          a card and back. `useFlipLanes` is told to stop measuring — a
+          display:none board reports every card at 0×0. */}
+      <div className={cn("flex min-h-0 flex-1 flex-col", openItem && "hidden")}>
+        {boardContent}
+      </div>
+
+      {/* Keyed by id so switching cards (a deep link changing under us) starts
+          the editor's form over rather than carrying the last one's fields. */}
+      {openItem && (
+        <TaskBoardItemDetail
+          key={openItem.id}
+          item={openItem}
+          onClose={() => closeTask()}
+          isSaving={actions.update.isPending}
+          onSubmit={(input) => {
+            if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+              closeTask();
+              return;
+            }
+            /* Reports tasks own their title/description/priority in the
+               reports sync, and TASK_BOARD_ITEM_UPDATE 500s on a write that
+               touches them. The editor locks those fields but still
+               round-trips their values, so drop them here; board fields
+               (status/assignee/dueDate/tagIds) always go through. */
             const { title, description, priority, ...boardFields } = input;
-            const contentFields = isReportsTask(activeItem)
+            const contentFields = isReportsTask(openItem)
               ? {}
               : { title, description, priority };
             actions.update.mutate(
-              { id: activeItem.id, ...boardFields, ...contentFields },
+              { id: openItem.id, ...boardFields, ...contentFields },
               { onError: onDelegateError },
             );
-            // Autosave: the dialog stays open.
+          }}
+          onDelete={() => {
+            actions.remove.mutate(openItem.id);
+            closeTask();
+          }}
+          onClone={() => {
+            // A copy starts fresh and undelegated: no assignee, no threads.
+            actions.create.mutate({
+              title: t("taskBoard.taskDialog.cloneTitle", {
+                title: openItem.title,
+              }),
+              description: openItem.description,
+              status: openItem.status,
+              priority: openItem.priority,
+              repo: openItem.repo,
+              dueDate: openItem.dueDate,
+              tagIds: openItem.tags.map((tag) => tag.id),
+            });
+            toast.success(t("taskBoard.taskDialog.cloneSuccess"));
+            closeTask();
+          }}
+          onArchive={() => {
+            actions.update.mutate({ id: openItem.id, status: "archived" });
+            toast.success(t("taskBoard.taskDialog.archiveSuccess"));
+            closeTask();
+          }}
+          onNewChat={() => void startChatFromTask(openItem)}
+          onAutoFix={() => {
+            if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+            actions.update.mutate(
+              { id: openItem.id, assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+              { onError: onDelegateError },
+            );
+            closeTask();
+          }}
+          onRerun={() => {
+            /* Confirm in the shared dialog rather than firing from here — the
+               card path does the same, so the takeover warning has one home. */
+            closeTask();
+            setRerunTargets([openItem]);
+          }}
+          /* Only the PR card's "Edit" reaches this now — it opens the branch's
+             live dev server, which is a place. A run's transcript opens in a
+             sheet on the page instead. `setTaskId` builds a fresh search, so
+             `task` falls away with it. */
+          onOpenPreview={(thread) => {
+            if (!thread.virtualMcpId) return;
+            setTaskId(thread.threadId, thread.virtualMcpId, {
+              panel: "preview",
+            });
+          }}
+        />
+      )}
+
+      <TaskBoardItemDialog
+        key={dialogOpen ? `new-${createStatus ?? "default"}` : "closed"}
+        open={dialogOpen}
+        onClose={closeCreate}
+        defaultStatus={createStatus ?? undefined}
+        isSaving={actions.create.isPending}
+        onSubmit={(input) => {
+          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+            closeCreate();
             return;
           }
           actions.create.mutate(input);
-          closeDialog();
-        }}
-        onDelete={
-          activeItem
-            ? () => {
-                actions.remove.mutate(activeItem.id);
-                closeDialog();
-              }
-            : undefined
-        }
-        onClone={
-          activeItem
-            ? () => {
-                // A copy starts fresh and undelegated: no assignee, no threads.
-                actions.create.mutate({
-                  title: t("taskBoard.taskDialog.cloneTitle", {
-                    title: activeItem.title,
-                  }),
-                  description: activeItem.description,
-                  status: activeItem.status,
-                  priority: activeItem.priority,
-                  repo: activeItem.repo,
-                  dueDate: activeItem.dueDate,
-                  tagIds: activeItem.tags.map((tag) => tag.id),
-                });
-                toast.success(t("taskBoard.taskDialog.cloneSuccess"));
-                closeDialog();
-              }
-            : undefined
-        }
-        onArchive={
-          activeItem
-            ? () => {
-                actions.update.mutate({
-                  id: activeItem.id,
-                  status: "archived",
-                });
-                toast.success(t("taskBoard.taskDialog.archiveSuccess"));
-                closeDialog();
-              }
-            : undefined
-        }
-        onNewChat={
-          activeItem ? () => void startChatFromTask(activeItem) : undefined
-        }
-        onAutoFix={
-          activeItem
-            ? () => {
-                if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
-                  return;
-                actions.update.mutate(
-                  {
-                    id: activeItem.id,
-                    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                  },
-                  { onError: onDelegateError },
-                );
-                closeDialog();
-              }
-            : undefined
-        }
-        onRerun={
-          activeItem
-            ? () => {
-                // Confirm in the shared dialog rather than firing from here —
-                // the card path does the same, so the takeover warning has one
-                // home. Closing the task dialog first keeps them unstacked.
-                closeDialog();
-                setRerunTargets([activeItem]);
-              }
-            : undefined
-        }
-        onOpenThread={(thread) => {
-          if (!thread.virtualMcpId) return;
-          closeDialog();
-          setTaskId(thread.threadId, thread.virtualMcpId, {
-            main: thread.hasPreview ? "preview" : "board",
-          });
+          closeCreate();
         }}
       />
 
@@ -1396,7 +1428,9 @@ export function TaskBoardPage() {
         onConfirm={confirmRerun}
       />
 
-      {selectedIds.size > 0 && (
+      {/* Acts on the lanes, so it follows them out of view — the selection is
+          kept, not cleared, and comes back with the board. */}
+      {selectedIds.size > 0 && !openItem && (
         <SelectionBar
           count={selectedIds.size}
           members={members}
@@ -1491,60 +1525,6 @@ export function TaskBoardPage() {
  * The Super Agent needs GitHub to open a PR, so we connect first. Once the
  * connection lands the card's Auto-fix button works on the next click.
  */
-function ConnectGitHubDialog({
-  open,
-  onOpenChange,
-  onConnected,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** Called after the connect attempt settles, success or failure — the
-   *  caller (the repo picker) has its own auto-install fallback either way. */
-  onConnected: () => void;
-}) {
-  const t = useT();
-  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
-        <div className="flex h-28 items-center justify-center bg-gradient-to-br from-muted via-muted to-accent">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-foreground text-background shadow-sm">
-            <GitHubIcon className="size-7" />
-          </div>
-        </div>
-        <div className="flex flex-col gap-4 p-6">
-          <DialogHeader>
-            <DialogTitle>
-              {t("taskBoard.taskBoard.connectGithubTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {t("taskBoard.taskBoard.connectGithubDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              onClick={async () => {
-                await connect();
-                onOpenChange(false);
-                onConnected();
-              }}
-              disabled={isConnecting}
-              className="gap-2"
-            >
-              {isConnecting ? (
-                <Loading01 size={16} className="animate-spin" />
-              ) : (
-                <GitHubIcon className="size-4" />
-              )}
-              {t("taskBoard.taskBoard.connectGithubButton")}
-            </Button>
-          </DialogFooter>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /**
  * Floating pill toolbar that appears once at least one card is selected —
  * count, a bulk "Actions" menu (move / tag / priority / delete), a quick
@@ -1565,7 +1545,7 @@ function SelectionBar({
 }: {
   count: number;
   members: Member[];
-  onMoveTo: (status: TaskBoardItemStatus) => void;
+  onMoveTo: (status: string) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
   onAssign: (userId: string | null) => void;
@@ -1581,6 +1561,8 @@ function SelectionBar({
 }) {
   const t = useT();
   const { data: orgTags = [] } = useTags();
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
+  const columns = useBoardColumns();
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
@@ -1603,12 +1585,12 @@ function SelectionBar({
                 {t("taskBoard.taskBoard.moveToButton")}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {STATUSES.map((status) => (
+                {moveTargets(columns, deliveryEnabled).map((status) => (
                   <DropdownMenuItem
                     key={status}
                     onClick={() => onMoveTo(status)}
                   >
-                    {t(STATUS_CONFIG[status].labelKey)}
+                    {laneHeader(status, t, columns).label}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>
@@ -1749,13 +1731,10 @@ function LayoutToggle({
   );
 }
 
-/** Prefix for a lane's own droppable id, so it can't collide with a card id. */
-const LANE_DROPPABLE_PREFIX = "lane:";
-
 /** Where a card sits locally: while a drag is in flight, and then until the
  *  server's optimistic patch catches up. */
 interface Placement {
-  status: TaskBoardItemStatus;
+  status: string;
   sortOrder: number;
 }
 
@@ -1771,6 +1750,7 @@ function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
 }
 
 function Lanes({
+  columns,
   items,
   members,
   memberByUserId,
@@ -1786,27 +1766,29 @@ function Lanes({
   onPriorityChange,
   onTypeChange,
   onDueDateChange,
+  visible,
 }: {
+  /** The board's own columns, as the server sent them. */
+  columns: readonly BoardColumn[];
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
-  onSelectAllInLane: (status: TaskBoardItemStatus) => void;
+  onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: TaskBoardItemStatus) => void;
-  onMove: (
-    ids: string[],
-    status: TaskBoardItemStatus,
-    sortOrder: number,
-  ) => void;
+  onCreate: (status: string) => void;
+  onMove: (ids: string[], status: string, sortOrder: number) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
   onPriorityChange?: (id: string, priority: TaskBoardItemPriority) => void;
   onTypeChange?: (id: string, type: TaskBoardItemType) => void;
   onDueDateChange?: (id: string, iso: string) => void;
+  /** False while the task detail has the panel — see `useFlipLanes`. */
+  visible: boolean;
 }) {
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
   // on drag start so dropping the same card twice replays it (a CSS animation
@@ -1890,18 +1872,26 @@ function Lanes({
     boardRef,
     placed.map((item) => `${item.id}:${item.status}`).join(","),
     activeId === null,
+    visible,
   );
 
-  const laneItems = (status: TaskBoardItemStatus) =>
+  const laneItems = (status: string) =>
     placed.filter((item) => item.status === status).sort(bySortOrder);
 
-  /** Shown-again lanes persist per person (localStorage), so pulling Archived
-   *  onto the board survives a reload. */
-  const hiddenLanes = HIDDEN_STATUSES.filter(
-    (status) => !preferences.shownTaskBoardLanes.includes(status),
-  );
-  const boardLanes = STATUSES.filter((status) => !hiddenLanes.includes(status));
-  const setLaneShown = (status: TaskBoardItemStatus, shown: boolean) =>
+  /** Shown-again lanes persist per person, so pulling one onto the board
+   *  survives a reload. */
+  const {
+    lanes: boardLanes,
+    hidden: hiddenLanes,
+    hideable: hideableLanes,
+    unplaced: unplacedLanes,
+  } = laneVisibility({
+    columns,
+    deliveryEnabled,
+    shownLanes: preferences.shownTaskBoardLanes,
+    occupied: placed.map((item) => item.status),
+  });
+  const setLaneShown = (status: string, shown: boolean) =>
     setPreferences((prev) => ({
       ...prev,
       shownTaskBoardLanes: shown
@@ -1909,18 +1899,18 @@ function Lanes({
         : prev.shownTaskBoardLanes.filter((s) => s !== status),
     }));
 
-  /** The lane a drop target belongs to: a lane's own droppable, or the lane of
-   *  the card being hovered. Resolved against `placed` rather than dnd-kit's
-   *  `over.data`, which is a ref and can't be read during render. */
-  const laneOf = (overId: string | number | undefined) => {
-    if (overId === undefined) return null;
-    const id = String(overId);
-    if (id.startsWith(LANE_DROPPABLE_PREFIX)) {
-      const status = id.slice(LANE_DROPPABLE_PREFIX.length);
-      return STATUSES.find((candidate) => candidate === status) ?? null;
-    }
-    return placed.find((item) => item.id === id)?.status ?? null;
-  };
+  /** The columns a drag may land in — the board's own, never an off-board
+   *  lane: a card can leave one, never be filed into one. */
+  const columnKeys = new Set(columns.map((column) => column.key));
+
+  /** Resolved against `placed` rather than dnd-kit's `over.data`, which is a
+   *  ref and can't be read during render. */
+  const laneOf = (overId: string | number | undefined) =>
+    dropLane({
+      overId,
+      columnKeys,
+      statusOf: (cardId) => placed.find((item) => item.id === cardId)?.status,
+    });
 
   // A card inside a multi-selection drags the whole selection, grabbed card
   // first so it leads the run and the others follow in order.
@@ -1929,7 +1919,7 @@ function Lanes({
       ? [id, ...Array.from(selectedIds).filter((other) => other !== id)]
       : [id];
 
-  const place = (ids: string[], status: TaskBoardItemStatus, slot: number) => {
+  const place = (ids: string[], status: string, slot: number) => {
     const orders = runSortOrders(slot, ids.length);
     setOverrides((prev) => {
       const next = new Map(prev);
@@ -2053,6 +2043,8 @@ function Lanes({
             <Lane
               key={status}
               status={status}
+              columns={columns}
+              offBoard={unplacedLanes.includes(status)}
               items={laneItems(status)}
               members={members}
               memberByUserId={memberByUserId}
@@ -2075,7 +2067,7 @@ function Lanes({
               onTypeChange={onTypeChange}
               onDueDateChange={onDueDateChange}
               onHide={
-                HIDDEN_STATUSES.includes(status)
+                hideableLanes.includes(status)
                   ? () => setLaneShown(status, false)
                   : undefined
               }
@@ -2084,6 +2076,7 @@ function Lanes({
           {hiddenLanes.length > 0 && (
             <HiddenLanes
               statuses={hiddenLanes}
+              columns={columns}
               countOf={(status) => laneItems(status).length}
               onShow={(status) => setLaneShown(status, true)}
             />
@@ -2139,12 +2132,14 @@ function Lanes({
  *  gives the collapse (closed by default) without any state of its own. */
 function HiddenLanes({
   statuses,
+  columns,
   countOf,
   onShow,
 }: {
-  statuses: TaskBoardItemStatus[];
-  countOf: (status: TaskBoardItemStatus) => number;
-  onShow: (status: TaskBoardItemStatus) => void;
+  statuses: string[];
+  columns: readonly BoardColumn[];
+  countOf: (status: string) => number;
+  onShow: (status: string) => void;
 }) {
   const t = useT();
   return (
@@ -2158,8 +2153,8 @@ function HiddenLanes({
       </summary>
       <div className="flex flex-col gap-2 px-1 pt-1">
         {statuses.map((status) => {
-          const config = STATUS_CONFIG[status];
-          const LaneIcon = config.icon;
+          const { label, visual } = laneHeader(status, t, columns);
+          const LaneIcon = visual.icon;
           return (
             <div
               key={status}
@@ -2168,10 +2163,10 @@ function HiddenLanes({
             >
               <LaneIcon
                 size={15}
-                className={cn("shrink-0", config.iconClassName)}
+                className={cn("shrink-0", visual.iconClassName)}
               />
               <span className="text-sm font-medium text-foreground">
-                {t(config.labelKey)}
+                {label}
               </span>
               <span className="ml-auto text-[11px] font-medium text-muted-foreground">
                 {countOf(status)}
@@ -2181,7 +2176,7 @@ function HiddenLanes({
                   <button
                     type="button"
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                      lane: t(config.labelKey),
+                      lane: label,
                     })}
                     className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
@@ -2204,6 +2199,8 @@ function HiddenLanes({
 
 function Lane({
   status,
+  columns,
+  offBoard,
   items,
   members,
   memberByUserId,
@@ -2223,7 +2220,12 @@ function Lane({
   onDueDateChange,
   onHide,
 }: {
-  status: TaskBoardItemStatus;
+  status: string;
+  /** The board's own columns — what gives this lane its name. */
+  columns: readonly BoardColumn[];
+  /** No column on this board accounts for this status; the lane exists only
+   *  because cards are sitting in it. */
+  offBoard: boolean;
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
@@ -2234,9 +2236,9 @@ function Lane({
   /** Cards that just landed from a drop — they play the settle animation. */
   landedIds: string[];
   onToggleSelect: (id: string) => void;
-  onSelectAllInLane: (status: TaskBoardItemStatus) => void;
+  onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: TaskBoardItemStatus) => void;
+  onCreate: (status: string) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
@@ -2247,8 +2249,8 @@ function Lane({
   onHide?: () => void;
 }) {
   const t = useT();
-  const config = STATUS_CONFIG[status];
-  const LaneIcon = config.icon;
+  const { label, visual } = laneHeader(status, t, columns);
+  const LaneIcon = visual.icon;
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
   const { setNodeRef } = useDroppable({
@@ -2283,21 +2285,27 @@ function Lane({
           size={15}
           className={cn(
             "shrink-0",
-            config.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+            visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
           )}
         />
-        <span className="text-sm font-medium text-foreground">
-          {t(config.labelKey)}
-        </span>
+        <span className="text-sm font-medium text-foreground">{label}</span>
         <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
           {items.length}
         </span>
+        {offBoard && (
+          <span
+            className="rounded-md border border-border px-1.5 text-[11px] font-medium text-muted-foreground"
+            title={t("taskBoard.taskBoard.offBoardLaneTooltip", { status })}
+          >
+            {t("taskBoard.taskBoard.offBoardLaneBadge")}
+          </span>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
               aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                lane: t(config.labelKey),
+                lane: label,
               })}
               className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -2315,19 +2323,21 @@ function Lane({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
-          type="button"
-          aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-            lane: t(config.labelKey),
-          })}
-          title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
-            lane: t(config.labelKey),
-          })}
-          onClick={() => onCreate(status)}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Plus size={15} />
-        </button>
+        {/* No "new task here" off board: the lane is not a column, so a card
+            created in it would be stranded the moment it existed. */}
+        {!offBoard && (
+          <button
+            type="button"
+            aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+              lane: label,
+            })}
+            title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
+            onClick={() => onCreate(status)}
+            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Plus size={15} />
+          </button>
+        )}
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
           overflow-y container clips the x-axis too, which would clip a FLIP-
@@ -2599,7 +2609,7 @@ function ListRow({
   assignedBy?: Member;
   onOpen: () => void;
 }) {
-  const StatusIcon = STATUS_CONFIG[item.status].icon;
+  const StatusIcon = laneVisual(item.status).icon;
   const sprint = useCardSprint(item);
   return (
     <button

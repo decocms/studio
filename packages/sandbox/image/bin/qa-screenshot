@@ -9,7 +9,7 @@
  * here at all.
  *
  * Usage:
- *   qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>]
+ *   qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>] [--console]
  *
  * Default framing is the top viewport. `--full` captures the whole scrollable
  * page (clipped at a height ceiling). `--selector=<css>` captures just that one
@@ -21,6 +21,11 @@
  * desktop markup and a plausible but WRONG "mobile" shot. Playwright's
  * `userAgent` sets both the request header and `navigator.userAgent`, so
  * server- and client-side sniffing both see the phone.
+ *
+ * `--console` also prints whatever the page logged and every uncaught error /
+ * failed request, so one run answers both "how does it look" and "is it
+ * broken". That pairing is the whole point: a page that renders fine and throws
+ * in the console is the failure a screenshot alone reports as a pass.
  *
  * The outfile extension picks the format (.jpg/.jpeg → JPEG, else PNG).
  */
@@ -50,6 +55,9 @@ const MOBILE_USER_AGENT =
  * hence the division.
  */
 const MAX_IMAGE_HEIGHT = 7000;
+
+/** A page stuck in a logging loop would otherwise flood the agent's context. */
+const MAX_CONSOLE_LINES = 200;
 const DEVICES = {
   desktop: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
   mobile: {
@@ -103,7 +111,7 @@ async function main() {
   const [url, outfile] = positional;
   if (!url || !outfile) {
     console.error(
-      "usage: qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>]",
+      "usage: qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>] [--console]",
     );
     process.exit(2);
   }
@@ -114,6 +122,7 @@ async function main() {
   // focused before/after of just the affected component instead of the whole
   // page or the top viewport.
   const selector = typeof opts.selector === "string" ? opts.selector : null;
+  const wantsConsole = opts.console === true;
   const type = /\.jpe?g$/i.test(outfile) ? "jpeg" : "png";
 
   // --no-sandbox: the container drops all capabilities, so Chromium's own
@@ -125,6 +134,22 @@ async function main() {
   try {
     const context = await browser.newContext(device);
     const page = await context.newPage();
+    // Wired before `goto` — load-time logs are the interesting ones, and a
+    // listener attached after navigation has already missed them. Capped so a
+    // page that logs in a loop can't blow up the caller's tool output.
+    const logged = [];
+    const record = (line) => {
+      if (logged.length < MAX_CONSOLE_LINES) logged.push(line);
+    };
+    if (wantsConsole) {
+      page.on("console", (m) => record(`[${m.type()}] ${m.text()}`));
+      page.on("pageerror", (e) => record(`[uncaught] ${e.message}`));
+      page.on("requestfailed", (r) =>
+        record(
+          `[requestfailed] ${r.url()} — ${r.failure()?.errorText ?? "unknown"}`,
+        ),
+      );
+    }
     // `load` (not networkidle): analytics/beacons keep the network busy forever
     // on many sites, so networkidle hangs the capture.
     await page.goto(url, { waitUntil: "load", timeout: 45000 });
@@ -187,6 +212,14 @@ async function main() {
           ? `\nNOTE: clipped — ${truncated}px of page height omitted to stay under the ${MAX_IMAGE_HEIGHT}px image limit.`
           : ""),
     );
+    if (wantsConsole) {
+      // "nothing" rather than silence: an empty section reads as a broken flag.
+      console.log(
+        logged.length
+          ? `\nconsole (${logged.length}${logged.length === MAX_CONSOLE_LINES ? "+, truncated" : ""}):\n${logged.join("\n")}`
+          : "\nconsole: no messages, errors, or failed requests.",
+      );
+    }
   } finally {
     await browser.close();
   }

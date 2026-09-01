@@ -16,16 +16,36 @@
 const START = (id: string) => `// prompt-region:start ${id}`;
 const END = (id: string) => `// prompt-region:end ${id}`;
 
+/**
+ * `source.indexOf(marker)`, but rejecting a hit where `marker` is only a
+ * prefix of a longer id's marker (e.g. id "super-agent" must not match the
+ * "super-agent-sandbox" marker line) — the line has to end right after it.
+ */
+function indexOfExactMarker(
+  source: string,
+  marker: string,
+  fromIndex: number,
+): number {
+  let idx = fromIndex;
+  for (;;) {
+    idx = source.indexOf(marker, idx);
+    if (idx === -1) return -1;
+    const after = source[idx + marker.length];
+    if (after === undefined || after === "\n" || after === "\r") return idx;
+    idx += marker.length;
+  }
+}
+
 /** Marker line bounds of `id` within `source`, or null when either is absent. */
 function regionBounds(
   source: string,
   id: string,
 ): { from: number; to: number } | null {
-  const start = source.indexOf(START(id));
+  const start = indexOfExactMarker(source, START(id), 0);
   if (start === -1) return null;
   const from = source.indexOf("\n", start);
   if (from === -1) return null;
-  const to = source.indexOf(END(id), from);
+  const to = indexOfExactMarker(source, END(id), from);
   if (to === -1) return null;
   // Back up to the newline ending the region's last content line, so the
   // marker's own indentation is never part of the body.

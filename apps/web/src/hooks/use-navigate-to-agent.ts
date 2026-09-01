@@ -5,6 +5,8 @@
  * agent navigation with automatic personal sidebar membership.
  */
 
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import { panelLocationForTab } from "@/layouts/main-panel-tabs/panel-route";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useNavigate } from "@tanstack/react-router";
@@ -21,7 +23,9 @@ const NO_THREADS: Task[] = [];
 const noopSubscribe = () => () => {};
 
 interface NavigateToAgentOptions {
-  search?: Record<string, unknown>;
+  /** Main-panel view to land on, as a tab id. Written as the chat route's
+   *  `{-$panel}` segment (plus its payload), never as search. */
+  panel?: string;
 }
 
 export function getServerPinnedIds(
@@ -66,10 +70,11 @@ export function useNavigateToAgent() {
         session?.user?.id,
         target ? defaultThreadRuntime(target.metadata) : undefined,
       )?.id ?? crypto.randomUUID();
+    const view = options?.panel ? panelLocationForTab(options.panel) : null;
     navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId },
-      search: { ...(options?.search ?? {}), virtualmcpid: virtualMcpId },
+      to: DESTINATION_ROUTE.agents,
+      params: { org: org.slug, project: virtualMcpId, panel: view?.panel },
+      search: { ...(view?.payload ?? {}), thread: taskId },
     });
   };
 }

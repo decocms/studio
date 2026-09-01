@@ -42,7 +42,9 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     sprintId: null,
     sortOrder: 0,
     keySeq: 1,
+    jiraIssueKey: null,
     retryAttempts: 0,
+    reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
@@ -145,14 +147,9 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
         ...baseItem,
         reviewVerdicts: [
           {
-            reviewer: "qa" as const,
+            reviewer: "reviewer" as const,
             verdict: "approved" as const,
             verified: true,
-          },
-          {
-            reviewer: "code_review" as const,
-            verdict: "changes_requested" as const,
-            verified: false,
           },
         ],
       },

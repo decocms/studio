@@ -33,6 +33,7 @@ const SectionsEditor = lazy(() =>
 export function BlocksPanel({
   virtualMcpId,
   externalSelection = null,
+  onViewJsonFile,
 }: {
   virtualMcpId: string;
   /**
@@ -41,6 +42,11 @@ export function BlocksPanel({
    * distinct selections, so re-clicking one reopens its form.
    */
   externalSelection?: { index: number; seq: number } | null;
+  /**
+   * Open the page's raw JSON in a side panel (Preview owns the slot). When
+   * omitted the editor falls back to its local modal.
+   */
+  onViewJsonFile?: () => void;
 }) {
   const { org } = useProjectContext();
   const { currentBranch, taskId } = useChatTask();
@@ -169,6 +175,7 @@ export function BlocksPanel({
           }
           onExitSeo={workspace.consumeEditSeo}
           onVariantPreviewOverride={workspace.setVariantOverride}
+          onViewJsonFile={onViewJsonFile}
         />
       </Suspense>
     </div>

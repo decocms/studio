@@ -194,6 +194,7 @@ const ALL_TOOL_NAMES = [
   "JIRA_BOARDS_LIST",
   "JIRA_BOARD_COLUMNS_LIST",
   "JIRA_SYNC_RUN",
+  "JIRA_RESYNC_REQUEST",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -253,6 +254,13 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
+  "TASK_BOARD_AUTOMATION_LIST",
+  "TASK_BOARD_AUTOMATION_UPSERT",
+  "TASK_BOARD_AUTOMATION_DELETE",
+  "TASK_BOARD_PROMPT_LIST",
+  "TASK_BOARD_PROMPT_UPSERT",
+  "TASK_BOARD_PROMPT_DELETE",
+  "TASK_BOARD_COLUMN_ROLE_SET",
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_ITEM_PR_LINK",
   "TASK_BOARD_ITEM_RERUN",
@@ -916,6 +924,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
+    name: "JIRA_RESYNC_REQUEST",
+    description:
+      "Mark the whole Jira board to be re-read on the next scheduled sync",
+    category: "Jira",
+  },
+  {
     name: "FILE_CONFIG_UPDATE",
     description:
       "Update an S3 bucket configuration, optionally rotating credentials",
@@ -1186,6 +1200,44 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "TASK_BOARD_AUTOMATION_LIST",
+    description: "List what the board runs when a card lands in each column",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_AUTOMATION_UPSERT",
+    description: "Run the agent on cards landing in a board column",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_AUTOMATION_DELETE",
+    description: "Stop running the agent on cards landing in a board column",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_LIST",
+    description:
+      "List the instructions appended to the system prompt of the board's runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_UPSERT",
+    description:
+      "Set the instructions appended to the system prompt of the board's runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_DELETE",
+    description: "Clear a board system prompt",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_COLUMN_ROLE_SET",
+    description: "Say what one of the board's columns means to Studio",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_ITEM_PRS_GET",
     description: "Get a task board item's linked pull requests with live state",
     category: "Task Board",
@@ -1390,6 +1442,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
+      "TASK_BOARD_AUTOMATION_LIST",
+      "TASK_BOARD_AUTOMATION_UPSERT",
+      "TASK_BOARD_AUTOMATION_DELETE",
+      "TASK_BOARD_PROMPT_LIST",
+      "TASK_BOARD_PROMPT_UPSERT",
+      "TASK_BOARD_PROMPT_DELETE",
+      "TASK_BOARD_COLUMN_ROLE_SET",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_ITEM_PR_LINK",
       "TASK_BOARD_ITEM_RERUN",
@@ -1440,6 +1499,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_BOARDS_LIST",
       "JIRA_BOARD_COLUMNS_LIST",
       "JIRA_SYNC_RUN",
+      "JIRA_RESYNC_REQUEST",
     ],
   },
   {

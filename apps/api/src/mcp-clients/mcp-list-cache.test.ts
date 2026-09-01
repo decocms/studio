@@ -15,6 +15,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
+  clearRevalidationState,
   fetchWithCache,
   isRevalidationStale,
   type McpListCache,
@@ -300,6 +301,29 @@ describe("fetchWithCache", () => {
 
     await new Promise((r) => setTimeout(r, 30)); // exceed the 20ms window
     await fetchWithCache("tools", conn, fetchLive, cache, undefined, 20);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(2);
+  });
+
+  it("clearRevalidationState lifts the throttle for a deleted connection", async () => {
+    const conn = "conn_cleared_on_delete";
+    const cache = new TestMcpListCache();
+    await cache.set("tools", conn, [makeTool("stale")]);
+
+    let callCount = 0;
+    const fetchLive = async () => {
+      callCount++;
+      return [makeTool("fresh")];
+    };
+
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 10_000);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(1);
+
+    clearRevalidationState(conn);
+
+    // Not throttled: the pre-delete clock is gone, not just stale.
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 10_000);
     await new Promise((r) => setTimeout(r, 5));
     expect(callCount).toBe(2);
   });

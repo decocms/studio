@@ -1,7 +1,5 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import { toStudioStorageUri } from "../studio-storage-uri";
-import type { PortableMediaObjectStorage } from "./portable-media-tools";
 
 export interface ReadToolOutputParams {
   readonly toolOutputMap: Map<string, string>;
@@ -15,6 +13,13 @@ export interface ReadToolOutputParams {
  *  output is a fair trade for a bounded memory footprint. */
 export const MAX_TOOL_OUTPUTS = 200;
 
+/** The entry-count cap above only bounds the number of stashed outputs, not
+ *  their size — a single oversized one (a bash dump, or an untrusted MCP
+ *  server's response) is stored whole before this cap ever kicks in. Trim each
+ *  value at insertion so MAX_TOOL_OUTPUTS entries stay a bounded footprint
+ *  rather than up to MAX_TOOL_OUTPUTS copies of an unbounded string. */
+export const MAX_TOOL_OUTPUT_CHARS = 2_000_000;
+
 export function createToolOutputMap(): Map<string, string> {
   const map = new Map<string, string>();
   const set = map.set.bind(map);
@@ -23,7 +28,12 @@ export function createToolOutputMap(): Map<string, string> {
       const oldest = map.keys().next().value;
       if (oldest !== undefined) map.delete(oldest);
     }
-    return set(key, value);
+    return set(
+      key,
+      value.length > MAX_TOOL_OUTPUT_CHARS
+        ? value.slice(0, MAX_TOOL_OUTPUT_CHARS)
+        : value,
+    );
   };
   return map;
 }
@@ -176,30 +186,4 @@ function estimateTokens(text: string): number {
 export function estimateJsonTokens(value: unknown): number {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return estimateTokens(text);
-}
-
-/**
- * Upload a large tool result to blob storage and return a preview + URI, or
- * `null` if the upload itself fails (callers should fall back to returning
- * the result inline in that case). `logLabel` names the caller for the error
- * log ("scrape-url", "inspect-page").
- */
-export async function offloadLargeResult(
-  objectStorage: Pick<PortableMediaObjectStorage, "put">,
-  key: string,
-  text: string,
-  contentType: string,
-  logLabel: string,
-): Promise<{ uri: string; preview: string } | null> {
-  try {
-    const bytes = new TextEncoder().encode(text);
-    await objectStorage.put(key, bytes, { contentType });
-    return { uri: toStudioStorageUri(key), preview: createOutputPreview(text) };
-  } catch (err) {
-    console.error(
-      `[${logLabel}] Failed to upload to storage, returning inline`,
-      err,
-    );
-    return null;
-  }
 }

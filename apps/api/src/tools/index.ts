@@ -62,6 +62,13 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
+  TaskBoardTools.TASK_BOARD_AUTOMATION_LIST,
+  TaskBoardTools.TASK_BOARD_AUTOMATION_UPSERT,
+  TaskBoardTools.TASK_BOARD_AUTOMATION_DELETE,
+  TaskBoardTools.TASK_BOARD_PROMPT_LIST,
+  TaskBoardTools.TASK_BOARD_PROMPT_UPSERT,
+  TaskBoardTools.TASK_BOARD_PROMPT_DELETE,
+  TaskBoardTools.TASK_BOARD_COLUMN_ROLE_SET,
   TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
   TaskBoardTools.TASK_BOARD_ITEM_PR_LINK,
   TaskBoardTools.TASK_BOARD_ITEM_RERUN,
@@ -225,6 +232,7 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_BOARDS_LIST,
   JiraTools.JIRA_BOARD_COLUMNS_LIST,
   JiraTools.JIRA_SYNC_RUN,
+  JiraTools.JIRA_RESYNC_REQUEST,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

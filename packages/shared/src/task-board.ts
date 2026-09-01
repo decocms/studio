@@ -44,17 +44,33 @@ export function isReportsTask(item: { createdBy: string }): boolean {
 }
 
 /**
- * The org's automated reviewers. Both are derived identities over the org's
- * agent runtime (never seeded), enabled per-org via `qa_agent_enabled` /
- * `code_reviewer_enabled` flags. When a Super Agent task reaches In Review with
- * passing/absent checks, a run is enqueued for each ENABLED reviewer — they're
- * not task assignees (the task stays with the Super Agent), they run as linked
- * review threads shown on the card.
+ * The org's automated reviewer. A derived identity over the org's agent runtime
+ * (never seeded), enabled per-org via the `reviewer_enabled` flag. When a Super
+ * Agent task reaches In Review with passing/absent checks, one reviewer run is
+ * enqueued — it is not a task assignee (the task stays with the Super Agent), it
+ * runs as a linked review thread shown on the card.
  *
- * - `qa` — verifies the task actually solved the problem (exercises the feature).
- * - `code_review` — reviews the code with the repo's stack-appropriate skills.
+ * ONE reviewer, not two. QA and code review were separate runs on the same diff,
+ * which bought a second opinion and paid for it twice: they raced (the Code
+ * Reviewer pushed fixes while QA exercised a preview of the commit before them),
+ * and a QA approval could ship code QA never saw. What earns the second look is
+ * fresh CONTEXT — an implementer reads its own diff as it meant it, not as it is
+ * — and one run after the implementer has that. Code review is a part of the
+ * job, not a job.
+ *
+ * Review is SINGLE-PASS: the reviewer runs at most once per delegation, in a
+ * fixed order — review, fix what it found on the PR's own branch, push, then
+ * exercise the change on the preview of THAT push, then decide. A
+ * `request_changes` verdict hands the card to a human instead of bouncing it
+ * back to the Super Agent: the reviewer → fix → re-review loop had no natural
+ * fixed point (one live board logged 179 change-requests against 68 approvals,
+ * one task rejected five times in an hour on the same PR), and a reviewer that
+ * applies its own findings removes the reason to loop at all.
+ *
+ * The union stays a union so every caller keeps reading a SET of reviewers —
+ * adding a second one back is a one-line change here, not a refactor.
  */
-export type ReviewerKind = "qa" | "code_review";
+export type ReviewerKind = "reviewer";
 
 /**
  * What every sandbox-hosted run has to know about its checkout: it is
@@ -81,7 +97,7 @@ export const SHALLOW_CHECKOUT_NOTE =
  *
  * Left to itself a reviewer improvises: fetch the PR ref, find the merge base,
  * `--stat`, then `git diff` sliced by directory because it cannot tell how big
- * the diff is. One production Code Reviewer run spent six turns and 46KB doing
+ * the diff is. One production review run spent six turns and 46KB doing
  * that, across three overlapping slices of ONE diff — and a tool result is not
  * paid for once, it rides in the prompt of every turn after it.
  *
@@ -105,40 +121,156 @@ export const PR_DIFF_RECIPE =
  */
 export const DEFAULT_TASK_TYPE = "chore";
 
-export const REVIEWER_KINDS: ReviewerKind[] = ["qa", "code_review"];
+export const REVIEWER_KINDS: ReviewerKind[] = ["reviewer"];
 
 /** Human label for a reviewer — also the prefix of its run thread's title
- *  (`"QA Agent: <task>"`), which is how the board tells the thread apart. */
+ *  (`"Reviewer: <task>"`), which is how the board tells the thread apart. */
 export const REVIEWER_LABEL: Record<ReviewerKind, string> = {
-  qa: "QA Agent",
-  code_review: "Code Reviewer",
+  reviewer: "Reviewer",
 };
 
-/** The org-settings flag that gates each reviewer. */
-export const REVIEWER_FLAG: Record<
-  ReviewerKind,
-  "qa_agent_enabled" | "code_reviewer_enabled"
-> = {
-  qa: "qa_agent_enabled",
-  code_review: "code_reviewer_enabled",
-};
+/**
+ * Thread-title prefixes the two-reviewer era used.
+ *
+ * ponytail: a compat list, not a migration. A reviewer run dispatched before
+ * this deploy is still going after it, and its title is how the board
+ * recognises it — both for "don't dispatch a second one this cycle" and for
+ * serving it `TASK_BOARD_REVIEW_DECISION` at all (`resolveReviewRunToolNames`).
+ * Unrecognised, it loses the tool mid-run and its card sits In Review forever.
+ * Delete once no in-flight cycle predates the deploy (a day is ample).
+ */
+const LEGACY_REVIEWER_LABELS = ["QA Agent", "Code Reviewer"];
 
-/** The reviewer kinds this org has enabled, per its settings flags. Single
- *  home for a filter repeated at every call site that reads the review gate
- *  (enqueue, auto-merge, conflict resolution, manual ship). Both reviewers are
- *  default-on via `orgFlagEnabled` — only an explicit `false` drops one. */
+/** What the reviewer writes verbatim when a change has no visual surface at
+ *  all — the one alternative to embedding before/after screenshots in its task
+ *  comment. A sentinel rather than a phrasing heuristic: "no visual
+ *  regressions" is what a UI run that FORGOT its screenshots writes, and
+ *  anything loose enough to accept a real justification accepts that too. */
+export const NO_VISUAL_SURFACE = "NO VISUAL SURFACE";
+
+/**
+ * True when this org runs the automated Reviewer. Default-on via
+ * `orgFlagEnabled` — only an explicit `false` turns it off.
+ *
+ * Carries over the two-reviewer opt-out: an org that had explicitly turned BOTH
+ * the QA Agent and the Code Reviewer off wanted no automated review, and this
+ * must not silently re-enable one. Turning either back on (or setting
+ * `reviewer_enabled` at all) leaves the legacy keys behind for good.
+ */
+export function reviewerEnabled(
+  flags: Record<string, unknown> | null | undefined,
+): boolean {
+  if (
+    flags?.reviewer_enabled === undefined &&
+    flags?.qa_agent_enabled === false &&
+    flags?.code_reviewer_enabled === false
+  ) {
+    return false;
+  }
+  return orgFlagEnabled(flags, "reviewer_enabled");
+}
+
+/** The reviewer kinds this org has enabled. Single home for a filter repeated
+ *  at every call site that reads the review gate (enqueue, auto-merge, conflict
+ *  resolution, manual ship) — a list, so those call sites stay written against
+ *  a set of reviewers. */
 export function enabledReviewerKinds(
   flags: Record<string, unknown> | null | undefined,
 ): ReviewerKind[] {
-  return REVIEWER_KINDS.filter((k) => orgFlagEnabled(flags, REVIEWER_FLAG[k]));
+  return reviewerEnabled(flags) ? REVIEWER_KINDS : [];
 }
 
-/** True when a thread title belongs to the given reviewer's run. */
+/**
+ * The lanes a release process needs AFTER the pull request merges, sitting
+ * between In Review and Done. A subset of both sides' status unions, so each
+ * assigns these names with no cast. The lane TYPE is unconditional — every
+ * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
+ * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
+ */
+/**
+ * The board Studio ships with, in board order.
+ *
+ * One ordering, read by both the rank guard (`LANE_RANK`) and the static
+ * column set, so "left of" cannot come to mean two different things.
+ */
+export const CANONICAL_COLUMN_KEYS = [
+  "triage",
+  "todo",
+  "in_progress",
+  "in_review",
+  "approved",
+  "merged",
+  "post_deploy_validation",
+  "done",
+  "archived",
+] as const;
+
+export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
+
+/**
+ * A board column as every surface reads it.
+ *
+ * `key` is the value a card's `status` holds. `role` is what automation keys
+ * on, and is nullable because a board mirrored from someone else's tracker
+ * will have columns nobody assigned a meaning to — null has to mean "nothing
+ * automatic happens here", not a guess.
+ */
+export interface BoardColumn {
+  key: string;
+  title: string;
+  position: number;
+  role: string | null;
+  /**
+   * The tracker statuses this column groups, in the tracker's own order.
+   *
+   * A tracker's board column is a bucket of statuses, not a status. The pull
+   * does not care — an issue has one status, which sits in one column — but
+   * the push cannot move without this: "the card is in Em andamento" does not
+   * say which of that column's statuses the issue should become, and the
+   * answer is whichever its workflow can reach.
+   *
+   * Empty for a column Studio defines, which mirrors nothing.
+   */
+  trackerStatuses: string[];
+}
+
+export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
+
+export const DELIVERY_LANES: DeliveryLane[] = [
+  "approved",
+  "merged",
+  "post_deploy_validation",
+];
+
+/** True when this org runs the delivery lanes. Off by default. */
+export function deliveryLanesEnabled(
+  flags: Record<string, unknown> | null | undefined,
+): boolean {
+  return orgFlagEnabled(flags, "delivery_lanes_enabled");
+}
+
+/**
+ * The lane a merged/shipped pull request moves its task to. Every automatic
+ * ship path reads this, so "flag off means no behaviour change" is one tested
+ * function rather than five call sites agreeing by luck. Falsy flags of every
+ * shape resolve to `done`; that default IS the safety property.
+ */
+export function shippedLane(
+  flags: Record<string, unknown> | null | undefined,
+): "merged" | "done" {
+  return deliveryLanesEnabled(flags) ? "merged" : "done";
+}
+
+/** True when a thread title belongs to the given reviewer's run — including the
+ *  two-reviewer era's titles, see {@link LEGACY_REVIEWER_LABELS}. */
 export function isReviewerThreadTitle(
   title: string | null | undefined,
   kind: ReviewerKind,
 ): boolean {
-  return title?.startsWith(`${REVIEWER_LABEL[kind]}:`) ?? false;
+  if (!title) return false;
+  return [REVIEWER_LABEL[kind], ...LEGACY_REVIEWER_LABELS].some((label) =>
+    title.startsWith(`${label}:`),
+  );
 }
 
 /** One activity entry, minimally shaped for the review-cycle reducers below.
@@ -151,9 +283,27 @@ export type ReviewCycleActivity = {
   occurredAt: string;
 };
 
-/** When the task most recently entered In Review (ms since epoch), else 0 — the
- *  start of the current review cycle. Verdicts before this are stale. */
-export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
+/**
+ * When the task's current review cycle opened (ms since epoch), else 0 —
+ * verdicts recorded before it are stale.
+ *
+ * The card's `reviewCycleStartedAt` IS the boundary: it is stamped when the
+ * work becomes reviewable and re-stamped on every re-review, independently of
+ * what lane the card sits in. That independence is the point — the cycle used
+ * to be derived from the newest `status_changed → in_review`, which made the
+ * lane load-bearing (a card could not leave In Review mid-review without
+ * invalidating its own reviewer's verdict), and so pinned every card to In
+ * Review while an agent was still working on it.
+ *
+ * The activity scan survives only as the fallback for a card stamped before
+ * migration 190. Pass `null` for a card that has no column value and the old
+ * derivation applies, so an in-flight cycle is never lost mid-deploy.
+ */
+export function reviewCycleStart(
+  activity: ReviewCycleActivity[],
+  cycleStartedAt: string | Date | null | undefined,
+): number {
+  if (cycleStartedAt) return new Date(cycleStartedAt).getTime();
   let latest = 0;
   for (const a of activity) {
     if (a.action !== "status_changed") continue;
@@ -165,6 +315,19 @@ export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
   return latest;
 }
 
+/**
+ * What every cycle-scoped reducer below needs: the card's own
+ * `reviewCycleStartedAt` (see {@link reviewCycleStart}). It is a REQUIRED
+ * field, not an optional one — a caller that forgets it would silently fall
+ * back to the activity scan, which for a card written after migration 190 finds
+ * no boundary at all and so counts a previous cycle's verdicts as current.
+ */
+export type ReviewCycleOpts = {
+  cycleStartedAt: string | Date | null | undefined;
+  /** Count an approval only when it was token-verified (`data.verified`). */
+  verifiedOnly?: boolean;
+};
+
 /** Each reviewer's latest verdict within the current review cycle. Approvals /
  *  change-requests recorded before the cycle start are ignored. With
  *  `verifiedOnly`, an approval counts only when it was token-verified
@@ -172,9 +335,9 @@ export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
  *  (unverifiable) approval can't ship; the manual ship button does not. */
 export function reviewCycleVerdicts(
   activity: ReviewCycleActivity[],
-  opts?: { verifiedOnly?: boolean },
+  opts: ReviewCycleOpts,
 ): Map<ReviewerKind, "approved" | "changes_requested"> {
-  const start = reviewCycleStart(activity);
+  const start = reviewCycleStart(activity, opts.cycleStartedAt);
   const latest = new Map<ReviewerKind, "approved" | "changes_requested">();
   for (const a of activity) {
     if (
@@ -185,12 +348,16 @@ export function reviewCycleVerdicts(
     }
     if (new Date(a.occurredAt).getTime() < start) continue;
     const d = (a.data ?? {}) as { reviewer?: unknown; verified?: unknown };
-    if (d.reviewer !== "qa" && d.reviewer !== "code_review") continue;
+    // Verdicts recorded by the two-reviewer era are ignored on purpose: a `qa`
+    // approval says nothing about whether the merged Reviewer has run, and
+    // counting one would close the merge gate on half a review. A card mid-cycle
+    // at deploy time gets a Reviewer dispatched and reaches a fresh verdict.
+    if (d.reviewer !== "reviewer") continue;
     if (a.action === "review_approved") {
       if (opts?.verifiedOnly && d.verified !== true) continue;
-      latest.set(d.reviewer, "approved");
+      latest.set("reviewer", "approved");
     } else {
-      latest.set(d.reviewer, "changes_requested");
+      latest.set("reviewer", "changes_requested");
     }
   }
   return latest;
@@ -202,7 +369,7 @@ export function reviewCycleVerdicts(
 export function allReviewersApproved(
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
-  opts?: { verifiedOnly?: boolean },
+  opts: ReviewCycleOpts,
 ): boolean {
   if (enabled.length === 0) return false;
   const verdicts = reviewCycleVerdicts(activity, opts);
@@ -222,10 +389,11 @@ export function allReviewersApproved(
 export function approvedButUnverified(
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
+  opts: ReviewCycleOpts,
 ): boolean {
   return (
-    allReviewersApproved(activity, enabled) &&
-    !allReviewersApproved(activity, enabled, { verifiedOnly: true })
+    allReviewersApproved(activity, enabled, opts) &&
+    !allReviewersApproved(activity, enabled, { ...opts, verifiedOnly: true })
   );
 }
 
@@ -233,11 +401,12 @@ export function approvedButUnverified(
  * The notes of the task's most recent review verdict, when that verdict asked
  * for changes — i.e. the work still outstanding on its pull request.
  *
- * This is what makes a re-run a CONTINUATION rather than a restart. A reviewer
- * bounce already carries its own notes into the re-run prompt; a human pressing
- * Re-run (or re-assigning the card to the Super Agent) carried nothing, so the
- * agent re-derived the whole task from the title and re-litigated an approach
- * the reviewer had explicitly told it to keep. Two prod cards spent five rounds
+ * This is what makes a re-run a CONTINUATION rather than a restart. Review is
+ * single-pass, so a change request is never bounced back to the Super Agent —
+ * the only way one reaches a run is a human pressing Re-run (or re-assigning
+ * the card), and that path carried nothing, so the agent re-derived the whole
+ * task from the title and re-litigated an approach the reviewer had explicitly
+ * told it to keep. Two prod cards spent five rounds
  * that way, one with a reviewer writing "a correção em si está CERTA — não
  * refaça o approach" into a run that then redid it.
  *
@@ -276,90 +445,6 @@ export function outstandingReviewFeedback(
 }
 
 /**
- * How many times a task may be bounced back to the Super Agent by a reviewer
- * before the loop is broken and a human takes over.
- *
- * The reviewer → fix → re-review cycle has no natural fixed point: a reviewer
- * that keeps finding something will keep finding something, and each round
- * costs a sandbox run and (before the PR-branch pin) an extra pull request. One
- * live board logged 179 change-requests against 68 approvals, with a single
- * task rejected five times in an hour by the same reviewer on the same PR.
- *
- * Five is chosen to be clearly past "the reviewer had a point" and clearly
- * short of "we are burning runs on a disagreement a person should settle".
- */
-export const MAX_REVIEW_BOUNCES = 5;
-
-/**
- * When the task was most recently handed TO the Super Agent (ms since epoch),
- * else 0 — the start of its current delegation, and the point the bounce budget
- * counts from.
- *
- * `assignee_changed` with `to` = the Super Agent is only ever written by
- * `TASK_BOARD_ITEM_UPDATE`, i.e. a person assigning the card (or the intake
- * auto-assign). The automatic hand-off writes `to: null`, so it can't reset
- * anything — a runaway loop still terminates.
- */
-export function delegationStart(activity: ReviewCycleActivity[]): number {
-  let latest = 0;
-  for (const a of activity) {
-    if (a.action !== "assignee_changed") continue;
-    if (
-      (a.data as { to?: unknown } | null | undefined)?.to !==
-      SUPER_AGENT_ASSIGNEE_ID
-    ) {
-      continue;
-    }
-    latest = Math.max(latest, new Date(a.occurredAt).getTime());
-  }
-  return latest;
-}
-
-/**
- * True when this task has already been handed back to the Super Agent
- * `MAX_REVIEW_BOUNCES` times, counting the change-request about to be recorded.
- *
- * Counts across all review CYCLES since the current delegation, not the current
- * cycle: the runaway loop IS the cycles — each bounce starts a fresh one, so a
- * per-cycle count is always 1 and would never trip.
- *
- * But it resets when a person hands the card back (see {@link delegationStart}).
- * Counting a card's whole lifetime made re-running a burnt-out task pointless:
- * four cards carrying 5-7 old bounces were re-delegated, and the very first
- * change-request tripped `6 + 1 >= 5` and handed each straight back — one review
- * round, zero retries. A person re-assigning the card is them saying "try
- * again"; this is what makes that mean something.
- */
-export function reviewBounceLimitReached(
-  activity: ReviewCycleActivity[],
-  limit: number = MAX_REVIEW_BOUNCES,
-): boolean {
-  const since = delegationStart(activity);
-  // Count review CYCLES that ended in a change-request, not change-request
-  // rows. A reviewer can land more than one verdict against a single dispatch
-  // — the claim fences the dispatch, not the decision — and only the first
-  // moves the card, so counting rows charged a card twice for one bounce and
-  // halved the real budget. Three of four cards in one org did exactly that.
-  const bounced = new Set<number>();
-  let cycle = 0;
-  for (const a of [...activity].sort((x, y) =>
-    x.occurredAt.localeCompare(y.occurredAt),
-  )) {
-    const at = new Date(a.occurredAt).getTime();
-    if (a.action === "status_changed") {
-      if ((a.data as { to?: unknown } | null | undefined)?.to === "in_review") {
-        cycle = at;
-      }
-      continue;
-    }
-    if (a.action === "review_changes_requested" && at >= since) {
-      bounced.add(cycle);
-    }
-  }
-  return bounced.size + 1 >= limit;
-}
-
-/**
  * Org-scoped SSE event pushed on `sseHub` whenever a Super Agent run advances a
  * task board item's status (enqueued→todo, executing→in_progress, PR→in_review).
  * Its `data` is the full updated `TaskBoardItem`; the web board patches its
@@ -373,3 +458,10 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
  * cache, so a delete on one client clears the card on every open board.
  */
 export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";
+
+/**
+ * Cap on the org's task system prompt. It rides in the system prompt of EVERY
+ * task run, so an unbounded textarea is a per-run token bill. Shared so the
+ * settings tool rejects what the textarea already refuses.
+ */
+export const TASK_SYSTEM_PROMPT_MAX_LENGTH = 4000;

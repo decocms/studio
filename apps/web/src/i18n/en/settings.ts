@@ -44,19 +44,32 @@ export const settings = {
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
   "settings.jira.loadingBoards": "Loading boards…",
+  "settings.jira.rolesLabel": "What each column means",
+  "settings.jira.rolesDescription":
+    "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
+  "settings.jira.roleNone": "Nothing special",
+  "settings.jira.roleQueued": "Queued for the agent",
+  "settings.jira.roleInProgress": "Being worked on",
+  "settings.jira.roleInReview": "Under review",
+  "settings.jira.roleArchived": "Archive",
+  "settings.jira.noColumnsYet":
+    "No columns yet — they arrive with the next sync.",
   "settings.jira.mappingLabel": "Column mapping",
   "settings.jira.mappingDescription":
     "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
   "settings.jira.dontSync": "Don't sync",
   "settings.jira.columnsFailed": "Could not load the board's columns",
-  "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
-  "settings.jira.autoDelegateDescription":
-    "When an issue lands in a column mapped to To Do, the Super Agent takes the card and starts working. Its progress is mirrored back onto the issue.",
   "settings.jira.enableLabel": "Sync enabled",
   "settings.jira.enableRequirements":
     "Pick a project and map at least one status before enabling the sync",
   "settings.jira.lastSynced": "Last synced {ago}",
-  "settings.jira.waitingFirstSync": "Waiting for the first sync",
+  "settings.jira.waitingFirstSync": "Waiting for the next sync",
+  "settings.jira.resyncAll": "Resync everything",
+  "settings.jira.resyncAllTitle": "Re-scan the whole board?",
+  "settings.jira.resyncAllQueued":
+    "Re-scan requested — the next sync will start it.",
+  "settings.jira.resyncAllDescription":
+    '"Sync now" only pulls issues changed since the last run. This marks every issue on the board to be re-read \u2014 what you want after changing the status mapping, or when cards look wrong. It starts on the next scheduled sync rather than now, can span several runs on a large board, and never assigns an agent to a card.',
   "settings.jira.syncNow": "Sync now",
   "settings.jira.syncing": "Syncing…",
   "settings.jira.syncDone":
@@ -107,6 +120,7 @@ export const settings = {
   "settings.nav.connections": "Connections",
   "settings.nav.agents": "Agents",
   "settings.nav.automations": "Automations",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Store",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
@@ -159,6 +173,38 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Import skill",
+  "settings.skills.importing": "Importing…",
+  "settings.skills.importSuccess": 'Imported "{name}"',
+  "settings.skills.importError": "Failed to import skill",
+  "settings.skills.importMissingSkillMd":
+    "That folder has no SKILL.md at its root. Pick the skill's own folder.",
+  "settings.skills.importNeedsFolder":
+    "Pick a folder, not individual files — this browser may not support folder upload.",
+  "settings.skills.searchPlaceholder": "Search skills...",
+  "settings.skills.noDescription": "No description",
+  "settings.skills.filterAll": "All",
+  "settings.skills.emptyTitle": "No skills yet",
+  "settings.skills.emptyDescription":
+    "Import a folder with a SKILL.md to give your agents reusable instructions they can load on demand.",
+  "settings.skills.noResultsTitle": "No skills found",
+  "settings.skills.noResultsDescription": 'No skills match "{search}"',
+  "settings.skills.cancel": "Cancel",
+  "settings.skills.deleteButton": "Delete",
+  "settings.skills.deleteDialogTitle": "Delete this skill?",
+  "settings.skills.deleteDialogDescription":
+    'This removes "{name}" and its files. This can\'t be undone.',
+  "settings.skills.deleteSuccess": "Skill deleted",
+  "settings.skills.deleteError": "Failed to delete skill",
+  "settings.skills.importTooManyFiles":
+    "That folder has {count} files (limit {max}). Import a folder with just the skill's own files.",
+  "settings.skills.importSlugTaken":
+    'A skill named "{slug}" already exists. Delete it first to re-import.',
+  "settings.skills.errorTitle": "Couldn't load skills",
+  "settings.skills.errorDescription":
+    "The skill catalog could not be loaded. You may not have access to this org's files.",
+  "settings.skills.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",
@@ -440,13 +486,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
-  "settings.navigation.title": "Navigation",
-  "settings.navigation.description":
-    "How this organization gets around Studio.",
-  "settings.navigation.updateError": "Couldn't update navigation settings",
-  "settings.navigation.navV2Title": "First-class navigation",
-  "settings.navigation.navV2Description":
-    "The sidebar lists destinations (Reports, Library, Tasks) instead of chats, and the chat list moves to the top of the chat panel. On by default for new organizations and report organizations.",
   "settings.orgGeneral.organization": "Organization",
   "settings.mainAgent.title": "Main agent",
   "settings.mainAgent.description":
@@ -460,24 +499,38 @@ export const settings = {
   "settings.mainAgent.errorToast": "Couldn't update the main agent",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
-    "Automated reviewers run on a task's pull request once it's In Review (checks passing or none). Both appear as sessions on the task card.",
-  "settings.review.qaAgentTitle": "Enable QA Agent",
-  "settings.review.qaAgentDescription":
-    "Verifies the task actually solved the problem — exercises the feature, not just the diff.",
-  "settings.review.codeReviewerTitle": "Enable Code Reviewer",
-  "settings.review.codeReviewerDescription":
-    "Reviews the code using the repository's stack-appropriate review skills.",
+    "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
+  "settings.review.reviewerTitle": "Enable Reviewer",
+  "settings.review.reviewerDescription":
+    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
-    "The QA Agent and Code Reviewer read a diff and reach a verdict, so they run on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
+    "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
+    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+  "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
+  "settings.review.autoResolveConflictsDescription":
+    "When an approved pull request conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
+  "settings.review.deliveryLanesTitle": "Show delivery lanes",
+  "settings.review.deliveryLanesDescription":
+    "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
   "settings.review.autoAssignReportTasksTitle":
     "Auto-assign report tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.description":
+    "Extra instructions appended to the system prompt of every agent run started from a task on the board.",
+  "settings.taskPrompt.fieldLabel": "Instructions",
+  "settings.taskPrompt.fieldDescription":
+    "House rules that apply to all board work \u2014 conventions, tools to prefer, things never to touch. Leave it empty for none.",
+  "settings.taskPrompt.placeholder":
+    "e.g. Use pnpm, never npm. Never edit files under src/generated/.",
+  "settings.taskPrompt.save": "Save",
+  "settings.taskPrompt.saved": "System prompt saved",
+  "settings.taskPrompt.failed": "Couldn't save the system prompt",
   "settings.agentTools.title": "Agent tools",
   "settings.agentTools.description":
     "What a coding-agent run reaches beyond the repository it is working in.",

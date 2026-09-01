@@ -61,6 +61,24 @@ export class SprintStorage {
   }
 
   /**
+   * A sprint's id in Jira, or null when we have no such sprint or it was never
+   * mirrored from one. The sprint push's translation step: our ids are local,
+   * and the Agile API only speaks Jira's.
+   */
+  async jiraIdFor(
+    organizationId: string,
+    sprintId: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("task_board_sprints")
+      .select("jira_sprint_id")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", sprintId)
+      .executeTakeFirst();
+    return row?.jira_sprint_id ?? null;
+  }
+
+  /**
    * Mirror a whole board's sprints in one statement, returning Jira sprint id
    * → local id.
    *

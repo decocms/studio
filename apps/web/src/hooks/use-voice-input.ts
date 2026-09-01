@@ -123,6 +123,8 @@ export function useVoiceInput(): UseVoiceInputReturn {
     recognition.lang = navigator.language || "en-US";
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Ignore a stale instance's async result once a newer one took over.
+      if (recognitionRef.current !== recognition) return;
       let interim = "";
       let newFinal = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {

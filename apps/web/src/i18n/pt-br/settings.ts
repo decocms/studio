@@ -46,20 +46,33 @@ export const settings = {
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
   "settings.jira.loadingBoards": "Carregando boards…",
+  "settings.jira.rolesLabel": "O que cada coluna significa",
+  "settings.jira.rolesDescription":
+    "As colunas do seu board vêm do Jira. Diga ao Studio qual delas é onde a revisão acontece, e qual arquiva um card — a maioria não significa nada pra ele, e tudo bem.",
+  "settings.jira.roleNone": "Nada em especial",
+  "settings.jira.roleQueued": "Na fila do agente",
+  "settings.jira.roleInProgress": "Em progresso",
+  "settings.jira.roleInReview": "Em revisão",
+  "settings.jira.roleArchived": "Arquivo",
+  "settings.jira.noColumnsYet":
+    "Nenhuma coluna ainda — elas chegam na próxima sincronização.",
   "settings.jira.mappingLabel": "Mapeamento de colunas",
   "settings.jira.mappingDescription":
     "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",
   "settings.jira.dontSync": "Não sincronizar",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
-  "settings.jira.autoDelegateLabel": "Delegar automaticamente pro agente",
-  "settings.jira.autoDelegateDescription":
-    "Quando uma issue entra numa coluna mapeada pra To Do, o Super Agent assume o card e começa a trabalhar. O progresso dele é espelhado de volta na issue.",
   "settings.jira.enableLabel": "Sincronização ativa",
   "settings.jira.enableRequirements":
     "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
   "settings.jira.lastSynced": "Última sincronização {ago}",
-  "settings.jira.waitingFirstSync": "Aguardando a primeira sincronização",
+  "settings.jira.waitingFirstSync": "Aguardando a próxima sincronização",
+  "settings.jira.resyncAll": "Resincronizar tudo",
+  "settings.jira.resyncAllTitle": "Reler o board inteiro?",
+  "settings.jira.resyncAllQueued":
+    "Releitura solicitada — a próxima sincronização vai começá-la.",
+  "settings.jira.resyncAllDescription":
+    'O "Sincronizar agora" só puxa issues alteradas desde a última execução. Esta opção marca todas as issues do board para serem relidas — é o que você quer depois de mudar o mapeamento de status, ou quando os cards estão errados. Ela começa na próxima sincronização agendada, não agora, pode se estender por várias execuções num board grande, e nunca delega um card para um agente.',
   "settings.jira.syncNow": "Sincronizar agora",
   "settings.jira.syncing": "Sincronizando…",
   "settings.jira.syncDone":
@@ -111,6 +124,7 @@ export const settings = {
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Agentes",
   "settings.nav.automations": "Automações",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Loja",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
@@ -164,6 +178,39 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Importar skill",
+  "settings.skills.importing": "Importando\u2026",
+  "settings.skills.importSuccess": '"{name}" importada',
+  "settings.skills.importError": "Falha ao importar a skill",
+  "settings.skills.importMissingSkillMd":
+    "Essa pasta n\u00e3o tem um SKILL.md na raiz. Selecione a pasta da pr\u00f3pria skill.",
+  "settings.skills.importNeedsFolder":
+    "Selecione uma pasta, não arquivos individuais — este navegador pode não suportar upload de pastas.",
+  "settings.skills.searchPlaceholder": "Pesquisar skills...",
+  "settings.skills.noDescription": "Sem descri\u00e7\u00e3o",
+  "settings.skills.filterAll": "Todas",
+  "settings.skills.emptyTitle": "Nenhuma skill ainda",
+  "settings.skills.emptyDescription":
+    "Importe uma pasta com um SKILL.md para dar aos seus agentes instru\u00e7\u00f5es reutiliz\u00e1veis que eles podem carregar sob demanda.",
+  "settings.skills.noResultsTitle": "Nenhuma skill encontrada",
+  "settings.skills.noResultsDescription":
+    'Nenhuma skill corresponde a "{search}"',
+  "settings.skills.cancel": "Cancelar",
+  "settings.skills.deleteButton": "Excluir",
+  "settings.skills.deleteDialogTitle": "Excluir esta skill?",
+  "settings.skills.deleteDialogDescription":
+    'Isso remove "{name}" e seus arquivos. Essa a\u00e7\u00e3o n\u00e3o pode ser desfeita.',
+  "settings.skills.deleteSuccess": "Skill exclu\u00edda",
+  "settings.skills.deleteError": "Falha ao excluir a skill",
+  "settings.skills.importTooManyFiles":
+    "Essa pasta tem {count} arquivos (limite {max}). Importe uma pasta com apenas os arquivos da skill.",
+  "settings.skills.importSlugTaken":
+    'Já existe uma skill chamada "{slug}". Exclua-a antes de reimportar.',
+  "settings.skills.errorTitle": "Não foi possível carregar as skills",
+  "settings.skills.errorDescription":
+    "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
+  "settings.skills.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",
@@ -353,7 +400,7 @@ export const settings = {
   "settings.decoCreditsHero.disconnect": "Desconectar",
   "settings.decoCreditsHero.disconnectButton": "Desconectar",
   "settings.decoCreditsHero.disconnectDescription":
-    "Isso remover\u00e1 o Deco AI Gateway deste espa\u00e7o de trabalho. Seu saldo de cr\u00e9dito \u00e9 preservado e estar\u00e1 dispon\u00edvel se voc\u00ea se reconectar.",
+    "Isso remover\u00e1 o Deco AI Gateway deste espa\u00e7o de trabalho. Seu saldo de cr\u00e9dito \u00e9 preservado e estar\u00e1 dispon\u00edvel se você se reconectar.",
   "settings.decoCreditsHero.disconnectError": "Falha ao desconectar: {message}",
   "settings.decoCreditsHero.disconnectSuccess": "Deco AI Gateway desconectado",
   "settings.decoCreditsHero.disconnectTitle": "Desconectar Deco AI Gateway",
@@ -453,14 +500,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.navigation.title": "Navegação",
-  "settings.navigation.description":
-    "Como esta organização circula pelo Studio.",
-  "settings.navigation.updateError":
-    "Não foi possível atualizar as configurações de navegação",
-  "settings.navigation.navV2Title": "Navegação de primeira classe",
-  "settings.navigation.navV2Description":
-    "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações novas e em organizações de relatório.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":
@@ -475,26 +514,42 @@ export const settings = {
     "N\u00e3o foi poss\u00edvel atualizar o agente principal",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "Revisores autom\u00e1ticos rodam no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ambos aparecem como sess\u00f5es no card da tarefa.",
-  "settings.review.qaAgentTitle": "Ativar QA Agent",
-  "settings.review.qaAgentDescription":
-    "Garante que a tarefa realmente resolveu o problema \u2014 testa a feature, n\u00e3o s\u00f3 o diff.",
-  "settings.review.codeReviewerTitle": "Ativar Code Reviewer",
-  "settings.review.codeReviewerDescription":
-    "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
+    "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
+  "settings.review.reviewerTitle": "Ativar Reviewer",
+  "settings.review.reviewerDescription":
+    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para você quando n\u00e3o consegue resolver algo.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
-    "O QA Agent e o Code Reviewer leem um diff e chegam a um veredito, então rodam em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
+    "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
+    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+  "settings.review.autoResolveConflictsTitle":
+    "Resolver conflitos de merge automaticamente",
+  "settings.review.autoResolveConflictsDescription":
+    "Quando um pull request aprovado conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
+  "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
+  "settings.review.deliveryLanesDescription":
+    "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
   "settings.review.autoAssignReportTasksTitle":
     "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.description":
+    "Instru\u00e7\u00f5es extras anexadas ao system prompt de todo run de agente iniciado por uma tarefa do quadro.",
+  "settings.taskPrompt.fieldLabel": "Instru\u00e7\u00f5es",
+  "settings.taskPrompt.fieldDescription":
+    "Regras que valem para todo trabalho do quadro \u2014 conven\u00e7\u00f5es, ferramentas preferidas, o que nunca tocar. Deixe vazio para nenhuma.",
+  "settings.taskPrompt.placeholder":
+    "ex.: Use pnpm, nunca npm. Nunca edite arquivos em src/generated/.",
+  "settings.taskPrompt.save": "Salvar",
+  "settings.taskPrompt.saved": "System prompt salvo",
+  "settings.taskPrompt.failed":
+    "N\u00e3o foi poss\u00edvel salvar o system prompt",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
     "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",

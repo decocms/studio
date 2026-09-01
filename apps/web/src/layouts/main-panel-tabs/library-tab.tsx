@@ -1,26 +1,19 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { LibraryPage } from "@/layouts/library";
 import { SkillPreviewDialog } from "@/layouts/library/skill-preview";
 import { BrandPreviewDialog } from "@/layouts/library/brand-preview";
 import { formatLibraryFileTabId } from "./tab-id";
+import { usePanelNavigate } from "./use-panel-navigate";
 
 export function LibraryTab() {
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const [openSkill, setOpenSkill] = useState<string | null>(null);
   const [openBrand, setOpenBrand] = useState<string | null>(null);
-
-  const openAsTab = (tabId: string) =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: tabId }),
-      replace: true,
-    });
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       <LibraryPage
-        onOpenFile={(path) => openAsTab(formatLibraryFileTabId(path))}
+        onOpenFile={(path) => openPanel(formatLibraryFileTabId(path))}
         onOpenSkill={setOpenSkill}
         onOpenBrand={setOpenBrand}
       />

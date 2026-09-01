@@ -1,12 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import {
   agentRunState,
   cardNeedsAttention,
+  dropLane,
   dueDateUrgency,
   formatSprintDates,
   insertSortOrder,
+  isFeedWorthyActivity,
+  isLiveAttempt,
   isTaskHandedToHuman,
+  laneHeader,
+  laneVisibility,
+  laneVisual,
+  moveTargets,
   runSortOrders,
   statusIconClassName,
 } from "./config";
@@ -28,7 +38,9 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     dueDate: null,
     sortOrder,
     keySeq: 1,
+    jiraIssueKey: null,
     retryAttempts: 0,
+    reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
@@ -38,6 +50,17 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     updatedAt: new Date().toISOString(),
   } as TaskBoardItem;
 }
+
+/** The board Studio ships with, in the shape the server sends it. */
+const column = (key: string, position: number) => ({
+  key,
+  title: key,
+  position,
+  role: null,
+});
+const STATUSES: string[] = [...CANONICAL_COLUMN_KEYS];
+const CANONICAL_COLUMNS = STATUSES.map(column);
+const CANONICAL = CANONICAL_COLUMNS;
 
 describe("insertSortOrder", () => {
   const lane = [item("a", 0), item("b", 10), item("c", 20)];
@@ -273,5 +296,318 @@ describe("cardNeedsAttention", () => {
   test("an owner makes no difference either way", () => {
     expect(cardNeedsAttention(inReview("user-1"))).toBe(false);
     expect(cardNeedsAttention(asking(inReview("user-1")))).toBe(true);
+  });
+});
+
+describe("moveTargets", () => {
+  test("offers no delivery lane to a board that doesn't run them", () => {
+    expect(moveTargets(CANONICAL_COLUMNS, false)).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+      "archived",
+    ]);
+  });
+
+  test("offers every lane once they're on", () => {
+    expect(moveTargets(CANONICAL_COLUMNS, true)).toEqual(STATUSES);
+  });
+
+  /**
+   * The menu used to be Studio's lanes whoever's board it was, so on a
+   * mirrored board every entry named a column that does not exist and the
+   * server rejected the write — a list of ways to fail.
+   */
+  test("offers the org's own columns on a board Studio doesn't define", () => {
+    expect(
+      moveTargets(
+        [column("BACKLOG", 0), column("Fazendo", 1), column("Code Review", 2)],
+        false,
+      ),
+    ).toEqual(["BACKLOG", "Fazendo", "Code Review"]);
+  });
+});
+
+describe("dropLane", () => {
+  const columnKeys = new Set(["BACKLOG", "Fazendo"]);
+  const statusOf = (id: string) =>
+    ({ card_in_column: "Fazendo", card_off_board: "triage" })[id];
+  const over = (overId: string | undefined) =>
+    dropLane({ overId, columnKeys, statusOf });
+
+  /**
+   * The bug: this was matched against Studio's canonical statuses, which on a
+   * mirrored board match no column at all — so dragging a card into an empty
+   * Jira column resolved to null and the card sprang back.
+   */
+  test("lands a drag in an empty column of the org's own", () => {
+    expect(over("lane:Fazendo")).toBe("Fazendo");
+  });
+
+  test("lands a drag on a card, in that card's column", () => {
+    expect(over("card_in_column")).toBe("Fazendo");
+  });
+
+  /** Both ways of being over an off-board lane are the same illegal landing:
+   *  it is not a column, and the server rejects the write either way. */
+  test("refuses an off-board lane, hovered directly or through its card", () => {
+    expect(over("lane:triage")).toBeNull();
+    expect(over("card_off_board")).toBeNull();
+  });
+
+  test("refuses a card it has never heard of, and no target at all", () => {
+    expect(over("card_that_left")).toBeNull();
+    expect(over(undefined)).toBeNull();
+  });
+});
+
+describe("laneHeader", () => {
+  const t = ((key: string) => `t:${key}`) as never;
+
+  test("calls a mirrored column whatever its tracker calls it", () => {
+    expect(
+      laneHeader("Fazendo", t, [
+        {
+          key: "Fazendo",
+          title: "Em Progresso",
+          position: 0,
+          role: null,
+        },
+      ]).label,
+    ).toBe("Em Progresso");
+  });
+
+  /** Studio's own columns carry their key as the title, because the client is
+   *  the only side that knows the reader's language. */
+  test("translates a column of Studio's own", () => {
+    expect(laneHeader("in_progress", t, CANONICAL_COLUMNS).label).toBe(
+      "t:taskBoard.config.statusInProgress",
+    );
+  });
+
+  /**
+   * The bug this exists for: a `triage` card stranded on a mirrored board was
+   * labelled with OUR translation, so it rendered as a second "Backlog" beside
+   * the tracker's real one — a column nobody could act on, because it does not
+   * exist over there.
+   */
+  test("borrows neither our name nor our icon for a status off the board", () => {
+    const header = laneHeader("triage", t, [
+      {
+        key: "BACKLOG",
+        title: "BACKLOG",
+        position: 0,
+        role: null,
+      },
+    ]);
+    expect(header.offBoard).toBe(true);
+    expect(header.label).toBe("triage");
+    expect(header.visual).not.toBe(laneVisual("triage"));
+  });
+});
+
+describe("laneVisibility", () => {
+  const shown: string[] = [];
+
+  /**
+   * The board Studio ships with is one answer, not the only one. A board whose
+   * columns are the org's own has to draw THOSE — falling back to our lanes
+   * would file its cards under names nobody there chose, and the delivery-lane
+   * rules simply do not apply to a set we did not define.
+   */
+  test("draws the org's own columns, in the order the server sent them", () => {
+    const { lanes, hidden, hideable } = laneVisibility({
+      columns: [
+        column("BACKLOG", 0),
+        column("Fazendo", 1),
+        column("Code Review", 2),
+      ],
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: [],
+    });
+    expect(lanes).toEqual(["BACKLOG", "Fazendo", "Code Review"]);
+    expect(hidden).toEqual([]);
+    expect(hideable).toEqual([]);
+  });
+
+  /**
+   * The last way a card could vanish. A card the board cannot place — a
+   * Studio-native one on a converted board, or any status no column accounts
+   * for — gets its own lane at the end rather than being hidden or re-filed
+   * under a column we picked. Re-filing is a decision only the org can make;
+   * hiding is the invisibility this exists to prevent.
+   */
+  test("gives a card the board cannot place a lane of its own", () => {
+    const { lanes, hidden, hideable, unplaced } = laneVisibility({
+      columns: [column("BACKLOG", 0), column("Fazendo", 1)],
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: ["Fazendo", "triage", "done"],
+    });
+    expect(lanes).toEqual(["BACKLOG", "Fazendo", "done", "triage"]);
+    expect(hidden).toEqual([]);
+    expect(hideable).toEqual([]);
+    // Reported apart from the columns: the board draws these as what they are
+    // and refuses drops into them, neither of which it could tell from `lanes`.
+    expect(unplaced).toEqual(["done", "triage"]);
+  });
+
+  test("the extra lane goes away once its last card leaves", () => {
+    expect(
+      laneVisibility({
+        columns: [column("BACKLOG", 0)],
+        deliveryEnabled: false,
+        shownLanes: shown,
+        occupied: [],
+      }).lanes,
+    ).toEqual(["BACKLOG"]);
+  });
+
+  /** Studio's own board accounts for every canonical status, so nothing is
+   *  ever unplaced there and this cannot start inventing lanes. */
+  test("never invents a lane on the board Studio ships", () => {
+    expect(
+      laneVisibility({
+        columns: CANONICAL,
+        deliveryEnabled: true,
+        shownLanes: STATUSES,
+        occupied: ["triage", "done", "archived"],
+      }).lanes,
+    ).toEqual(STATUSES);
+  });
+
+  test("draws nothing for a board with no columns yet", () => {
+    expect(
+      laneVisibility({
+        columns: [],
+        deliveryEnabled: false,
+        shownLanes: shown,
+        occupied: [],
+      }),
+    ).toEqual({ lanes: [], hidden: [], hideable: [], unplaced: [] });
+  });
+
+  test("draws the delivery lanes as columns when they're on", () => {
+    const { lanes, hidden } = laneVisibility({
+      columns: CANONICAL,
+      deliveryEnabled: true,
+      shownLanes: shown,
+      occupied: [],
+    });
+    expect(lanes).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "approved",
+      "merged",
+      "post_deploy_validation",
+      "done",
+      // archived is hidden by default
+    ]);
+    expect(hidden).toEqual(["archived"]);
+  });
+
+  test("an empty delivery lane is absent, not hidden, when they're off", () => {
+    const { lanes, hidden } = laneVisibility({
+      columns: CANONICAL,
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: [],
+    });
+    expect(lanes).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "done",
+    ]);
+    expect(hidden).toEqual(["archived"]);
+  });
+
+  // Lanes off with work still in one: the card must stay reachable.
+  test("a card left in a delivery lane keeps the lane in the drawer", () => {
+    const { lanes, hidden, hideable } = laneVisibility({
+      columns: CANONICAL,
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: ["merged"],
+    });
+    expect(lanes).not.toContain("merged");
+    expect(hidden).toEqual(["merged", "archived"]);
+    expect(hideable).toContain("merged");
+  });
+
+  test("and showing it puts the column back", () => {
+    const { lanes, hidden } = laneVisibility({
+      columns: CANONICAL,
+      deliveryEnabled: false,
+      shownLanes: ["merged"],
+      occupied: ["merged"],
+    });
+    expect(lanes).toContain("merged");
+    expect(hidden).toEqual(["archived"]);
+  });
+
+  test("a lane removed from the product can linger in the preference", () => {
+    const { lanes } = laneVisibility({
+      columns: CANONICAL,
+      deliveryEnabled: false,
+      shownLanes: ["a_lane_that_no_longer_exists"],
+      occupied: [],
+    });
+    expect(lanes).not.toContain("a_lane_that_no_longer_exists");
+  });
+});
+
+describe("isFeedWorthyActivity", () => {
+  test("drops the per-retry line — it says nothing a person acts on", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "in_progress", to: "in_progress", retry: 1, of: 1 },
+      }),
+    ).toBe(false);
+  });
+
+  test("keeps the terminal line that counts the retries", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "in_progress", to: "todo", retriesSpent: 1 },
+      }),
+    ).toBe(true);
+  });
+
+  test("keeps ordinary moves, and anything that is not a status change", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "todo", to: "in_progress" },
+      }),
+    ).toBe(true);
+    expect(isFeedWorthyActivity({ action: "created", data: null })).toBe(true);
+    // `retry` is only a retry when it is a count — a stray string is not one.
+    expect(
+      isFeedWorthyActivity({ action: "status_changed", data: { retry: "1" } }),
+    ).toBe(true);
+  });
+});
+
+describe("isLiveAttempt", () => {
+  test("drops a superseded attempt — a newer run replaced it", () => {
+    expect(isLiveAttempt({ failureKind: "superseded" })).toBe(false);
+  });
+
+  test("keeps the attempt that actually ended the card", () => {
+    // The last attempt is never superseded (nothing replaced it), so a card
+    // whose every run failed still shows one card, and one transcript.
+    expect(isLiveAttempt({ failureKind: "error" })).toBe(true);
+    expect(isLiveAttempt({ failureKind: "ended_after_delivery" })).toBe(true);
+    expect(isLiveAttempt({ failureKind: null })).toBe(true);
+    expect(isLiveAttempt({})).toBe(true);
   });
 });

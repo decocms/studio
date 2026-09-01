@@ -6,6 +6,7 @@
  * account.
  */
 
+import { useTaskBoardItems } from "@/hooks/use-task-board-items";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -56,15 +57,20 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en";
 import {
+  useSetColumnRole,
   type JiraIntegration,
   useDeleteJiraIntegration,
   useJiraBoardColumns,
   useJiraBoards,
   useJiraIntegration,
+  useRequestJiraResync,
   useRunJiraSync,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
 import { timeAgo } from "@/layouts/library/cards";
+import { isDeliveryLane } from "@/layouts/task-board/config";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { TaskSystemPromptSettings } from "./task-system-prompt";
 
 type BoardStatus = keyof JiraIntegration["statusMapping"];
 type StatusMapping = JiraIntegration["statusMapping"];
@@ -93,9 +99,31 @@ const BOARD_STATUS_OPTIONS: Array<{
   { value: "todo", labelKey: "taskBoard.config.statusTodo" },
   { value: "in_progress", labelKey: "taskBoard.config.statusInProgress" },
   { value: "in_review", labelKey: "taskBoard.config.statusInReview" },
+  { value: "approved", labelKey: "taskBoard.config.statusApproved" },
+  { value: "merged", labelKey: "taskBoard.config.statusMerged" },
+  {
+    value: "post_deploy_validation",
+    labelKey: "taskBoard.config.statusPostDeployValidation",
+  },
   { value: "done", labelKey: "taskBoard.config.statusDone" },
   { value: "archived", labelKey: "taskBoard.config.statusArchived" },
 ];
+
+/** The lanes this org can map a Jira status onto — offering an unrun delivery
+ *  lane would route issues into a column the board never draws. `current` is
+ *  this row's already-mapped value: if it's a delivery lane saved while the
+ *  flag was on, it must stay in the list even after the flag turns off, or the
+ *  Select's value stops matching any item and the row silently renders blank
+ *  while the mapping underneath is untouched. */
+export function boardStatusOptions(
+  deliveryEnabled: boolean,
+  current: BoardStatus | undefined,
+): typeof BOARD_STATUS_OPTIONS {
+  if (deliveryEnabled) return BOARD_STATUS_OPTIONS;
+  return BOARD_STATUS_OPTIONS.filter(
+    (o) => !isDeliveryLane(o.value) || o.value === current,
+  );
+}
 
 /** Radix Select forbids empty item values — sentinel for "not synced". */
 const DONT_SYNC = "__dont_sync__";
@@ -223,10 +251,90 @@ function SyncStatusLine({ integration }: { integration: JiraIntegration }) {
   );
 }
 
+/** No role — the honest default for a column nobody has told us about. */
+const NO_ROLE = "__none__";
+
+/**
+ * What each of the board's own columns means to Studio.
+ *
+ * Replaces the status mapping for an org whose board is its own. The mapping
+ * asked a team to restate, lane by lane, something their tracker already knew;
+ * this asks the one thing it could not know — which of THEIR columns is where
+ * the agent picks work up, where it works, where review happens, and which
+ * retires a card. Most columns mean nothing to us,
+ * and leaving them that way is the safe answer rather than a gap to fill.
+ */
+function ColumnRoleRows() {
+  const t = useT();
+  const { columns, isLoading } = useTaskBoardItems();
+  const setRole = useSetColumnRole();
+
+  if (isLoading) return <Skeleton className="h-24 w-full mt-3" />;
+  if (columns.length === 0) {
+    return (
+      <p className="mt-3 text-xs text-muted-foreground">
+        {t("settings.jira.noColumnsYet")}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col mt-3">
+      {columns.map((column) => (
+        <div
+          key={column.key}
+          className="flex items-center justify-between gap-4 py-2.5 border-b border-border/60 last:border-b-0"
+        >
+          <span className="min-w-0 truncate text-sm">{column.title}</span>
+          <Select
+            value={column.role ?? NO_ROLE}
+            onValueChange={(value) =>
+              setRole.mutate(
+                {
+                  columnKey: column.key,
+                  role: value === NO_ROLE ? null : value,
+                },
+                {
+                  onError: (err) =>
+                    toast.error(
+                      errorMessage(err, t("settings.jira.saveFailed")),
+                    ),
+                },
+              )
+            }
+          >
+            <SelectTrigger className="w-44 shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_ROLE}>
+                {t("settings.jira.roleNone")}
+              </SelectItem>
+              <SelectItem value="todo">
+                {t("settings.jira.roleQueued")}
+              </SelectItem>
+              <SelectItem value="in_progress">
+                {t("settings.jira.roleInProgress")}
+              </SelectItem>
+              <SelectItem value="in_review">
+                {t("settings.jira.roleInReview")}
+              </SelectItem>
+              <SelectItem value="archived">
+                {t("settings.jira.roleArchived")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const columns = useJiraBoardColumns(integration.boardId);
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
 
   // Optimistic local copy so two quick edits don't race the save round-trip and stomp each other.
   const [mapping, setMapping] = useState(integration.statusMapping);
@@ -286,7 +394,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
   return (
     <div className="flex flex-col mt-3">
       {unmapped.length > 0 && (
-        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
           {t("settings.jira.unmappedWarning", {
             columns: unmapped.map((column) => column.name).join(", "),
           })}
@@ -317,7 +425,10 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
               <SelectItem value={DONT_SYNC}>
                 {t("settings.jira.dontSync")}
               </SelectItem>
-              {BOARD_STATUS_OPTIONS.map((option) => (
+              {boardStatusOptions(
+                deliveryEnabled,
+                laneOfColumn(mapping, column),
+              ).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {t(option.labelKey)}
                 </SelectItem>
@@ -476,39 +587,26 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
 
 function MappingRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
+  const orgOwnedColumns = useOrgFlag("org_board_columns");
   return (
     <SettingsCardItem
-      title={t("settings.jira.mappingLabel")}
-      description={t("settings.jira.mappingDescription")}
-    >
-      <ColumnMappingRows integration={integration} />
-    </SettingsCardItem>
-  );
-}
-
-function AutoDelegateRow({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  const upsert = useUpsertJiraIntegration();
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.autoDelegateLabel")}
-      description={t("settings.jira.autoDelegateDescription")}
-      action={
-        <Switch
-          checked={integration.autoDelegate}
-          disabled={upsert.isPending}
-          onCheckedChange={(checked) =>
-            upsert.mutate(
-              { autoDelegate: checked },
-              {
-                onError: (err) =>
-                  toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
-              },
-            )
-          }
-        />
+      title={
+        orgOwnedColumns
+          ? t("settings.jira.rolesLabel")
+          : t("settings.jira.mappingLabel")
       }
-    />
+      description={
+        orgOwnedColumns
+          ? t("settings.jira.rolesDescription")
+          : t("settings.jira.mappingDescription")
+      }
+    >
+      {orgOwnedColumns ? (
+        <ColumnRoleRows />
+      ) : (
+        <ColumnMappingRows integration={integration} />
+      )}
+    </SettingsCardItem>
   );
 }
 
@@ -516,6 +614,8 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const runSync = useRunJiraSync();
+  const requestResync = useRequestJiraResync();
+  const [resyncOpen, setResyncOpen] = useState(false);
   const hasMapping = Object.keys(integration.statusMapping).length > 0;
 
   return (
@@ -524,6 +624,49 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
       description={<SyncStatusLine integration={integration} />}
       action={
         <div className="flex items-center gap-3">
+          <AlertDialog open={resyncOpen} onOpenChange={setResyncOpen}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                !integration.enabled ||
+                runSync.isPending ||
+                requestResync.isPending
+              }
+              onClick={() => setResyncOpen(true)}
+            >
+              {t("settings.jira.resyncAll")}
+            </Button>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("settings.jira.resyncAllTitle")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("settings.jira.resyncAllDescription")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {t("settings.jira.cancel")}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    requestResync.mutate(undefined, {
+                      onSuccess: () =>
+                        toast.success(t("settings.jira.resyncAllQueued")),
+                      onError: (err) =>
+                        toast.error(
+                          errorMessage(err, t("settings.jira.syncFailed")),
+                        ),
+                    })
+                  }
+                >
+                  {t("settings.jira.resyncAll")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button
             variant="outline"
             size="sm"
@@ -648,7 +791,6 @@ function JiraContent() {
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
       {data.boardId && <MappingRow integration={data} />}
-      {data.boardId && <AutoDelegateRow integration={data} />}
       <SyncRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>
@@ -664,6 +806,7 @@ export function OrgTasksSettingsPage() {
           <SettingsPage>
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
+            <TaskSystemPromptSettings />
             <AgentToolsSettings />
             <SettingsSection
               title={

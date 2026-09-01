@@ -35,32 +35,33 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(prompt).not.toContain("Description:");
   });
 
-  test("asks for a pull request and for the board move, with the task id", () => {
+  // Inverted with migration 190: the run used to be told to move its own card
+  // to In Review after opening the PR. Linking the PR is what starts the
+  // review now, and the card stays In Progress until the REVIEWER decides — so
+  // asking the model for that move would put the card in the wrong lane for
+  // the whole time an agent is still working on it.
+  test("asks for a pull request and for the PR link, not a board move", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("open a pull request");
-    // The board move is the whole reason the run needs the Studio MCP.
-    expect(prompt).toContain("mcp__studio__TASK_BOARD_ITEM_UPDATE");
-    expect(prompt).toContain('id "tbi_1"');
-    expect(prompt).toContain('"in_review"');
+    expect(prompt).toContain("mcp__studio__TASK_BOARD_ITEM_PR_LINK");
+    expect(prompt).toContain("(task id: tbi_1)");
+    expect(prompt).not.toContain('status "in_review"');
   });
 
   test("says it runs autonomously", () => {
     expect(buildClaudeCodeTaskPrompt(task, repo)).toContain("AUTONOMOUSLY");
   });
 
-  test("requires reachability and a preview check before handing over", () => {
+  // Inverted: this used to require fetching the PR's `previewUrl` and
+  // verifying on the deploy preview. That is the reviewer's job — the Super
+  // Agent implements and verifies locally, and must not sit waiting for a
+  // deploy.
+  test("requires reachability and a LOCAL check before handing over", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("must be REACHABLE");
-    expect(prompt).toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
+    expect(prompt).toContain("VERIFY the task's outcome LOCALLY");
     expect(prompt).toContain("A green test suite is not the bar");
-  });
-
-  test("a reviewer bounce says to reproduce the check on the preview", () => {
-    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
-      feedback: "view_item never fires",
-      pr: { number: 340, url: "https://github.com/acme/web/pull/340" },
-    });
-    expect(prompt).toContain("judged the DEPLOYED PREVIEW");
+    expect(prompt).not.toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
   });
 
   // Inverted: this used to say "move it to review anyway so a human can close
@@ -68,11 +69,11 @@ describe("buildClaudeCodeTaskPrompt", () => {
   // for a task that HAS a PR, so a no-PR task parked there had nobody to pick
   // it up — in prod every single In Review card was one of these, with zero
   // PRs and zero reviewer claims between them.
-  test("a task needing no code change goes to done, not in_review", () => {
+  test("a task needing no code change goes to done, not to a reviewer", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("no code change");
-    expect(prompt).toContain('move it to "done" instead of "in_review"');
-    expect(prompt).not.toContain("move it to review anyway");
+    expect(prompt).toContain('move it to "done"');
+    expect(prompt).not.toContain("leave it for a reviewer anyway");
     // And it has to leave the reason where a human will read it.
     expect(prompt).toContain("mcp__studio__TASK_BOARD_COMMENT_CREATE");
   });
@@ -224,8 +225,8 @@ describe("buildClaudeCodeTaskPrompt with no repo (several in the org)", () => {
 
   test("still says how to finish", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null);
-    expect(prompt).toContain("TASK_BOARD_ITEM_UPDATE");
-    expect(prompt).toContain("in_review");
+    expect(prompt).toContain("TASK_BOARD_ITEM_PR_LINK");
+    expect(prompt).toContain('move it to "done"');
   });
 });
 

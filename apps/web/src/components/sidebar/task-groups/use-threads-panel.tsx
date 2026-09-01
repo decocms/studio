@@ -1,15 +1,13 @@
 /**
  * The thread list's data + actions, independent of where it renders.
  *
- * Two surfaces consume this: the classic sidebar list (TaskGroupsList) and the
- * chat panel's threads menu (ThreadsMenu, used when the org is on the
- * first-class navigation — see `useNavV2`). Both need the same filters,
- * archive/reclaim flow and new-thread semantics, so the wiring lives here once
- * and each surface only owns its layout.
+ * The chat panel's threads menu (ThreadsMenu) consumes this: filters,
+ * archive/reclaim flow and new-thread semantics live here once, and the surface
+ * only owns its layout.
  */
 
 import { useState } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useT } from "@/i18n/use-t.ts";
@@ -17,8 +15,16 @@ import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
+import {
+  resolveActiveAgentId,
+  useRouteAgentId,
+  useRouteThreadId,
+} from "@/layouts/thread-route";
 import { track } from "@/lib/posthog-client";
 import type { Task } from "@/components/chat/task/types";
+import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { hideAbandonedNewChats } from "@/lib/thread-list-visibility";
+import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 import { useStudioTools } from "@/lib/studio-tools";
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
@@ -94,6 +100,7 @@ export function useThreadsPanel({
   const currentUserId = session?.user?.id;
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const projectDefaultRuntime = useProjectDefaultRuntime();
 
   const {
     threads: allThreads,
@@ -107,18 +114,20 @@ export function useThreadsPanel({
   const navigate = useNavigate();
   const studio = useStudioTools();
   const { setTaskId, createNewTask } = usePanelActions();
-  const params = useParams({ strict: false }) as { taskId?: string };
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  const activeTaskId = params.taskId ?? null;
+  const routeAgentId = useRouteAgentId();
+  /** Route-aware: `$taskId` on the legacy route, `?thread=` on a destination. */
+  const activeTaskId = useRouteThreadId();
   /**
-   * The recipient is the URL's `virtualmcpid` (what the composer sends to),
-   * falling back to the thread row's agent. Preferring the param keeps the
-   * active-agent highlight in sync when a new chat is retargeted in place.
+   * The recipient is the agent the ROUTE names — its `{-$project}` segment —
+   * falling back to the open thread's own agent on an org-level destination,
+   * which names none. Reading `?virtualmcpid=` made this control hand a new
+   * chat to the Super Agent on every `/$org/agents/<project>`.
    */
-  const activeAgentId =
-    search.virtualmcpid ??
-    allThreads.find((thread) => thread.id === activeTaskId)?.virtual_mcp_id ??
-    null;
+  const activeAgentId = resolveActiveAgentId({
+    routeAgentId,
+    threadVirtualMcpId: allThreads.find((thread) => thread.id === activeTaskId)
+      ?.virtual_mcp_id,
+  });
   const closeAfterNavigation = () => {
     onNavigate?.();
   };
@@ -193,10 +202,17 @@ export function useThreadsPanel({
     return threads;
   };
 
-  /** Every agent's threads, mixed — an agent's own list lives on its home view. */
-  const visibleScopedThreads = showAll
-    ? typeFiltered(sortedThreads)
-    : typeFiltered(mineFiltered(sortedThreads));
+  /**
+   * Every agent's threads, mixed — an agent's own list lives on its home view.
+   * Abandoned empty "New chat" rows are dropped (the active one is kept) so the
+   * list isn't buried under chats that were opened but never used.
+   */
+  const visibleScopedThreads = hideAbandonedNewChats(
+    showAll
+      ? typeFiltered(sortedThreads)
+      : typeFiltered(mineFiltered(sortedThreads)),
+    activeTaskId,
+  );
 
   /**
    * The archive itself. Nothing here runs until the reclaim confirm (if any)
@@ -296,17 +312,23 @@ export function useThreadsPanel({
     setTaskId(task.id, task.virtual_mcp_id);
   };
 
-  /**
-   * ALWAYS create a fresh chat on the currently selected agent (the active
-   * thread's agent, else decopilot), inheriting the active thread's branch so it
-   * lands on the same sandbox. We do not reuse an existing empty "New chat".
-   */
+  /** New chat on the current agent — reuse its empty one if any, else create. */
   const newThread = () => {
     const currentAgentId = activeAgentId ?? decopilotId;
-    const currentBranch =
-      allThreads.find((thread) => thread.id === activeTaskId)?.branch ?? null;
     track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
     closeAfterNavigation();
+    const existing = findReusableNewChat(
+      allThreads,
+      currentAgentId,
+      currentUserId,
+      projectDefaultRuntime(currentAgentId),
+    );
+    if (existing) {
+      setTaskId(existing.id, existing.virtual_mcp_id);
+      return;
+    }
+    const currentBranch =
+      allThreads.find((thread) => thread.id === activeTaskId)?.branch ?? null;
     createNewTask(currentAgentId, currentBranch);
   };
 

@@ -10,7 +10,7 @@ import type { PublicConfig } from "@decocms/shared/config";
 import { getConfig, getThemeConfig } from "@/core/config";
 import { isLocalMode } from "@/auth/local-mode";
 import { getInternalUrl } from "@/core/server-constants";
-import { getSettings } from "@/settings";
+import { agentSandboxEnabled, getSettings } from "@/settings";
 import { buildAuthConfig } from "@/api/routes/auth";
 import pkg from "../../../package.json" with { type: "json" };
 
@@ -68,7 +68,7 @@ app.get("/", (c) => {
     runtime: {
       // Local/dev mode has no cloud agent-sandbox cluster, so cloud Decopilot
       // can't run there — report it unavailable to drop it from the picker.
-      agentSandbox: !isLocalMode() && getSettings().agentSandboxEnabled,
+      agentSandbox: agentSandboxEnabled(),
     },
   };
 

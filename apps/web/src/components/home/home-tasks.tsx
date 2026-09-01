@@ -7,7 +7,7 @@
  * board (the metric tiles).
  */
 import { type ReactNode, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { formatTimeAgo } from "@/lib/format-time";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -15,6 +15,7 @@ import { ArrowUpRight, Calendar, Flag01, Plus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { useMembers } from "@/hooks/use-members";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
 import {
   useTaskBoardItemActions,
@@ -22,10 +23,10 @@ import {
 } from "@/hooks/use-task-board-items";
 import {
   PRIORITY_CONFIG,
-  STATUS_CONFIG,
+  laneVisual,
   type TaskBoardItem,
-  type TaskBoardItemStatus,
 } from "@/layouts/task-board/config";
+import { taskRouteSegment } from "@/layouts/task-board/task-route";
 import { TaskBoardItemDialog } from "@/layouts/task-board/task-dialog";
 
 interface OrgMember {
@@ -33,9 +34,10 @@ interface OrgMember {
   user?: { name?: string; email?: string; image?: string | null };
 }
 
-type TaskTab =
-  | "all"
-  | Extract<TaskBoardItemStatus, "in_progress" | "in_review" | "done">;
+/** Named outright rather than `Extract`ed from a card's status: that is now any
+ *  column key, and extracting from an open `string` collapses to `never`. These
+ *  three are Studio's own lanes, which is exactly what this strip is about. */
+type TaskTab = "all" | "in_progress" | "in_review" | "done";
 
 const TASK_TABS: { id: TaskTab; labelKey: string }[] = [
   { id: "all", labelKey: "home.homeTasks.tabAll" },
@@ -56,7 +58,7 @@ function TaskRow({
   assignee?: OrgMember;
   onOpen: () => void;
 }) {
-  const statusConfig = STATUS_CONFIG[task.status];
+  const statusConfig = laneVisual(task.status);
   const StatusIcon = statusConfig.icon;
   const priority = PRIORITY_CONFIG[task.priority];
   const assigneeName =
@@ -99,7 +101,7 @@ function TaskRow({
           <span
             className={cn(
               "hidden items-center gap-1 @xl:inline-flex",
-              due.overdue ? "text-red-600" : "",
+              due.overdue ? "text-destructive" : "",
             )}
           >
             <Calendar className="size-3" />
@@ -154,7 +156,9 @@ function buildSummary(
 
 export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const t = useT();
+  const { openPanel } = usePanelNavigate();
   const navigate = useNavigate();
+  const orgSlug = useParams({ strict: false }).org ?? "";
   const { items, error } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const { data: membersData } = useMembers();
@@ -175,12 +179,13 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const filtered =
     tab === "all" ? sorted : sorted.filter((t) => t.status === tab);
 
-  // Open the task board in the main panel next to chat (same as the Tasks
-  // toolbar toggle).
-  const openBoard = () =>
+  // The board is a destination of its own (same as the sidebar's Tasks).
+  const openBoard = () => openPanel("board", { replace: false });
+  // Same card address the sidebar inbox links to.
+  const openTask = (task: TaskBoardItem) =>
     navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: "board" }),
+      to: "/$org/tasks/{-$taskKey}",
+      params: { org: orgSlug, taskKey: taskRouteSegment(orgSlug, task) },
     });
 
   return (
@@ -255,7 +260,7 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
                     ? memberByUserId.get(task.assigneeId)
                     : undefined
                 }
-                onOpen={openBoard}
+                onOpen={() => openTask(task)}
               />
             ))}
             <button

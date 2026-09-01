@@ -24,6 +24,11 @@ export function useFlipLanes(
   containerRef: RefObject<HTMLElement | null>,
   signature: string,
   enabled: boolean,
+  /** False while the board is `display: none` — the task detail has taken the
+   *  panel over. A hidden board measures every card at 0×0, and recording that
+   *  as the baseline would make the next real measurement read as a full-board
+   *  move, flinging every card in from the corner when the board comes back. */
+  visible = true,
 ) {
   // Remember each card's position AND which lane it was in, so a lane change is
   // detected by the column it actually moved between — not by horizontal delta,
@@ -34,10 +39,21 @@ export function useFlipLanes(
   // once don't have the first one's cleanup re-clip it while the second is
   // still mid-flight.
   const unclipped = useRef<Map<HTMLElement, number>>(new Map());
+  /** Whether the last pass bailed out on a hidden board, so the first pass
+   *  back resyncs the baseline without animating moves that landed unseen. */
+  const wasHidden = useRef(false);
 
   useLayoutEffect(() => {
     const root = containerRef.current;
     if (!root) return;
+
+    // Skip while hidden: `prev` keeps the last on-screen layout instead.
+    if (!visible) {
+      wasHidden.current = true;
+      return;
+    }
+    const returning = wasHidden.current;
+    wasHidden.current = false;
 
     const nodes = root.querySelectorAll<HTMLElement>("[data-flip-id]");
     const next = new Map<string, { rect: DOMRect; lane?: string }>();
@@ -60,7 +76,7 @@ export function useFlipLanes(
       const rect = el.getBoundingClientRect();
       const lane = el.dataset.flipLane;
       next.set(id, { rect, lane });
-      if (!enabled) continue;
+      if (!enabled || returning) continue;
       const old = prevPositions.get(id);
       if (!old) continue;
       const dx = old.rect.left - rect.left;
@@ -145,5 +161,5 @@ export function useFlipLanes(
         if (m.lane) reclip(m.el.closest("[data-lane-scroll]"));
       }
     };
-  }, [signature, containerRef, enabled]);
+  }, [signature, containerRef, enabled, visible]);
 }

@@ -4,19 +4,21 @@
  * on a fresh review cycle (a stale prior-cycle thread must not count). Pure over
  * a task snapshot + the cycle-start timestamp.
  */
-import { describe, expect, it, test } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  authorRunLive,
   MAX_REVIEWER_ATTEMPTS,
-  REVIEWER_DISALLOWED_TOOLS,
   reviewerAttemptsExhausted,
   pinnedRepoConnectionId,
   priorCycleReviewAt,
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
   stalePreviewHandoffDue,
+  undecidedReviewerThread,
+  verdictNudgedThreads,
+  awaitingVerdictNudge,
 } from "./enqueue-reviewer";
-import { REVIEW_RUN_TOOL_NAMES } from "./task-run-context";
 
 /** Cycle start (the task last entered In Review) at 10:00. */
 const CYCLE_START = new Date("2026-01-01T10:00:00Z").getTime();
@@ -42,64 +44,45 @@ const thread = (o: {
 const taskWith = (threads: ReturnType<typeof thread>[]): TaskBoardItem =>
   ({ threads }) as unknown as TaskBoardItem;
 
-describe("REVIEWER_DISALLOWED_TOOLS", () => {
-  // `disallowedTools` matches SDK tool NAMES. A permission-rule pattern
-  // (`Bash(git push:*)`) is not one, so it would be a silent no-op that reads
-  // like a guard — the exact mistake this test exists to catch.
-  test("holds plain built-in tool names, never permission patterns", () => {
-    for (const names of Object.values(REVIEWER_DISALLOWED_TOOLS)) {
-      for (const name of names) {
-        expect(name).toMatch(/^[A-Za-z]+$/);
-      }
-    }
-  });
-
-  // The reviewer's whole job runs through the task-run MCP surface (find the
-  // PR, record the verdict). Removing one of those would strand the review the
-  // same way the missing `TASK_BOARD_REVIEW_DECISION` did.
-  test("never removes a tool the reviewer's MCP surface provides", () => {
-    for (const names of Object.values(REVIEWER_DISALLOWED_TOOLS)) {
-      for (const name of names) {
-        expect(name.startsWith("mcp__")).toBe(false);
-        expect(REVIEW_RUN_TOOL_NAMES).not.toContain(name);
-      }
-    }
-  });
-});
-
 describe("reviewerHandledThisCycle", () => {
   it("is true while a reviewer's own thread is still live", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "in_progress",
         createdAt: "2026-01-01T09:00:00Z", // even from a prior cycle, live counts
         lastActiveAt: "2026-01-01T10:09:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
   });
 
   it("is true for a terminal reviewer thread created THIS cycle", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "completed",
         createdAt: "2026-01-01T10:05:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
   });
 
   it("is FALSE for a terminal reviewer thread from a PRIOR cycle — so re-review re-runs it", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "completed",
         createdAt: "2026-01-01T09:30:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
   });
 
   // The bug: a FAILED reviewer thread satisfied "created this cycle", so when
@@ -108,13 +91,15 @@ describe("reviewerHandledThisCycle", () => {
   it("is FALSE for a reviewer thread that FAILED this cycle — it gets retried", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "failed",
         createdAt: "2026-01-01T10:05:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
-    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(1);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
+    expect(spentAttemptsThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(1);
   });
 
   /**
@@ -128,29 +113,33 @@ describe("reviewerHandledThisCycle", () => {
   it("is FALSE for a non-terminal thread whose heartbeat went cold", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "in_progress",
         createdAt: "2026-01-01T10:01:00Z",
         lastActiveAt: "2026-01-01T09:30:00Z", // past the stall window
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
     // …and it counts as an attempt, so the retry fences on a fresh id
     // instead of colliding with the corpse.
-    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(1);
+    expect(spentAttemptsThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(1);
   });
 
   it("a warm heartbeat still owns the cycle — a slow reviewer is not a hung one", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "in_progress",
         createdAt: "2026-01-01T10:01:00Z",
         lastActiveAt: "2026-01-01T10:09:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
-    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(0);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
+    expect(spentAttemptsThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(0);
   });
 
   // The opposite mistake to the deadlock: a reviewer whose pod keeps dying must
@@ -159,103 +148,258 @@ describe("reviewerHandledThisCycle", () => {
     const task = taskWith(
       Array.from({ length: MAX_REVIEWER_ATTEMPTS }, (_, i) =>
         thread({
-          title: "QA Agent: fix",
+          title: "Reviewer: fix",
           status: "in_progress",
           createdAt: `2026-01-01T10:0${i + 1}:00Z`,
           lastActiveAt: "2026-01-01T09:30:00Z",
         }),
       ),
     );
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
-    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
+    expect(reviewerAttemptsExhausted(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
   });
 
   it("stops retrying once the cycle has spent MAX_REVIEWER_ATTEMPTS", () => {
     const task = taskWith(
       Array.from({ length: MAX_REVIEWER_ATTEMPTS }, (_, i) =>
         thread({
-          title: "QA Agent: fix",
+          title: "Reviewer: fix",
           status: "failed",
           createdAt: `2026-01-01T10:0${i + 1}:00Z`,
         }),
       ),
     );
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
     // …and says WHY: no verdict is coming, so the card needs a human.
-    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(reviewerAttemptsExhausted(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
   });
 
   it("a completed review alongside a failed attempt is still handled", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "failed",
         createdAt: "2026-01-01T10:01:00Z",
       }),
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "completed",
         createdAt: "2026-01-01T10:06:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
   });
 
   // A retry must never run alongside a live attempt.
   it("a live attempt wins over a failed one", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "failed",
         createdAt: "2026-01-01T10:01:00Z",
       }),
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "in_progress",
         createdAt: "2026-01-01T10:06:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
   });
 
   it("a failure from a PRIOR cycle is not a spent attempt of this one", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "failed",
         createdAt: "2026-01-01T09:30:00Z",
       }),
     ]);
-    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(0);
+    expect(spentAttemptsThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(0);
   });
 
-  it("scopes to the given reviewer — the other reviewer's thread and the Super Agent's don't count", () => {
+  it("does not read the Super Agent's own thread as a review", () => {
     const task = taskWith([
       thread({
         title: "Super Agent: fix",
         status: "completed",
         createdAt: "2026-01-01T10:05:00Z",
       }),
+    ]);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
+  });
+
+  it("counts an in-flight run from the two-reviewer era as this cycle's review", () => {
+    // Otherwise the deploy that merged the reviewers dispatches a second run
+    // alongside one that is still going.
+    const task = taskWith([
       thread({
         title: "Code Reviewer: fix",
         status: "in_progress",
         createdAt: "2026-01-01T10:05:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
+  });
+});
+
+describe("a reviewer that completed without recording a verdict", () => {
+  // Seen in production: the run finished while it was still "standing by" for a
+  // background task, so it never called the decision tool. The card sat In
+  // Review at 0/1 with nothing to move it — no re-dispatch, no hand-off.
+  const completed = taskWith([
+    thread({
+      title: "Reviewer: fix",
+      status: "completed",
+      createdAt: "2026-01-01T10:05:00Z",
+    }),
+  ]);
+
+  it("is not handled, and its attempt is spent, so it re-dispatches", () => {
     expect(
-      reviewerHandledThisCycle(task, "code_review", CYCLE_START, NOW),
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(1);
+    expect(
+      reviewerAttemptsExhausted(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+  });
+
+  it("is handled once the verdict is on the cycle's timeline", () => {
+    expect(
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
     ).toBe(true);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
+    ).toBe(0);
+  });
+
+  it("hands the card over once the budget is gone", () => {
+    const twice = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:07:00Z",
+      }),
+    ]);
+    expect(
+      reviewerAttemptsExhausted(twice, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(true);
+  });
+});
+
+describe("the ask for a missing verdict", () => {
+  const completed = taskWith([
+    thread({
+      title: "Reviewer: fix",
+      status: "completed",
+      createdAt: "2026-01-01T10:05:00Z",
+    }),
+  ]);
+  const owedThreadId = completed.threads[0]!.threadId;
+
+  it("names the completed thread that owes a verdict", () => {
+    expect(
+      undecidedReviewerThread(
+        completed,
+        "reviewer",
+        CYCLE_START,
+        new Map(),
+        NOW,
+      )?.threadId,
+    ).toBe(owedThreadId);
+  });
+
+  it("asks each thread at most once", () => {
+    const asked = new Map([[owedThreadId, NOW]]);
+    expect(
+      undecidedReviewerThread(completed, "reviewer", CYCLE_START, asked, NOW),
+    ).toBeNull();
+  });
+
+  it("does not ask a failed or still-live run", () => {
+    const dead = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+      thread({
+        title: "Reviewer: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:06:00Z",
+      }),
+    ]);
+    expect(
+      undecidedReviewerThread(dead, "reviewer", CYCLE_START, new Map(), NOW),
+    ).toBeNull();
+  });
+
+  it("reads the asks off the cycle's timeline, ignoring older ones", () => {
+    const asked = verdictNudgedThreads(
+      [
+        {
+          action: "review_verdict_requested",
+          data: { threadId: "stale" },
+          occurredAt: "2026-01-01T09:00:00Z",
+        },
+        {
+          action: "review_verdict_requested",
+          data: { threadId: owedThreadId },
+          occurredAt: "2026-01-01T10:06:00Z",
+        },
+        {
+          action: "status_changed",
+          data: { to: "in_review" },
+          occurredAt: "2026-01-01T10:00:00Z",
+        },
+      ],
+      CYCLE_START,
+    );
+    expect([...asked.keys()]).toEqual([owedThreadId]);
+  });
+
+  it("holds the reviewer's attempts back only while an ask is fresh", () => {
+    const at = new Date("2026-01-01T10:06:00Z").getTime();
+    expect(awaitingVerdictNudge(new Map([["t", at]]), NOW)).toBe(true);
+    expect(
+      awaitingVerdictNudge(new Map([["t", at]]), at + 11 * 60 * 1000),
+    ).toBe(false);
   });
 });
 
 describe("reviewerAttemptsExhausted", () => {
   const failed = (createdAt: string) =>
-    thread({ title: "QA Agent: fix", status: "failed", createdAt });
+    thread({ title: "Reviewer: fix", status: "failed", createdAt });
 
   it("is false below the attempt budget", () => {
     const task = taskWith([failed("2026-01-01T10:01:00Z")]);
-    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(reviewerAttemptsExhausted(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
   });
 
   // The distinction that matters: `reviewerHandledThisCycle` is also true for a
@@ -264,25 +408,31 @@ describe("reviewerAttemptsExhausted", () => {
     const task = taskWith([
       failed("2026-01-01T10:01:00Z"),
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "completed",
         createdAt: "2026-01-01T10:02:00Z",
       }),
     ]);
-    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
-    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(reviewerHandledThisCycle(task, "reviewer", CYCLE_START, NOW)).toBe(
+      true,
+    );
+    expect(reviewerAttemptsExhausted(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
   });
 
   it("is false while an attempt is still live", () => {
     const task = taskWith([
       failed("2026-01-01T10:01:00Z"),
       thread({
-        title: "QA Agent: fix",
+        title: "Reviewer: fix",
         status: "in_progress",
         createdAt: "2026-01-01T10:02:00Z",
       }),
     ]);
-    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(reviewerAttemptsExhausted(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
   });
 
   it("ignores failures from a prior cycle", () => {
@@ -290,17 +440,27 @@ describe("reviewerAttemptsExhausted", () => {
       failed("2026-01-01T09:00:00Z"),
       failed("2026-01-01T09:30:00Z"),
     ]);
-    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(reviewerAttemptsExhausted(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
   });
 
-  it("scopes to the given reviewer", () => {
+  it("ignores the Super Agent's own failed run", () => {
     const task = taskWith([
-      failed("2026-01-01T10:01:00Z"),
-      failed("2026-01-01T10:02:00Z"),
+      thread({
+        title: "Super Agent: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:01:00Z",
+      }),
+      thread({
+        title: "Super Agent: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:02:00Z",
+      }),
     ]);
-    expect(
-      reviewerAttemptsExhausted(task, "code_review", CYCLE_START, NOW),
-    ).toBe(false);
+    expect(reviewerAttemptsExhausted(task, "reviewer", CYCLE_START, NOW)).toBe(
+      false,
+    );
   });
 });
 
@@ -340,58 +500,58 @@ describe("priorCycleReviewAt", () => {
   it("is 0 on a first review, so the prompt stays the plain one", () => {
     const task = taskWith([
       thread({
-        title: "Code Reviewer: x",
+        title: "Reviewer: x",
         status: "in_progress",
         createdAt: "2026-01-01T10:01:00Z",
       }),
     ]);
-    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(0);
+    expect(priorCycleReviewAt(task, "reviewer", CYCLE_START)).toBe(0);
   });
 
   it("reports when this reviewer last ruled on an earlier cycle", () => {
     const task = taskWith([
       thread({
-        title: "Code Reviewer: x",
+        title: "Reviewer: x",
         status: "completed",
         createdAt: "2026-01-01T08:00:00Z",
         lastActiveAt: "2026-01-01T08:30:00Z",
       }),
       thread({
-        title: "Code Reviewer: x",
+        title: "Reviewer: x",
         status: "completed",
         createdAt: "2026-01-01T09:00:00Z",
         lastActiveAt: "2026-01-01T09:30:00Z",
       }),
     ]);
     // The most recent prior verdict, not the first.
-    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(
+    expect(priorCycleReviewAt(task, "reviewer", CYCLE_START)).toBe(
       new Date("2026-01-01T09:30:00Z").getTime(),
     );
   });
 
-  it("does not read the OTHER reviewer's prior cycle as its own", () => {
+  it("does not read the Super Agent's prior run as a review", () => {
     const task = taskWith([
       thread({
-        title: "QA Agent: x",
+        title: "Super Agent: x",
         status: "completed",
         createdAt: "2026-01-01T09:00:00Z",
         lastActiveAt: "2026-01-01T09:30:00Z",
       }),
     ]);
-    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(0);
+    expect(priorCycleReviewAt(task, "reviewer", CYCLE_START)).toBe(0);
   });
 
   it("does not count a failed attempt as a finished review", () => {
     const task = taskWith([
       thread({
-        title: "Code Reviewer: x",
+        title: "Reviewer: x",
         status: "failed",
         createdAt: "2026-01-01T09:00:00Z",
         lastActiveAt: "2026-01-01T09:05:00Z",
       }),
     ]);
     // A failed run never read the PR, so this must stay a plain review.
-    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(0);
+    expect(priorCycleReviewAt(task, "reviewer", CYCLE_START)).toBe(0);
   });
 });
 
@@ -418,5 +578,55 @@ describe("stalePreviewHandoffDue", () => {
     expect(stalePreviewHandoffDue(0, at("2026-08-13T17:00:00.000Z"))).toBe(
       true,
     );
+  });
+});
+
+describe("authorRunLive", () => {
+  it("is true while the Super Agent's own thread is still running", () => {
+    const task = taskWith([
+      thread({
+        title: "Super Agent: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:00:00Z",
+        lastActiveAt: "2026-01-01T10:09:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(true);
+  });
+
+  it("is false once the Super Agent's thread is terminal", () => {
+    const task = taskWith([
+      thread({
+        title: "Super Agent: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:00:00Z",
+        lastActiveAt: "2026-01-01T10:09:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(false);
+  });
+
+  it("is false for an author that went silent — a dead run must not strand the card", () => {
+    const task = taskWith([
+      thread({
+        title: "Super Agent: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T08:00:00Z",
+        lastActiveAt: "2026-01-01T08:00:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(false);
+  });
+
+  it("does not count a live reviewer thread as the author", () => {
+    const task = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:00:00Z",
+        lastActiveAt: "2026-01-01T10:09:00Z",
+      }),
+    ]);
+    expect(authorRunLive(task, NOW)).toBe(false);
   });
 });

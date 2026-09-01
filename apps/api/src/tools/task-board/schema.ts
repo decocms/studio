@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { SPRINT_STATES } from "@decocms/shared/sprints";
+import { REVIEWER_KINDS, type ReviewerKind } from "@decocms/shared/task-board";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
@@ -15,14 +16,20 @@ export const MAX_TASK_TITLE_LENGTH = 500;
  *  so nothing legitimate approaches this; same reasoning as the caps above. */
 export const MAX_TASK_REPO_LENGTH = 200;
 
-export const TaskBoardItemStatusSchema = z.enum([
-  "triage",
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-  "archived",
-]);
+/** A column automation's prompt is an instruction, not the message body —
+ *  same reasoning as MAX_TASK_DESCRIPTION_LENGTH. */
+export const MAX_AUTOMATION_PROMPT_LENGTH = 50_000;
+
+/**
+ * A card's column, by key.
+ *
+ * Not an enum: on a board whose columns are the org's own the keys come from
+ * their tracker, and a closed union would reject the only values that board
+ * has. What an enum used to guarantee is now the board's job — see
+ * `assertBoardHasColumn` — because only the board knows which keys are real
+ * for the org making the call.
+ */
+export const TaskBoardItemStatusSchema = z.string().min(1);
 
 /**
  * A sprint cards can belong to — mirrored from the tracker the board syncs
@@ -101,7 +108,7 @@ const TaskBoardItemThreadSchema = z.object({
  * `completed` may well have asked for changes.
  */
 const TaskBoardItemReviewVerdictSchema = z.object({
-  reviewer: z.enum(["qa", "code_review"]),
+  reviewer: z.enum(REVIEWER_KINDS as [ReviewerKind]),
   verdict: z.enum(["approved", "changes_requested"]),
   /** Whether the approval was token-verified. An unverified approval counts as
    *  an approval but can never satisfy the auto-merge gate, so it must not
@@ -175,12 +182,18 @@ export const TaskBoardItemSchema = z.object({
   repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
   /** The sprint this card belongs to — an id from `TASK_BOARD_ITEM_LIST`'s
-   *  `sprints`. Null = backlog. Mirrored from the tracker, not writable here. */
+   *  `sprints`. Null = backlog. The sprints themselves are mirrored from the
+   *  tracker and cannot be authored here; which one a card is IN is writable
+   *  through `TASK_BOARD_ITEM_UPDATE`, and pushed onward. */
   sprintId: z.string().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.
   keySeq: z.number().nullable(),
+  // The key this card's issue wears in the tracker (`EX-333`), for a card that
+  // came from one. It is what the card shows, because it is what people say
+  // out loud about it. Null for a card Studio owns.
+  jiraIssueKey: z.string().nullable(),
   // Infrastructure retries already spent on this card's runs — the budget
   // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
   // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:
@@ -189,6 +202,13 @@ export const TaskBoardItemSchema = z.object({
   // reject every response with `-32602: Structured content does not match
   // the tool's output schema` the moment a row carried a non-zero value.
   retryAttempts: z.number(),
+  /** When this card's current review cycle opened; null when none is open — the
+   *  boundary that decides which reviewer verdicts still count, and the one
+   *  thing that says a reviewer owns the card while its lane still reads In
+   *  Progress. Present on every `TaskBoardItem`, so — like `retryAttempts`
+   *  above — it MUST be modeled here or Ajv-revalidating MCP clients reject
+   *  every response with `-32602`. */
+  reviewCycleStartedAt: z.string().datetime().nullable(),
   // Agent threads linked to this task (many-to-many), most-recent first.
   threads: z.array(TaskBoardItemThreadSchema),
   // Org tags attached to this task, name ascending.
@@ -224,9 +244,11 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_requested",
   "review_approved",
   "review_changes_requested",
+  "review_verdict_requested",
   "merge_conflict_resolution",
   "merge_failed",
   "type_changed",
+  "sprint_changed",
 ] as const;
 
 export type TaskBoardActivityAction =

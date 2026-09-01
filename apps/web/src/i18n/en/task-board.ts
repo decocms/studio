@@ -4,11 +4,14 @@ export const taskBoard = {
   "taskBoard.config.priorityMedium": "Medium",
   "taskBoard.config.priorityNone": "No priority",
   "taskBoard.config.priorityUrgent": "Urgent",
+  "taskBoard.config.statusApproved": "Approved",
   "taskBoard.config.statusArchived": "Archived",
   "taskBoard.config.statusBacklog": "Backlog",
+  "taskBoard.config.statusMerged": "Merged",
   "taskBoard.config.statusDone": "Done",
   "taskBoard.config.statusInProgress": "In Progress",
   "taskBoard.config.statusInReview": "In Review",
+  "taskBoard.config.statusPostDeployValidation": "Post-deploy Validation",
   "taskBoard.config.statusTodo": "To Do",
   "taskBoard.taskBoard.assignedToSuperAgent": "Assigned to Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
@@ -44,6 +47,9 @@ export const taskBoard = {
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.hideColumn": "Hide",
   "taskBoard.taskBoard.hiddenColumns": "Hidden columns",
+  "taskBoard.taskBoard.offBoardLaneBadge": "off board",
+  "taskBoard.taskBoard.offBoardLaneTooltip":
+    "No column on this board is “{status}”. These cards are shown here so they aren\u2019t lost — move them to a column to file them.",
   "taskBoard.taskBoard.showColumn": "Show",
   "taskBoard.taskBoard.selectedCount": "{count} selected",
   "taskBoard.taskBoard.clearSelectionButton": "Clear",
@@ -90,6 +96,8 @@ export const taskBoard = {
     "{reviewer} requested changes and handed the task back to the Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} requested changes: {notes}",
+  "taskBoard.taskDialog.activityReviewVerdictRequested":
+    "{reviewer} finished without a verdict and was asked to record one",
   "taskBoard.taskDialog.subscribe": "Subscribe",
   "taskBoard.taskDialog.unsubscribe": "Unsubscribe",
   "taskBoard.taskDialog.activityMergeConflictResolution":
@@ -144,7 +152,8 @@ export const taskBoard = {
     "Describe a task for an agent...",
   "taskBoard.taskDialog.dueDateLabel": "Due date",
   "taskBoard.taskDialog.sprintCurrent": "current",
-  "taskBoard.taskDialog.editTaskTitle": "Edit task",
+  "taskBoard.taskDetail.breadcrumbTasks": "Tasks",
+  "taskBoard.taskDetail.breadcrumbTask": "Task",
   "taskBoard.taskDialog.membersGroupHeading": "Members",
   "taskBoard.taskDialog.newChatButton": "New chat",
   "taskBoard.taskDialog.newTaskTitle": "New task",
@@ -168,10 +177,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.resolveConflictSuccess":
     "Agent dispatched to resolve the conflicts",
   "taskBoard.taskDialog.resolveConflictError": "Couldn't start the agent",
-  "taskBoard.taskDialog.costRunCountSingular": "in {runs} run",
-  "taskBoard.taskDialog.costRunCountPlural": "in {runs} runs",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
-  "taskBoard.taskDialog.costOnSubscription": "· on your Claude plan",
   "taskBoard.taskDialog.costTooltipSingular":
     "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
   "taskBoard.taskDialog.costTooltipPlural":
@@ -205,7 +211,10 @@ export const taskBoard = {
   "taskBoard.taskDialog.deleteTask": "Delete",
   "taskBoard.taskDialog.setPriorityButton": "Set priority",
   "taskBoard.taskDialog.someoneLabel": "someone",
+  "taskBoard.taskDialog.sprintGoneLabel": "a sprint that is gone",
   "taskBoard.taskDialog.startedByLabel": "started by",
+  "taskBoard.taskDialog.reviewerLabel": "Reviewer",
+  // The two-reviewer era's names, still on older cards' timelines.
   "taskBoard.taskDialog.qaAgentLabel": "QA Agent",
   "taskBoard.taskDialog.codeReviewerLabel": "Code Reviewer",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",

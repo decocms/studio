@@ -29,8 +29,12 @@ export async function seedStubRepo(
     owner: string;
     repo: string;
     defaultBranch?: string;
-    branches?: Record<string, { files?: Record<string, string> } | null>;
+    branches?: Record<
+      string,
+      { files?: Record<string, string>; committedAt?: string } | null
+    >;
     mergeMode?: "merge" | "conflict" | "blocked";
+    truncateRecursive?: boolean;
   },
 ): Promise<void> {
   const res = await ctx.post(`${GITHUB_STUB_ORIGIN}/__admin/repos`, {

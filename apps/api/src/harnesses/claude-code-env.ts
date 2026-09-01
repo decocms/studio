@@ -39,23 +39,34 @@ const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
  * `claude` CLI, which only works against Claude models, so the slot's id is not
  * usable here.
  *
- * `reviewer` is a cheaper tier for the QA Agent and Code Reviewer, whose job is
+ * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
  * those two ran MORE threads than the Super Agent on one month of production
  * boards (1,247 vs 707) and took 57% of the spend — all of it at the builder's
- * model. Opt-in per org via the `cheap_reviewer_model` flag; unset orgs keep
- * running every role on `default`, which is what shipped before.
+ * model. On by default via the `cheap_reviewer_model` flag; an org opts back
+ * into reviewing on the builder's model by setting it to exactly `false`.
+ *
+ * `conflict` is the same cheap tier for a merge-conflict re-run. The change is
+ * already written and already approved; the run replays the base branch over it
+ * and reconciles two known texts. That is not the work the builder's model is
+ * priced for, and it is a class of its own rather than `reviewer` so the run
+ * metadata says what the run actually was.
  */
-export type ClaudeCodeModelClass = "default" | "reviewer";
+export type ClaudeCodeModelClass = "default" | "reviewer" | "conflict";
 
 const CLAUDE_CODE_MODEL: Record<
   "anthropic" | "openrouter",
   Record<ClaudeCodeModelClass, string>
 > = {
-  anthropic: { default: "claude-opus-5", reviewer: "claude-sonnet-5" },
+  anthropic: {
+    default: "claude-opus-5",
+    reviewer: "claude-sonnet-5",
+    conflict: "claude-sonnet-5",
+  },
   openrouter: {
     default: "anthropic/claude-opus-5",
     reviewer: "anthropic/claude-sonnet-5",
+    conflict: "anthropic/claude-sonnet-5",
   },
 };
 
@@ -70,7 +81,9 @@ export const MODEL_CLASS_METADATA_KEY = "claudeCodeModelClass";
 export function modelClassFromMetadata(
   value: string | undefined,
 ): ClaudeCodeModelClass {
-  return value === "reviewer" ? "reviewer" : "default";
+  if (value === "reviewer") return "reviewer";
+  if (value === "conflict") return "conflict";
+  return "default";
 }
 
 /**
@@ -89,6 +102,24 @@ export function modelClassFromMetadata(
  * continues in the next one.
  */
 export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 32_000;
+
+/**
+ * Per-run turn ceiling, by class. `null` means "the SDK's own default", which
+ * is what the Super Agent keeps — capping the role that writes the change would
+ * strand half-finished work on a branch.
+ *
+ * A reviewer is capped because its cost is superlinear in turns: every turn
+ * re-reads the whole context, so a 150k-token review at 52 turns bills ~7.9M
+ * input tokens. 60 is a backstop, not a squeeze — it sits just above the worst
+ * review measured (52) so a runaway is bounded while a normal one is untouched.
+ * The run is TOLD its budget (see the harness runner), so the saving comes from
+ * it planning against the cap rather than from the cap cutting it off.
+ */
+const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
+  default: null,
+  reviewer: 60,
+  conflict: 60,
+};
 
 /** The subset of a resolved model source this needs. */
 export interface ClaudeCodeCredential {
@@ -122,9 +153,13 @@ export function claudeCodeEnvFromCredential(
   modelClass: ClaudeCodeModelClass = "default",
 ): Record<string, string | null> {
   const { providerId, apiKey, baseUrl } = credential;
-  /** A property of the run, not of the credential — so every shape carries it. */
+  /** Properties of the run, not of the credential — so every shape carries them.
+   *  `null` deletes the turn cap, so a sandbox that last ran a reviewer does not
+   *  carry that cap into a Super Agent run. */
+  const maxTurns = CLAUDE_CODE_MAX_TURNS[modelClass];
   const budget = {
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
+    CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
   };
   if (providerId === "anthropic") {
     return {

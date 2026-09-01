@@ -16,6 +16,8 @@
 
 import type { NatsConnection, Subscription } from "@nats-io/nats-core";
 import { getMcpReadCache } from "./mcp-read-cache";
+import { clearRevalidationState } from "./mcp-list-cache";
+import { invalidateAggregates } from "./virtual-mcp/aggregate-cache";
 
 const INVALIDATE_SUBJECT = "studio.mcp-cache.invalidate";
 
@@ -26,9 +28,22 @@ const decoder = new TextDecoder();
 let getConnection: (() => NatsConnection | null) | undefined;
 let sub: Subscription | null = null;
 
-/** Drop this connection's per-pod cached read results (content + tool calls). */
+/**
+ * Drop this connection's per-pod cached read results (content + tool calls)
+ * and its list-revalidation throttle bookkeeping.
+ *
+ * The throttle map has no TTL, so a replica that never handles the delete
+ * request itself would otherwise keep that connection's entry forever —
+ * this broadcast is the only signal every OTHER pod gets that the connection
+ * is gone.
+ */
 function evictLocal(connectionId: string): void {
   getMcpReadCache()?.invalidate(connectionId);
+  clearRevalidationState(connectionId);
+  // Also drop any cached Virtual MCP aggregate this connection fed — whether as
+  // a child (its tools changed) or as the agent itself (its selected_tools
+  // changed). Without this, an edit would not show up until the aggregate TTL.
+  invalidateAggregates(connectionId);
 }
 
 /**

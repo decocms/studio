@@ -22,7 +22,12 @@ import type { StudioContext } from "@/core/studio-context";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
+import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
+import {
+  sandboxUploadHint,
+  uploadsAsSandboxPaths,
+} from "./description-uploads";
 
 /** The repo a claude-code task run works in. */
 export interface TaskRepo {
@@ -98,12 +103,16 @@ export function pickSoleTaskRepo(
  *   model would otherwise open with a `TASK_ADD_REPO` call just to find out what
  *   exists, and a tool description can't carry them (it is built once at module
  *   load, with no org in scope).
- * - `null` — none imported, so this harness can't run the task at all.
+ * - `null` — none imported (or the hosted sandbox this harness runs in is
+ *   unavailable on this deployment), so this harness can't run the task at all.
  *
  * Never throws: a lookup failure degrades to the Decopilot path rather than
  * failing the delegation that already persisted. Both non-bound outcomes are
  * logged — "why did this task run Decopilot?" (or "why did it have to pick?")
- * is otherwise invisible.
+ * is otherwise invisible. The availability check comes FIRST, before any
+ * storage access: selecting claude-code while the sandbox capability is off
+ * enqueues a run that fails only when dispatch starts — after quota was
+ * claimed, the thread persisted, and reviewer bookkeeping began (#6502).
  */
 export type TaskRepoChoice =
   | { repo: TaskRepo }
@@ -121,6 +130,13 @@ export async function resolveTaskRepoChoice(
   ctx: StudioContext,
   organizationId: string,
 ): Promise<TaskRepoChoice> {
+  if (!agentSandboxEnabled()) {
+    console.warn(
+      `[task-board] claude-code skipped for org ${organizationId}: ` +
+        `hosted sandbox unavailable — running Decopilot`,
+    );
+    return null;
+  }
   try {
     const { items } = await ctx.storage.connections.list(organizationId, {
       slug: "mcp-github",
@@ -189,7 +205,14 @@ export function buildClaudeCodeTaskPrompt(
     "",
     `Title: ${task.title}`,
   ];
-  if (task.description) lines.push("", "Description:", task.description);
+  if (task.description) {
+    const description = uploadsAsSandboxPaths(task.description);
+    lines.push("", "Description:", description);
+    const hint = sandboxUploadHint(task.description, description);
+    if (hint) {
+      lines.push("", hint);
+    }
+  }
   lines.push(
     "",
     repo
@@ -227,6 +250,10 @@ export function buildClaudeCodeTaskPrompt(
       "",
     );
   } else if (opts?.feedback) {
+    // Review is SINGLE-PASS (`review-decision.ts`): a `request_changes` verdict
+    // hands the card to a human and is never bounced back here. This lead only
+    // reaches a run a HUMAN re-ran on such a card, carrying the verdict's notes
+    // so the re-run continues from them (`outstandingReviewFeedback`).
     lines.push(
       opts.pr
         ? `A reviewer requested changes on pull request #${opts.pr.number} (${opts.pr.url}):`
@@ -235,7 +262,6 @@ export function buildClaudeCodeTaskPrompt(
       opts.pr
         ? `Check that branch out (\`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, then push to update the SAME pull request — do NOT open a new one.`
         : "Address this feedback.",
-      "The reviewer judged the DEPLOYED PREVIEW, not your diff. Reproduce their check there before you push again — a fix that only looks right in the code comes straight back.",
       "",
     );
   } else if (opts?.pr) {
@@ -258,19 +284,40 @@ export function buildClaudeCodeTaskPrompt(
     "- Change only what the task needs. Don't refactor around it.",
     // The two defects behind every card that burned its bounce budget.
     "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is dead code, and it is the most common reason a task comes back rejected.",
-    `- Before handing over, VERIFY the task's outcome the way the reviewer will: get the PR's \`previewUrl\` from \`mcp__studio__TASK_BOARD_ITEM_PRS_GET\` (give the deploy a minute), open the affected route there, and confirm the behaviour actually happens. A green test suite is not the bar — the reviewer approves what it can see on the preview.`,
+    // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
+    // for a deploy that may not exist yet, and that is the reviewer's job
+    // (`enqueue-reviewer.ts`) — this run implements and hands over.
+    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+    // A task run's pod is provisioned `harness-run`, which is `cloneOnly`: no
+    // install, no dev server (see `provisionSandbox` in tools/sandbox/start.ts).
+    // The line above used to assert "the dev server hot-reloads, so hit the
+    // route it renders" — an assurance that was simply false here, and runs
+    // acted on it: polling a port nothing listened on for minutes, guessing
+    // `sleep 90`, starting a second server because they assumed the first was
+    // someone else's, and in one case abandoning verification altogether.
+    // State the actual sandbox, and name the cost, so booting one is a
+    // deliberate choice rather than a surprise.
+    "- Nothing is installed and NO dev server is running — this sandbox is a checkout. Usually you don't need one: read the code path end to end, run the repo's tests, and `curl` the LIVE site for how it behaves today. Only start a dev server if you must see YOUR change rendered — it is a cold start, so expect several minutes: launch it ONCE in the background and poll until it answers rather than guessing a sleep.",
+    // The sandbox image bakes in chromium + a global playwright-core and wraps
+    // them as `qa-screenshot` (packages/sandbox/image/Dockerfile). Nothing told
+    // this run about it, so a UI task would `ls node_modules/.bin | grep
+    // playwright`, find nothing in the USER's repo, conclude no browser exists,
+    // and either hand-roll a CDP client or give up on looking at the change.
+    "- For a VISUAL change that means LOOKING at it: `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders the page in headless Chromium — it reaches a dev server you started on localhost as well as any public URL, and unlike `curl` it runs the page's JS, so lazily-rendered sections are actually there. Then `Read` the file: a screenshot you never opened is not verification. It is already installed; do NOT look for playwright in the repo's `node_modules` or start a browser yourself.",
     // The ONLY reliable way the board learns the PR: Claude Code opens it inside
     // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
     // dispatched from the linked PR, so skipping this strands the card.
     `- As soon as \`gh pr create\` prints the URL, call \`mcp__studio__TASK_BOARD_ITEM_PR_LINK\` with that url. Do this even if you also mention the PR in a comment — the reviewers are dispatched from the linked PR, not from your message.`,
-    `- Then move this task to review on the board: call \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` with id "${task.id}" and status "in_review". Pass ONLY the fields you are changing.`,
-    // NOT "move it to review anyway": In Review is the reviewers' lane, and
-    // reviewers are only enqueued for a task that has a PR
-    // (`enqueueReviewersOnThreadFinish`). A no-PR task parked there had no
-    // reviewer to pick it up and no signal that a human should — every such
-    // card sat In Review untouched. Done is the terminal lane, and the comment
+    // Deliberately NOT "then move it to In Review". Linking the PR is what
+    // starts the review (`openReviewCycleIfInProgress`), and the card stays In
+    // Progress until the reviewer decides — an agent is still working on it.
+    // `parkReviewedCardForHuman` makes that move, on a verdict, not the model.
+    // NOT "leave it for a reviewer anyway": reviewers are only enqueued for a
+    // task that has a PR (`enqueueReviewersOnThreadFinish`). A no-PR task left
+    // waiting had no reviewer to pick it up and no signal that a human should —
+    // every such card sat untouched. Done is the terminal lane, and the comment
     // is what a human reads to disagree and reopen it.
-    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\`) and move it to "done" instead of "in_review". There is nothing for a reviewer to review, so In Review would strand it.`,
+    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\`) and move it to "done". There is nothing for a reviewer to review, so leaving it for one would strand it.`,
     // The board is where a human reads this task, so anything a reviewer needs
     // to know belongs there too — a final message they never open is not a
     // report. Optional: a comment per run, not per step.

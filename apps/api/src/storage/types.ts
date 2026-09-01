@@ -1600,6 +1600,9 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
+  | "approved"
+  | "merged"
+  | "post_deploy_validation"
   | "done"
   | "archived";
 
@@ -1623,10 +1626,16 @@ export interface TaskBoardItemTable {
   organization_id: string;
   title: string;
   description: string | null;
-  status: ColumnType<
-    TaskBoardItemStatus,
-    TaskBoardItemStatus | undefined,
-    string
+  /** The key of the column the card sits in — free text, because on a board
+   *  whose columns are the org's own the key comes from their tracker. */
+  status: ColumnType<string, string | undefined, string>;
+  /** The org id when `status` names a row in `task_board_columns`, null when it
+   *  names one of Studio's lanes. Half of the optional foreign key (migration
+   *  193): NULL is what lets the key sleep on a board built from constants. */
+  board_column_org: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
   >;
   priority: ColumnType<
     TaskBoardItemPriority,
@@ -1683,6 +1692,20 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** When this card's CURRENT review cycle opened — the boundary that decides
+   *  which reviewer verdicts still count (`reviewCycleStart`). Null = no cycle
+   *  open, i.e. nothing is waiting on a reviewer.
+   *
+   *  It is a column rather than a derivation off the newest
+   *  `status_changed → in_review` precisely so the cycle does NOT ride on the
+   *  lane: an agent reviewer runs while the card reads In Progress, which it
+   *  could not do while moving the card meant resetting the cycle. See
+   *  `migrations/190-task-board-review-cycle-started-at.ts`. */
+  review_cycle_started_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   /** When this card is next due for an automatic re-dispatch after its run
    *  failed on infrastructure. Null = not waiting on a retry. Lives on the row
    *  so the schedule survives a pod restart — see
@@ -1699,6 +1722,54 @@ export interface TaskBoardItemTable {
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One column of a board whose columns belong to the org rather than to
+ *  Studio (migration 191). `key` is what a card's `status` holds; `role` is
+ *  what automation keys on, null until someone says what the column means. */
+export interface TaskBoardColumnTable {
+  id: string;
+  organization_id: string;
+  key: string;
+  title: string;
+  position: number;
+  role: string | null;
+  /** Tracker statuses this column groups, in the tracker's own order. A Jira
+   *  column is a bucket of statuses, not one status, so the push needs the
+   *  whole list to pick a reachable transition. Empty for Studio's columns. */
+  tracker_statuses: ColumnType<string[], string | undefined, string>;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/**
+ * Instructions appended to the system prompt of every agent run dispatched
+ * from a board card (migration 197). `column_key` null is the org-wide row;
+ * a non-null key scopes the text to one column.
+ *
+ * Distinct from `TaskBoardColumnAutomationTable` below: that one's `prompt` is
+ * the opening USER instruction of the run a column rule fires, this one is
+ * standing context every run carries.
+ */
+export interface TaskBoardPromptTable {
+  id: string;
+  organization_id: string;
+  column_key: string | null;
+  prompt: string;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A rule the board runs when a card lands in a column (migration 189). The
+ *  row's existence is the switch; `prompt` null means the Super Agent's own
+ *  instruction. */
+export interface TaskBoardColumnAutomationTable {
+  id: string;
+  organization_id: string;
+  column_key: string;
+  prompt: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
@@ -1776,6 +1847,8 @@ export interface TaskBoardCommentTable {
   task_board_item_id: string;
   parent_id: string | null;
   author_id: string;
+  /** The agent run that wrote it (migration 187); null for a human's comment. */
+  thread_id: string | null;
   body: string;
   resolved: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: ColumnType<Date, Date | string | undefined, never>;
@@ -1886,7 +1959,11 @@ export interface TaskBoardItem {
   organizationId: string;
   title: string;
   description: string | null;
-  status: TaskBoardItemStatus;
+  /** The key of the column this card sits in. A string, not the lane union:
+   *  on a board whose columns are the org's own the key comes from their
+   *  tracker. `TaskBoardItemStatus` still names Studio's OWN lanes, which is
+   *  what canonical logic reasons about. */
+  status: string;
   priority: TaskBoardItemPriority;
   /** What kind of work this is. Required; defaults to `chore`. */
   type: TaskBoardItemType;
@@ -1902,9 +1979,17 @@ export interface TaskBoardItem {
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
   keySeq: number;
+  /** The key this card's issue wears in the tracker (`EX-333`), for a card that
+   *  came from one — attached on reads, null for a card Studio owns. */
+  jiraIssueKey: string | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
+  /** When this card's current review cycle opened; null when none is open.
+   *  The anchor every cycle-scoped reducer takes (`reviewCycleStart`), and the
+   *  one thing that says "a reviewer owns this card" independently of its
+   *  lane — see `reviewCycleOpen`. */
+  reviewCycleStartedAt: string | null;
   /** Agent threads linked to this task (most-recent first). */
   threads: TaskBoardItemThreadRef[];
   /** Org tags attached to this task, name ascending. */
@@ -2082,6 +2167,15 @@ export interface TaskBoardItemJiraLinkTable {
     string | null | undefined,
     string | null
   >;
+  /** Last Jira sprint id SEEN OR SET on the Jira side, same job as
+   *  `jira_status` one field over: the pull applies sprint only when this
+   *  changed, and the sprint push records its target here so the echo is a
+   *  no-op. Null means never seen, so the next pull is authoritative. */
+  jira_sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -2230,6 +2324,9 @@ export interface Database extends PrivateRegistryDatabase {
   org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
   task_board_sprints: TaskBoardSprintTable;
+  task_board_column_automations: TaskBoardColumnAutomationTable;
+  task_board_columns: TaskBoardColumnTable;
+  task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;

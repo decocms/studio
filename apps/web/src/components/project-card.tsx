@@ -105,9 +105,7 @@ export function ProjectCard({
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     onClick={() =>
-                      navigateToAgent(project.id, {
-                        search: { main: "settings" },
-                      })
+                      navigateToAgent(project.id, { panel: "settings" })
                     }
                   >
                     <Settings02 size={16} />

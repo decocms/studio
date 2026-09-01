@@ -12,8 +12,8 @@ import { useAutoInstallGitHub } from "@/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { resolveDecoSiteGithubRepo } from "@decocms/shared/deco-sites-github";
 import {
+  defaultPreviewServerUrl,
   pickProductionDomain,
-  productionUrlFromDomain,
 } from "@decocms/shared/deco-site-production-url";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import {
@@ -271,14 +271,8 @@ export function ImportFromDecoDialog({
         const projectIcon = connBody.icon ?? null;
         const slug = generateSlug(siteName);
         const siteSlug = siteName.toLowerCase();
-        // Persist the site's real deployed URL (custom domain when present,
-        // else the deco.site host) as the preview server so the CMS preview
-        // can render against it. `null` when the site has no domains. The
-        // legacy `productionUrl` key is dual-written so an older app version
-        // rolling back still finds the value.
-        const previewServerUrl = productionUrlFromDomain(
-          pickProductionDomain(site.domains),
-        );
+        // Default to the `{slug}.deco.site` host (legacy `productionUrl` dual-written for rollback).
+        const previewServerUrl = defaultPreviewServerUrl(siteName);
 
         // 2. Create a space (virtual MCP) wired to both admin-mcp and GitHub.
         const result = (await client.callTool({
@@ -289,7 +283,6 @@ export function ImportFromDecoDialog({
               description: "Imported from deco.cx",
               pinned: false,
               icon: projectIcon ?? null,
-              subtype: "project",
               metadata: {
                 instructions: null,
                 enabled_plugins: [],
@@ -321,7 +314,7 @@ export function ImportFromDecoDialog({
                   ],
                   layout: {
                     defaultMainView: { type: "preview" },
-                    chatDefaultOpen: true,
+                    chatDefaultOpen: false,
                   },
                 },
               },
@@ -378,8 +371,6 @@ export function ImportFromDecoDialog({
           );
         },
       });
-      // Also invalidate the legacy projects key for any other consumers.
-      queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
       toast.success(t("common.importFromDecoDialog.importSuccess", { slug }));
       handleClose(false);
       localStorage.setItem(

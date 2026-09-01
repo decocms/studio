@@ -1,6 +1,8 @@
+import { assertBoardHasColumn, boardFor } from "./board-handler";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
   MAX_TASK_REPO_LENGTH,
@@ -16,6 +18,7 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { extractPrFromText } from "./pr-extract";
+import { rejectsUngatedDeliveryLane } from "./update";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -47,9 +50,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       .optional()
       .describe(
         "GitHub pull request URL to link to the new task, e.g. " +
-          "https://github.com/owner/repo/pull/123. Pass this with " +
-          '`status: "in_review"` right after you open a PR so the card lands ' +
-          "on the board with its PR already attached for review.",
+          "https://github.com/owner/repo/pull/123. Pass it right after you " +
+          "open a PR so the card lands on the board with its PR already " +
+          "attached for review.",
       ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
@@ -71,6 +74,27 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
           "https://github.com/<owner>/<repo>/pull/<number>)",
       );
+    }
+
+    // Resolved once and reused below: the same board answers whether the status
+    // is real and whether the card is one the foreign key can hold.
+    const board = await boardFor(ctx, organizationId);
+    if (input.status !== undefined) {
+      await assertBoardHasColumn(board, input.status);
+      const settings =
+        await ctx.storage.organizationSettings.get(organizationId);
+      if (
+        rejectsUngatedDeliveryLane(
+          input.status,
+          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
+        )
+      ) {
+        throw new Error(
+          "Delivery lanes are not enabled for this organization — enable " +
+            "them in Settings before creating a task in Approved, Merged, " +
+            "or Post-deploy Validation.",
+        );
+      }
     }
 
     if (input.assigneeId) {
@@ -95,6 +119,8 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       description: input.description ?? null,
       // A task handed to the Super Agent is queued to run — land it in To Do.
       status: delegatedToSuperAgent ? "todo" : input.status,
+      // Guarded from birth, not from whenever a sync first touches it.
+      boardColumnOrg: board.columnOwner(),
       priority: input.priority,
       type: input.type,
       assigneeId: input.assigneeId ?? null,

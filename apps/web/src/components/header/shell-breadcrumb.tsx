@@ -11,7 +11,7 @@
  *   mobile top header + sheet.
  */
 import { Suspense } from "react";
-import { useParams, useSearch } from "@tanstack/react-router";
+import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { ChevronDown, Edit05 } from "@untitledui/icons";
 import {
   Tooltip,
@@ -178,11 +178,6 @@ export function AgentSwitcherCrumb({
   onNavigate?: () => void;
 } = {}) {
   const { org } = useProjectContext();
-  const params = useParams({ strict: false }) as {
-    org?: string;
-    taskId?: string;
-  };
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const { threads } = useThreads();
   const { data: session } = authClient.useSession();
   const { setTaskId, createNewTask } = usePanelActions();
@@ -190,9 +185,8 @@ export function AgentSwitcherCrumb({
 
   const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
   const decopilotId = decopilot.id;
-  const activeAgentId = params.taskId
-    ? (search.virtualmcpid ?? decopilotId)
-    : decopilotId;
+  /** Route-aware: the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
+  const activeAgentId = useRouteVirtualMcpId();
 
   // Open the picked agent directly. The Super Agent (Decopilot) is opened by
   // its well-known id like any other agent rather than by navigating to
@@ -239,24 +233,21 @@ export function AgentSwitcherCrumb({
  */
 export function NewChatCrumb() {
   const t = useT();
-  const { org } = useProjectContext();
-  const params = useParams({ strict: false }) as { taskId?: string };
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const { threads } = useThreads();
   const { createNewTask } = usePanelActions();
 
-  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-  const activeAgentId = params.taskId
-    ? (search.virtualmcpid ?? decopilotId)
-    : decopilotId;
+  /**
+   * The scope of the page, not of the legacy grammar: on
+   * `/$org/agents/{-$project}` the project segment names the agent, so a new chat
+   * started there belongs to that project rather than to the Super Agent.
+   */
+  const activeAgentId = useRouteVirtualMcpId();
+  const routeThreadId = useRouteThreadId();
 
-  // A new chat inherits the branch of the thread being viewed, so it lands on
-  // the same sandbox/branch. `null` on the home/agentless route (no active
-  // thread) → server default.
+  /** A new chat inherits the viewed thread's branch so it lands on the same
+   *  sandbox; `null` where the route names no thread → server default. */
   const currentBranch =
-    (params.taskId
-      ? threads.find((t) => t.id === params.taskId)?.branch
-      : null) ?? null;
+    threads.find((thread) => thread.id === routeThreadId)?.branch ?? null;
 
   // ALWAYS create a fresh chat — never reuse/refocus an existing empty one.
   const handleNewChat = () => {

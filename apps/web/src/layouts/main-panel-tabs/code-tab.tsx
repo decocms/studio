@@ -1,6 +1,6 @@
 /**
- * CodeTab — standalone file-explorer main-panel tab (`?main=code` /
- * `?main=code:<encoded path>`).
+ * CodeTab — standalone file-explorer main-panel tab (the `code` view, with the
+ * open file in `?file=`).
  *
  * Unlike Preview it needs no live dev-server iframe: it talks
  * to the sandbox daemon's FS endpoints directly, so it keeps working even when

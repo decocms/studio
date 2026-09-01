@@ -6,10 +6,10 @@
   "file-storage/dbos-org-repo-sync.ts": "32c606976916fde2be7abe3084f7388744bdb610c178e9c2a07a8080f764904e",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
   "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",
-  "jira/dbos-jira-sync.ts": "4befebae160cf7cb88b8b8f1412d1f68fbcb55edc58c890193bc3175da1387d9",
+  "jira/dbos-jira-sync.ts": "ceaf32d75681da37867315c32409181a861aa62ab5b1e912a6f84735e7cba892",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
   "notifications/dbos-digest.ts": "673bc164593266704d2918a0bcaaf838a2480dfb46d1d19c02bdb38c73ecc370",
   "tools/task-board/dbos-archive-sweep.ts": "fe2db3802dd291f4d9ad5369a21c28854403bd2756518d9b48c1fcda4f100000",
-  "tools/task-board/dbos-github-read.ts": "8757159d594f776d021ed28887e5ba51f7a6e007607a2dc6962efd53152b4d60",
+  "tools/task-board/dbos-github-read.ts": "02f8d9e13cdca01a7e7a6ad00767229b7bf83443a4d773e836fad6aca95020f5",
   "tools/task-board/dbos-tag-merged-sweep.ts": "afc48f5309fd1da3196167855b52ec0074a5f24b8a96b8ef9be2e07a8abb7a0a"
 }

@@ -1,6 +1,6 @@
 /**
- * The chat panel's threads menu — the thread list's home under the first-class
- * navigation (see `useNavV2`), where the sidebar lists destinations instead.
+ * The chat panel's threads menu — the thread list's home, since the sidebar
+ * lists destinations instead of threads.
  *
  * It is the same list the sidebar used to render (`useThreadsPanel` +
  * `MyThreadsSection`), just anchored to an icon at the top of the chat.

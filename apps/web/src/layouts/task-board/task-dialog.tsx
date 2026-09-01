@@ -5,6 +5,14 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@decocms/ui/components/breadcrumb.tsx";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -59,8 +67,7 @@ import {
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { QaAgentIcon } from "@/components/qa-agent-icon";
-import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
+import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import {
   isReportsTask,
@@ -81,10 +88,15 @@ import {
   TASK_TYPES,
   type TaskBoardItemType,
   DEFAULT_TASK_TYPE,
+  laneHeader,
+  laneVisual,
+  type Sprint,
   STATUS_CONFIG,
-  STATUSES,
+  moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
+  isFeedWorthyActivity,
+  isLiveAttempt,
   tagDotColor,
   type Member,
   type TaskBoardItem,
@@ -97,16 +109,23 @@ import { summarizeTaskCost } from "./task-cost";
 import { prCardActions } from "./pr-card-actions";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
-import { useBoardSprintIndex } from "@/hooks/use-task-board-items";
+import {
+  useBoardColumns,
+  useBoardSprintIndex,
+} from "@/hooks/use-task-board-items";
 import {
   useTaskBoardActivity,
   type TaskBoardActivity,
 } from "@/hooks/use-task-board-activity";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  useOrgFlag,
+  useReviewerEnabled,
+} from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
 import {
   enabledReviewers,
+  laneCanShip,
   reviewsSatisfiedForPromotion,
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
@@ -117,6 +136,7 @@ import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
+import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -199,9 +219,9 @@ const EMPTY_PROPERTY = "opacity-50";
 
 /**
  * What this task has cost, summed over every run linked to it. A bare dollar
- * sign next to a task reads as an invoice, so the chip says on its face that
- * the figure is the provider's list-price estimate, and — on a linked Claude
- * plan — that nobody is billed it at all.
+ * sign next to a task reads as an invoice, so it's prefixed with `~` to read
+ * as an estimate; run count, provider list-price basis, and subscription
+ * status (if any) move to the hover tooltip instead of the chip face.
  *
  * The task, not the run, is the unit that matters: a card is a Super Agent run
  * plus however many reviewer and re-run rounds it took, and until now that
@@ -239,19 +259,6 @@ function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
           }),
         })}
       </span>
-      <span className="text-muted-foreground">
-        {t(
-          isSingular
-            ? "taskBoard.taskDialog.costRunCountSingular"
-            : "taskBoard.taskDialog.costRunCountPlural",
-          { runs: String(runCount) },
-        )}
-      </span>
-      {onSubscription ? (
-        <span className="text-muted-foreground">
-          {t("taskBoard.taskDialog.costOnSubscription")}
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -348,22 +355,11 @@ function RecordSection({
   );
 }
 
-export function TaskBoardItemDialog({
-  open,
-  onClose,
-  item,
-  defaultStatus,
-  onSubmit,
-  onDelete,
-  onClone,
-  onArchive,
-  onOpenThread,
-  onNewChat,
-  onAutoFix,
-  onRerun,
-  isSaving,
-}: {
-  open: boolean;
+interface TaskEditorProps {
+  /** Which shell wraps the body. See {@link TaskBoardItemEditor}. */
+  chrome: "dialog" | "page";
+  /** Dialog chrome only — a page is open by virtue of being mounted. */
+  open?: boolean;
   onClose: () => void;
   /** Present in edit mode, prefills the form. */
   item?: TaskBoardItem;
@@ -386,18 +382,50 @@ export function TaskBoardItemDialog({
   onClone?: () => void;
   /** Edit mode only: move this task to the Archived lane. */
   onArchive?: () => void;
-  onOpenThread?: (thread: TaskBoardItemThread) => void;
+  /** Edit mode only: open a PR's preview thread — the branch's live dev
+   *  server, which is a navigation. A run's transcript is NOT this: it opens
+   *  in a sheet on the page (see {@link TaskThreadSheet}). */
+  onOpenPreview?: (thread: TaskBoardItemThread) => void;
   /** Edit mode only: start a fresh chat seeded with this task as context. */
   onNewChat?: () => void;
   /** Edit mode only: hand the task to the Super Agent. */
   onAutoFix?: () => void;
   onRerun?: () => void;
   isSaving?: boolean;
-}) {
+}
+
+/**
+ * The task editor, in either of its two chromes.
+ *
+ * `dialog` is the create flow — a task with no id yet has no URL to live at,
+ * so it stays a modal (the home page's "New task" opens the same one).
+ * `page` is the edit flow: the board hands the panel over to it and the
+ * breadcrumb, not a close button, is what leads back out.
+ *
+ * Everything between the header row and the footer is chrome-independent.
+ */
+function TaskBoardItemEditor({
+  chrome,
+  open = true,
+  onClose,
+  item,
+  defaultStatus,
+  onSubmit,
+  onDelete,
+  onClone,
+  onArchive,
+  onOpenPreview,
+  onNewChat,
+  onAutoFix,
+  onRerun,
+  isSaving,
+}: TaskEditorProps) {
   const t = useT();
   const { org } = useProjectContext();
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
+  const columns = useBoardColumns();
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -444,18 +472,28 @@ export function TaskBoardItemDialog({
   const [dueOpen, setDueOpen] = useState(false);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
+  /** The linked run being read in the sheet, by id rather than by object: a
+   *  live list patch can drop it mid-read, and this closes the sheet instead
+   *  of freezing a stale copy. Local state — the card's own path already
+   *  addresses the page it opens over. */
+  const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  const openThread =
+    item?.threads.find((th) => th.threadId === openThreadId) ?? null;
 
   /** Authoritative form value: a debounced save reading render state would
    *  write the fields as they were when the keystroke landed. */
   const formRef = useRef(form);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Kept in step with the prop by `patch`, so the unmount flush below writes
+   *  through the current handler rather than the one captured at mount. */
+  const submitRef = useRef(onSubmit);
 
   const commit = () => {
     saveTimer.current = null;
     const v = formRef.current;
     // No title, no write: the server requires one.
     if (!v.title.trim()) return;
-    onSubmit({
+    submitRef.current({
       title: v.title.trim(),
       description: v.description.trim() || null,
       status: v.status,
@@ -480,6 +518,7 @@ export function TaskBoardItemDialog({
   const patch = (next: Partial<TaskForm>, debounce = false) => {
     const merged = { ...formRef.current, ...next };
     formRef.current = merged;
+    submitRef.current = onSubmit;
     setForm(merged);
     if (!item) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -494,9 +533,63 @@ export function TaskBoardItemDialog({
     commit();
   };
 
+  /** Drop a pending edit unwritten — for actions that destroy the row it
+   *  would be written to. */
+  const cancelPending = () => {
+    if (!saveTimer.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+  };
+
   const close = () => {
     flush();
     onClose();
+  };
+
+  /**
+   * Flush a half-typed edit on unmount. Only a page can be torn down
+   * mid-debounce without routing through `close` — a browser back, an Esc, a
+   * link out of the board. (Create mode never schedules one: `patch` writes
+   * nothing until the row exists.)
+   */
+  const flushOnUnmount = (el: HTMLElement | null) => {
+    if (!el) return;
+    return () => flush();
+  };
+
+  /**
+   * Esc leaves the page, the way it would dismiss the dialog. A dialog has a
+   * layer to close; a page only has the way it was entered, so this walks the
+   * breadcrumb back to the board.
+   *
+   * It defers to whatever is nearer the user first: an open layer (a menu,
+   * popover or dialog, which dismisses on the same key) and a field being typed
+   * in (where Esc reverts or blurs). Both mean the *next* Esc navigates.
+   */
+  const escapeToClose = (el: HTMLElement | null) => {
+    if (!el) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (
+        document.querySelector(
+          '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
+        )
+      )
+        return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement)
+      ) {
+        target.blur();
+        return;
+      }
+      close();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
   };
 
   const createAndSelectTag = async (name: string, color: string) => {
@@ -522,175 +615,218 @@ export function TaskBoardItemDialog({
     item && onRerun && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
   /** The card's human key (`DECO-01`), the one identity a person can quote. */
-  const key = item ? taskKey(org.slug, item.keySeq) : null;
+  const key = item ? taskKey(org.slug, item.keySeq, item.jiraIssueKey) : null;
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
-  const StatusIcon = STATUS_CONFIG[status].icon;
+  const StatusIcon = laneVisual(status).icon;
   // Reports-generated tasks: content (title/description/priority) is owned by
   // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
   // rejects a write that touches any of those fields. Board interactions
   // (status/drag, assignee/delegating, due date, tags) stay free.
   const contentLocked = !!item && isReportsTask(item);
 
-  return (
-    <Dialog open={open} onOpenChange={(next) => !next && close()}>
-      <DialogContent
-        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[90vh] sm:max-h-[820px] sm:max-w-[1040px]"
-        closeButtonClassName="hidden"
-      >
-        <DialogTitle className="sr-only">
-          {item
-            ? t("taskBoard.taskDialog.editTaskTitle")
-            : t("taskBoard.taskDialog.newTaskTitle")}
-        </DialogTitle>
-
-        {/* Header row: the task's id on the left, its actions on the right.
-            Outside the scroll area, so it never moves. */}
-        <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
-          {/* Null only for a card written before the key backfill, which has
-              no key to show. */}
-          {key ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              title={key}
-              aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
-              /* -ml-2 cancels the button's own padding so the glyph starts on
+  /** Header row: what the task is on the left, its actions on the right. */
+  const header = (
+    <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
+      {chrome === "page" ? (
+        /* The page's way back out. The key doubles as the trail's leaf, so
+             there is no separate id chip in this chrome. */
+        <Breadcrumb className="-ml-2">
+          <BreadcrumbList className="text-[15px]">
+            <BreadcrumbItem>
+              {/* A button, not an anchor: leaving flushes a pending autosave
+                    and the board it returns to is a search-param away, not a
+                    document to link to. */}
+              <BreadcrumbLink
+                asChild
+                className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
+              >
+                <button type="button" onClick={close}>
+                  {t("taskBoard.taskDetail.breadcrumbTasks")}
+                </button>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage className="px-2 py-1">
+                {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      ) : /* Null only for a card written before the key backfill, which has
+              no key to show. */
+      key ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          title={key}
+          aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
+          /* -ml-2 cancels the button's own padding so the glyph starts on
                  the pane's 32px gutter, as drawn. */
-              className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                copyId(key);
-                toast.success(t("taskBoard.taskDialog.idCopied"));
-              }}
-            >
-              {idCopied ? <Check size={16} /> : <Bookmark size={16} />}
-              {key}
-            </Button>
-          ) : (
-            /* Create mode: the key is minted on save. A placeholder keeps the
+          className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            copyId(key);
+            toast.success(t("taskBoard.taskDialog.idCopied"));
+          }}
+        >
+          {idCopied ? <Check size={16} /> : <Bookmark size={16} />}
+          {key}
+        </Button>
+      ) : (
+        /* Create mode: the key is minted on save. A placeholder keeps the
                row from reading as broken. */
-            <span
-              aria-hidden
-              className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
-            >
-              <Bookmark size={16} />–
-            </span>
-          )}
+        <span
+          aria-hidden
+          className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
+        >
+          <Bookmark size={16} />–
+        </span>
+      )}
 
-          <div className="flex items-center gap-0.5">
-            {/* Autosave has no button, so this is the only sign of a write. */}
-            {item && isSaving && (
-              <span className="mr-1 text-sm text-muted-foreground">
-                {t("taskBoard.taskDialog.savingLabel")}
-              </span>
-            )}
-            {item && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("taskBoard.taskDialog.shareAriaLabel")}
-                  title={t("taskBoard.taskDialog.shareTitle")}
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    copyLink(
-                      `${window.location.origin}/${org.slug}/t/${key ?? item.id}`,
-                    );
-                    toast.success(t("taskBoard.taskDialog.linkCopied"));
-                  }}
-                >
-                  {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
-                </Button>
-                {/* Non-modal: a modal menu blocks outside pointer events by
-                    setting `pointer-events: none` on <body>, and half these
-                    items unmount the dialog they live in — leaving that style
-                    behind with no layer to restore it. */}
-                <DropdownMenu modal={false}>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t(
-                        "taskBoard.taskDialog.moreActionsAriaLabel",
-                      )}
-                      className="text-muted-foreground hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-                    >
-                      <DotsHorizontal size={16} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {onNewChat && (
-                      <DropdownMenuItem onSelect={onNewChat}>
-                        <Edit05 size={16} />
-                        {t("taskBoard.taskDialog.newChatButton")}
-                      </DropdownMenuItem>
-                    )}
-                    {showAutoFix && (
-                      <DropdownMenuItem onSelect={onAutoFix}>
-                        <Lightning01 size={16} />
-                        {t("taskBoard.taskBoard.autoFix")}
-                      </DropdownMenuItem>
-                    )}
-                    {showRerun && (
-                      <DropdownMenuItem onSelect={onRerun}>
-                        <RefreshCw01 size={16} />
-                        {t("taskBoard.taskBoard.rerun")}
-                      </DropdownMenuItem>
-                    )}
-                    {(onNewChat || showAutoFix || showRerun) && (
-                      <DropdownMenuSeparator />
-                    )}
-                    {description && (
-                      <DropdownMenuItem
-                        onSelect={() => handleCopy(description)}
-                      >
-                        {copied ? <Check size={16} /> : <Copy01 size={16} />}
-                        {t("taskBoard.taskDialog.copyDescription")}
-                      </DropdownMenuItem>
-                    )}
-                    {onClone && (
-                      <DropdownMenuItem onSelect={onClone}>
-                        <Copy06 size={16} />
-                        {t("taskBoard.taskDialog.cloneTask")}
-                      </DropdownMenuItem>
-                    )}
-                    {onArchive && status !== "archived" && (
-                      <DropdownMenuItem onSelect={onArchive}>
-                        <Archive size={16} />
-                        {t("taskBoard.taskDialog.archiveTask")}
-                      </DropdownMenuItem>
-                    )}
-                    {onDelete && (
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onSelect={onDelete}
-                      >
-                        <Trash03 size={16} />
-                        {t("taskBoard.taskDialog.deleteTask")}
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            )}
+      <div className="flex items-center gap-0.5">
+        {/* Autosave has no button, so this is the only sign of a write. */}
+        {item && isSaving && (
+          <span className="mr-1 text-sm text-muted-foreground">
+            {t("taskBoard.taskDialog.savingLabel")}
+          </span>
+        )}
+        {item && (
+          <>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={t("taskBoard.taskDialog.closeAriaLabel")}
+              aria-label={t("taskBoard.taskDialog.shareAriaLabel")}
+              title={t("taskBoard.taskDialog.shareTitle")}
               className="text-muted-foreground hover:text-foreground"
-              onClick={close}
+              onClick={() => {
+                copyLink(
+                  `${window.location.origin}/${org.slug}/tasks/${key ?? item.id}`,
+                );
+                toast.success(t("taskBoard.taskDialog.linkCopied"));
+              }}
             >
-              <X size={16} />
+              {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
             </Button>
-          </div>
-        </div>
+            {/* Non-modal: a modal menu blocks outside pointer events by
+                    setting `pointer-events: none` on <body>, and half these
+                    items unmount the dialog they live in — leaving that style
+                    behind with no layer to restore it. */}
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
+                  className="text-muted-foreground hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+                >
+                  <DotsHorizontal size={16} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {onNewChat && (
+                  <DropdownMenuItem onSelect={onNewChat}>
+                    <Edit05 size={16} />
+                    {t("taskBoard.taskDialog.newChatButton")}
+                  </DropdownMenuItem>
+                )}
+                {showAutoFix && (
+                  <DropdownMenuItem onSelect={onAutoFix}>
+                    <Lightning01 size={16} />
+                    {t("taskBoard.taskBoard.autoFix")}
+                  </DropdownMenuItem>
+                )}
+                {showRerun && (
+                  <DropdownMenuItem onSelect={onRerun}>
+                    <RefreshCw01 size={16} />
+                    {t("taskBoard.taskBoard.rerun")}
+                  </DropdownMenuItem>
+                )}
+                {(onNewChat || showAutoFix || showRerun) && (
+                  <DropdownMenuSeparator />
+                )}
+                {description && (
+                  <DropdownMenuItem onSelect={() => handleCopy(description)}>
+                    {copied ? <Check size={16} /> : <Copy01 size={16} />}
+                    {t("taskBoard.taskDialog.copyDescription")}
+                  </DropdownMenuItem>
+                )}
+                {onClone && (
+                  <DropdownMenuItem onSelect={onClone}>
+                    <Copy06 size={16} />
+                    {t("taskBoard.taskDialog.cloneTask")}
+                  </DropdownMenuItem>
+                )}
+                {onArchive && status !== "archived" && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      cancelPending();
+                      onArchive();
+                    }}
+                  >
+                    <Archive size={16} />
+                    {t("taskBoard.taskDialog.archiveTask")}
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  /* Drop the pending autosave first: flushing it on the
+                         way out would write to the row being deleted. */
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => {
+                      cancelPending();
+                      onDelete();
+                    }}
+                  >
+                    <Trash03 size={16} />
+                    {t("taskBoard.taskDialog.deleteTask")}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+        {chrome === "dialog" && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("taskBoard.taskDialog.closeAriaLabel")}
+            className="text-muted-foreground hover:text-foreground"
+            onClick={close}
+          >
+            <X size={16} />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
+  const body = (
+    <>
+      {/* Above the scroll area, so it never moves. The page centers it on the
+          same column as the content below. */}
+      {chrome === "page" ? (
+        <div className="mx-auto w-full max-w-[1040px]">{header}</div>
+      ) : (
+        header
+      )}
+
+      {/* The one scroll container, and it spans the full width so the
+          scrollbar rides the window's edge rather than the centered column's.
+          Task and properties scroll together, so the wheel works with the
+          pointer anywhere. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div
+          className={cn(
+            "flex flex-col sm:flex-row",
+            chrome === "page" && "mx-auto w-full max-w-[1040px]",
+          )}
+        >
           {/* Editor pane — content-height on mobile so it doesn't leave a big
               gap above the properties; fills the column on desktop. */}
-          <div className="flex min-w-0 flex-col gap-2 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8 sm:pt-6">
+          <div className="flex min-w-0 flex-col gap-2 p-6 sm:flex-1 sm:p-8 sm:pt-6">
             <div>
               <textarea
                 ref={(el) => {
@@ -803,13 +939,13 @@ export function TaskBoardItemDialog({
                   <LinksSection
                     item={item}
                     description={description}
-                    onOpenThread={onOpenThread}
+                    onOpenPreview={onOpenPreview}
                   />
                   <ActivitySection
                     item={item}
                     members={members}
                     startedBy={assignedBy ?? assignee}
-                    onOpenThread={onOpenThread}
+                    onOpenThread={(thread) => setOpenThreadId(thread.threadId)}
                   />
                 </div>
               )}
@@ -817,8 +953,12 @@ export function TaskBoardItemDialog({
           </div>
 
           {/* Properties pane — wrapping chips under the editor on mobile, a
-              stacked sidebar on desktop. */}
-          <div className="flex w-full shrink-0 flex-col gap-8 border-t border-border p-6 sm:w-[300px] sm:border-t-0">
+              stacked sidebar on desktop. Pinned on desktop so it stays put
+              while the task scrolls past it; `self-start` keeps it its own
+              height (a stretched item has no room to stick), and the viewport
+              cap lets a pane taller than the screen scroll itself rather than
+              lose its bottom. */}
+          <div className="flex w-full shrink-0 flex-col gap-8 border-t border-border p-6 sm:sticky sm:top-0 sm:max-h-dvh sm:w-[300px] sm:self-start sm:overflow-y-auto sm:border-t-0">
             {item && <ReviewsGroup item={item} />}
 
             <PropertyGroup label={t("taskBoard.taskDialog.propertiesLabel")}>
@@ -830,26 +970,24 @@ export function TaskBoardItemDialog({
                       className={cn(
                         item
                           ? statusIconClassName({ ...item, status })
-                          : STATUS_CONFIG[status].iconClassName,
+                          : laneVisual(status).iconClassName,
                       )}
                     />
-                    {t(STATUS_CONFIG[status].labelKey)}
+                    {laneHeader(status, t, columns).label}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {STATUSES.map((s) => {
-                    const Icon = STATUS_CONFIG[s].icon;
+                  {moveTargets(columns, deliveryEnabled).map((s) => {
+                    const { label, visual } = laneHeader(s, t, columns);
+                    const Icon = visual.icon;
                     return (
                       <DropdownMenuItem
                         key={s}
                         onSelect={() => patch({ status: s })}
                         className="gap-2"
                       >
-                        <Icon
-                          size={16}
-                          className={STATUS_CONFIG[s].iconClassName}
-                        />
-                        {t(STATUS_CONFIG[s].labelKey)}
+                        <Icon size={16} className={visual.iconClassName} />
+                        {label}
                       </DropdownMenuItem>
                     );
                   })}
@@ -1099,8 +1237,10 @@ export function TaskBoardItemDialog({
                 </PopoverContent>
               </Popover>
 
-              {/* Read-only: sprint membership is owned by the tracker the
-                  board mirrors (see apps/api/src/jira/sync.ts). */}
+              {/* Read-only HERE, not read-only in principle: a card's sprint
+                  is writable and pushes to the tracker, but planning is a
+                  backlog gesture rather than a field on one card, so this
+                  stays a label until that surface exists. */}
               {cardSprint && (
                 <span className={cn(PROPERTY_BUTTON, "cursor-default")}>
                   <Repeat04 size={16} className="text-muted-foreground" />
@@ -1211,14 +1351,16 @@ export function TaskBoardItemDialog({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    /* Hugs its label like every other property; the cap is
+                       what keeps a long repo name inside the column. */
                     className={cn(
                       PROPERTY_BUTTON,
-                      "w-full min-w-0",
+                      "max-w-full",
                       !repo && EMPTY_PROPERTY,
                     )}
                   >
                     <GitHubIcon className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-left">
+                    <span className="min-w-0 truncate text-left">
                       {repo ?? t("taskBoard.taskDialog.repoButton")}
                     </span>
                   </button>
@@ -1242,24 +1384,90 @@ export function TaskBoardItemDialog({
             </PropertyGroup>
           </div>
         </div>
+      </div>
 
-        {/* Create mode only: an existing card autosaves and keeps its actions
+      {/* A linked run, read in place. Sits outside the two-pane body so the
+          sheet is not clipped by its scroll containers. */}
+      <TaskThreadSheet
+        thread={openThread}
+        onClose={() => setOpenThreadId(null)}
+      />
+
+      {/* Create mode only: an existing card autosaves and keeps its actions
             in the header menu, so it has no footer at all. */}
-        {!item && (
-          <div className="flex h-16 items-center justify-end border-t border-border px-4">
-            <Button
-              size="sm"
-              disabled={!title.trim() || isSaving}
-              onClick={commit}
-            >
-              <Plus size={16} />
-              {t("taskBoard.taskDialog.createTaskButton")}
-            </Button>
-          </div>
-        )}
+      {!item && (
+        <div className="flex h-16 items-center justify-end border-t border-border px-4">
+          <Button
+            size="sm"
+            disabled={!title.trim() || isSaving}
+            onClick={commit}
+          >
+            <Plus size={16} />
+            {t("taskBoard.taskDialog.createTaskButton")}
+          </Button>
+        </div>
+      )}
+    </>
+  );
+
+  if (chrome === "page") {
+    return (
+      <div
+        ref={(el) => {
+          const stopEscape = escapeToClose(el);
+          const stopFlush = flushOnUnmount(el);
+          return () => {
+            stopEscape?.();
+            stopFlush?.();
+          };
+        }}
+        data-testid="task-detail"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && close()}>
+      <DialogContent
+        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[90vh] sm:max-h-[820px] sm:max-w-[1040px]"
+        closeButtonClassName="hidden"
+      >
+        <DialogTitle className="sr-only">
+          {t("taskBoard.taskDialog.newTaskTitle")}
+        </DialogTitle>
+        {body}
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * The create-a-task modal. A task with no id yet has no URL to be a page at,
+ * so this is the one flow that stayed a dialog — the board's "New task" and
+ * the home page's both open it.
+ */
+export function TaskBoardItemDialog(
+  props: Pick<
+    TaskEditorProps,
+    "onClose" | "defaultStatus" | "onSubmit" | "isSaving"
+  > & { open: boolean },
+) {
+  return <TaskBoardItemEditor {...props} chrome="dialog" />;
+}
+
+/**
+ * A task rendered in place of the board, reached by clicking its card. The
+ * breadcrumb in its header is what leads back out; see {@link TaskBoardItemEditor}.
+ */
+export function TaskBoardItemDetail(
+  props: Omit<TaskEditorProps, "chrome" | "open" | "defaultStatus"> & {
+    item: TaskBoardItem;
+  },
+) {
+  return <TaskBoardItemEditor {...props} chrome="page" />;
 }
 
 /**
@@ -1352,8 +1560,7 @@ function ThreadActivityItem({
   const message = thread.lastMessage;
   // The Super Agent and both reviewers run on the org agent, distinguished only
   // by their thread title prefix — reflect that in the card's glyph/name.
-  const isQaThread = isReviewerThreadTitle(thread.title, "qa");
-  const isCodeReviewThread = isReviewerThreadTitle(thread.title, "code_review");
+  const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
 
   return (
     <button
@@ -1363,10 +1570,8 @@ function ThreadActivityItem({
       className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
     >
       <div className="flex items-center gap-2">
-        {isQaThread ? (
-          <QaAgentIcon size={16} className="shrink-0" />
-        ) : isCodeReviewThread ? (
-          <CodeReviewerIcon size={16} className="shrink-0" />
+        {isReviewerThread ? (
+          <ReviewerIcon size={16} className="shrink-0" />
         ) : (
           <SuperAgentIcon size={16} className="shrink-0" />
         )}
@@ -1528,7 +1733,7 @@ function PrCard({
   resolvePending,
   onShip,
   onResolveConflict,
-  onOpenThread,
+  onOpenPreview,
 }: {
   pr: TaskBoardItemPr;
   previewThread?: TaskBoardItemThread;
@@ -1538,7 +1743,7 @@ function PrCard({
   resolvePending: boolean;
   onShip: () => void;
   onResolveConflict: () => void;
-  onOpenThread?: (thread: TaskBoardItemThread) => void;
+  onOpenPreview?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
   const [checksOpen, setChecksOpen] = useState(false);
@@ -1600,7 +1805,7 @@ function PrCard({
               size="sm"
               className="gap-1.5"
               title={t("taskBoard.taskDialog.openPreviewTitle")}
-              onClick={() => onOpenThread?.(previewThread)}
+              onClick={() => onOpenPreview?.(previewThread)}
             >
               <Edit05 size={13} />
               {t("taskBoard.taskDialog.openPreviewButton")}
@@ -1751,17 +1956,16 @@ function PrCardSkeleton() {
 function LinksSection({
   item,
   description,
-  onOpenThread,
+  onOpenPreview,
 }: {
   item: TaskBoardItem;
   description: string;
-  onOpenThread?: (thread: TaskBoardItemThread) => void;
+  onOpenPreview?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
   const { data: prs, isLoading: prsLoading } = useTaskBoardItemPrs(item.id);
   const { data: activity } = useTaskBoardActivity(item.id);
-  const qaEnabled = useOrgFlag("qa_agent_enabled");
-  const codeReviewerEnabled = useOrgFlag("code_reviewer_enabled");
+  const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
   const links = extractDescriptionLinks(description);
@@ -1772,16 +1976,16 @@ function LinksSection({
     return null;
   }
 
-  // Task-level readiness for the manual ship button: In Review + every enabled
-  // reviewer approved. Shown regardless of auto-merge — it's a manual escape
-  // hatch (a human can ship even while auto-merge is pending/blocked on token
-  // verification). The per-card PrCard adds the PR-open + green-checks gate (so
-  // a failing PR never offers the button).
+  // Task-level readiness for the manual ship button: a shippable lane + every
+  // enabled reviewer approved. Shown regardless of auto-merge — it's a manual
+  // escape hatch (a human can ship even while auto-merge is pending/blocked on
+  // token verification). The per-card PrCard adds the PR-open + green-checks gate.
   const reviewsReady =
-    item.status === "in_review" &&
+    laneCanShip(item.status) &&
     reviewsSatisfiedForPromotion(
       activity ?? [],
-      enabledReviewers({ qa: qaEnabled, codeReview: codeReviewerEnabled }),
+      enabledReviewers(reviewerOn),
+      item.reviewCycleStartedAt,
     );
   const onShip = () =>
     promote.mutate(undefined, {
@@ -1802,7 +2006,7 @@ function LinksSection({
   // The task's preview-capable thread (a bound repo checked out on the PR's
   // branch). Opening it paints that branch's live dev server — so "Edit" lands
   // you in the branch, not on GitHub.
-  const previewThread = onOpenThread
+  const previewThread = onOpenPreview
     ? item.threads.find((th) => th.hasPreview && th.virtualMcpId)
     : undefined;
 
@@ -1825,7 +2029,7 @@ function LinksSection({
               resolvePending={resolveConflict.isPending}
               onShip={onShip}
               onResolveConflict={() => onResolveConflict(pr.number)}
-              onOpenThread={onOpenThread}
+              onOpenPreview={onOpenPreview}
             />
           ))
         )}
@@ -1921,14 +2125,14 @@ function ActivitySection({
     | { kind: "thread"; at: number; thread: TaskBoardItemThread }
     | { kind: "comment"; at: number; comment: TaskComment };
   const events: Ev[] = [
-    ...(activity ?? []).map(
+    ...(activity ?? []).filter(isFeedWorthyActivity).map(
       (a): Ev => ({
         kind: "activity",
         at: new Date(a.occurredAt).getTime(),
         activity: a,
       }),
     ),
-    ...item.threads.map(
+    ...item.threads.filter(isLiveAttempt).map(
       (thread): Ev => ({
         kind: "thread",
         at: new Date(thread.createdAt).getTime(),
@@ -2071,17 +2275,21 @@ function interleaveChips(
 }
 
 /** One timeline line: prose from `t()`, values rendered as chips. */
-/** Display name for a reviewer kind stored in an activity payload. */
+/** Display name for a reviewer kind stored in an activity payload — including
+ *  the two-reviewer era's, which older cards still carry in their timeline. */
 function reviewerName(reviewer: unknown, t: ReturnType<typeof useT>): string {
-  return reviewer === "code_review"
-    ? t("taskBoard.taskDialog.codeReviewerLabel")
-    : t("taskBoard.taskDialog.qaAgentLabel");
+  if (reviewer === "qa") return t("taskBoard.taskDialog.qaAgentLabel");
+  if (reviewer === "code_review") {
+    return t("taskBoard.taskDialog.codeReviewerLabel");
+  }
+  return t("taskBoard.taskDialog.reviewerLabel");
 }
 
 function describeActivity(
   a: TaskBoardActivity,
   t: ReturnType<typeof useT>,
   memberByUserId: Map<string, Member>,
+  sprintById: Map<string, Sprint>,
 ): ReactNode {
   const statusChip = (s: unknown) => {
     const cfg =
@@ -2165,14 +2373,21 @@ function describeActivity(
   };
   const reviewerChip = (reviewer: unknown) => (
     <ValueChip
-      icon={
-        reviewer === "code_review" ? (
-          <CodeReviewerIcon size={14} />
-        ) : (
-          <QaAgentIcon size={14} />
-        )
-      }
+      icon={<ReviewerIcon size={14} />}
       label={reviewerName(reviewer, t)}
+    />
+  );
+  /** A sprint by its local id. Null is the backlog, and a sprint the board no
+   *  longer has still gets a chip — the move happened either way. */
+  const sprintChip = (sprintId: unknown) => (
+    <ValueChip
+      icon={<Repeat04 size={14} />}
+      label={
+        typeof sprintId === "string"
+          ? (sprintById.get(sprintId)?.name ??
+            t("taskBoard.taskDialog.sprintGoneLabel"))
+          : t("taskBoard.taskFilters.sprintBacklog")
+      }
     />
   );
 
@@ -2282,6 +2497,10 @@ function describeActivity(
         : t("taskBoard.taskDialog.activityReviewChangesRequested", {
             reviewer: reviewerName(d.reviewer, t),
           });
+    case "review_verdict_requested":
+      return t("taskBoard.taskDialog.activityReviewVerdictRequested", {
+        reviewer: reviewerName(d.reviewer, t),
+      });
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
     case "merge_failed": {
@@ -2311,6 +2530,11 @@ function describeActivity(
             : t("taskBoard.taskDialog.activityMergeFailed");
       }
     }
+    case "sprint_changed":
+      return interleaveChips(
+        t("taskBoard.taskDialog.activityMovedFromTo", { from, to }),
+        { from: sprintChip(d.from), to: sprintChip(d.to) },
+      );
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);
@@ -2333,6 +2557,7 @@ function TimelineBlock({
   memberByUserId: Map<string, Member>;
 }) {
   const t = useT();
+  const sprintById = useBoardSprintIndex();
   const [expanded, setExpanded] = useState(false);
 
   const actorName = (actorId: string | null) => {
@@ -2381,7 +2606,8 @@ function TimelineBlock({
         <div key={a.id} className="relative flex items-center gap-2.5">
           {actorAvatar(a.actorId)}
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {actorName(a.actorId)} {describeActivity(a, t, memberByUserId)}
+            {actorName(a.actorId)}{" "}
+            {describeActivity(a, t, memberByUserId, sprintById)}
             <span className="text-muted-foreground/60">
               {" · "}
               {formatTimeAgo(new Date(a.occurredAt))}

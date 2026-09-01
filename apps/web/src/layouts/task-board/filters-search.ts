@@ -6,7 +6,9 @@
  * no persist middleware, no localStorage to reconcile with the URL.
  */
 
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { resolveGithubAttachment } from "@/lib/github-repo";
+import { useVirtualMCPs } from "@/sdk";
 import type { DueFilter, TaskFilters } from "./task-filters";
 import { PRIORITIES, type TaskBoardItemPriority } from "./config";
 
@@ -29,8 +31,17 @@ type BoardSearch = {
 const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
-/** Anything unrecognized in the URL is dropped, not trusted. */
-export function parseBoardSearch(search: BoardSearch): {
+/**
+ * Anything unrecognized in the URL is dropped, not trusted.
+ *
+ * `defaultRepo` is the repo the PATH already scopes to (`/$org/agents/<project>`);
+ * it seeds the repo filter only when the URL names none, so an explicit `?repo=`
+ * still wins.
+ */
+export function parseBoardSearch(
+  search: BoardSearch,
+  opts?: { defaultRepo?: string | null },
+): {
   filters: TaskFilters;
   layout: Layout;
 } {
@@ -48,7 +59,7 @@ export function parseBoardSearch(search: BoardSearch): {
         : null,
       due: DUE_FILTERS.includes(due as DueFilter) ? (due as DueFilter) : null,
       tags: tags ? tags.split(",").filter(Boolean) : [],
-      repo: str(search.repo),
+      repo: str(search.repo) ?? opts?.defaultRepo ?? null,
       sprint: sprint,
     },
   };
@@ -71,11 +82,33 @@ export function boardSearchParams(
   };
 }
 
+/**
+ * The `owner/name` of the project the current route scopes to, or null.
+ *
+ * The board rendered as an overlay on `/$org/agents/{-$project}` names a project in the
+ * PATH, and the board's existing repo filter is how that scope is expressed —
+ * one mechanism, not two. `/$org/tasks` spends its own segment on the open card
+ * and is org-wide, so it never reaches here with a project.
+ * A detached repo still filters (the tasks are real either way), which is why
+ * this reads `resolveGithubAttachment` rather than `getActiveGithubRepo`.
+ */
+function useProjectRepoFilter(): string | null {
+  const projectId = useParams({ strict: false }).project;
+  const projects = useVirtualMCPs() ?? [];
+  if (!projectId) return null;
+  const attachment = resolveGithubAttachment(
+    projects.find((candidate) => candidate.id === projectId),
+  );
+  if (attachment.status === "none") return null;
+  return `${attachment.repo.owner}/${attachment.repo.name}`;
+}
+
 /** `useState`-shaped replacement for the board's filters + layout state. */
 export function useBoardSearch() {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
-  const { filters, layout } = parseBoardSearch(search);
+  const defaultRepo = useProjectRepoFilter();
+  const { filters, layout } = parseBoardSearch(search, { defaultRepo });
 
   const write = (nextFilters: TaskFilters, nextLayout: Layout) =>
     navigate({

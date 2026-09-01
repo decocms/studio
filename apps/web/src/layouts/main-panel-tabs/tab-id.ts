@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the `?main=<tabId>|0` URL model.
+ * Pure helpers for the tab id — the app's ONE name for a main-panel view.
  *
  * Tab id grammar:
  *   - Fixed system: "settings" | "automations" | "preview" | "git"
@@ -11,7 +11,12 @@
  *   - Ephemeral file preview: "file:<encoded output key>" (thread output viewer)
  *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
  *   - Ephemeral Library file preview: "library-file:<encoded browse path>"
- *   - "0" = closed sentinel (not an actual tab id)
+ *
+ * A tab id is internal: the tab bar, the per-thread layout memory and the bar's
+ * order storage speak it, and `panel-route.ts` is the single boundary that
+ * writes it into the URL as `/agents/{-$project}/{-$panel}` and reads it back.
+ * There is no closed sentinel any more — whether the panel is open is
+ * `?mainpanel`, a separate boolean, so a closed panel still remembers its view.
  *
  * The "settings" tab bundles what used to be separate instructions,
  * connections, and layout tabs. GitHub-linked Virtual MCPs expose an
@@ -48,7 +53,7 @@ export interface PinnedViewTabParsed {
 /**
  * Format a pinned view's composite tab id. Carries both `connectionId`
  * and `toolName` so two different connections can expose tools with the
- * same name without colliding in the `?main=` URL state.
+ * same name without colliding in the tab-id grammar.
  */
 export function formatPinnedViewTabId(
   connectionId: string,
@@ -76,7 +81,7 @@ export interface DeckTabParsed {
 }
 
 /** Paths carry `/`, so the tab id encodes them to keep the
- *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+ *  `<kind>:<rest>` tab-id grammar unambiguous. */
 export function formatDeckTabId(path: string): string {
   return `deck:${encodeURIComponent(path)}`;
 }
@@ -102,7 +107,7 @@ export interface FileTabParsed {
 }
 
 /** Keys carry `/` and `:`, so the tab id encodes them to keep the
- *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+ *  `<kind>:<rest>` tab-id grammar unambiguous. */
 export function formatFileTabId(key: string): string {
   return `file:${encodeURIComponent(key)}`;
 }
@@ -126,7 +131,7 @@ export interface LibraryFileTabParsed {
 }
 
 /** Browse paths carry `/`, so the tab id encodes them to keep the
- *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+ *  `<kind>:<rest>` tab-id grammar unambiguous. */
 export function formatLibraryFileTabId(path: string): string {
   return `library-file:${encodeURIComponent(path)}`;
 }
@@ -150,7 +155,7 @@ export interface CodeTabParsed {
 }
 
 /** Paths carry `/`, so the tab id encodes them to keep the
- *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+ *  `<kind>:<rest>` tab-id grammar unambiguous. */
 export function formatCodeTabId(path: string): string {
   return `code:${encodeURIComponent(path)}`;
 }
@@ -264,44 +269,58 @@ export function resolveDefaultTabId(
   return metadata?.tabs?.[0]?.id ?? "settings";
 }
 
+/**
+ * The view showing in the main panel, and whether the panel is open — the two
+ * things `?main=` used to conflate, resolved from the two things that replaced
+ * it: the `{-$panel}` path segment and the `?mainpanel` boolean.
+ *
+ * Precedence for the view: the segment, then the destination route's own
+ * default (`board` on `/$org/tasks`), then the agent's `defaultMainView`.
+ * The panel is open when the URL says so, and by default whenever a view is
+ * named — by the path, by the route, or by an agent whose default is not chat.
+ */
 export function resolveActiveTabAndOpen(ctx: {
-  mainParam: string | 0 | undefined;
+  /** The `{-$panel}` segment's tab id; `undefined` when it names no view. */
+  panelTabId: string | undefined;
+  /** `?mainpanel`, when the URL carries one. */
+  mainPanelParam?: boolean;
   metadata: EntityLayoutMetadata | null;
+  /** The destination route's default view (e.g. `board` on `/$org/tasks`).
+   *  Wins over the agent's `defaultMainView`, loses to the path segment. */
+  routeDefaultMain?: string | null;
 }): { mainOpen: boolean; activeTab: string } {
-  const mainParam = ctx.mainParam === 0 ? "0" : ctx.mainParam;
-  const def = resolveDefaultTabId(ctx.metadata);
-
-  if (mainParam === "0") {
-    return { mainOpen: false, activeTab: def };
-  }
-  if (mainParam === undefined) {
-    // Mirror resolveDefaultPanelState: a chat-default (or absent default)
-    // keeps the main panel closed so the header tab bar doesn't highlight
-    // a tab while the panel is 0px wide.
-    const view = ctx.metadata?.defaultMainView ?? null;
-    const defaultIsChat = view == null || view.type === "chat";
-    return { mainOpen: !defaultIsChat, activeTab: def };
-  }
+  const def = ctx.routeDefaultMain || resolveDefaultTabId(ctx.metadata);
   // Legacy ids coming from URL state migrate to the unified settings tab.
-  if (LEGACY_SETTINGS_TABS.has(mainParam)) {
-    return { mainOpen: true, activeTab: "settings" };
-  }
-  return { mainOpen: true, activeTab: mainParam };
+  const named =
+    ctx.panelTabId && LEGACY_SETTINGS_TABS.has(ctx.panelTabId)
+      ? "settings"
+      : ctx.panelTabId;
+
+  const view = ctx.metadata?.defaultMainView ?? null;
+  const defaultIsChat = view == null || view.type === "chat";
+  const mainOpen =
+    ctx.mainPanelParam ?? (!!named || !!ctx.routeDefaultMain || !defaultIsChat);
+
+  return { mainOpen, activeTab: named ?? def };
 }
+
+/** Where a tab click lands: another view, or the panel closed. */
+export type TabClickTarget = { close: true } | { tabId: string };
 
 /**
  * Tab-as-toggle semantics for the header tab bar.
  *
- * Clicking the currently-active tab while the panel is open closes it
- * (navigates to `?main=0`). Any other click opens or switches.
+ * Clicking the currently-active tab while the panel is open closes it — which
+ * now leaves the view in the path, so re-opening returns to it. Any other click
+ * opens or switches.
  */
 export function resolveTabClickTarget(ctx: {
   clickedId: string;
   activeTab: string;
   mainOpen: boolean;
-}): string | 0 {
-  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) return 0;
-  return ctx.clickedId;
+}): TabClickTarget {
+  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) return { close: true };
+  return { tabId: ctx.clickedId };
 }
 
 /**
@@ -321,14 +340,14 @@ export function isAutomationsPillActive(ctx: {
 /**
  * Click target for the Automations pill.
  *
- * - On the list with the panel open → close (`0`).
+ * - On the list with the panel open → close.
  * - On a detail view → navigate up to the list (`"automations"`).
  * - Otherwise (panel closed or on a different tab) → open the list.
  */
 export function resolveAutomationsPillClickTarget(ctx: {
   activeTab: string;
   mainOpen: boolean;
-}): string | 0 {
-  if (ctx.mainOpen && ctx.activeTab === "automations") return 0;
-  return "automations";
+}): TabClickTarget {
+  if (ctx.mainOpen && ctx.activeTab === "automations") return { close: true };
+  return { tabId: "automations" };
 }

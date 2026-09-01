@@ -106,6 +106,41 @@ describe("readCachedOrg/writeCachedOrg", () => {
     localStorageStub.setItem("studio:org-cache:user-5", "{not json");
     expect(readCachedOrg("user-5", "acme")).toBeNull();
   });
+
+  test("caps the per-user map at 20 orgs, evicting the least-recently-updated", () => {
+    const key = "studio:org-cache:user-7";
+    const stale: Record<string, { data: unknown; updatedAt: number }> = {};
+    for (let i = 0; i < 20; i++) {
+      stale[`org-${i}`] = { data: { n: i }, updatedAt: Date.now() - (20 - i) };
+    }
+    localStorageStub.setItem(key, JSON.stringify(stale));
+
+    writeCachedOrg("user-7", "org-new", { n: 20 });
+
+    const raw = localStorageStub.getItem(key);
+    expect(Object.keys(JSON.parse(raw ?? "{}"))).toHaveLength(20);
+    expect(readCachedOrg("user-7", "org-0")).toBeNull();
+    expect(readCachedOrg("user-7", "org-19")?.data).toEqual({ n: 19 });
+    expect(readCachedOrg("user-7", "org-new")?.data).toEqual({ n: 20 });
+  });
+
+  test("prunes expired entries out of the map on write, not just on read", () => {
+    const key = "studio:org-cache:user-8";
+    localStorageStub.setItem(
+      key,
+      JSON.stringify({
+        stale: {
+          data: { name: "Stale" },
+          updatedAt: Date.now() - 25 * 60 * 60 * 1000,
+        },
+      }),
+    );
+
+    writeCachedOrg("user-8", "fresh", { name: "Fresh" });
+
+    const raw = localStorageStub.getItem(key);
+    expect(Object.keys(JSON.parse(raw ?? "{}"))).toEqual(["fresh"]);
+  });
 });
 
 describe("clearPersistedQueryCache", () => {

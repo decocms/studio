@@ -20,6 +20,7 @@ import type {
   JSONRPCMessage,
   JSONRPCRequest,
   CallToolRequest,
+  Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { WrapperTransport } from "@decocms/mcp-utils";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -92,7 +93,7 @@ export class AuthTransport extends WrapperTransport {
     return this.toolsListPromise;
   }
 
-  private async ensureToolsMap(): Promise<Map<string, any>> {
+  private async ensureToolsMap(): Promise<Map<string, Tool>> {
     const cache = this.options.cache ?? getMcpListCache();
 
     const tools = await fetchWithCache(
@@ -114,7 +115,7 @@ export class AuthTransport extends WrapperTransport {
       return new Map();
     }
 
-    return new Map((tools as Array<{ name: string }>).map((t) => [t.name, t]));
+    return new Map((tools as Tool[]).map((t) => [t.name, t]));
   }
 
   protected override async handleOutgoingMessage(
@@ -180,19 +181,14 @@ export class AuthTransport extends WrapperTransport {
       connection.id, // Connection ID for permission check
       getToolMeta, // Callback for public tool check
       ctx.organization?.id, // Path-resolved org for permission checks
+      false, // toolName is the downstream connection's own name — don't trust its prefix
     );
 
     await connectionAccessControl.check(toolName);
   }
 
+  // toolName is the downstream server's own name for it — never trust its prefix, only its _meta.
   private async isPublicTool(toolName: string): Promise<boolean> {
-    if (
-      toolName.startsWith("STUDIO_PUBLIC_") ||
-      toolName.startsWith("MESH_PUBLIC_")
-    ) {
-      return true;
-    }
-
     const toolsMap = await this.ensureToolsMap();
     const tool = toolsMap.get(toolName);
     if (!tool?._meta) {

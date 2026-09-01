@@ -24,13 +24,19 @@
  * its issue is next updated in Jira.
  */
 
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import {
+  boardAutomationFor,
+  boardFor,
+  boardCan,
+  boardLanes,
+} from "@/tools/task-board/board-handler";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type {
   OrgJiraIntegration,
   TaskBoardItem,
   TaskBoardItemPriority,
-  TaskBoardItemStatus,
 } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
@@ -128,6 +134,98 @@ export async function syncJiraIntegrationSafe(
  * Jira's clock, so it can sit ahead of ours, and a negative window emits
  * `updated >= --25m` — a JQL 400 on every tick until the clocks converge.
  */
+/**
+ * Make the org's board look like its Jira board, and hand back the reverse
+ * index the pull needs: Jira status name → the column that groups it.
+ *
+ * Both come from the same call. Jira's board configuration already says which
+ * statuses live in which column, so the mapping is read rather than
+ * configured — and the columns Studio renders are the ones the team sees in
+ * Jira, under the names they gave them.
+ */
+async function mirrorBoardColumns(
+  ctx: StudioContext,
+  integration: OrgJiraIntegration,
+  boardId: string,
+): Promise<Map<string, string>> {
+  const client = new JiraClient(
+    integration.siteUrl,
+    integration.email,
+    integration.apiToken,
+  );
+  const columns = await client.getBoardColumns(boardId);
+  await ctx.storage.boardColumns.replaceAll(
+    integration.organizationId,
+    columns.map((column) => ({
+      key: column.name,
+      title: column.name,
+      // The push's whole reason for existing: a column groups several
+      // statuses, and only the tracker knows which and in what order.
+      trackerStatuses: column.statuses,
+    })),
+  );
+  const index = new Map<string, string>();
+  for (const column of columns) {
+    // First column wins, as it does for the hand-written mapping: a Jira status
+    // in two columns would otherwise make a card's lane depend on iteration.
+    for (const status of column.statuses) {
+      if (!index.has(status)) index.set(status, column.name);
+    }
+  }
+  return index;
+}
+
+/**
+ * Whether the pull writes the card's status, or leaves it where it is.
+ *
+ * Normally only when Jira's own status changed — an unrelated issue edit must
+ * not yank back a card the agent already advanced.
+ *
+ * The exception is a card sitting in a column this board does not have. That
+ * is EVERY card on the day an org's board becomes its own: their statuses are
+ * Studio's lanes, the columns are suddenly the tracker's, and a card nobody
+ * touched in Jira would render nowhere at all. Re-homing is bounded to exactly
+ * those cards and stops for each one the moment it lands somewhere real, so it
+ * is a conversion path rather than a standing override.
+ */
+/**
+ * Whether the pull writes the card's sprint, or leaves it where it is.
+ *
+ * Only when Jira's own sprint changed since we last looked, so someone pulling
+ * a card into the sprint from Studio is not undone by the next tick reading
+ * Jira's not-yet-updated sprint back over them. The pull used to write it
+ * unconditionally, which cost nothing while the sync was the only writer.
+ *
+ * Deliberately NOT the mirror of {@link rewritesStatus}: that one re-homes a
+ * card stranded in a column the board does not have, because a card has to be
+ * SOMEWHERE. A card in no sprint is in the backlog, which is a real place.
+ */
+export function rewritesSprint({
+  lastSeenJiraSprintId,
+  jiraSprintId,
+}: {
+  /** `jira_sprint_id` on the link: the sprint we last saw or set on Jira. */
+  lastSeenJiraSprintId: string | null;
+  /** Where the issue is in Jira right now. Null is the backlog. */
+  jiraSprintId: string | null;
+}): boolean {
+  return lastSeenJiraSprintId !== jiraSprintId;
+}
+
+export function rewritesStatus({
+  jiraStatusChanged,
+  currentStatus,
+  boardColumns,
+}: {
+  jiraStatusChanged: boolean;
+  /** Null when the card could not be read; nothing to re-home. */
+  currentStatus: string | null;
+  boardColumns: ReadonlySet<string>;
+}): boolean {
+  if (jiraStatusChanged) return true;
+  return currentStatus !== null && !boardColumns.has(currentStatus);
+}
+
 export function buildJql(
   integration: OrgJiraIntegration,
   scopeJql: string,
@@ -174,6 +272,18 @@ export function isUnchanged(
 }
 
 /**
+ * Whether this run stopped short of the full incremental scope — either cap
+ * can be why: `MAX_ISSUES_PER_RUN` on a page full of mapped issues, or
+ * `MAX_PAGES_PER_RUN` on a filter that returns many empty-but-tokened pages
+ * (an issue-sparse JQL still burns a page per call). Shared by every caller
+ * that needs to know "did this run actually finish", so the two truncation
+ * reasons can't drift apart again.
+ */
+export function runTruncated(processed: number, pages: number): boolean {
+  return processed >= MAX_ISSUES_PER_RUN || pages >= MAX_PAGES_PER_RUN;
+}
+
+/**
  * Whether the rescan must keep forcing a full re-read on the NEXT run.
  *
  * A run only advances as far as `MAX_ISSUES_PER_RUN`/`MAX_PAGES_PER_RUN` let
@@ -190,9 +300,7 @@ export function rescanContinues(
   processed: number,
   pages: number,
 ): boolean {
-  const truncated =
-    processed >= MAX_ISSUES_PER_RUN || pages >= MAX_PAGES_PER_RUN;
-  return isRescan && truncated;
+  return isRescan && runTruncated(processed, pages);
 }
 
 /** Epics (hierarchyLevel 1) and anything above are containers, not cards. */
@@ -229,17 +337,28 @@ async function maybeAutoDelegate(
   integration: OrgJiraIntegration,
   item: TaskBoardItem,
 ): Promise<TaskBoardItem> {
-  if (!integration.autoDelegate) return item;
-  if (item.status !== "todo" || item.assigneeId) return item;
+  if (item.assigneeId) return item;
   const orgId = integration.organizationId;
+  // The board decides: a column with no rule on it is uneventful. This is also
+  // what replaced `integration.autoDelegate`, which could only ever mean the
+  // Super Agent, on To Do, for an org that had Jira.
+  const automation = await boardAutomationFor(ctx, orgId, item.status);
+  if (!automation) return item;
   // Conditional claim, not a plain update: the cron, a webhook wake-up (its
   // debounce is per-pod) and a manual JIRA_SYNC_RUN can all be mid-sync on the
   // same issue, and a read-then-write would dispatch two paid agent runs on it.
+  const queue = (await boardLanes(ctx, orgId)).queue;
+  if (
+    !boardCan(orgId, "todo", queue, "auto-delegating Jira issues to the agent")
+  ) {
+    return item;
+  }
   const delegated = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(
     item.id,
     orgId,
     integration.createdBy,
     JIRA_SYNC_ACTOR,
+    queue,
   );
   if (!delegated) return item;
   await ctx.storage.taskBoard.recordActivity({
@@ -249,7 +368,9 @@ async function maybeAutoDelegate(
     data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
   });
   try {
-    await reactToSuperAgentDelegation(ctx, delegated);
+    await reactToSuperAgentDelegation(ctx, delegated, {
+      instruction: automation.prompt ?? undefined,
+    });
   } catch (err) {
     console.warn(
       `[jira] auto-delegate of ${item.id} rejected, un-delegating:`,
@@ -478,10 +599,29 @@ async function runSync(
   if (!boardId) {
     throw new Error("No Jira board selected");
   }
-  // One reverse index for the whole sync rather than a scan per issue.
-  const laneOf = laneIndex(integration.statusMapping);
+  const settings = await ctx.storage.organizationSettings.get(
+    integration.organizationId,
+  );
+  const orgOwnedColumns = orgFlagEnabled(settings?.flags, "org_board_columns");
+
+  // One reverse index for the whole sync rather than a scan per issue. On a
+  // board the org owns it is DERIVED from the board's own configuration —
+  // Jira already knows which statuses each of its columns groups, so asking
+  // anyone to restate that by hand was the mapping screen's whole mistake.
+  const board = await boardFor(ctx, integration.organizationId);
+  const laneOf = orgOwnedColumns
+    ? await mirrorBoardColumns(ctx, integration, boardId)
+    : laneIndex(integration.statusMapping);
+  // Read AFTER the mirror, or the first sync of a converting board would see
+  // no columns at all and call every card stranded — right by accident, and
+  // wrong the moment a board legitimately has none.
+  const columnKeys = new Set((await board.columns()).map((c) => c.key));
   if (laneOf.size === 0) {
-    throw new Error("No status mapping configured");
+    throw new Error(
+      orgOwnedColumns
+        ? "This Jira board has no columns to mirror"
+        : "No status mapping configured",
+    );
   }
 
   // First connect / scope change (migration 184) or an unfinished rescan (migration 186).
@@ -547,9 +687,7 @@ async function runSync(
         throw new Error(`Unparseable updated on ${issue.key}`);
       }
 
-      const status = laneOf.get(issue.fields.status.name) as
-        | TaskBoardItemStatus
-        | undefined;
+      const status = laneOf.get(issue.fields.status.name);
       if (!status || !isCardIssue(issue)) {
         if (!status && isCardIssue(issue)) {
           unmapped.add(issue.fields.status.name);
@@ -567,27 +705,51 @@ async function runSync(
       }
 
       const jiraStatusName = issue.fields.status.name;
+      const jiraSprint = pickIssueSprint(issue.sprints);
       const fields = {
         title: issue.fields.summary,
         description: await cardDescription(integration.siteUrl, issue, users),
         priority: mapPriority(issue),
-        sprintId: await sprints.localIdFor(pickIssueSprint(issue.sprints)),
+        // Asked of the board, not recomputed from the flag: one answer for
+        // every writer, so a card cannot be guarded by one path and not by
+        // another. A card the sync has not reached yet stays unguarded rather
+        // than wrong, which is what makes adopting the key incremental.
+        boardColumnOrg: board.columnOwner(),
       };
 
       if (link) {
         // Status applies only when it changed ON JIRA'S SIDE, so an unrelated issue edit can't yank back a card the agent already advanced.
         const statusChangedOnJira = link.jiraStatus !== jiraStatusName;
+        // Sprint gets the same guard for the same reason: someone pulling a
+        // card into the sprint from Studio must not have it undone by the next
+        // tick reading Jira's not-yet-updated sprint back over them.
+        const sprintChangedOnJira = rewritesSprint({
+          lastSeenJiraSprintId: link.jiraSprintId,
+          jiraSprintId: jiraSprint?.id ?? null,
+        });
         const before = await ctx.storage.taskBoard.getById(link.itemId, orgId);
+        const writeStatus = rewritesStatus({
+          jiraStatusChanged: statusChangedOnJira,
+          currentStatus: before?.status ?? null,
+          boardColumns: columnKeys,
+        });
         let item = await ctx.storage.taskBoard.update(
           link.itemId,
           orgId,
-          { ...fields, ...(statusChangedOnJira ? { status } : {}) },
+          {
+            ...fields,
+            ...(writeStatus ? { status } : {}),
+            ...(sprintChangedOnJira
+              ? { sprintId: await sprints.localIdFor(jiraSprint) }
+              : {}),
+          },
           JIRA_SYNC_ACTOR,
         );
         await ctx.storage.jiraIntegrations.touchLink(link.itemId, {
           jiraStatus: jiraStatusName,
+          jiraSprintId: jiraSprint?.id ?? null,
         });
-        if (before && statusChangedOnJira && before.status !== status) {
+        if (before && writeStatus && before.status !== status) {
           await ctx.storage.taskBoard.recordActivity({
             taskBoardItemId: link.itemId,
             action: "status_changed",
@@ -621,6 +783,7 @@ async function runSync(
           organizationId: orgId,
           ...fields,
           status,
+          sprintId: await sprints.localIdFor(jiraSprint),
           by: JIRA_SYNC_ACTOR,
         });
         try {
@@ -635,6 +798,7 @@ async function runSync(
             // unchanged even if the comment pull below never finished.
             jiraUpdatedAt: new Date(0),
             jiraStatus: jiraStatusName,
+            jiraSprintId: jiraSprint?.id ?? null,
           });
         } catch (err) {
           // 23505: a concurrent run won the link's UNIQUE — drop our orphan card.
@@ -671,10 +835,9 @@ async function runSync(
   }
 
   counts.unmappedStatuses = [...unmapped].sort();
-  // Reconciliation reads the WHOLE scope, so it waits for a run that finished
-  // the incremental pass — mid-backfill, most of the board is legitimately
-  // not linked yet.
-  if (processed < MAX_ISSUES_PER_RUN) {
+  // Reconciliation reads the WHOLE scope, so it waits for a run that actually finished the incremental pass.
+  const truncated = runTruncated(processed, pages);
+  if (!truncated) {
     counts.archived = await reconcileVanishedIssues(
       ctx,
       integration,
@@ -687,7 +850,7 @@ async function runSync(
   // `last_synced_at` stays NULL: the UI would sit on "waiting for the first
   // sync" forever and every later run would count as the initial import, which
   // is exactly the state that suppresses auto-delegation.
-  const rescanPending = rescanContinues(isRescan, processed, pages);
+  const rescanPending = isRescan && truncated;
   if (watermark === undefined && processed === 0) {
     return { counts, watermark: runStartedAt, rescanPending };
   }

@@ -44,6 +44,8 @@ export interface TaskBoardItemJiraLink {
   jiraIssueKey: string;
   jiraUpdatedAt: string;
   jiraStatus: string | null;
+  /** Jira sprint id, or null for the backlog. See `jira_sprint_id`. */
+  jiraSprintId: string | null;
 }
 
 export class JiraIntegrationStorage {
@@ -207,6 +209,33 @@ export class JiraIntegrationStorage {
   }
 
   /**
+   * Drop the watermark, so the next run re-scans the board from the start.
+   *
+   * `last_synced_at` means "every issue in scope up to here has been
+   * processed", which stops being true whenever what we do with an issue
+   * changes — a widened status mapping, a fixed renderer — rather than only
+   * when the scope does. Issues already behind the watermark are never asked
+   * for again, so those repairs reach nothing without this.
+   *
+   * Safe to call: a null watermark is the initial-import path, which is
+   * idempotent (the link table's UNIQUE dedupes every issue) and deliberately
+   * suppresses auto-delegation, so a re-scan cannot dispatch a paid agent run
+   * per pre-existing card. `MAX_ISSUES_PER_RUN` paces the rest.
+   */
+  async clearWatermark(id: string): Promise<void> {
+    await this.db
+      .updateTable("org_jira_integrations")
+      .set({
+        last_synced_at: null,
+        last_sync_error: null,
+        rescan_pending: false,
+        updated_at: new Date(),
+      })
+      .where("id", "=", id)
+      .execute();
+  }
+
+  /**
    * Every linked issue in the org, for the reconciliation pass — the cards
    * whose issue is no longer in the board's scope.
    *
@@ -253,6 +282,7 @@ export class JiraIntegrationStorage {
           jiraIssueKey: row.jira_issue_key,
           jiraUpdatedAt: toIso(row.jira_updated_at),
           jiraStatus: row.jira_status,
+          jiraSprintId: row.jira_sprint_id,
         },
       ]),
     );
@@ -265,6 +295,7 @@ export class JiraIntegrationStorage {
     jiraIssueKey: string;
     jiraUpdatedAt: Date;
     jiraStatus: string;
+    jiraSprintId: string | null;
   }): Promise<void> {
     await this.db
       .insertInto("task_board_item_jira_links")
@@ -275,13 +306,20 @@ export class JiraIntegrationStorage {
         jira_issue_key: params.jiraIssueKey,
         jira_updated_at: params.jiraUpdatedAt,
         jira_status: params.jiraStatus,
+        jira_sprint_id: params.jiraSprintId,
       })
       .execute();
   }
 
   async touchLink(
     itemId: string,
-    patch: { jiraUpdatedAt?: Date; jiraStatus?: string },
+    patch: {
+      jiraUpdatedAt?: Date;
+      jiraStatus?: string;
+      /** Explicit null moves the issue to the backlog, so `undefined` (leave
+       *  alone) and `null` (no sprint) are different patches here. */
+      jiraSprintId?: string | null;
+    },
   ): Promise<void> {
     await this.db
       .updateTable("task_board_item_jira_links")
@@ -291,6 +329,9 @@ export class JiraIntegrationStorage {
           : {}),
         ...(patch.jiraStatus !== undefined
           ? { jira_status: patch.jiraStatus }
+          : {}),
+        ...(patch.jiraSprintId !== undefined
+          ? { jira_sprint_id: patch.jiraSprintId }
           : {}),
       })
       .where("item_id", "=", itemId)
@@ -315,6 +356,7 @@ export class JiraIntegrationStorage {
       jiraIssueKey: row.jira_issue_key,
       jiraUpdatedAt: toIso(row.jira_updated_at),
       jiraStatus: row.jira_status,
+      jiraSprintId: row.jira_sprint_id,
     };
   }
 
