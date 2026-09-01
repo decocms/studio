@@ -10,6 +10,8 @@
  */
 
 export function stringifyError(error: unknown): string {
+  const upstream = upstreamProviderError(error);
+  if (upstream) return upstream;
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null) {
     try {
@@ -70,6 +72,69 @@ export function classifyStreamError(
 }
 
 /**
+ * OpenRouter relays EVERY upstream failure as the same opaque
+ * `"Provider returned error"` and puts what actually happened — which upstream
+ * served the request, and that upstream's own message — in `metadata`. The AI
+ * SDK keeps the whole body on the error (`responseBody`, and `data` for the
+ * parsed form) and sets `message` to the opaque half, so reading only `message`
+ * throws away the one part of the failure anybody can act on.
+ *
+ * That discard is why a real production bug hid for a month: 169 identical
+ * `400 Provider returned error` over 30 days, every one of them Alibaba
+ * rejecting `response_format: json_object` on a prompt with no "json" in it —
+ * visible only by opening a pod log and reading the raw error dump.
+ *
+ * Returns `"[<provider>] <upstream message>"`, or null when the error carries
+ * no such body (a non-gateway failure, or a gateway error of its own like a
+ * 402 credit limit, whose `message` is already the real one).
+ */
+export function upstreamProviderError(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const body =
+    (error as { responseBody?: unknown; data?: unknown }).data ??
+    (error as { responseBody?: unknown }).responseBody;
+  const parsed = typeof body === "string" ? safeParse(body) : body;
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const outer = parsed as {
+    error?: { metadata?: unknown };
+    metadata?: unknown;
+  };
+  // Two shapes carry it: `{error:{metadata}}` on the OpenAI-compatible route,
+  // `{error, metadata}` on the Anthropic-skin one.
+  const metadata = (outer.error?.metadata ?? outer.metadata) as
+    | { provider_name?: unknown; raw?: unknown }
+    | undefined;
+  if (typeof metadata !== "object" || metadata === null) return null;
+  const provider =
+    typeof metadata.provider_name === "string" ? metadata.provider_name : null;
+  const upstream =
+    typeof metadata.raw === "string" ? upstreamMessage(metadata.raw) : null;
+  if (!provider && !upstream) return null;
+  return `[${provider ?? "upstream provider"}] ${upstream ?? "no detail returned"}`;
+}
+
+function safeParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The upstream's own message out of `metadata.raw`, which is that provider's
+ * verbatim error body — JSON on the blocking route, and a single `data: {...}`
+ * SSE frame when the request was streaming.
+ */
+function upstreamMessage(raw: string): string | null {
+  const parsed = safeParse(raw.trim().replace(/^data:\s*/, ""));
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const obj = parsed as { error?: { message?: unknown }; message?: unknown };
+  const message = obj.error?.message ?? obj.message;
+  return typeof message === "string" && message.length > 0 ? message : null;
+}
+
+/**
  * Pull a human-readable message + HTTP status out of an unknown error.
  * Gateway/provider errors frequently arrive as plain objects rather than
  * `Error` instances (e.g. the `{ code, message, metadata }` shape a 504 idle
@@ -81,9 +146,10 @@ function extractErrorParts(error: unknown): {
   message: string;
   statusCode?: number;
 } {
+  const upstream = upstreamProviderError(error);
   if (error instanceof Error) {
     return {
-      message: error.message,
+      message: upstream ?? error.message,
       statusCode: (error as { statusCode?: number }).statusCode,
     };
   }
@@ -94,7 +160,8 @@ function extractErrorParts(error: unknown): {
       code?: unknown;
     };
     const message =
-      typeof obj.message === "string" ? obj.message : stringifyError(error);
+      upstream ??
+      (typeof obj.message === "string" ? obj.message : stringifyError(error));
     const statusCode =
       typeof obj.statusCode === "number"
         ? obj.statusCode
