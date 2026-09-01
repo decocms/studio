@@ -114,4 +114,7 @@ export const home = {
   "home.projectCard.mainAgentError": "Couldn't update the main agent",
   "home.projectCard.pinToSidebar": "Pin to sidebar",
   "home.projectCard.unpinFromSidebar": "Unpin from sidebar",
+  "home.projectCard.settings": "Settings",
+  "home.projectCard.automations": "Automations",
+  "home.projectCard.delete": "Delete",
 } as const;

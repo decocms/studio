@@ -65,6 +65,7 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
+import { useCapability } from "@/hooks/use-capability";
 import { useT } from "@/i18n/use-t.ts";
 
 export type AgentTabDef = {
@@ -169,6 +170,7 @@ export function useMainPanelTabs(ctx: {
     agentHasClonableSource(entity?.metadata) ||
     agentHasClonableSource(metadata);
   const reportsOnly = useReportsOnly();
+  const { granted: canManageAgents } = useCapability("agents:manage");
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -370,6 +372,23 @@ export function useMainPanelTabs(ctx: {
     systemTabs.push({
       id: "git",
       title: t("common.mainPanelTabs.reviewChanges"),
+    });
+  }
+  // Only shown once you're actually on one of these views, not on every screen.
+  const onSettingsOrAutomations =
+    activeTab === "settings" ||
+    activeTab === "automations" ||
+    automationTabParsed !== null;
+  if (onSettingsOrAutomations) {
+    if (canManageAgents) {
+      systemTabs.push({
+        id: "settings",
+        title: t("common.mainPanelTabs.settings"),
+      });
+    }
+    systemTabs.push({
+      id: "automations",
+      title: t("common.mainPanelTabs.automations"),
     });
   }
   // Merge pinned views + per-task expanded tools into a single list keyed

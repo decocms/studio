@@ -120,4 +120,7 @@ export const home = {
     "Não foi possível atualizar o agente principal",
   "home.projectCard.pinToSidebar": "Fixar na barra lateral",
   "home.projectCard.unpinFromSidebar": "Desafixar da barra lateral",
+  "home.projectCard.settings": "Configurações",
+  "home.projectCard.automations": "Automações",
+  "home.projectCard.delete": "Excluir",
 } satisfies Record<keyof typeof homeEn, string>;

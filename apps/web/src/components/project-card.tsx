@@ -1,6 +1,7 @@
 import {
   DotsVertical,
   Home02,
+  Lightning01,
   Pin01,
   Settings02,
   Trash01,
@@ -109,7 +110,15 @@ export function ProjectCard({
                     }
                   >
                     <Settings02 size={16} />
-                    Settings
+                    {t("home.projectCard.settings")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      navigateToAgent(project.id, { panel: "automations" })
+                    }
+                  >
+                    <Lightning01 size={16} />
+                    {t("home.projectCard.automations")}
                   </DropdownMenuItem>
                   {canSetMainAgent && (
                     <DropdownMenuItem
@@ -146,7 +155,7 @@ export function ProjectCard({
                       }}
                     >
                       <Trash01 size={16} />
-                      Delete
+                      {t("home.projectCard.delete")}
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
