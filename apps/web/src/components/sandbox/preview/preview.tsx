@@ -1047,12 +1047,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   /**
-   * Refresh the in-place render when the current page's content changes (the
-   * autosave optimistically updates KEYS.decofile before the commit lands).
-   * Deduped by content signature so onMutate + onSuccess render once, not twice.
+   * Refresh the in-place render on a content or page/path change. The frame's
+   * `src` is pinned here, so a page switch can't navigate it — the signature
+   * folds in page + path to fire a render, deduped so onMutate + onSuccess
+   * render once.
    */
   const renderSigRef = useRef<string | null>(null);
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative postMessage refresh of a cross-origin frame on content change
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative postMessage refresh of a cross-origin frame on content/page change
   useEffect(() => {
     if (
       !inPlaceRenderActive ||
@@ -1064,7 +1065,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       renderSigRef.current = null;
       return;
     }
-    const sig = JSON.stringify(decofile);
+    const sig = JSON.stringify({
+      page: currentPageKey,
+      path: resolvedPath,
+      decofile,
+    });
     if (renderSigRef.current === sig) return;
     const isBaseline = renderSigRef.current === null;
     renderSigRef.current = sig;
