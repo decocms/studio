@@ -168,10 +168,14 @@ func itoa(n int) string {
 }
 
 func head(port int) (status int, isHtml, up bool) {
+	// A fresh Transport is built (and discarded) on every tick, so keep-alive
+	// would leak an idle connection + its readLoop goroutine per tick for the
+	// life of the daemon instead of being reused.
 	client := &http.Client{
 		Timeout: HeadTimeout,
 		Transport: &http.Transport{
-			DialContext: DialLoopback,
+			DialContext:       DialLoopback,
+			DisableKeepAlives: true,
 		},
 	}
 	req, err := http.NewRequest("HEAD", "http://loopback:"+itoa(port)+"/", nil)
