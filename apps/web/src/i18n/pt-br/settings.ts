@@ -883,24 +883,6 @@ export const settings = {
     "Deco AI Gateway conectado com sucesso",
   "settings.aiProviders.decoConnectError":
     "Falha ao conectar o Deco AI Gateway: {error}",
-  "settings.billing.autoTasksTitle": "Tarefas automáticas",
-  "settings.billing.unlimitedDescription":
-    "As execuções de tarefas automáticas são ilimitadas neste deployment. Tarefas criadas por você também nunca têm limite.",
-  "settings.billing.autoTasksDescriptionTrial":
-    "3 execuções grátis vitalícias, depois R$ 250/mês para 10 execuções por ciclo de cobrança.",
-  "settings.billing.autoTasksDescriptionSubscribed":
-    "10 execuções de tarefas automáticas por ciclo de cobrança. Tarefas criadas por você nunca têm limite.",
-  "settings.billing.statusTrial": "Teste grátis",
-  "settings.billing.statusActive": "Ativa",
-  "settings.billing.statusPastDue": "Problema no pagamento",
-  "settings.billing.runsUsedLabel": "execuções usadas",
-  "settings.billing.renewsOn": "Renova em {date}",
-  "settings.billing.subscribeButton": "Assinar",
-  "settings.billing.manageButton": "Gerenciar cobrança",
-  "settings.billing.checkoutError":
-    "Não foi possível iniciar o checkout: {message}",
-  "settings.billing.portalError":
-    "Não foi possível abrir o portal de cobrança: {message}",
 
   "settings.infraBilling.noSites":
     "Esta organização ainda não é dona de nenhum site deco.cx.",
