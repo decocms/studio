@@ -64,6 +64,8 @@ describe("applyBoardDecision", () => {
     "thr_human",
     "thr_fallback",
     "thr_done",
+    "thr_race",
+    "thr_moved",
   ];
 
   const apply = (
@@ -188,6 +190,50 @@ describe("applyBoardDecision", () => {
     expect(item!.reviewCycleStartedAt).not.toBeNull();
     // A human owns it — the claim must not steal the card from them.
     expect(item!.assigneeId).toBe(USER);
+  });
+
+  it("update doesn't stomp a human claim raced in after the openCards snapshot", async () => {
+    const card = await taskBoard.create({
+      organizationId: ORG,
+      title: "raced claim",
+      status: "in_progress",
+      by: USER,
+    });
+    // Stale snapshot: still unassigned, before a human claims it below.
+    const staleSnapshot = card;
+    await taskBoard.update(card.id, ORG, { assigneeId: USER }, USER);
+    const item = await apply(
+      { action: "update", taskId: card.id },
+      [staleSnapshot],
+      "thr_race",
+    );
+    expect(item!.id).toBe(card.id);
+    expect(item!.assigneeId).toBe(USER);
+  });
+
+  it("update doesn't drag back a card moved past the lane after the snapshot", async () => {
+    const card = await taskBoard.create({
+      organizationId: ORG,
+      title: "raced move",
+      status: "todo",
+      by: USER,
+    });
+    // Stale snapshot: still To Do, before the card ships below.
+    const staleSnapshot = card;
+    await taskBoard.update(card.id, ORG, { status: "done" }, USER);
+    const item = await apply(
+      { action: "update", taskId: card.id },
+      [staleSnapshot],
+      "thr_moved",
+    );
+    // The advance was decided against To Do and lost the race: the shipped card
+    // stays shipped, unclaimed, and still gets the PR linked.
+    expect(item!.id).toBe(card.id);
+    expect(item!.status).toBe("done");
+    expect(item!.assigneeId).toBeNull();
+    expect(item!.reviewCycleStartedAt).toBeNull();
+    const prs = await taskBoard.listPrs(card.id, ORG);
+    expect(prs.map((p) => p.number)).toEqual([7]);
   });
 
   it("update with an unknown taskId falls back to creating a card", async () => {
