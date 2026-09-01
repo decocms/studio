@@ -196,6 +196,7 @@ import * as migration194jiralinksprint from "./194-jira-link-sprint.ts";
 import * as migration195taskboardsprintactivity from "./195-task-board-sprint-activity.ts";
 import * as migration196taskboardcolumntrackerstatuses from "./196-task-board-column-tracker-statuses.ts";
 import * as migration197taskboardprompts from "./197-task-board-prompts.ts";
+import * as migration198taskboardexternalurl from "./198-task-board-external-url.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -426,6 +427,7 @@ const migrations: Record<string, Migration> = {
   "196-task-board-column-tracker-statuses":
     migration196taskboardcolumntrackerstatuses,
   "197-task-board-prompts": migration197taskboardprompts,
+  "198-task-board-external-url": migration198taskboardexternalurl,
 };
 
 export default migrations;

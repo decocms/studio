@@ -199,6 +199,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.showLess": "Show less",
   "taskBoard.taskDialog.copyIdAriaLabel": "Copy task ID",
   "taskBoard.taskDialog.idCopied": "Task ID copied",
+  "taskBoard.taskDialog.openInTrackerAriaLabel": "Open the original issue",
   "taskBoard.taskDialog.shareAriaLabel": "Copy link to this task",
   "taskBoard.taskDialog.shareTitle": "Copy link",
   "taskBoard.taskDialog.linkCopied": "Link copied",

@@ -221,6 +221,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     sortOrder: 0,
     keySeq: 1,
     jiraIssueKey: null,
+    externalUrl: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],

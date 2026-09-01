@@ -1651,6 +1651,14 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** The card's issue in the tracker it came from (`{site}/browse/{KEY}`), for
+   *  a human to open. Written by the Jira pull; null for a card Studio owns.
+   *  Deliberately NOT in the description — see migration 198. */
+  external_url: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) — the
    *  import refreshes an OPEN item with the same key instead of duplicating
    *  it. Null for human-created cards. */
@@ -1982,6 +1990,9 @@ export interface TaskBoardItem {
   /** The key this card's issue wears in the tracker (`EX-333`), for a card that
    *  came from one — attached on reads, null for a card Studio owns. */
   jiraIssueKey: string | null;
+  /** Link to that issue in the tracker, for a human to open. Never part of the
+   *  description, which is quoted into agent prompts verbatim. */
+  externalUrl: string | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;

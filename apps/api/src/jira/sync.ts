@@ -309,17 +309,27 @@ function isCardIssue(issue: JiraIssue): boolean {
   return typeof level !== "number" || level === 0;
 }
 
+/**
+ * The issue's body as the card's description — the issue text and nothing else.
+ *
+ * The link to the issue used to lead this string, which put it in front of
+ * every agent run: `buildSuperAgentTaskPrompt` quotes the description verbatim.
+ * It rides `TaskBoardItem.externalUrl` now, where the UI can link it and the
+ * prompt never sees it.
+ */
 async function cardDescription(
-  siteUrl: string,
   issue: JiraIssue,
   users: JiraUserDirectory,
 ): Promise<string> {
   const body = issue.fields.description;
   const names = await users.resolve(collectMentionAccountIds(body));
-  const text = jiraBodyToText(body, names);
-  return `${siteUrl}/browse/${issue.key}\n\n${text}`
-    .trim()
-    .slice(0, MAX_DESCRIPTION_CHARS);
+  return jiraBodyToText(body, names).trim().slice(0, MAX_DESCRIPTION_CHARS);
+}
+
+/** Where a person opens this issue in Jira. `siteUrl` is normalized to
+ *  `https://<host>` on connect, so this is a plain join. */
+function issueUrl(siteUrl: string, issueKey: string): string {
+  return `${siteUrl}/browse/${issueKey}`;
 }
 
 function mapPriority(issue: JiraIssue): TaskBoardItemPriority {
@@ -708,7 +718,8 @@ async function runSync(
       const jiraSprint = pickIssueSprint(issue.sprints);
       const fields = {
         title: issue.fields.summary,
-        description: await cardDescription(integration.siteUrl, issue, users),
+        description: await cardDescription(issue, users),
+        externalUrl: issueUrl(integration.siteUrl, issue.key),
         priority: mapPriority(issue),
         // Asked of the board, not recomputed from the flag: one answer for
         // every writer, so a card cannot be guarded by one path and not by

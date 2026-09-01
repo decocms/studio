@@ -355,6 +355,7 @@ export interface StudioToolIO {
         sortOrder: number;
         keySeq: number | null;
         jiraIssueKey: string | null;
+        externalUrl: string | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
         threads: {
@@ -415,6 +416,7 @@ export interface StudioToolIO {
         sortOrder: number;
         keySeq: number | null;
         jiraIssueKey: string | null;
+        externalUrl: string | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
         threads: {
@@ -504,6 +506,7 @@ export interface StudioToolIO {
         sortOrder: number;
         keySeq: number | null;
         jiraIssueKey: string | null;
+        externalUrl: string | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
         threads: {
