@@ -477,6 +477,16 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.source": "Origem",
   "mainPanelTabs.cdnTab.devices": "Dispositivos",
   "mainPanelTabs.cdnTab.device": "Dispositivo",
+  "mainPanelTabs.cdnTab.requestsPerPageview": "Requisições / Pageview",
+  "mainPanelTabs.cdnTab.bandwidthPer10k": "Banda / 10k Pageviews",
+  "mainPanelTabs.cdnTab.usageSubtitle":
+    "Requisições e Pageviews (eixo esq.), Banda (eixo dir.)",
+  "mainPanelTabs.cdnTab.measureBy": "Medir por",
+  "mainPanelTabs.cdnTab.showAll": "Ver todos ({count})",
+  "mainPanelTabs.cdnTab.showLess": "Ver menos",
+  "mainPanelTabs.cdnTab.cacheStatusSubtitle": "Distribuição das respostas de cache",
+  "mainPanelTabs.cdnTab.statusCodesSubtitle":
+    "Distribuição dos status HTTP",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Biblioteca",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Visualização principal",

@@ -701,6 +701,12 @@ export const KEYS = {
   // collapsible section caches independently and refetches on range change.
   analyticsData: (org: string, site: string, view: string, range: string) =>
     ["hosting", org, site, "analytics-data", view, range] as const,
+  // CDN Monitor tab — one native CDN view (summary, timeline, cache-status, …)
+  // for a range, read straight from the stats-lake warehouse through the BFF at
+  // /api/:org/monitor/:site/cdn/data. Keyed by the request base + view + range
+  // so each panel caches independently and refetches on range change.
+  cdnData: (base: string, view: string, range: string) =>
+    ["monitor", base, "cdn-data", view, range] as const,
 
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,

@@ -458,6 +458,16 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.source": "Source",
   "mainPanelTabs.cdnTab.devices": "Devices",
   "mainPanelTabs.cdnTab.device": "Device",
+  "mainPanelTabs.cdnTab.requestsPerPageview": "Requests / Pageview",
+  "mainPanelTabs.cdnTab.bandwidthPer10k": "Bandwidth / 10k Pageviews",
+  "mainPanelTabs.cdnTab.usageSubtitle":
+    "Requests & Pageviews (left axis), Bandwidth (right axis)",
+  "mainPanelTabs.cdnTab.measureBy": "Measure by",
+  "mainPanelTabs.cdnTab.showAll": "Show all {count}",
+  "mainPanelTabs.cdnTab.showLess": "Show less",
+  "mainPanelTabs.cdnTab.cacheStatusSubtitle": "Distribution of cache responses",
+  "mainPanelTabs.cdnTab.statusCodesSubtitle":
+    "HTTP response status distribution",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Library",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Main view",

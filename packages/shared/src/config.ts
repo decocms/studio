@@ -63,6 +63,13 @@ export interface PublicConfig {
    * (`hosting_enabled` / `deco_analytics_enabled` / `e2e_enabled`).
    */
   hostingControlPlaneGa?: boolean;
+  /**
+   * Whether the native CDN Monitor tab is available (the stats-lake ClickHouse
+   * warehouse is wired). Independent of `hostingEnabled` — it reads the
+   * warehouse directly, not the control-plane. GA: any org that owns the site
+   * sees the tab, no internal flag.
+   */
+  monitorEnabled?: boolean;
   auth: AuthConfig;
   posthog: { key: string; host: string } | null;
   googleMapsApiKey: string | null;

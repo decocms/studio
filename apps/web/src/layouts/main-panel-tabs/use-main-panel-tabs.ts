@@ -186,6 +186,17 @@ export function useMainPanelTabs(ctx: {
   // Per-site Hosting tab: only surfaces when the deployment wired the
   // control-plane BFF proxy (public config `hostingEnabled`).
   const hostingEnabled = usePublicConfig().hostingEnabled === true;
+  // Native CDN Monitor tab: surfaces when the stats-lake warehouse is wired
+  // (public config `monitorEnabled`), independent of the control-plane. GA — no
+  // internal org flag — but still requires org ownership of the resolved site
+  // (`hostingOwned`, from the same `/access` probe), so a site the org doesn't
+  // own never shows it.
+  // Local dev opens the tab even without warehouse creds so the shell can be
+  // validated; it then renders its own "warehouse not wired" state. Mirrors how
+  // the control-plane tabs open in local mode (see useControlPlaneViews).
+  const monitorEnabled =
+    usePublicConfig().monitorEnabled === true ||
+    usePublicConfig().auth.localMode === true;
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -309,7 +320,10 @@ export function useMainPanelTabs(ctx: {
       if (!res.ok) return { owned: false, canWrite: false };
       return (await res.json()) as { owned: boolean; canWrite: boolean };
     },
-    enabled: hostingEnabled && !!siteSlug,
+    // The /access probe reads only `org_sites` (no control-plane), so it also
+    // gates the native CDN Monitor tab — fire it whenever EITHER the
+    // control-plane tabs or the CDN tab could surface.
+    enabled: (hostingEnabled || monitorEnabled) && !!siteSlug,
     staleTime: 60_000,
   });
   const hostingOwned = hostingAccessQuery.data?.owned === true;
@@ -448,6 +462,17 @@ export function useMainPanelTabs(ctx: {
         title: t("common.mainPanelTabs.analytics"),
       });
     }
+  }
+  // Native CDN Monitor tab — the first-class replacement for the old admin
+  // "Monitor" iframe. GA (no internal flag), gated only on the warehouse being
+  // wired (`monitorEnabled`) and org ownership of the site (`hostingOwned`).
+  // Independent of `hostingEnabled`: it reads the stats-lake warehouse directly,
+  // not the control-plane, so a deployment can offer CDN without hosting.
+  if (monitorEnabled && hostingOwned) {
+    systemTabs.push({
+      id: "cdn",
+      title: t("common.mainPanelTabs.cdn"),
+    });
   }
   if (gitTabVisible) {
     systemTabs.push({

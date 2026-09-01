@@ -7,6 +7,7 @@ import {
   Folder,
   GitBranch01,
   Globe01,
+  Globe02,
   Home02,
   LayoutAlt04,
   Lightning01,
@@ -35,6 +36,7 @@ export type SystemTabId =
   | "hosting"
   | "e2e"
   | "analytics"
+  | "cdn"
   | "git"
   | "files";
 
@@ -49,6 +51,7 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   hosting: Server01,
   e2e: CheckDone01,
   analytics: BarChartSquare02,
+  cdn: Globe02,
   git: GitBranch01,
   files: Folder,
 };

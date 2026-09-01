@@ -297,6 +297,7 @@ export const common = {
   "common.mainPanelTabs.hosting": "Hosting",
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.analytics": "Deco Analytics",
+  "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
   "common.openExternalFailed": "Could not open this link in your browser.",

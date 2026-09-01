@@ -21,6 +21,7 @@ import { AssetsTab } from "./assets-tab";
 import { HostingTab } from "./hosting-tab";
 import { E2eTab } from "./e2e-tab";
 import { AnalyticsTab } from "./analytics-tab";
+import { CdnTab } from "./cdn-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
@@ -40,6 +41,7 @@ import {
 } from "./tab-id";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
+import { usePublicConfig } from "@/hooks/use-public-config";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -65,6 +67,12 @@ function TabBody({
   >["automationTabParsed"];
 }) {
   const controlPlaneViews = useControlPlaneViews();
+  // Native CDN Monitor tab gate — GA (warehouse wired), independent of the
+  // control-plane. Ownership is enforced by the BFF; this only guards the
+  // deep-link `?main=cdn` against a deployment with no warehouse.
+  const monitorEnabled =
+    usePublicConfig().monitorEnabled === true ||
+    usePublicConfig().auth.localMode === true;
 
   // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
   // crash the active tab and exercise the ErrorBoundary recovery flow.
@@ -127,6 +135,9 @@ function TabBody({
   }
   if (activeTab === "analytics" && controlPlaneViews.analytics) {
     return <AnalyticsTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "cdn" && monitorEnabled) {
+    return <CdnTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {
     return <LibraryTab />;
