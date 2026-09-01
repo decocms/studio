@@ -676,6 +676,10 @@ export const KEYS = {
   // /api/:org/hosting/:site/e2e/runs.
   e2eRuns: (org: string, site: string) =>
     ["hosting", org, site, "e2e-runs"] as const,
+  // The site's DECLARED checks + their live phase (observed DecoE2E .status) —
+  // /api/:org/hosting/:site/e2e/checks. Distinct from e2eRuns (finished S3 runs).
+  e2eChecks: (org: string, site: string) =>
+    ["hosting", org, site, "e2e-checks"] as const,
   // The runnable check types (journey / pdp-check …) that populate the
   // Run-test picker — /api/:org/hosting/:site/e2e/types.
   e2eTypes: (org: string, site: string) =>

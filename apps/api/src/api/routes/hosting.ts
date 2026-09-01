@@ -403,6 +403,12 @@ export const createHostingRoutes = () => {
   // (`{ items: [{ id, label, description }] }`) that populate the Run-test picker.
   app.get("/:site/e2e/types", (c) => proxyControlplane(c, "e2e/types"));
 
+  // GET /api/:org/hosting/:site/e2e/checks — the DECLARED checks + their LIVE
+  // phase (`{ items: [{ subject, url, command, schedule, phase, updatedAt }] }`).
+  // Distinct from /e2e/runs (finished S3 runs): shows an in-flight check as
+  // pending/running the moment it is triggered, before any artifact exists.
+  app.get("/:site/e2e/checks", (c) => proxyControlplane(c, "e2e/checks"));
+
   // GET /api/:org/hosting/:site/e2e/runs  (?limit&offset passthrough)
   app.get("/:site/e2e/runs", (c) =>
     proxyControlplane(c, "e2e/runs", { forwardQuery: ["limit", "offset"] }),

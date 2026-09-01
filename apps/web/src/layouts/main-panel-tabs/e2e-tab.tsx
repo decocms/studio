@@ -76,7 +76,63 @@ interface E2eType {
   description?: string;
 }
 
+/** A declared check + its LIVE phase (observed DecoE2E `.status`). Distinct from a
+ *  finished S3 run — a check shows up here as pending/running immediately. */
+interface E2eCheck {
+  subject?: string;
+  url?: string;
+  command?: string;
+  schedule?: string | null;
+  phase?: string | null;
+  updatedAt?: string;
+}
+
 type Translate = ReturnType<typeof useT>;
+
+/** The schedule presets in the Run-test dialog. `"once"` is a sentinel (Radix
+ *  Select forbids an empty value) → sent as no schedule; the rest are cron. */
+const SCHEDULE_ONCE = "once";
+const SCHEDULE_PRESETS: Array<{
+  value: string;
+  labelKey: Parameters<Translate>[0];
+}> = [
+  { value: SCHEDULE_ONCE, labelKey: "mainPanelTabs.e2eTab.scheduleOnce" },
+  { value: "0 * * * *", labelKey: "mainPanelTabs.e2eTab.scheduleHourly" },
+  { value: "0 8 * * *", labelKey: "mainPanelTabs.e2eTab.scheduleDaily" },
+  { value: "0 8 * * 1", labelKey: "mainPanelTabs.e2eTab.scheduleWeekly" },
+];
+
+/** Map the observed DecoE2E phase to a badge. Phase = did the check RUN (not the
+ *  site's pass/fail — that verdict lives on the finished run). */
+function PhaseBadge({
+  phase,
+  t,
+}: {
+  phase: string | null | undefined;
+  t: Translate;
+}) {
+  const p = (phase ?? "").toLowerCase();
+  if (p === "running") {
+    return (
+      <Badge variant="warning">{t("mainPanelTabs.e2eTab.statusRunning")}</Badge>
+    );
+  }
+  if (p === "succeeded") {
+    return (
+      <Badge variant="secondary">{t("mainPanelTabs.e2eTab.phaseRan")}</Badge>
+    );
+  }
+  if (p === "failed") {
+    return (
+      <Badge variant="destructive">
+        {t("mainPanelTabs.e2eTab.phaseErrored")}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary">{t("mainPanelTabs.e2eTab.phasePending")}</Badge>
+  );
+}
 
 // --- helpers ----------------------------------------------------------------
 
@@ -255,6 +311,7 @@ function RunTestButton({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [command, setCommand] = useState<string>("");
+  const [schedule, setSchedule] = useState<string>(SCHEDULE_ONCE);
 
   // Types are fetched lazily — only once the dialog opens.
   const typesQuery = useQuery({
@@ -267,15 +324,26 @@ function RunTestButton({
   const types = list<E2eType>(typesQuery.data, "items");
 
   const runMutation = useMutation({
-    mutationFn: (cmd: string) =>
-      mutateJson(`${base}/e2e/runs`, "POST", { command: cmd }),
+    mutationFn: (input: { command: string; schedule: string }) => {
+      // The sentinel one-shot sends no schedule; a cron string makes it recurring.
+      const cron = input.schedule === SCHEDULE_ONCE ? "" : input.schedule;
+      return mutateJson(`${base}/e2e/runs`, "POST", {
+        command: input.command,
+        ...(cron ? { schedule: cron } : {}),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: KEYS.e2eRuns(orgSlug, site),
       });
+      // The check appears immediately (pending) — refresh the live Checks list.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.e2eChecks(orgSlug, site),
+      });
       toast.success(t("mainPanelTabs.e2eTab.toastRunQueued"));
       setOpen(false);
       setCommand("");
+      setSchedule(SCHEDULE_ONCE);
     },
     onError: (error) => toast.error(errorText(error)),
   });
@@ -341,6 +409,21 @@ function RunTestButton({
                 </p>
               )}
             </div>
+            <div className="flex flex-col gap-2">
+              <Label>{t("mainPanelTabs.e2eTab.scheduleLabel")}</Label>
+              <Select value={schedule} onValueChange={setSchedule}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCHEDULE_PRESETS.map((p) => (
+                    <SelectItem key={p.value || "once"} value={p.value}>
+                      {t(p.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -353,7 +436,9 @@ function RunTestButton({
             </Button>
             <Button
               type="button"
-              onClick={() => command && runMutation.mutate(command)}
+              onClick={() =>
+                command && runMutation.mutate({ command, schedule })
+              }
               disabled={!command || runMutation.isPending}
             >
               {runMutation.isPending
@@ -400,6 +485,93 @@ function E2eHelp() {
         </div>
       )}
     </div>
+  );
+}
+
+// --- checks (declared checks + live phase) ----------------------------------
+
+/** The site's DECLARED checks with their LIVE phase (observed DecoE2E `.status`).
+ *  Unlike the Runs table (finished S3 runs), a check shows up here as
+ *  pending/running the moment it is triggered. Polls while anything is in flight. */
+function ChecksSection({
+  base,
+  orgSlug,
+  site,
+  enabled,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  enabled: boolean;
+}) {
+  const t = useT();
+  const query = useQuery({
+    queryKey: KEYS.e2eChecks(orgSlug, site),
+    queryFn: () => fetchJson(`${base}/e2e/checks`),
+    enabled,
+    retry: false,
+    staleTime: 15_000,
+    // Poll while any check is still in flight so pending → running → ran updates live.
+    refetchInterval: (q) => {
+      const items = list<E2eCheck>(q.state.data, "items");
+      const inFlight = items.some((c) => {
+        const p = (c.phase ?? "").toLowerCase();
+        return p === "" || p === "running" || p === "pending";
+      });
+      return inFlight ? 5_000 : false;
+    },
+  });
+  const checks = list<E2eCheck>(query.data, "items");
+
+  return (
+    <Section
+      title={t("mainPanelTabs.e2eTab.checksSection")}
+      count={checks.length}
+    >
+      {query.isLoading ? (
+        <RowsSkeleton cols={5} />
+      ) : query.error ? (
+        <Muted>{t("mainPanelTabs.e2eTab.checksError")}</Muted>
+      ) : checks.length === 0 ? (
+        <EmptyState
+          icon={<CheckDone01 className="size-5" />}
+          title={t("mainPanelTabs.e2eTab.noChecks")}
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("mainPanelTabs.e2eTab.colStatus")}</TableHead>
+              <TableHead>{t("mainPanelTabs.e2eTab.colCommand")}</TableHead>
+              <TableHead>{t("mainPanelTabs.e2eTab.colSchedule")}</TableHead>
+              <TableHead>{t("mainPanelTabs.e2eTab.url")}</TableHead>
+              <TableHead>{t("mainPanelTabs.e2eTab.colUpdated")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {checks.map((c, i) => (
+              <TableRow key={`${c.subject ?? site}-${c.command ?? ""}-${i}`}>
+                <TableCell>
+                  <PhaseBadge phase={c.phase} t={t} />
+                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {c.command ?? "—"}
+                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {c.schedule ? c.schedule : "—"}
+                </TableCell>
+                <TableCell className="max-w-[220px] truncate font-mono text-xs text-muted-foreground">
+                  {c.url ?? "—"}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                  {timeAgo(c.updatedAt)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Section>
   );
 }
 
@@ -485,6 +657,13 @@ export function E2eTab({ virtualMcpId }: { virtualMcpId: string }) {
         </div>
 
         <E2eHelp />
+
+        <ChecksSection
+          base={base}
+          orgSlug={org.slug}
+          site={siteSlug}
+          enabled={enabled}
+        />
 
         <Section title={t("mainPanelTabs.e2eTab.runs")} count={runs.length}>
           {runsQuery.isLoading ? (
