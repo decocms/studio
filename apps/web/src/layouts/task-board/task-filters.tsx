@@ -6,7 +6,9 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
+import { useProjectContext } from "@/sdk/context/project-context.tsx";
 import { currentSprintId } from "@decocms/shared/sprints";
 import { parseTaskKeySeq } from "@decocms/shared/task-key";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
@@ -48,6 +50,7 @@ import {
   FilterLines,
   Repeat04,
   SearchSm,
+  Settings02,
   Tag01,
   User01,
   X,
@@ -864,6 +867,25 @@ function SearchToggle({
   );
 }
 
+/** Icon-only link to the board's settings page. */
+function BoardSettingsLink({ block }: { block?: boolean }) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const label = t("taskBoard.taskFilters.boardSettingsLabel");
+  return (
+    <Link
+      to="/$org/settings/task-board"
+      params={{ org: org.slug }}
+      aria-label={label}
+      title={label}
+      className={cn(chipClass(false, block), block && "justify-start")}
+    >
+      <Settings02 size={14} className="shrink-0" />
+      {block && <span>{label}</span>}
+    </Link>
+  );
+}
+
 /** The filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
@@ -925,6 +947,7 @@ function FilterControls({
       {/* Same reasoning as the repo control: an active sprint filter keeps its
           chip visible even when the board mirrors no sprints, so the hidden
           cards can be brought back. */}
+      <BoardSettingsLink block={block} />
       {(sprints.length > 0 || filters.sprint !== null) && (
         <SprintFilter
           block={block}
