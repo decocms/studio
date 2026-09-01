@@ -386,6 +386,15 @@ describe("ConnectionStorage", () => {
       expect(page2.items.every((c) => !page1Ids.has(c.id))).toBe(true);
     });
 
+    it("should return zero items for an explicit limit of 0, not the whole page", async () => {
+      const { items, totalCount } = await storage.list("org_123", {
+        limit: 0,
+        offset: 0,
+      });
+      expect(items).toHaveLength(0);
+      expect(totalCount).toBeGreaterThanOrEqual(3);
+    });
+
     it("should return correct totalCount with filters", async () => {
       const { totalCount } = await storage.list("org_123", {
         where: { field: ["connection_type"], operator: "eq", value: "HTTP" },
