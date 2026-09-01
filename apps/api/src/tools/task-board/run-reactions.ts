@@ -31,7 +31,13 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
-import { type BoardLanes, boardCan, boardLanes } from "./board-handler";
+import {
+  type BoardLanes,
+  boardCan,
+  boardFor,
+  boardLanes,
+  canAdvance,
+} from "./board-handler";
 import { extractPrFromValue } from "./pr-extract";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -158,20 +164,28 @@ export async function advanceTaskBoardForRun(
   const orgId = ctx.organization?.id;
   if (!orgId) return;
   try {
-    const status = (await boardLanes(ctx, orgId))[lane];
+    const board = await boardFor(ctx, orgId);
+    const [columns, lanes] = await Promise.all([
+      board.columns(),
+      board.lanes(),
+    ]);
+    const status = lanes[lane];
     // Null: this board has no column meaning `lane`, so there is nowhere to go.
     if (!status) return;
     for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
       const current = await ctx.storage.taskBoard.getById(itemId, orgId);
-      // ponytail: read-then-write rank guard. A single run's transitions are
-      // sequential, so the race window is negligible; it buys idempotency (a
-      // repeated PR tool call, or in_progress re-fired on a DBOS retry, won't
-      // regress a card that's already further along). A status with no rank is
-      // a column Studio did not define, and inventing an order for someone
-      // else's columns would be worse than not guarding.
-      const to = laneRank(status);
-      const from = laneRank(current?.status ?? "");
-      if (!current || (to !== null && from !== null && to <= from)) continue;
+      if (!current) continue;
+      // ponytail: read-then-write guard, ordered by the board's own columns. A
+      // single run's transitions are sequential, so the race window is
+      // negligible; it buys idempotency — a repeated PR tool call, or a run
+      // start re-fired on a DBOS retry, must not drag a card that is already
+      // further right back to this lane.
+      if (
+        current.status === status ||
+        !canAdvance(columns, current.status, status)
+      ) {
+        continue;
+      }
       const item = await ctx.storage.taskBoard.update(
         itemId,
         orgId,
