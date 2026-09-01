@@ -440,7 +440,7 @@ export function isTransientProviderRejection(message: string): boolean {
   if (!Number.isInteger(status)) return true;
   // 408/429 are the 4xx that mean "ask again", not "you asked wrong".
   if (status === 408 || status === 429) return true;
-  return !(status >= 400 && status < 500);
+  return status >= 500 && status < 600;
 }
 
 /**

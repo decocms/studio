@@ -51,9 +51,17 @@ export function classifyStreamError(
   | "tool_error"
   | "unknown" {
   if (error instanceof Error && error.name === "AbortError") return "aborted";
-  const msg = (
-    error instanceof Error ? error.message : stringifyError(error)
-  ).toLowerCase();
+  // Both halves: the upstream detail is what distinguishes a relayed rate
+  // limit or auth failure from a plain model error, and the relay's own
+  // wording ("provider returned error") is what keeps an unrecognised detail
+  // classified as `model_error` rather than `unknown`.
+  const msg = [
+    upstreamProviderError(error),
+    error instanceof Error ? error.message : stringifyError(error),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
   if (
     /insufficient|no credits|out of credits|balance|payment|quota exceeded|key limit|402/i.test(
       msg,
@@ -90,9 +98,14 @@ export function classifyStreamError(
  */
 export function upstreamProviderError(error: unknown): string | null {
   if (typeof error !== "object" || error === null) return null;
+  // `responseBody` first, not `data`: the AI SDK builds `data` by zod-parsing
+  // the body against the provider's error schema, and neither the OpenAI nor
+  // the Anthropic schema declares `metadata` — so zod strips exactly the field
+  // we came for. `data` stays a fallback for a provider whose schema passes
+  // unknown keys through.
   const body =
-    (error as { responseBody?: unknown; data?: unknown }).data ??
-    (error as { responseBody?: unknown }).responseBody;
+    (error as { responseBody?: unknown }).responseBody ??
+    (error as { data?: unknown }).data;
   const parsed = typeof body === "string" ? safeParse(body) : body;
   if (typeof parsed !== "object" || parsed === null) return null;
   const outer = parsed as {
@@ -123,11 +136,25 @@ function safeParse(text: string): unknown {
 
 /**
  * The upstream's own message out of `metadata.raw`, which is that provider's
- * verbatim error body — JSON on the blocking route, and a single `data: {...}`
- * SSE frame when the request was streaming.
+ * verbatim error body — plain JSON on the blocking route, and an SSE body when
+ * the request was streaming. That SSE body is not always the one bare
+ * `data: {...}` line: it can carry `event:`/`id:` lines around it, or several
+ * frames. Try each `data:` frame and take the first that names a message,
+ * falling back to treating the whole raw as JSON.
  */
 function upstreamMessage(raw: string): string | null {
-  const parsed = safeParse(raw.trim().replace(/^data:\s*/, ""));
+  const frames = raw
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s*/, ""));
+  for (const candidate of frames.length > 0 ? frames : [raw.trim()]) {
+    const message = messageOf(safeParse(candidate));
+    if (message) return message;
+  }
+  return null;
+}
+
+function messageOf(parsed: unknown): string | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   const obj = parsed as { error?: { message?: unknown }; message?: unknown };
   const message = obj.error?.message ?? obj.message;

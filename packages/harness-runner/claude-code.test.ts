@@ -413,6 +413,9 @@ describe("isTransientProviderRejection", () => {
     expect(
       isTransientProviderRejection("API Error: 429 Provider returned error"),
     ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 408 Provider returned error"),
+    ).toBe(true);
   });
 
   // Inverts the previous "whatever the status" case: OpenRouter now flattens a
@@ -429,6 +432,15 @@ describe("isTransientProviderRejection", () => {
 
   test("an unparseable status keeps the benefit of the doubt", () => {
     expect(isTransientProviderRejection("Provider returned error")).toBe(true);
+  });
+
+  test("only a 5xx retries — a 2xx/3xx relay is not a server failure", () => {
+    expect(
+      isTransientProviderRejection("API Error: 302 Provider returned error"),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("API Error: 200 Provider returned error"),
+    ).toBe(false);
   });
 
   test("a 400 that describes the request stays fatal", () => {

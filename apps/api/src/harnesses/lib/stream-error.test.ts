@@ -184,10 +184,64 @@ describe("upstreamProviderError", () => {
     expect(upstreamProviderError(error)).toBeNull();
   });
 
+  it("reads a multi-line SSE body, not just a lone `data:` frame", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: JSON.stringify({
+        error: {
+          message: "Provider returned error",
+          metadata: {
+            provider_name: "Google Vertex",
+            raw:
+              "event: error\n" +
+              'data: {"error":{"message":"Publisher Model is not found."}}\n\n',
+          },
+        },
+      }),
+    });
+    expect(upstreamProviderError(error)).toBe(
+      "[Google Vertex] Publisher Model is not found.",
+    );
+  });
+
+  it("prefers the raw responseBody — the SDK's parsed `data` strips metadata", () => {
+    // Exactly what the AI SDK produces: `data` is the body zod-parsed against
+    // the provider's error schema, which does not declare `metadata`.
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: openaiRouteBody,
+      data: { error: { message: "Provider returned error", code: 400 } },
+      statusCode: 400,
+    });
+    expect(upstreamProviderError(error)).toStartWith("[Alibaba] 'messages'");
+  });
+
   it("ignores errors that carry no response body", () => {
     expect(upstreamProviderError(new Error("boom"))).toBeNull();
     expect(upstreamProviderError("boom")).toBeNull();
     expect(upstreamProviderError(null)).toBeNull();
+  });
+
+  it("classifies on the upstream detail, so a relayed 429 is a rate limit", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: JSON.stringify({
+        error: {
+          message: "Provider returned error",
+          metadata: {
+            provider_name: "Anthropic",
+            raw: JSON.stringify({
+              error: { message: "rate limit exceeded, please retry" },
+            }),
+          },
+        },
+      }),
+    });
+    expect(classifyStreamError(error)).toBe("rate_limit");
+  });
+
+  it("still classifies an unrecognised relayed detail as model_error", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: openaiRouteBody,
+    });
+    expect(classifyStreamError(error)).toBe("model_error");
   });
 
   it("stringifyError surfaces it, so the pod log names the culprit", () => {
