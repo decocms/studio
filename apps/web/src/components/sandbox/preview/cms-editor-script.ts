@@ -115,7 +115,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   // Resolve to the OUTERMOST page-level section (clicking nested content still
   // maps to the top-level section the panel indexes); null if it isn't in the
   // aligned editable set (a framework section deco injected).
-  var findSection = function(el) {
+  var findSection = function(el, out) {
     var node = el;
     var found = null;
     while (node && node !== document.body) {
@@ -125,7 +125,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       node = node.parentElement;
     }
     if (!found) return null;
-    return getAllSections().indexOf(found) >= 0 ? found : null;
+    var sections = getAllSections();
+    if (out) out.sections = sections;
+    return sections.indexOf(found) >= 0 ? found : null;
   };
 
   // A Lazy wrapper's key is just the loader — show the inner section's instead.
@@ -150,13 +152,13 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   // global inside async rendering); kinds: section type that drives the color.
   var sectionLabels = [];
   var sectionKinds = [];
-  var labelFor = function(section) {
-    var idx = getAllSections().indexOf(section);
+  var labelFor = function(section, sections) {
+    var idx = (sections || getAllSections()).indexOf(section);
     if (idx >= 0 && sectionLabels[idx]) return sectionLabels[idx];
     return displayKey(section);
   };
-  var kindFor = function(section) {
-    var idx = getAllSections().indexOf(section);
+  var kindFor = function(section, sections) {
+    var idx = (sections || getAllSections()).indexOf(section);
     return (idx >= 0 && sectionKinds[idx]) || "normal";
   };
 
@@ -204,7 +206,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     requestAnimationFrame(function() {
       rafPending = false;
       if (!target || target === highlight || target === badge) return;
-      var section = findSection(target);
+      var out = {};
+      var section = findSection(target, out);
       if (section === lastSection) return;
       lastSection = section;
       if (!section) {
@@ -212,8 +215,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
         badge.style.display = "none";
         return;
       }
-      lastLabel = labelFor(section);
-      lastKind = kindFor(section);
+      lastLabel = labelFor(section, out.sections);
+      lastKind = kindFor(section, out.sections);
       applyColor(lastKind);
       positionHighlight(section);
     });
@@ -251,11 +254,11 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var clickHandler = function(e) {
     var target = e.target;
     if (!target || target === highlight || target === badge) return;
-    var section = findSection(target);
+    var out = {};
+    var section = findSection(target, out);
     if (!section) return;
 
-    var sections = getAllSections();
-    var sectionIndex = sections.indexOf(section);
+    var sectionIndex = out.sections.indexOf(section);
     var manifestKey = section.getAttribute("data-manifest-key") || "";
 
     var c = COLORS[lastKind] || COLORS.normal;
