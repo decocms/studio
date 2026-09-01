@@ -38,19 +38,13 @@ export function TaskSystemPromptSettings() {
   }
 
   return (
-    <SettingsSection
-      title={t("settings.taskPrompt.title")}
-      description={t("settings.taskPrompt.description")}
-    >
+    <SettingsSection title={t("settings.taskPrompt.title")}>
       <SettingsCard>
-        <SettingsCardItem
-          title={t("settings.taskPrompt.fieldLabel")}
-          description={t("settings.taskPrompt.fieldDescription")}
-        >
+        <SettingsCardItem title={t("settings.taskPrompt.fieldLabel")}>
           {isPending ? (
-            <Skeleton className="h-28 w-full mt-3" />
+            <Skeleton className="h-28 w-full" />
           ) : (
-            <div className="flex flex-col items-start gap-2 mt-3">
+            <div className="flex flex-col items-start gap-2">
               <Textarea
                 value={draft}
                 rows={6}
