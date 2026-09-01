@@ -51,14 +51,27 @@ export const settings = {
     "As colunas do seu board vêm do Jira. Diga ao Studio qual delas é onde a revisão acontece, e qual arquiva um card — a maioria não significa nada pra ele, e tudo bem.",
   "settings.boardColumns.title": "Colunas do board",
   "settings.boardColumns.description":
-    "As colunas são do seu tracker. Aqui você diz o que cada uma significa pro Studio, e quais delas iniciam o agente.",
+    "As colunas são do seu tracker. Diga o que deve mover um card para cada uma, e quais delas devem colocar o agente para trabalhar.",
   "settings.boardColumns.fieldLabel": "Colunas",
   "settings.boardColumns.fieldDescription":
-    "Um significado é onde o agente coloca o card, não um gatilho. Só o botão inicia alguma coisa.",
+    "Mover o card para cá é algo que o Studio faz com ele. Rodar o agente é algo que o card faz ao chegar.",
+  "settings.boardColumns.moveHereWhen": "Mover cards para cá quando",
+  "settings.boardColumns.whenNever": "Nunca — eu movo na mão",
+  "settings.boardColumns.whenAgentStarts": "O agente começar a trabalhar nele",
+  "settings.boardColumns.whenAgentFinishes":
+    "O agente terminar e precisar de uma pessoa",
+  "settings.boardColumns.whenWorkShipped":
+    "O trabalho tiver subido e assentado",
+  "settings.boardColumns.whenAgentGivesUp": "O agente desistir dele",
+  "settings.boardColumns.addAutomation":
+    "Rodar o agente nos cards que chegarem aqui",
+  "settings.boardColumns.automationOn": "O agente roda em todo card que chega",
   "settings.boardColumns.promptPlaceholder":
-    "O que o agente deve fazer aqui (opcional)",
-  "settings.boardColumns.toggleAriaLabel":
-    "Rodar o agente em cards que chegam em {column}",
+    "Revise o diff e deixe comentários…",
+  "settings.boardColumns.promptHelp":
+    "Opcional. O título e a descrição do card sempre vão junto, então isto é a instrução, não a mensagem inteira.",
+  "settings.boardColumns.removeAriaLabel":
+    "Parar de rodar o agente em {column}",
   "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",
   "settings.jira.roleNone": "Nada em especial",
   "settings.jira.roleQueued": "Pra onde volta se o agente desistir",

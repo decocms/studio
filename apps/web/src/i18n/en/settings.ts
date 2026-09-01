@@ -49,14 +49,26 @@ export const settings = {
     "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
   "settings.boardColumns.title": "Board columns",
   "settings.boardColumns.description":
-    "Your tracker owns the columns. This is what each one means to Studio, and which of them start the agent.",
+    "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
   "settings.boardColumns.fieldLabel": "Columns",
   "settings.boardColumns.fieldDescription":
-    "A meaning is a place the agent puts a card, not a trigger. Only the switch starts anything.",
+    "Moving a card here is something Studio does to it. Running the agent is something the card does when it arrives.",
+  "settings.boardColumns.moveHereWhen": "Move cards here when",
+  "settings.boardColumns.whenNever": "Never — I move them myself",
+  "settings.boardColumns.whenAgentStarts": "The agent starts working on it",
+  "settings.boardColumns.whenAgentFinishes":
+    "The agent is done and needs a person",
+  "settings.boardColumns.whenWorkShipped": "The work has shipped and settled",
+  "settings.boardColumns.whenAgentGivesUp": "The agent gave up on it",
+  "settings.boardColumns.addAutomation":
+    "Run the agent on cards that arrive here",
+  "settings.boardColumns.automationOn":
+    "The agent runs on every card that arrives",
   "settings.boardColumns.promptPlaceholder":
-    "What the agent should do here (optional)",
-  "settings.boardColumns.toggleAriaLabel":
-    "Run the agent on cards landing in {column}",
+    "Review the diff and leave comments…",
+  "settings.boardColumns.promptHelp":
+    "Optional. The card's title and description always come with it, so this is the instruction, not the whole message.",
+  "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
   "settings.boardColumns.saveFailed": "Could not save this column",
   "settings.jira.roleNone": "Nothing special",
   "settings.jira.roleQueued": "Where the agent gives up",

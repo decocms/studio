@@ -2,23 +2,28 @@
  * Settings → Tasks → "Board columns", for a board whose columns are the org's
  * own.
  *
- * One row per column, answering both questions a column raises at once: what
- * it MEANS to Studio, and whether a card arriving there starts the agent.
- * These were two sections listing the same columns, which read as two settings
- * when they are two halves of one.
+ * One card per column, answering the two questions a column raises, in the
+ * words of what actually happens rather than in the words of the schema:
  *
- * The distinction the rows have to carry: a meaning is a PLACE the lifecycle
- * puts a card, and only the toggle starts anything. Nothing in the meaning
- * column runs an agent, however much "queued" sounds like it.
+ *   "Move cards here when …"   — the column's role, phrased as the EVENT we
+ *                                detect, because that is what a person is
+ *                                choosing. A role is a destination, never a
+ *                                trigger, and naming it after the event is
+ *                                what keeps that from reading backwards.
+ *   "Run the agent …"          — an automation you add and delete, not a
+ *                                switch. Adding it opens the instruction box;
+ *                                deleting it is how you turn it off, which is
+ *                                also literally what the storage does.
  *
- * Studio's own board has no section here at all — its lifecycle is decided,
- * and offering the same switches per canonical lane would invite a team to
- * turn off what makes the board work.
+ * Studio's own board has no section here — its lifecycle is decided, and
+ * offering the same choices per canonical lane would invite a team to turn off
+ * what makes the board work.
  */
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Input } from "@decocms/ui/components/input.tsx";
+import { Plus, Trash01 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Select,
   SelectContent,
@@ -27,7 +32,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Switch } from "@decocms/ui/components/switch.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -43,16 +48,16 @@ import {
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useT } from "@/i18n/use-t.ts";
 
-/** No meaning — the honest default for a column nobody has told us about. */
-const NO_ROLE = "__none__";
+/** Nothing moves a card here on its own. */
+const NO_TRIGGER = "__none__";
 
-/** Every meaning a column can carry, each one a PLACE in the agent's
- *  lifecycle. Ordered the way work flows, so the list reads as a sequence. */
-const ROLES: { value: string; labelKey: TranslationKey }[] = [
-  { value: "in_progress", labelKey: "settings.jira.roleInProgress" },
-  { value: "in_review", labelKey: "settings.jira.roleInReview" },
-  { value: "archived", labelKey: "settings.jira.roleArchived" },
-  { value: "todo", labelKey: "settings.jira.roleQueued" },
+/** Each role, named by the moment Studio detects — which is the thing being
+ *  chosen. Ordered the way work flows, so the list reads as a sequence. */
+const TRIGGERS: { value: string; labelKey: TranslationKey }[] = [
+  { value: "in_progress", labelKey: "settings.boardColumns.whenAgentStarts" },
+  { value: "in_review", labelKey: "settings.boardColumns.whenAgentFinishes" },
+  { value: "archived", labelKey: "settings.boardColumns.whenWorkShipped" },
+  { value: "todo", labelKey: "settings.boardColumns.whenAgentGivesUp" },
 ];
 
 export function BoardColumnSettings() {
@@ -81,7 +86,7 @@ function BoardColumnRows() {
   const { columns, isLoading } = useTaskBoardItems();
   const { automations, isPending } = useColumnAutomations();
 
-  if (isLoading || isPending) return <Skeleton className="h-32 w-full" />;
+  if (isLoading || isPending) return <Skeleton className="h-40 w-full" />;
   if (columns.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -93,14 +98,14 @@ function BoardColumnRows() {
   const promptOf = new Map(automations.map((a) => [a.columnKey, a.prompt]));
 
   return (
-    <div className="flex w-full flex-col">
+    <div className="flex w-full flex-col gap-3">
       {columns.map((column) => (
-        <BoardColumnRow
+        <BoardColumnCard
           key={column.key}
           columnKey={column.key}
           title={column.title}
-          role={column.role}
-          runsAgent={promptOf.has(column.key)}
+          trigger={column.role}
+          hasAutomation={promptOf.has(column.key)}
           prompt={promptOf.get(column.key) ?? null}
         />
       ))}
@@ -108,19 +113,20 @@ function BoardColumnRows() {
   );
 }
 
-/** `prompt` null with `runsAgent` true means the rule is on with the agent's
- *  own instruction; the column is absent from `automations` when it is off. */
-function BoardColumnRow({
+/** `prompt` null with `hasAutomation` true means the rule runs on the agent's
+ *  own instruction; the column is absent from `automations` when there is no
+ *  rule at all. */
+function BoardColumnCard({
   columnKey,
   title,
-  role,
-  runsAgent,
+  trigger,
+  hasAutomation,
   prompt,
 }: {
   columnKey: string;
   title: string;
-  role: string | null;
-  runsAgent: boolean;
+  trigger: string | null;
+  hasAutomation: boolean;
   prompt: string | null;
 }) {
   const t = useT();
@@ -134,60 +140,84 @@ function BoardColumnRow({
     setDraft(prompt ?? "");
   }
 
+  const failed = () => toast.error(t("settings.boardColumns.saveFailed"));
   const saveAutomation = (next: string | null) =>
-    setAutomation.mutate(
-      { columnKey, prompt: next },
-      { onError: () => toast.error(t("settings.boardColumns.saveFailed")) },
-    );
+    setAutomation.mutate({ columnKey, prompt: next }, { onError: failed });
 
   return (
-    <div className="flex flex-col gap-2 border-b border-border/60 py-3 last:border-b-0">
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
+    <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
+      <span className="truncate text-sm font-medium">{title}</span>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">
+          {t("settings.boardColumns.moveHereWhen")}
+        </span>
         <Select
-          value={role ?? NO_ROLE}
+          value={trigger ?? NO_TRIGGER}
           onValueChange={(value) =>
             setRole.mutate(
-              { columnKey, role: value === NO_ROLE ? null : value },
-              {
-                onError: () =>
-                  toast.error(t("settings.boardColumns.saveFailed")),
-              },
+              { columnKey, role: value === NO_TRIGGER ? null : value },
+              { onError: failed },
             )
           }
         >
-          <SelectTrigger className="w-44 shrink-0">
+          <SelectTrigger className="w-64">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_ROLE}>
-              {t("settings.jira.roleNone")}
+            <SelectItem value={NO_TRIGGER}>
+              {t("settings.boardColumns.whenNever")}
             </SelectItem>
-            {ROLES.map((option) => (
+            {TRIGGERS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {t(option.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Switch
-          checked={runsAgent}
-          aria-label={t("settings.boardColumns.toggleAriaLabel", {
-            column: title,
-          })}
-          onCheckedChange={(next) => saveAutomation(next ? draft : null)}
-        />
       </div>
-      {runsAgent && (
-        <Input
-          value={draft}
-          placeholder={t("settings.boardColumns.promptPlaceholder")}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            if (draft !== (prompt ?? "")) saveAutomation(draft);
-          }}
-          data-column-automation-prompt={columnKey}
-        />
+
+      {hasAutomation ? (
+        <div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium">
+              {t("settings.boardColumns.automationOn")}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t("settings.boardColumns.removeAriaLabel", {
+                column: title,
+              })}
+              onClick={() => saveAutomation(null)}
+            >
+              <Trash01 size={14} />
+            </Button>
+          </div>
+          <Textarea
+            value={draft}
+            rows={2}
+            placeholder={t("settings.boardColumns.promptPlaceholder")}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              if (draft !== (prompt ?? "")) saveAutomation(draft);
+            }}
+            data-column-automation-prompt={columnKey}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("settings.boardColumns.promptHelp")}
+          </p>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={() => saveAutomation("")}
+        >
+          <Plus size={14} />
+          {t("settings.boardColumns.addAutomation")}
+        </Button>
       )}
     </div>
   );

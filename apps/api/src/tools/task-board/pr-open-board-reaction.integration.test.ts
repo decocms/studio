@@ -20,6 +20,23 @@ import {
 } from "./pr-open-board-reaction";
 
 /** Studio's own board, which is what these fixtures run on. */
+const CANON_COLUMNS = [
+  "triage",
+  "todo",
+  "in_progress",
+  "in_review",
+  "approved",
+  "merged",
+  "post_deploy_validation",
+  "done",
+  "archived",
+].map((key, position) => ({
+  key,
+  title: key,
+  position,
+  role: key,
+  trackerStatuses: [],
+}));
 const CANON_LANES = {
   intake: "triage",
   queue: "todo",
@@ -60,6 +77,7 @@ describe("applyBoardDecision", () => {
       threadId: thread,
       pr: PR,
       lanes: CANON_LANES,
+      columns: CANON_COLUMNS,
       decision,
       openCards,
     });

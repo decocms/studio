@@ -14,7 +14,14 @@
  */
 
 import { generateObject } from "ai";
-import { type BoardLanes, boardCan, boardLanes } from "./board-handler";
+import type { BoardColumn } from "@decocms/shared/task-board";
+import {
+  type BoardLanes,
+  boardCan,
+  boardColumnsOf,
+  boardLanes,
+  canAdvance,
+} from "./board-handler";
 import { z } from "zod";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -23,15 +30,6 @@ import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
-
-/** Statuses from which a PR-open may put a card into the review phase. Terminal
- *  lanes (and in_review itself) are left alone so a re-opened PR never regresses
- *  a finished card. */
-const ADVANCEABLE: ReadonlySet<string> = new Set([
-  "triage",
-  "todo",
-  "in_progress",
-]);
 
 export interface BoardDecision {
   action: "create" | "update";
@@ -136,9 +134,13 @@ export async function applyBoardDecision(
     openCards: TaskBoardItem[];
     /** This org's board lanes. */
     lanes: BoardLanes;
+    /** Its columns, in the board's own order — what decides whether a card has
+     *  already got past the lane a PR-open would move it to. */
+    columns: readonly BoardColumn[];
   },
 ): Promise<TaskBoardItem | null> {
-  const { orgId, userId, threadId, pr, decision, openCards, lanes } = params;
+  const { orgId, userId, threadId, pr, decision, openCards, lanes, columns } =
+    params;
 
   const linkPr = (taskBoardItemId: string) =>
     storage.linkPr({
@@ -167,13 +169,12 @@ export async function applyBoardDecision(
     // The LANE, not a boolean: `boardCan` narrows `progressLane` inside this
     // expression, and a boolean would not carry that to the write below.
     const advanceTo =
-      ADVANCEABLE.has(target.status) &&
       boardCan(
         orgId,
         "in_progress",
         progressLane,
         "moving a card when its PR opens",
-      )
+      ) && canAdvance(columns, target.status, progressLane)
         ? progressLane
         : null;
     const advancing = advanceTo !== null;
@@ -266,6 +267,7 @@ export async function reactToPrOpenedForBoard(
 
     await applyBoardDecision(ctx.storage.taskBoard, {
       lanes: await boardLanes(ctx, orgId),
+      columns: await boardColumnsOf(ctx, orgId),
       orgId,
       userId,
       threadId,
