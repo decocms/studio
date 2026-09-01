@@ -88,6 +88,10 @@ Para usar as opções locais, abra a app nativa do Studio. O `local-api` embutid
   Cloud é o padrão certo para execuções sem supervisão e para colegas de time que não deveriam precisar de uma configuração local. Recorra à app desktop quando o agent precisar da sua máquina — seus arquivos, suas credenciais ou um coding harness como Claude Code, Codex ou OpenCode.
 </Callout>
 
+## Windows
+
+O daemon roda nativamente no Windows com um pré-requisito: **[Git for Windows](https://gitforwindows.org)** — ele fornece tanto o `git` quanto o shell bash usado para rodar os scripts de dev do seu projeto. Se o daemon reportar "POSIX shell (sh) not found", instale o Git for Windows ou defina a variável de ambiente `DECO_SHELL` para um shell compatível com bash. O WSL2 continua sendo uma alternativa totalmente suportada. Montagens de arquivos da org ainda não estão disponíveis no Windows.
+
 ## Um agent é um MCP virtual
 
 Cada agent no Studio é exposto como seu próprio **endpoint MCP**: um pacote curado de tools, resources e instruções ao qual qualquer client compatível com MCP pode se conectar. Você pode pensar em um agent como um "MCP server virtual" que você monta visualmente — escolha algumas tools das suas connections, adicione instruções, e você publicou um endpoint MCP focado que seu time (ou seus outros agents) pode usar.
