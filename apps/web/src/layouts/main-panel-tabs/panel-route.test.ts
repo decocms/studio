@@ -8,6 +8,7 @@ import {
 } from "./panel-route";
 import {
   FIXED_SYSTEM_TABS,
+  GATED_CONTROL_PLANE_TABS,
   formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
@@ -112,7 +113,10 @@ describe("resolveChatSegments", () => {
    */
   test("every fixed segment the app writes is recoverable as a lone one", () => {
     for (const tabId of EVERY_TAB_ID) {
-      if (tabId === "analytics") continue;
+      // Gated per-site tabs (hosting/e2e/analytics/cdn) are deliberately NOT
+      // lone-recoverable — they always carry a project — so they are excluded
+      // from the known-segment set. See the gated-tab test below.
+      if (GATED_CONTROL_PLANE_TABS.has(tabId)) continue;
       const { panel } = panelLocationForTab(tabId);
       expect({ tabId, known: isKnownPanelSegment(panel) }).toEqual({
         tabId,
@@ -160,10 +164,36 @@ describe("resolveChatSegments", () => {
   });
 
   test("an agent-declared tab id is not a lone panel word", () => {
-    expect(isKnownPanelSegment("analytics")).toBe(false);
-    expect(resolveChatSegments({ project: "analytics" })).toEqual({
-      project: "analytics",
+    // A custom, project-declared view id is never a lone panel word — it always
+    // names the project too, so a bare segment resolves to a project.
+    expect(isKnownPanelSegment("my-custom-view")).toBe(false);
+    expect(resolveChatSegments({ project: "my-custom-view" })).toEqual({
+      project: "my-custom-view",
       panel: undefined,
     });
+  });
+
+  test("GATED_CONTROL_PLANE_TABS is a subset of FIXED_SYSTEM_TABS", () => {
+    // The two must stay in sync: KNOWN_PANEL_SEGMENTS excludes the gated set from
+    // the fixed set, so a gated id that isn't actually a fixed system tab (or a
+    // new fixed tab that should be gated but isn't added here) would silently
+    // regress the lone-segment project-resolution fix.
+    const fixed = new Set<string>(FIXED_SYSTEM_TABS);
+    for (const tab of GATED_CONTROL_PLANE_TABS) {
+      expect({ tab, inFixed: fixed.has(tab) }).toEqual({ tab, inFixed: true });
+    }
+  });
+
+  test("a gated control-plane tab id is not a lone panel word", () => {
+    // Hosting/E2E/Analytics/Monitor are per-site, org-gated tabs that only ever
+    // appear with a project — they must stay OUT of the known-panel-segment set
+    // so a project whose slug is one of these words is still navigable.
+    for (const tab of ["hosting", "e2e", "analytics", "cdn"]) {
+      expect(isKnownPanelSegment(tab)).toBe(false);
+      expect(resolveChatSegments({ project: tab })).toEqual({
+        project: tab,
+        panel: undefined,
+      });
+    }
   });
 });

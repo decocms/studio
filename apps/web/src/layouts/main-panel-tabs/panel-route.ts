@@ -46,6 +46,7 @@
 
 import {
   FIXED_SYSTEM_TABS,
+  GATED_CONTROL_PLANE_TABS,
   formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
@@ -113,7 +114,10 @@ export function clearPanelPayload(): PanelPayload {
  * project too.
  */
 const KNOWN_PANEL_SEGMENTS: ReadonlySet<string> = new Set<string>([
-  ...FIXED_SYSTEM_TABS,
+  // Gated, per-site control-plane tabs are excluded: they always appear with a
+  // project, so a lone `/agents/<segment>` naming one of them is a project, not
+  // a panel word (otherwise a project slugged "hosting"/"analytics"/etc. breaks).
+  ...FIXED_SYSTEM_TABS.filter((tab) => !GATED_CONTROL_PLANE_TABS.has(tab)),
   ...OVERLAY_TABS,
   "app",
   "file",

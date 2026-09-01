@@ -183,10 +183,29 @@ export const FIXED_SYSTEM_TABS = [
   "code",
   "content",
   "assets",
+  "hosting",
+  "e2e",
+  "analytics",
+  "cdn",
   "git",
 ] as const;
 
 const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
+
+/**
+ * Per-site, org/flag-gated tabs (Hosting · E2E · Deco Analytics · Monitor).
+ * Unlike the other fixed system tabs they are not available to every project,
+ * and they only ever appear alongside a project (never as a lone
+ * `/agents/<segment>` word), so they must be EXCLUDED from the global
+ * known-panel-segment set — otherwise a project whose slug is one of these words
+ * stops resolving as a project. See `panel-route.ts`.
+ */
+export const GATED_CONTROL_PLANE_TABS = new Set<string>([
+  "hosting",
+  "e2e",
+  "analytics",
+  "cdn",
+]);
 
 // Agent-independent overlays (Tasks `board`, Library `files`, the commerce
 // report's `connect-sources`, the empty `reports`) take over the panel and aren't

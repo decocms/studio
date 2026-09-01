@@ -131,6 +131,10 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            hosting_enabled?: boolean | undefined;
+            deco_analytics_enabled?: boolean | undefined;
+            e2e_enabled?: boolean | undefined;
+            monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }
@@ -205,6 +209,10 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            hosting_enabled?: boolean | undefined;
+            deco_analytics_enabled?: boolean | undefined;
+            e2e_enabled?: boolean | undefined;
+            monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }
@@ -279,6 +287,10 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            hosting_enabled?: boolean | undefined;
+            deco_analytics_enabled?: boolean | undefined;
+            e2e_enabled?: boolean | undefined;
+            monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }
