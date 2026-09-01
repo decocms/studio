@@ -25,6 +25,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,10 +102,13 @@ function skillOrigin(source: string, orgName: string) {
  */
 function SkillCard({
   entry,
+  pending,
   onOpen,
   onDelete,
 }: {
   entry: OrgFsSkillCatalogEntry;
+  /** Optimistic row whose files are still uploading — inert until they land. */
+  pending?: boolean;
   onOpen: () => void;
   onDelete?: () => void;
 }) {
@@ -115,14 +119,25 @@ function SkillCard({
   const editable = isEditable(entry);
 
   return (
-    <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
-      {/* Overlay button — the whole card opens the preview */}
-      <button
-        type="button"
-        onClick={onOpen}
-        className="absolute inset-0 z-0"
-        aria-label={entry.name}
-      />
+    <Card
+      aria-busy={pending}
+      className={cn(
+        "relative transition-colors group overflow-hidden flex flex-col h-full",
+        pending ? "opacity-60" : "hover:bg-muted/50",
+      )}
+    >
+      {/* Overlay button — the whole card opens the preview. Absent while the
+          upload is in flight: the preview's file reads cache a miss for a
+          minute, so a card opened too early stays empty after the import
+          succeeds. */}
+      {!pending && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="absolute inset-0 z-0"
+          aria-label={entry.name}
+        />
+      )}
 
       {/* pointer-events-none lets clicks fall through to the overlay button */}
       <div className="flex flex-col flex-1 pointer-events-none">
@@ -172,7 +187,9 @@ function SkillCard({
 
         <div className="border-t border-border mt-auto">
           <div className="h-10 flex items-center px-4.5">
-            <p className="text-xs text-muted-foreground truncate">{label}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {pending ? t("settings.skills.importing") : label}
+            </p>
           </div>
         </div>
       </div>
@@ -202,6 +219,10 @@ export default function SettingsSkillsPage() {
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] =
     useState<OrgFsSkillCatalogEntry | null>(null);
+  // Catalog id of the row whose files are still uploading, so the grid can
+  // keep it inert: an early preview would cache a miss, and an early delete
+  // would race the PUTs still to come.
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const refreshCatalog = () => {
     queryClient.invalidateQueries({ queryKey: KEYS.slashSkills(org.id) });
@@ -270,6 +291,7 @@ export default function SettingsSkillsPage() {
       // the very bytes we're about to upload.
       const optimistic = optimisticEntry(slug, await skillMd.text());
       patchCatalog((prev) => [optimistic, ...prev]);
+      setUploadingId(optimistic.id);
       await uploadAllGroups(
         groupByDestination(files, slug),
         upload.mutateAsync,
@@ -283,6 +305,7 @@ export default function SettingsSkillsPage() {
         err instanceof Error ? err.message : t("settings.skills.importError"),
       );
     } finally {
+      setUploadingId(null);
       refreshCatalog();
       setImporting(false);
     }
@@ -457,18 +480,22 @@ export default function SettingsSkillsPage() {
             ) : (
               <div className="@container">
                 <SkillsGrid>
-                  {filtered.map((entry) => (
-                    <SkillCard
-                      key={entry.id}
-                      entry={entry}
-                      onOpen={() => openPreview(entry)}
-                      onDelete={
-                        isEditable(entry)
-                          ? () => setPendingDelete(entry)
-                          : undefined
-                      }
-                    />
-                  ))}
+                  {filtered.map((entry) => {
+                    const pending = entry.id === uploadingId;
+                    return (
+                      <SkillCard
+                        key={entry.id}
+                        entry={entry}
+                        pending={pending}
+                        onOpen={() => openPreview(entry)}
+                        onDelete={
+                          isEditable(entry) && !pending
+                            ? () => setPendingDelete(entry)
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
                 </SkillsGrid>
               </div>
             )}
