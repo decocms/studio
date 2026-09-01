@@ -62,7 +62,7 @@ const FLAG_FIELDS = Object.entries(OrgFlagsSchema.shape).map(
 
 const SCHEMA_KEYS = new Set(FLAG_FIELDS.map((f) => f.key));
 /** Mirrors CustomFlagKeySchema on the server; re-validated there on write. */
-const FLAG_KEY_RE = /^[a-z][a-z0-9_]*$/;
+const FLAG_KEY_RE = /^(?=.{1,64}$)[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
 interface FlagsPayload {
   flags: Record<string, boolean>;
@@ -82,13 +82,16 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
   const [jsonError, setJsonError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isFetching, isError } = useQuery({
     queryKey: KEYS.deploymentAdminOrgFlags(org.id),
     queryFn: () =>
       adminFetch<FlagsResponse>(`/api/_admin/orgs/${org.id}/flags`),
     enabled: open,
   });
 
+  // A background refetch leaves isLoading false with stale data — a replace saved
+  // from that snapshot would delete flags changed since. Gate editing on both.
+  const isBusy = isLoading || isFetching;
   const effective = data?.effective ?? {};
   const stored = data?.flags ?? {};
 
@@ -160,6 +163,11 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
   };
 
   const enterJson = () => {
+    // Keep an existing draft so Toggles → JSON round-trips without losing edits.
+    if (jsonText) {
+      setJsonMode(true);
+      return;
+    }
     const merged: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(stored)) {
       if (typeof v === "boolean") merged[k] = v;
@@ -239,7 +247,7 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
               variant={jsonMode ? "secondary" : "outline"}
               size="sm"
               onClick={enterJson}
-              disabled={isLoading || isError}
+              disabled={isBusy || isError}
             >
               {t("admin.orgs.flagsViewJson")}
             </Button>
@@ -256,6 +264,7 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
               {t("admin.orgs.jsonReplaceHint")}
             </p>
             <textarea
+              aria-label={t("admin.orgs.jsonEditorLabel")}
               value={jsonText}
               spellCheck={false}
               disabled={mutation.isPending}
@@ -274,8 +283,9 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
               return (
                 <div key={key} className="flex items-start gap-3">
                   <Switch
+                    aria-label={key}
                     checked={checked}
-                    disabled={isLoading || mutation.isPending}
+                    disabled={isBusy || mutation.isPending}
                     onCheckedChange={(next) =>
                       setOverrides((prev) => ({ ...prev, [key]: next }))
                     }
@@ -316,6 +326,7 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
                 <div className="flex items-center gap-2">
                   <Input
                     autoFocus
+                    aria-label={t("admin.orgs.customFlagKeyLabel")}
                     value={newKey}
                     placeholder={t("admin.orgs.customFlagKeyPlaceholder")}
                     onChange={(e) => {
@@ -339,7 +350,7 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={isLoading}
+                disabled={isBusy}
                 onClick={() => setShowAdd(true)}
               >
                 {t("admin.orgs.addCustomFlag")}
@@ -358,7 +369,7 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
           </Button>
           <Button
             onClick={jsonMode ? handleSaveJson : handleSaveToggles}
-            disabled={isLoading || isError || mutation.isPending}
+            disabled={isBusy || isError || mutation.isPending}
           >
             {mutation.isPending ? t("admin.orgs.saving") : t("admin.orgs.save")}
           </Button>

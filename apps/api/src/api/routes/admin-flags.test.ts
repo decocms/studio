@@ -6,7 +6,7 @@ import {
 } from "./admin-flags";
 
 describe("flagsResponse", () => {
-  it("echoes the raw stored bag verbatim", () => {
+  it("echoes the stored boolean flags", () => {
     const { flags } = flagsResponse({
       demo_mode: true,
       hosting_enabled: false,
@@ -16,6 +16,17 @@ describe("flagsResponse", () => {
 
   it("returns an empty bag when nothing is stored", () => {
     expect(flagsResponse(null).flags).toEqual({});
+  });
+
+  it("drops non-boolean stored values from the raw echo", () => {
+    // Hand-written jsonb can hold garbage PUT would reject; echoing it would
+    // make the raw JSON editor unsaveable.
+    const { flags, effective } = flagsResponse({
+      demo_mode: true,
+      legacy: "yes",
+    } as unknown as Parameters<typeof flagsResponse>[0]);
+    expect(flags).toEqual({ demo_mode: true });
+    expect(effective.legacy).toBe(false);
   });
 
   it("resolves default-off flags to false when unset", () => {
@@ -80,6 +91,11 @@ describe("OrgFlagsPatchSchema", () => {
     expect(CustomFlagKeySchema.safeParse("has space").success).toBe(false);
     expect(CustomFlagKeySchema.safeParse("1leading").success).toBe(false);
     expect(CustomFlagKeySchema.safeParse("").success).toBe(false);
+    expect(CustomFlagKeySchema.safeParse("trailing_").success).toBe(false);
+    expect(CustomFlagKeySchema.safeParse("double__underscore").success).toBe(
+      false,
+    );
+    expect(CustomFlagKeySchema.safeParse("a".repeat(65)).success).toBe(false);
     expect(CustomFlagKeySchema.safeParse("valid_key_2").success).toBe(true);
   });
 });

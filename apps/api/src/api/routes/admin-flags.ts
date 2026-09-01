@@ -14,7 +14,7 @@ export const CustomFlagKeySchema = z
   .string()
   .min(1)
   .max(64)
-  .regex(/^[a-z][a-z0-9_]*$/);
+  .regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/);
 
 /**
  * The flags write contract for the admin editor: any snake_case key → boolean.
@@ -47,5 +47,12 @@ export function flagsResponse(stored: OrgFlags | null): {
   for (const key of keys) {
     effective[key] = orgFlagEnabled(bag, key as keyof OrgFlags);
   }
-  return { flags: (stored ?? {}) as Record<string, boolean>, effective };
+  // Only boolean values are echoed: the jsonb can hold legacy non-boolean values
+  // written by hand, which PUT would reject — surfacing them would make the raw
+  // JSON editor unsaveable. `effective` still resolves them via orgFlagEnabled.
+  const flags: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(bag)) {
+    if (typeof value === "boolean") flags[key] = value;
+  }
+  return { flags, effective };
 }

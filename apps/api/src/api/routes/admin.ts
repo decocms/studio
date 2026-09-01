@@ -432,11 +432,19 @@ export function createAdminRoutes(): Hono<Env> {
 
   app.put("/orgs/:orgId/flags", async (c) => {
     const orgId = c.req.param("orgId");
-    const body = (await c.req.json().catch(() => ({}))) as {
-      flags?: unknown;
-      mode?: unknown;
-    };
+    const raw = await c.req.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return c.json({ error: "Invalid body" }, 400);
+    }
+    const body = raw as { flags?: unknown; mode?: unknown };
     // "replace" overwrites the whole bag (raw-JSON editor); "merge" (default) keeps omitted keys.
+    if (
+      body.mode !== undefined &&
+      body.mode !== "merge" &&
+      body.mode !== "replace"
+    ) {
+      return c.json({ error: "Invalid mode" }, 400);
+    }
     const mode = body.mode === "replace" ? "replace" : "merge";
     const parsed = OrgFlagsPatchSchema.safeParse(body.flags ?? {});
     if (!parsed.success) {

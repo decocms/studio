@@ -696,6 +696,25 @@ test.describe("/api/_admin/*", () => {
     });
     expect(nonBoolean.status()).toBe(400);
 
+    // A trailing/doubled underscore is not snake_case.
+    const trailing = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { trailing_: true } },
+    });
+    expect(trailing.status()).toBe(400);
+
+    // An unsupported mode must not silently fall back to merge.
+    const badMode = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { mode: "REPLACE", flags: {} },
+    });
+    expect(badMode.status()).toBe(400);
+
+    // A non-object body is rejected instead of succeeding as a no-op merge.
+    const nullBody = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: null,
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(nullBody.status()).toBe(400);
+
     // The rejected writes left the earlier custom flag untouched.
     const stored = await db.query<{ flags: Record<string, boolean> | null }>(
       `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
