@@ -1,7 +1,11 @@
 /**
  * Settings → Build → Skills: an org-wide view of every skill available to the
- * org's agents (the same catalog `<available-skills>` surfaces at runtime —
- * see `useOrgFsSkillCatalog`), plus importing new ones.
+ * org's agents (the same catalog `<available-skills>` surfaces at runtime),
+ * plus importing new ones.
+ *
+ * The grid scrolls a page at a time (`useOrgFsSkillCatalogPages`): the search
+ * box, the origin chips and the alphabetical sort are all server-side, so only
+ * the cards on screen are ever on the wire.
  *
  * Skills are just `SKILL.md` folders on the org filesystem, so importing one is
  * the Library's upload with the skill format enforced: pick a folder containing
@@ -52,8 +56,10 @@ import {
   fetchOrgFsStat,
   type OrgFsSkillCatalogEntry,
   useOrgFsMutations,
-  useOrgFsSkillCatalog,
+  useOrgFsSkillCatalogPages,
 } from "@/hooks/use-org-fs";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { browsePathForEntry } from "@/layouts/library/location";
 import { SkillPreviewDialog } from "@/layouts/library/skill-preview";
 import {
@@ -190,7 +196,6 @@ function SkillsGrid({ children }: { children: React.ReactNode }) {
 export default function SettingsSkillsPage() {
   const t = useT();
   const { org } = useProjectContext();
-  const catalog = useOrgFsSkillCatalog();
   const { remove, upload } = useOrgFsMutations("home");
   const queryClient = useQueryClient();
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -202,9 +207,20 @@ export default function SettingsSkillsPage() {
   const [pendingDelete, setPendingDelete] =
     useState<OrgFsSkillCatalogEntry | null>(null);
 
+  // Searching and filtering happen server-side now, so every keystroke would
+  // otherwise be a catalog rescan.
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const catalog = useOrgFsSkillCatalogPages({
+    search: debouncedSearch,
+    source: source === ALL_SOURCES ? undefined : source,
+  });
+
   const refreshCatalog = () => {
     queryClient.invalidateQueries({ queryKey: KEYS.slashSkills(org.id) });
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsSkills(org.id) });
+    queryClient.invalidateQueries({
+      queryKey: KEYS.orgFsSkillPagesRoot(org.id),
+    });
   };
 
   async function handleImport(fileList: FileList | null) {
@@ -268,45 +284,45 @@ export default function SettingsSkillsPage() {
     }
   }
 
-  const lowerSearch = search.toLowerCase();
-  // The org's own skills lead; the rest follow alphabetically.
-  const matching = (catalog.data ?? [])
-    .filter(
-      (e) =>
-        e.name.toLowerCase().includes(lowerSearch) ||
-        (e.description ?? "").toLowerCase().includes(lowerSearch),
-    )
-    .sort(
-      (a, b) =>
-        Number(isEditable(b)) - Number(isEditable(a)) ||
-        a.name.localeCompare(b.name),
-    );
+  // Already searched, source-filtered and alphabetized by the server; pages
+  // concatenate in cursor order, so the grid stays alphabetical as it grows.
+  const loaded = catalog.data?.pages.flatMap((p) => p.skills) ?? [];
 
-  // Chips come from the whole catalog; only their counts narrow with the search.
-  const allSources = new Set((catalog.data ?? []).map((e) => e.source));
-  const counts = new Map<string, number>();
-  for (const e of matching) {
-    counts.set(e.source, (counts.get(e.source) ?? 0) + 1);
-  }
+  // Chips ride along on every page and are identical across them (they cover
+  // the whole catalog, not the page), so the first page is as good as any.
+  const sources = catalog.data?.pages[0]?.sources ?? [];
   const tabs = [
     {
       id: ALL_SOURCES,
       label: t("settings.skills.filterAll"),
-      count: matching.length,
+      count: sources.reduce((sum, s) => sum + s.count, 0),
     },
-    ...[...allSources].map((entrySource) => ({
+    ...sources.map(({ source: entrySource, count }) => ({
       id: entrySource,
       label: skillOrigin(entrySource, org.name).label,
-      count: counts.get(entrySource) ?? 0,
+      count,
     })),
   ];
 
-  // Only a source the catalog no longer has at all falls back to All.
-  const activeSource = allSources.has(source) ? source : ALL_SOURCES;
-  const filtered =
-    activeSource === ALL_SOURCES
-      ? matching
-      : matching.filter((e) => e.source === activeSource);
+  const loadMoreRef = useInfiniteScroll(
+    () => void catalog.fetchNextPage(),
+    catalog.hasNextPage,
+    // `isFetching`, not `isFetchingNextPage`: while a filter change is in
+    // flight the grid still shows the previous filter's pages, and its cursor
+    // does not address the new query.
+    catalog.isFetching,
+  );
+
+  // A source can vanish under the filter (deleting its last skill), which would
+  // strand the grid empty on a chip that is no longer rendered. `sources` spans
+  // the whole catalog, so its absence there is proof — snap back to All.
+  if (
+    source !== ALL_SOURCES &&
+    sources.length > 0 &&
+    !sources.some((s) => s.source === source)
+  ) {
+    setSource(ALL_SOURCES);
+  }
 
   const openPreview = (entry: OrgFsSkillCatalogEntry) =>
     setPreviewPath(browsePathForEntry(entry.volume, entry.path));
@@ -375,7 +391,7 @@ export default function SettingsSkillsPage() {
             {tabs.length > 2 && (
               <CollectionTabs
                 tabs={tabs}
-                activeTab={activeSource}
+                activeTab={source}
                 onTabChange={setSource}
               />
             )}
@@ -415,27 +431,31 @@ export default function SettingsSkillsPage() {
                   }
                 />
               </div>
-            ) : filtered.length === 0 ? (
+            ) : loaded.length === 0 ? (
+              /* Keyed off the search that was actually queried, so the copy
+                 can't claim "no results for X" while X is still debouncing. */
               <div className="flex items-center justify-center py-20">
                 <EmptyState
                   image={<Zap size={48} className="text-muted-foreground" />}
                   title={
-                    search
+                    debouncedSearch
                       ? t("settings.skills.noResultsTitle")
                       : t("settings.skills.emptyTitle")
                   }
                   description={
-                    search
-                      ? t("settings.skills.noResultsDescription", { search })
+                    debouncedSearch
+                      ? t("settings.skills.noResultsDescription", {
+                          search: debouncedSearch,
+                        })
                       : t("settings.skills.emptyDescription")
                   }
-                  actions={!search && importButton}
+                  actions={!debouncedSearch && importButton}
                 />
               </div>
             ) : (
               <div className="@container">
                 <SkillsGrid>
-                  {filtered.map((entry) => (
+                  {loaded.map((entry) => (
                     <SkillCard
                       key={entry.id}
                       entry={entry}
@@ -447,7 +467,15 @@ export default function SettingsSkillsPage() {
                       }
                     />
                   ))}
+                  {catalog.isFetchingNextPage &&
+                    Array.from({ length: 4 }, (_, i) => (
+                      <Skeleton key={i} className="h-[168px] rounded-xl" />
+                    ))}
                 </SkillsGrid>
+                {/* Sentinel sits after the last card. Left on the default
+                    viewport root — `Page.Content` is the actual scroller, but
+                    IntersectionObserver already accounts for its clipping. */}
+                <div ref={loadMoreRef} aria-hidden className="h-px" />
               </div>
             )}
           </div>

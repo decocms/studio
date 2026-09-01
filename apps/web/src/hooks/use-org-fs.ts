@@ -5,7 +5,12 @@
  * uploads/downloads move raw bytes, which the HTTP routes are built for.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 
@@ -282,16 +287,55 @@ export async function fetchOrgFsSkillCatalog(
   return skills;
 }
 
-/** react-query wrapper around {@link fetchOrgFsSkillCatalog} — same cache key
- *  the chat "/" picker uses (`KEYS.slashSkills`), so both surfaces share one
- *  fetch of the org's full skill catalog (home + public sets + synced repos). */
-export function useOrgFsSkillCatalog() {
+/** One page of the catalog, as `/fs/skills?limit=` serves it. */
+export interface OrgFsSkillCatalogPage {
+  skills: OrgFsSkillCatalogEntry[];
+  nextCursor?: string;
+  /** Every source in the catalog with its count under the active search. */
+  sources: Array<{ source: string; count: number }>;
+}
+
+/** Cards per request — one screen of the widest grid is 4 columns x ~3 rows. */
+const SKILL_PAGE_SIZE = 24;
+
+/**
+ * The catalog one page at a time, for the Settings grid's infinite scroll.
+ * Search and the source filter run server-side (so the whole catalog never
+ * reaches the client), which makes each combination its own cached query.
+ *
+ * Deliberately NOT sharing the chat "/" picker's `KEYS.slashSkills`: same
+ * endpoint, but a paged envelope under a different sort — one writer per shape.
+ */
+export function useOrgFsSkillCatalogPages(filters: {
+  search: string;
+  source?: string;
+}) {
   const { org } = useProjectContext();
-  return useQuery({
-    queryKey: KEYS.slashSkills(org.id),
-    queryFn: () => fetchOrgFsSkillCatalog(org.slug),
-    // Same window as the picker: a build rescans home + every synced volume.
+  return useInfiniteQuery({
+    queryKey: KEYS.orgFsSkillPages(
+      org.id,
+      filters.search,
+      filters.source ?? "",
+    ),
+    initialPageParam: "",
+    getNextPageParam: (last: OrgFsSkillCatalogPage) => last.nextCursor,
+    // Same window as the unpaged catalog: a build rescans every volume.
     staleTime: 60_000,
+    // Hold the previous grid while the next filter loads, so typing doesn't
+    // flash skeletons — but only within the same org, which this hook does not
+    // remount across.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === org.id ? previousData : undefined,
+    queryFn: async ({ pageParam }): Promise<OrgFsSkillCatalogPage> => {
+      const params = new URLSearchParams({ limit: String(SKILL_PAGE_SIZE) });
+      if (pageParam) params.set("cursor", pageParam);
+      if (filters.search) params.set("q", filters.search);
+      if (filters.source) params.set("source", filters.source);
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/skills?${params}`,
+      );
+      return (await res.json()) as OrgFsSkillCatalogPage;
+    },
   });
 }
 

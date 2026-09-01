@@ -564,6 +564,12 @@ export const KEYS = {
   // Skill folders (dirs with SKILL.md) across home + public sets — the
   // attachable-skill set for agent knowledge.
   orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,
+  // The same catalog paged for the Settings grid, narrowed server-side. The
+  // root key is the prefix invalidations use; per-filter queries nest under it.
+  orgFsSkillPagesRoot: (orgId: string) =>
+    ["org-fs-skill-pages", orgId] as const,
+  orgFsSkillPages: (orgId: string, search: string, source: string) =>
+    ["org-fs-skill-pages", orgId, search, source] as const,
 
   // Full skill catalog for the chat "/" picker. Distinct from `orgFsSkills`
   // (same endpoint, but that caches a stripped {volume,path} shape) — reusing

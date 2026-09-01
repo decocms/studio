@@ -58,7 +58,10 @@ import {
   isPublicVolume,
   publicVolumeForSet,
 } from "@/file-storage/public-sets";
-import { buildSkillCatalog } from "@/file-storage/skill-catalog";
+import {
+  buildSkillCatalog,
+  paginateSkillCatalog,
+} from "@/file-storage/skill-catalog";
 import {
   SKILL_TAR_MAX_BYTES,
   selectSkillFiles,
@@ -553,6 +556,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   // <available-skills> (buildSkillCatalog: home + home/skills + public sets), so
   // the agent link picker and the run can never drift on what "a skill" is.
   // Volume-less; lives above the `/:volume/*` routes. Member-gated read.
+  //
+  // `?limit=` opts into the paged envelope ({ skills, nextCursor, sources },
+  // narrowed by `q` + `source`) that the Settings grid scrolls through. Without
+  // it the response is the whole catalog, unchanged — the shape the link picker
+  // and the chat "/" picker read.
   app.get("/skills", async (c) => {
     const ctx = c.get("studioContext");
     if (!ctx.auth?.user?.id) {
@@ -564,9 +572,19 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const denied = await checkPermission(c, ctx, "ORG_FS_READ");
     if (denied) return denied;
     try {
-      return c.json({
-        skills: await buildSkillCatalog(ctx, ctx.organization.id),
-      });
+      const catalog = await buildSkillCatalog(ctx, ctx.organization.id);
+      const limit = Number(c.req.query("limit"));
+      if (!Number.isFinite(limit) || limit <= 0) {
+        return c.json({ skills: catalog });
+      }
+      return c.json(
+        paginateSkillCatalog(catalog, {
+          limit,
+          cursor: c.req.query("cursor"),
+          q: c.req.query("q"),
+          source: c.req.query("source"),
+        }),
+      );
     } catch (err) {
       return fsErrorResponse(c, err);
     }

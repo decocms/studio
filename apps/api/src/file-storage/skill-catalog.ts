@@ -226,3 +226,66 @@ export async function buildSkillCatalog(
     (a, b) => a.source.localeCompare(b.source) || a.id.localeCompare(b.id),
   );
 }
+
+/** One page of the catalog, as `/fs/skills` serves it when given a `limit`. */
+export interface SkillCatalogPage {
+  skills: SkillCatalogEntry[];
+  /** Opaque cursor for the next page; absent on the last one. */
+  nextCursor?: string;
+  /**
+   * Every source in the catalog with how many entries match `q` — the filter
+   * chips, which must keep listing a source even when the search empties it.
+   */
+  sources: Array<{ source: string; count: number }>;
+}
+
+/** Hard ceiling on `limit`, so a caller can't ask for the whole catalog back. */
+const MAX_PAGE_SIZE = 100;
+
+/**
+ * Search, filter, sort and slice a built catalog for the Settings → Skills
+ * grid. Alphabetical by display name (`id` breaks ties, since two sets may
+ * ship the same skill name) — the order a member scans, unlike the
+ * `(source, id)` order `buildSkillCatalog` emits for the prompt block.
+ */
+export function paginateSkillCatalog(
+  entries: SkillCatalogEntry[],
+  opts: { q?: string; source?: string; limit: number; cursor?: string },
+): SkillCatalogPage {
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const searched = q
+    ? entries.filter(
+        (e) =>
+          e.name.toLowerCase().includes(q) ||
+          (e.description ?? "").toLowerCase().includes(q),
+      )
+    : entries;
+
+  // Seeded from the whole catalog so a source that `q` empties still shows a
+  // chip (reading 0), rather than vanishing and stranding it as the active tab.
+  const counts = new Map<string, number>(entries.map((e) => [e.source, 0]));
+  for (const e of searched) {
+    counts.set(e.source, (counts.get(e.source) ?? 0) + 1);
+  }
+
+  const matching = (
+    opts.source ? searched.filter((e) => e.source === opts.source) : searched
+  ).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+
+  // ponytail: offset cursor. The catalog is rescanned per request, so a skill
+  // imported or deleted mid-scroll shifts the window by one entry. Swap for a
+  // (name, id) keyset cursor if that ever actually bites.
+  const offset = Math.max(0, Math.trunc(Number(opts.cursor)) || 0);
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit)), MAX_PAGE_SIZE);
+  const skills = matching.slice(offset, offset + limit);
+  const end = offset + skills.length;
+
+  return {
+    skills,
+    nextCursor: end < matching.length ? String(end) : undefined,
+    // Sorted, not catalog order: the chips must not reshuffle between pages.
+    sources: [...counts]
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => a.source.localeCompare(b.source)),
+  };
+}
