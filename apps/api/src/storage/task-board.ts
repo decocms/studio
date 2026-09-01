@@ -1773,12 +1773,15 @@ export class TaskBoardStorage {
     organizationId: string,
   ): Promise<void> {
     if (items.length === 0) return;
-    await this.inTransaction(async (db) => {
-      await this.attachThreads(db, items, organizationId);
-      await this.attachTags(db, items);
-      await this.attachJiraKeys(db, items);
-      await this.attachReviewVerdicts(db, items);
-    });
+    // Four independent fields, no shared state — issue together, not serially.
+    await this.inTransaction((db) =>
+      Promise.all([
+        this.attachThreads(db, items, organizationId),
+        this.attachTags(db, items),
+        this.attachJiraKeys(db, items),
+        this.attachReviewVerdicts(db, items),
+      ]),
+    );
   }
 
   /**
