@@ -253,6 +253,7 @@ export const taskBoard = {
   "taskBoard.taskFilters.repoAnyRepo": "Any repo",
   "taskBoard.taskFilters.repoFilterPlaceholder": "Filter by repo…",
   "taskBoard.taskFilters.repoLabel": "Repo",
+  "taskBoard.taskFilters.boardSettingsLabel": "Board settings",
   "taskBoard.taskFilters.sprintLabel": "Sprint",
   "taskBoard.taskFilters.sprintAnySprint": "Any sprint",
   "taskBoard.taskFilters.sprintBacklog": "No sprint",
