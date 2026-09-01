@@ -147,6 +147,8 @@ export const VISUAL_EDITOR_SCRIPT = `(function() {
   document.addEventListener("click", clickHandler, true);
 
   window.addEventListener("message", function(e) {
+    // Only Studio's own postMessage (source === this frame's parent) may drive the bridge — a nested/downstream frame's forged message can't deactivate the editor.
+    if (e.source !== window.parent) return;
     if (e.data && e.data.type === "visual-editor::deactivate") {
       highlight.remove();
       badge.remove();
