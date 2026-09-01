@@ -504,7 +504,8 @@ describe("markdownToAdf images", () => {
     expect(markdownToAdf(`![shot](${target})`, { media }).content).toEqual([
       {
         type: "mediaSingle",
-        attrs: { layout: "align-start" },
+        // Full width, not a floated thumbnail: a screenshot is the evidence.
+        attrs: { layout: "center", width: 100 },
         content: [
           {
             type: "media",

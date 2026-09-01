@@ -828,7 +828,16 @@ function linkNodes(link: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
  * which resolves one to the other. Both `type: "file"` and `collection` are
  * load-bearing: the numeric id fails `ATTACHMENT_VALIDATION_ERROR`, and
  * omitting `collection` fails `INVALID_INPUT`, so `""` is spelled out.
+ *
+ * `layout`/`width` decide how big Jira draws it. `align-start` floats the image
+ * at a fraction of the line and is meant for a thumbnail beside text, which is
+ * what a full-page screenshot was rendering as — unreadable next to a column of
+ * empty space. A screenshot is the evidence, so it gets the full width.
  */
+const MEDIA_LAYOUT = "center";
+/** Percent of the containing block — the line, or a table cell's column. */
+const MEDIA_WIDTH = 100;
+
 function imageNodes(image: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
   if (ctx.allowMedia) {
     ctx.onImage?.(image.href);
@@ -838,7 +847,7 @@ function imageNodes(image: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
       return [
         {
           type: "mediaSingle",
-          attrs: { layout: "align-start" },
+          attrs: { layout: MEDIA_LAYOUT, width: MEDIA_WIDTH },
           content: [
             {
               type: "media",
