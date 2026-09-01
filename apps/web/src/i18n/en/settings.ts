@@ -47,8 +47,32 @@ export const settings = {
   "settings.jira.rolesLabel": "What each column means",
   "settings.jira.rolesDescription":
     "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
+  "settings.boardColumns.title": "Board columns",
+  "settings.boardColumns.description":
+    "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
+  "settings.boardColumns.fieldLabel": "Columns",
+  "settings.boardColumns.fieldDescription":
+    "Studio moves a card here when the thing you pick happens. Running the agent is separate: that is what the card does on arrival.",
+  "settings.boardColumns.moveHereWhen": "Move cards here when",
+  "settings.boardColumns.whenNever": "Nothing — I move cards here myself",
+  "settings.boardColumns.whenRunStarts":
+    "A run starts on it, or a pull request opens",
+  "settings.boardColumns.whenRunFinishes": "The agent's run finishes",
+  "settings.boardColumns.whenMergedAndSettled":
+    "Its pull requests merged and it sat untouched for five days",
+  "settings.boardColumns.whenRunFailsOut": "A run fails with no retries left",
+  "settings.boardColumns.addAutomation":
+    "Run the agent on cards that arrive here",
+  "settings.boardColumns.automationOn":
+    "The agent runs on every card that arrives",
+  "settings.boardColumns.promptPlaceholder":
+    "Review the diff and leave comments…",
+  "settings.boardColumns.promptHelp":
+    "Optional. The card's title and description always come with it, so this is the instruction, not the whole message.",
+  "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
+  "settings.boardColumns.saveFailed": "Could not save this column",
   "settings.jira.roleNone": "Nothing special",
-  "settings.jira.roleQueued": "Queued for the agent",
+  "settings.jira.roleQueued": "Where the agent gives up",
   "settings.jira.roleInProgress": "Being worked on",
   "settings.jira.roleInReview": "Under review",
   "settings.jira.roleArchived": "Archive",

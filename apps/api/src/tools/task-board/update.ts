@@ -20,6 +20,7 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
+import { runColumnAutomation } from "./run-column-automation";
 import { extractPrFromText } from "./pr-extract";
 import {
   ensureTaskExecutionAllowed,
@@ -508,6 +509,21 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
     if (becameSuperAgent) {
       await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+      return { item };
+    }
+
+    // A card that just landed in a column runs that column's rule, whoever
+    // moved it. Only on an actual lane change: re-saving a title must not
+    // re-trigger, and the card is already owned once the rule has fired.
+    if (
+      input.status !== undefined &&
+      previous !== null &&
+      previous.status !== item.status
+    ) {
+      item = await runColumnAutomation(ctx, item, {
+        assignedBy: getUserId(ctx)!,
+        actor: getUserId(ctx)!,
+      });
     }
 
     return { item };

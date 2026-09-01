@@ -49,8 +49,33 @@ export const settings = {
   "settings.jira.rolesLabel": "O que cada coluna significa",
   "settings.jira.rolesDescription":
     "As colunas do seu board vêm do Jira. Diga ao Studio qual delas é onde a revisão acontece, e qual arquiva um card — a maioria não significa nada pra ele, e tudo bem.",
+  "settings.boardColumns.title": "Colunas do board",
+  "settings.boardColumns.description":
+    "As colunas são do seu tracker. Diga o que deve mover um card para cada uma, e quais delas devem colocar o agente para trabalhar.",
+  "settings.boardColumns.fieldLabel": "Colunas",
+  "settings.boardColumns.fieldDescription":
+    "O Studio move o card para cá quando a coisa que você escolher acontecer. Rodar o agente é separado: é o que o card faz ao chegar.",
+  "settings.boardColumns.moveHereWhen": "Mover cards para cá quando",
+  "settings.boardColumns.whenNever": "Nada — eu movo os cards para cá na mão",
+  "settings.boardColumns.whenRunStarts":
+    "Um run começa nele, ou um pull request é aberto",
+  "settings.boardColumns.whenRunFinishes": "O run do agente termina",
+  "settings.boardColumns.whenMergedAndSettled":
+    "Os pull requests dele mergeiam e ele fica cinco dias sem ninguém mexer",
+  "settings.boardColumns.whenRunFailsOut":
+    "Um run falha sem tentativas restantes",
+  "settings.boardColumns.addAutomation":
+    "Rodar o agente nos cards que chegarem aqui",
+  "settings.boardColumns.automationOn": "O agente roda em todo card que chega",
+  "settings.boardColumns.promptPlaceholder":
+    "Revise o diff e deixe comentários…",
+  "settings.boardColumns.promptHelp":
+    "Opcional. O título e a descrição do card sempre vão junto, então isto é a instrução, não a mensagem inteira.",
+  "settings.boardColumns.removeAriaLabel":
+    "Parar de rodar o agente em {column}",
+  "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",
   "settings.jira.roleNone": "Nada em especial",
-  "settings.jira.roleQueued": "Na fila do agente",
+  "settings.jira.roleQueued": "Pra onde volta se o agente desistir",
   "settings.jira.roleInProgress": "Em progresso",
   "settings.jira.roleInReview": "Em revisão",
   "settings.jira.roleArchived": "Arquivo",

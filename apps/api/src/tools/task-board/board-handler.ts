@@ -261,6 +261,29 @@ export async function boardFor(
   });
 }
 
+/**
+ * Whether a card sitting in `from` may still be advanced to `to`.
+ *
+ * True when `from` is at or before `to` in the board's OWN order, which is
+ * what stops a re-opened PR dragging a finished card backwards.
+ *
+ * Position rather than a fixed list of lane names, because a mirrored board's
+ * columns are ordered and named by its tracker — "has it got past this yet" is
+ * a question only the board can answer. On Studio's board the answer is the
+ * same set the hardcoded list held. A column this board does not have is not
+ * advanceable at all: a card nobody can place is not one to move.
+ */
+export function canAdvance(
+  columns: readonly BoardColumn[],
+  from: string,
+  to: string,
+): boolean {
+  const at = (key: string) => columns.find((c) => c.key === key)?.position;
+  const fromAt = at(from);
+  const toAt = at(to);
+  return fromAt !== undefined && toAt !== undefined && fromAt <= toAt;
+}
+
 /** One warning per org and meaning. A board nobody configured would otherwise
  *  log on every sweep tick, which is the fastest way to make the signal
  *  worthless. Capped rather than TTL'd: the key set is bounded by orgs times
