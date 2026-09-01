@@ -15,11 +15,6 @@ export const KEYS = {
   // a deployed version newer than the client's own build.
   appVersionCheck: () => ["appVersionCheck"] as const,
 
-  // Auth-related queries
-  session: () => ["session"] as const,
-
-  messages: (locator: string) => ["messages", locator] as const,
-
   // Organizations list
   organizations: () => ["organizations"] as const,
 
@@ -168,10 +163,6 @@ export const KEYS = {
   isMCPAuthenticated: (url: string, token: string | null) =>
     ["is-mcp-authenticated", url, token] as const,
 
-  // MCP tools (scoped by URL and optional token)
-  mcpTools: (url: string, token?: string | null) =>
-    ["mcp", "tools", url, token] as const,
-
   // MCP client (scoped by orgId, connectionId, token, and Studio URL)
   mcpClient: (
     orgId: string,
@@ -191,8 +182,6 @@ export const KEYS = {
     ["mcp", "client", client, "resource", uri] as const,
   mcpUiResourceHtml: (orgSlug: string, connectionId: string, uri: string) =>
     ["mcp", "ui-resource-html", orgSlug, connectionId, uri] as const,
-  mcpGetPrompt: (client: unknown, name: string, argsKey: string) =>
-    ["mcp", "client", client, "prompt", name, argsKey] as const,
   mcpToolCall: (client: unknown, toolName: string, argsKey: string) =>
     ["mcp", "client", client, "tool-call", toolName, argsKey] as const,
 
@@ -285,9 +274,6 @@ export const KEYS = {
   // Org access status (for /:org gate — pending invite / auto-join / no access)
   orgAccessStatus: (slug: string) => ["org-access-status", slug] as const,
 
-  // Models list (scoped by organization)
-  modelsList: (orgId: string) => ["models-list", orgId] as const,
-
   // Home next-actions — agent prompts under Chat.Input.
   homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
 
@@ -298,22 +284,10 @@ export const KEYS = {
   agentPrompts: (orgId: string, agentId: string) =>
     ["agent-prompts", orgId, agentId] as const,
 
-  // Allowed models for current user (scoped by organization)
-  allowedModels: (locator: ProjectLocator) =>
-    [locator, "allowed-models"] as const,
-
-  // Collections (scoped by connection)
-  connectionCollections: (connectionId: string) =>
-    [connectionId, "collections", "discovery"] as const,
-
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)
   toolCall: (scope: string, toolName: string, paramsKey: string) =>
     ["tool-call", scope, toolName, paramsKey] as const,
-
-  // Collection items (scoped by connection and collection name)
-  collectionItems: (connectionId: string, collectionName: string) =>
-    ["collection", connectionId, collectionName] as const,
 
   // Collection CRUD queries (scoped by orgId, scopeKey, client, and collection name)
   // orgId: organization ID
@@ -399,10 +373,6 @@ export const KEYS = {
     ["threads", "overview", locator] as const,
   threadMessages: (locator: string, threadId: string) =>
     ["threads", "messages", locator, threadId] as const,
-  threadModelLogs: (locator: string, dateKey: string) =>
-    ["threads", "model-logs", locator, dateKey] as const,
-  threadSandbox: (orgKey: string, taskId: string | undefined) =>
-    ["thread-sandbox", "v2", orgKey, taskId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
   // Fetched text content of a previewed file (FilePreview), keyed by URL.
   fileText: (downloadUrl: string) => ["file-text", downloadUrl] as const,
@@ -423,10 +393,6 @@ export const KEYS = {
       rawToolName,
     ] as const,
 
-  // Virtual MCP agents (for agent mentions in chat)
-  virtualMcpAgents: (orgId: string) =>
-    ["virtual-mcp", orgId, "agents"] as const,
-
   // Virtual MCP prompts (for ice breakers in chat)
   // null virtualMcpId means default virtual MCP
   virtualMcpPrompts: (virtualMcpId: string | null, orgId: string) =>
@@ -445,24 +411,8 @@ export const KEYS = {
     query: string,
   ) => [...baseKey, isOpen, query] as const,
 
-  // Connection prompts (for Virtual MCP settings)
-  connectionPrompts: (connectionId: string) =>
-    ["connection", connectionId, "prompts"] as const,
-
-  // Connection resources (for Virtual MCP settings)
-  connectionResources: (connectionId: string) =>
-    ["connection", connectionId, "resources"] as const,
-
   // User data
   user: (userId: string) => ["user", userId] as const,
-
-  // Store README fetched from external URL
-  storeReadmeUrl: (readmeUrl: string | null | undefined) =>
-    ["store-readme-url", readmeUrl] as const,
-
-  // Remote MCP tools (for store server detail page)
-  remoteMcpTools: (remoteUrl: string | null) =>
-    ["remote-mcp-tools", remoteUrl] as const,
 
   // Tags (scoped by locator)
   tags: (locator: string) => [locator, "tags"] as const,
@@ -495,10 +445,6 @@ export const KEYS = {
     paramsKey: string,
   ) =>
     ["automation-run-stats", organizationId, automationId, paramsKey] as const,
-
-  // Virtual MCP entity (scoped by org + id)
-  virtualMcp: (orgId: string, virtualMcpId: string) =>
-    ["virtual-mcp", orgId, virtualMcpId] as const,
 
   // Project connection details (with tools, for sidebar)
   projectConnectionDetails: (projectId: string, connectionIds: string[]) =>
@@ -621,9 +567,6 @@ export const KEYS = {
   defaultBrand: (organizationId: string) =>
     ["brand-context", organizationId, "default"] as const,
 
-  // Deco profile (scoped by user email)
-  decoProfile: (email: string | undefined) => ["deco-profile", email] as const,
-
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
   decoApps: () => ["deco-apps"] as const,
@@ -677,10 +620,6 @@ export const KEYS = {
   // analytics/status. The lifecycle mutations invalidate this key.
   analyticsStatus: (org: string, site: string) =>
     ["hosting", org, site, "analytics-status"] as const,
-  // Deco Analytics tab — per-site usage series/totals, proxied through the same
-  // BFF at /api/:org/hosting/:site/analytics/usage.
-  analyticsUsage: (org: string, site: string) =>
-    ["hosting", org, site, "analytics-usage"] as const,
   // Deco Analytics tab — one tenant-scoped dashboard view (overview, behaviour,
   // …) for a range, proxied through the BFF at
   // /api/:org/hosting/:site/analytics/data. Keyed by view+range so each
@@ -747,9 +686,6 @@ export const KEYS = {
       installationLogin,
       query,
     ] as const,
-  vmEnv: (orgSlug: string, virtualMcpId: string, branch: string) =>
-    ["vm-env", orgSlug, virtualMcpId, branch] as const,
-
   // Desktop app (Tauri) only — the Keychain auth-status gate read by
   // `apps/web/src/desktop/use-desktop-auth.ts`. Lives here because
   // `plugins/enforce-query-key-constants.ts` requires every query key to be a
