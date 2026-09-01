@@ -16,6 +16,7 @@
 
 import { retry } from "@decocms/shared/std";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
+import type { JiraRemoteLink } from "./remote-links";
 import {
   findSprintFieldIds,
   type JiraSprintRef,
@@ -662,6 +663,33 @@ export class JiraClient {
       console.warn(`[jira] comment rejected as ADF, posting flat: ${err}`);
       return post(textToAdf(header ? `${header}\n${markdown}` : markdown));
     }
+  }
+
+  /**
+   * Upsert a remote link on the issue — the "Web links" panel.
+   *
+   * `idempotent: true` unlike the other writes here: Jira keys the link on
+   * `globalId` and REPLACES a match rather than appending, so a retry after a
+   * timeout cannot leave two.
+   */
+  async upsertRemoteLink(issueId: string, link: JiraRemoteLink): Promise<void> {
+    await this.request<{ id: number }>(
+      `/rest/api/3/issue/${encodeURIComponent(issueId)}/remotelink`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          globalId: link.globalId,
+          object: {
+            url: link.url,
+            title: link.title,
+            ...(link.iconUrl
+              ? { icon: { url16x16: link.iconUrl, title: link.title } }
+              : {}),
+          },
+        }),
+      },
+      { idempotent: true },
+    );
   }
 
   /** Attachments already on the issue — the dedup check for a re-push. */

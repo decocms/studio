@@ -6,7 +6,7 @@
   "file-storage/dbos-org-repo-sync.ts": "32c606976916fde2be7abe3084f7388744bdb610c178e9c2a07a8080f764904e",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
   "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",
-  "jira/dbos-jira-sync.ts": "ceaf32d75681da37867315c32409181a861aa62ab5b1e912a6f84735e7cba892",
+  "jira/dbos-jira-sync.ts": "1377bb5a15e4e03ab56e9ab47eac79abe2de08116f5f59bc86418dcd2be625e1",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
   "notifications/dbos-digest.ts": "673bc164593266704d2918a0bcaaf838a2480dfb46d1d19c02bdb38c73ecc370",
   "tools/task-board/dbos-archive-sweep.ts": "fe2db3802dd291f4d9ad5369a21c28854403bd2756518d9b48c1fcda4f100000",
