@@ -261,9 +261,6 @@ export const KEYS = {
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 
-  organizationTaskQuota: (organizationId: string) =>
-    ["organization-task-quota", organizationId] as const,
-
   infraBillingSites: (organizationId: string) =>
     ["infra-billing-sites", organizationId] as const,
 

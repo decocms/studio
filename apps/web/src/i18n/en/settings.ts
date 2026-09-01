@@ -838,22 +838,6 @@ export const settings = {
     "Deco AI Gateway connected successfully",
   "settings.aiProviders.decoConnectError":
     "Failed to connect Deco AI Gateway: {error}",
-  "settings.billing.autoTasksTitle": "Auto tasks",
-  "settings.billing.unlimitedDescription":
-    "Auto-task runs are unlimited on this deployment. Tasks you create yourself are never limited either.",
-  "settings.billing.autoTasksDescriptionTrial":
-    "3 free lifetime runs, then $50/month for 10 runs per billing cycle.",
-  "settings.billing.autoTasksDescriptionSubscribed":
-    "10 auto-task runs per billing cycle. Tasks you create yourself are never limited.",
-  "settings.billing.statusTrial": "Free trial",
-  "settings.billing.statusActive": "Active",
-  "settings.billing.statusPastDue": "Payment issue",
-  "settings.billing.runsUsedLabel": "runs used",
-  "settings.billing.renewsOn": "Renews {date}",
-  "settings.billing.subscribeButton": "Subscribe",
-  "settings.billing.manageButton": "Manage billing",
-  "settings.billing.checkoutError": "Couldn't start checkout: {message}",
-  "settings.billing.portalError": "Couldn't open billing portal: {message}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",
