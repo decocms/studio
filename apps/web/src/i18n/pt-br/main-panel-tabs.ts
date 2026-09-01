@@ -460,6 +460,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.installSiteId": "Site ID (onde os eventos caem)",
   "mainPanelTabs.analyticsTab.rotateToken": "Rotacionar token",
   "mainPanelTabs.analyticsTab.rotating": "Rotacionando…",
+  "mainPanelTabs.analyticsTab.toastTokenRotated": "Token rotacionado",
   "mainPanelTabs.analyticsTab.emptyLive":
     "Nenhum visitante nos últimos minutos.",
   "mainPanelTabs.analyticsTab.emptyView":

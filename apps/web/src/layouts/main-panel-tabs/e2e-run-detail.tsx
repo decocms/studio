@@ -839,11 +839,16 @@ function DetailBody({ data, t }: { data: E2eRunDetailData; t: Translate }) {
     return (
       <div className="flex flex-col gap-5">
         <Tabs variant="underline" defaultValue={viewportValue(firstRun, 0)}>
-          <TabsList className="flex-wrap">
+          <TabsList variant="underline" className="flex-wrap">
             {runs.map((run, i) => {
               const value = viewportValue(run, i);
               return (
-                <TabsTrigger key={value} value={value} className="gap-1.5">
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  variant="underline"
+                  className="gap-1.5"
+                >
                   {isFail(run.verdict) ? (
                     <XCircle className="size-3.5 text-destructive" />
                   ) : (

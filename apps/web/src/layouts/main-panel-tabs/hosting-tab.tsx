@@ -352,6 +352,11 @@ function DeployButton({
       queryClient.invalidateQueries({
         queryKey: KEYS.hostingDeployments(orgSlug, site),
       });
+      // The deploy also produces a new history event — refresh that table too,
+      // otherwise it stays stale until the next manual reload.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.hostingDeploymentHistory(orgSlug, site),
+      });
       toast.success(t("mainPanelTabs.hostingTab.toastDeployQueued"));
       setConfirm(false);
     },

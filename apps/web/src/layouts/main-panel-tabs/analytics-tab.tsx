@@ -1134,17 +1134,22 @@ function QuotaBanner({
   payload: Record<string, unknown>;
 }) {
   const capped = typeof quota === "number" && quota > 0;
-  // Pull an accepted total out of any scalar row in the payload (the usage view
-  // carries a single-row summary). Best-effort — absent, we show the cap alone.
+  // Pull an accepted total out of the payload. The summary may arrive either as
+  // a scalar object OR — like the other analytics panels — as an array of rows,
+  // so inspect the first row of arrays too, else the total never shows.
   let accepted: number | null = null;
   for (const v of Object.values(payload)) {
-    if (v && typeof v === "object" && !Array.isArray(v)) {
-      const row = v as Record<string, unknown>;
-      const n = row.events_accepted ?? row.accepted ?? row.events;
-      if (typeof n === "number") {
-        accepted = n;
-        break;
-      }
+    const row =
+      v && typeof v === "object" && !Array.isArray(v)
+        ? (v as Record<string, unknown>)
+        : Array.isArray(v) && v[0] && typeof v[0] === "object"
+          ? (v[0] as Record<string, unknown>)
+          : null;
+    if (!row) continue;
+    const n = row.events_accepted ?? row.accepted ?? row.events;
+    if (typeof n === "number") {
+      accepted = n;
+      break;
     }
   }
   const fmt = (n: number) => n.toLocaleString();
@@ -1262,7 +1267,9 @@ function CopyButton({ text }: { text: string }) {
       variant="ghost"
       size="sm"
       onClick={() => {
-        navigator.clipboard?.writeText(text).then(
+        // `navigator.clipboard` is undefined on insecure origins / older
+        // browsers; `?.writeText` then returns undefined and `.then` would throw.
+        navigator.clipboard?.writeText(text)?.then(
           () => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
@@ -1750,7 +1757,7 @@ function ConfigurationPanel({
     onSuccess: (data) => {
       invalidate();
       setRotated(data);
-      toast.success("Rotate token");
+      toast.success(t("mainPanelTabs.analyticsTab.toastTokenRotated"));
     },
     onError: (err) => toast.error(errorText(err)),
   });
@@ -2185,10 +2192,23 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
             <Skeleton className="h-40 w-full" />
           </div>
         ) : statusQuery.error ? (
-          <EmptyState
-            icon={<BarChartSquare02 className="size-5" />}
-            title={t("mainPanelTabs.analyticsTab.statusError")}
-          />
+          isNotConfigured(statusQuery.error) ? (
+            // A 503 "not configured" is a deployment state, not a load failure —
+            // show the backend-not-configured copy, matching the `configured:false`
+            // branch below.
+            <EmptyState
+              icon={<BarChartSquare02 className="size-5" />}
+              title={t("mainPanelTabs.analyticsTab.backendNotConfiguredTitle")}
+              description={t(
+                "mainPanelTabs.analyticsTab.backendNotConfiguredDescription",
+              )}
+            />
+          ) : (
+            <EmptyState
+              icon={<BarChartSquare02 className="size-5" />}
+              title={t("mainPanelTabs.analyticsTab.statusError")}
+            />
+          )
         ) : status.configured === false ? (
           <EmptyState
             icon={<BarChartSquare02 className="size-5" />}

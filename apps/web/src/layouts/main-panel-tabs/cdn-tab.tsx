@@ -141,7 +141,9 @@ function RangePicker({
             />
             <button
               type="button"
-              disabled={!cs || !cu}
+              // Also block an inverted range (start after end) — otherwise Apply
+              // submits it and the dashboard silently shows no data.
+              disabled={!cs || !cu || cs > cu}
               onClick={() => {
                 onChange({ ...value, range: "custom", since: cs, until: cu });
                 setOpen(false);
@@ -1154,8 +1156,11 @@ function useOd(
 function formatDuration(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0s";
-  const m = Math.floor(n / 60);
-  const s = Math.round(n % 60);
+  // Round to whole seconds FIRST, then split — otherwise a value that rounds up
+  // across a minute boundary (e.g. 119.6) renders "1m 60s".
+  const total = Math.round(n);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return m ? `${m}m ${s}s` : `${s}s`;
 }
 

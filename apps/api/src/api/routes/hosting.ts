@@ -245,19 +245,33 @@ const ANALYTICS_RANGES = new Set([
  *  for the life of a registration, so a short TTL keeps a screenful of view
  *  requests from each re-asking the control-plane while still noticing an
  *  unregister within a few seconds. `null` (not-registered) is cached too, so an
- *  unregistered site doesn't hammer the upstream on every expand. */
+ *  unregistered site doesn't hammer the upstream on every expand — but a
+ *  transient resolve FAILURE is never cached (see the `error` result below). */
 const siteIdCache = new Map<string, { id: string | null; exp: number }>();
 const SITE_ID_TTL_MS = 30_000;
+
+/** Three distinct outcomes so a transient status failure is not mistaken for a
+ *  genuine "not registered": the caller renders Configuration only for
+ *  `unregistered`, and 502s for `error`. */
+type SiteIdResolution =
+  | { status: "registered"; id: string }
+  | { status: "unregistered" }
+  | { status: "error" };
 
 async function resolveWarehouseSiteId(
   org: { id: string },
   site: string,
   controlplaneRestUrl: string,
   controlplaneServiceToken: string,
-): Promise<string | null> {
+): Promise<SiteIdResolution> {
   const cacheKey = `${org.id}:${site.toLowerCase()}`;
+  const now = Date.now();
   const hit = siteIdCache.get(cacheKey);
-  if (hit && hit.exp > Date.now()) return hit.id;
+  if (hit && hit.exp > now) {
+    return hit.id
+      ? { status: "registered", id: hit.id }
+      : { status: "unregistered" };
+  }
 
   let id: string | null = null;
   try {
@@ -274,18 +288,32 @@ async function resolveWarehouseSiteId(
       registered?: boolean;
       config?: { id?: string } | null;
     } | null;
+    // A non-2xx status is a resolution FAILURE, not "not registered": caching it
+    // as unregistered would strand a real registration behind the Configuration
+    // screen for the whole TTL. Surface it so the caller 502s instead.
+    if (!res.ok) {
+      console.error(
+        `[analytics] status resolve HTTP ${res.status} for site="${site}"`,
+      );
+      return { status: "error" };
+    }
     // `config.id` is the `s<id>` and is only present once the site is registered.
-    if (res.ok && body?.registered && body.config?.id) {
+    if (body?.registered && body.config?.id) {
       id = body.config.id;
     }
   } catch (err) {
     console.error(`[analytics] status resolve failed for site="${site}":`, err);
-    // Do not cache a transient failure as "not registered" — leave it uncached.
-    return null;
+    // Transient failure — do NOT cache, so the next request retries.
+    return { status: "error" };
   }
 
-  siteIdCache.set(cacheKey, { id, exp: Date.now() + SITE_ID_TTL_MS });
-  return id;
+  // Evict expired entries on write so the map can't grow without bound on a
+  // long-lived multi-tenant process (the TTL previously only gated reads).
+  for (const [key, entry] of siteIdCache) {
+    if (entry.exp <= now) siteIdCache.delete(key);
+  }
+  siteIdCache.set(cacheKey, { id, exp: now + SITE_ID_TTL_MS });
+  return id ? { status: "registered", id } : { status: "unregistered" };
 }
 
 /**
@@ -382,10 +410,13 @@ export const createHostingRoutes = () => {
     }),
   );
 
-  // DELETE /api/:org/hosting/:site/secrets/:name
+  // DELETE /api/:org/hosting/:site/secrets/:name?scope=runtime|build — a name can
+  // exist in both scopes, so `scope` MUST be forwarded to the control-plane;
+  // dropping it would delete the wrong scope's row.
   app.delete("/:site/secrets/:name", (c) =>
     proxyControlplane(c, `secrets/${encodeURIComponent(c.req.param("name"))}`, {
       method: "DELETE",
+      forwardQuery: ["scope"],
     }),
   );
 
@@ -599,16 +630,22 @@ export const createHostingRoutes = () => {
     }
 
     // Resolve the warehouse site_id from a slug the org owns — never trust a
-    // client-supplied id. No id yet ⇒ not registered; the tab shows Configuration.
-    const siteId = await resolveWarehouseSiteId(
+    // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
+    // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
+    // tab reports a data-load failure instead of a misleading Configuration screen.
+    const resolution = await resolveWarehouseSiteId(
       org,
       site,
       controlplaneRestUrl,
       controlplaneServiceToken,
     );
-    if (!siteId) {
+    if (resolution.status === "error") {
+      return c.json({ error: "Failed to resolve analytics registration" }, 502);
+    }
+    if (resolution.status === "unregistered") {
       return c.json({ registered: false, view, range });
     }
+    const siteId = resolution.id;
 
     const upstream = new URL(`${analyticsDataUrl}/data`);
     upstream.searchParams.set("view", view);
