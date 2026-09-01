@@ -42,12 +42,12 @@ export function TaskSystemPromptSettings() {
       <SettingsCard>
         <SettingsCardItem title={t("settings.taskPrompt.fieldLabel")}>
           {isPending ? (
-            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-44 w-full" />
           ) : (
             <div className="flex flex-col items-start gap-2">
               <Textarea
                 value={draft}
-                rows={6}
+                rows={10}
                 maxLength={TASK_SYSTEM_PROMPT_MAX_LENGTH}
                 placeholder={t("settings.taskPrompt.placeholder")}
                 onChange={(e) => setDraft(e.target.value)}
