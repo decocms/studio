@@ -80,6 +80,7 @@ describe("applyBoardDecision", () => {
       pr: PR,
       lanes: CANON_LANES,
       columns: CANON_COLUMNS,
+      columnOwner: null,
       decision,
       openCards,
     });
