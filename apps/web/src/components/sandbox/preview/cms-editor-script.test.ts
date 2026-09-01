@@ -166,6 +166,14 @@ describe("CMS_EDITOR_SCRIPT", () => {
     );
     const moveGuard = CMS_EDITOR_SCRIPT.slice(moveStart, moveGuardEnd);
     expect(moveGuard).toContain("renderPending");
+    // The already-scheduled rAF callback must also recheck renderPending.
+    const rafBodyStart = CMS_EDITOR_SCRIPT.indexOf(
+      "rafPending = false;",
+      moveStart,
+    );
+    const rafBodyEnd = CMS_EDITOR_SCRIPT.indexOf("});", rafBodyStart);
+    const rafBody = CMS_EDITOR_SCRIPT.slice(rafBodyStart, rafBodyEnd);
+    expect(rafBody).toContain("if (renderPending) return;");
   });
 
   it("drops a bridge message whose source isn't this frame's parent", () => {

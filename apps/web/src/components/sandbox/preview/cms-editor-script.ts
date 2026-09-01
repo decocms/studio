@@ -207,6 +207,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     var target = e.target;
     requestAnimationFrame(function() {
       rafPending = false;
+      if (renderPending) return;
       if (!target || target === highlight || target === badge) return;
       var out = {};
       var section = findSection(target, out);
