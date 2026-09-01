@@ -167,6 +167,18 @@ func (d *daemon) getDevPort() int {
 	return 0
 }
 
+// devTaskRunning reports whether a dev-script task (`dev`/`start`) is alive
+// right now — the evidence that a serving port belongs to this sandbox's dev
+// server rather than to something that merely outlived it.
+func (d *daemon) devTaskRunning() bool {
+	for _, t := range d.tasks.List([]string{proc.StatusRunning}) {
+		if proc.IsWellKnownStarter(t.LogName) {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *daemon) getActiveTasks() []events.ActiveTaskSummary {
 	running := d.tasks.List([]string{proc.StatusRunning})
 	out := make([]events.ActiveTaskSummary, 0, len(running))
@@ -249,15 +261,23 @@ func (d *daemon) onProbeChange(s probe.State) {
 		isCrashedRecovery := phase == events.PhaseCrashed && s.Port == d.lastRunningPort
 		d.mu.Unlock()
 		// `start-failed` is a verdict, not a fact, and a serving dev server
-		// refutes it. The watchdog reaches that phase by giving up after a
-		// bounded number of restarts, so the last respawn is still booting when
-		// it fires; when that boot finally serves — as it did on the sandbox
-		// this branch exists for, five minutes later — the sandbox is working
-		// and the UI must stop saying "Blocos indisponíveis". Without this the
-		// phase latches for the life of the pod and only an explicit
-		// RestartDev clears it, throwing away the very server that just proved
-		// itself and paying for another cold boot.
-		recovered := phase == events.PhaseStartFailed || isCrashedRecovery
+		// refutes it — but only OUR dev server does. The watchdog reaches that
+		// phase by giving up after a bounded number of restarts, so the last
+		// respawn is still booting when it fires; when that boot finally
+		// serves — as it did on the sandbox this branch exists for, five
+		// minutes later — the sandbox is working and the UI must stop saying
+		// "Blocos indisponíveis". Without this the phase latches for the life
+		// of the pod and only an explicit RestartDev clears it, throwing away
+		// the very server that just proved itself and paying for another cold
+		// boot.
+		//
+		// The dev-task check is what keeps this from being credulous: the probe
+		// falls back to the *configured* application.port (getDevPort), which
+		// some unrelated or stale process can be sitting on long after the dev
+		// script died. A terminal verdict is only overturned while a dev task
+		// is actually alive to own the port.
+		startFailedRecovery := phase == events.PhaseStartFailed && d.devTaskRunning()
+		recovered := startFailedRecovery || isCrashedRecovery
 		if phase != events.PhaseStarting && phase != events.PhaseRunning && !recovered {
 			return
 		}

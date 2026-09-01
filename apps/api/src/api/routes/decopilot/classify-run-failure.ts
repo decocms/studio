@@ -30,17 +30,6 @@ const FAILURE_PATTERNS: ReadonlyArray<{
     match: /\[SANDBOX_UNREACHABLE\]|sandbox stream broke|Daemon unreachable/i,
   },
   {
-    // Before this, a montecarlo run that died waiting on its sandbox persisted
-    // "Run ended with an error — see the run's messages" and the messages held
-    // exactly `Error: The operation timed out.` — a dead end in both places.
-    // Sits below sandbox_unreachable so a message that names the sandbox keeps
-    // the more specific kind, and above the generic patterns because a timeout
-    // is a better answer than "the provider said something".
-    kind: "timeout",
-    reason: "Run stopped: an operation it was waiting on timed out",
-    match: /\boperation timed out\b|\btimed out\b|\bETIMEDOUT\b/i,
-  },
-  {
     kind: "cancelled",
     reason: "Run cancelled before it finished",
     match: /^\s*(error:\s*)?cancelled\b|run cancelled/i,
@@ -59,6 +48,21 @@ const FAILURE_PATTERNS: ReadonlyArray<{
     kind: "model_error",
     reason: "Run stopped: the model provider rejected the request",
     match: /\bAPI Error\b|\b5\d{2}\b.*provider|provider returned/i,
+  },
+  {
+    // Before this, a montecarlo run that died waiting on its sandbox persisted
+    // "Run ended with an error — see the run's messages" and the messages held
+    // exactly `Error: The operation timed out.` — a dead end in both places.
+    //
+    // Deliberately LAST. "timed out" is a phrase almost any failure can carry
+    // in passing ("cancelled because the sandbox timed out", "API Error: 500
+    // upstream provider timed out"), so matching it early silently re-buckets
+    // runs that a named cause already classified correctly — and `failure_kind`
+    // is what the analytics GROUP BY. A timeout is the answer only when nothing
+    // more specific claimed the text.
+    kind: "timeout",
+    reason: "Run stopped: an operation it was waiting on timed out",
+    match: /\boperation timed out\b|\btimed out\b|\bETIMEDOUT\b/i,
   },
 ];
 

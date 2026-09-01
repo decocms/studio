@@ -201,12 +201,16 @@ describe("daemon e2e: a serving dev server clears start-failed", () => {
       expect(killed.status).toBe(200);
 
       // The budget (1 restart) is spent while the slow respawn is still
-      // sleeping, so the watchdog gives up.
+      // sleeping, so the watchdog gives up…
       await waitForPhaseOf(d, (p) => p === "start-failed", "start-failed");
-      expect(d.stdout.value).toContain("giving up");
 
       // …and then that same respawn binds. The phase must follow the facts.
       await waitForPhaseOf(d, (p) => p === "running", "running-again", 30_000);
+
+      // Asserted only here: the phase arrives over the SSE stream while stdout
+      // comes through a separate pipe, so a give-up line read the instant the
+      // phase flips can still be in flight. By the recovery it is long flushed.
+      expect(d.stdout.value).toContain("giving up");
     },
     SETUP_TIMEOUT_MS,
   );
