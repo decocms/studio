@@ -30,6 +30,7 @@ function makeFakePool(): FakePool {
   }
   const subs = new Map<string, Sub>();
   return {
+    dispose() {},
     subscribe(key, handler, onReconnect) {
       subs.set(key, { handler, onReconnect });
       return () => {
