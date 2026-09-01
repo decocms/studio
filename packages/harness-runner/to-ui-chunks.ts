@@ -123,21 +123,39 @@ export class UiChunkTranslator {
   private readonly announcedToolCalls = new Set<string>();
   private blockSeq = 0;
   /**
-   * Text/reasoning blocks opened from `stream_event` and not yet closed, keyed
+   * Text/reasoning blocks announced by `stream_event` and not yet closed, keyed
    * by the Anthropic content-block index. Holds the minted chunk id so the
    * deltas and the end land on the part the start opened.
+   *
+   * `started` is false until the block streams its first RENDERABLE delta, and
+   * the `-start` chunk waits for that. A thinking block whose only deltas are
+   * `signature_delta` — which is what this SDK sends — otherwise became an
+   * empty part that ALSO suppressed the `assistant` message's restatement, so
+   * the model's reasoning was dropped entirely.
    */
   private readonly openStreamBlocks = new Map<
     number,
-    { id: string; kind: "text" | "reasoning" }
+    { id: string; kind: "text" | "reasoning"; started: boolean }
   >();
   /**
-   * Content-block indices of the message currently streaming that were already
-   * emitted as deltas. The `assistant` message restates every block, so these
-   * are skipped there — the same index is positional in both, which is what
-   * makes the skip safe.
+   * Content-block indices of the message currently streaming that actually
+   * emitted deltas. The `assistant` message restates every block, so these are
+   * skipped there.
    */
   private readonly streamedIndices = new Set<number>();
+  /**
+   * How many of the current API message's content blocks the `assistant`
+   * messages have already restated.
+   *
+   * The SDK sends ONE `assistant` message per content block, each carrying a
+   * single-element `content` array — so a block's position inside that array is
+   * always 0, while `streamedIndices` holds its position inside the whole API
+   * message. The two coincide only for the message's FIRST block; every later
+   * one (the text after a thinking block, the second of two text blocks) looked
+   * un-streamed and was restated on top of its own deltas, duplicating it. This
+   * cursor maps the one space onto the other.
+   */
+  private restatedBlocks = 0;
   /**
    * Prompt tokens of the most recent API call — how full the model's context
    * actually was. Read by `turnFinishChunks`; `result.usage` cannot supply it
@@ -179,6 +197,7 @@ export class UiChunkTranslator {
     if (event.type === "message_start") {
       const chunks = this.closeOpenStreamBlocks();
       this.streamedIndices.clear();
+      this.restatedBlocks = 0;
       return chunks;
     }
     const index = event.index;
@@ -194,10 +213,13 @@ export class UiChunkTranslator {
             : null;
       // tool_use blocks are announced from the `assistant` message instead.
       if (!kind) return [];
-      const id = this.nextBlockId("stream");
-      this.openStreamBlocks.set(index, { id, kind });
-      this.streamedIndices.add(index);
-      return [{ type: `${kind}-start`, id } as UIMessageChunk];
+      // Opened by the first delta — see `started` on `openStreamBlocks`.
+      this.openStreamBlocks.set(index, {
+        id: this.nextBlockId("stream"),
+        kind,
+        started: false,
+      });
+      return [];
     }
     if (event.type === "content_block_delta") {
       const open = this.openStreamBlocks.get(index);
@@ -212,18 +234,27 @@ export class UiChunkTranslator {
       // `signature_delta` on a thinking block, `input_json_delta` on a tool
       // call: both arrive here and neither is renderable text.
       if (text === null || text.length === 0) return [];
-      return [
-        {
-          type: `${open.kind}-delta`,
+      const chunks: UIMessageChunk[] = [];
+      if (!open.started) {
+        open.started = true;
+        this.streamedIndices.add(index);
+        chunks.push({
+          type: `${open.kind}-start`,
           id: open.id,
-          delta: text,
-        } as UIMessageChunk,
-      ];
+        } as UIMessageChunk);
+      }
+      chunks.push({
+        type: `${open.kind}-delta`,
+        id: open.id,
+        delta: text,
+      } as UIMessageChunk);
+      return chunks;
     }
     if (event.type === "content_block_stop") {
       const open = this.openStreamBlocks.get(index);
       if (!open) return [];
       this.openStreamBlocks.delete(index);
+      if (!open.started) return [];
       return [{ type: `${open.kind}-end`, id: open.id } as UIMessageChunk];
     }
     return [];
@@ -245,6 +276,7 @@ export class UiChunkTranslator {
     if (this.openStreamBlocks.size === 0) return [];
     const chunks: UIMessageChunk[] = [];
     for (const open of this.openStreamBlocks.values()) {
+      if (!open.started) continue;
       chunks.push({ type: `${open.kind}-end`, id: open.id } as UIMessageChunk);
     }
     this.openStreamBlocks.clear();
@@ -267,10 +299,10 @@ export class UiChunkTranslator {
     // Anything the stream left open belongs to this message and must close
     // before its blocks are restated.
     const chunks: UIMessageChunk[] = this.closeOpenStreamBlocks();
-    for (const [index, block] of message.message.content.entries()) {
+    for (const [offset, block] of message.message.content.entries()) {
       if (!isRecord(block)) continue;
-      // Already emitted as deltas — restating it here would duplicate the text.
-      const streamed = this.streamedIndices.has(index);
+      // Already emitted as deltas — restating it would duplicate the text.
+      const streamed = this.streamedIndices.has(this.restatedBlocks + offset);
       if (block.type === "text" && typeof block.text === "string") {
         if (streamed) continue;
         // Empty text blocks are real in the SDK stream (a turn that only made
@@ -305,8 +337,8 @@ export class UiChunkTranslator {
         });
       }
     }
-    // This message is fully accounted for; the next one's indices are its own.
-    this.streamedIndices.clear();
+    // These blocks are accounted for; the next message restates the ones after.
+    this.restatedBlocks += message.message.content.length;
     return chunks;
   }
 
