@@ -872,27 +872,34 @@ function SearchToggle({
   );
 }
 
-/** Icon-only link to the board's settings page, labeled by a hover tooltip. */
+/**
+ * Link to the board's settings page. Icon-only with a hover tooltip in the
+ * inline bar; in the mobile drawer (`block`) the tooltip never shows (Radix
+ * tooltips are hover/focus-only, and drawer taps are touch), so it renders
+ * the label as text instead, like every other drawer control.
+ */
 function BoardSettingsLink({ block }: { block?: boolean }) {
   const t = useT();
   const { org } = useProjectContext();
   const label = t("taskBoard.taskFilters.boardSettingsLabel");
+  const link = (
+    <Link
+      to="/$org/settings/task-board"
+      params={{ org: org.slug }}
+      aria-label={label}
+      className={cn(
+        chipClass(false, block),
+        block ? "h-10 w-full" : "w-8 justify-center px-0",
+      )}
+    >
+      <Settings02 size={14} className="shrink-0" />
+      {block && <span>{label}</span>}
+    </Link>
+  );
+  if (block) return link;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Link
-          to="/$org/settings/task-board"
-          params={{ org: org.slug }}
-          aria-label={label}
-          className={cn(
-            chipClass(false, block),
-            "w-8 justify-center px-0",
-            block && "h-10 w-10",
-          )}
-        >
-          <Settings02 size={14} className="shrink-0" />
-        </Link>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
       <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>
   );
