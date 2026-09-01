@@ -292,6 +292,8 @@ export class TaskBoardStorage {
     sprintId?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
+    /** Link to the card's issue in the tracker it came from. */
+    externalUrl?: string | null;
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -323,6 +325,7 @@ export class TaskBoardStorage {
           due_date: params.dueDate ?? null,
           sprint_id: params.sprintId ?? null,
           external_key: params.externalKey ?? null,
+          external_url: params.externalUrl ?? null,
           sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
           from task_board_items
@@ -373,6 +376,7 @@ export class TaskBoardStorage {
       repo?: string | null;
       dueDate?: string | null;
       sprintId?: string | null;
+      externalUrl?: string | null;
       sortOrder?: number;
     },
     by: string,
@@ -396,6 +400,9 @@ export class TaskBoardStorage {
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
+        ...(data.externalUrl !== undefined
+          ? { external_url: data.externalUrl }
+          : {}),
         ...(data.boardColumnOrg !== undefined
           ? { board_column_org: data.boardColumnOrg }
           : {}),
@@ -2400,6 +2407,7 @@ export class TaskBoardStorage {
     repo: string | null;
     due_date: string | Date | null;
     sprint_id?: string | null;
+    external_url?: string | null;
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
@@ -2425,6 +2433,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       sprintId: row.sprint_id ?? null,
+      externalUrl: row.external_url ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,

@@ -693,6 +693,23 @@ function TaskBoardItemEditor({
             {t("taskBoard.taskDialog.savingLabel")}
           </span>
         )}
+        {item?.externalUrl && (
+          /* The card's issue in the tracker it came from. It used to be the
+             first line of the description, which put it in every agent
+             prompt — it is a link for a person, so it lives here. */
+          <Button
+            asChild
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
+            title={item.externalUrl}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <a href={item.externalUrl} target="_blank" rel="noreferrer">
+              <LinkExternal01 size={16} />
+            </a>
+          </Button>
+        )}
         {item && (
           <>
             <Button
