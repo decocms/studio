@@ -594,7 +594,7 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Preview instantâneo (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
-    "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em servidores de preview com runtime deco.",
+    "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em sites que têm a rota /live/previews.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
     "Se este agente oferece um CMS e onde o preview abre quando oferece.",

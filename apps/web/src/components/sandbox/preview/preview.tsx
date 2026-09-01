@@ -1082,6 +1082,43 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     currentPath,
   ]);
 
+  /**
+   * Re-run the in-place render on a variant switch. Under Fast Preview in-place
+   * mode the frame is pinned (no reload on the reload-based `iframeSrc`), and a
+   * variant switch only changes `x-deco-matchers-override` — a query param, not
+   * the decofile — so the content-change effect above never fires for it. Post a
+   * fresh `/live/previews` render instead, so each variant selection reaches the
+   * frame. Page-scoped baseline: a page switch (which clears the override) is not
+   * a switch to render — the frame's own src already carries the new page's variant.
+   */
+  const variantRenderRef = useRef<{ page: string; sig: string } | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative in-place re-render on variant change; the pinned frame won't reload
+  useEffect(() => {
+    if (
+      !inPlaceRenderActive ||
+      activeGlobalSection ||
+      activeLoaderKey ||
+      !currentPageKey ||
+      !decofile
+    ) {
+      variantRenderRef.current = null;
+      return;
+    }
+    const sig = JSON.stringify(workspace.state.variantOverride ?? null);
+    const prev = variantRenderRef.current;
+    variantRenderRef.current = { page: currentPageKey, sig };
+    // Baseline (first run or page switch): the frame's src already reflects this variant.
+    if (!prev || prev.page !== currentPageKey || prev.sig === sig) return;
+    renderPreviewInPlace();
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- renderPreviewInPlace reads live values; retrigger only on variant change
+  }, [
+    workspace.state.variantOverride,
+    inPlaceRenderActive,
+    activeGlobalSection,
+    activeLoaderKey,
+    currentPageKey,
+  ]);
+
   // Daemon is reachable independent of the dev script: ready claim, handle
   // still present, not user-stopped. Gates surfaces (FileExplorer,
   // terminal) that talk to the daemon's HTTP API and don't need a dev server.
