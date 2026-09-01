@@ -234,7 +234,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.targetUrlHint":
     "Leave blank to use the site's production URL.",
   "mainPanelTabs.e2eTab.rerun": "Run again",
-  "mainPanelTabs.e2eTab.deleteCheck": "Delete check",
   "mainPanelTabs.e2eTab.deleteAllChecks": "Delete all checks",
   "mainPanelTabs.e2eTab.toastCheckDeleted": "Checks deleted",
   "mainPanelTabs.e2eTab.confirmDeleteCheckTitle": "Delete all checks?",

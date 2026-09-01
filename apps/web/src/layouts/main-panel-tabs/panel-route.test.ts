@@ -173,6 +173,17 @@ describe("resolveChatSegments", () => {
     });
   });
 
+  test("GATED_CONTROL_PLANE_TABS is a subset of FIXED_SYSTEM_TABS", () => {
+    // The two must stay in sync: KNOWN_PANEL_SEGMENTS excludes the gated set from
+    // the fixed set, so a gated id that isn't actually a fixed system tab (or a
+    // new fixed tab that should be gated but isn't added here) would silently
+    // regress the lone-segment project-resolution fix.
+    const fixed = new Set<string>(FIXED_SYSTEM_TABS);
+    for (const tab of GATED_CONTROL_PLANE_TABS) {
+      expect({ tab, inFixed: fixed.has(tab) }).toEqual({ tab, inFixed: true });
+    }
+  });
+
   test("a gated control-plane tab id is not a lone panel word", () => {
     // Hosting/E2E/Analytics/Monitor are per-site, org-gated tabs that only ever
     // appear with a project — they must stay OUT of the known-panel-segment set

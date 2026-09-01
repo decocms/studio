@@ -248,7 +248,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.targetUrlHint":
     "Deixe em branco para usar a URL de produção do site.",
   "mainPanelTabs.e2eTab.rerun": "Rodar de novo",
-  "mainPanelTabs.e2eTab.deleteCheck": "Excluir check",
   "mainPanelTabs.e2eTab.deleteAllChecks": "Excluir todos os checks",
   "mainPanelTabs.e2eTab.toastCheckDeleted": "Checks excluídos",
   "mainPanelTabs.e2eTab.confirmDeleteCheckTitle": "Excluir todos os checks?",

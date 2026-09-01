@@ -375,6 +375,19 @@ export function useMainPanelTabs(ctx: {
           tabs: layoutTabs.map((t) => ({ id: t.id })),
         }
       : null;
+  // The agent's configured default main view — but never a hidden gated view.
+  // An agent whose default is a hosting/e2e/analytics/cdn the current user can't
+  // see would otherwise make every fallback below resolve to that same hidden
+  // id; drop to the base default ("settings", never gated) in that case.
+  const configuredDefaultTabId = resolveDefaultTabId(layoutForDefault);
+  const defaultTabHidden =
+    (configuredDefaultTabId === "hosting" && !showHostingTab) ||
+    (configuredDefaultTabId === "e2e" && !showE2eTab) ||
+    (configuredDefaultTabId === "analytics" && !showAnalyticsTab) ||
+    (configuredDefaultTabId === "cdn" && !showCdnTab);
+  const visibleDefaultTabId = defaultTabHidden
+    ? resolveDefaultTabId(null)
+    : configuredDefaultTabId;
   // A deep-linked control-plane / Monitor tab whose button is hidden (no BFF, no
   // ownership, or the org isn't flagged in) falls back to the default view once
   // ownership is known — mirroring git/content/assets — so a stale URL never
@@ -387,13 +400,13 @@ export function useMainPanelTabs(ctx: {
       (rawActiveTab === "cdn" && !showCdnTab));
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
-      ? resolveDefaultTabId(layoutForDefault)
+      ? visibleDefaultTabId
       : rawActiveTab === "content" && !showContentTab && !contentTabPending
-        ? resolveDefaultTabId(layoutForDefault)
+        ? visibleDefaultTabId
         : rawActiveTab === "assets" && !showAssetsTab && !assetsTabPending
-          ? resolveDefaultTabId(layoutForDefault)
+          ? visibleDefaultTabId
           : controlPlaneTabHidden
-            ? resolveDefaultTabId(layoutForDefault)
+            ? visibleDefaultTabId
             : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
@@ -649,14 +662,14 @@ export function useMainPanelTabs(ctx: {
   // The default main view leads the tab bar (see selectBarSlots) — but only
   // when it's a genuine landing view. The anchored trailing tabs (Settings,
   // Automations, git) and Chat keep their position rather than jumping to the
-  // front, so they're not promoted.
-  const rawDefaultTabId = resolveDefaultTabId(layoutForDefault);
+  // front, so they're not promoted. Uses the visibility-filtered default so a
+  // hidden gated view never leads the bar.
   const leadTabId =
-    rawDefaultTabId === "settings" ||
-    rawDefaultTabId === "automations" ||
-    rawDefaultTabId === "git"
+    visibleDefaultTabId === "settings" ||
+    visibleDefaultTabId === "automations" ||
+    visibleDefaultTabId === "git"
       ? null
-      : rawDefaultTabId;
+      : visibleDefaultTabId;
 
   const setActiveTab = (id: string) => {
     // On a reports-only org sitting on any shell other than the Report Agent
