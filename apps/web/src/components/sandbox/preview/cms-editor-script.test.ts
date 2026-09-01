@@ -144,6 +144,30 @@ describe("CMS_EDITOR_SCRIPT", () => {
     expect(swap).toContain('badge.style.display = "none"');
   });
 
+  it("hides the overlay as soon as a render starts, so a hover during the fetch can't re-show it before the swap's view transition snapshots it", () => {
+    const start = CMS_EDITOR_SCRIPT.indexOf("var renderInPlace = function");
+    const end = CMS_EDITOR_SCRIPT.indexOf(
+      'postMessage({ type: "cms-editor::render-start"',
+      start,
+    );
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const setup = CMS_EDITOR_SCRIPT.slice(start, end);
+    expect(setup).toContain("renderPending = true");
+    expect(setup).toContain('highlight.style.display = "none"');
+    expect(setup).toContain('badge.style.display = "none"');
+    // moveHandler must not reposition/show the overlay while a render is pending.
+    const moveStart = CMS_EDITOR_SCRIPT.indexOf(
+      "var moveHandler = function(e)",
+    );
+    const moveGuardEnd = CMS_EDITOR_SCRIPT.indexOf(
+      "rafPending = true",
+      moveStart,
+    );
+    const moveGuard = CMS_EDITOR_SCRIPT.slice(moveStart, moveGuardEnd);
+    expect(moveGuard).toContain("renderPending");
+  });
+
   it("drops a bridge message whose source isn't this frame's parent", () => {
     const start = CMS_EDITOR_SCRIPT.indexOf(
       'window.addEventListener("message", function(e)',

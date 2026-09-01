@@ -180,6 +180,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var lastLabel = "";
   var lastKind = "normal";
   var rafPending = false;
+  // True while an in-place render fetch/swap is in flight; suppresses hover so it can't re-show the overlay right before the swap snapshots it.
+  var renderPending = false;
 
   // Document-relative coordinates (rect + scroll) on absolutely-positioned
   // nodes, so the browser scrolls the highlight together with the page
@@ -200,7 +202,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
 
   var moveHandler = function(e) {
-    if (rafPending) return;
+    if (renderPending || rafPending) return;
     rafPending = true;
     var target = e.target;
     requestAnimationFrame(function() {
@@ -316,6 +318,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     if (renderCtrl) renderCtrl.abort();
     var ctrl = new AbortController();
     renderCtrl = ctrl;
+    renderPending = true;
+    highlight.style.display = "none";
+    badge.style.display = "none";
     window.parent.postMessage({ type: "cms-editor::render-start" }, "*");
     renderQueue = renderQueue.then(function() {
       return fetch(src, {
@@ -351,8 +356,10 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       }).then(function() {
         var t = document.getElementById("deco-disable-transitions");
         if (t) t.remove();
+        if (ctrl === renderCtrl) renderPending = false;
         window.parent.postMessage({ type: "cms-editor::render-end" }, "*");
       }).catch(function(err) {
+        if (ctrl === renderCtrl) renderPending = false;
         if (err && err.name === "AbortError") return;
         window.parent.postMessage({ type: "cms-editor::render-error" }, "*");
       });
