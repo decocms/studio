@@ -164,10 +164,8 @@ export async function applyBoardDecision(
   let item: TaskBoardItem | null;
   if (target) {
     // Enter the review phase only from an earlier lane; never regress a finished
-    // card — and only onto a lane this board HAS. Folded into `advancing` rather
-    // than left to a null status: `undefined` already means "leave the status
-    // alone" here, so reusing it for "nowhere to advance to" would also skip the
-    // Super Agent claim and the review cycle without saying why.
+    // card — and only onto a lane this board HAS. A null `advanceTo` is
+    // "nowhere to advance to", and skips the claim and the review cycle with it.
     const progressLane = lanes.progress;
     // The LANE, not a boolean: `boardCan` narrows `progressLane` inside this
     // expression, and a boolean would not carry that to the write below.
@@ -180,32 +178,28 @@ export async function applyBoardDecision(
       ) && canAdvance(columns, target.status, progressLane)
         ? progressLane
         : null;
-    const advancing = advanceTo !== null;
-    // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's — re-fenced on the live row since `target` predates the LLM call above.
-    const claimSuperAgent = advancing && target.assigneeId == null;
-    if (claimSuperAgent) {
-      await storage.claimUnassignedForSuperAgent(
-        target.id,
-        orgId,
-        userId,
-        userId,
-        target.status,
-      );
-    }
-    item = await storage.update(
-      target.id,
-      orgId,
-      {
-        // In Progress, not In Review: a reviewer is about to work on this PR,
-        // and In Review is what the board says once it is a person's turn.
-        // The open cycle below is what puts it on the reviewer's work list.
-        status: advanceTo ?? undefined,
-      },
-      userId,
-    );
-    if (advancing) {
+    // In Progress, not In Review: a reviewer is about to work on this PR, and
+    // In Review is what the board says once it is a person's turn. The open
+    // cycle below is what puts it on the reviewer's work list. The move also
+    // claims an unowned card for the Super Agent (reviewer dispatch gates on
+    // it) — never a human's. One fenced write, because `target` predates the
+    // LLM call above: a card someone moved since must not be dragged back.
+    const advanced =
+      advanceTo === null
+        ? null
+        : await storage.advanceToProgressOnPrOpen(
+            target.id,
+            orgId,
+            target.status,
+            advanceTo,
+            userId,
+          );
+    if (advanced) {
       await storage.openReviewCycleIfInProgress(target.id, orgId, lanes);
     }
+    // Lost the race (or nowhere to advance): link the PR onto the card as it
+    // now stands rather than dropping the whole reaction.
+    item = advanced ?? (await storage.getById(target.id, orgId));
   } else {
     // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
