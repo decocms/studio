@@ -84,6 +84,7 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
+import type { TranslationKey } from "@/i18n/use-t.ts";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -161,19 +162,23 @@ const MODULES = [
 ] as const;
 
 // The dashboard views, as a horizontal tab bar in the order the internal admin
-// UI shows them. Labels are the admin's product names (kept literal — the shared
-// i18n file is churning under another workstream). `pipeline` (operator-only, no
-// tenant policy) and `install` (only stripped internals) are omitted.
-const DATA_VIEWS: ReadonlyArray<{ view: string; label: string }> = [
-  { view: "live", label: "Realtime" },
-  { view: "overview", label: "Overview" },
-  { view: "behaviour", label: "Pages & sources" },
-  { view: "events", label: "Events & props" },
-  { view: "errors", label: "Errors" },
-  { view: "experiments", label: "Experiments" },
-  { view: "vitals", label: "Web Vitals" },
-  { view: "quality", label: "Data quality" },
-  { view: "usage", label: "Usage & limits" },
+// UI shows them. Labels are resolved through i18n at render (this is a
+// module-level const, so it carries the key, not the translated string).
+// `pipeline` (operator-only, no tenant policy) and `install` (only stripped
+// internals) are omitted.
+const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
+  { view: "live", labelKey: "mainPanelTabs.analyticsTab.viewLive" },
+  { view: "overview", labelKey: "mainPanelTabs.analyticsTab.viewOverview" },
+  { view: "behaviour", labelKey: "mainPanelTabs.analyticsTab.viewBehaviour" },
+  { view: "events", labelKey: "mainPanelTabs.analyticsTab.viewEvents" },
+  { view: "errors", labelKey: "mainPanelTabs.analyticsTab.viewErrors" },
+  {
+    view: "experiments",
+    labelKey: "mainPanelTabs.analyticsTab.viewExperiments",
+  },
+  { view: "vitals", labelKey: "mainPanelTabs.analyticsTab.viewVitals" },
+  { view: "quality", labelKey: "mainPanelTabs.analyticsTab.viewQuality" },
+  { view: "usage", labelKey: "mainPanelTabs.analyticsTab.viewUsage" },
 ];
 
 // Range pills, shortest first — the admin's 5m…30d selector.
@@ -894,6 +899,7 @@ const OVERVIEW_METRICS: ReadonlyArray<[string, string]> = [
  *  driving one hero time-series, then the ranked breakdowns and the funnel —
  *  the GA4 / OneDollarStats shape, not a generic panel dump. */
 function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
+  const t = useT();
   const rowsOf = (k: string) =>
     (Array.isArray(payload[k]) ? payload[k] : []) as Array<
       Record<string, unknown>
@@ -962,12 +968,12 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {sources.length > 0 && (
-          <Card title="Top sources">
+          <Card title={t("mainPanelTabs.analyticsTab.cardTopSources")}>
             <BarList rows={sources} labelKey="k" valueKey="n" />
           </Card>
         )}
         {funnel && (
-          <Card title="Funnel">
+          <Card title={t("mainPanelTabs.analyticsTab.cardFunnel")}>
             <Funnel row={funnel} />
           </Card>
         )}
@@ -1021,7 +1027,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
         ))}
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Live feed">
+        <Card title={t("mainPanelTabs.analyticsTab.cardLiveFeed")}>
           {feed.length > 0 ? (
             <DataTable rows={feed} />
           ) : (
@@ -1030,7 +1036,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
             </p>
           )}
         </Card>
-        <Card title="Pages right now">
+        <Card title={t("mainPanelTabs.analyticsTab.cardPagesNow")}>
           {pages.length > 0 ? (
             <BarList rows={pages} labelKey="k" valueKey="n" />
           ) : (
@@ -1133,6 +1139,7 @@ function QuotaBanner({
   quota?: number;
   payload: Record<string, unknown>;
 }) {
+  const t = useT();
   const capped = typeof quota === "number" && quota > 0;
   // Pull an accepted total out of the payload. The summary may arrive either as
   // a scalar object OR — like the other analytics panels — as an array of rows,
@@ -1158,18 +1165,19 @@ function QuotaBanner({
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Monthly quota
+          {t("mainPanelTabs.analyticsTab.monthlyQuota")}
         </span>
         <span className="font-mono text-sm tabular-nums text-foreground">
-          {capped ? `${fmt(quota!)} events / month` : "Uncapped"}
+          {capped
+            ? `${fmt(quota!)} ${t("mainPanelTabs.analyticsTab.eventsPerMonthSuffix")}`
+            : t("mainPanelTabs.analyticsTab.uncapped")}
         </span>
       </div>
       {capped && accepted !== null && (
         <p className="text-xs text-muted-foreground">
-          {fmt(accepted)} accepted in the selected range. The cap resets each
-          calendar month; the collector drops events once the site is flagged
-          over. Month-to-date consumption and the over-quota state are on the
-          site's hosting detail.
+          {t("mainPanelTabs.analyticsTab.acceptedInRange", {
+            count: fmt(accepted),
+          })}
         </p>
       )}
       {!capped && (
@@ -1665,13 +1673,15 @@ function EditAnalyticsDialog({
             </span>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="analytics-quota">Monthly quota</Label>
+            <Label htmlFor="analytics-quota">
+              {t("mainPanelTabs.analyticsTab.monthlyQuota")}
+            </Label>
             <Input
               id="analytics-quota"
               type="number"
               min={1}
               value={quota}
-              placeholder="Uncapped"
+              placeholder={t("mainPanelTabs.analyticsTab.uncapped")}
               onChange={(e) => setQuota(e.target.value)}
               aria-invalid={quotaError != null}
               className="font-mono text-xs"
@@ -2022,7 +2032,7 @@ function RegisteredView({
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {v.label}
+            {t(v.labelKey)}
           </button>
         ))}
       </div>
