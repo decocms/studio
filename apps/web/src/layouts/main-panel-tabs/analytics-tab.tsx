@@ -256,8 +256,7 @@ function formatCell(value: unknown): string {
 
 function isScalar(value: unknown): boolean {
   return (
-    value === null ||
-    ["string", "number", "boolean"].includes(typeof value)
+    value === null || ["string", "number", "boolean"].includes(typeof value)
   );
 }
 
@@ -496,7 +495,14 @@ function AreaTrend({
       <AreaChart data={data} margin={{ top: 8, right: -8, bottom: 8, left: 0 }}>
         <defs>
           {keys.map((k, i) => (
-            <linearGradient key={k} id={`dq-grad-${k}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient
+              key={k}
+              id={`dq-grad-${k}`}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
               <stop offset="0%" stopColor={colors[i]} stopOpacity={0.2} />
               <stop offset="100%" stopColor={colors[i]} stopOpacity={0} />
             </linearGradient>
@@ -718,9 +724,7 @@ type PanelKind = "kpi" | "series" | "funnel" | "bars" | "table";
 
 /** Shape-detect a panel into a visual kind, or null when there's nothing to
  *  show. Empty panels are dropped so the layout stays dense. */
-function classifyPanel(
-  rows: Array<Record<string, unknown>>,
-): {
+function classifyPanel(rows: Array<Record<string, unknown>>): {
   kind: PanelKind;
   timeKey?: string;
   metricKeys?: string[];
@@ -1011,9 +1015,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
               {label}
             </span>
             <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
-              {k === "last_event"
-                ? formatCell(kpi[k])
-                : fmtMetric(k, kpi[k])}
+              {k === "last_event" ? formatCell(kpi[k]) : fmtMetric(k, kpi[k])}
             </span>
           </div>
         ))}
@@ -1591,9 +1593,7 @@ function EditAnalyticsDialog({
       ? "Quota must be a positive whole number of events."
       : null;
   const quotaCleared =
-    quota.trim() === "" &&
-    typeof config.quota === "number" &&
-    config.quota > 0;
+    quota.trim() === "" && typeof config.quota === "number" && config.quota > 0;
 
   const handleSave = () => {
     if (quotaError) return;
@@ -1678,8 +1678,8 @@ function EditAnalyticsDialog({
               </span>
             ) : (
               <span className="text-xs text-muted-foreground">
-                Accepted events per calendar month. Once the reconciler flags the
-                site as over, the collector drops further events. Blank =
+                Accepted events per calendar month. Once the reconciler flags
+                the site as over, the collector drops further events. Blank =
                 uncapped.
               </span>
             )}
@@ -2046,7 +2046,9 @@ function RegisteredView({
           <dl className="flex flex-col gap-2">
             <div className="flex flex-col gap-0.5">
               <dt className="font-mono text-xs text-foreground">pageview()</dt>
-              <dd className="text-xs">Record a pageview manually (SPA route change).</dd>
+              <dd className="text-xs">
+                Record a pageview manually (SPA route change).
+              </dd>
             </div>
             <div className="flex flex-col gap-0.5">
               <dt className="font-mono text-xs text-foreground">

@@ -160,9 +160,12 @@ describe("resolveChatSegments", () => {
   });
 
   test("an agent-declared tab id is not a lone panel word", () => {
-    expect(isKnownPanelSegment("analytics")).toBe(false);
-    expect(resolveChatSegments({ project: "analytics" })).toEqual({
-      project: "analytics",
+    // A custom, project-declared view id (not a fixed system tab like
+    // hosting/e2e/analytics/cdn) is never a lone panel word — it always names
+    // the project too, so a bare segment resolves to a project.
+    expect(isKnownPanelSegment("my-custom-view")).toBe(false);
+    expect(resolveChatSegments({ project: "my-custom-view" })).toEqual({
+      project: "my-custom-view",
       panel: undefined,
     });
   });

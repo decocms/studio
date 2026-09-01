@@ -29,11 +29,7 @@ import {
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
 import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from "recharts";
-import {
-  ComposableMap,
-  Geographies,
-  Geography,
-} from "react-simple-maps";
+import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import isoCountries from "i18n-iso-countries";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
@@ -159,7 +155,9 @@ function RangePicker({
             <input
               type="checkbox"
               checked={value.compare}
-              onChange={(e) => onChange({ ...value, compare: e.target.checked })}
+              onChange={(e) =>
+                onChange({ ...value, compare: e.target.checked })
+              }
               className="size-3.5 accent-foreground"
             />
             {t("mainPanelTabs.cdnTab.compare")}
@@ -197,7 +195,10 @@ function formatBytes(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+  const i = Math.min(
+    Math.floor(Math.log(n) / Math.log(1024)),
+    units.length - 1,
+  );
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
@@ -471,11 +472,7 @@ const GEO_URL =
 /** Choropleth of a country breakdown — the Map view of the Countries panel.
  *  The topojson keys countries by numeric ISO id; convert it to alpha-2
  *  (i18n-iso-countries) to join the alpha-2 breakdown data. */
-function CountryMap({
-  rows,
-}: {
-  rows: { key: string; value: number }[];
-}) {
+function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
   const byCode = new Map<string, number>();
   for (const r of rows) if (r.key) byCode.set(r.key.toUpperCase(), r.value);
   const max = Math.max(1, ...rows.map((r) => r.value));
@@ -486,10 +483,7 @@ function CountryMap({
     y: number;
   } | null>(null);
   return (
-    <div
-      className="relative w-full"
-      onMouseLeave={() => setTip(null)}
-    >
+    <div className="relative w-full" onMouseLeave={() => setTip(null)}>
       {/* Rectangular Mercator (like the OneDollar map), cropped below Antarctica
           and above the Arctic so the world fills the card without distortion. */}
       <ComposableMap
@@ -510,9 +504,8 @@ function CountryMap({
               const value = (a2 && byCode.get(a2.toUpperCase())) || 0;
               const ratio = value / max;
               const name =
-                (
-                  (geo as { properties?: { name?: string } }).properties?.name
-                ) ?? (a2 ? formatCountry(a2) : id);
+                (geo as { properties?: { name?: string } }).properties?.name ??
+                (a2 ? formatCountry(a2) : id);
               return (
                 <Geography
                   key={(geo as { rsmKey: string }).rsmKey}
@@ -838,19 +831,20 @@ function PerformanceSection({
   }
 
   const s = summary.data;
-  const reqPerPv =
-    s && s.pageviews > 0 ? s.total_requests / s.pageviews : null;
+  const reqPerPv = s && s.pageviews > 0 ? s.total_requests / s.pageviews : null;
   const bwPer10kPv =
     s && s.pageviews > 0
       ? s.total_bandwidth_bytes / (s.pageviews / 10000)
       : null;
 
-  const cdnItems = (rows: BreakdownRow[] | null | undefined, named: boolean): RankItem[] =>
+  const cdnItems = (
+    rows: BreakdownRow[] | null | undefined,
+    named: boolean,
+  ): RankItem[] =>
     (rows ?? []).map((r) => ({
       label: named ? statusName(r.key) : r.key,
       color: named ? statusColor(r.key) : cacheColor(r.key),
-      value:
-        metric === "requests" ? r.total_requests : r.total_bandwidth_bytes,
+      value: metric === "requests" ? r.total_requests : r.total_bandwidth_bytes,
       formatted:
         metric === "requests"
           ? formatNumber(r.total_requests)
@@ -1142,7 +1136,11 @@ function useOd(
       const hostQ = host ? `&host=${encodeURIComponent(host)}` : "";
       const body = (await fetchJson(
         `${base}/onedollar?report=${report}&range=${range}${hostQ}${fp}`,
-      )) as { available?: boolean; results?: OdResult[]; previous?: OdResult[] };
+      )) as {
+        available?: boolean;
+        results?: OdResult[];
+        previous?: OdResult[];
+      };
       if (body.available === false) return null;
       return { results: body.results ?? [], previous: body.previous };
     },
@@ -1278,11 +1276,39 @@ const UTM_DIMS = [
 // KPI cards: which kpis-metric index each reads, which timeseries-metric index
 // plots it, how to format it, and whether higher is better (for delta color).
 const KPI_DEFS = [
-  { key: "pageviews", label: "pageviews", kpiIdx: 2, tsIdx: 0, fmt: "num", up: true },
+  {
+    key: "pageviews",
+    label: "pageviews",
+    kpiIdx: 2,
+    tsIdx: 0,
+    fmt: "num",
+    up: true,
+  },
   { key: "visits", label: "visits", kpiIdx: 1, tsIdx: 1, fmt: "num", up: true },
-  { key: "visitors", label: "visitors", kpiIdx: 0, tsIdx: 2, fmt: "num", up: true },
-  { key: "duration", label: "visitDuration", kpiIdx: 4, tsIdx: 4, fmt: "dur", up: true },
-  { key: "bounce", label: "bounceRate", kpiIdx: 3, tsIdx: 3, fmt: "pct", up: false },
+  {
+    key: "visitors",
+    label: "visitors",
+    kpiIdx: 0,
+    tsIdx: 2,
+    fmt: "num",
+    up: true,
+  },
+  {
+    key: "duration",
+    label: "visitDuration",
+    kpiIdx: 4,
+    tsIdx: 4,
+    fmt: "dur",
+    up: true,
+  },
+  {
+    key: "bounce",
+    label: "bounceRate",
+    kpiIdx: 3,
+    tsIdx: 3,
+    fmt: "pct",
+    up: false,
+  },
 ] as const;
 
 function fmtKpi(fmt: string, v: number): string {
@@ -1327,15 +1353,12 @@ function AudienceSection({
   enabled: boolean;
 }) {
   const t = useT();
-  const [deviceDim, setDeviceDim] = useState<(typeof DEVICE_DIMS)[number]>(
-    "browsers",
-  );
-  const [utmDim, setUtmDim] = useState<(typeof UTM_DIMS)[number]>(
-    "utm_campaign",
-  );
-  const [plotted, setPlotted] = useState<(typeof KPI_DEFS)[number]["key"]>(
-    "pageviews",
-  );
+  const [deviceDim, setDeviceDim] =
+    useState<(typeof DEVICE_DIMS)[number]>("browsers");
+  const [utmDim, setUtmDim] =
+    useState<(typeof UTM_DIMS)[number]>("utm_campaign");
+  const [plotted, setPlotted] =
+    useState<(typeof KPI_DEFS)[number]["key"]>("pageviews");
   const [countryView, setCountryView] = useState<"map" | "list">("map");
   const [selectedHost, setSelectedHost] = useState("");
   const [filters, setFilters] = useState<MonitorFilter[]>([]);
@@ -1378,8 +1401,7 @@ function AudienceSection({
   const k = kpis.data?.results?.[0]?.metrics ?? null;
   const kPrev = kpis.data?.previous?.[0]?.metrics ?? null;
   const totalVisitors = k ? Number(k[0]) : null;
-  const plottedDef =
-    KPI_DEFS.find((d) => d.key === plotted) ?? KPI_DEFS[0];
+  const plottedDef = KPI_DEFS.find((d) => d.key === plotted) ?? KPI_DEFS[0];
   // When Compare is on, align the previous period by index so it overlays as a
   // muted line against the current one.
   const prevRows = timeseries.data?.previous ?? [];
@@ -1455,14 +1477,8 @@ function AudienceSection({
           {KPI_DEFS.map((d) => {
             const cur = Number(k[d.kpiIdx] ?? 0);
             const prev = kPrev ? Number(kPrev[d.kpiIdx] ?? 0) : null;
-            const delta =
-              prev && prev > 0 ? ((cur - prev) / prev) * 100 : null;
-            const good =
-              delta === null
-                ? null
-                : d.up
-                  ? delta >= 0
-                  : delta <= 0;
+            const delta = prev && prev > 0 ? ((cur - prev) / prev) * 100 : null;
+            const good = delta === null ? null : d.up ? delta >= 0 : delta <= 0;
             return (
               <button
                 key={d.key}
@@ -1486,9 +1502,7 @@ function AudienceSection({
                     <span
                       className={cn(
                         "text-xs font-medium tabular-nums",
-                        good
-                          ? "text-emerald-600"
-                          : "text-rose-600",
+                        good ? "text-emerald-600" : "text-rose-600",
                       )}
                     >
                       {delta >= 0 ? "↑" : "↓"}
@@ -1715,7 +1729,10 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   }
 
   const sections = [
-    { id: "performance" as const, label: t("mainPanelTabs.cdnTab.performance") },
+    {
+      id: "performance" as const,
+      label: t("mainPanelTabs.cdnTab.performance"),
+    },
     { id: "audience" as const, label: t("mainPanelTabs.cdnTab.audience") },
   ];
 

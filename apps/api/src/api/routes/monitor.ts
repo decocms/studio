@@ -103,9 +103,19 @@ function resolveWindow(
   range: string,
   sinceQ: string | undefined,
   untilQ: string | undefined,
-): { since: string; until: string; granularity: "hourly" | "daily"; days: number } | null {
+): {
+  since: string;
+  until: string;
+  granularity: "hourly" | "daily";
+  days: number;
+} | null {
   if (range === "custom") {
-    if (!sinceQ || !untilQ || !ISO_DATE.test(sinceQ) || !ISO_DATE.test(untilQ)) {
+    if (
+      !sinceQ ||
+      !untilQ ||
+      !ISO_DATE.test(sinceQ) ||
+      !ISO_DATE.test(untilQ)
+    ) {
       return null;
     }
     const days = Math.max(
@@ -294,24 +304,25 @@ async function querySummary(
 
   // Shared-infra facts have no per-request dimensions to filter on, so a filtered
   // view drops them (matches the admin skipping shared-infra under filters).
-  const shared = !filters.length && hostnames.length
-    ? (
-        await analyticsQuery<{
-          total_requests: number;
-          total_bandwidth_bytes: number;
-          cache_hit_requests: number;
-        }>(
-          `SELECT
+  const shared =
+    !filters.length && hostnames.length
+      ? (
+          await analyticsQuery<{
+            total_requests: number;
+            total_bandwidth_bytes: number;
+            cache_hit_requests: number;
+          }>(
+            `SELECT
               sum(requests) AS total_requests,
               sum(bandwidth_bytes) AS total_bandwidth_bytes,
               sum(if(cache_status = 'hit', requests, 0)) AS cache_hit_requests
              FROM default.fact_shared_infra_usage_daily_view
             WHERE origin_host IN {hostnames:Array(String)}
               AND date >= {since:Date} AND date <= {until:Date}`,
-          { hostnames, since, until },
-        )
-      )[0]
-    : undefined;
+            { hostnames, since, until },
+          )
+        )[0]
+      : undefined;
 
   const totalRequests =
     Number(main?.total_requests ?? 0) + Number(shared?.total_requests ?? 0);
@@ -682,23 +693,79 @@ const OD_REPORTS: Record<
   { metrics: string[]; dimension?: string; order?: string }
 > = {
   kpis: {
-    metrics: ["visitors", "visits", "pageviews", "bounce_rate", "visit_duration"],
+    metrics: [
+      "visitors",
+      "visits",
+      "pageviews",
+      "bounce_rate",
+      "visit_duration",
+    ],
   },
   timeseries: {
-    metrics: ["pageviews", "visits", "visitors", "bounce_rate", "visit_duration"],
+    metrics: [
+      "pageviews",
+      "visits",
+      "visitors",
+      "bounce_rate",
+      "visit_duration",
+    ],
   },
-  pages: { metrics: ["pageviews", "visitors"], dimension: "event:page", order: "pageviews" },
-  sources: { metrics: ["visitors"], dimension: "visit:referrer", order: "visitors" },
-  countries: { metrics: ["visitors"], dimension: "visit:country", order: "visitors" },
-  browsers: { metrics: ["visitors"], dimension: "visit:browser", order: "visitors" },
+  pages: {
+    metrics: ["pageviews", "visitors"],
+    dimension: "event:page",
+    order: "pageviews",
+  },
+  sources: {
+    metrics: ["visitors"],
+    dimension: "visit:referrer",
+    order: "visitors",
+  },
+  countries: {
+    metrics: ["visitors"],
+    dimension: "visit:country",
+    order: "visitors",
+  },
+  browsers: {
+    metrics: ["visitors"],
+    dimension: "visit:browser",
+    order: "visitors",
+  },
   os: { metrics: ["visitors"], dimension: "visit:os", order: "visitors" },
-  devices: { metrics: ["visitors"], dimension: "visit:device", order: "visitors" },
-  events: { metrics: ["visitors", "events"], dimension: "event:name", order: "events" },
-  utm_campaign: { metrics: ["visitors", "events"], dimension: "visit:utm_campaign", order: "events" },
-  utm_source: { metrics: ["visitors", "events"], dimension: "visit:utm_source", order: "events" },
-  utm_medium: { metrics: ["visitors", "events"], dimension: "visit:utm_medium", order: "events" },
-  utm_content: { metrics: ["visitors", "events"], dimension: "visit:utm_content", order: "events" },
-  utm_term: { metrics: ["visitors", "events"], dimension: "visit:utm_term", order: "events" },
+  devices: {
+    metrics: ["visitors"],
+    dimension: "visit:device",
+    order: "visitors",
+  },
+  events: {
+    metrics: ["visitors", "events"],
+    dimension: "event:name",
+    order: "events",
+  },
+  utm_campaign: {
+    metrics: ["visitors", "events"],
+    dimension: "visit:utm_campaign",
+    order: "events",
+  },
+  utm_source: {
+    metrics: ["visitors", "events"],
+    dimension: "visit:utm_source",
+    order: "events",
+  },
+  utm_medium: {
+    metrics: ["visitors", "events"],
+    dimension: "visit:utm_medium",
+    order: "events",
+  },
+  utm_content: {
+    metrics: ["visitors", "events"],
+    dimension: "visit:utm_content",
+    order: "events",
+  },
+  utm_term: {
+    metrics: ["visitors", "events"],
+    dimension: "visit:utm_term",
+    order: "events",
+  },
 };
 
 interface OdResult {
@@ -936,7 +1003,10 @@ export const createMonitorRoutes = () => {
 
     const apiKey = getSettings().oneDollarStatsApiKey;
     if (!apiKey) {
-      return c.json({ available: false, error: "OneDollarStats not configured" });
+      return c.json({
+        available: false,
+        error: "OneDollarStats not configured",
+      });
     }
 
     const report = c.req.query("report") ?? "kpis";
