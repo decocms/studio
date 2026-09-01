@@ -140,23 +140,27 @@ export async function resolveRunTaskTargets(
 }
 
 /**
- * Advance the run's linked task board item(s) forward to `status` and
+ * Advance the run's linked task board item(s) forward to this board's `lane` and
  * broadcast each move. Resolves the linked item(s) from `runMetadata` first
  * (set at enqueue for the task's own run), falling back to the
  * `task_board_item_threads` link by `threadId` — the fallback is what makes
  * this fire for a re-prompted, repo-backed task's second PR, which carries no
- * run metadata. No-op when neither resolves, when an item is gone, or when
- * the target status wouldn't move its card forward. Best-effort: a failure
+ * run metadata. No-op when neither resolves, when this board has no column for
+ * `lane`, when an item is gone, or when the target wouldn't move the card
+ * forward. Best-effort: a failure
  * here never disturbs the agent run.
  */
 export async function advanceTaskBoardForRun(
   ctx: StudioContext,
-  status: string,
+  lane: keyof BoardLanes,
   threadId?: string,
 ): Promise<void> {
   const orgId = ctx.organization?.id;
   if (!orgId) return;
   try {
+    const status = (await boardLanes(ctx, orgId))[lane];
+    // Null: this board has no column meaning `lane`, so there is nowhere to go.
+    if (!status) return;
     for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
       const current = await ctx.storage.taskBoard.getById(itemId, orgId);
       // ponytail: read-then-write rank guard. A single run's transitions are
@@ -190,7 +194,7 @@ export async function advanceTaskBoardForRun(
       // The PR-open hook no longer comes through here — it opens a review
       // cycle instead (`openReviewCycleForRun`) and emits its own event — so
       // the only advance left to report is the run starting.
-      if (status === "in_progress") {
+      if (lane === "progress") {
         captureTaskRunEvent("task_run_started", orgId, item, {
           from: current.status,
         });

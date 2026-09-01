@@ -169,6 +169,7 @@ describe("delegatesToSuperAgent", () => {
       delegatesToSuperAgent(
         SUPER_AGENT_ASSIGNEE_ID,
         item({ assigneeId: null, status: "todo" }),
+        "todo",
       ),
     ).toBe(true);
   });
@@ -181,6 +182,7 @@ describe("delegatesToSuperAgent", () => {
       delegatesToSuperAgent(
         SUPER_AGENT_ASSIGNEE_ID,
         item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "todo" }),
+        "todo",
       ),
     ).toBe(true);
   });
@@ -191,6 +193,7 @@ describe("delegatesToSuperAgent", () => {
         delegatesToSuperAgent(
           SUPER_AGENT_ASSIGNEE_ID,
           item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status }),
+          "todo",
         ),
       ).toBe(false);
     }
@@ -198,13 +201,35 @@ describe("delegatesToSuperAgent", () => {
 
   it("does not delegate for any other assignee, or when none was passed", () => {
     const previous = item({ assigneeId: null, status: "todo" });
-    expect(delegatesToSuperAgent("user_2", previous)).toBe(false);
-    expect(delegatesToSuperAgent(null, previous)).toBe(false);
-    expect(delegatesToSuperAgent(undefined, previous)).toBe(false);
+    expect(delegatesToSuperAgent("user_2", previous, "todo")).toBe(false);
+    expect(delegatesToSuperAgent(null, previous, "todo")).toBe(false);
+    expect(delegatesToSuperAgent(undefined, previous, "todo")).toBe(false);
   });
 
   it("does not delegate without a pre-update item", () => {
-    expect(delegatesToSuperAgent(SUPER_AGENT_ASSIGNEE_ID, null)).toBe(false);
+    expect(delegatesToSuperAgent(SUPER_AGENT_ASSIGNEE_ID, null, "todo")).toBe(
+      false,
+    );
+  });
+
+  it("re-delegates a parked card on the lane THIS board queues to", () => {
+    expect(
+      delegatesToSuperAgent(
+        SUPER_AGENT_ASSIGNEE_ID,
+        item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "Refinement" }),
+        "Refinement",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not re-delegate when the board has no queue column at all", () => {
+    expect(
+      delegatesToSuperAgent(
+        SUPER_AGENT_ASSIGNEE_ID,
+        item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "Backlog" }),
+        null,
+      ),
+    ).toBe(false);
   });
 });
 
