@@ -972,7 +972,6 @@ function FilterControls({
           onChange={(repo) => onChange({ ...filters, repo })}
         />
       )}
-      <BoardSettingsButton block={block} onClick={onOpenBoardSettings} />
       {/* Same reasoning as the repo control: an active sprint filter keeps its
           chip visible even when the board mirrors no sprints, so the hidden
           cards can be brought back. */}
@@ -984,6 +983,7 @@ function FilterControls({
           onChange={(sprint) => onChange({ ...filters, sprint })}
         />
       )}
+      <BoardSettingsButton block={block} onClick={onOpenBoardSettings} />
     </>
   );
 }
