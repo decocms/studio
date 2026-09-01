@@ -3,6 +3,10 @@
  * page so it can be unit-tested without the route's React module graph.
  */
 
+import { parseSkillMd } from "@decocms/shared/harness/skill-md";
+import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import type { OrgFsSkillCatalogEntry } from "@/hooks/use-org-fs";
+
 /** One PUT per file, so a stray `node_modules` would fan out to thousands. */
 export const MAX_IMPORT_FILES = 200;
 
@@ -69,4 +73,28 @@ export async function uploadAllGroups(
     (r): r is PromiseRejectedResult => r.status === "rejected",
   );
   if (failure) throw failure.reason;
+}
+
+/**
+ * The catalog row the server will return for a just-imported skill, built from
+ * the same `SKILL.md` bytes it will parse — so the optimistic card carries the
+ * skill's real name and description instead of a placeholder that changes
+ * under the user once the refetch lands.
+ */
+export function optimisticEntry(
+  slug: string,
+  skillMd: string,
+): OrgFsSkillCatalogEntry {
+  const meta = parseSkillMd(skillMd);
+  const path = `skills/${slug}`;
+  return {
+    id: `home/${path}`,
+    name: meta.name ?? slug,
+    description: meta.description,
+    // Wire token, not a path — it just happens to spell the volume too.
+    source: "home",
+    volume: HOME_MOUNT_PATH,
+    path,
+    sandboxPath: `org/${HOME_MOUNT_PATH}/${path}`,
+  };
 }
