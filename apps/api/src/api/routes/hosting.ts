@@ -409,6 +409,12 @@ export const createHostingRoutes = () => {
   // pending/running the moment it is triggered, before any artifact exists.
   app.get("/:site/e2e/checks", (c) => proxyControlplane(c, "e2e/checks"));
 
+  // DELETE /api/:org/hosting/:site/e2e/checks — tombstone the site's declared
+  // check(s) + purge their run history. Write-gated by the proxy (admin role).
+  app.delete("/:site/e2e/checks", (c) =>
+    proxyControlplane(c, "e2e/checks", { method: "DELETE" }),
+  );
+
   // GET /api/:org/hosting/:site/e2e/runs  (?limit&offset passthrough)
   app.get("/:site/e2e/runs", (c) =>
     proxyControlplane(c, "e2e/runs", { forwardQuery: ["limit", "offset"] }),

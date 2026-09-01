@@ -505,6 +505,8 @@ function ChecksSection({
   enabled: boolean;
 }) {
   const t = useT();
+  const queryClient = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const query = useQuery({
     queryKey: KEYS.e2eChecks(orgSlug, site),
     queryFn: () => fetchJson(`${base}/e2e/checks`),
@@ -523,13 +525,42 @@ function ChecksSection({
   });
   const checks = list<E2eCheck>(query.data, "items");
 
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: KEYS.e2eChecks(orgSlug, site) });
+    queryClient.invalidateQueries({ queryKey: KEYS.e2eRuns(orgSlug, site) });
+  };
+
+  // Rerun a check = trigger its command again (url defaults to the site's prod URL).
+  const rerunMutation = useMutation({
+    mutationFn: (command: string) =>
+      mutateJson(`${base}/e2e/runs`, "POST", { command }),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.e2eTab.toastRunQueued"));
+    },
+    onError: (error) => toast.error(errorText(error)),
+  });
+
+  // Delete the site's declared check(s) + purge their run history.
+  const deleteMutation = useMutation({
+    mutationFn: () => mutateJson(`${base}/e2e/checks`, "DELETE"),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("mainPanelTabs.e2eTab.toastCheckDeleted"));
+      setConfirmDelete(false);
+    },
+    onError: (error) => toast.error(errorText(error)),
+  });
+
+  const busy = rerunMutation.isPending || deleteMutation.isPending;
+
   return (
     <Section
       title={t("mainPanelTabs.e2eTab.checksSection")}
       count={checks.length}
     >
       {query.isLoading ? (
-        <RowsSkeleton cols={5} />
+        <RowsSkeleton cols={6} />
       ) : query.error ? (
         <Muted>{t("mainPanelTabs.e2eTab.checksError")}</Muted>
       ) : checks.length === 0 ? (
@@ -546,6 +577,7 @@ function ChecksSection({
               <TableHead>{t("mainPanelTabs.e2eTab.colSchedule")}</TableHead>
               <TableHead>{t("mainPanelTabs.e2eTab.url")}</TableHead>
               <TableHead>{t("mainPanelTabs.e2eTab.colUpdated")}</TableHead>
+              <TableHead className="w-[1%]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -566,11 +598,61 @@ function ChecksSection({
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                   {timeAgo(c.updatedAt)}
                 </TableCell>
+                <TableCell className="text-right align-middle whitespace-nowrap">
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t("mainPanelTabs.e2eTab.rerun")}
+                    title={t("mainPanelTabs.e2eTab.rerun")}
+                    onClick={() => c.command && rerunMutation.mutate(c.command)}
+                    disabled={busy || !c.command}
+                  >
+                    <PlayCircle className="size-4" />
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t("mainPanelTabs.e2eTab.deleteCheck")}
+                    title={t("mainPanelTabs.e2eTab.deleteCheck")}
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={busy}
+                  >
+                    <Trash01 className="size-4" />
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("mainPanelTabs.e2eTab.confirmDeleteCheckTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("mainPanelTabs.e2eTab.confirmDeleteCheck")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t("mainPanelTabs.e2eTab.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                deleteMutation.mutate();
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {t("mainPanelTabs.e2eTab.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Section>
   );
 }
