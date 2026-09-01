@@ -11,6 +11,11 @@ function parseJsonColumn<T>(value: unknown): T | null {
   return (typeof value === "string" ? JSON.parse(value) : value) as T;
 }
 
+/** Stringify a JSON column's write value, or null when it's absent/empty. */
+function toJsonColumn(value: unknown): string | null {
+  return value ? JSON.stringify(value) : null;
+}
+
 export class OrganizationSettingsStorage
   implements OrganizationSettingsStoragePort
 {
@@ -67,50 +72,35 @@ export class OrganizationSettingsStorage
     >,
   ): Promise<OrganizationSettings> {
     const now = new Date().toISOString();
-    const sidebarItemsJson = data?.sidebar_items
-      ? JSON.stringify(data.sidebar_items)
-      : null;
-    const enabledPluginsJson = data?.enabled_plugins
-      ? JSON.stringify(data.enabled_plugins)
-      : null;
-    const registryConfigJson = data?.registry_config
-      ? JSON.stringify(data.registry_config)
-      : null;
-    const simpleModeJson = data?.simple_mode
-      ? JSON.stringify(data.simple_mode)
-      : null;
-    const defaultHomeAgentsJson = data?.default_home_agents
-      ? JSON.stringify(data.default_home_agents)
-      : null;
-    const flagsJson = data?.flags ? JSON.stringify(data.flags) : null;
+    const json = {
+      sidebar_items: toJsonColumn(data?.sidebar_items),
+      enabled_plugins: toJsonColumn(data?.enabled_plugins),
+      registry_config: toJsonColumn(data?.registry_config),
+      simple_mode: toJsonColumn(data?.simple_mode),
+      default_home_agents: toJsonColumn(data?.default_home_agents),
+      flags: toJsonColumn(data?.flags),
+    };
     await this.db
       .insertInto("organization_settings")
       .values({
         organizationId,
-        sidebar_items: sidebarItemsJson,
-        enabled_plugins: enabledPluginsJson,
-        registry_config: registryConfigJson,
-        simple_mode: simpleModeJson,
-        default_home_agents: defaultHomeAgentsJson,
-        flags: flagsJson,
+        ...json,
         main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
       })
       .onConflict((oc) =>
         oc.column("organizationId").doUpdateSet({
-          sidebar_items: sidebarItemsJson ? sidebarItemsJson : undefined,
-          enabled_plugins: enabledPluginsJson ? enabledPluginsJson : undefined,
-          registry_config: registryConfigJson ? registryConfigJson : undefined,
-          simple_mode: simpleModeJson ? simpleModeJson : undefined,
-          default_home_agents: defaultHomeAgentsJson
-            ? defaultHomeAgentsJson
-            : undefined,
+          sidebar_items: json.sidebar_items ?? undefined,
+          enabled_plugins: json.enabled_plugins ?? undefined,
+          registry_config: json.registry_config ?? undefined,
+          simple_mode: json.simple_mode ?? undefined,
+          default_home_agents: json.default_home_agents ?? undefined,
           // Flags shallow-merge atomically: keys in the update win, omitted
           // keys keep their stored value (explicit `false` persists — merge,
           // not spread-and-replace). Absent field skips the column.
-          flags: flagsJson
-            ? sql<string>`coalesce("organization_settings"."flags", '{}'::jsonb) || ${flagsJson}::jsonb`
+          flags: json.flags
+            ? sql<string>`coalesce("organization_settings"."flags", '{}'::jsonb) || ${json.flags}::jsonb`
             : undefined,
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
