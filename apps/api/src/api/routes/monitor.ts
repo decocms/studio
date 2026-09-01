@@ -40,10 +40,12 @@
 import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { requireOrganization } from "../../core/studio-context";
+import { getSettings } from "../../settings";
 import {
   analyticsQuery,
   isAnalyticsConfigured,
 } from "../../deco-legacy/clickhouse-analytics";
+import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
 
 type Variables = { studioContext: StudioContext };
 
@@ -57,18 +59,25 @@ const CDN_VIEWS = new Set([
   "top-countries",
 ]);
 
-/** Range → lookback window + bucket granularity. `24h` is the only hourly
- *  window (realtime-ish); everything else rolls up daily. Kept small and
- *  explicit — a client-supplied value outside this set is rejected. */
+/** Preset range → lookback window + bucket granularity, matching the old
+ *  admin's date dropdown. Sub-week windows bucket hourly; the rest daily. A
+ *  `custom` range (explicit since/until) is resolved separately. */
 const RANGE_TO_WINDOW: Record<
   string,
   { days: number; granularity: "hourly" | "daily" }
 > = {
+  "60m": { days: 1, granularity: "hourly" },
+  today: { days: 1, granularity: "hourly" },
+  yesterday: { days: 2, granularity: "hourly" },
   "24h": { days: 1, granularity: "hourly" },
+  "48h": { days: 2, granularity: "hourly" },
+  "72h": { days: 3, granularity: "hourly" },
   "7d": { days: 7, granularity: "daily" },
   "14d": { days: 14, granularity: "daily" },
   "30d": { days: 30, granularity: "daily" },
   "90d": { days: 90, granularity: "daily" },
+  "180d": { days: 180, granularity: "daily" },
+  "1y": { days: 365, granularity: "daily" },
 };
 
 /** Format a Date as ClickHouse `Date` literal (UTC `YYYY-MM-DD`). */
@@ -83,6 +92,39 @@ function windowDates(days: number): { since: string; until: string } {
   return { since: toIsoDate(since), until: toIsoDate(until) };
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Resolve a range selection to a concrete window. `custom` reads validated
+ * `since`/`until` (YYYY-MM-DD); otherwise a preset from RANGE_TO_WINDOW. Returns
+ * null for an unknown preset or a malformed custom range so the caller 400s.
+ */
+function resolveWindow(
+  range: string,
+  sinceQ: string | undefined,
+  untilQ: string | undefined,
+): { since: string; until: string; granularity: "hourly" | "daily"; days: number } | null {
+  if (range === "custom") {
+    if (!sinceQ || !untilQ || !ISO_DATE.test(sinceQ) || !ISO_DATE.test(untilQ)) {
+      return null;
+    }
+    const days = Math.max(
+      1,
+      Math.round((Date.parse(untilQ) - Date.parse(sinceQ)) / 86400000),
+    );
+    return {
+      since: sinceQ,
+      until: untilQ,
+      granularity: days <= 2 ? "hourly" : "daily",
+      days,
+    };
+  }
+  const w = RANGE_TO_WINDOW[range];
+  if (!w) return null;
+  const { since, until } = windowDates(w.days);
+  return { since, until, granularity: w.granularity, days: w.days };
+}
+
 /**
  * A site is scoped to its numeric `site_id`s resolved from the slug inside
  * ClickHouse. Exact `name =` match (not ILIKE): a customer's tab must never
@@ -90,6 +132,76 @@ function windowDates(days: number): { since: string; until: string } {
  */
 const SITE_SCOPE =
   "site_id IN (SELECT id FROM default.dim_sites WHERE name = {slug:String})";
+
+// --- Filters (the "Add filter" builder: field / operator / value) ------------
+
+export interface MonitorFilter {
+  field: string;
+  op: "equals" | "not_equals" | "contains" | "not_contains";
+  value: string;
+}
+
+/** Parse the `filters` query param (URL-encoded JSON array). Silently drops
+ *  malformed entries — a bad filter must never 500 the dashboard. */
+function parseFilters(raw: string | undefined): MonitorFilter[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (f) => f && typeof f.field === "string" && typeof f.op === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Build `AND col OP {param}` conditions for the filters whose column exists in
+ * the view being queried (`opts`). `status_code` is numeric; the rest are
+ * strings. Values are always bound as parameters, never interpolated. Returns
+ * the SQL fragment plus the params to merge into `query_params`.
+ */
+function cdnFilterSql(
+  filters: MonitorFilter[],
+  opts: { hasUrl: boolean; hasCountry: boolean },
+): { sql: string; params: Record<string, unknown> } {
+  const parts: string[] = [];
+  const params: Record<string, unknown> = {};
+  (filters ?? []).forEach((f, i) => {
+    const col =
+      f.field === "cache_status"
+        ? "cache_status"
+        : f.field === "status_code"
+          ? "status_code"
+          : f.field === "country"
+            ? opts.hasCountry
+              ? "country"
+              : null
+            : f.field === "path"
+              ? opts.hasUrl
+                ? "url"
+                : null
+              : null;
+    if (!col) return;
+    const p = `flt${i}`;
+    const numeric = f.field === "status_code";
+    if (f.op === "equals" || f.op === "not_equals") {
+      const type = numeric ? "UInt32" : "String";
+      params[p] = numeric ? Number(f.value) : f.value;
+      parts.push(`AND ${col} ${f.op === "equals" ? "=" : "!="} {${p}:${type}}`);
+    } else {
+      // contains / not_contains — always string ILIKE.
+      params[p] = `%${f.value}%`;
+      parts.push(
+        `AND toString(${col}) ${
+          f.op === "contains" ? "ILIKE" : "NOT ILIKE"
+        } {${p}:String}`,
+      );
+    }
+  });
+  return { sql: parts.length ? ` ${parts.join(" ")}` : "", params };
+}
 
 /**
  * Busiest distinct origin hosts for this site — the only key the shared-infra
@@ -154,7 +266,9 @@ async function querySummary(
   slug: string,
   since: string,
   until: string,
+  filters: MonitorFilter[],
 ): Promise<CdnSummary> {
+  const flt = cdnFilterSql(filters, { hasUrl: false, hasCountry: true });
   const [hostnames, pageviews] = await Promise.all([
     siteHostnames(slug, since, until),
     queryPageviews(slug, since, until),
@@ -174,11 +288,13 @@ async function querySummary(
         uniq(country) AS unique_countries
        FROM default.fact_usage_daily_view
       WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}`,
-    { slug, since, until },
+        AND date >= {since:Date} AND date <= {until:Date}${flt.sql}`,
+    { slug, since, until, ...flt.params },
   );
 
-  const shared = hostnames.length
+  // Shared-infra facts have no per-request dimensions to filter on, so a filtered
+  // view drops them (matches the admin skipping shared-infra under filters).
+  const shared = !filters.length && hostnames.length
     ? (
         await analyticsQuery<{
           total_requests: number;
@@ -234,7 +350,9 @@ async function queryTimeline(
   since: string,
   until: string,
   granularity: "hourly" | "daily",
+  filters: MonitorFilter[],
 ): Promise<CdnTimelinePoint[]> {
+  const flt = cdnFilterSql(filters, { hasUrl: false, hasCountry: true });
   const view =
     granularity === "hourly"
       ? "default.fact_usage_hourly_view"
@@ -259,10 +377,10 @@ async function queryTimeline(
         sum(if(cache_status = 'hit', requests, 0)) AS cache_hits
        FROM ${view}
       WHERE ${SITE_SCOPE}
-        AND ${dateCmp} >= {since:Date} AND ${dateCmp} <= {until:Date}
+        AND ${dateCmp} >= {since:Date} AND ${dateCmp} <= {until:Date}${flt.sql}
       GROUP BY ${timeCol}
       ORDER BY ${timeCol} ASC`,
-    { slug, since, until },
+    { slug, since, until, ...flt.params },
   );
 
   // Pageviews are daily; map them onto matching daily buckets.
@@ -303,7 +421,9 @@ async function queryCacheStatus(
   slug: string,
   since: string,
   until: string,
+  filters: MonitorFilter[],
 ): Promise<CdnBreakdownRow[]> {
+  const flt = cdnFilterSql(filters, { hasUrl: false, hasCountry: true });
   const rows = await analyticsQuery<{
     cache_status: string;
     total_requests: number;
@@ -315,10 +435,10 @@ async function queryCacheStatus(
         sum(bandwidth_bytes) AS total_bandwidth_bytes
        FROM default.fact_usage_daily_view
       WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}
+        AND date >= {since:Date} AND date <= {until:Date}${flt.sql}
       GROUP BY cache_status
       ORDER BY total_requests DESC`,
-    { slug, since, until },
+    { slug, since, until, ...flt.params },
   );
   return rows.map((r) => ({
     key: r.cache_status,
@@ -332,7 +452,9 @@ async function queryStatusCodes(
   slug: string,
   since: string,
   until: string,
+  filters: MonitorFilter[],
 ): Promise<CdnBreakdownRow[]> {
+  const flt = cdnFilterSql(filters, { hasUrl: false, hasCountry: true });
   const rows = await analyticsQuery<{
     status_code: number;
     total_requests: number;
@@ -344,10 +466,10 @@ async function queryStatusCodes(
         sum(bandwidth_bytes) AS total_bandwidth_bytes
        FROM default.fact_usage_daily_view
       WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}
+        AND date >= {since:Date} AND date <= {until:Date}${flt.sql}
       GROUP BY status_code
       ORDER BY total_requests DESC`,
-    { slug, since, until },
+    { slug, since, until, ...flt.params },
   );
   return rows.map((r) => ({
     key: String(r.status_code),
@@ -356,28 +478,33 @@ async function queryStatusCodes(
   }));
 }
 
-/** Top paths/URLs by requests. */
+/** Top paths/URLs by requests. `groupByPath` strips the query string so
+ *  `/p?a=1` and `/p?a=2` collapse into `/p` (the "Ignore query string" toggle). */
 async function queryTopPaths(
   slug: string,
   since: string,
   until: string,
+  groupByPath: boolean,
+  filters: MonitorFilter[],
 ): Promise<CdnBreakdownRow[]> {
+  const flt = cdnFilterSql(filters, { hasUrl: true, hasCountry: false });
+  const urlExpr = groupByPath ? "splitByChar('?', url)[1]" : "url";
   const rows = await analyticsQuery<{
     url: string;
     total_requests: number;
     total_bandwidth_bytes: number;
   }>(
     `SELECT
-        url,
+        ${urlExpr} AS url,
         sum(requests) AS total_requests,
         sum(bandwidth_bytes) AS total_bandwidth_bytes
        FROM default.fact_top_urls_daily_view
       WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}
+        AND date >= {since:Date} AND date <= {until:Date}${flt.sql}
       GROUP BY url
       ORDER BY total_requests DESC
       LIMIT 50`,
-    { slug, since, until },
+    { slug, since, until, ...flt.params },
   );
   return rows.map((r) => ({
     key: r.url,
@@ -391,7 +518,9 @@ async function queryTopCountries(
   slug: string,
   since: string,
   until: string,
+  filters: MonitorFilter[],
 ): Promise<CdnBreakdownRow[]> {
+  const flt = cdnFilterSql(filters, { hasUrl: false, hasCountry: true });
   const rows = await analyticsQuery<{
     country: string;
     total_requests: number;
@@ -403,11 +532,11 @@ async function queryTopCountries(
         sum(bandwidth_bytes) AS total_bandwidth_bytes
        FROM default.fact_usage_daily_view
       WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}
+        AND date >= {since:Date} AND date <= {until:Date}${flt.sql}
       GROUP BY country
       ORDER BY total_requests DESC
       LIMIT 50`,
-    { slug, since, until },
+    { slug, since, until, ...flt.params },
   );
   return rows.map((r) => ({
     key: r.country,
@@ -533,6 +662,60 @@ async function queryAudienceBreakdown(
   }));
 }
 
+// --- OneDollarStats (Plausible-compatible) audience reports ------------------
+//
+// The full audience dashboard the old admin embedded as the `stonks-dashboard`
+// widget — rendered NATIVELY here instead. Every panel is one Plausible v2 query
+// against `deco.lilstts.com/plausible`, proxied server-side so the backend key
+// (`ONEDOLLAR_BACKEND_API_KEY`) never reaches the browser. This is the interim
+// source for the dimensions the warehouse doesn't carry (visit duration, bounce
+// rate, referrers, pages-by-pageview, full UTM); it is meant to be swapped for
+// Deco Analytics once that covers them, so the front reads normalized rows and
+// doesn't care which backend produced them.
+
+const OD_API = "https://deco.lilstts.com/plausible";
+const OD_TIMEOUT_MS = 12_000;
+
+/** report → the Plausible metrics/dimension/order that build it. */
+const OD_REPORTS: Record<
+  string,
+  { metrics: string[]; dimension?: string; order?: string }
+> = {
+  kpis: {
+    metrics: ["visitors", "visits", "pageviews", "bounce_rate", "visit_duration"],
+  },
+  timeseries: {
+    metrics: ["pageviews", "visits", "visitors", "bounce_rate", "visit_duration"],
+  },
+  pages: { metrics: ["pageviews", "visitors"], dimension: "event:page", order: "pageviews" },
+  sources: { metrics: ["visitors"], dimension: "visit:referrer", order: "visitors" },
+  countries: { metrics: ["visitors"], dimension: "visit:country", order: "visitors" },
+  browsers: { metrics: ["visitors"], dimension: "visit:browser", order: "visitors" },
+  os: { metrics: ["visitors"], dimension: "visit:os", order: "visitors" },
+  devices: { metrics: ["visitors"], dimension: "visit:device", order: "visitors" },
+  events: { metrics: ["visitors", "events"], dimension: "event:name", order: "events" },
+  utm_campaign: { metrics: ["visitors", "events"], dimension: "visit:utm_campaign", order: "events" },
+  utm_source: { metrics: ["visitors", "events"], dimension: "visit:utm_source", order: "events" },
+  utm_medium: { metrics: ["visitors", "events"], dimension: "visit:utm_medium", order: "events" },
+  utm_content: { metrics: ["visitors", "events"], dimension: "visit:utm_content", order: "events" },
+  utm_term: { metrics: ["visitors", "events"], dimension: "visit:utm_term", order: "events" },
+};
+
+interface OdResult {
+  dimensions: string[];
+  metrics: number[];
+}
+
+/** The site's hostnames as OneDollarStats indexes them (`www.` variant), busiest
+ *  first — the values the audience host picker offers and the site_id queries
+ *  run against. From the warehouse domain set (no Supabase). Deduped, so two
+ *  warehouse hosts that map to the same OneDollar host collapse. */
+async function siteOdHosts(slug: string): Promise<string[]> {
+  const { since, until } = windowDates(90);
+  const hosts = await siteHostnames(slug, since, until);
+  return [...new Set(hosts.map(toOneDollarHostname))];
+}
+
 /**
  * Org-scoped monitor routes mounted at `/api/:org/monitor`. Direct-ClickHouse
  * reads, tenancy via `org_sites`, no control-plane and no Supabase.
@@ -568,7 +751,11 @@ export const createMonitorRoutes = () => {
       return c.json({ error: `unknown or unavailable view: ${view}` }, 400);
     }
     const range = c.req.query("range") ?? "7d";
-    const window = RANGE_TO_WINDOW[range];
+    const window = resolveWindow(
+      range,
+      c.req.query("since"),
+      c.req.query("until"),
+    );
     if (!window) {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
@@ -577,28 +764,41 @@ export const createMonitorRoutes = () => {
     // site_id from it. Lower-cased to match the ownership check and how slugs
     // are stored.
     const slug = site.toLowerCase();
-    const { since, until } = windowDates(window.days);
+    const { since, until } = window;
+    const filters = parseFilters(c.req.query("filters"));
 
     try {
       let data: unknown;
       switch (view) {
         case "summary":
-          data = await querySummary(slug, since, until);
+          data = await querySummary(slug, since, until, filters);
           break;
         case "timeline":
-          data = await queryTimeline(slug, since, until, window.granularity);
+          data = await queryTimeline(
+            slug,
+            since,
+            until,
+            window.granularity,
+            filters,
+          );
           break;
         case "cache-status":
-          data = await queryCacheStatus(slug, since, until);
+          data = await queryCacheStatus(slug, since, until, filters);
           break;
         case "status-codes":
-          data = await queryStatusCodes(slug, since, until);
+          data = await queryStatusCodes(slug, since, until, filters);
           break;
         case "top-paths":
-          data = await queryTopPaths(slug, since, until);
+          data = await queryTopPaths(
+            slug,
+            since,
+            until,
+            c.req.query("groupByPath") === "1",
+            filters,
+          );
           break;
         case "top-countries":
-          data = await queryTopCountries(slug, since, until);
+          data = await queryTopCountries(slug, since, until, filters);
           break;
       }
       return c.json({ available: true, view, range, data });
@@ -637,13 +837,17 @@ export const createMonitorRoutes = () => {
       return c.json({ error: `unknown or unavailable view: ${view}` }, 400);
     }
     const range = c.req.query("range") ?? "7d";
-    const window = RANGE_TO_WINDOW[range];
+    const window = resolveWindow(
+      range,
+      c.req.query("since"),
+      c.req.query("until"),
+    );
     if (!window) {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
 
     const slug = site.toLowerCase();
-    const { since, until } = windowDates(window.days);
+    const { since, until } = window;
 
     try {
       let data: unknown;
@@ -676,6 +880,186 @@ export const createMonitorRoutes = () => {
         err,
       );
       return c.json({ error: "Failed to query monitor warehouse" }, 502);
+    }
+  });
+
+  // GET /api/:org/monitor/:site/hosts — the site's hostnames (OneDollar site_id
+  // candidates, busiest first) for the audience host picker. `{ available:false }`
+  // when OneDollarStats isn't wired. The first entry is the default selection.
+  app.get("/:site/hosts", async (c) => {
+    const ctx = c.get("studioContext");
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+    const owned = await ctx.storage.orgSites.isOwnedBy(
+      site.toLowerCase(),
+      org.id,
+    );
+    if (!owned) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+    // Hostnames come from the CDN warehouse, so this works whenever the
+    // warehouse is wired — independent of OneDollarStats (the subtitle needs it
+    // even on Performance-only deployments).
+    if (!isAnalyticsConfigured()) {
+      return c.json({ available: false, hosts: [] });
+    }
+    try {
+      const hosts = await siteOdHosts(site.toLowerCase());
+      return c.json({ available: true, hosts });
+    } catch (err) {
+      console.error(`[monitor] hosts failed for site="${site}":`, err);
+      return c.json({ available: true, hosts: [] });
+    }
+  });
+
+  // GET /api/:org/monitor/:site/onedollar?report=&range=&host= — one
+  // OneDollarStats (Plausible) audience report, proxied so the backend key stays
+  // server-side. The full old-admin Analytics dashboard, native: kpis (with a
+  // previous-period comparison for trend deltas), timeseries, pages, sources,
+  // countries, browsers, os, devices, events, utm_*. `host` picks which of the
+  // site's hostnames to read; it is VALIDATED against the site's own host set so
+  // a client can never name another tenant's site_id.
+  app.get("/:site/onedollar", async (c) => {
+    const ctx = c.get("studioContext");
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+
+    const owned = await ctx.storage.orgSites.isOwnedBy(
+      site.toLowerCase(),
+      org.id,
+    );
+    if (!owned) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+
+    const apiKey = getSettings().oneDollarStatsApiKey;
+    if (!apiKey) {
+      return c.json({ available: false, error: "OneDollarStats not configured" });
+    }
+
+    const report = c.req.query("report") ?? "kpis";
+    const spec = OD_REPORTS[report];
+    if (!spec) {
+      return c.json({ error: `unknown report: ${report}` }, 400);
+    }
+    const range = c.req.query("range") ?? "7d";
+    const window = resolveWindow(
+      range,
+      c.req.query("since"),
+      c.req.query("until"),
+    );
+    if (!window) {
+      return c.json({ error: `unknown range: ${range}` }, 400);
+    }
+
+    const odHosts = await siteOdHosts(site.toLowerCase());
+    const requested = c.req.query("host");
+    // Only honor a requested host the site actually owns — never a client-named
+    // arbitrary site_id.
+    const host =
+      requested && odHosts.includes(requested) ? requested : odHosts[0];
+    if (!host) {
+      return c.json({ available: true, report, range, results: [] });
+    }
+
+    const { since, until } = window;
+    const dimension =
+      report === "timeseries"
+        ? window.granularity === "hourly"
+          ? "time:hour"
+          : "time:day"
+        : spec.dimension;
+
+    // Translate the shared filter model to Plausible v2 filters. Field → the
+    // Plausible dimension it targets; unknown fields are dropped.
+    const OD_FIELD_DIM: Record<string, string> = {
+      page: "event:page",
+      source: "visit:referrer",
+      referrer: "visit:referrer",
+      country: "visit:country",
+      browser: "visit:browser",
+      os: "visit:os",
+      device: "visit:device",
+      utm_campaign: "visit:utm_campaign",
+      utm_source: "visit:utm_source",
+      utm_medium: "visit:utm_medium",
+      utm_content: "visit:utm_content",
+      utm_term: "visit:utm_term",
+    };
+    const OD_OP: Record<string, string> = {
+      equals: "is",
+      not_equals: "is_not",
+      contains: "contains",
+      not_contains: "contains_not",
+    };
+    const plausibleFilters = parseFilters(c.req.query("filters"))
+      .map((f) => {
+        const dim = OD_FIELD_DIM[f.field];
+        const op = OD_OP[f.op];
+        return dim && op ? [op, dim, [f.value]] : null;
+      })
+      .filter(Boolean);
+
+    const runOd = async (dateRange: [string, string]): Promise<OdResult[]> => {
+      const res = await fetch(OD_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          site_id: host,
+          metrics: spec.metrics,
+          date_range: dateRange,
+          ...(dimension ? { dimensions: [dimension] } : {}),
+          ...(spec.order ? { order_by: [[spec.order, "desc"]] } : {}),
+          ...(plausibleFilters.length ? { filters: plausibleFilters } : {}),
+          pagination: { limit: 100, offset: 0 },
+        }),
+        signal: AbortSignal.timeout(OD_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`OneDollarStats ${res.status}`);
+      const payload = (await res.json().catch(() => null)) as {
+        results?: OdResult[];
+      } | null;
+      return payload?.results ?? [];
+    };
+
+    try {
+      // For KPIs, also read the immediately-preceding window of equal length so
+      // the cards can show trend deltas (the ↓/↑ % the old admin shows).
+      const results = await runOd([since, until]);
+      let previous: OdResult[] | undefined;
+      // KPIs always compare (the ↓/↑ deltas); timeseries only when the user
+      // turned Compare on (the previous-period overlay).
+      const wantsPrevious =
+        report === "kpis" ||
+        (report === "timeseries" && c.req.query("compare") === "1");
+      if (wantsPrevious) {
+        const prevUntil = since;
+        const prevSince = toIsoDate(
+          new Date(Date.parse(`${since}T00:00:00Z`) - window.days * 86400000),
+        );
+        previous = await runOd([prevSince, prevUntil]).catch(() => undefined);
+      }
+      return c.json({
+        available: true,
+        report,
+        range,
+        host,
+        metrics: spec.metrics,
+        results,
+        ...(previous ? { previous } : {}),
+      });
+    } catch (err) {
+      console.error(
+        `[monitor] onedollar ${report} failed for host="${host}":`,
+        err,
+      );
+      return c.json({ error: "Failed to reach OneDollarStats" }, 502);
     }
   });
 

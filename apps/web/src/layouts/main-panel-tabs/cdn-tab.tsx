@@ -29,15 +29,146 @@ import {
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
 import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from "recharts";
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+} from "react-simple-maps";
+import isoCountries from "i18n-iso-countries";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
-const RANGE_PILLS = ["24h", "7d", "14d", "30d", "90d"] as const;
+// Date presets matching the old admin's dropdown, in display order.
+const RANGE_PRESETS = [
+  { key: "60m", label: "last60m" },
+  { key: "today", label: "today" },
+  { key: "yesterday", label: "yesterday" },
+  { key: "24h", label: "last24h" },
+  { key: "48h", label: "last48h" },
+  { key: "72h", label: "last72h" },
+  { key: "7d", label: "last7d" },
+  { key: "14d", label: "last14d" },
+  { key: "30d", label: "last30d" },
+  { key: "90d", label: "last90d" },
+  { key: "180d", label: "last180d" },
+  { key: "1y", label: "lastYear" },
+] as const;
+
+interface RangeSel {
+  range: string;
+  since: string;
+  until: string;
+  compare: boolean;
+}
+
+/** The date-range dropdown: presets + a custom range + a Compare toggle. */
+function RangePicker({
+  value,
+  onChange,
+}: {
+  value: RangeSel;
+  onChange: (v: RangeSel) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [cs, setCs] = useState(value.since);
+  const [cu, setCu] = useState(value.until);
+  const label =
+    value.range === "custom"
+      ? `${value.since} → ${value.until}`
+      : t(
+          `mainPanelTabs.cdnTab.${
+            RANGE_PRESETS.find((p) => p.key === value.range)?.label ?? "last7d"
+          }` as never,
+        );
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground"
+        >
+          {label}
+          {value.compare && (
+            <span className="text-muted-foreground">
+              · {t("mainPanelTabs.cdnTab.compare")}
+            </span>
+          )}
+          <span className="text-muted-foreground">▾</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-2">
+        <div className="grid grid-cols-2 gap-1">
+          {RANGE_PRESETS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => {
+                onChange({ ...value, range: p.key });
+                setOpen(false);
+              }}
+              className={cn(
+                "rounded-md px-2 py-1 text-left text-xs transition-colors",
+                value.range === p.key
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t(`mainPanelTabs.cdnTab.${p.label}` as never)}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={cs}
+              onChange={(e) => setCs(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
+            />
+            <span className="text-muted-foreground">–</span>
+            <input
+              type="date"
+              value={cu}
+              onChange={(e) => setCu(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
+            />
+            <button
+              type="button"
+              disabled={!cs || !cu}
+              onClick={() => {
+                onChange({ ...value, range: "custom", since: cs, until: cu });
+                setOpen(false);
+              }}
+              className="rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
+            >
+              {t("mainPanelTabs.cdnTab.apply")}
+            </button>
+          </div>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={value.compare}
+              onChange={(e) => onChange({ ...value, compare: e.target.checked })}
+              className="size-3.5 accent-foreground"
+            />
+            {t("mainPanelTabs.cdnTab.compare")}
+          </label>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // Series colors, matching the old admin: requests blue, pageviews green,
 // bandwidth orange. Uses the theme's chart tokens so it reads in light + dark.
@@ -74,6 +205,12 @@ function formatPct(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
+}
+
+/** The viewer's UTC offset as "GMT-3" — the timezone charts are read in. */
+function gmtLabel(): string {
+  const off = -Math.round(new Date().getTimezoneOffset() / 60);
+  return `GMT${off >= 0 ? "+" : ""}${off}`;
 }
 
 // Cache-status and HTTP status dot colors, plus friendly status-code names.
@@ -172,22 +309,6 @@ interface BreakdownRow {
   total_requests: number;
   total_bandwidth_bytes: number;
 }
-interface AudienceSummary {
-  pageviews: number;
-  visitors: number;
-  sessions: number;
-}
-interface AudienceTimelinePoint {
-  bucket: string;
-  pageviews: number;
-  visitors: number;
-}
-interface AudienceRow {
-  key: string;
-  pageviews: number;
-  visitors: number;
-}
-
 /** One monitor view (cdn or audience) for the current range. */
 function useMonitorView<T>(
   base: string,
@@ -195,12 +316,13 @@ function useMonitorView<T>(
   view: string,
   range: string,
   enabled: boolean,
+  extra?: string,
 ) {
   return useQuery({
-    queryKey: KEYS.cdnData(base, `${kind}:${view}`, range),
+    queryKey: KEYS.cdnData(base, `${kind}:${view}${extra ?? ""}`, range),
     queryFn: async () => {
       const body = (await fetchJson(
-        `${base}/${kind}/data?view=${view}&range=${range}`,
+        `${base}/${kind}/data?view=${view}&range=${range}${extra ?? ""}`,
       )) as { available?: boolean; data?: T };
       if (body.available === false) return null;
       return (body.data ?? null) as T | null;
@@ -209,6 +331,26 @@ function useMonitorView<T>(
     retry: false,
     staleTime: 30_000,
   });
+}
+
+/** ISO 3166-1 alpha-2 → localized country name (e.g. "BR" → "Brazil"), so the
+ *  breakdowns read like the old admin rather than showing raw codes. */
+const REGION_NAMES = (() => {
+  try {
+    return new Intl.DisplayNames(undefined, { type: "region" });
+  } catch {
+    return null;
+  }
+})();
+function formatCountry(code: string): string {
+  if (!code) return "—";
+  const up = code.toUpperCase();
+  if (up.length !== 2) return code;
+  try {
+    return REGION_NAMES?.of(up) ?? code;
+  } catch {
+    return code;
+  }
 }
 
 function Card({
@@ -322,24 +464,316 @@ function RankedList({
   );
 }
 
+// World topojson (numeric ISO ids), fetched at render — not bundled.
+const GEO_URL =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
+/** Choropleth of a country breakdown — the Map view of the Countries panel.
+ *  The topojson keys countries by numeric ISO id; convert it to alpha-2
+ *  (i18n-iso-countries) to join the alpha-2 breakdown data. */
+function CountryMap({
+  rows,
+}: {
+  rows: { key: string; value: number }[];
+}) {
+  const byCode = new Map<string, number>();
+  for (const r of rows) if (r.key) byCode.set(r.key.toUpperCase(), r.value);
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  const [tip, setTip] = useState<{
+    name: string;
+    value: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  return (
+    <div
+      className="relative w-full"
+      onMouseLeave={() => setTip(null)}
+    >
+      {/* Rectangular Mercator (like the OneDollar map), cropped below Antarctica
+          and above the Arctic so the world fills the card without distortion. */}
+      <ComposableMap
+        projection="geoMercator"
+        projectionConfig={{ scale: 120, center: [0, 42] }}
+        width={800}
+        height={520}
+        style={{ width: "100%", height: "auto" }}
+      >
+        <Geographies geography={GEO_URL}>
+          {({ geographies }: { geographies: Array<Record<string, unknown>> }) =>
+            geographies.map((geo) => {
+              const id = String((geo as { id?: unknown }).id ?? "").padStart(
+                3,
+                "0",
+              );
+              const a2 = isoCountries.numericToAlpha2(id);
+              const value = (a2 && byCode.get(a2.toUpperCase())) || 0;
+              const ratio = value / max;
+              const name =
+                (
+                  (geo as { properties?: { name?: string } }).properties?.name
+                ) ?? (a2 ? formatCountry(a2) : id);
+              return (
+                <Geography
+                  key={(geo as { rsmKey: string }).rsmKey}
+                  geography={geo}
+                  onMouseMove={(e: React.MouseEvent) => {
+                    const box = (
+                      e.currentTarget as SVGElement
+                    ).ownerSVGElement?.parentElement?.getBoundingClientRect();
+                    setTip({
+                      name,
+                      value,
+                      x: box ? e.clientX - box.left : 0,
+                      y: box ? e.clientY - box.top : 0,
+                    });
+                  }}
+                  onMouseLeave={() => setTip(null)}
+                  fill={
+                    value > 0
+                      ? `color-mix(in oklch, var(--chart-2) ${Math.round(
+                          18 + ratio * 82,
+                        )}%, transparent)`
+                      : "var(--muted)"
+                  }
+                  stroke="var(--border)"
+                  strokeWidth={0.3}
+                  style={{
+                    default: { outline: "none" },
+                    hover: { outline: "none", opacity: 0.8, cursor: "pointer" },
+                    pressed: { outline: "none" },
+                  }}
+                />
+              );
+            })
+          }
+        </Geographies>
+      </ComposableMap>
+      {tip && (
+        <div
+          className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-md"
+          style={{ left: tip.x + 10, top: tip.y + 10 }}
+        >
+          <span className="text-foreground">{tip.name}</span>
+          <span className="ml-1.5 tabular-nums text-muted-foreground">
+            {formatNumber(tip.value)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Filter builder (field / operator / value — the admin's "Add filter") ----
+
+interface MonitorFilter {
+  field: string;
+  op: "equals" | "not_equals" | "contains" | "not_contains";
+  value: string;
+}
+
+const FILTER_OPS: MonitorFilter["op"][] = [
+  "equals",
+  "not_equals",
+  "contains",
+  "not_contains",
+];
+
+const CDN_FILTER_FIELDS = [
+  { value: "cache_status", key: "cacheStatus" },
+  { value: "status_code", key: "code" },
+  { value: "path", key: "path" },
+  { value: "country", key: "country" },
+] as const;
+
+const OD_FILTER_FIELDS = [
+  { value: "page", key: "page" },
+  { value: "source", key: "referrer" },
+  { value: "country", key: "country" },
+  { value: "browser", key: "browser" },
+  { value: "os", key: "os" },
+  { value: "device", key: "device" },
+  { value: "utm_campaign", key: "utm_campaign" },
+  { value: "utm_source", key: "utm_source" },
+  { value: "utm_medium", key: "utm_medium" },
+  { value: "utm_content", key: "utm_content" },
+] as const;
+
+/** Fields with a known, finite value set render a Select instead of a free
+ *  input (matching the admin's value dropdown). */
+const FIELD_OPTIONS: Record<string, string[]> = {
+  cache_status: [
+    "hit",
+    "miss",
+    "dynamic",
+    "bypass",
+    "expired",
+    "stale",
+    "revalidated",
+    "updating",
+    "none",
+  ],
+  device: ["Desktop", "Mobile", "Tablet"],
+};
+
+/** Serialize filters for the `&filters=` query param (empty ⇒ ""). */
+function filtersParam(filters: MonitorFilter[]): string {
+  return filters.length
+    ? `&filters=${encodeURIComponent(JSON.stringify(filters))}`
+    : "";
+}
+
+/**
+ * The "Add filter" row + active-filter chips, shared by both sub-tabs. Matches
+ * the admin: a field select, an operator select, a value input, then
+ * Cancel/Apply; applied filters render as removable chips.
+ */
+function FilterBar({
+  fields,
+  filters,
+  onChange,
+}: {
+  fields: readonly { value: string; key: string }[];
+  filters: MonitorFilter[];
+  onChange: (next: MonitorFilter[]) => void;
+}) {
+  const t = useT();
+  const [draft, setDraft] = useState<MonitorFilter | null>(null);
+  const selectCls =
+    "rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground";
+  const opLabel = (op: string) => t(`mainPanelTabs.cdnTab.op_${op}` as never);
+  const fieldLabel = (v: string) =>
+    t(
+      `mainPanelTabs.cdnTab.${fields.find((f) => f.value === v)?.key ?? v}` as never,
+    );
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {filters.map((f, i) => (
+        <span
+          key={`${f.field}-${i}`}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1 text-xs"
+        >
+          <span className="text-foreground">
+            {fieldLabel(f.field)} {opLabel(f.op)}{" "}
+            <span className="font-medium">{f.value}</span>
+          </span>
+          <button
+            type="button"
+            aria-label={t("mainPanelTabs.cdnTab.removeFilter")}
+            onClick={() => onChange(filters.filter((_, j) => j !== i))}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+
+      {draft ? (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-1">
+          <select
+            value={draft.field}
+            onChange={(e) => setDraft({ ...draft, field: e.target.value })}
+            className={selectCls}
+          >
+            {fields.map((f) => (
+              <option key={f.value} value={f.value}>
+                {fieldLabel(f.value)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={draft.op}
+            onChange={(e) =>
+              setDraft({ ...draft, op: e.target.value as MonitorFilter["op"] })
+            }
+            className={selectCls}
+          >
+            {FILTER_OPS.map((op) => (
+              <option key={op} value={op}>
+                {opLabel(op)}
+              </option>
+            ))}
+          </select>
+          {FIELD_OPTIONS[draft.field] ? (
+            <select
+              value={draft.value}
+              onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+              className={selectCls}
+            >
+              <option value="">{t("mainPanelTabs.cdnTab.filterValue")}</option>
+              {FIELD_OPTIONS[draft.field]!.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={draft.value}
+              onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+              placeholder={t("mainPanelTabs.cdnTab.filterValue")}
+              className="rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground"
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => setDraft(null)}
+            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t("mainPanelTabs.cdnTab.cancel")}
+          </button>
+          <button
+            type="button"
+            disabled={!draft.value.trim()}
+            onClick={() => {
+              onChange([...filters, { ...draft, value: draft.value.trim() }]);
+              setDraft(null);
+            }}
+            className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
+          >
+            {t("mainPanelTabs.cdnTab.apply")}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() =>
+            setDraft({ field: fields[0]!.value, op: "equals", value: "" })
+          }
+          className="rounded-lg border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          + {t("mainPanelTabs.cdnTab.addFilter")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Performance (CDN / edge) sub-tab. */
 function PerformanceSection({
   base,
   range,
+  rangeExtra,
   enabled,
 }: {
   base: string;
   range: string;
+  rangeExtra: string;
   enabled: boolean;
 }) {
   const t = useT();
   const [metric, setMetric] = useState<"requests" | "bandwidth">("requests");
+  const [ignoreQuery, setIgnoreQuery] = useState(true);
+  const [filters, setFilters] = useState<MonitorFilter[]>([]);
+  const fp = filtersParam(filters) + rangeExtra;
   const summary = useMonitorView<CdnSummary>(
     base,
     "cdn",
     "summary",
     range,
     enabled,
+    fp,
   );
   const timeline = useMonitorView<TimelinePoint[]>(
     base,
@@ -347,6 +781,7 @@ function PerformanceSection({
     "timeline",
     range,
     enabled,
+    fp,
   );
   const cacheStatus = useMonitorView<BreakdownRow[]>(
     base,
@@ -354,6 +789,7 @@ function PerformanceSection({
     "cache-status",
     range,
     enabled,
+    fp,
   );
   const statusCodes = useMonitorView<BreakdownRow[]>(
     base,
@@ -361,6 +797,7 @@ function PerformanceSection({
     "status-codes",
     range,
     enabled,
+    fp,
   );
   const topPaths = useMonitorView<BreakdownRow[]>(
     base,
@@ -368,6 +805,7 @@ function PerformanceSection({
     "top-paths",
     range,
     enabled,
+    `${ignoreQuery ? "&groupByPath=1" : ""}${fp}`,
   );
   const topCountries = useMonitorView<BreakdownRow[]>(
     base,
@@ -375,6 +813,7 @@ function PerformanceSection({
     "top-countries",
     range,
     enabled,
+    fp,
   );
 
   const notConfigured =
@@ -442,6 +881,11 @@ function PerformanceSection({
 
   return (
     <div className="flex flex-col gap-4">
+      <FilterBar
+        fields={CDN_FILTER_FIELDS}
+        filters={filters}
+        onChange={setFilters}
+      />
       {summary.isLoading || !s ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -611,7 +1055,20 @@ function PerformanceSection({
             />
           )}
         </Card>
-        <Card title={t("mainPanelTabs.cdnTab.topPaths")}>
+        <Card
+          title={t("mainPanelTabs.cdnTab.topPaths")}
+          action={
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={ignoreQuery}
+                onChange={(e) => setIgnoreQuery(e.target.checked)}
+                className="size-3.5 accent-foreground"
+              />
+              {t("mainPanelTabs.cdnTab.ignoreQueryString")}
+            </label>
+          }
+        >
           {topPaths.isLoading ? (
             <Skeleton className="h-40 w-full" />
           ) : (
@@ -638,7 +1095,7 @@ function PerformanceSection({
           ) : (
             <RankedList
               items={(topCountries.data ?? []).map((r, i) => ({
-                label: r.key,
+                label: formatCountry(r.key),
                 color: PALETTE[i % PALETTE.length] ?? "bg-muted-foreground",
                 value:
                   metric === "requests"
@@ -659,130 +1116,416 @@ function PerformanceSection({
 }
 
 /** Audience (pageviews / visitors) sub-tab — the native OneDollar replacement. */
+interface OdResult {
+  dimensions: string[];
+  metrics: number[];
+}
+
+interface OdPayload {
+  results: OdResult[];
+  previous?: OdResult[];
+}
+
+/** One OneDollarStats (Plausible) report for the current range + host. Returns
+ *  the full payload (results, and for kpis the previous-period comparison). */
+function useOd(
+  base: string,
+  report: string,
+  range: string,
+  host: string,
+  enabled: boolean,
+  fp = "",
+) {
+  return useQuery({
+    queryKey: KEYS.cdnData(base, `od:${report}:${host}${fp}`, range),
+    queryFn: async (): Promise<OdPayload | null> => {
+      const hostQ = host ? `&host=${encodeURIComponent(host)}` : "";
+      const body = (await fetchJson(
+        `${base}/onedollar?report=${report}&range=${range}${hostQ}${fp}`,
+      )) as { available?: boolean; results?: OdResult[]; previous?: OdResult[] };
+      if (body.available === false) return null;
+      return { results: body.results ?? [], previous: body.previous };
+    },
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+/** Seconds → "12m 3s" / "45s". */
+function formatDuration(value: unknown): string {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "0s";
+  const m = Math.floor(n / 60);
+  const s = Math.round(n % 60);
+  return m ? `${m}m ${s}s` : `${s}s`;
+}
+
+/** Map a breakdown report's rows to RankItems, ranking by a metric index.
+ *  `label` transforms the raw dimension (country code → name, null → a friendly
+ *  fallback like "Direct/Unknown"). */
+function odRankItems(
+  rows: OdResult[] | null | undefined,
+  metricIndex: number,
+  label?: (raw: string) => string,
+): RankItem[] {
+  return (rows ?? []).map((r, i) => {
+    const raw = r.dimensions[0] ?? "";
+    return {
+      label: label ? label(raw) : raw,
+      color: PALETTE[i % PALETTE.length] ?? "bg-muted-foreground",
+      value: Number(r.metrics[metricIndex] ?? 0),
+      formatted: formatNumber(r.metrics[metricIndex] ?? 0),
+    };
+  });
+}
+
+/** Event / UTM table: label + Unique (visitors) + Total (events), 10-then-more,
+ *  with an optional CR column (event unique / total unique). */
+function OdMetricTable({
+  rows,
+  keyHeader,
+  totalVisitors,
+  emptyLabel,
+}: {
+  rows: OdResult[] | null | undefined;
+  keyHeader: string;
+  totalVisitors: number | null;
+  emptyLabel: string;
+}) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  const list = rows ?? [];
+  if (list.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+  }
+  const visible = expanded ? list : list.slice(0, RANKED_COLLAPSED);
+  const hasMore = list.length > RANKED_COLLAPSED;
+  return (
+    <div className="flex flex-col">
+      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-4 gap-y-2 text-sm">
+        <span className="text-xs text-muted-foreground">{keyHeader}</span>
+        <span className="text-right text-xs text-muted-foreground">
+          {t("mainPanelTabs.cdnTab.cr")}
+        </span>
+        <span className="text-right text-xs text-muted-foreground">
+          {t("mainPanelTabs.cdnTab.unique")}
+        </span>
+        <span className="text-right text-xs text-muted-foreground">
+          {t("mainPanelTabs.cdnTab.total")}
+        </span>
+        {visible.map((r) => {
+          const unique = Number(r.metrics[0] ?? 0);
+          const total = Number(r.metrics[1] ?? 0);
+          const cr =
+            totalVisitors && totalVisitors > 0
+              ? Math.round((unique / totalVisitors) * 100)
+              : null;
+          return (
+            <div key={r.dimensions[0]} className="contents">
+              <span
+                className="min-w-0 truncate font-mono text-xs text-foreground"
+                title={r.dimensions[0]}
+              >
+                {r.dimensions[0] || "—"}
+              </span>
+              <span className="text-right tabular-nums text-muted-foreground">
+                {cr === null ? "—" : `${cr}%`}
+              </span>
+              <span className="text-right tabular-nums">
+                {formatNumber(unique)}
+              </span>
+              <span className="text-right tabular-nums">
+                {formatNumber(total)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {hasMore && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 self-start text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          {expanded
+            ? t("mainPanelTabs.cdnTab.showLess")
+            : t("mainPanelTabs.cdnTab.showAll").replace(
+                "{count}",
+                String(list.length),
+              )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const DEVICE_DIMS = ["browsers", "os", "devices"] as const;
+const UTM_DIMS = [
+  "utm_campaign",
+  "utm_source",
+  "utm_medium",
+  "utm_content",
+  "utm_term",
+] as const;
+
+/**
+ * Audience sub-tab — the old admin's OneDollarStats "Analytics" dashboard,
+ * rendered natively from the Plausible-compatible API (proxied by the BFF so the
+ * key stays server-side). Interim source until Deco Analytics covers these
+ * dimensions; the front reads normalized rows and is source-agnostic.
+ */
+// KPI cards: which kpis-metric index each reads, which timeseries-metric index
+// plots it, how to format it, and whether higher is better (for delta color).
+const KPI_DEFS = [
+  { key: "pageviews", label: "pageviews", kpiIdx: 2, tsIdx: 0, fmt: "num", up: true },
+  { key: "visits", label: "visits", kpiIdx: 1, tsIdx: 1, fmt: "num", up: true },
+  { key: "visitors", label: "visitors", kpiIdx: 0, tsIdx: 2, fmt: "num", up: true },
+  { key: "duration", label: "visitDuration", kpiIdx: 4, tsIdx: 4, fmt: "dur", up: true },
+  { key: "bounce", label: "bounceRate", kpiIdx: 3, tsIdx: 3, fmt: "pct", up: false },
+] as const;
+
+function fmtKpi(fmt: string, v: number): string {
+  if (fmt === "dur") return formatDuration(v);
+  if (fmt === "pct") return `${Math.round(v)}%`;
+  return formatNumber(v);
+}
+
+function useOdHosts(base: string, enabled: boolean) {
+  return useQuery({
+    queryKey: KEYS.cdnData(base, "od:hosts", "all"),
+    queryFn: async (): Promise<string[]> => {
+      const body = (await fetchJson(`${base}/hosts`)) as {
+        available?: boolean;
+        hosts?: string[];
+      };
+      return body.hosts ?? [];
+    },
+    enabled,
+    retry: false,
+    staleTime: 300_000,
+  });
+}
+
+/**
+ * Analytics sub-tab — the old admin's OneDollarStats dashboard, rendered
+ * natively from the Plausible-compatible API (proxied by the BFF so the key
+ * stays server-side). Interim source until Deco Analytics covers these
+ * dimensions; the front reads normalized rows and is source-agnostic.
+ */
 function AudienceSection({
   base,
   range,
+  rangeExtra,
+  compare,
   enabled,
 }: {
   base: string;
   range: string;
+  rangeExtra: string;
+  compare: boolean;
   enabled: boolean;
 }) {
   const t = useT();
-  const summary = useMonitorView<AudienceSummary>(
-    base,
-    "audience",
-    "summary",
-    range,
-    enabled,
+  const [deviceDim, setDeviceDim] = useState<(typeof DEVICE_DIMS)[number]>(
+    "browsers",
   );
-  const timeline = useMonitorView<AudienceTimelinePoint[]>(
-    base,
-    "audience",
-    "timeline",
-    range,
-    enabled,
+  const [utmDim, setUtmDim] = useState<(typeof UTM_DIMS)[number]>(
+    "utm_campaign",
   );
-  const sources = useMonitorView<AudienceRow[]>(
-    base,
-    "audience",
-    "top-sources",
-    range,
-    enabled,
+  const [plotted, setPlotted] = useState<(typeof KPI_DEFS)[number]["key"]>(
+    "pageviews",
   );
-  const countries = useMonitorView<AudienceRow[]>(
-    base,
-    "audience",
-    "top-countries",
-    range,
-    enabled,
-  );
-  const devices = useMonitorView<AudienceRow[]>(
-    base,
-    "audience",
-    "devices",
-    range,
-    enabled,
-  );
+  const [countryView, setCountryView] = useState<"map" | "list">("map");
+  const [selectedHost, setSelectedHost] = useState("");
+  const [filters, setFilters] = useState<MonitorFilter[]>([]);
+  const fp = filtersParam(filters) + rangeExtra + (compare ? "&compare=1" : "");
 
-  const notConfigured =
-    summary.data === null && !summary.isLoading && !summary.isError;
+  const hostsQuery = useOdHosts(base, enabled);
+  // Empty string ⇒ BFF picks the busiest host; once hosts load, default to the
+  // first (production) unless the user picked one.
+  const host = selectedHost || hostsQuery.data?.[0] || "";
+
+  const kpis = useOd(base, "kpis", range, host, enabled, fp);
+  const timeseries = useOd(base, "timeseries", range, host, enabled, fp);
+  const pages = useOd(base, "pages", range, host, enabled, fp);
+  const sources = useOd(base, "sources", range, host, enabled, fp);
+  const countries = useOd(base, "countries", range, host, enabled, fp);
+  const deviceRows = useOd(base, deviceDim, range, host, enabled, fp);
+  const events = useOd(base, "events", range, host, enabled, fp);
+  const utm = useOd(base, utmDim, range, host, enabled, fp);
+
+  const notConfigured = kpis.data === null && !kpis.isLoading && !kpis.isError;
   if (notConfigured) {
     return (
       <EmptyState
         icon={<Globe01 className="size-5" />}
-        title={t("mainPanelTabs.cdnTab.unconfiguredTitle")}
-        description={t("mainPanelTabs.cdnTab.unconfiguredBody")}
+        title={t("mainPanelTabs.cdnTab.audienceUnconfiguredTitle")}
+        description={t("mainPanelTabs.cdnTab.audienceUnconfiguredBody")}
       />
     );
   }
-  if (summary.isError) {
+  if (kpis.isError) {
     return (
       <EmptyState
         icon={<Globe01 className="size-5" />}
         title={t("mainPanelTabs.cdnTab.errorTitle")}
-        description={(summary.error as Error)?.message ?? ""}
+        description={(kpis.error as Error)?.message ?? ""}
       />
     );
   }
 
-  const s = summary.data;
-  const audItems = (rows: AudienceRow[] | null | undefined): RankItem[] =>
-    (rows ?? []).map((r, i) => ({
-      label: r.key,
-      color: PALETTE[i % PALETTE.length] ?? "bg-muted-foreground",
-      value: r.pageviews,
-      formatted: formatNumber(r.pageviews),
-    }));
+  const k = kpis.data?.results?.[0]?.metrics ?? null;
+  const kPrev = kpis.data?.previous?.[0]?.metrics ?? null;
+  const totalVisitors = k ? Number(k[0]) : null;
+  const plottedDef =
+    KPI_DEFS.find((d) => d.key === plotted) ?? KPI_DEFS[0];
+  // When Compare is on, align the previous period by index so it overlays as a
+  // muted line against the current one.
+  const prevRows = timeseries.data?.previous ?? [];
+  const chartData = (timeseries.data?.results ?? []).map((r, i) => ({
+    bucket: r.dimensions[0] ?? "",
+    value: Number(r.metrics[plottedDef.tsIdx] ?? 0),
+    prev:
+      compare && prevRows[i]
+        ? Number(prevRows[i]!.metrics[plottedDef.tsIdx] ?? 0)
+        : null,
+  }));
+
+  const hosts = hostsQuery.data ?? [];
+
+  const toggle = <T extends string>(
+    dims: readonly T[],
+    active: T,
+    set: (d: T) => void,
+    label: (d: T) => string,
+  ) => (
+    <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+      {dims.map((d) => (
+        <button
+          key={d}
+          type="button"
+          onClick={() => set(d)}
+          className={cn(
+            "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+            active === d
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {label(d)}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      {summary.isLoading || !s ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <FilterBar
+          fields={OD_FILTER_FIELDS}
+          filters={filters}
+          onChange={setFilters}
+        />
+        {hosts.length > 1 && (
+          <select
+            value={host}
+            onChange={(e) => setSelectedHost(e.target.value)}
+            className="max-w-full truncate rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground"
+          >
+            {hosts.map((h) => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* KPI cards — clickable to choose which metric the chart plots, each with
+          a trend delta vs the previous window. */}
+      {kpis.isLoading || !k ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat
-            label={t("mainPanelTabs.cdnTab.pageviews")}
-            value={formatNumber(s.pageviews)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.visitors")}
-            value={formatNumber(s.visitors)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.sessions")}
-            value={formatNumber(s.sessions)}
-          />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {KPI_DEFS.map((d) => {
+            const cur = Number(k[d.kpiIdx] ?? 0);
+            const prev = kPrev ? Number(kPrev[d.kpiIdx] ?? 0) : null;
+            const delta =
+              prev && prev > 0 ? ((cur - prev) / prev) * 100 : null;
+            const good =
+              delta === null
+                ? null
+                : d.up
+                  ? delta >= 0
+                  : delta <= 0;
+            return (
+              <button
+                key={d.key}
+                type="button"
+                onClick={() => setPlotted(d.key)}
+                className={cn(
+                  "rounded-xl border bg-card px-4 py-3 text-left transition-colors",
+                  plotted === d.key
+                    ? "border-foreground/40"
+                    : "border-border hover:border-border/70",
+                )}
+              >
+                <div className="text-xs text-muted-foreground">
+                  {t(`mainPanelTabs.cdnTab.${d.label}` as never)}
+                </div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-2xl font-semibold tabular-nums text-foreground">
+                    {fmtKpi(d.fmt, cur)}
+                  </span>
+                  {delta !== null && (
+                    <span
+                      className={cn(
+                        "text-xs font-medium tabular-nums",
+                        good
+                          ? "text-emerald-600"
+                          : "text-rose-600",
+                      )}
+                    >
+                      {delta >= 0 ? "↑" : "↓"}
+                      {Math.abs(Math.round(delta))}%
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      <Card title={t("mainPanelTabs.cdnTab.pageviewsOverTime")}>
-        {timeline.isLoading ? (
+      <Card
+        title={t(`mainPanelTabs.cdnTab.${plottedDef.label}` as never)}
+        action={
+          <span className="text-xs text-muted-foreground">{gmtLabel()}</span>
+        }
+      >
+        {timeseries.isLoading ? (
           <Skeleton className="h-72 w-full" />
-        ) : (timeline.data ?? []).length === 0 ? (
+        ) : chartData.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {t("mainPanelTabs.cdnTab.emptyRange")}
           </p>
         ) : (
           <ChartContainer
             config={{
-              pageviews: {
-                label: t("mainPanelTabs.cdnTab.pageviews"),
+              value: {
+                label: t(`mainPanelTabs.cdnTab.${plottedDef.label}` as never),
                 color: COLOR_PAGEVIEWS,
-              },
-              visitors: {
-                label: t("mainPanelTabs.cdnTab.visitors"),
-                color: COLOR_REQUESTS,
               },
             }}
             className="h-72 w-full"
           >
             <AreaChart
-              data={timeline.data ?? []}
+              data={chartData}
               margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
             >
               <CartesianGrid vertical={false} />
@@ -798,58 +1541,137 @@ function AudienceSection({
                 tickLine={false}
                 axisLine={false}
                 width={48}
-                tickFormatter={(v: number) => formatCompact(v)}
+                tickFormatter={(v: number) =>
+                  plottedDef.fmt === "dur"
+                    ? formatDuration(v)
+                    : plottedDef.fmt === "pct"
+                      ? `${Math.round(v)}%`
+                      : formatCompact(v)
+                }
               />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <ChartLegend content={<ChartLegendContent />} />
               <Area
-                dataKey="pageviews"
+                dataKey="value"
                 type="monotone"
                 fill={COLOR_PAGEVIEWS}
                 fillOpacity={0.15}
                 stroke={COLOR_PAGEVIEWS}
                 strokeWidth={2}
               />
-              <Area
-                dataKey="visitors"
-                type="monotone"
-                fill={COLOR_REQUESTS}
-                fillOpacity={0.1}
-                stroke={COLOR_REQUESTS}
-                strokeWidth={2}
-              />
+              {compare && (
+                <Line
+                  dataKey="prev"
+                  type="monotone"
+                  dot={false}
+                  strokeDasharray="4 4"
+                  stroke="hsl(var(--muted-foreground))"
+                  strokeWidth={1.5}
+                />
+              )}
             </AreaChart>
           </ChartContainer>
         )}
       </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title={t("mainPanelTabs.cdnTab.topSources")}>
+        <Card title={t("mainPanelTabs.cdnTab.mostViewedPages")}>
+          {pages.isLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <RankedList
+              items={odRankItems(pages.data?.results, 0)}
+              emptyLabel={t("mainPanelTabs.cdnTab.emptyRange")}
+            />
+          )}
+        </Card>
+        <Card title={t("mainPanelTabs.cdnTab.referrers")}>
           {sources.isLoading ? (
             <Skeleton className="h-40 w-full" />
           ) : (
             <RankedList
-              items={audItems(sources.data)}
+              items={odRankItems(sources.data?.results, 0, (raw) =>
+                raw ? raw : t("mainPanelTabs.cdnTab.directUnknown"),
+              )}
               emptyLabel={t("mainPanelTabs.cdnTab.emptyRange")}
             />
           )}
         </Card>
-        <Card title={t("mainPanelTabs.cdnTab.devices")}>
-          {devices.isLoading ? (
-            <Skeleton className="h-40 w-full" />
-          ) : (
-            <RankedList
-              items={audItems(devices.data)}
-              emptyLabel={t("mainPanelTabs.cdnTab.emptyRange")}
-            />
+        <Card
+          title={t("mainPanelTabs.cdnTab.topCountries")}
+          action={toggle(
+            ["map", "list"] as const,
+            countryView,
+            setCountryView,
+            (v) =>
+              t(
+                v === "map"
+                  ? "mainPanelTabs.cdnTab.mapView"
+                  : "mainPanelTabs.cdnTab.listView",
+              ),
           )}
-        </Card>
-        <Card title={t("mainPanelTabs.cdnTab.topCountries")}>
+        >
           {countries.isLoading ? (
             <Skeleton className="h-40 w-full" />
+          ) : countryView === "map" ? (
+            <CountryMap
+              rows={(countries.data?.results ?? []).map((r) => ({
+                key: r.dimensions[0] ?? "",
+                value: Number(r.metrics[0] ?? 0),
+              }))}
+            />
           ) : (
             <RankedList
-              items={audItems(countries.data)}
+              items={odRankItems(countries.data?.results, 0, formatCountry)}
+              emptyLabel={t("mainPanelTabs.cdnTab.emptyRange")}
+            />
+          )}
+        </Card>
+        <Card
+          title={t("mainPanelTabs.cdnTab.devices")}
+          action={toggle(DEVICE_DIMS, deviceDim, setDeviceDim, (d) =>
+            t(
+              d === "browsers"
+                ? "mainPanelTabs.cdnTab.browser"
+                : d === "os"
+                  ? "mainPanelTabs.cdnTab.os"
+                  : "mainPanelTabs.cdnTab.device",
+            ),
+          )}
+        >
+          {deviceRows.isLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <RankedList
+              items={odRankItems(deviceRows.data?.results, 0)}
+              emptyLabel={t("mainPanelTabs.cdnTab.emptyRange")}
+            />
+          )}
+        </Card>
+        <Card title={t("mainPanelTabs.cdnTab.events")}>
+          {events.isLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <OdMetricTable
+              rows={events.data?.results}
+              keyHeader={t("mainPanelTabs.cdnTab.event")}
+              totalVisitors={totalVisitors}
+              emptyLabel={t("mainPanelTabs.cdnTab.emptyRange")}
+            />
+          )}
+        </Card>
+        <Card
+          title={t("mainPanelTabs.cdnTab.utm")}
+          action={toggle(UTM_DIMS, utmDim, setUtmDim, (d) =>
+            t(`mainPanelTabs.cdnTab.${d}` as never),
+          )}
+        >
+          {utm.isLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <OdMetricTable
+              rows={utm.data?.results}
+              keyHeader={t("mainPanelTabs.cdnTab.value")}
+              totalVisitors={totalVisitors}
               emptyLabel={t("mainPanelTabs.cdnTab.emptyRange")}
             />
           )}
@@ -868,10 +1690,19 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   const base = siteSlug
     ? `/api/${org.slug}/monitor/${encodeURIComponent(siteSlug)}`
     : "";
-  const [range, setRange] = useState<string>("7d");
+  const [sel, setSel] = useState<RangeSel>({
+    range: "7d",
+    since: "",
+    until: "",
+    compare: false,
+  });
+  const rangeExtra =
+    sel.range === "custom" ? `&since=${sel.since}&until=${sel.until}` : "";
   const [section, setSection] = useState<"performance" | "audience">(
     "performance",
   );
+  const hostsQuery = useOdHosts(base, Boolean(siteSlug));
+  const hosts = hostsQuery.data ?? [];
 
   if (!siteSlug) {
     return (
@@ -890,6 +1721,21 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
+      <div>
+        <h2 className="text-base font-semibold text-foreground">
+          {t("mainPanelTabs.cdnTab.title")}
+        </h2>
+        {hosts.length > 0 && (
+          <p className="font-mono text-xs text-muted-foreground">
+            {hosts[0]}
+            {hosts.length > 1 &&
+              ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
+                "{count}",
+                String(hosts.length - 1),
+              )}`}
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
           {sections.map((sec) => (
@@ -908,29 +1754,24 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-          {RANGE_PILLS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRange(r)}
-              className={cn(
-                "rounded-md px-2 py-1 text-xs font-medium tabular-nums transition-colors",
-                range === r
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+        <RangePicker value={sel} onChange={setSel} />
       </div>
 
       {section === "performance" ? (
-        <PerformanceSection base={base} range={range} enabled={enabled} />
+        <PerformanceSection
+          base={base}
+          range={sel.range}
+          rangeExtra={rangeExtra}
+          enabled={enabled}
+        />
       ) : (
-        <AudienceSection base={base} range={range} enabled={enabled} />
+        <AudienceSection
+          base={base}
+          range={sel.range}
+          rangeExtra={rangeExtra}
+          compare={sel.compare}
+          enabled={enabled}
+        />
       )}
     </div>
   );
