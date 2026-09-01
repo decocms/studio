@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   groupByDestination,
   importable,
+  optimisticEntry,
   relativePath,
   slugify,
   uploadAllGroups,
@@ -102,5 +103,30 @@ describe("uploadAllGroups", () => {
     await expect(uploadAllGroups(groups, put)).rejects.toThrow("quota");
     // Not the `Promise.all` behaviour: the slow PUTs are done, not in flight.
     expect(landed.toSorted()).toEqual(["skills/s/a", "skills/s/b"]);
+  });
+});
+
+describe("optimisticEntry", () => {
+  test("matches the catalog row the server builds for a home skill", () => {
+    expect(
+      optimisticEntry(
+        "seo-audit",
+        "---\nname: SEO Audit\ndescription: Audits a page.\n---\n\nbody",
+      ),
+    ).toEqual({
+      id: "home/skills/seo-audit",
+      name: "SEO Audit",
+      description: "Audits a page.",
+      source: "home",
+      volume: "home",
+      path: "skills/seo-audit",
+      sandboxPath: "org/home/skills/seo-audit",
+    });
+  });
+
+  test("falls back to the slug when SKILL.md has no frontmatter name", () => {
+    const entry = optimisticEntry("my-skill", "# Heading\n\nWhat it does.");
+    expect(entry.name).toBe("my-skill");
+    expect(entry.description).toBe("What it does.");
   });
 });

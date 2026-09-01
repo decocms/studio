@@ -60,6 +60,7 @@ import {
   groupByDestination,
   importable,
   MAX_IMPORT_FILES,
+  optimisticEntry,
   relativePath,
   slugify,
   uploadAllGroups,
@@ -207,6 +208,21 @@ export default function SettingsSkillsPage() {
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsSkills(org.id) });
   };
 
+  /**
+   * Show the delete/import result before the round trip lands, by patching the
+   * one cache the grid reads. Every path ends in `refreshCatalog()`, so the
+   * server is still the source of truth — the patch only covers the wait, and
+   * a failure resyncs rather than replaying a rollback we'd have to keep
+   * correct.
+   */
+  const patchCatalog = (
+    update: (prev: OrgFsSkillCatalogEntry[]) => OrgFsSkillCatalogEntry[],
+  ) =>
+    queryClient.setQueryData<OrgFsSkillCatalogEntry[]>(
+      KEYS.slashSkills(org.id),
+      (prev) => update(prev ?? []),
+    );
+
   async function handleImport(fileList: FileList | null) {
     const picked = [...(fileList ?? [])];
     // Reset first: picking the same folder twice must re-fire `change`.
@@ -223,7 +239,8 @@ export default function SettingsSkillsPage() {
 
     const folder = root.split("/")[0] ?? "";
     const files = picked.filter(importable);
-    if (!files.some((f) => relativePath(f) === "SKILL.md")) {
+    const skillMd = files.find((f) => relativePath(f) === "SKILL.md");
+    if (!skillMd) {
       toast.error(t("settings.skills.importMissingSkillMd"));
       return;
     }
@@ -249,21 +266,24 @@ export default function SettingsSkillsPage() {
         return;
       }
       created = true;
+      // The card appears now, carrying the metadata the server will parse from
+      // the very bytes we're about to upload.
+      const optimistic = optimisticEntry(slug, await skillMd.text());
+      patchCatalog((prev) => [optimistic, ...prev]);
       await uploadAllGroups(
         groupByDestination(files, slug),
         upload.mutateAsync,
       );
-      refreshCatalog();
       toast.success(t("settings.skills.importSuccess", { name: slug }));
     } catch (err) {
       // A half-written tree would serve agents a broken skill, and its bare
       // directory would block the retry on the slug probe above.
       if (created) await remove.mutateAsync(dir).catch(() => {});
-      refreshCatalog();
       toast.error(
         err instanceof Error ? err.message : t("settings.skills.importError"),
       );
     } finally {
+      refreshCatalog();
       setImporting(false);
     }
   }
@@ -313,16 +333,18 @@ export default function SettingsSkillsPage() {
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
-    const { path } = pendingDelete;
+    const { id, path } = pendingDelete;
     setPendingDelete(null);
+    patchCatalog((prev) => prev.filter((e) => e.id !== id));
     try {
       await remove.mutateAsync(path);
-      refreshCatalog();
       toast.success(t("settings.skills.deleteSuccess"));
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("settings.skills.deleteError"),
       );
+    } finally {
+      refreshCatalog();
     }
   };
 
