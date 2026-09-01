@@ -18,8 +18,29 @@ export const admin = {
   "admin.orgs.created": "Criado",
   "admin.orgs.email": "E-mail",
   "admin.orgs.emailPlaceholder": "usuario@example.com",
+  "admin.orgs.add": "Adicionar",
+  "admin.orgs.addCustomFlag": "Adicionar flag custom",
+  "admin.orgs.customFlagKeyPlaceholder": "minha_flag_custom",
+  "admin.orgs.duplicateFlagKey": "Essa flag já existe",
   "admin.orgs.failedAddMember": "Falha ao adicionar membro",
+  "admin.orgs.failedLoadFlags": "Falha ao carregar flags",
   "admin.orgs.failedLoadOrgs": "Falha ao carregar organizações",
+  "admin.orgs.failedSaveFlags": "Falha ao salvar flags",
+  "admin.orgs.flagCustom": "Custom",
+  "admin.orgs.flagDefaultOn": "Ligada por padrão",
+  "admin.orgs.flagUnset": "Não definida",
+  "admin.orgs.flags": "Flags",
+  "admin.orgs.flagsDescription":
+    "Ative ou desative feature flags desta organização. As alterações são salvas nas configurações da org.",
+  "admin.orgs.flagsFor": "Feature flags de {org}",
+  "admin.orgs.flagsSaved": "Flags atualizadas para {org}",
+  "admin.orgs.flagsViewJson": "JSON",
+  "admin.orgs.flagsViewToggles": "Toggles",
+  "admin.orgs.invalidFlagKey": "Use snake_case minúsculo (ex.: minha_flag)",
+  "admin.orgs.invalidJson":
+    "JSON inválido — esperado chaves snake_case mapeadas para valores booleanos.",
+  "admin.orgs.jsonReplaceHint":
+    "Isto substitui o objeto de flags inteiro. Remover uma chave a desdefine.",
   "admin.orgs.failedLoadOrgsDescription":
     "Algo deu errado. Atualize para tentar novamente.",
   "admin.orgs.memberAdded": "{email} adicionado(a) a {org}",
@@ -29,6 +50,8 @@ export const admin = {
     'Nenhuma organização corresponde a "{search}"',
   "admin.orgs.noOrgsYet": "Nenhuma organização existe ainda.",
   "admin.orgs.organization": "Organização",
+  "admin.orgs.save": "Salvar",
+  "admin.orgs.saving": "Salvando...",
   "admin.orgs.searchPlaceholder": "Procure organizações por nome ou slug...",
   "admin.prompts.description":
     "Estes prompts são fixos no código em {repo}. As edições aqui são lidas de {branch} e enviadas de volta como um pull request, usando a conexão do GitHub da sua organização {org}.",
