@@ -74,7 +74,10 @@ const SYSTEM = `You maintain a team's task board. A coding agent just opened a p
 - If no existing card covers it, choose \`create\` and return a short \`title\` describing the change.
 - Optionally add a one-line \`comment\` for the reviewer. Leave it empty when there is nothing worth saying.
 
-Be conservative about creating: when a plausible card already exists, prefer \`update\`.`;
+Be conservative about creating: when a plausible card already exists, prefer \`update\`.
+
+Respond with ONLY a JSON object of this shape, and nothing else:
+{"action": "create" | "update", "taskId": string | null, "title": string | null, "comment": string | null}`;
 
 /**
  * Ask the org's cheap "fast" tier whether this PR maps to an existing card.

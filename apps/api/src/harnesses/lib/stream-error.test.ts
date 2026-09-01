@@ -4,6 +4,8 @@ import {
   isCreditError,
   mcpConnectionErrorMessage,
   sanitizeStreamError,
+  stringifyError,
+  upstreamProviderError,
 } from "./stream-error";
 
 describe("sanitizeStreamError", () => {
@@ -108,5 +110,144 @@ describe("classifyStreamError", () => {
       metadata: { error_type: "timeout" },
     };
     expect(classifyStreamError(err)).toBe("timeout");
+  });
+});
+
+describe("upstreamProviderError", () => {
+  /** The exact body OpenRouter returned for the production failure. */
+  const openaiRouteBody = JSON.stringify({
+    error: {
+      message: "Provider returned error",
+      code: 400,
+      metadata: {
+        raw:
+          'data: {"error":{"code":"invalid_parameter_error","message":' +
+          "\"'messages' must contain the word 'json' in some form, to use " +
+          "'response_format' of type 'json_object'.\"}}\n\n",
+        provider_name: "Alibaba",
+      },
+    },
+  });
+
+  it("lifts the provider and its own message out of a relayed 400", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: openaiRouteBody,
+      statusCode: 400,
+    });
+    expect(upstreamProviderError(error)).toBe(
+      "[Alibaba] 'messages' must contain the word 'json' in some form, to " +
+        "use 'response_format' of type 'json_object'.",
+    );
+  });
+
+  it("reads the Anthropic-skin shape, where metadata sits beside error", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: JSON.stringify({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          message: "Provider returned error",
+        },
+        metadata: {
+          provider_name: "Amazon Bedrock",
+          raw: JSON.stringify({
+            error: {
+              message:
+                "A maximum of 4 blocks with cache_control may be provided. Found 6.",
+            },
+          }),
+        },
+      }),
+    });
+    expect(upstreamProviderError(error)).toBe(
+      "[Amazon Bedrock] A maximum of 4 blocks with cache_control may be " +
+        "provided. Found 6.",
+    );
+  });
+
+  it("leaves a gateway's own error alone (402 has no upstream)", () => {
+    const error = Object.assign(
+      new Error("This request requires more credits"),
+      {
+        responseBody: JSON.stringify({
+          error: {
+            message: "This request requires more credits",
+            code: 402,
+            metadata: {
+              limit_source: "openrouter_key_limit",
+              provider_name: null,
+            },
+          },
+        }),
+      },
+    );
+    expect(upstreamProviderError(error)).toBeNull();
+  });
+
+  it("reads a multi-line SSE body, not just a lone `data:` frame", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: JSON.stringify({
+        error: {
+          message: "Provider returned error",
+          metadata: {
+            provider_name: "Google Vertex",
+            raw:
+              "event: error\n" +
+              'data: {"error":{"message":"Publisher Model is not found."}}\n\n',
+          },
+        },
+      }),
+    });
+    expect(upstreamProviderError(error)).toBe(
+      "[Google Vertex] Publisher Model is not found.",
+    );
+  });
+
+  it("prefers the raw responseBody — the SDK's parsed `data` strips metadata", () => {
+    // Exactly what the AI SDK produces: `data` is the body zod-parsed against
+    // the provider's error schema, which does not declare `metadata`.
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: openaiRouteBody,
+      data: { error: { message: "Provider returned error", code: 400 } },
+      statusCode: 400,
+    });
+    expect(upstreamProviderError(error)).toStartWith("[Alibaba] 'messages'");
+  });
+
+  it("ignores errors that carry no response body", () => {
+    expect(upstreamProviderError(new Error("boom"))).toBeNull();
+    expect(upstreamProviderError("boom")).toBeNull();
+    expect(upstreamProviderError(null)).toBeNull();
+  });
+
+  it("classifies on the upstream detail, so a relayed 429 is a rate limit", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: JSON.stringify({
+        error: {
+          message: "Provider returned error",
+          metadata: {
+            provider_name: "Anthropic",
+            raw: JSON.stringify({
+              error: { message: "rate limit exceeded, please retry" },
+            }),
+          },
+        },
+      }),
+    });
+    expect(classifyStreamError(error)).toBe("rate_limit");
+  });
+
+  it("still classifies an unrecognised relayed detail as model_error", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: openaiRouteBody,
+    });
+    expect(classifyStreamError(error)).toBe("model_error");
+  });
+
+  it("stringifyError surfaces it, so the pod log names the culprit", () => {
+    const error = Object.assign(new Error("Provider returned error"), {
+      responseBody: openaiRouteBody,
+    });
+    expect(stringifyError(error)).toStartWith("[Alibaba] 'messages' must");
   });
 });
