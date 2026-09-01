@@ -181,8 +181,17 @@ export async function applyBoardDecision(
         ? progressLane
         : null;
     const advancing = advanceTo !== null;
-    // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's.
+    // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's — re-fenced on the live row since `target` predates the LLM call above.
     const claimSuperAgent = advancing && target.assigneeId == null;
+    if (claimSuperAgent) {
+      await storage.claimUnassignedForSuperAgent(
+        target.id,
+        orgId,
+        userId,
+        userId,
+        target.status,
+      );
+    }
     item = await storage.update(
       target.id,
       orgId,
@@ -191,9 +200,6 @@ export async function applyBoardDecision(
         // and In Review is what the board says once it is a person's turn.
         // The open cycle below is what puts it on the reviewer's work list.
         status: advanceTo ?? undefined,
-        ...(claimSuperAgent
-          ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
-          : {}),
       },
       userId,
     );

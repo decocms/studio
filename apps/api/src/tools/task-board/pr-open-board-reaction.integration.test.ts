@@ -64,6 +64,7 @@ describe("applyBoardDecision", () => {
     "thr_human",
     "thr_fallback",
     "thr_done",
+    "thr_race",
   ];
 
   const apply = (
@@ -187,6 +188,25 @@ describe("applyBoardDecision", () => {
     expect(item!.status).toBe("in_progress");
     expect(item!.reviewCycleStartedAt).not.toBeNull();
     // A human owns it — the claim must not steal the card from them.
+    expect(item!.assigneeId).toBe(USER);
+  });
+
+  it("update doesn't stomp a human claim raced in after the openCards snapshot", async () => {
+    const card = await taskBoard.create({
+      organizationId: ORG,
+      title: "raced claim",
+      status: "in_progress",
+      by: USER,
+    });
+    // Stale snapshot: still unassigned, before a human claims it below.
+    const staleSnapshot = card;
+    await taskBoard.update(card.id, ORG, { assigneeId: USER }, USER);
+    const item = await apply(
+      { action: "update", taskId: card.id },
+      [staleSnapshot],
+      "thr_race",
+    );
+    expect(item!.id).toBe(card.id);
     expect(item!.assigneeId).toBe(USER);
   });
 
