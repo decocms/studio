@@ -336,6 +336,21 @@ export function useMainPanelTabs(ctx: {
   // Don't bounce a deep-linked Assets view away before the first config load resolves.
   const assetsTabPending = fileConfigsQuery.isPending;
 
+  // Per-view visibility for the control-plane (Hosting/E2E/Analytics) and
+  // Monitor tabs — the single source of truth for both the tab push below AND
+  // the deep-link normalization further down, so a `?main=hosting` URL can't
+  // mount a tab whose button is hidden. `hostingOwned` is false while the
+  // `/access` probe is in flight, so a deep-linked control-plane tab is kept
+  // until ownership settles (`hostingAccessPending`) rather than bounced early.
+  const hostingAccessPending = hostingAccessQuery.isPending;
+  const showHostingTab =
+    hostingEnabled && hostingOwned && controlPlaneViews.hosting;
+  const showE2eTab = hostingEnabled && hostingOwned && controlPlaneViews.e2e;
+  const showAnalyticsTab =
+    hostingEnabled && hostingOwned && controlPlaneViews.analytics;
+  const showCdnTab =
+    monitorEnabled && hostingOwned && controlPlaneViews.monitor;
+
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
       panelTabId,
@@ -360,6 +375,16 @@ export function useMainPanelTabs(ctx: {
           tabs: layoutTabs.map((t) => ({ id: t.id })),
         }
       : null;
+  // A deep-linked control-plane / Monitor tab whose button is hidden (no BFF, no
+  // ownership, or the org isn't flagged in) falls back to the default view once
+  // ownership is known — mirroring git/content/assets — so a stale URL never
+  // mounts a tab that only 503/404s.
+  const controlPlaneTabHidden =
+    !hostingAccessPending &&
+    ((rawActiveTab === "hosting" && !showHostingTab) ||
+      (rawActiveTab === "e2e" && !showE2eTab) ||
+      (rawActiveTab === "analytics" && !showAnalyticsTab) ||
+      (rawActiveTab === "cdn" && !showCdnTab));
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? resolveDefaultTabId(layoutForDefault)
@@ -367,7 +392,9 @@ export function useMainPanelTabs(ctx: {
         ? resolveDefaultTabId(layoutForDefault)
         : rawActiveTab === "assets" && !showAssetsTab && !assetsTabPending
           ? resolveDefaultTabId(layoutForDefault)
-          : rawActiveTab;
+          : controlPlaneTabHidden
+            ? resolveDefaultTabId(layoutForDefault)
+            : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
@@ -421,25 +448,23 @@ export function useMainPanelTabs(ctx: {
   // (`hostingOwned`), not just the deployment-wide `hostingEnabled`, so a site
   // the org doesn't own never surfaces them (matching the BFF's per-site
   // isolation guard).
-  if (hostingEnabled && hostingOwned) {
-    if (controlPlaneViews.hosting) {
-      systemTabs.push({
-        id: "hosting",
-        title: t("common.mainPanelTabs.hosting"),
-      });
-    }
-    if (controlPlaneViews.e2e) {
-      systemTabs.push({
-        id: "e2e",
-        title: t("common.mainPanelTabs.e2e"),
-      });
-    }
-    if (controlPlaneViews.analytics) {
-      systemTabs.push({
-        id: "analytics",
-        title: t("common.mainPanelTabs.analytics"),
-      });
-    }
+  if (showHostingTab) {
+    systemTabs.push({
+      id: "hosting",
+      title: t("common.mainPanelTabs.hosting"),
+    });
+  }
+  if (showE2eTab) {
+    systemTabs.push({
+      id: "e2e",
+      title: t("common.mainPanelTabs.e2e"),
+    });
+  }
+  if (showAnalyticsTab) {
+    systemTabs.push({
+      id: "analytics",
+      title: t("common.mainPanelTabs.analytics"),
+    });
   }
   // Native CDN Monitor tab — the first-class replacement for the old admin
   // "Monitor" iframe. Gated on the warehouse being wired (`monitorEnabled`), org
@@ -449,7 +474,7 @@ export function useMainPanelTabs(ctx: {
   // that org in. Independent of `hostingEnabled`: it reads the stats-lake
   // warehouse directly, not the control-plane, so a deployment can offer CDN
   // without hosting.
-  if (monitorEnabled && hostingOwned && controlPlaneViews.monitor) {
+  if (showCdnTab) {
     systemTabs.push({
       id: "cdn",
       title: t("common.mainPanelTabs.cdn"),

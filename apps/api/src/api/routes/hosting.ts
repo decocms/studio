@@ -38,7 +38,10 @@ import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import type { StudioContext } from "../../core/studio-context";
-import { requireOrganization } from "../../core/studio-context";
+import {
+  isAuthenticated,
+  requireOrganization,
+} from "../../core/studio-context";
 import { getSettings } from "../../settings";
 
 type Variables = { studioContext: StudioContext };
@@ -67,8 +70,20 @@ async function proxyControlplane(
 ) {
   const { method = "GET", forwardQuery = [], body } = opts;
   const ctx = c.get("studioContext");
-  // Org scope is resolved (and org membership enforced) by `resolveOrgFromPath`
-  // upstream; this returns the path-resolved org.
+  // Require an authenticated principal. `resolveOrgFromPath` 403s an authenticated
+  // NON-member but deliberately lets ANONYMOUS requests fall through to the route
+  // (so OAuth discovery / public-share reads work), so this BFF must reject the
+  // anonymous case itself — otherwise anyone could read a site's hosting / e2e /
+  // analytics data by naming a known org+site slug. Membership is already proven
+  // upstream for any authenticated principal; ownership is proven just below.
+  if (!isAuthenticated(ctx)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  // A present-but-unparseable body must not fall through as `{}` — for a
+  // replace-set write (PUT /env) that would wipe the whole environment.
+  if (body === MALFORMED_BODY) {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const org = requireOrganization(ctx);
 
   const { controlplaneRestUrl, controlplaneServiceToken } = getSettings();
@@ -156,11 +171,29 @@ async function proxyControlplane(
   }
 }
 
-/** Read a JSON request body, tolerating an empty/malformed payload. */
+/**
+ * Sentinel for a body that was present but not valid JSON. Distinct from `{}`
+ * (an empty body) so a write route can 400 instead of forwarding it: coercing a
+ * parse failure to `{}` is fail-open — for the replace-set PUT /env it silently
+ * wipes the site's whole environment. `proxyControlplane` rejects it.
+ */
+const MALFORMED_BODY = Symbol("hosting.malformed-body");
+
+/**
+ * Read a JSON request body. An empty body reads as `{}` (some writes carry
+ * none); a body that is present but unparseable reads as {@link MALFORMED_BODY}
+ * so the write is rejected rather than fail-open.
+ */
 async function readJsonBody(
   c: import("hono").Context<{ Variables: Variables }>,
 ): Promise<unknown> {
-  return c.req.json().catch(() => ({}));
+  const raw = await c.req.text();
+  if (raw.trim() === "") return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return MALFORMED_BODY;
+  }
 }
 
 // --- Analytics read surface (the tenant-scoped /data views) -----------------
@@ -274,6 +307,9 @@ export const createHostingRoutes = () => {
   // cacheable signal to hide the tabs, not an error to disambiguate.
   app.get("/:site/access", async (c) => {
     const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
     const org = requireOrganization(ctx);
     const site = c.req.param("site");
     if (!site) {
@@ -523,6 +559,9 @@ export const createHostingRoutes = () => {
   // the tab shows the Configuration section instead of empty charts.
   app.get("/:site/analytics/data", async (c) => {
     const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
     const org = requireOrganization(ctx);
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);

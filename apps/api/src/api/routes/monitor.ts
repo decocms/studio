@@ -39,7 +39,10 @@
 
 import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
-import { requireOrganization } from "../../core/studio-context";
+import {
+  isAuthenticated,
+  requireOrganization,
+} from "../../core/studio-context";
 import { getSettings } from "../../settings";
 import {
   analyticsQuery,
@@ -795,6 +798,12 @@ export const createMonitorRoutes = () => {
   // so the tab can show a configuration/empty state instead of failing.
   app.get("/:site/cdn/data", async (c) => {
     const ctx = c.get("studioContext");
+    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
+    // through, so without this a known org+site slug would expose CDN/audience
+    // analytics to anyone. Membership is proven upstream; ownership just below.
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
     const org = requireOrganization(ctx);
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
@@ -883,6 +892,12 @@ export const createMonitorRoutes = () => {
   // "Analytics" tab). Same tenancy guard and shape as the CDN handler.
   app.get("/:site/audience/data", async (c) => {
     const ctx = c.get("studioContext");
+    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
+    // through, so without this a known org+site slug would expose CDN/audience
+    // analytics to anyone. Membership is proven upstream; ownership just below.
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
     const org = requireOrganization(ctx);
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
@@ -955,6 +970,12 @@ export const createMonitorRoutes = () => {
   // when OneDollarStats isn't wired. The first entry is the default selection.
   app.get("/:site/hosts", async (c) => {
     const ctx = c.get("studioContext");
+    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
+    // through, so without this a known org+site slug would expose CDN/audience
+    // analytics to anyone. Membership is proven upstream; ownership just below.
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
     const org = requireOrganization(ctx);
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
@@ -989,6 +1010,12 @@ export const createMonitorRoutes = () => {
   // a client can never name another tenant's site_id.
   app.get("/:site/onedollar", async (c) => {
     const ctx = c.get("studioContext");
+    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
+    // through, so without this a known org+site slug would expose CDN/audience
+    // analytics to anyone. Membership is proven upstream; ownership just below.
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
     const org = requireOrganization(ctx);
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);

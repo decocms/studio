@@ -18,10 +18,6 @@ import { PreviewTab } from "./preview-tab";
 import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AssetsTab } from "./assets-tab";
-import { HostingTab } from "./hosting-tab";
-import { E2eTab } from "./e2e-tab";
-import { AnalyticsTab } from "./analytics-tab";
-import { CdnTab } from "./cdn-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
@@ -47,6 +43,22 @@ const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
     default: m.AppViewContent,
   })),
+);
+
+// The control-plane / Monitor tabs are product-gated and heavy (charts, maps,
+// locale data), so lazy-load them: users without access never download them.
+// TabBody renders inside MainPanelContent's Suspense boundary.
+const HostingTab = lazy(() =>
+  import("./hosting-tab").then((m) => ({ default: m.HostingTab })),
+);
+const E2eTab = lazy(() =>
+  import("./e2e-tab").then((m) => ({ default: m.E2eTab })),
+);
+const AnalyticsTab = lazy(() =>
+  import("./analytics-tab").then((m) => ({ default: m.AnalyticsTab })),
+);
+const CdnTab = lazy(() =>
+  import("./cdn-tab").then((m) => ({ default: m.CdnTab })),
 );
 
 function TabBody({

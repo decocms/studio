@@ -256,10 +256,12 @@ async function mutateJson(
 function Section({
   title,
   count,
+  action,
   children,
 }: {
   title: string;
   count?: number;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -271,6 +273,7 @@ function Section({
             {count}
           </Badge>
         )}
+        {action ? <div className="ml-auto">{action}</div> : null}
       </header>
       <div className="p-2">{children}</div>
     </section>
@@ -584,6 +587,23 @@ function ChecksSection({
     <Section
       title={t("mainPanelTabs.e2eTab.checksSection")}
       count={checks.length}
+      action={
+        // The control-plane DELETE is collection-scoped (no per-check id), so
+        // this is deliberately a single section-level "delete all" action rather
+        // than a per-row trash that would silently wipe every check.
+        checks.length > 0 ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setConfirmDelete(true)}
+            disabled={busy}
+          >
+            <Trash01 className="size-4" />
+            {t("mainPanelTabs.e2eTab.deleteAllChecks")}
+          </Button>
+        ) : null
+      }
     >
       {query.isLoading ? (
         <RowsSkeleton cols={6} />
@@ -634,16 +654,6 @@ function ChecksSection({
                     disabled={busy || !c.command}
                   >
                     <PlayCircle className="size-4" />
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={t("mainPanelTabs.e2eTab.deleteCheck")}
-                    title={t("mainPanelTabs.e2eTab.deleteCheck")}
-                    onClick={() => setConfirmDelete(true)}
-                    disabled={busy}
-                  >
-                    <Trash01 className="size-4" />
                   </Button>
                 </TableCell>
               </TableRow>
