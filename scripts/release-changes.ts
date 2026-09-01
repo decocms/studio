@@ -11,6 +11,9 @@ const API_MANIFEST = "apps/api/package.json";
 // .github/workflows/release-native.yaml keys the DMG/zip release and the
 // Homebrew cask off.
 const NATIVE_MANIFEST = "apps/native/package.json";
+// Tags the sandbox image and, via release-tagging.yaml's CHART_IMAGE_LOCKSTEP,
+// the sandbox-env chart's image.tag.
+const SANDBOX_MANIFEST = "packages/sandbox/package.json";
 
 export type DeployScope = "both" | "server" | "web" | "none";
 
@@ -60,6 +63,16 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
     if (file.startsWith("deploy/helm/studio/files/")) {
       addReleaseLine();
       continue;
+    }
+
+    // The harness runner is packed INTO the sandbox image
+    // (packages/sandbox/image/Dockerfile), and that image is tagged from
+    // packages/sandbox/package.json. Without this the version stays put, the
+    // rebuild overwrites the live tag in place, and every node that already
+    // cached it keeps serving the old runner — #6816's fix reached 4 of 21
+    // prod sandbox pods that way.
+    if (file.startsWith("packages/harness-runner/")) {
+      manifests.add(SANDBOX_MANIFEST);
     }
 
     const packageMatch = /^packages\/([^/]+)\//.exec(file);
