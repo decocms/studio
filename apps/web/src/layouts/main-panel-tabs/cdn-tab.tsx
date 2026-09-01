@@ -29,7 +29,10 @@ import {
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
 import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from "recharts";
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+import { geoMercator, geoPath } from "d3-geo";
+import { feature } from "topojson-client";
+import type { FeatureCollection, Geometry } from "geojson";
+import worldAtlas from "world-atlas/countries-110m.json";
 import isoCountries from "i18n-iso-countries";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
@@ -44,14 +47,14 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
-// Date presets matching the old admin's dropdown, in display order.
+// Date presets, in display order. The CDN warehouse is DATE-granular (facts are
+// keyed by a `date` column, no timestamp), so sub-day presets (60m/24h/48h/72h)
+// were dropped: they can't be honored and only rendered a misleading rolling
+// window. `today`/`yesterday` are exact calendar days; the rest are inclusive
+// N-day windows ending today (see monitor.ts resolveWindow).
 const RANGE_PRESETS = [
-  { key: "60m", label: "last60m" },
   { key: "today", label: "today" },
   { key: "yesterday", label: "yesterday" },
-  { key: "24h", label: "last24h" },
-  { key: "48h", label: "last48h" },
-  { key: "72h", label: "last72h" },
   { key: "7d", label: "last7d" },
   { key: "14d", label: "last14d" },
   { key: "30d", label: "last30d" },
@@ -467,9 +470,31 @@ function RankedList({
   );
 }
 
-// World topojson (numeric ISO ids), fetched at render — not bundled.
-const GEO_URL =
-  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+// World country polygons, BUNDLED (not fetched from a CDN at render, which would
+// silently render an empty map when the CDN is blocked/offline). The topojson is
+// keyed by numeric ISO id, converted once to GeoJSON features at module load.
+// world-atlas ships a topojson `Topology`; `topojson-client.feature` turns the
+// `countries` GeometryCollection into GeoJSON. The topojson-specification types
+// don't narrow cleanly through the .json import, so the args/return are asserted
+// via `unknown` — the runtime shape is guaranteed by the pinned `world-atlas`.
+const worldTopology = worldAtlas as unknown as {
+  objects: { countries: object };
+};
+const WORLD_FEATURES = (
+  feature(
+    worldTopology as never,
+    worldTopology.objects.countries as never,
+  ) as unknown as FeatureCollection<Geometry, { name?: string }>
+).features;
+
+// Rectangular Mercator (like the OneDollar map), cropped below Antarctica and
+// above the Arctic so the world fills the 800×520 card without distortion.
+// Translate to the viewbox centre matches react-simple-maps' old default.
+const MAP_PROJECTION = geoMercator()
+  .scale(120)
+  .center([0, 42])
+  .translate([400, 260]);
+const MAP_PATH = geoPath(MAP_PROJECTION);
 
 /** Choropleth of a country breakdown — the Map view of the Countries panel.
  *  The topojson keys countries by numeric ISO id; convert it to alpha-2
@@ -486,64 +511,49 @@ function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
   } | null>(null);
   return (
     <div className="relative w-full" onMouseLeave={() => setTip(null)}>
-      {/* Rectangular Mercator (like the OneDollar map), cropped below Antarctica
-          and above the Arctic so the world fills the card without distortion. */}
-      <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ scale: 120, center: [0, 42] }}
-        width={800}
-        height={520}
+      <svg
+        viewBox="0 0 800 520"
         style={{ width: "100%", height: "auto" }}
+        role="img"
       >
-        <Geographies geography={GEO_URL}>
-          {({ geographies }: { geographies: Array<Record<string, unknown>> }) =>
-            geographies.map((geo) => {
-              const id = String((geo as { id?: unknown }).id ?? "").padStart(
-                3,
-                "0",
-              );
-              const a2 = isoCountries.numericToAlpha2(id);
-              const value = (a2 && byCode.get(a2.toUpperCase())) || 0;
-              const ratio = value / max;
-              const name =
-                (geo as { properties?: { name?: string } }).properties?.name ??
-                (a2 ? formatCountry(a2) : id);
-              return (
-                <Geography
-                  key={(geo as { rsmKey: string }).rsmKey}
-                  geography={geo}
-                  onMouseMove={(e: React.MouseEvent) => {
-                    const box = (
-                      e.currentTarget as SVGElement
-                    ).ownerSVGElement?.parentElement?.getBoundingClientRect();
-                    setTip({
-                      name,
-                      value,
-                      x: box ? e.clientX - box.left : 0,
-                      y: box ? e.clientY - box.top : 0,
-                    });
-                  }}
-                  onMouseLeave={() => setTip(null)}
-                  fill={
-                    value > 0
-                      ? `color-mix(in oklch, var(--chart-2) ${Math.round(
-                          18 + ratio * 82,
-                        )}%, transparent)`
-                      : "var(--muted)"
-                  }
-                  stroke="var(--border)"
-                  strokeWidth={0.3}
-                  style={{
-                    default: { outline: "none" },
-                    hover: { outline: "none", opacity: 0.8, cursor: "pointer" },
-                    pressed: { outline: "none" },
-                  }}
-                />
-              );
-            })
-          }
-        </Geographies>
-      </ComposableMap>
+        {WORLD_FEATURES.map((geo, i) => {
+          const id = String(geo.id ?? "").padStart(3, "0");
+          const a2 = isoCountries.numericToAlpha2(id);
+          const value = (a2 && byCode.get(a2.toUpperCase())) || 0;
+          const ratio = value / max;
+          const name = geo.properties?.name ?? (a2 ? formatCountry(a2) : id);
+          const d = MAP_PATH(geo);
+          if (!d) return null;
+          return (
+            <path
+              key={geo.id != null ? String(geo.id) : i}
+              d={d}
+              className="cursor-pointer outline-none hover:opacity-80"
+              onMouseMove={(e: React.MouseEvent) => {
+                const box = (
+                  e.currentTarget as SVGElement
+                ).ownerSVGElement?.parentElement?.getBoundingClientRect();
+                setTip({
+                  name,
+                  value,
+                  x: box ? e.clientX - box.left : 0,
+                  y: box ? e.clientY - box.top : 0,
+                });
+              }}
+              onMouseLeave={() => setTip(null)}
+              fill={
+                value > 0
+                  ? `color-mix(in oklch, var(--chart-2) ${Math.round(
+                      18 + ratio * 82,
+                    )}%, transparent)`
+                  : "var(--muted)"
+              }
+              stroke="var(--border)"
+              strokeWidth={0.3}
+            />
+          );
+        })}
+      </svg>
       {tip && (
         <div
           className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-md"

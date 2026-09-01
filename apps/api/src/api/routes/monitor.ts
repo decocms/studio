@@ -62,19 +62,24 @@ const CDN_VIEWS = new Set([
   "top-countries",
 ]);
 
-/** Preset range → lookback window + bucket granularity, matching the old
- *  admin's date dropdown. Sub-week windows bucket hourly; the rest daily. A
- *  `custom` range (explicit since/until) is resolved separately. */
+/**
+ * Preset range → inclusive calendar window + bucket granularity.
+ *
+ * `days` is the INCLUSIVE number of calendar dates the window spans (so `7d` is
+ * today plus the six prior dates, not eight), and `endOffsetDays` shifts the end
+ * back from today (used by `yesterday`). Single-day presets bucket hourly (the
+ * hourly view is filtered to that one date); multi-day presets bucket daily.
+ *
+ * Sub-day presets (60m/24h/48h/72h) were removed: the facts are keyed by a
+ * `date` column, so a rolling sub-day window can't be honored and only rendered
+ * a misleading whole-calendar-date result. A `custom` range is resolved below.
+ */
 const RANGE_TO_WINDOW: Record<
   string,
-  { days: number; granularity: "hourly" | "daily" }
+  { days: number; granularity: "hourly" | "daily"; endOffsetDays?: number }
 > = {
-  "60m": { days: 1, granularity: "hourly" },
   today: { days: 1, granularity: "hourly" },
-  yesterday: { days: 2, granularity: "hourly" },
-  "24h": { days: 1, granularity: "hourly" },
-  "48h": { days: 2, granularity: "hourly" },
-  "72h": { days: 3, granularity: "hourly" },
+  yesterday: { days: 1, granularity: "hourly", endOffsetDays: 1 },
   "7d": { days: 7, granularity: "daily" },
   "14d": { days: 14, granularity: "daily" },
   "30d": { days: 30, granularity: "daily" },
@@ -88,11 +93,21 @@ function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Resolve [since, until] Date strings for a lookback window (inclusive). */
-function windowDates(days: number): { since: string; until: string } {
-  const until = new Date();
-  const since = new Date(until.getTime() - days * 24 * 60 * 60 * 1000);
-  return { since: toIsoDate(since), until: toIsoDate(until) };
+/**
+ * Resolve the inclusive [since, until] dates for a window that spans `days`
+ * calendar dates and ends `endOffsetDays` before today. Inclusive on both ends:
+ * `days` dates total (e.g. `days=1, endOffsetDays=0` → today..today;
+ * `days=1, endOffsetDays=1` → yesterday..yesterday; `days=7` → today-6..today).
+ */
+function windowDates(
+  days: number,
+  endOffsetDays = 0,
+): { since: string; until: string } {
+  const end = new Date();
+  end.setUTCDate(end.getUTCDate() - endOffsetDays);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return { since: toIsoDate(start), until: toIsoDate(end) };
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -134,7 +149,7 @@ function resolveWindow(
   }
   const w = RANGE_TO_WINDOW[range];
   if (!w) return null;
-  const { since, until } = windowDates(w.days);
+  const { since, until } = windowDates(w.days, w.endOffsetDays ?? 0);
   return { since, until, granularity: w.granularity, days: w.days };
 }
 
