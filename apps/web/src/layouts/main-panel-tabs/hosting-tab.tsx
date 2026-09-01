@@ -1918,35 +1918,40 @@ function DomainDnsPanel({
 }) {
   if (records.length === 0) return null;
   return (
-    <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
+    <div className="flex min-w-0 flex-col gap-3 rounded-md border bg-muted/30 p-3">
       <div className="flex items-center gap-2">
         <Globe01 className="size-4 text-muted-foreground" />
         <span className="text-xs font-medium">
           {t("mainPanelTabs.hostingTab.dnsSetupTitle")}
         </span>
       </div>
-      <Table>
+      {/* Records can be long (host + value): let the cells wrap (break-all) so
+          the table fits the dialog width instead of forcing it wider. A copy
+          button carries the exact value, so wrapping the display is fine. */}
+      <Table className="w-full table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead>{t("mainPanelTabs.hostingTab.dnsColType")}</TableHead>
+            <TableHead className="w-14">
+              {t("mainPanelTabs.hostingTab.dnsColType")}
+            </TableHead>
             <TableHead>{t("mainPanelTabs.hostingTab.dnsColName")}</TableHead>
             <TableHead>{t("mainPanelTabs.hostingTab.dnsColValue")}</TableHead>
-            <TableHead className="w-[1%]" />
+            <TableHead className="w-8" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {records.map((r) => (
             <TableRow key={`${r.type}-${r.name}-${r.value}`}>
-              <TableCell className="font-mono text-xs align-middle">
+              <TableCell className="font-mono text-xs align-top">
                 {r.type}
               </TableCell>
-              <TableCell className="font-mono text-xs align-middle">
+              <TableCell className="break-all font-mono text-xs align-top">
                 {r.name}
               </TableCell>
-              <TableCell className="font-mono text-xs align-middle">
+              <TableCell className="break-all font-mono text-xs align-top">
                 {r.value}
               </TableCell>
-              <TableCell className="text-right align-middle">
+              <TableCell className="text-right align-top">
                 <CopyValueButton value={r.value} t={t} />
               </TableCell>
             </TableRow>
@@ -1972,7 +1977,10 @@ function DomainStatusBadge({ domain, t }: { domain: Domain; t: Translate }) {
       ? t("mainPanelTabs.hostingTab.detailZoneNotOnboarded")
       : undefined;
   return (
-    <Badge variant={status === "active" ? "secondary" : "outline"} title={detail}>
+    <Badge
+      variant={status === "active" ? "secondary" : "outline"}
+      title={detail}
+    >
       {label}
     </Badge>
   );
@@ -2104,7 +2112,9 @@ function DomainsSection({
                           variant="ghost"
                           aria-label={t("mainPanelTabs.hostingTab.dnsSetup")}
                           onClick={() =>
-                            setDnsOpenHost(dnsOpenHost === d.host ? null : d.host)
+                            setDnsOpenHost(
+                              dnsOpenHost === d.host ? null : d.host,
+                            )
                           }
                         >
                           <Globe01 className="size-4" />
@@ -2112,7 +2122,9 @@ function DomainsSection({
                         <Button
                           size="icon-sm"
                           variant="ghost"
-                          aria-label={t("mainPanelTabs.hostingTab.deleteDomain")}
+                          aria-label={t(
+                            "mainPanelTabs.hostingTab.deleteDomain",
+                          )}
                           onClick={() => setDeleteTarget(d.host)}
                           disabled={deleteMutation.isPending}
                         >
@@ -2150,14 +2162,18 @@ function DomainsSection({
               </Label>
               <Input
                 id="domain-host"
-                placeholder={t("mainPanelTabs.hostingTab.domainHostPlaceholder")}
+                placeholder={t(
+                  "mainPanelTabs.hostingTab.domainHostPlaceholder",
+                )}
                 value={formHost}
                 onChange={(e) => setFormHost(e.target.value)}
                 className="font-mono text-xs"
                 disabled={putMutation.isPending}
               />
             </div>
-            {formHost.trim() && <DomainDnsPanel records={previewRecords} t={t} />}
+            {formHost.trim() && (
+              <DomainDnsPanel records={previewRecords} t={t} />
+            )}
           </div>
           <DialogFooter>
             <Button
