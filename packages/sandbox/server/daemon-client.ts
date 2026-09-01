@@ -42,7 +42,7 @@ async function daemonFetch(
     return await fetch(url, init);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`sandbox daemon ${endpoint} request failed: ${message}`, {
+    throw new Error(`[SANDBOX_UNREACHABLE] sandbox daemon ${endpoint} request failed: ${message}`, {
       cause: err,
     });
   }
