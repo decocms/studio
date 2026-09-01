@@ -697,12 +697,31 @@ export function E2eTab({ virtualMcpId }: { virtualMcpId: string }) {
   const [selectedRun, setSelectedRun] = useState<E2eRun | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<E2eRun | null>(null);
 
+  // Mirror the Checks query (same key ⇒ shared cache/fetch, no extra request) just
+  // to know whether anything is in flight — so the Runs list can auto-refresh when
+  // a check finishes, no manual Refresh.
+  const checksQuery = useQuery({
+    queryKey: KEYS.e2eChecks(org.slug, siteSlug ?? ""),
+    queryFn: () => fetchJson(`${base}/e2e/checks`),
+    enabled,
+    retry: false,
+    staleTime: 15_000,
+  });
+  const anyCheckInFlight = list<E2eCheck>(checksQuery.data, "items").some(
+    (c) => {
+      const p = (c.phase ?? "").toLowerCase();
+      return p === "" || p === "running" || p === "pending";
+    },
+  );
+
   const runsQuery = useQuery({
     queryKey: KEYS.e2eRuns(org.slug, siteSlug ?? ""),
     queryFn: () => fetchJson(`${base}/e2e/runs`),
     enabled,
     retry: false,
     staleTime: 30_000,
+    // Auto-refresh while a check is running so the finished run appears on its own.
+    refetchInterval: anyCheckInFlight ? 5_000 : false,
   });
 
   const deleteMutation = useMutation({
