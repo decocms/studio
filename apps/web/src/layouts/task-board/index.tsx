@@ -956,6 +956,12 @@ export function TaskBoardPage() {
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
+  const openBoardSettings = () => {
+    navigate({
+      to: "/$org/settings/task-board",
+      params: { org: org.slug },
+    });
+  };
   /**
    * `/$org/tasks/DECO-01` renders that card in place of the lanes — the one
    * address a task has, whether it was reached by clicking its card, by the
@@ -1147,6 +1153,7 @@ export function TaskBoardPage() {
                   repos={repos}
                   sprints={sprints}
                   onChange={handleFiltersChange}
+                  onOpenBoardSettings={openBoardSettings}
                 />
               </div>
               <div className="hidden sm:block">
@@ -1157,6 +1164,7 @@ export function TaskBoardPage() {
                   repos={repos}
                   sprints={sprints}
                   onChange={handleFiltersChange}
+                  onOpenBoardSettings={openBoardSettings}
                 />
               </div>
             </>

@@ -60,6 +60,7 @@ export function SprintFilterHarness() {
         repos={[]}
         sprints={SPRINTS}
         onChange={setFilters}
+        onOpenBoardSettings={() => {}}
       />
       <pre data-testid="sprint">{JSON.stringify(filters.sprint)}</pre>
     </div>

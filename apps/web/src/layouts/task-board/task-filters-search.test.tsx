@@ -44,6 +44,7 @@ describe("task filter options — searchable value matches the displayed label",
         repos={[]}
         sprints={[]}
         onChange={() => {}}
+        onOpenBoardSettings={() => {}}
       />,
     );
     fireEvent.click(getByText("Responsável"));
@@ -63,6 +64,7 @@ describe("task filter options — searchable value matches the displayed label",
         repos={["acme/site"]}
         sprints={[]}
         onChange={() => {}}
+        onOpenBoardSettings={() => {}}
       />,
     );
     fireEvent.click(getByText("acme/site"));
@@ -88,6 +90,7 @@ describe("search toggle — collapses when cleared externally", () => {
         repos={[]}
         sprints={[]}
         onChange={() => {}}
+        onOpenBoardSettings={() => {}}
       />,
     );
 
@@ -102,6 +105,7 @@ describe("search toggle — collapses when cleared externally", () => {
         repos={[]}
         sprints={[]}
         onChange={() => {}}
+        onOpenBoardSettings={() => {}}
       />,
     );
 
@@ -117,6 +121,7 @@ describe("search toggle — collapses when cleared externally", () => {
         repos={[]}
         sprints={[]}
         onChange={() => {}}
+        onOpenBoardSettings={() => {}}
       />,
     );
 
@@ -131,6 +136,7 @@ describe("search toggle — collapses when cleared externally", () => {
         repos={[]}
         sprints={[]}
         onChange={() => {}}
+        onOpenBoardSettings={() => {}}
       />,
     );
 

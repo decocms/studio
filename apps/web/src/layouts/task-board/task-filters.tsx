@@ -6,9 +6,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
-import { useProjectContext } from "@/sdk/context/project-context.tsx";
 import { currentSprintId } from "@decocms/shared/sprints";
 import { parseTaskKeySeq } from "@decocms/shared/task-key";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
@@ -873,19 +871,28 @@ function SearchToggle({
 }
 
 /**
- * Link to the board's settings page. Icon-only with a hover tooltip in the
- * inline bar; in the mobile drawer (`block`) the tooltip never shows (Radix
- * tooltips are hover/focus-only, and drawer taps are touch), so it renders
- * the label as text instead, like every other drawer control.
+ * Button to the board's settings page. Navigation itself is the caller's
+ * job (passed in as `onClick`) — this component stays presentational like
+ * the rest of the bar, with no router or org dependency of its own.
+ *
+ * Icon-only with a hover tooltip in the inline bar; in the mobile drawer
+ * (`block`) the tooltip never shows (Radix tooltips are hover/focus-only,
+ * and drawer taps are touch), so it renders the label as text instead, like
+ * every other drawer control.
  */
-function BoardSettingsLink({ block }: { block?: boolean }) {
+function BoardSettingsButton({
+  block,
+  onClick,
+}: {
+  block?: boolean;
+  onClick: () => void;
+}) {
   const t = useT();
-  const { org } = useProjectContext();
   const label = t("taskBoard.taskFilters.boardSettingsLabel");
-  const link = (
-    <Link
-      to="/$org/settings/task-board"
-      params={{ org: org.slug }}
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
       aria-label={label}
       className={cn(
         chipClass(false, block),
@@ -894,12 +901,12 @@ function BoardSettingsLink({ block }: { block?: boolean }) {
     >
       <Settings02 size={14} className="shrink-0" />
       {block && <span>{label}</span>}
-    </Link>
+    </button>
   );
-  if (block) return link;
+  if (block) return button;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>
   );
@@ -913,6 +920,7 @@ function FilterControls({
   repos,
   sprints,
   onChange,
+  onOpenBoardSettings,
   block,
 }: {
   filters: TaskFilters;
@@ -921,6 +929,7 @@ function FilterControls({
   repos: string[];
   sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
   block?: boolean;
 }) {
   return (
@@ -963,10 +972,10 @@ function FilterControls({
           onChange={(repo) => onChange({ ...filters, repo })}
         />
       )}
+      <BoardSettingsButton block={block} onClick={onOpenBoardSettings} />
       {/* Same reasoning as the repo control: an active sprint filter keeps its
           chip visible even when the board mirrors no sprints, so the hidden
           cards can be brought back. */}
-      <BoardSettingsLink block={block} />
       {(sprints.length > 0 || filters.sprint !== null) && (
         <SprintFilter
           block={block}
@@ -987,6 +996,7 @@ export function TaskFiltersBar({
   repos,
   sprints,
   onChange,
+  onOpenBoardSettings,
 }: {
   filters: TaskFilters;
   members: Member[];
@@ -994,6 +1004,7 @@ export function TaskFiltersBar({
   repos: string[];
   sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
 }) {
   const t = useT();
   return (
@@ -1009,6 +1020,7 @@ export function TaskFiltersBar({
         repos={repos}
         sprints={sprints}
         onChange={onChange}
+        onOpenBoardSettings={onOpenBoardSettings}
       />
       {hasActiveFilters(filters, currentSprintId(sprints)) && (
         <button
@@ -1035,6 +1047,7 @@ export function TaskFiltersDrawer({
   repos,
   sprints,
   onChange,
+  onOpenBoardSettings,
 }: {
   filters: TaskFilters;
   members: Member[];
@@ -1042,6 +1055,7 @@ export function TaskFiltersDrawer({
   repos: string[];
   sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -1073,6 +1087,7 @@ export function TaskFiltersDrawer({
             repos={repos}
             sprints={sprints}
             onChange={onChange}
+            onOpenBoardSettings={onOpenBoardSettings}
           />
         </div>
         <DrawerFooter className="flex-row gap-2">
