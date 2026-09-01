@@ -570,7 +570,7 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Instant preview (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
-    "Refresh edits in place, without waiting for a save — much faster, but only works on deco-runtime preview servers.",
+    "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.cmsSettings.contentEditing.description":
     "Whether this agent offers a CMS, and where the preview lands when it does.",
