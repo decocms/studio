@@ -34,6 +34,11 @@ import {
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -867,22 +872,29 @@ function SearchToggle({
   );
 }
 
-/** Icon-only link to the board's settings page. */
+/** Icon-only link to the board's settings page, labeled by a hover tooltip. */
 function BoardSettingsLink({ block }: { block?: boolean }) {
   const t = useT();
   const { org } = useProjectContext();
   const label = t("taskBoard.taskFilters.boardSettingsLabel");
   return (
-    <Link
-      to="/$org/settings/task-board"
-      params={{ org: org.slug }}
-      aria-label={label}
-      title={label}
-      className={cn(chipClass(false, block), block && "justify-start")}
-    >
-      <Settings02 size={14} className="shrink-0" />
-      {block && <span>{label}</span>}
-    </Link>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to="/$org/settings/task-board"
+          params={{ org: org.slug }}
+          aria-label={label}
+          className={cn(
+            chipClass(false, block),
+            "w-8 justify-center px-0",
+            block && "h-10 w-10",
+          )}
+        >
+          <Settings02 size={14} className="shrink-0" />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
