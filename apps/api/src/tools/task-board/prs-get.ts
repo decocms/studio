@@ -1210,10 +1210,11 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     // poll. Gated on assignee === Super Agent so it never fires for a human's
     // manual review; `enqueueEnabledReviewers` is itself idempotent per reviewer
     // per review cycle, so re-polling won't spawn duplicate reviewer runs.
+    const reviewLane = (await boardLanes(ctx, organizationId)).review;
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
     if (
       item &&
-      inReviewPhase(item, (await boardLanes(ctx, organizationId)).review) &&
+      inReviewPhase(item, reviewLane) &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       prReadyForReview(prs)
     ) {
@@ -1238,7 +1239,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       : null;
     if (
       item &&
-      item.status === "in_review" &&
+      item.status === reviewLane &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       openPr &&
       openPrConflict === true

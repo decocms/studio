@@ -21,6 +21,23 @@ import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
  */
 const MAX_AUTO_CONFLICT_RESOLUTIONS = 3;
 
+/** True when this task is a candidate for auto conflict-resolution: an In
+ *  Review task delegated to the Super Agent with a detected conflict. `reviewLane`
+ *  is this board's own In Review column, not Studio's literal `"in_review"` — an
+ *  org-owned board (`org_board_columns`) names it something else. Pure, so the
+ *  org-lane case is unit-tested without a database. */
+export function isConflictResolutionCandidate(
+  item: { status: string; assigneeId: string | null },
+  reviewLane: string | null,
+  conflict: boolean | null,
+): boolean {
+  return (
+    item.status === reviewLane &&
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+    conflict === true
+  );
+}
+
 /** True once a task has hit its all-time cap of auto conflict-resolution
  *  dispatches — counted from the `merge_conflict_resolution` activity entries,
  *  which persist across review cycles (so the cap doesn't reset when the task
@@ -69,12 +86,10 @@ export async function reactToApprovedPrConflict(
   item: TaskBoardItem,
   opts: { pr: { number: number; url: string }; conflict: boolean | null },
 ): Promise<boolean> {
-  // Only an In Review task delegated to the Super Agent is a candidate — a
-  // human-owned review never gets an automatic run, and a task already moved on
-  // (In Progress, Done) must not be bounced.
-  if (item.status !== "in_review") return false;
-  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
-  if (opts.conflict !== true) return false;
+  const lanes = await boardLanes(ctx, orgId);
+  if (!isConflictResolutionCandidate(item, lanes.review, opts.conflict)) {
+    return false;
+  }
 
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const flags = settings?.flags ?? {};
@@ -111,7 +126,6 @@ export async function reactToApprovedPrConflict(
   // for the single winner only, so the activity log (which feeds the cap count)
   // stays accurate. No `status_changed` entry — mirrors the request_changes
   // bounce; the review cycle resets only when the run advances back to In Review.
-  const lanes = await boardLanes(ctx, orgId);
   // The fence moves the card between these two, and the failure path moves it
   // back. Narrowing here is what lets the revert below write a string rather
   // than an "undefined means leave it alone" that would strand the card.
