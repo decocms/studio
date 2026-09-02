@@ -78,14 +78,17 @@ export function useBoardColumns(): TaskBoardData["columns"] {
   return data?.columns ?? [];
 }
 
-export function useTaskBoardItems() {
-  const { org, locator } = useProjectContext();
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  const queryKey = KEYS.taskBoardItems(locator);
-
-  const query = useQuery({
-    queryKey,
+/** The board list, as options rather than a hook, so a second reader can share
+ *  this query's CACHE without inheriting its live wiring. The org home reads it
+ *  with `useSuspenseQuery` (it needs the answer before it can choose a layout);
+ *  the board itself reads it below with the polling backstop and the SSE
+ *  upserts. Same key, one request, two reading styles. */
+export function taskBoardItemsQueryOptions(
+  locator: ReturnType<typeof useProjectContext>["locator"],
+  studio: ReturnType<typeof useStudioTools>,
+) {
+  return {
+    queryKey: KEYS.taskBoardItems(locator),
     queryFn: async (): Promise<TaskBoardData> => {
       const { items, sprints, columns } = await studio.call(
         "TASK_BOARD_ITEM_LIST",
@@ -93,6 +96,17 @@ export function useTaskBoardItems() {
       );
       return { items, sprints, columns };
     },
+  };
+}
+
+export function useTaskBoardItems() {
+  const { org, locator } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  const queryKey = KEYS.taskBoardItems(locator);
+
+  const query = useQuery({
+    ...taskBoardItemsQueryOptions(locator, studio),
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
   });

@@ -7,10 +7,8 @@
  * Home.
  */
 import { Navigate, useSearch } from "@tanstack/react-router";
-import { useProjectContext, useVirtualMCPs } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
-import { useMainAgentId } from "@/hooks/use-organization-settings";
-import { ShellRouteLoading } from "@/layouts/shell-route-loading";
 
 /**
  * `?main=` values that became destinations of their own. A deep link minted
@@ -33,10 +31,6 @@ function isPromotedMainTab(main: string | undefined): main is PromotedMainTab {
 
 export default function OrgHome() {
   const { org } = useProjectContext();
-  const { mainAgentId, isPending: settingsPending } = useMainAgentId();
-  /** Suspense read (cache-warm from the shell), used to validate the main agent
-   *  still exists so a deleted one falls back to the Super Agent. */
-  const agents = useVirtualMCPs();
   /** `main` carries a legacy deep link into a view (e.g. `board` = Tasks,
    *  `files` = Library) through the redirect. The four destination-backed
    *  values land on their own page below; every other value rides along to the
@@ -44,7 +38,7 @@ export default function OrgHome() {
    *  `{-$panel}` segment — the single place that translation lives. `task`
    *  rides along to the board only, which is the one destination that retires
    *  it into its path. */
-  const { connect, siteUrl, main, task, sidepanel } = useSearch({
+  const { connect, siteUrl, main, task, sidepanel, virtualmcpid } = useSearch({
     strict: false,
   }) as {
     connect?: string;
@@ -52,12 +46,8 @@ export default function OrgHome() {
     main?: string;
     task?: string;
     sidepanel?: boolean;
+    virtualmcpid?: string;
   };
-
-  /** Wait for the org settings before deciding, so the landing never flashes
-   *  Home on its way to the main agent. Everything above is a hook, so this
-   *  early return is Rules-of-Hooks clean. */
-  if (settingsPending) return <ShellRouteLoading />;
 
   // A promoted `?main=` outranks everything: the URL already says which page.
   if (isPromotedMainTab(main)) {
@@ -71,22 +61,20 @@ export default function OrgHome() {
     );
   }
 
-  /** The Super Agent is synthesized (not in the list), so only real main-agent
-   *  ids are validated against it. */
-  const mainAgentValid =
-    mainAgentId != null && (agents ?? []).some((a) => a.id === mainAgentId);
-
-  /** The main agent IS a project under the new grammar, so its id moves from
-   *  `?virtualmcpid=` into the path. It creates no thread — with no `?thread=`
-   *  the chat panel opens an empty composer. */
-  const project = mainAgentValid ? mainAgentId : null;
+  /** The scope the URL NAMES, and nothing else. This resolver is where
+   *  cross-org travel lands (`travelTo` in the picker navigates to `/$org`
+   *  with the picked project), so it forwards that scope and otherwise falls
+   *  through to the org home — which is the page worth landing on now that it
+   *  opens on the org's agents. Nothing here reads org settings any more, so
+   *  the landing no longer waits on a query before it can decide. */
+  const project = virtualmcpid ?? null;
 
   if (project) {
     return (
       <Navigate
         to={DESTINATION_ROUTE.agents}
-        params={{ org: org.slug, project, panel: undefined }}
-        search={{ connect, siteUrl, sidepanel, main }}
+        params={{ org: org.slug, panel: undefined }}
+        search={{ virtualmcpid: project, connect, siteUrl, sidepanel, main }}
         replace
       />
     );
@@ -98,7 +86,7 @@ export default function OrgHome() {
     <Navigate
       to={DESTINATION_ROUTE.home}
       params={{ org: org.slug }}
-      search={{ connect, siteUrl, sidepanel, main }}
+      search={{ connect, siteUrl, sidepanel, main, virtualmcpid }}
       replace
     />
   );

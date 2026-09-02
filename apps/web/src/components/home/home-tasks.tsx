@@ -17,6 +17,8 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { useMembers } from "@/hooks/use-members";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
+import { useProjectScope } from "@/hooks/use-project-scope";
+import { taskMatchesScope } from "@/layouts/task-board/filters-search";
 import {
   useTaskBoardItemActions,
   useTaskBoardItems,
@@ -159,6 +161,7 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const { openPanel } = usePanelNavigate();
   const navigate = useNavigate();
   const orgSlug = useParams({ strict: false }).org ?? "";
+  const { repo: scopeRepo } = useProjectScope();
   const { items, error } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const { data: membersData } = useMembers();
@@ -167,9 +170,13 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const [tab, setTab] = useState<TaskTab>("all");
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Keep the home surface usable if the task query fails.
-  // Archived tasks live only in the board's Archived lane, not on home.
-  const tasks = (error ? [] : items).filter((t) => t.status !== "archived");
+  /** Scoped to the same tasks the BOARD shows for this project, through the
+   *  board's own predicate rather than a second copy of the rule — home and
+   *  Tasks answering differently for one scope is the bug this prevents. A
+   *  repo-less task stays visible either way; `taskMatchesScope` owns that. */
+  const tasks = (error ? [] : items)
+    .filter((t) => t.status !== "archived")
+    .filter((t) => taskMatchesScope(t, scopeRepo));
   const sorted = [...tasks].sort((a, b) =>
     (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""),
   );
