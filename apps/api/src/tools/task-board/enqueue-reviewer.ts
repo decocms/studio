@@ -175,6 +175,26 @@ export function stalePreviewHandoffDue(
   return nowMs - cycleStartMs >= STALE_PREVIEW_HANDOFF_GRACE_MS;
 }
 
+/**
+ * True when a stale deploy preview should hand this card to a human.
+ *
+ * Only while the reviewer has NOT yet ruled on the current cycle. Once a
+ * verdict is recorded, the preview already served its purpose — re-litigating
+ * its staleness on every later sweep tick (auto-merge off, so the card sits In
+ * Review after approval waiting on a human to ship) would strand an already
+ * APPROVED card behind a "the Reviewer cannot verify this change" hand-off,
+ * even though it already did. Pure — unit-tested.
+ */
+export function stalePreviewHandoffOwed(
+  verdictRecorded: boolean,
+  previewMatchesHead: boolean | undefined,
+  lastInReviewAt: number,
+  now: number,
+): boolean {
+  if (verdictRecorded || previewMatchesHead !== false) return false;
+  return stalePreviewHandoffDue(lastInReviewAt, now);
+}
+
 export async function enqueueEnabledReviewers(
   ctx: StudioContext,
   task: TaskBoardItem,
@@ -262,7 +282,14 @@ export async function enqueueEnabledReviewers(
       }
       // Would be a verdict on the wrong bytes — see `previewMatchesHead`.
       if (opts?.previewMatchesHead === false) {
-        if (stalePreviewHandoffDue(lastInReviewAt, Date.now())) {
+        if (
+          stalePreviewHandoffOwed(
+            verdictRecorded,
+            opts.previewMatchesHead,
+            lastInReviewAt,
+            Date.now(),
+          )
+        ) {
           await handTaskToHuman(
             ctx,
             task,
