@@ -53,7 +53,6 @@ import type {
 } from "@/components/sandbox/hooks/sandbox-events-context";
 import { useT, type TFunction } from "@/i18n/use-t";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
-import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import {
   AlertTriangle,
   CheckCircle,
@@ -530,29 +529,19 @@ function HeaderButtonRenderer(props: {
     };
   });
 
-  /** Tour anchors: publish on the Review & Publish primary, submit on create-pr; otherwise off, so the tour skips the step (`skipMissingElement`). */
-  const tourAnchor =
-    action === "publish"
-      ? TOUR_ANCHORS.publish
-      : action === "create-pr"
-        ? TOUR_ANCHORS.submit
-        : undefined;
-
   return (
-    <span className="inline-flex" data-tour={tourAnchor}>
-      <SplitButton
-        size="sm"
-        label={button.label}
-        variant={button.variant}
-        disabled={disabled}
-        loading={loading}
-        {...(action && !loading ? { icon: actionIcon(action) } : {})}
-        {...(tooltip ? { tooltip } : {})}
-        items={items}
-        menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
-        onClick={action ? () => onAction(action) : undefined}
-      />
-    </span>
+    <SplitButton
+      size="sm"
+      label={button.label}
+      variant={button.variant}
+      disabled={disabled}
+      loading={loading}
+      {...(action && !loading ? { icon: actionIcon(action) } : {})}
+      {...(tooltip ? { tooltip } : {})}
+      items={items}
+      menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
+      onClick={action ? () => onAction(action) : undefined}
+    />
   );
 }
 

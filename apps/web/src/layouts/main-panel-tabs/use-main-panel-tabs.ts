@@ -33,9 +33,6 @@ import {
 import { useChatTask } from "@/components/chat/index";
 import { getActiveGithubRepo } from "@/lib/github-repo.ts";
 import { usePrByBranch } from "@/components/thread/github/use-pr-data.ts";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
-import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
-import { hasEditableDecoContent } from "@/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import type { ThreadExpandedTool } from "@decocms/shared/entities";
@@ -43,6 +40,7 @@ import { FileTypeIcon } from "@/components/file-type-icon";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
+  parseCodeTabId,
   parseDeckTabId,
   parseFileTabId,
   parseLibraryFileTabId,
@@ -54,12 +52,14 @@ import {
 import { useActivePanelTabId, usePanelNavigate } from "./use-panel-navigate";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
 import { useTaskMetadata } from "./use-task-metadata";
-import { keepAttachedPinnedViews } from "./attached-pinned-views";
 import { resolvePreviewSource } from "./preview-source";
 import {
-  getSourceSystemTabs,
+  isSurfaceTab,
+  resolveSurfaceTabs,
   shouldDeepLinkSourceTab,
+  type SurfaceTabId,
 } from "./source-system-tabs";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
@@ -168,12 +168,6 @@ export function useMainPanelTabs(ctx: {
   const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
-  // A thread-scoped repo (bound by `load_repo`) makes the source tabs
-  // (Preview, Code) available even when the agent itself has no repo — e.g.
-  // the ephemeral Decopilot agent.
-  const hasClonableSource =
-    agentHasClonableSource(entity?.metadata) ||
-    agentHasClonableSource(metadata);
   const reportsOnly = useReportsOnly();
   // Per-view product gate for the control-plane tabs (Hosting · E2E · Deco
   // Analytics) while the surface rolls out: local dev / deco.cx staff / GA turn
@@ -195,10 +189,9 @@ export function useMainPanelTabs(ctx: {
     usePublicConfig().auth.localMode === true;
   const connections = useConnections({ includeVirtual: true });
 
-  // Show "Content" only when decofile/meta confirm editable pages or sections
-  // — same rule as Preview's Sections editor toggle. Fetch only after the dev
-  // server is up (shared query keys with Preview / Content). Requires
-  // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
+  /** The sandbox dev server's own MCP app supplies the auto-detected dev views
+   *  below; needs SandboxEventsProvider, which the desktop tab bar sits inside
+   *  via VmEventsBridge. */
   const vmEvents = useSandboxEvents();
   const { vmEntry, previewUrl } = useSandboxLifecycle();
   // What Preview / Code can actually show for THIS thread — see preview-source:
@@ -215,6 +208,12 @@ export function useMainPanelTabs(ctx: {
       agentHasClonableSource(activeTask?.metadata),
   });
   const devServerReady = vmEvents.lifecycle.phase === "running";
+  /** THIS session's runtime, off the thread's own stamp — the only authority
+   *  (see `@decocms/shared/thread/session-runtime`). It decides one thing here:
+   *  Code needs a sandbox working tree, so a CMS session is not offered it. */
+  const { runtime, resolved: runtimeResolved } = useSessionRuntime(
+    ctx.virtualMcpId,
+  );
 
   // A local-api sandbox serves its dev server on a loopback previewUrl
   // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
@@ -255,46 +254,24 @@ export function useMainPanelTabs(ctx: {
           }))
       : [];
   const firstDevView = devViews[0];
-  const pinnedViews = firstDevView
-    ? devViews
-    : keepAttachedPinnedViews(
-        entityUI?.pinnedViews ?? [],
-        (entity?.connections ?? []).map((c) => c.connection_id),
-      );
+  /**
+   * Views the BAR still owns. A project's curated pins render as sidebar rows
+   * now (see `components/sidebar/project-nav.tsx`), so listing them here too
+   * would give one view two homes. A dev connection's auto-discovered views
+   * stay: they belong to a running sandbox on this thread, which the sidebar
+   * sits above and cannot see.
+   */
+  const barPinnedViews = firstDevView ? devViews : [];
   const effectiveDefaultMainView =
     firstDevView && devConnId
       ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
       : (entityLayout?.defaultMainView ?? null);
-  const decofileFetchParams =
-    hasClonableSource && entity?.id && currentBranch
-      ? {
-          orgSlug: org.slug,
-          virtualMcpId: entity.id,
-          branch: currentBranch,
-          threadId: activeTask?.id ?? null,
-          previewUrl,
-        }
-      : null;
-  // Subscribe to the same query keys as Preview. The committed `.deco/*.gen.json`
-  // snapshots are read as soon as the daemon is up (before the dev server), so
-  // the Content tab can show without waiting; the live route fetch stays gated
-  // behind `devServerReady` and takes over once the preview warms up.
-  const { data: decofile, isPending: decofileIsPending } = useDecofile(
-    decofileFetchParams,
-    { fetchEnabled: devServerReady },
-  );
-  const { data: meta, isPending: metaIsPending } = useLiveMeta(
-    decofileFetchParams,
-    { fetchEnabled: devServerReady },
-  );
-  // The agent's CMS mode (Settings › CMS) — the same setting that gates the
-  // Preview toolbar's CMS toggle. `off` takes the Content tab with it.
-  const cmsOff = resolveCmsMode(entityLayout) === "off";
-  const showContentTab = !cmsOff && hasEditableDecoContent(decofile, meta);
-  // Don't bounce a deep-linked Content view before the first load resolves —
-  // unless the CMS is off, where the answer can't change.
-  const contentTabPending =
-    !cmsOff && !!decofileFetchParams && (decofileIsPending || metaIsPending);
+  /** Content's WHOLE gate: Settings › CMS. `off` takes the view off the surface,
+   *  anything else offers it, and nothing session-shaped is consulted — the bar
+   *  used to wait on `useDecofile`/`useLiveMeta`, so a tab hung on a read that
+   *  lands late or never, and the "pending" escape hatches papering over it
+   *  disagreed. "This site has nothing yet" belongs in the view's empty state. */
+  const cmsMode = resolveCmsMode(entityLayout);
 
   /**
    * Assets is a per-site tab: it shows whenever an S3 bucket is associated to
@@ -408,16 +385,41 @@ export function useMainPanelTabs(ctx: {
       (rawActiveTab === "e2e" && !showE2eTab) ||
       (rawActiveTab === "analytics" && !showAnalyticsTab) ||
       (rawActiveTab === "cdn" && !showCdnTab));
+  /** Resolved BEFORE the active tab, because what the surface offers is now the
+   *  whole answer to whether a named view survives (see setActiveTab). */
+  const surfaceTabIds = resolveSurfaceTabs({
+    hasSource: previewSource === "repo" || reportsOnly,
+    runtime,
+    cmsMode,
+  });
+  const showContent = surfaceTabIds.includes("content");
+  /** A bookmarked `code` / `code:<path>` URL on a session the surface offers no
+   *  Code view for (a CMS session has no sandbox working tree) would otherwise
+   *  keep the URL's tab active with no button for it, mounting CodeTab against
+   *  nothing. Fall back like git/content/assets — but only once the runtime is
+   *  known (`resolved`), so a coding session whose rows are still loading is
+   *  never bounced off its own Code view. */
+  const codeTabHidden =
+    !surfaceTabIds.includes("code") &&
+    runtimeResolved &&
+    parseCodeTabId(rawActiveTab) !== null;
+  /** The surface's own landing view is the preview, for every runtime — a URL
+   *  that names no view lands there, and `?main=content` is the only thing that
+   *  opens Content. What a CMS session gets on that preview is the blocks editor
+   *  already open (see `defaultPreviewEditingMode`), a mode of the view rather
+   *  than a second address, so nothing here has to second-guess the URL. */
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? visibleDefaultTabId
-      : rawActiveTab === "content" && !showContentTab && !contentTabPending
+      : rawActiveTab === "content" && !showContent
         ? visibleDefaultTabId
         : rawActiveTab === "assets" && !showAssetsTab && !assetsTabPending
           ? visibleDefaultTabId
-          : controlPlaneTabHidden
+          : codeTabHidden
             ? visibleDefaultTabId
-            : rawActiveTab;
+            : controlPlaneTabHidden
+              ? visibleDefaultTabId
+              : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
@@ -425,39 +427,16 @@ export function useMainPanelTabs(ctx: {
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
-  // Source tabs (Preview · Code) lead the bar; other surfaces are sidebar destinations.
-  const leadingSystemTabs: Array<{ id: string; title: string }> = [];
-  // Reports-only orgs get a persistent Preview/Code entry point to their
-  // storefront regardless of which agent/screen they're on — visibility is
-  // keyed to the settled org flag, not to whether the current agent happens to
-  // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
-  // into it (see setActiveTab).
-  leadingSystemTabs.push(
-    ...getSourceSystemTabs(previewSource === "repo" || reportsOnly).map(
-      (tab) => ({
-        id: tab.id,
-        title:
-          tab.id === "preview"
-            ? t("common.mainPanelTabs.preview")
-            : tab.id === "code"
-              ? t("common.mainPanelTabs.code")
-              : tab.title,
-      }),
-    ),
-  );
+  const surfaceTabTitle = (id: SurfaceTabId) =>
+    id === "site-editor"
+      ? t("common.mainPanelTabs.preview")
+      : id === "content"
+        ? t("common.mainPanelTabs.content")
+        : t("common.mainPanelTabs.code");
+  const leadingSystemTabs: Array<{ id: string; title: string }> =
+    surfaceTabIds.map((id) => ({ id, title: surfaceTabTitle(id) }));
 
   const systemTabs: Array<{ id: string; title: string }> = [];
-  // A tab configured as the default main view stays pinned in the bar even
-  // before its runtime data is ready (e.g. Content while the repo is still
-  // cloning) — otherwise the bar would drop the tab the user chose to land on.
-  const contentIsDefaultMain =
-    !cmsOff && effectiveDefaultMainView?.type === "content";
-  if (hasClonableSource && (showContentTab || contentIsDefaultMain)) {
-    systemTabs.push({
-      id: "content",
-      title: t("common.mainPanelTabs.content"),
-    });
-  }
   if (showAssetsTab) {
     systemTabs.push({
       id: "assets",
@@ -532,7 +511,7 @@ export function useMainPanelTabs(ctx: {
       iconKey: t.toolName,
     });
   }
-  for (const pv of pinnedViews) {
+  for (const pv of barPinnedViews) {
     // Retired admin-MCP view, now the native Assets tab: drop stale pins.
     if (pv.toolName === "fetch_assets") continue;
     const id = formatPinnedViewTabId(pv.connectionId, pv.toolName);
@@ -617,8 +596,32 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
-  const tabs: Tab[] = [
-    ...leadingSystemTabs.map((t) => ({
+  /** The Site Editor's own switcher, shown only while the panel is on that
+   *  surface: the sidebar opens it, these swap the view inside it, so no view
+   *  has two homes. Code carries the open file's id so the active button
+   *  matches `code:<path>`. */
+  const surfaceTabs: Tab[] = isSurfaceTab(activeTab)
+    ? surfaceTabIds.map((id) => ({
+        id: id === "code" && parseCodeTabId(activeTab) ? activeTab : id,
+        title: surfaceTabTitle(id),
+        kind: "system" as const,
+        icon: resolveTabIcon({ tabId: id, kind: "system", connections }),
+      }))
+    : [];
+
+  /** The bar carries the surface's own views, then the gated system views, then
+   *  the EPHEMERAL per-thread tabs — an open file, a deck, a library preview, an
+   *  app view, an expanded tool.
+   *
+   *  `systemTabs` is spread here and not left to the sidebar: the sidebar
+   *  re-homed Site Editor, Assets, pinned views and Automations, and NOTHING
+   *  else. Review changes (`git`), Hosting, E2E, Deco Analytics and CDN have no
+   *  row there and nothing in the app navigates to those panels, so dropping
+   *  them from the bar left them reachable only by hand-typing the URL. A view
+   *  appearing in both places is fine — Site Editor already does. */
+  const allTabs: Tab[] = [
+    ...surfaceTabs,
+    ...systemTabs.map((t) => ({
       id: t.id,
       title: t.title,
       kind: "system" as const,
@@ -654,17 +657,19 @@ export function useMainPanelTabs(ctx: {
         connections,
       }),
     })),
-    ...systemTabs.map((t) => ({
-      id: t.id,
-      title: t.title,
-      kind: "system" as const,
-      icon: resolveTabIcon({
-        tabId: t.id,
-        kind: "system",
-        connections,
-      }),
-    })),
   ];
+
+  /** One button per id, first occurrence wins. An agent-declared tab is free to
+   *  reuse a native id ("assets", "hosting", …); without this the list carries
+   *  it twice — duplicate React keys in the bar and in the mobile select — and
+   *  the panel renders the native view anyway, so the native tab is the one to
+   *  keep. */
+  const seenTabIds = new Set<string>();
+  const tabs: Tab[] = allTabs.filter((tab) => {
+    if (seenTabIds.has(tab.id)) return false;
+    seenTabIds.add(tab.id);
+    return true;
+  });
 
   const onReportAgent =
     ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
@@ -689,7 +694,7 @@ export function useMainPanelTabs(ctx: {
     // itself this falls through to the normal tab-toggle below.
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
       openPanel(id, {
-        project: getCommerceDiscoveryAgentId(org.id),
+        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
         search: (prev) => ({ ...prev, thread: undefined }),
       });

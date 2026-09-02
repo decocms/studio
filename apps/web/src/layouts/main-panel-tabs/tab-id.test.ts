@@ -8,6 +8,7 @@ import {
   parseCodeTabId,
   isLegacySettingsTab,
   isPerThreadTab,
+  normalizePanelSegment,
   parseAutomationTabId,
   parseDeckTabId,
   parseFileTabId,
@@ -18,6 +19,36 @@ import {
   isAutomationsPillActive,
   resolveAutomationsPillClickTarget,
 } from "./tab-id";
+
+describe("normalizePanelSegment", () => {
+  /** The one place the retired names are accepted, so both readers — the
+   *  `{-$panel}` URL segment and a stored `defaultMainView.type` — agree. */
+  test("the retired preview id is the site editor", () => {
+    expect(normalizePanelSegment("preview")).toBe("site-editor");
+  });
+
+  test("the canonical id is left alone", () => {
+    expect(normalizePanelSegment("site-editor")).toBe("site-editor");
+  });
+
+  test("everything else passes straight through", () => {
+    for (const id of [
+      "settings",
+      "content",
+      "code",
+      "code:src%2Fapp.tsx",
+      "app:conn_1:get_orders",
+      "my-agent-tab",
+    ]) {
+      expect(normalizePanelSegment(id)).toBe(id);
+    }
+  });
+
+  test("the retired name is never a fixed system tab any more", () => {
+    expect(FIXED_SYSTEM_TABS).toContain("site-editor");
+    expect(FIXED_SYSTEM_TABS).not.toContain("preview");
+  });
+});
 
 describe("parseAutomationTabId", () => {
   test("automation:<uuid> → { id }", () => {
@@ -213,9 +244,18 @@ describe("resolveDefaultTabId", () => {
     );
   });
 
-  test("preview → 'preview'", () => {
+  test("site-editor → 'site-editor'", () => {
+    expect(
+      resolveDefaultTabId({ defaultMainView: { type: "site-editor" } }),
+    ).toBe("site-editor");
+  });
+
+  /** REGRESSION. `{ type: "preview" }` is written in the DATABASE on every
+   *  agent imported from GitHub or deco before the rename. A stored value that
+   *  no longer matches would silently drop those agents back to Settings. */
+  test("a stored legacy preview → 'site-editor'", () => {
     expect(resolveDefaultTabId({ defaultMainView: { type: "preview" } })).toBe(
-      "preview",
+      "site-editor",
     );
   });
 
@@ -299,11 +339,23 @@ describe("resolveActiveTabAndOpen", () => {
   test("?mainpanel=false keeps the view the segment names — reopening returns to it", () => {
     expect(
       resolveActiveTabAndOpen({
-        panelTabId: "preview",
+        panelTabId: "site-editor",
         mainPanelParam: false,
         metadata: meta,
       }),
-    ).toEqual({ mainOpen: false, activeTab: "preview" });
+    ).toEqual({ mainOpen: false, activeTab: "site-editor" });
+  });
+
+  /** REGRESSION. `/agents/preview` is bookmarked and shared, and the legacy
+   *  `?main=` translator still mints it. */
+  test("a bookmarked legacy segment resolves to the view that replaced it", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        panelTabId: "preview",
+        mainPanelParam: true,
+        metadata: meta,
+      }),
+    ).toEqual({ mainOpen: true, activeTab: "site-editor" });
   });
 
   test("?mainpanel=true opens a panel the agent default would leave closed", () => {

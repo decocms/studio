@@ -29,7 +29,7 @@ export type SystemTabId =
   | "overview"
   | "settings"
   | "automations"
-  | "preview"
+  | "site-editor"
   | "code"
   | "content"
   | "assets"
@@ -44,7 +44,7 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   overview: Home02,
   settings: LayoutAlt04,
   automations: Lightning01,
-  preview: Globe01,
+  "site-editor": Globe01,
   code: Code02,
   content: File02,
   assets: Package,

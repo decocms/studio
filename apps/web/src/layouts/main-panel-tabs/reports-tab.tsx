@@ -43,7 +43,7 @@ import {
 } from "@/sdk";
 import { parseSelfToolResult } from "@/routes/commerce-onboarding/self-tool-result.ts";
 import { translateSiteError } from "@/routes/commerce-onboarding/site-error.ts";
-import { MainPanelLoading } from "./main-panel-loading";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -55,11 +55,11 @@ export function ReportsTab() {
   const { diagnostic, isLoading, siteUrl, connectionId } =
     useCommerceDiagnostic();
 
-  if (isLoading) return <MainPanelLoading />;
+  if (isLoading) return <PanelLoading />;
 
   if (diagnostic) {
     return (
-      <Suspense fallback={<MainPanelLoading />}>
+      <Suspense fallback={<PanelLoading />}>
         <AppViewContent
           connectionId={connectionId}
           toolName={COMMERCE_DISCOVERY_REPORT_TOOL_NAME}
@@ -73,7 +73,7 @@ export function ReportsTab() {
       <ErrorBoundary
         fallback={() => <StartDiagnosticState claimedSiteUrl={siteUrl} />}
       >
-        <Suspense fallback={<MainPanelLoading />}>
+        <Suspense fallback={<PanelLoading />}>
           <StartDiagnostic claimedSiteUrl={siteUrl} />
         </Suspense>
       </ErrorBoundary>
@@ -200,12 +200,12 @@ function StartDiagnostic({
     // The connections step triggers the run and opens the report.
     navigate({
       to: DESTINATION_ROUTE.agents,
-      params: {
-        org: org.slug,
-        project: getWellKnownDecopilotVirtualMCP(org.id).id,
-        panel: undefined,
+      params: { org: org.slug, panel: undefined },
+      search: {
+        virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
+        connect: "1",
+        siteUrl: normalized.value,
       },
-      search: { connect: "1", siteUrl: normalized.value },
     });
   };
 

@@ -9,7 +9,7 @@
  */
 
 import { Suspense, lazy } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useProjectContext } from "@/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -24,6 +24,7 @@ import { useSandboxRepoDir } from "@/components/sandbox/hooks/use-sandbox-repo-d
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { ideDeepLink } from "@/components/sandbox/ide-deep-link";
 import { useT } from "@/i18n/use-t.ts";
+import { EmptyState } from "@/components/empty-state";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 
 const VSCODE_ICON_URL =
@@ -62,9 +63,11 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
 
   if (!virtualMcpId || !branch) {
     return (
-      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-        {t("mainPanelTabs.codeTab.noSandboxToBrowse")}
-      </div>
+      <EmptyState
+        className="h-full"
+        title={t("mainPanelTabs.codeTab.noSandboxToBrowse")}
+        description={t("mainPanelTabs.codeTab.noSandboxToBrowseDescription")}
+      />
     );
   }
 
@@ -120,10 +123,7 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
         <Suspense
           fallback={
             <div className="h-full flex items-center justify-center">
-              <Loading01
-                size={20}
-                className="animate-spin text-muted-foreground"
-              />
+              <Spinner className="size-5 text-muted-foreground" />
             </div>
           }
         >

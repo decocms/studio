@@ -126,6 +126,13 @@ describe("resolveChatSegments", () => {
   });
 
   test("a lone panel word is the panel, not the project", () => {
+    expect(resolveChatSegments({ project: "site-editor" })).toEqual({
+      project: undefined,
+      panel: "site-editor",
+    });
+    /** REGRESSION. A bookmarked `/agents/preview` must stay a VIEW: swept into
+     *  `?virtualmcpid=` it hands a view name to the agent lookup and the
+     *  workspace reads "Agent not found". */
     expect(resolveChatSegments({ project: "preview" })).toEqual({
       project: undefined,
       panel: "preview",
@@ -148,12 +155,44 @@ describe("resolveChatSegments", () => {
   });
 
   test("both segments present are taken as written", () => {
-    expect(resolveChatSegments({ project: "vir_1", panel: "preview" })).toEqual(
-      {
-        project: "vir_1",
-        panel: "preview",
-      },
-    );
+    expect(
+      resolveChatSegments({ project: "vir_1", panel: "site-editor" }),
+    ).toEqual({
+      project: "vir_1",
+      panel: "site-editor",
+    });
+  });
+
+  /** Content is a view ON the Site Editor, not a segment beside it: one
+   *  surface, one segment, and `?main=` says which of its views is showing. */
+  test("Content is the site-editor segment plus ?main=content", () => {
+    const { panel, payload } = panelLocationForTab("content");
+    expect(panel).toBe("site-editor");
+    expect(payload.main).toBe("content");
+    expect(tabIdForPanel(panel, payload)).toBe("content");
+  });
+
+  /** Clearing the param IS the way back to the plain preview — every other
+   *  view writes `main: undefined` along with the rest of the payload. */
+  test("the site-editor segment without the param is the preview", () => {
+    expect(tabIdForPanel("site-editor", {})).toBe("site-editor");
+    expect(panelLocationForTab("site-editor").payload.main).toBeUndefined();
+    expect(panelLocationForTab("code").payload.main).toBeUndefined();
+  });
+
+  /** Links minted before Content moved carry it as a SEGMENT, and still name
+   *  the same view. */
+  test("a bookmarked content segment still reads as Content", () => {
+    expect(tabIdForPanel("content", {})).toBe("content");
+    expect(isKnownPanelSegment("content")).toBe(true);
+  });
+
+  /** The alias is accepted on input and rewritten on output — one canonical
+   *  segment, so nothing new is ever minted under the retired name. */
+  test("the retired preview segment reads back as the site editor", () => {
+    expect(tabIdForPanel("preview", {})).toBe("site-editor");
+    expect(panelLocationForTab("preview").panel).toBe("site-editor");
+    expect(panelLocationForTab("site-editor").panel).toBe("site-editor");
   });
 
   test("neither segment → all projects, no view", () => {

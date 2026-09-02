@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
 import {
   Popover,
   PopoverContent,
@@ -51,7 +53,6 @@ import { generateBranchName } from "@decocms/shared/branch-name";
 import type { Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
-import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
@@ -217,12 +218,10 @@ export function BranchPicker({
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            className="inline-flex min-w-0 shrink"
-            data-tour={TOUR_ANCHORS.branches}
-          >
+          <span className="inline-flex min-w-0 shrink">
             <PopoverTrigger asChild>
               <Button
+                data-tour={LAYOUT_TOUR_ANCHORS.branchPicker}
                 variant={isHeader ? "outline" : "ghost"}
                 size={isHeader ? "sm" : "default"}
                 aria-label={label}
@@ -232,6 +231,12 @@ export function BranchPicker({
                   isHeader
                     ? "text-xs"
                     : "text-xs text-muted-foreground hover:text-foreground",
+                  /** Inset, like every other button in the panel header: the
+                   *  Button default draws its ring OUTSIDE the box, where the
+                   *  header's scroll container shaves it off. Unconditional —
+                   *  `isHeader` is false here even inside the header, and an
+                   *  inset ring is never the wrong choice anyway. */
+                  INSET_FOCUS_RING,
                 )}
               >
                 <span

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { shouldAutoOpenCms, togglePreviewEditorMode } from "./editing-mode";
+import {
+  defaultPreviewEditingMode,
+  togglePreviewEditorMode,
+} from "./editing-mode";
 
 describe("togglePreviewEditorMode", () => {
   test("activates an editor from the neutral preview", () => {
@@ -18,32 +21,29 @@ describe("togglePreviewEditorMode", () => {
   });
 });
 
-describe("shouldAutoOpenCms", () => {
-  const ready = {
-    autoOpen: true,
-    blocksReady: true,
-    autoOpenResolved: false,
-    editingMode: "preview",
-  } as const;
-
-  test("fires only when all four conditions hold", () => {
-    expect(shouldAutoOpenCms(ready)).toBe(true);
+/** MOVED from `defaultSurfaceTabId`, inverted: the Site Editor row lands on
+ *  Preview for every session now, and what a CMS session gets there is the
+ *  blocks editor already open — not the Content view. */
+describe("defaultPreviewEditingMode", () => {
+  test("a CMS session opens on the blocks editor", () => {
+    expect(defaultPreviewEditingMode({ runtime: "cms", cmsMode: "on" })).toBe(
+      "blocks",
+    );
   });
 
-  test("never fires outside the `auto` mode (manual is the default)", () => {
-    expect(shouldAutoOpenCms({ ...ready, autoOpen: false })).toBe(false);
+  test("a sandbox session opens on the plain preview", () => {
+    expect(
+      defaultPreviewEditingMode({ runtime: "sandbox", cmsMode: "on" }),
+    ).toBe("preview");
   });
 
-  test("waits until Blocks metadata is ready", () => {
-    expect(shouldAutoOpenCms({ ...ready, blocksReady: false })).toBe(false);
-  });
-
-  test("does not re-fire once resolved (user took control / already opened)", () => {
-    expect(shouldAutoOpenCms({ ...ready, autoOpenResolved: true })).toBe(false);
-  });
-
-  test("does not fire when the user is already in an editor", () => {
-    expect(shouldAutoOpenCms({ ...ready, editingMode: "blocks" })).toBe(false);
-    expect(shouldAutoOpenCms({ ...ready, editingMode: "visual" })).toBe(false);
+  /** `off` is the one thing that overrides the runtime: an agent with no CMS
+   *  has no blocks editor to land in. */
+  test("off keeps even a CMS session on the plain preview", () => {
+    for (const runtime of ["cms", "sandbox"] as const) {
+      expect(defaultPreviewEditingMode({ runtime, cmsMode: "off" })).toBe(
+        "preview",
+      );
+    }
   });
 });

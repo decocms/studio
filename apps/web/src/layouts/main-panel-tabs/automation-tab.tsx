@@ -15,7 +15,7 @@ import {
 import { ArrowLeft } from "@untitledui/icons";
 import { usePanelNavigate } from "./use-panel-navigate";
 import { Suspense, useState } from "react";
-import { MainPanelLoading } from "./main-panel-loading";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
 
 // Stat-card window options for the Runs tab. Anchored once at selection time so
@@ -97,7 +97,7 @@ export function AutomationTab({ tabId }: { tabId: string }) {
   if (!parsed) return null;
 
   return (
-    <Suspense fallback={<MainPanelLoading />}>
+    <Suspense fallback={<PanelLoading />}>
       <AutomationTabInner id={parsed.id} />
     </Suspense>
   );
@@ -112,7 +112,7 @@ function AutomationTabInner({ id }: { id: string }) {
   const onBack = () => openPanel("automations");
 
   if (isLoading) {
-    return <MainPanelLoading />;
+    return <PanelLoading />;
   }
 
   if (!automation) {

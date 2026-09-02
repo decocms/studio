@@ -8,9 +8,11 @@
  * Tab sources and grammar are documented in `tab-id.ts`.
  */
 
-import { Suspense, lazy } from "react";
+import { lazy } from "react";
+import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
+import { OrgAgentsTab } from "./org-agents-tab";
 import { OverviewTab } from "./overview-tab";
 import { TaskBoardPage } from "@/layouts/task-board";
 import { GitTab } from "@/components/thread/github/git-tab";
@@ -23,10 +25,10 @@ import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
 import { ConnectSourcesTab } from "./connect-sources-tab";
 import { ReportsTab } from "./reports-tab";
+import { DiscoverTab } from "./discover-tab";
 import { DeckTab } from "./deck-tab";
 import { LibraryFileTab } from "./library-file-tab";
 import { LibraryTab } from "./library-tab";
-import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
   parseCodeTabId,
@@ -38,6 +40,7 @@ import {
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
+import { useScopeId } from "@/hooks/use-project-scope";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -60,6 +63,18 @@ const AnalyticsTab = lazy(() =>
 const CdnTab = lazy(() =>
   import("./cdn-tab").then((m) => ({ default: m.CdnTab })),
 );
+/**
+ * `/$org/home` is two pages behind one view id: the ORG's home when nothing is
+ * scoped, and the scoped AGENT's home when something is. That duality is the
+ * route's — `/home` has always served both, and `staticData.defaultMain` names
+ * one view for both — so it is answered here rather than invented as a second
+ * tab id the URL would then have to carry. `useScopeId` reads the scope
+ * straight off the search and subscribes to no query, so it cannot suspend.
+ */
+function HomeTab() {
+  const scopeId = useScopeId();
+  return scopeId ? <OverviewTab /> : <OrgAgentsTab />;
+}
 
 function TabBody({
   activeTab,
@@ -103,7 +118,7 @@ function TabBody({
   }
 
   if (activeTab === "overview") {
-    return <OverviewTab />;
+    return <HomeTab />;
   }
   if (activeTab === "board") {
     // Task board opened next to chat, as the Tasks destination's own view.
@@ -124,7 +139,7 @@ function TabBody({
   if (activeTab === "automations") {
     return <AutomationsListTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "preview") {
+  if (activeTab === "site-editor") {
     return <PreviewTab virtualMcpId={virtualMcpId} />;
   }
   const codeTab = parseCodeTabId(activeTab);
@@ -160,6 +175,10 @@ function TabBody({
     // The Reports destination for an org with no report yet: start a diagnostic.
     return <ReportsTab />;
   }
+  if (activeTab === "discover") {
+    // What this org doesn't have yet: setup, capabilities off, the catalog.
+    return <DiscoverTab />;
+  }
   if (activeTab === "connect-sources") {
     // Report app hand-off (the `connect-sources` view) for a client who skipped
     // a data source during onboarding — see project-app-navigate.ts.
@@ -194,28 +213,28 @@ function TabBody({
         t.toolName === pinnedView.toolName,
     );
     return (
-      <Suspense fallback={<MainPanelLoading />}>
+      <MainPanelBoundary>
         <AppViewContent
           key={activeTab}
           connectionId={pinnedView.connectionId}
           toolName={pinnedView.toolName}
           args={expandedTool?.args}
         />
-      </Suspense>
+      </MainPanelBoundary>
     );
   }
 
   const agentTab = layoutTabs.find((t) => t.id === activeTab);
   if (agentTab) {
     return (
-      <Suspense fallback={<MainPanelLoading />}>
+      <MainPanelBoundary>
         <AppViewContent
           key={activeTab}
           connectionId={agentTab.view.appId}
           toolName={agentTab.id}
           args={agentTab.view.args}
         />
-      </Suspense>
+      </MainPanelBoundary>
     );
   }
 
@@ -237,7 +256,7 @@ export function MainPanelContent({
 
   return (
     <ErrorBoundary key={activeTab}>
-      <Suspense fallback={<MainPanelLoading />}>
+      <MainPanelBoundary>
         <TabBody
           activeTab={activeTab}
           virtualMcpId={virtualMcpId}
@@ -246,7 +265,7 @@ export function MainPanelContent({
           expandedTools={expandedTools}
           automationTabParsed={automationTabParsed}
         />
-      </Suspense>
+      </MainPanelBoundary>
     </ErrorBoundary>
   );
 }

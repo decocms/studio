@@ -17,12 +17,14 @@ export const mainPanelTabs = {
   "mainPanelTabs.blocksTabStates.errorStateTitle": "Blocks unavailable",
   "mainPanelTabs.blocksTabStates.retry": "Retry",
   "mainPanelTabs.blocksTabStates.setupContentEditing": "Set up content editing",
-  "mainPanelTabs.codeTab.noSandboxToBrowse": "No sandbox to browse.",
+  "mainPanelTabs.codeTab.noSandboxToBrowse": "No sandbox to browse",
+  "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
+    "Start a coding session on this project to browse its files.",
   "mainPanelTabs.codeTab.openInCursor": "Open in Cursor",
   "mainPanelTabs.codeTab.openInVscode": "Open in VSCode",
   "mainPanelTabs.contentTab.connectGithubDescription":
-    "Connect a GitHub repository from the Settings tab to enable Content.",
-  "mainPanelTabs.contentTab.noContentToEdit": "No content to edit.",
+    "Connect a GitHub repository to edit this site's content.",
+  "mainPanelTabs.contentTab.noContentToEdit": "No content to edit",
   "mainPanelTabs.fileTab.close": "Close",
   "mainPanelTabs.fileTab.download": "Download",
   "mainPanelTabs.fileTab.fileNotAvailable": "This file is no longer available.",

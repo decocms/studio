@@ -1,40 +1,36 @@
-import { sleep } from "@decocms/shared/std";
 import { useState, useRef, useEffect, type CSSProperties } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
-import { startCmsTour } from "@/components/cms-tour/cms-tour";
-import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
-import { buildPreviewLabel } from "./preview-label";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { resolveCmsMode } from "@decocms/shared/sdk/types";
+import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 import {
-  ChevronDown,
   Code01,
-  Compass01,
   Copy01,
   CursorClick01,
-  Database01,
   DotsHorizontal,
+  LinkExternal01,
+  ChevronDown,
+  Database01,
   Globe02,
   LayoutAlt01,
-  LinkExternal01,
-  Loading01,
+  CreditCardSearch,
   Plus,
   PuzzlePiece01,
-  SearchLg,
-  CreditCardSearch,
   Monitor04,
+  SearchLg,
   Phone02,
   RefreshCw01,
   Tablet01,
@@ -47,7 +43,6 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import {
   MainPanelHeaderEndPortal,
   MainPanelHeaderPortal,
@@ -92,8 +87,6 @@ import {
 } from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
-import { useCreatePage } from "@/components/sections-editor/use-create-page";
-import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import {
@@ -106,7 +99,6 @@ import {
   type VisualEditorPayload,
 } from "./visual-editor-script";
 import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
-import { showCmsControls } from "./cms-controls";
 import { parseSections } from "@/components/sections-editor/parse-sections";
 import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
@@ -136,6 +128,11 @@ import {
   PathParamPickerChip,
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
+import { buildPreviewLabel } from "./preview-label";
+import { showCmsControls } from "./cms-controls";
+import { useCreatePage } from "@/components/sections-editor/use-create-page";
+import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
+import { sleep } from "@decocms/shared/std";
 import {
   listSavedRunnables,
   manifestLoaderResolveTypes,
@@ -156,7 +153,7 @@ import {
   type PanelImperativeHandle,
 } from "@/components/resizable";
 import {
-  shouldAutoOpenCms,
+  defaultPreviewEditingMode,
   togglePreviewEditorMode,
   type PreviewEditingMode,
   type PreviewEditorMode,
@@ -291,21 +288,9 @@ function pageMatchScore(name: string, path: string, q: string): number {
 }
 
 /**
- * Renders nothing; fires `onOpen` exactly once when mounted to auto-open the
- * CMS. Headless run-once helper mirroring `PathParamAutoFill`: the parent
- * mounts it only while the auto-open should happen (see `shouldAutoOpenCms`)
- * and latches on `onOpen`, so it unmounts the instant it fires and never
- * re-opens behind a user who has taken manual control. `queueMicrotask` defers
- * the imperative open to post-commit (panel mounted) instead of mid-render.
- */
-function CmsAutoOpen({ onOpen }: { onOpen: () => void }) {
-  const [fired, setFired] = useState(false);
-  if (!fired) {
-    setFired(true);
-    queueMicrotask(onOpen);
-  }
-  return null;
-}
+ * Reload the iframe in place; falls back to reassigning `src` when the
+ * iframe's live location is cross-origin (sandbox preview domain) and
+ * `.reload()` throws.
 
 /**
  * Reload the iframe in place; falls back to reassigning `src` when the
@@ -333,18 +318,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const { openPanel } = usePanelNavigate();
   const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
+  const inset = useInsetContext();
+  /** THIS session's runtime, off the thread's own immutable stamp — the one
+   *  thread-aware gate, scoped to this agent's entity by the id match. */
+  const session = useSessionRuntime(virtualMcpId);
+  /** Settings › CMS for this project. `off` is the one thing that keeps a CMS
+   *  session out of the blocks editor below. */
+  const cmsMode = resolveCmsMode(
+    inset?.entity?.id === virtualMcpId
+      ? (inset.entity.metadata?.ui?.layout ?? null)
+      : null,
+  );
 
   const goToTab = (tabId: string) => openPanel(tabId);
 
-  // Editing mode is singular: Visual editor and Blocks cannot be active
-  // together. Device size is independent and survives mode switches.
-  // Starts in plain "preview"; the CMS (blocks) auto-opens once its metadata is
-  // ready to render content (see `blocksAutoOpenResolved` below), so users never
-  // see the "Blocos indisponíveis"/loading card pop open on its own.
-  const [editingMode, setEditingMode] = useState<PreviewEditingMode>("preview");
-  // Latches once the CMS has auto-opened (or the user has taken manual control
-  // of the editing mode), so the one-shot auto-open never fights the user.
-  const [blocksAutoOpenResolved, setBlocksAutoOpenResolved] = useState(false);
+  /** Singular: Visual and Blocks cannot both be active, while device size is
+   *  independent and survives a switch. Which mode it STARTS in is the
+   *  session's — a CMS session opens with Blocks already split in (see
+   *  `defaultPreviewEditingMode`). Derived once at mount: the shell renders
+   *  this only after the thread and project resolve, so the runtime is already
+   *  authoritative and nothing needs re-syncing. */
+  const [editingMode, setEditingMode] = useState<PreviewEditingMode>(() =>
+    defaultPreviewEditingMode({ runtime: session.runtime, cmsMode }),
+  );
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
@@ -454,13 +450,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // published-site fallback while the sandbox provisions (non-blocking) instead
   // of a blank overlay. `null` (no field, or a site imported before this was
   // persisted) → the original blocking overlay is kept.
-  const inset = useInsetContext();
   const previewServerUrl =
     inset?.entity?.id === virtualMcpId
       ? resolvePreviewServerUrl(inset.entity.metadata)
       : null;
-  // The one thread-aware gate, scoped to this agent's entity by the id match.
-  const session = useSessionRuntime(virtualMcpId);
   const fastPreviewEnabled =
     inset?.entity?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
@@ -522,18 +515,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   ) {
     setFrameworkMissingProvenFor(frameworkMissingKey);
   }
-  const blocksReady = blocksState.kind === "content";
-  const createPageParams =
-    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
-  const createPage = useCreatePage(createPageParams);
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
     : [];
+  const createPageParams =
+    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+  const createPage = useCreatePage(createPageParams);
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
     decofile && meta ? listSavedRunnables(meta, decofile, "loaders") : [];
-  const normPath = normalizePagePath;
   const filteredPages = !pagesSearch
     ? pages
     : (() => {
@@ -572,6 +563,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const activeLoader = activeLoaderKey
     ? (globalLoaders.find((loader) => loader.key === activeLoaderKey) ?? null)
     : null;
+  const normPath = normalizePagePath;
   // A loader isn't a page: null `currentPage` so the publish effect skips it.
   const currentPage =
     activeGlobalSection || activeLoaderKey
@@ -665,14 +657,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
-
-  // Per-agent CMS mode, off the entity already in context (same source as
-  // previewServerUrl above). `manual` unless the agent says otherwise.
-  const cmsMode = resolveCmsMode(
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.ui?.layout ?? null)
-      : null,
-  );
 
   // Fast Preview (gated by the CMS switch): render the site's REAL page on
   // `previewServerUrl`, carrying a `?__draft=` pointer the site's framework
@@ -1174,20 +1158,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     return () => window.removeEventListener("message", handler);
   }, [editorBridgeOrigin]);
 
-  // Close pages dropdown on outside click
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription for outside-click dismiss
-  useEffect(() => {
-    if (!pagesOpen) return;
-    const handler = (e: PointerEvent) => {
-      if (!pagesContainerRef.current?.contains(e.target as Node)) {
-        setPagesOpen(false);
-        setPagesSearch("");
-      }
-    };
-    document.addEventListener("pointerdown", handler);
-    return () => document.removeEventListener("pointerdown", handler);
-  }, [pagesOpen]);
-
   // Target origin is pinned to the preview site itself: with "*" the parent
   // would still hand the editor script and page-structure metadata to
   // whatever origin currently occupies the iframe if it cross-navigated away.
@@ -1260,29 +1230,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const toggleEditingMode = (mode: PreviewEditorMode) => {
-    // The user is driving the editing mode now — stop the one-shot CMS
-    // auto-open from ever kicking in behind them. This is the ONLY path back to
-    // `editingMode === "preview"` (the direct `activateEditingMode("blocks")`
-    // calls only ever leave it in "blocks"), so latching here is what keeps
-    // auto-open from re-firing after a manual close.
-    setBlocksAutoOpenResolved(true);
     activateEditingMode(togglePreviewEditorMode(editingMode, mode));
-  };
-
-  // One-shot: auto-open the CMS the first time Blocks metadata is ready to
-  // render content, so the panel never pops open onto a loading/empty/error
-  // card. Gated by the per-agent "Open CMS" Layout setting. Handled by the
-  // headless `<CmsAutoOpen>` below, mounted only while `shouldAutoOpenCms`
-  // holds; `onOpen` latches so it fires exactly once.
-  const autoOpenCms = shouldAutoOpenCms({
-    autoOpen: cmsMode === "auto",
-    blocksReady,
-    autoOpenResolved: blocksAutoOpenResolved,
-    editingMode,
-  });
-  const handleCmsAutoOpen = () => {
-    setBlocksAutoOpenResolved(true);
-    activateEditingMode("blocks");
   };
 
   const handleRefresh = () => {
@@ -1359,6 +1307,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
+  const setPathParamValue = (name: string, value: string) => {
+    if (!currentPageKey) return;
+    const pageKey = currentPageKey;
+    const nextValues = { ...pathParamValues, [name]: value };
+    // Guard against a stale onLoad from the previous URL resetting currentPath.
+    intendedPathRef.current = fillPathTemplate(currentPath, nextValues);
+    setPathParamsByPage((prev) => ({ ...prev, [pageKey]: nextValues }));
+    persistLastPage({ path: currentPath, pageKey, params: nextValues });
+  };
+
+  // Toolbar visibility follows main's display model: shown once an iframe
+  // surface is active — the sandbox once its daemon is up, or the production
+  // fallback while the dev server is still waking (see resolvePreviewDisplay).
   // Domain shown in the URL bar follows what's actually in the iframe
   // (`display.iframeBase`) — production under Fast Preview, the sandbox
   // otherwise — so the label never drifts from the rendered page.
@@ -1393,16 +1354,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       key: page.key,
       path: page.path,
     });
-  };
-
-  const setPathParamValue = (name: string, value: string) => {
-    if (!currentPageKey) return;
-    const pageKey = currentPageKey;
-    const nextValues = { ...pathParamValues, [name]: value };
-    // Guard against a stale onLoad from the previous URL resetting currentPath.
-    intendedPathRef.current = fillPathTemplate(currentPath, nextValues);
-    setPathParamsByPage((prev) => ({ ...prev, [pageKey]: nextValues }));
-    persistLastPage({ path: currentPath, pageKey, params: nextValues });
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
@@ -1491,58 +1442,22 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  // Toolbar visibility follows main's display model: shown once an iframe
-  // surface is active — the sandbox once its daemon is up, or the production
-  // fallback while the dev server is still waking (see resolvePreviewDisplay).
   const showPreviewToolbar =
     previewSurfaceActive && (daemonReady || display.mode === "production");
 
-  // Blocks is an editing mode on the current page, NOT a navigation view — and
-  // its editor opens on the LEFT. So its toggle lives in the floating preview
-  // pill next to the visual-editor / device controls (see below), grouped with
-  // the other edit-mode affordances rather than in the header's nav-tab row.
-  const blocksActive = editingMode === "blocks";
+  /** The page selector is for a CMS session on a proven deco site. A sandbox
+   *  session previews an arbitrary app with no decofile to navigate, so the
+   *  topbar shows the iframe's domain instead — see the toolbar below.
+   *  `showCmsControls` keeps its veto so the selector never degrades into
+   *  listing a raw preview host. */
+  const pageSelectorVisible =
+    session.runtime === "cms" &&
+    showCmsControls({ showPreviewToolbar, blocksState });
 
-  // Refresh + page selector + open-in-new-tab — the URL group. Sized to content
-  // (capped) rather than stretching, so it doesn't dominate the top bar.
-  // Edit (Blocks) — the primary "edit this page" action, tied to the page the
-  // selector shows. On desktop it leads the URL group, set off by a divider, so
-  // it reads as a distinct action rather than being wedged inside the URL
-  // controls. On mobile it anchors the left edge on its own (see below).
-  // Filled when the Blocks editor is open; click again for plain preview.
-  // Deco sites only — see `showCmsControls`.
-  const cmsControlsVisible = showCmsControls({
-    showPreviewToolbar,
-    blocksState,
-  });
-
-  // The agent's CMS mode is the per-agent switch layered on that capability
-  // gate; the rest of the toolbar is preview navigation, not editing, so it
-  // stays whatever the mode says.
-  const cmsToggle =
-    cmsControlsVisible && cmsMode !== "off" ? (
-      <HeaderTabButton
-        title={t("sandbox.preview.cms")}
-        tooltip={
-          blocksActive
-            ? t("sandbox.preview.exitEditor")
-            : t("sandbox.preview.editContent")
-        }
-        // Distinctive icon — sheds its label with the system tabs at 768px,
-        // well before this group hides at 384px, so the group stays narrow
-        // through the widths where it is most cramped.
-        labelCollapse="sooner"
-        icon={{ kind: "component", Component: PuzzlePiece01 }}
-        active={blocksActive}
-        onClick={() => toggleEditingMode("blocks")}
-        testId="preview-blocks-toggle"
-        dataTour={TOUR_ANCHORS.edit}
-      />
-    ) : null;
-
-  // The view controls proper: refresh · page selector · open-in-new. Kept as a
-  // unit so both layouts can place it as one block — inline after the Edit
-  // action on desktop, or in its own centered slot on mobile.
+  /** Refresh · what-the-frame-is-showing · open-in-new, kept as one block so
+   *  desktop can put it in the header's centre slot and mobile in its own. The
+   *  middle always renders; `pageSelectorVisible` decides whether it is the
+   *  interactive page selector or a plain domain label. */
   const urlGroup = showPreviewToolbar ? (
     <>
       <Tooltip>
@@ -1559,7 +1474,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </TooltipContent>
       </Tooltip>
 
-      {cmsControlsVisible && (
+      {/* The topbar always names what the iframe is showing; only HOW differs
+          by runtime. A CMS session gets the page selector — page name, editable
+          `:param` segments, and the dropdown that also hosts "Create page". A
+          sandbox session is previewing an arbitrary app with no decofile to
+          navigate, so it gets the iframe's domain as plain text and nothing to
+          click. `showCmsControls` still has the final say, so a CMS session on a
+          repo that proves it has no deco framework degrades to the label rather
+          than to a selector listing a raw preview host. */}
+      {pageSelectorVisible ? (
         <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
           <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
             {/* Not a <button>: path-template pages render `:param`
@@ -1838,6 +1761,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             </div>
           )}
         </div>
+      ) : (
+        <span className="min-w-0 truncate px-2 text-[13px] text-muted-foreground">
+          {previewLabel}
+        </span>
       )}
       {/* Available on every surface. Under Fast Preview `iframeSrc` is the
           site's own page URL carrying `?__draft=<handle>@<version>`, so the
@@ -1858,15 +1785,45 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     </>
   ) : null;
 
-  // Desktop composition (portaled into the panel header's centre slot): the
-  // Edit action leads, set off by a divider, then the view controls.
+  // Desktop composition (portaled into the panel header's centre slot).
   const urlControls = showPreviewToolbar ? (
-    <div className="flex min-w-0 items-center gap-0.5">
-      {cmsToggle}
-      {cmsToggle && <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />}
-      {urlGroup}
-    </div>
+    <div className="flex min-w-0 items-center gap-0.5">{urlGroup}</div>
   ) : null;
+
+  /** Blocks ⇄ preview, MOBILE ONLY.
+   *
+   *  Desktop needs no such control: Blocks is a 30/70 split, so the frame is
+   *  on screen the whole time and there is nothing to come back from. A phone
+   *  has no room to split — `blocksFullWidth` gives Blocks the whole panel and
+   *  the frame disappears — so the flows that open Blocks without being asked
+   *  (a global loader, Edit SEO, a freshly created page) would otherwise strand
+   *  the session in the editor with no way back to what it renders. */
+  const mobileBlocksToggle =
+    isMobile &&
+    cmsMode !== "off" &&
+    showCmsControls({ showPreviewToolbar, blocksState }) ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToolbarIconButton
+            onClick={() => toggleEditingMode("blocks")}
+            aria-pressed={effectiveEditingMode === "blocks"}
+            aria-label={
+              effectiveEditingMode === "blocks"
+                ? t("sandbox.preview.exitEditor")
+                : t("sandbox.preview.editContent")
+            }
+            active={effectiveEditingMode === "blocks"}
+          >
+            <PuzzlePiece01 size={16} />
+          </ToolbarIconButton>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {effectiveEditingMode === "blocks"
+            ? t("sandbox.preview.exitEditor")
+            : t("sandbox.preview.editContent")}
+        </TooltipContent>
+      </Tooltip>
+    ) : null;
 
   // Overflow menu (⋯) — sits right of the publish actions; live-preview only.
   const moreMenu = showPreviewToolbar ? (
@@ -1876,6 +1833,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <Button
             variant="ghost"
             size="icon-sm"
+            className={INSET_FOCUS_RING}
             aria-label={t("sandbox.preview.moreOptions")}
           >
             <DotsHorizontal size={14} />
@@ -1949,11 +1907,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               </DropdownMenuItem>
             </>
           )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => startCmsTour(t)}>
-            <Compass01 size={14} />
-            {t("cmsTour.menuItem")}
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -2001,7 +1954,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   aria-label={t("sandbox.preview.visualEditor")}
                   active={editingMode === "visual"}
                   className="rounded-full"
-                  data-tour={TOUR_ANCHORS.visualEditor}
                 >
                   <CursorClick01 size={16} />
                 </ToolbarIconButton>
@@ -2019,7 +1971,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               onClick={handleDeviceToggle}
               aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
               className="rounded-full"
-              data-tour={TOUR_ANCHORS.device}
             >
               <span
                 key={previewDeviceSize}
@@ -2045,9 +1996,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="flex flex-col w-full h-full">
-      {/* Headless: auto-opens the CMS once (renders nothing). Mounted only
-          while the per-agent setting + readiness say it should. */}
-      {autoOpenCms && <CmsAutoOpen onOpen={handleCmsAutoOpen} />}
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
@@ -2073,29 +2021,22 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </>
       ) : (
         (showPreviewToolbar || moreMenu) && (
-          // Declares the same container as PanelHeader: on this path (no header
-          // slot — mobile) the controls render inline instead of portaling, so
-          // without it their container queries would find no container and every
-          // label would stay at full width.
-          //
-          // Three zones rather than the desktop's single left-packed group: Edit
-          // anchors the left edge, the view controls sit in the middle, and the
-          // ⋯ menu holds the right. Packed left, the page selector sat wherever
-          // Edit and refresh pushed it — visibly off-centre on a phone, where
-          // the bar is the whole screen.
-          //
-          // The two side zones are `flex-1` (equal basis) and the middle is
-          // content-sized, so the selector centres on the BAR wherever there is
-          // slack to divide. Giving the middle the flex-1 instead centres it
-          // between the side zones, which are unequal — Edit is ~9px wider than
-          // ⋯ — leaving it visibly off. On the narrowest phones the zones can no
-          // longer be equal either (the left one cannot shrink below the Edit
-          // button), so ~5px of that asymmetry returns; closing it completely
-          // would mean pinning both sides to a fixed width and letting the
-          // selector lose the space instead.
+          /* Declares the same container as PanelHeader: on this path (no
+             header slot — mobile) the controls render inline instead of
+             portaling, so without it their container queries would find no
+             container and every label would stay at full width.
+
+             Three zones rather than the desktop's single left-packed group:
+             the view controls sit in the middle, the ⋯ menu holds the right,
+             and the left carries the Blocks toggle this layout alone needs
+             (see `mobileBlocksToggle`). The two side zones are `flex-1`
+             (equal basis) and the middle is content-sized,
+             so the page selector centres on the BAR wherever there is slack to
+             divide — giving the middle the flex-1 instead would centre it
+             between the side zones, not on the bar. */
           <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
             <div className="flex flex-1 items-center justify-start">
-              {cmsToggle}
+              {mobileBlocksToggle}
             </div>
             <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
               {urlGroup}
@@ -2252,10 +2193,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
                     {display.showWakingPill && (
                       <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
-                        <Loading01
-                          size={18}
-                          className="mt-0.5 shrink-0 animate-spin text-muted-foreground"
-                        />
+                        <Spinner className="size-4.5 mt-0.5 shrink-0 text-muted-foreground" />
                         <div className="flex flex-col gap-0.5">
                           <span className="text-sm font-medium text-foreground">
                             {t("sandbox.preview.startingPreview")}
