@@ -1,7 +1,10 @@
 import { describe, expect, it, mock } from "bun:test";
 import { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 
-function makeCtx(options: { referencedByThread: boolean }) {
+function makeCtx(options: {
+  referencedByThread: boolean;
+  referencingAutomations?: { id: string; name: string }[];
+}) {
   const connection = {
     id: "conn_repo",
     organization_id: "org_123",
@@ -9,6 +12,7 @@ function makeCtx(options: { referencedByThread: boolean }) {
   };
   const deleteConnection = mock(async () => {});
   const isReferencedByThread = mock(async () => options.referencedByThread);
+  const deactivateAutomation = mock(async () => {});
   const ctx = {
     auth: { user: { id: "user_123" } },
     organization: { id: "org_123" },
@@ -20,10 +24,16 @@ function makeCtx(options: { referencedByThread: boolean }) {
         isReferencedByThread,
       },
       virtualMcps: { listByConnectionId: mock(async () => []) },
+      automations: {
+        listActiveByEventTriggerConnectionId: mock(
+          async () => options.referencingAutomations ?? [],
+        ),
+        deactivateAutomation,
+      },
       organizationSettings: { get: mock(async () => null) },
     },
   } as unknown as Parameters<typeof COLLECTION_CONNECTIONS_DELETE.handler>[1];
-  return { ctx, deleteConnection, isReferencedByThread };
+  return { ctx, deleteConnection, isReferencedByThread, deactivateAutomation };
 }
 
 describe("COLLECTION_CONNECTIONS_DELETE", () => {
@@ -47,6 +57,36 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
     );
 
     expect(result.item.id).toBe("conn_repo");
+    expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
+  });
+
+  it("refuses to delete a connection with an active automation event trigger", async () => {
+    // Regression: automation_triggers.connection_id has no FK and would strand silently.
+    const { ctx, deleteConnection } = makeCtx({
+      referencedByThread: false,
+      referencingAutomations: [{ id: "auto_1", name: "Notify on PR" }],
+    });
+
+    await expect(
+      COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx),
+    ).rejects.toThrow(/CONNECTION_IN_USE_BY_AUTOMATION/);
+
+    expect(deleteConnection).not.toHaveBeenCalled();
+  });
+
+  it("force-deletes a connection by deactivating its referencing automations", async () => {
+    const { ctx, deleteConnection, deactivateAutomation } = makeCtx({
+      referencedByThread: false,
+      referencingAutomations: [{ id: "auto_1", name: "Notify on PR" }],
+    });
+
+    const result = await COLLECTION_CONNECTIONS_DELETE.handler(
+      { id: "conn_repo", force: true },
+      ctx,
+    );
+
+    expect(result.item.id).toBe("conn_repo");
+    expect(deactivateAutomation).toHaveBeenCalledWith("auto_1");
     expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
   });
 });

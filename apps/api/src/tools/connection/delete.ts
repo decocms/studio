@@ -97,6 +97,28 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       throw new Error(JSON.stringify({ code: "CONNECTION_IN_USE_BY_THREAD" }));
     }
 
+    // An automation's event trigger connection_id has no FK, so it would strand silently.
+    const referencingAutomations =
+      await ctx.storage.automations.listActiveByEventTriggerConnectionId(
+        input.id,
+      );
+    if (referencingAutomations.length > 0) {
+      if (input.force) {
+        await Promise.all(
+          referencingAutomations.map((automation) =>
+            ctx.storage.automations.deactivateAutomation(automation.id),
+          ),
+        );
+      } else {
+        throw new Error(
+          JSON.stringify({
+            code: "CONNECTION_IN_USE_BY_AUTOMATION",
+            automationNames: referencingAutomations.map((a) => a.name),
+          }),
+        );
+      }
+    }
+
     // Delete connection
     await ctx.storage.connections.delete(input.id);
 
