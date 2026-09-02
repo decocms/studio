@@ -25,6 +25,7 @@ import { useIsReadOnly } from "./fields/read-only-context";
 import { SeoFormFields } from "./seo-form-fields";
 import { parsePageVariants, type PageVariant } from "./page-variants";
 import { formatMatcher } from "./format-matcher";
+import { validatePagePath } from "./page-path-utils";
 import { useT } from "@/i18n/use-t.ts";
 
 /**
@@ -237,6 +238,7 @@ export function PageHeaderInputs({
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   // Set on Escape so the ensuing blur doesn't re-prompt.
   const skipCommitRef = useRef(false);
+  const [pathError, setPathError] = useState<string | null>(null);
 
   // Reset local state when navigating to a different page
   if (prevKey !== pageKey) {
@@ -244,6 +246,7 @@ export function PageHeaderInputs({
     setName(initialName);
     setPath(initialPath);
     setPendingPath(null);
+    setPathError(null);
   }
 
   const commitPath = () => {
@@ -255,8 +258,17 @@ export function PageHeaderInputs({
     if (trimmed === initialPath.trim()) {
       // No real change — normalize the displayed value and move on.
       setPath(initialPath);
+      setPathError(null);
       return;
     }
+    // Same validation the create-page flow already runs (page-path-utils).
+    const error = validatePagePath(trimmed);
+    if (error) {
+      setPathError(error);
+      setPath(initialPath);
+      return;
+    }
+    setPathError(null);
     setPendingPath(trimmed);
   };
 
@@ -291,7 +303,10 @@ export function PageHeaderInputs({
         type="text"
         value={path}
         readOnly={readOnly}
-        onChange={(e) => setPath(e.target.value)}
+        onChange={(e) => {
+          setPath(e.target.value);
+          setPathError(null);
+        }}
         onBlur={commitPath}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -301,12 +316,14 @@ export function PageHeaderInputs({
             e.preventDefault();
             skipCommitRef.current = true;
             setPath(initialPath);
+            setPathError(null);
             e.currentTarget.blur();
           }
         }}
         className="w-full bg-transparent text-xs text-muted-foreground truncate outline-none border-none p-0 focus:ring-0 placeholder:text-muted-foreground"
         placeholder={t("sectionsEditor.sectionsEditorPanels.pathPlaceholder")}
       />
+      {pathError && <p className="text-xs text-destructive">{pathError}</p>}
       <AlertDialog
         open={pendingPath !== null}
         onOpenChange={(next) => {
