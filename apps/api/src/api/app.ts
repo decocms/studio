@@ -76,6 +76,7 @@ import {
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
 import desktopAuthRoutes from "./routes/desktop-auth";
+import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
@@ -2229,6 +2230,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());
+
+  // User-scoped, cross-organization reads (project search). Instance-level for
+  // the same reason as the two above: `/api/:org` would bind the request to one
+  // tenant, which is exactly what these routes must not do.
+  app.route(ME_API_PREFIX, createMeRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
