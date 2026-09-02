@@ -232,7 +232,12 @@ function OrganizationsPanel({
           placeholder={t("header.orgSwitcher.searchOrganizations")}
           className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
         />
-        <button type="button" onClick={onCreateOrg} className={iconBtnClass}>
+        <button
+          type="button"
+          onClick={onCreateOrg}
+          aria-label={t("header.orgSwitcher.createOrganization")}
+          className={iconBtnClass}
+        >
           <Plus size={16} />
         </button>
       </div>
