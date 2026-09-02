@@ -2,6 +2,12 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { useState } from "react";
 import { AnnouncementCard } from "@/components/announcement-card";
 import { DownloadAppDialog } from "@/components/download-app-dialog";
+import { startLayoutTour } from "@/components/layout-tour/layout-tour";
+import {
+  DESTINATION_ROUTE,
+  useLeafRoutePath,
+} from "@/hooks/use-destination-route";
+import { useScopeId } from "@/hooks/use-project-scope";
 import { useReleaseSeenState } from "@/hooks/use-release-seen-state";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
@@ -45,6 +51,13 @@ function isUserOldEnoughForReleaseNotice(createdAt: unknown, now: number) {
 
 export function FloatingReleaseCard() {
   const t = useT();
+  /** Which surfaces the CURRENT screen has, for the tour's scoped steps. Both
+   *  read straight off the URL, so they are right on the first frame and
+   *  cannot disagree with what is painted. */
+  const scopeId = useScopeId();
+  const leafPath = useLeafRoutePath();
+  const inProject = !!scopeId;
+  const onOrgHome = leafPath === DESTINATION_ROUTE.home && !scopeId;
   const { data: session } = authClient.useSession();
   const { isSeen, markSeen } = useReleaseSeenState();
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -56,6 +69,19 @@ export function FloatingReleaseCard() {
     return null;
   }
   if (isSeen(candidate.id)) return null;
+
+  /** The tour explains the screen you are ON. It used to navigate to the org
+   *  home first, because that was where its only anchors lived; now the steps
+   *  are scoped, so the shell steps run anywhere and the route contributes
+   *  whatever else it can show. Navigating would throw away whatever the
+   *  reader was doing to tell them about a page they did not ask for.
+   *
+   *  Marking seen unmounts this card, which is fine — `startLayoutTour` is
+   *  imperative and owns its own lifecycle from here. */
+  const startTour = () => {
+    markSeen(candidate.id);
+    startLayoutTour(t, { onOrgHome, inProject });
+  };
 
   return (
     <AnnouncementCard
@@ -82,6 +108,10 @@ export function FloatingReleaseCard() {
           "href" in candidate.cta ? (
             <Button asChild size="sm" onClick={() => markSeen(candidate.id)}>
               <a href={candidate.cta.href}>{candidate.cta.label}</a>
+            </Button>
+          ) : candidate.cta.action === "start-tour" ? (
+            <Button size="sm" onClick={startTour}>
+              {candidate.cta.label}
             </Button>
           ) : (
             // Not markSeen here: seeing the release unmounts this card — and
