@@ -10,10 +10,12 @@ export const thread = {
   "thread.branchPicker.createBranch": 'Criar "{name}"',
   "thread.branchPicker.advanced": "Avançado",
   "thread.branchPicker.advancedBack": "Voltar",
+  "thread.branchPicker.cancel": "Cancelar",
   "thread.branchPicker.defaultVersionName": "Rascunho",
   "thread.branchPicker.delete": "Descartar",
   "thread.branchPicker.deleteConfirm":
     'Descartar "{name}"? Isso não pode ser desfeito.',
+  "thread.branchPicker.deleteTitle": "Descartar rascunho?",
   "thread.branchPicker.live": "Produção",
   "thread.branchPicker.moreActions": "Mais ações",
   "thread.branchPicker.newVersion": "Novo Rascunho",

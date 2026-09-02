@@ -12,6 +12,16 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -104,6 +114,7 @@ export function BranchPicker({
   const [advanced, setAdvanced] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
 
@@ -182,19 +193,17 @@ export function BranchPicker({
     setEditName("");
   };
 
-  const handleDelete = (r: Release) => {
-    if (
-      !window.confirm(t("thread.branchPicker.deleteConfirm", { name: r.name }))
-    ) {
-      return;
-    }
-    // Leave the deleted draft for production before it vanishes from the list.
+  const confirmDelete = () => {
+    const r = pendingDelete;
+    setPendingDelete(null);
+    if (!r) return;
+    // Land on production before the deleted draft vanishes from the list.
     if (r.branch === value && baseBranch) pick(baseBranch);
     else setOpen(false);
     void deleteRelease(r.branch);
   };
 
-  return (
+  const popover = (
     <Popover
       open={open}
       onOpenChange={
@@ -313,7 +322,7 @@ export function BranchPicker({
                     selected={r.branch === value}
                     onSelect={() => pick(r.branch)}
                     onRename={() => startRename(r)}
-                    onDelete={() => void handleDelete(r)}
+                    onDelete={() => setPendingDelete(r)}
                   />
                 ),
               )}
@@ -339,6 +348,43 @@ export function BranchPicker({
         )}
       </PopoverContent>
     </Popover>
+  );
+
+  return (
+    <>
+      {popover}
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("thread.branchPicker.deleteTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete &&
+                t("thread.branchPicker.deleteConfirm", {
+                  name: pendingDelete.name,
+                })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("thread.branchPicker.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("thread.branchPicker.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

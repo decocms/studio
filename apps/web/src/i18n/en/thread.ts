@@ -8,10 +8,12 @@ export const thread = {
   "thread.branchPicker.createBranch": 'Create "{name}"',
   "thread.branchPicker.advanced": "Advanced",
   "thread.branchPicker.advancedBack": "Back",
+  "thread.branchPicker.cancel": "Cancel",
   "thread.branchPicker.defaultVersionName": "Draft",
   "thread.branchPicker.delete": "Delete",
   "thread.branchPicker.deleteConfirm":
     'Delete "{name}"? This can\'t be undone.',
+  "thread.branchPicker.deleteTitle": "Discard draft?",
   "thread.branchPicker.live": "Production",
   "thread.branchPicker.moreActions": "More actions",
   "thread.branchPicker.newVersion": "New draft",
