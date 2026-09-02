@@ -32,6 +32,18 @@ export function toolNeedsApproval(
   return readOnlyHint !== true;
 }
 
+/** Anthropic rejects the WHOLE request (400) if any tool's
+ *  `input_schema.properties` has a key outside this pattern, so one bad MCP
+ *  tool kills every run. Drop that tool instead of the run. */
+const LLM_SAFE_PROPERTY_KEY = /^[a-zA-Z0-9_.-]{1,64}$/;
+
+export function hasLlmSafeInputSchema(inputSchema: unknown): boolean {
+  const properties = (inputSchema as { properties?: unknown } | null)
+    ?.properties;
+  if (properties == null || typeof properties !== "object") return true;
+  return Object.keys(properties).every((k) => LLM_SAFE_PROPERTY_KEY.test(k));
+}
+
 export function sanitizeToolName(name: string): string {
   let safe = name.replace(/[^a-zA-Z0-9_.\-:]/g, "_");
   if (safe.length === 0 || !/^[a-zA-Z_]/.test(safe)) {
@@ -196,9 +208,16 @@ export async function toolsFromMCP(
 }> {
   const truncate = !options.disableOutputTruncation;
   const list = await client.listTools();
-  const visibleTools = list.tools.filter((t) =>
-    (options.isToolVisible ?? defaultToolVisibility)(t),
-  );
+  const visibleTools = list.tools
+    .filter((t) => (options.isToolVisible ?? defaultToolVisibility)(t))
+    .filter((t) => {
+      if (hasLlmSafeInputSchema(t.inputSchema)) return true;
+      console.warn(
+        "skipping MCP tool with LLM-unsafe input schema property keys",
+        { tool: t.name },
+      );
+      return false;
+    });
 
   const nameMap = buildShortNameMap(visibleTools);
   const toolEntries = visibleTools.map((t) => {
