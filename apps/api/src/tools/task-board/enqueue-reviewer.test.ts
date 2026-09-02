@@ -15,6 +15,7 @@ import {
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
   stalePreviewHandoffDue,
+  stalePreviewHandoffOwed,
   undecidedReviewerThread,
   verdictNudgedThreads,
   awaitingVerdictNudge,
@@ -577,6 +578,32 @@ describe("stalePreviewHandoffDue", () => {
   it("treats a card with no recorded cycle start as infinitely old", () => {
     expect(stalePreviewHandoffDue(0, at("2026-08-13T17:00:00.000Z"))).toBe(
       true,
+    );
+  });
+});
+
+describe("stalePreviewHandoffOwed", () => {
+  const cycle = Date.parse("2026-08-13T17:00:00.000Z");
+  const staleNow = Date.parse("2026-08-13T18:00:00.000Z");
+
+  it("hands off an undecided reviewer once the preview is stale", () => {
+    expect(stalePreviewHandoffOwed(false, false, cycle, staleNow)).toBe(true);
+  });
+
+  it("never hands off an already-approved card — the verdict already answered the question the preview gate protects", () => {
+    expect(stalePreviewHandoffOwed(true, false, cycle, staleNow)).toBe(false);
+  });
+
+  it("does nothing when the preview does match head", () => {
+    expect(stalePreviewHandoffOwed(false, true, cycle, staleNow)).toBe(false);
+    expect(stalePreviewHandoffOwed(false, undefined, cycle, staleNow)).toBe(
+      false,
+    );
+  });
+
+  it("waits out the grace even for an undecided reviewer", () => {
+    expect(stalePreviewHandoffOwed(false, false, cycle, cycle + 60_000)).toBe(
+      false,
     );
   });
 });
