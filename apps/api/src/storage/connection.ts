@@ -405,6 +405,16 @@ export class ConnectionStorage implements ConnectionStoragePort {
     id: string,
     data: Partial<ConnectionEntity>,
   ): Promise<ConnectionEntity> {
+    // Storage is the real trust boundary: never let identity/ownership columns reach the SET clause.
+    const {
+      id: _id,
+      organization_id: _organizationId,
+      created_by: _createdBy,
+      created_at: _createdAt,
+      ...safeData
+    } = data;
+    data = safeData;
+
     if (Object.keys(data).length === 0) {
       const connection = await this.findById(id);
       if (!connection) throw new Error("Connection not found");
