@@ -9,6 +9,11 @@ import {
   OrgFlagsSchema,
 } from "@decocms/shared/organization/schema";
 
+// Bounds on client-controlled collection sizes not enforced by the shared schema.
+const MAX_SIDEBAR_ITEMS = 50;
+const MAX_BLOCKED_MCPS = 500;
+const MAX_DEFAULT_HOME_AGENTS = 100;
+
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
   description:
@@ -22,11 +27,15 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   },
   inputSchema: z.object({
     organizationId: z.string(),
-    sidebar_items: z.array(SidebarItemSchema).optional(),
+    sidebar_items: z.array(SidebarItemSchema).max(MAX_SIDEBAR_ITEMS).optional(),
     enabled_plugins: z.array(z.string()).optional(),
-    registry_config: RegistryConfigSchema.optional(),
+    registry_config: RegistryConfigSchema.extend({
+      blockedMcps: z.array(z.string()).max(MAX_BLOCKED_MCPS),
+    }).optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
-    default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
+    default_home_agents: DefaultHomeAgentsConfigSchema.extend({
+      ids: z.array(z.string()).max(MAX_DEFAULT_HOME_AGENTS),
+    }).optional(),
     // .strict() here (not on the shared OrgFlagsSchema) so a mistyped flag
     // name is rejected instead of silently stripped and merged as `{}` —
     // that no-op was indistinguishable from a successful update.
