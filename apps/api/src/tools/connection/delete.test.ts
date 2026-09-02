@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 
 function makeCtx(options: { referencedByThread: boolean }) {
@@ -27,6 +28,18 @@ function makeCtx(options: { referencedByThread: boolean }) {
 }
 
 describe("COLLECTION_CONNECTIONS_DELETE", () => {
+  it("refuses to delete the synthetic dev-assets connection with a clear error", async () => {
+    // Regression: findById() can't see it, so this used to say "not found".
+    const { ctx, deleteConnection } = makeCtx({ referencedByThread: false });
+    const devAssetsId = WellKnownOrgMCPId.DEV_ASSETS("org_123");
+
+    await expect(
+      COLLECTION_CONNECTIONS_DELETE.handler({ id: devAssetsId }, ctx),
+    ).rejects.toThrow(/fixed system connection/);
+
+    expect(deleteConnection).not.toHaveBeenCalled();
+  });
+
   it("refuses to delete a connection a thread is pinned to as its repo", async () => {
     // Regression: deleting it would strand the thread's sandbox permanently.
     const { ctx, deleteConnection } = makeCtx({ referencedByThread: true });
