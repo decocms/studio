@@ -399,10 +399,10 @@ const GithubRepoSchema = z.object({
 
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
-/** The app surfaces that can own a sandbox-map entry. */
-type SandboxMapOwnerKind = "agent-sandbox" | "local-api";
-
 const SandboxMapOwnerKindSchema = z.enum(["agent-sandbox", "local-api"]);
+
+/** The app surfaces that can own a sandbox-map entry. */
+type SandboxMapOwnerKind = z.infer<typeof SandboxMapOwnerKindSchema>;
 /**
  * A single sandbox record in the per-(user, branch, kind) sandbox map — the
  * provider-issued handle plus the preview URL the UI renders.
