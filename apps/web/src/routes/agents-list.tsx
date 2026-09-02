@@ -9,6 +9,7 @@ import {
 import { Page } from "@/components/page";
 import { ProjectCard } from "@/components/project-card";
 import { useCapability } from "@/hooks/use-capability";
+import { useIsDecoStaff } from "@/hooks/use-organization-settings";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { useCreateVirtualMCP } from "@/hooks/use-create-virtual-mcp";
 import { ImportFromDecoDialog } from "@/components/import-from-deco-dialog.tsx";
@@ -50,6 +51,7 @@ export default function AgentsListPage() {
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
   const { granted: canManageAgents } = useCapability("agents:manage");
+  const showDecoImport = useIsDecoStaff();
 
   const lowerSearch = search.toLowerCase();
 
@@ -129,6 +131,7 @@ export default function AgentsListPage() {
                     }}
                     isCreating={isCreating}
                     align="end"
+                    showDecoImport={showDecoImport}
                   />
                 </DropdownMenu>
               )}
@@ -188,6 +191,7 @@ export default function AgentsListPage() {
                         isCreating={isCreating}
                         align="center"
                         showBetaBadge
+                        showDecoImport={showDecoImport}
                       />
                     </DropdownMenu>
                   )

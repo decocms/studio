@@ -14,6 +14,8 @@ interface CreateAgentDropdownContentProps {
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
   showBetaBadge?: boolean;
+  /** Show the "Import from deco.cx" option (deco.cx staff only). */
+  showDecoImport?: boolean;
 }
 
 export function CreateAgentDropdownContent({
@@ -24,6 +26,7 @@ export function CreateAgentDropdownContent({
   align = "end",
   side,
   showBetaBadge,
+  showDecoImport,
 }: CreateAgentDropdownContentProps) {
   const t = useT();
 
@@ -42,10 +45,16 @@ export function CreateAgentDropdownContent({
           </span>
         )}
       </DropdownMenuItem>
-      <DropdownMenuItem onClick={onImportDeco}>
-        <img src="/logos/deco%20logo.svg" alt="deco.cx" className="size-3.5" />
-        {t("common.createAgentDropdown.importFromDeco")}
-      </DropdownMenuItem>
+      {showDecoImport && (
+        <DropdownMenuItem onClick={onImportDeco}>
+          <img
+            src="/logos/deco%20logo.svg"
+            alt="deco.cx"
+            className="size-3.5"
+          />
+          {t("common.createAgentDropdown.importFromDeco")}
+        </DropdownMenuItem>
+      )}
     </DropdownMenuContent>
   );
 }

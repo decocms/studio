@@ -266,6 +266,16 @@ function isDecoStaffEmail(email: string | null | undefined): boolean {
   return !!email && email.trim().toLowerCase().endsWith("@deco.cx");
 }
 
+/**
+ * Whether the signed-in user is deco.cx staff (by email). Cosmetic gating for
+ * internal-only surfaces still rolling out (e.g. the "Import from deco.cx"
+ * create-agent option); a brief pre-resolution render as `false` is harmless.
+ */
+export function useIsDecoStaff(): boolean {
+  const { data: session } = authClient.useSession();
+  return isDecoStaffEmail(session?.user?.email);
+}
+
 /** The three control-plane views, each toggled by its own org flag. */
 export interface ControlPlaneViews {
   hosting: boolean;

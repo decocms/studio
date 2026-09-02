@@ -201,7 +201,6 @@ export function ImportFromDecoDialog({
           }),
         );
       }
-      let decoConnId: string | null = null;
       let githubChildConnId: string | null = null;
       let createdAgentId: string | null = null;
 
@@ -222,37 +221,19 @@ export function ImportFromDecoDialog({
             })
             .catch(() => {});
         }
-        if (decoConnId) {
-          await client
-            .callTool({
-              name: "COLLECTION_CONNECTIONS_DELETE",
-              arguments: { id: decoConnId, force: true },
-            })
-            .catch(() => {});
-        }
       };
 
       try {
-        // 1. Create the connection server-side so the deco.cx API key never
-        //    reaches the browser — the backend fetches and encrypts it directly.
-        const connBody = await fetchJson<{
-          connId?: string;
-          icon?: string | null;
-        }>(
-          `/api/${org.slug}/deco-sites/connection`,
+        // Prepare the site server-side: claim its asset slug, provision managed storage, and get the favicon.
+        const prepareBody = await fetchJson<{ icon?: string | null }>(
+          `/api/${org.slug}/deco-sites/prepare`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ siteName }),
           },
-          t("common.importFromDecoDialog.failedToCreateConnection"),
+          t("common.importFromDecoDialog.failedToPrepareImport"),
         );
-
-        const connId = connBody.connId;
-        if (!connId) {
-          throw new Error(t("common.importFromDecoDialog.noConnectionId"));
-        }
-        decoConnId = connId;
 
         const { childConnectionId, reused } =
           await provisionRepoScopedGithubConnection({
@@ -268,13 +249,13 @@ export function ImportFromDecoDialog({
         // one predates it and other agents may hold it.
         githubChildConnId = reused ? null : childConnectionId;
 
-        const projectIcon = connBody.icon ?? null;
+        const projectIcon = prepareBody.icon ?? null;
         const slug = generateSlug(siteName);
         const siteSlug = siteName.toLowerCase();
         // Default to the `{slug}.deco.site` host (legacy `productionUrl` dual-written for rollback).
         const previewServerUrl = defaultPreviewServerUrl(siteName);
 
-        // 2. Create a space (virtual MCP) wired to both admin-mcp and GitHub.
+        // 2. Create a space (virtual MCP) wired to the GitHub connection.
         const result = (await client.callTool({
           name: "COLLECTION_VIRTUAL_MCP_CREATE",
           arguments: {
@@ -286,8 +267,7 @@ export function ImportFromDecoDialog({
               metadata: {
                 instructions: null,
                 enabled_plugins: [],
-                // Link the agent to its asset site so the CMS resolves uploads
-                // to the managed storage for this slug.
+                // Link the agent to its asset site so the CMS resolves uploads to managed storage.
                 siteSlug,
                 previewServerUrl,
                 productionUrl: previewServerUrl,
@@ -304,24 +284,14 @@ export function ImportFromDecoDialog({
                   icon: projectIcon,
                   themeColor: "#22C55E",
                   slug,
-                  pinnedViews: [
-                    {
-                      connectionId: connId,
-                      toolName: "get_monitor_data",
-                      label: "Monitor",
-                      icon: null,
-                    },
-                  ],
+                  pinnedViews: null,
                   layout: {
                     defaultMainView: { type: "preview" },
                     chatDefaultOpen: false,
                   },
                 },
               },
-              connections: [
-                { connection_id: connId },
-                { connection_id: childConnectionId },
-              ],
+              connections: [{ connection_id: childConnectionId }],
             },
           },
         })) as { structuredContent?: unknown };
@@ -337,7 +307,6 @@ export function ImportFromDecoDialog({
         return {
           slug,
           virtualMcpId: payload.item.id,
-          connId,
           item: payload.item,
         };
       } catch (err) {

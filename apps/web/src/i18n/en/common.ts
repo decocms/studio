@@ -160,8 +160,8 @@ export const common = {
     "Failed to connect GitHub",
   "common.importFromDecoDialog.failedToCreateAgent":
     "Failed to create the imported agent",
-  "common.importFromDecoDialog.failedToCreateConnection":
-    "Failed to create connection",
+  "common.importFromDecoDialog.failedToPrepareImport":
+    "Failed to prepare deco.cx import",
   "common.importFromDecoDialog.githubNotConnected":
     "GitHub is not connected. Complete GitHub setup and try again.",
   "common.importFromDecoDialog.goBack": "Go back",
@@ -172,8 +172,6 @@ export const common = {
   "common.importFromDecoDialog.installGithubApp":
     'Install the GitHub App on the "{owner}" organization to import this site. {installUrl}',
   "common.importFromDecoDialog.loadingSites": "Loading sites...",
-  "common.importFromDecoDialog.noConnectionId":
-    "Server did not return a connection ID",
   "common.importFromDecoDialog.noSitesFound":
     "No sites found for this account.",
   "common.importFromDecoDialog.noSitesMatch": 'No sites match "{search}"',
