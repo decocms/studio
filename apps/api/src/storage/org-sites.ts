@@ -1,6 +1,6 @@
-import type { Kysely } from "kysely";
+import type { Kysely, Selectable } from "kysely";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
-import type { Database, OrgSite } from "./types";
+import type { Database, OrgSite, OrgSiteTable } from "./types";
 import type { OrgSiteStoragePort } from "./ports";
 
 /**
@@ -24,17 +24,7 @@ function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
-type OrgSiteRow = {
-  slug: string;
-  organization_id: string;
-  source: string;
-  created_by: string;
-  created_at: Date | string;
-  updated_by: string;
-  updated_at: Date | string;
-};
-
-function toEntity(row: OrgSiteRow): OrgSite {
+function toEntity(row: Selectable<OrgSiteTable>): OrgSite {
   return {
     slug: row.slug,
     organizationId: row.organization_id,
@@ -78,7 +68,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
       .returningAll()
       .executeTakeFirst();
 
-    if (inserted) return toEntity(inserted as OrgSiteRow);
+    if (inserted) return toEntity(inserted);
 
     // Slug already exists — only the owning org may re-claim (idempotent).
     const existing = await this.getBySlug(params.slug);
@@ -102,7 +92,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
       .returningAll()
       .executeTakeFirstOrThrow();
 
-    return toEntity(updated as OrgSiteRow);
+    return toEntity(updated);
   }
 
   async reassignSite(params: {
@@ -139,7 +129,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
       )
       .returningAll()
       .executeTakeFirstOrThrow();
-    return toEntity(row as OrgSiteRow);
+    return toEntity(row);
   }
 
   async releaseSite(slug: string, organizationId: string): Promise<boolean> {
@@ -157,7 +147,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
       .selectAll()
       .where("slug", "=", slug)
       .executeTakeFirst();
-    return row ? toEntity(row as OrgSiteRow) : null;
+    return row ? toEntity(row) : null;
   }
 
   async listByOrg(organizationId: string): Promise<OrgSite[]> {
@@ -167,7 +157,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
       .where("organization_id", "=", organizationId)
       .orderBy("slug", "asc")
       .execute();
-    return rows.map((row) => toEntity(row as OrgSiteRow));
+    return rows.map((row) => toEntity(row));
   }
 
   async isOwnedBy(slug: string, organizationId: string): Promise<boolean> {
