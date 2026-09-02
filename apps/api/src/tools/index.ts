@@ -251,6 +251,7 @@ export const CORE_TOOLS = [
   GitHubTools.GITHUB_SEARCH_BRANCHES,
   GitHubTools.GITHUB_PR_STATE,
   GitHubTools.GITHUB_LAST_PUBLISHED_PR,
+  GitHubTools.GITHUB_DELETE_BRANCH,
 
   // Link tools
 

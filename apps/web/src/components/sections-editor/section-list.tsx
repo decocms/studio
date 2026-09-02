@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useIsReadOnly } from "./fields/read-only-context";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Copy01,
@@ -247,6 +248,7 @@ function SortableSectionItem({
   const isHidden = section.isHidden === true;
   const reserveActionButtonSpace = isAsyncRender || isHidden;
   const enableAddVariant = canAddSectionVariant(section);
+  const readOnly = useIsReadOnly();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
       id: sortableId,
@@ -266,8 +268,8 @@ function SortableSectionItem({
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...(readOnly ? {} : attributes)}
+      {...(readOnly ? {} : listeners)}
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -285,7 +287,7 @@ function SortableSectionItem({
     >
       <SectionRowContent section={section} raw={raw} meta={meta} />
 
-      {!section.isMultivariate && (
+      {!readOnly && !section.isMultivariate && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -331,6 +333,7 @@ function SortableSectionItem({
             type="button"
             variant="ghost"
             size="icon"
+            disabled={readOnly}
             aria-label={
               isHidden
                 ? t("sectionsEditor.sectionList.showSection")
@@ -365,6 +368,7 @@ function SortableSectionItem({
             type="button"
             variant="ghost"
             size="icon"
+            disabled={readOnly}
             aria-label={t("sectionsEditor.sectionList.sectionActionsMenu")}
             className={cn(
               actionButtonVisibilityClass(reserveActionButtonSpace, false),
@@ -475,6 +479,7 @@ export function SectionList({
   canAddSection?: boolean;
 }) {
   const t = useT();
+  const readOnly = useIsReadOnly();
   const [entries, setEntries] = useState<SectionEntry[]>(() =>
     createEntries(sections.length),
   );
@@ -632,7 +637,7 @@ export function SectionList({
         variant="outline"
         size="sm"
         className="mt-2 w-full"
-        disabled={!canAddSection}
+        disabled={readOnly || !canAddSection}
         onClick={onAddSection}
       >
         <Plus size={14} />

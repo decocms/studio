@@ -659,6 +659,39 @@ const previewServerUrlMetadataField = z
   );
 
 /**
+ * A named, color-coded release: a working version of the site backed by a git
+ * branch. `metadata.releases` is a curated, user-managed list — NOT the full
+ * git branch list — so the switcher shows only versions people named, never
+ * every branch. The base branch renders as "No ar" and is never stored here;
+ * the branch stays the content source of truth while name + color are Studio's.
+ */
+export const ReleaseSchema = z.object({
+  branch: z.string().describe("Git branch backing this release"),
+  name: z.string().describe('User-facing name, e.g. "Black Friday 2026"'),
+  color: z.string().describe("Dot color token shown in the version switcher"),
+  createdBy: z.string().optional().describe("User ID who created the release"),
+  createdAt: z.string().optional().describe("ISO 8601 creation timestamp"),
+});
+
+export type Release = z.infer<typeof ReleaseSchema>;
+
+const releasesMetadataField = z
+  .array(ReleaseSchema)
+  .nullable()
+  .optional()
+  .describe(
+    "Curated list of named, branch-backed releases shown in the version switcher. The base branch ('No ar') is derived, not stored here.",
+  );
+
+const draftsModeMetadataField = z
+  .boolean()
+  .nullable()
+  .optional()
+  .describe(
+    "Draft & Releases mode: gates the drafts UX (releases switcher, read-only production, publish-to-production). Off (default) keeps the classic branch/PR picker and post-publish behavior.",
+  );
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -744,6 +777,8 @@ export const VirtualMCPEntitySchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      releases: releasesMetadataField,
+      draftsMode: draftsModeMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -856,6 +891,8 @@ export const VirtualMCPCreateDataSchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      releases: releasesMetadataField,
+      draftsMode: draftsModeMetadataField,
     })
     .loose()
     .superRefine((metadata, ctx) => {
@@ -958,6 +995,8 @@ export const VirtualMCPUpdateDataSchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      releases: releasesMetadataField,
+      draftsMode: draftsModeMetadataField,
     })
     .loose()
     .superRefine((metadata, ctx) => {

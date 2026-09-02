@@ -8,6 +8,18 @@ export const thread = {
   "thread.branchPicker.couldntLoadPullRequests":
     "Não foi possível carregar pull requests do GitHub.",
   "thread.branchPicker.createBranch": 'Criar "{name}"',
+  "thread.branchPicker.advanced": "Avançado",
+  "thread.branchPicker.advancedBack": "Voltar",
+  "thread.branchPicker.defaultVersionName": "Rascunho",
+  "thread.branchPicker.delete": "Descartar",
+  "thread.branchPicker.deleteConfirm":
+    'Descartar "{name}"? Isso não pode ser desfeito.',
+  "thread.branchPicker.live": "Produção",
+  "thread.branchPicker.moreActions": "Mais ações",
+  "thread.branchPicker.newVersion": "Novo Rascunho",
+  "thread.branchPicker.rename": "Renomear",
+  "thread.branchPicker.save": "Salvar",
+  "thread.branchPicker.selectVersion": "Selecione uma versão",
   "thread.branchPicker.newChatHint":
     "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",
   "thread.branchPicker.hiddenForkPrs":

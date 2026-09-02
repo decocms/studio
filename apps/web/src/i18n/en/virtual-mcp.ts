@@ -198,6 +198,9 @@ Define step-by-step how the agent should handle requests.
 3. Summarize the result and propose next steps.
 4. Ask for confirmation before making any changes.
 </workflows>`,
+  "virtualMcp.virtualMcp.draftsModeTitle": "Draft & Releases mode",
+  "virtualMcp.virtualMcp.draftsModeDescription":
+    "Replace the branch/PR picker with named drafts: a releases switcher, read-only production, and publish-to-production.",
   "virtualMcp.virtualMcp.publishing": "Publishing",
   "virtualMcp.virtualMcp.publishingDescription":
     "Control when this agent's changes can be published directly, skipping pull-request review.",

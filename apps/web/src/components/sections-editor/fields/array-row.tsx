@@ -22,6 +22,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
+import { useIsReadOnly } from "./read-only-context";
 
 // Width/margin snap instantly (no visible slide) while opacity does the
 // actual animating. On reveal the snap has no delay, so the button is
@@ -107,6 +108,7 @@ export function SortableArrayRow({
   onRemove: () => void;
 }) {
   const t = useT();
+  const readOnly = useIsReadOnly();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
       id: sortableId,
@@ -124,8 +126,8 @@ export function SortableArrayRow({
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...(readOnly ? {} : attributes)}
+      {...(readOnly ? {} : listeners)}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -165,6 +167,7 @@ export function SortableArrayRow({
               type="button"
               variant="ghost"
               size="icon"
+              disabled={readOnly}
               aria-label={
                 hidden
                   ? t("sectionsEditor.arrayField.showItem")
@@ -195,6 +198,7 @@ export function SortableArrayRow({
             type="button"
             variant="ghost"
             size="icon"
+            disabled={readOnly}
             aria-label={t("sectionsEditor.arrayField.openActionsFor", {
               label: labelText,
             })}

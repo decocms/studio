@@ -168,6 +168,8 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.secretNamePlaceholder": "Secret name",
   "sectionsEditor.secretField.secretValuePlaceholder": "Secret value",
   "sectionsEditor.secretField.storedSecretMessage": "A secret value is stored.",
+  "sectionsEditor.readOnlyFieldTooltip":
+    "Production is read-only. Start a new draft to edit.",
   "sectionsEditor.sectionList.addSectionButton": "Add section",
   "sectionsEditor.sectionList.addVariantMenuItem": "Add variant",
   "sectionsEditor.sectionList.deleteMenuItem": "Delete",

@@ -2130,6 +2130,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2317,6 +2328,17 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              releases?:
+                | {
+                    branch: string;
+                    name: string;
+                    color: string;
+                    createdBy?: string | undefined;
+                    createdAt?: string | undefined;
+                  }[]
+                | null
+                | undefined;
+              draftsMode?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -2489,6 +2511,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2677,6 +2710,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2856,6 +2900,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -3008,6 +3063,17 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              releases?:
+                | {
+                    branch: string;
+                    name: string;
+                    color: string;
+                    createdBy?: string | undefined;
+                    createdAt?: string | undefined;
+                  }[]
+                | null
+                | undefined;
+              draftsMode?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -3188,6 +3254,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -3365,6 +3442,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -4399,6 +4487,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -7140,6 +7239,15 @@ export interface StudioToolIO {
         author: string;
       } | null;
     };
+  };
+  GITHUB_DELETE_BRANCH: {
+    input: {
+      connectionId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+    };
+    output: { deleted: boolean };
   };
   GLOBAL_SEARCH: {
     input: {

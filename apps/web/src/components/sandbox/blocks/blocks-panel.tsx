@@ -1,6 +1,11 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, type ReactNode } from "react";
 import { Loading01 } from "@untitledui/icons";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
+import {
+  draftsModeEnabled,
+  useIsOnProduction,
+} from "@/components/thread/github/use-version-gate";
+import { ReadOnlyPane } from "@/components/sections-editor/fields/read-only-pane";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
@@ -50,6 +55,9 @@ export function BlocksPanel({
 }) {
   const { org } = useProjectContext();
   const { currentBranch, taskId } = useChatTask();
+  const readOnlyVm = useVirtualMCP(virtualMcpId);
+  const isOnProduction = useIsOnProduction(readOnlyVm, currentBranch);
+  const readOnly = draftsModeEnabled(readOnlyVm) && isOnProduction;
   const sandboxEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
   const workspace = useBlocksPreviewWorkspace();
@@ -95,6 +103,15 @@ export function BlocksPanel({
     return <BlocksErrorState source={state.source} onRetry={retry} />;
   }
 
+  // On production the editor stays visible but read-only per widget.
+  const gateReadOnly = (children: ReactNode) => (
+    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
+      <ReadOnlyPane readOnly={readOnly} className="h-full min-h-0">
+        {children}
+      </ReadOnlyPane>
+    </div>
+  );
+
   // Blocks edits whatever page its sibling Preview canvas is on. The shared
   // workspace target is published by Preview; when Preview hasn't run yet,
   // fall back to the last visited page persisted for this project + branch.
@@ -102,21 +119,16 @@ export function BlocksPanel({
 
   // Loaders have their own editor (form + Run), not the sections editor.
   if (target?.kind === "loader" && decofile.data && meta.data) {
-    return (
-      <div
-        data-testid="blocks-panel"
-        className="h-full min-h-0 overflow-hidden"
-      >
-        <GlobalLoaderEditor
-          orgSlug={org.slug}
-          virtualMcpId={virtualMcpId}
-          branch={currentBranch ?? ""}
-          previewUrl={previewUrl ?? null}
-          meta={meta.data}
-          decofile={decofile.data}
-          blockKey={target.key}
-        />
-      </div>
+    return gateReadOnly(
+      <GlobalLoaderEditor
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? ""}
+        previewUrl={previewUrl ?? null}
+        meta={meta.data}
+        decofile={decofile.data}
+        blockKey={target.key}
+      />,
     );
   }
 
@@ -146,38 +158,33 @@ export function BlocksPanel({
       ? `section:${activeGlobalBlockKey}`
       : `path:${currentPath}`;
 
-  return (
-    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
-      <Suspense
-        fallback={
-          <div className="h-full flex items-center justify-center">
-            <Loading01
-              size={20}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
+  return gateReadOnly(
+    <Suspense
+      fallback={
+        <div className="h-full flex items-center justify-center">
+          <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <SectionsEditor
+        key={editorKey}
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? ""}
+        previewReady
+        previewUrl={previewUrl ?? undefined}
+        currentPath={currentPath}
+        activePageBlockKey={activePageBlockKey}
+        activeGlobalBlockKey={activeGlobalBlockKey}
+        externalSelection={activeGlobalBlockKey ? null : externalSelection}
+        initialEditSeo={
+          !!activePageBlockKey &&
+          workspace.state.editSeoPageKey === activePageBlockKey
         }
-      >
-        <SectionsEditor
-          key={editorKey}
-          orgSlug={org.slug}
-          virtualMcpId={virtualMcpId}
-          branch={currentBranch ?? ""}
-          previewReady
-          previewUrl={previewUrl ?? undefined}
-          currentPath={currentPath}
-          activePageBlockKey={activePageBlockKey}
-          activeGlobalBlockKey={activeGlobalBlockKey}
-          externalSelection={activeGlobalBlockKey ? null : externalSelection}
-          initialEditSeo={
-            !!activePageBlockKey &&
-            workspace.state.editSeoPageKey === activePageBlockKey
-          }
-          onExitSeo={workspace.consumeEditSeo}
-          onVariantPreviewOverride={workspace.setVariantOverride}
-          onViewJsonFile={onViewJsonFile}
-        />
-      </Suspense>
-    </div>
+        onExitSeo={workspace.consumeEditSeo}
+        onVariantPreviewOverride={workspace.setVariantOverride}
+        onViewJsonFile={onViewJsonFile}
+      />
+    </Suspense>,
   );
 }

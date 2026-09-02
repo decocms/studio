@@ -91,7 +91,7 @@ export function unwrapGraphqlData<T>(
  * caller-supplied, so it is re-read scoped to the authenticated org before its
  * credential is used — no cross-org token reads (as GITHUB_LIST_USER_ORGS does).
  */
-async function resolveGithubConnection(
+export async function resolveGithubConnection(
   ctx: StudioContext,
   connectionId: string,
 ) {

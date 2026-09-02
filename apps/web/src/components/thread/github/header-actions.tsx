@@ -25,6 +25,8 @@ import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { squashMergePullRequest } from "./github-pr-api.ts";
+import { useReleases } from "./use-releases";
+import { draftsModeEnabled } from "./use-version-gate";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
   isPrStateActivelyLoading,
@@ -135,6 +137,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
+  const { deleteRelease } = useReleases(virtualMcpId);
   const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
@@ -333,6 +336,14 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const switchToFreshBranch = async () => {
+    if (draftsModeEnabled(vm)) {
+      const published = branch;
+      await setCurrentTaskBranch(baseBranch);
+      if (published && published !== baseBranch) {
+        await deleteRelease(published);
+      }
+      return;
+    }
     const nextBranch = generateBranchName(branchUserLabel(session?.user));
     await setCurrentTaskBranch(nextBranch);
   };

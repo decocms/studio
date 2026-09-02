@@ -85,6 +85,7 @@ import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
+import { DraftsModeField } from "./drafts-mode-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 
 type DialogState = {
@@ -1092,6 +1093,10 @@ function VirtualMcpDetailViewWithData({
                   <>
                     <CardContent className="p-0 space-y-5">
                       <ContentEditingField
+                        control={form.control}
+                        onCommit={flushAndSave}
+                      />
+                      <DraftsModeField
                         control={form.control}
                         onCommit={flushAndSave}
                       />
