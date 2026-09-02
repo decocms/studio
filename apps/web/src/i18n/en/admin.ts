@@ -55,6 +55,27 @@ export const admin = {
   "admin.orgs.save": "Save",
   "admin.orgs.saving": "Saving...",
   "admin.orgs.searchPlaceholder": "Search organizations by name or slug...",
+  "admin.orgs.anotherOrg": "another organization",
+  "admin.orgs.close": "Close",
+  "admin.orgs.failedAddSite": "Failed to add site",
+  "admin.orgs.failedLoadSites": "Failed to load sites",
+  "admin.orgs.failedRemoveSite": "Failed to remove site",
+  "admin.orgs.invalidSiteSlug":
+    "Use lowercase letters, digits and hyphens (e.g. my-site)",
+  "admin.orgs.loading": "Loading...",
+  "admin.orgs.noSites": "This organization owns no sites.",
+  "admin.orgs.reassignConfirm": "Move site here",
+  "admin.orgs.remove": "Remove",
+  "admin.orgs.siteAdded": "Added {slug} to {org}",
+  "admin.orgs.siteReassigned": "Moved {slug} to {org}",
+  "admin.orgs.siteReassignWarning":
+    '"{slug}" belongs to {owner} and will be moved to this organization.',
+  "admin.orgs.siteRemoved": "Removed {slug} from {org}",
+  "admin.orgs.siteSlugPlaceholder": "my-site",
+  "admin.orgs.sites": "Sites",
+  "admin.orgs.sitesDescription":
+    "Slugs this organization owns. Owning a slug enables its Hosting, E2E, Analytics and Monitor tabs.",
+  "admin.orgs.sitesFor": "Site ownership for {org}",
   "admin.prompts.description":
     "These prompts are hardcoded in {repo}. Edits here are read from {branch} and committed back as a pull request, using the GitHub connection of your {org} organization.",
   "admin.prompts.failedToLoadDescription":

@@ -33,6 +33,7 @@ import {
   type OrgFlags,
   OrgFlagsSchema,
 } from "@decocms/shared/organization/schema";
+import { SITE_SLUG_RE } from "@decocms/shared/site-slug";
 import { adminFetch } from "@/lib/admin-fetch";
 import { formatDate } from "@/lib/format-time";
 import { KEYS } from "@/lib/query-keys";
@@ -406,6 +407,281 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
   );
 }
 
+interface AdminOrgSite {
+  slug: string;
+  source: string;
+}
+
+/** Thrown from the add mutation on 409, carrying the current owner for the warning. */
+class SiteConflictError extends Error {
+  constructor(
+    readonly slug: string,
+    readonly ownerName: string | null,
+    readonly ownerSlug: string | null,
+  ) {
+    super("owned_by_other_org");
+    this.name = "SiteConflictError";
+  }
+}
+
+function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [newSlug, setNewSlug] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{
+    slug: string;
+    ownerName: string | null;
+    ownerSlug: string | null;
+  } | null>(null);
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: KEYS.deploymentAdminOrgSites(org.id),
+    queryFn: () =>
+      adminFetch<{ sites: AdminOrgSite[] }>(`/api/_admin/orgs/${org.id}/sites`),
+    enabled: open,
+  });
+  const sites = data?.sites ?? [];
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({
+      queryKey: KEYS.deploymentAdminOrgSites(org.id),
+    });
+
+  const addMutation = useMutation({
+    mutationFn: async (vars: { slug: string; reassign?: boolean }) => {
+      // Raw fetch (not adminFetch) so the 409 body's owner fields survive.
+      const res = await fetch(`/api/_admin/orgs/${org.id}/sites`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vars),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        ownerOrganizationName?: string | null;
+        ownerOrganizationSlug?: string | null;
+      };
+      if (res.status === 409 && body.error === "owned_by_other_org") {
+        throw new SiteConflictError(
+          vars.slug,
+          body.ownerOrganizationName ?? null,
+          body.ownerOrganizationSlug ?? null,
+        );
+      }
+      if (!res.ok) {
+        throw new Error(body.error || `Request failed (HTTP ${res.status})`);
+      }
+      return body;
+    },
+    onSuccess: (_result, vars) => {
+      toast.success(
+        vars.reassign
+          ? t("admin.orgs.siteReassigned", { slug: vars.slug, org: org.name })
+          : t("admin.orgs.siteAdded", { slug: vars.slug, org: org.name }),
+      );
+      invalidate();
+      setNewSlug("");
+      setAddError(null);
+      setConflict(null);
+    },
+    onError: (error) => {
+      if (error instanceof SiteConflictError) {
+        setConflict({
+          slug: error.slug,
+          ownerName: error.ownerName,
+          ownerSlug: error.ownerSlug,
+        });
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : t("admin.orgs.failedAddSite"),
+      );
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (slug: string) =>
+      adminFetch(
+        `/api/_admin/orgs/${org.id}/sites/${encodeURIComponent(slug)}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: (_result, slug) => {
+      toast.success(t("admin.orgs.siteRemoved", { slug, org: org.name }));
+      invalidate();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("admin.orgs.failedRemoveSite"),
+      );
+    },
+  });
+
+  const busy = addMutation.isPending || removeMutation.isPending;
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setNewSlug("");
+      setAddError(null);
+      setConflict(null);
+    }
+  };
+
+  const handleAdd = () => {
+    const slug = newSlug.trim().toLowerCase();
+    if (!SITE_SLUG_RE.test(slug)) {
+      setAddError(t("admin.orgs.invalidSiteSlug"));
+      return;
+    }
+    setAddError(null);
+    setConflict(null);
+    addMutation.mutate({ slug });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          {t("admin.orgs.sites")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {t("admin.orgs.sitesFor", { org: org.name })}
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          {t("admin.orgs.sitesDescription")}
+        </p>
+
+        {isError ? (
+          <p className="text-sm text-destructive">
+            {t("admin.orgs.failedLoadSites")}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("admin.orgs.loading")}
+                </p>
+              ) : sites.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("admin.orgs.noSites")}
+                </p>
+              ) : (
+                sites.map((site) => (
+                  <div
+                    key={site.slug}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border p-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <code className="truncate text-sm font-medium text-foreground">
+                        {site.slug}
+                      </code>
+                      <Badge variant="outline" size="default">
+                        {site.source}
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => removeMutation.mutate(site.slug)}
+                    >
+                      {t("admin.orgs.remove")}
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="space-y-1 border-t border-border pt-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={newSlug}
+                  placeholder={t("admin.orgs.siteSlugPlaceholder")}
+                  disabled={addMutation.isPending}
+                  onChange={(e) => {
+                    setNewSlug(e.target.value);
+                    setAddError(null);
+                    setConflict(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAdd();
+                  }}
+                  className="font-mono"
+                />
+                <Button
+                  variant="outline"
+                  disabled={!newSlug.trim() || addMutation.isPending}
+                  onClick={handleAdd}
+                >
+                  {t("admin.orgs.add")}
+                </Button>
+              </div>
+              {addError ? (
+                <p className="text-sm text-destructive">{addError}</p>
+              ) : null}
+              {conflict ? (
+                <div className="space-y-2 rounded-md border border-warning/50 bg-warning/10 p-3">
+                  <p className="text-sm text-foreground">
+                    {t("admin.orgs.siteReassignWarning", {
+                      slug: conflict.slug,
+                      owner:
+                        conflict.ownerName ||
+                        conflict.ownerSlug ||
+                        t("admin.orgs.anotherOrg"),
+                    })}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={addMutation.isPending}
+                      onClick={() => setConflict(null)}
+                    >
+                      {t("admin.orgs.cancel")}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={addMutation.isPending}
+                      onClick={() =>
+                        addMutation.mutate({
+                          slug: conflict.slug,
+                          reassign: true,
+                        })
+                      }
+                    >
+                      {t("admin.orgs.reassignConfirm")}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            disabled={busy}
+          >
+            {t("admin.orgs.close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -564,10 +840,11 @@ export default function AdminOrgsPage() {
       render: (org) => (
         <div className="flex items-center justify-end gap-2">
           <FlagsDialog org={org} />
+          <SitesDialog org={org} />
           <AddMemberDialog org={org} />
         </div>
       ),
-      cellClassName: "w-48 shrink-0",
+      cellClassName: "w-auto shrink-0",
     },
   ];
 
