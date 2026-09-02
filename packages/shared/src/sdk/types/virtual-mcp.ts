@@ -710,6 +710,75 @@ const draftsModeMetadataField = z
   );
 
 /**
+ * Shared metadata definition for VirtualMCP entity. Used in VirtualMCPEntitySchema,
+ * VirtualMCPCreateDataSchema, and VirtualMCPUpdateDataSchema to avoid duplication.
+ * Note: instructions is optional here; VirtualMCPEntitySchema makes it required.
+ */
+const VirtualMcpMetadataFields = {
+  instructions: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Instructions also used as system prompt"),
+  enabled_plugins: z
+    .array(z.string())
+    .nullable()
+    .optional()
+    .describe("List of enabled plugin IDs"),
+  subAgents: z
+    .array(z.string())
+    .nullable()
+    .optional()
+    .describe(
+      "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
+    ),
+  liveAgentId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
+    ),
+  ui: VirtualMcpUISchema.nullable()
+    .optional()
+    .describe("UI customization settings"),
+  githubRepo: GithubRepoSchema.nullable()
+    .optional()
+    .describe("Linked GitHub repository"),
+  runtime: RuntimeMetadataSchema.nullable()
+    .optional()
+    .describe(
+      "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
+    ),
+  knowledge: knowledgeMetadataField,
+  siteSlug: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Linked asset site slug (managed storage tenancy)"),
+  publishPolicy: publishPolicyMetadataField,
+  previewServerUrl: previewServerUrlMetadataField,
+  productionUrl: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
+    ),
+  fieldDescriptionTooltips: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
+    ),
+  fastPreview: fastPreviewMetadataField,
+  releases: releasesMetadataField,
+  draftsMode: draftsModeMetadataField,
+  fastPreviewInPlace: fastPreviewInPlaceMetadataField,
+} as const satisfies z.ZodRawShape;
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -732,72 +801,16 @@ export const VirtualMCPEntitySchema = z.object({
   status: z.enum(["active", "inactive"]).describe("Current status"),
   pinned: z.boolean().describe("Whether this space is pinned to the sidebar"),
   // Metadata (stored in connections.metadata)
-  // Normalize null/undefined to { instructions: null } for consistent form tracking
   metadata: z
-    .object({
+    .object(VirtualMcpMetadataFields)
+    .extend({
       instructions: z
         .string()
         .nullable()
         .describe("Instructions also used as system prompt"),
-      enabled_plugins: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-      subAgents: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe(
-          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
-        ),
-      liveAgentId: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-        ),
-      ui: VirtualMcpUISchema.nullable()
-        .optional()
-        .describe("UI customization settings"),
-      githubRepo: GithubRepoSchema.nullable()
-        .optional()
-        .describe("Linked GitHub repository"),
-      runtime: RuntimeMetadataSchema.nullable()
-        .optional()
-        .describe(
-          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
-        ),
       sandboxMap: SandboxMapSchema.optional().describe(
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
-      knowledge: knowledgeMetadataField,
-      siteSlug: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Linked asset site slug (managed storage tenancy)"),
-      publishPolicy: publishPolicyMetadataField,
-      previewServerUrl: previewServerUrlMetadataField,
-      productionUrl: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
-        ),
-      fieldDescriptionTooltips: z
-        .boolean()
-        .nullable()
-        .optional()
-        .describe(
-          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-        ),
-      fastPreview: fastPreviewMetadataField,
-      releases: releasesMetadataField,
-      draftsMode: draftsModeMetadataField,
-      fastPreviewInPlace: fastPreviewInPlaceMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -851,69 +864,7 @@ export const VirtualMCPCreateDataSchema = z.object({
     .describe("Initial status"),
   pinned: z.boolean().optional().default(false).describe("Pin to sidebar"),
   metadata: z
-    .object({
-      instructions: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("MCP server instructions"),
-      enabled_plugins: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-      subAgents: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe(
-          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
-        ),
-      liveAgentId: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-        ),
-      ui: VirtualMcpUISchema.nullable()
-        .optional()
-        .describe("UI customization settings"),
-      githubRepo: GithubRepoSchema.nullable()
-        .optional()
-        .describe("Linked GitHub repository"),
-      runtime: RuntimeMetadataSchema.nullable()
-        .optional()
-        .describe(
-          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
-        ),
-      knowledge: knowledgeMetadataField,
-      siteSlug: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Linked asset site slug (managed storage tenancy)"),
-      publishPolicy: publishPolicyMetadataField,
-      previewServerUrl: previewServerUrlMetadataField,
-      productionUrl: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
-        ),
-      fieldDescriptionTooltips: z
-        .boolean()
-        .nullable()
-        .optional()
-        .describe(
-          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-        ),
-      fastPreview: fastPreviewMetadataField,
-      releases: releasesMetadataField,
-      draftsMode: draftsModeMetadataField,
-      fastPreviewInPlace: fastPreviewInPlaceMetadataField,
-    })
+    .object(VirtualMcpMetadataFields)
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {
@@ -956,69 +907,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
   status: z.enum(["active", "inactive"]).optional().describe("New status"),
   pinned: z.boolean().optional().describe("Pin/unpin from sidebar"),
   metadata: z
-    .object({
-      instructions: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("MCP server instructions"),
-      enabled_plugins: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-      subAgents: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe(
-          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
-        ),
-      liveAgentId: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-        ),
-      ui: VirtualMcpUISchema.nullable()
-        .optional()
-        .describe("UI customization settings"),
-      githubRepo: GithubRepoSchema.nullable()
-        .optional()
-        .describe("Linked GitHub repository"),
-      runtime: RuntimeMetadataSchema.nullable()
-        .optional()
-        .describe(
-          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
-        ),
-      knowledge: knowledgeMetadataField,
-      siteSlug: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Linked asset site slug (managed storage tenancy)"),
-      publishPolicy: publishPolicyMetadataField,
-      previewServerUrl: previewServerUrlMetadataField,
-      productionUrl: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
-        ),
-      fieldDescriptionTooltips: z
-        .boolean()
-        .nullable()
-        .optional()
-        .describe(
-          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-        ),
-      fastPreview: fastPreviewMetadataField,
-      releases: releasesMetadataField,
-      draftsMode: draftsModeMetadataField,
-      fastPreviewInPlace: fastPreviewInPlaceMetadataField,
-    })
+    .object(VirtualMcpMetadataFields)
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {
