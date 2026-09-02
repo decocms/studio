@@ -2,7 +2,8 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { useChatStream } from "@/components/chat/context";
+import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
+import { useBaseBranch } from "@/components/thread/github/use-version-gate";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -370,6 +371,12 @@ function VirtualMcpDetailViewWithData({
   const [isImproving, setIsImproving] = useState(false);
   const { createNewTask, openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
+  // Enabling Draft & Releases mode lands the thread on production (the base).
+  const draftsTaskCtx = useOptionalChatTask();
+  const draftsBaseBranch = useBaseBranch(
+    virtualMcp,
+    draftsTaskCtx?.currentBranch ?? null,
+  );
 
   const handleImprovePrompt = async () => {
     if (isImproving) return;
@@ -1100,6 +1107,9 @@ function VirtualMcpDetailViewWithData({
                       <DraftsModeField
                         control={form.control}
                         onCommit={flushAndSave}
+                        onEnable={() =>
+                          draftsTaskCtx?.setCurrentTaskBranch(draftsBaseBranch)
+                        }
                       />
                       {/* Blocks-form preference — nothing to tune with the CMS off. */}
                       {!cmsOff && (

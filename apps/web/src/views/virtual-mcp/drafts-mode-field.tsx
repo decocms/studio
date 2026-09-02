@@ -17,11 +17,14 @@ export interface DraftsModeFieldProps<T extends FieldValues> {
   control: Control<T>;
   /** Settings auto-save on change — persist immediately (blur-equivalent). */
   onCommit: () => void;
+  /** Fired when the toggle is switched on — the caller lands on production. */
+  onEnable?: () => void;
 }
 
 export function DraftsModeField<T extends FieldValues>({
   control,
   onCommit,
+  onEnable,
 }: DraftsModeFieldProps<T>) {
   const t = useT();
   return (
@@ -47,6 +50,7 @@ export function DraftsModeField<T extends FieldValues>({
             onCheckedChange={(checked) => {
               field.onChange(checked);
               onCommit();
+              if (checked) onEnable?.();
             }}
           />
         </div>
