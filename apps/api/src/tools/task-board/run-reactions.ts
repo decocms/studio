@@ -417,7 +417,7 @@ export async function reactToFailedTaskRun(
           .relabelDeliveredFailure(threadId, orgId, DELIVERED_FAILURE_REASON)
           .catch(() => {});
       }
-      if (item.status !== "in_progress") continue;
+      if (item.status !== lanes.progress) continue;
       // A REVIEWER's run failed, not the author's: the card is In Progress only
       // because that is where a card under review sits now. Retrying it here
       // would dispatch a fresh Super Agent run over a PR that is waiting for a

@@ -322,4 +322,11 @@ describe("reactToFailedTaskRun on a card that already moved on", () => {
     await reactToFailedTaskRun(taskBoard, "thr-1", "org-1", CANON_LANES);
     expect(calls).toEqual(["retry"]);
   });
+
+  it("retries a card mid-work on an org-owned board whose progress column isn't named 'in_progress'", async () => {
+    const orgLanes = { ...CANON_LANES, progress: "col-doing" };
+    const { taskBoard, calls } = fakeBoard("col-doing");
+    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1", orgLanes);
+    expect(calls).toEqual(["retry"]);
+  });
 });
