@@ -92,6 +92,11 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       }
     }
 
+    // A thread pinned to this connection as its repo would be stranded — same case VIRTUAL_MCP_DELETE guards.
+    if (await ctx.storage.connections.isReferencedByThread(input.id)) {
+      throw new Error(JSON.stringify({ code: "CONNECTION_IN_USE_BY_THREAD" }));
+    }
+
     // Delete connection
     await ctx.storage.connections.delete(input.id);
 
