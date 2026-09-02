@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { probeDaemonHealth, proxyDaemonRequest } from "./daemon-client";
+import {
+  postConfig,
+  postOrgFsConfig,
+  probeDaemonHealth,
+  proxyDaemonRequest,
+} from "./daemon-client";
 
 type FetchCall = {
   input: string;
@@ -90,6 +95,22 @@ describe("probeDaemonHealth", () => {
         }),
     );
     expect(await probeDaemonHealth("http://daemon:9000")).toBeNull();
+  });
+});
+
+describe("malformed 2xx bodies", () => {
+  it("postConfig labels a malformed JSON body instead of a bare SyntaxError", async () => {
+    installFetch(() => new Response("<html>not json</html>", { status: 200 }));
+    await expect(
+      postConfig("http://daemon:9000", "tok", { env: {} } as never),
+    ).rejects.toThrow("/_sandbox/config returned a malformed JSON body");
+  });
+
+  it("postOrgFsConfig labels a malformed JSON body instead of a bare SyntaxError", async () => {
+    installFetch(() => new Response("not json", { status: 200 }));
+    await expect(
+      postOrgFsConfig("http://daemon:9000", "tok", "{}"),
+    ).rejects.toThrow("/_sandbox/orgfs-config returned a malformed JSON body");
   });
 });
 
