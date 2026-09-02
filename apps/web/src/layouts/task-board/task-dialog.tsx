@@ -439,7 +439,9 @@ function TaskBoardItemEditor({
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
     description: item?.description ?? "",
-    status: item?.status ?? defaultStatus ?? "triage",
+    // The board's leftmost column, not `"triage"`: a mirrored board has no such
+    // column and the server refuses the create.
+    status: item?.status ?? defaultStatus ?? columns[0]?.key ?? "triage",
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,

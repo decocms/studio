@@ -420,6 +420,23 @@ describe("a mirrored board answers with its own columns", () => {
     expect(Array.isArray(columns[0]?.trackerStatuses)).toBe(true);
   });
 
+  /**
+   * The case that reached production. A card created with no status fell
+   * through to storage's `"triage"` default, which is a column no mirrored
+   * board has — so the board could not create a card at all. `intake` is the
+   * answer every create path needs, and it is the leftmost column.
+   */
+  it("names an intake column a card can actually be born in", async () => {
+    await new BoardColumnStorage(database.db).replaceAll(ORG, [
+      { key: "Backlog", title: "Backlog", trackerStatuses: ["BACKLOG"] },
+      { key: "Fazendo", title: "Em Progresso", trackerStatuses: ["Fazendo"] },
+    ]);
+    const lanes = await board().lanes();
+    expect(lanes.intake).toBe("Backlog");
+    // Not one of Studio's names, which is the whole point.
+    expect(lanes.intake).not.toBe("triage");
+  });
+
   /** A board nothing has been mirrored onto cannot say where a card is born,
    *  and inventing an answer would strand whatever is created next. */
   it("refuses to invent an intake column for an empty board", async () => {
