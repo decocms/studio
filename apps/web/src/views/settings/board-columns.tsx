@@ -65,6 +65,10 @@ import { laneHeader } from "@/layouts/task-board/config";
 /** Nothing moves a card here on its own. */
 const NO_TRIGGER = "__none__";
 
+/** The queue lane: where a card waits UNASSIGNED, and so the lane whose rule
+ *  actually delegates it. See {@link BoardColumnCard}. */
+const PROMPT_COLUMN_ROLE = "todo";
+
 /** Each role, named by the moment Studio detects. Ordered the way work flows,
  *  so the list reads as a sequence. */
 const TRIGGERS: { value: string; labelKey: TranslationKey }[] = [
@@ -149,6 +153,7 @@ function BoardColumnRows({ showRole }: { showRole: boolean }) {
           title={
             showRole ? column.title : laneHeader(column.key, t, columns).label
           }
+          editsPrompt={column.role === PROMPT_COLUMN_ROLE}
           showRole={showRole}
           trigger={column.role}
           hasAutomation={promptOf.has(column.key)}
@@ -164,14 +169,19 @@ function BoardColumnRows({ showRole }: { showRole: boolean }) {
  * default prompt; the column is absent from `automations` when there is no rule
  * at all.
  *
- * Every column that CAN carry a rule shows the prompt: the engine delegates on
- * whichever column an unassigned card lands in (`runColumnAutomation`), and it
- * bails once the card is owned — so a rule on the queue lane is the one that
- * usually fires, and In Progress is normally reached already assigned.
+ * Only the QUEUE lane (`editsPrompt`) offers the rule and its prompt. That is
+ * where a card waits unassigned, so it is the rule that actually delegates:
+ * `runColumnAutomation` bails once a card is owned, and every later lane —
+ * In Progress included — is reached already owned by the run it started.
+ *
+ * A rule already sitting on another column still shows, with its prompt and its
+ * remove button. The engine fires whatever rule it finds, so hiding one would
+ * leave a rule running that nobody could see or switch off.
  */
 function BoardColumnCard({
   columnKey,
   title,
+  editsPrompt,
   showRole,
   trigger,
   hasAutomation,
@@ -179,6 +189,7 @@ function BoardColumnCard({
 }: {
   columnKey: string;
   title: string;
+  editsPrompt: boolean;
   showRole: boolean;
   trigger: string | null;
   hasAutomation: boolean;
@@ -254,69 +265,80 @@ function BoardColumnCard({
               <Trash01 size={14} />
             </Button>
           </div>
-          <Textarea
-            value={draft}
-            rows={10}
-            className="font-mono text-xs"
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => {
-              if (draft !== saved) saveAutomation(draft);
-            }}
-            data-column-automation-prompt={columnKey}
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("settings.boardColumns.promptHelp")}
-          </p>
-          <ul className="flex flex-col gap-0.5">
-            {TASK_INITIAL_PROMPT_VAR_NAMES.map((name) => (
-              <li
-                key={name}
-                className="flex gap-2 text-xs text-muted-foreground"
+          {!editsPrompt && prompt && (
+            <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+              {prompt}
+            </p>
+          )}
+          {editsPrompt && (
+            <>
+              <Textarea
+                value={draft}
+                rows={10}
+                className="font-mono text-xs"
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => {
+                  if (draft !== saved) saveAutomation(draft);
+                }}
+                data-column-automation-prompt={columnKey}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("settings.boardColumns.promptHelp")}
+              </p>
+              <ul className="flex flex-col gap-0.5">
+                {TASK_INITIAL_PROMPT_VAR_NAMES.map((name) => (
+                  <li
+                    key={name}
+                    className="flex gap-2 text-xs text-muted-foreground"
+                  >
+                    <code className="shrink-0 font-mono text-foreground">
+                      {`{{${name}}}`}
+                    </code>
+                    <span>{t(`settings.boardColumns.var.${name}`)}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                // Resetting a stored override is a write (back to null);
+                // resetting an unsaved edit only discards it.
+                disabled={prompt === null && draft === saved}
+                // Keeps the textarea from blurring, whose autosave would
+                // otherwise write the draft this click is discarding.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (prompt === null) {
+                    setDraft(DEFAULT_TASK_INITIAL_PROMPT);
+                    return;
+                  }
+                  setAutomation.mutate(
+                    { columnKey, prompt: "" },
+                    {
+                      onSuccess: () => setDraft(DEFAULT_TASK_INITIAL_PROMPT),
+                      onError: failed,
+                    },
+                  );
+                }}
               >
-                <code className="shrink-0 font-mono text-foreground">
-                  {`{{${name}}}`}
-                </code>
-                <span>{t(`settings.boardColumns.var.${name}`)}</span>
-              </li>
-            ))}
-          </ul>
+                {t("settings.boardColumns.promptReset")}
+              </Button>
+            </>
+          )}
+        </div>
+      ) : (
+        editsPrompt && (
           <Button
             variant="outline"
             size="sm"
             className="w-fit"
-            // Resetting a stored override is a write (back to null);
-            // resetting an unsaved edit only discards it.
-            disabled={prompt === null && draft === saved}
-            // Keeps the textarea from blurring, whose autosave would
-            // otherwise write the draft this click is discarding.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              if (prompt === null) {
-                setDraft(DEFAULT_TASK_INITIAL_PROMPT);
-                return;
-              }
-              setAutomation.mutate(
-                { columnKey, prompt: "" },
-                {
-                  onSuccess: () => setDraft(DEFAULT_TASK_INITIAL_PROMPT),
-                  onError: failed,
-                },
-              );
-            }}
+            onClick={() => saveAutomation("")}
           >
-            {t("settings.boardColumns.promptReset")}
+            <Plus size={14} />
+            {t("settings.boardColumns.addAutomation")}
           </Button>
-        </div>
-      ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-fit"
-          onClick={() => saveAutomation("")}
-        >
-          <Plus size={14} />
-          {t("settings.boardColumns.addAutomation")}
-        </Button>
+        )
       )}
     </div>
   );
