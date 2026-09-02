@@ -114,7 +114,15 @@ export async function probeDaemonHealth(
     const res = await fetch(`${daemonUrl}/health`, {
       signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Drain the body to ensure connection cleanup even on non-2xx responses.
+      try {
+        await res.text();
+      } catch {
+        // Ignore drain errors; connection cleanup is best-effort.
+      }
+      return null;
+    }
     const body = (await res.json()) as Partial<DaemonHealth>;
     if (
       typeof body === "object" &&
