@@ -1068,6 +1068,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const sig = JSON.stringify({
       page: currentPageKey,
       path: resolvedPath,
+      pathTemplate: currentPath,
       decofile,
     });
     if (renderSigRef.current === sig) return;
