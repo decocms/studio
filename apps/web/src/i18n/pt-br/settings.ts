@@ -71,10 +71,6 @@ export const settings = {
   "settings.boardColumns.addAutomation":
     "Rodar o agente nos cards que chegarem aqui",
   "settings.boardColumns.automationOn": "O agente roda em todo card que chega",
-  "settings.boardColumns.promptPlaceholder":
-    "Revise o diff e deixe comentários…",
-  "settings.boardColumns.instructionHelp":
-    "O que o agente deve fazer com um card que chega aqui. O título e a descrição do card vão junto, então isto é a instrução, não a mensagem inteira.",
   "settings.boardColumns.promptHelp":
     "A mensagem inicial completa do run — é aqui que o trabalho do agente começa. Use estas variáveis para inserir os valores do card:",
   "settings.boardColumns.promptReset": "Restaurar padrão",

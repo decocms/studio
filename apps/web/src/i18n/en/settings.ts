@@ -69,10 +69,6 @@ export const settings = {
     "Run the agent on cards that arrive here",
   "settings.boardColumns.automationOn":
     "The agent runs on every card that arrives",
-  "settings.boardColumns.promptPlaceholder":
-    "Review the diff and leave comments…",
-  "settings.boardColumns.instructionHelp":
-    "What the agent should do with a card that lands here. The card's title and description come with it, so this is the instruction, not the whole message.",
   "settings.boardColumns.promptHelp":
     "The run's whole opening message — this is where agent work starts. Use these variables to drop in the card's own values:",
   "settings.boardColumns.promptReset": "Reset to default",
