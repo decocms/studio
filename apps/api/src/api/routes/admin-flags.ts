@@ -35,7 +35,7 @@ export type OrgFlagsPatch = z.infer<typeof OrgFlagsPatchSchema>;
  * already persisted on the org shows up even though the schema doesn't list it.
  */
 export function flagsResponse(stored: OrgFlags | null): {
-  flags: Record<string, boolean>;
+  flags: Record<string, unknown>;
   effective: Record<string, boolean>;
 } {
   const bag = (stored ?? {}) as Record<string, unknown>;
@@ -47,12 +47,8 @@ export function flagsResponse(stored: OrgFlags | null): {
   for (const key of keys) {
     effective[key] = orgFlagEnabled(bag, key as keyof OrgFlags);
   }
-  // Only boolean values are echoed: the jsonb can hold legacy non-boolean values
-  // written by hand, which PUT would reject — surfacing them would make the raw
-  // JSON editor unsaveable. `effective` still resolves them via orgFlagEnabled.
-  const flags: Record<string, boolean> = {};
-  for (const [key, value] of Object.entries(bag)) {
-    if (typeof value === "boolean") flags[key] = value;
-  }
-  return { flags, effective };
+  // Echoed verbatim, typed `unknown`: hand-written jsonb can hold a non-boolean
+  // that PUT rejects, and dropping it would silently delete it on the next
+  // replace. The admin sees it in the JSON editor and fixes it deliberately.
+  return { flags: bag, effective };
 }

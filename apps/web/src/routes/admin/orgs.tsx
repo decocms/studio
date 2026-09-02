@@ -47,7 +47,7 @@ interface DeploymentAdminOrg {
 }
 
 interface FlagsResponse {
-  flags: Record<string, boolean | undefined>;
+  flags: Record<string, unknown>;
   effective: Record<string, boolean>;
 }
 
@@ -162,20 +162,39 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
     setShowAdd(false);
   };
 
+  // Each view is rebuilt from the other on entry, so neither draft is lost.
   const enterJson = () => {
-    // Keep an existing draft so Toggles → JSON round-trips without losing edits.
-    if (jsonText) {
-      setJsonMode(true);
-      return;
-    }
-    const merged: Record<string, boolean> = {};
-    for (const [k, v] of Object.entries(stored)) {
-      if (typeof v === "boolean") merged[k] = v;
-    }
-    for (const [k, v] of Object.entries(overrides)) merged[k] = v;
+    const merged: Record<string, unknown> = { ...stored, ...overrides };
     setJsonText(JSON.stringify(merged, null, 2));
     setJsonError(null);
     setJsonMode(true);
+  };
+
+  const enterToggles = () => {
+    const parsed = parseJsonDraft();
+    if (parsed) {
+      setOverrides(parsed);
+      setJsonError(null);
+    }
+    setJsonMode(false);
+  };
+
+  /** The JSON draft as a flag bag, or null if it isn't a valid one. */
+  const parseJsonDraft = (): Record<string, boolean> | null => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return null;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    for (const [k, v] of entries) {
+      if (!FLAG_KEY_RE.test(k) || typeof v !== "boolean") return null;
+    }
+    return Object.fromEntries(entries) as Record<string, boolean>;
   };
 
   const handleSaveToggles = () => {
@@ -191,29 +210,13 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
   };
 
   const handleSaveJson = () => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch {
+    const flags = parseJsonDraft();
+    if (!flags) {
       setJsonError(t("admin.orgs.invalidJson"));
       return;
-    }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      setJsonError(t("admin.orgs.invalidJson"));
-      return;
-    }
-    const entries = Object.entries(parsed as Record<string, unknown>);
-    for (const [k, v] of entries) {
-      if (!FLAG_KEY_RE.test(k) || typeof v !== "boolean") {
-        setJsonError(t("admin.orgs.invalidJson"));
-        return;
-      }
     }
     setJsonError(null);
-    mutation.mutate({
-      flags: Object.fromEntries(entries) as Record<string, boolean>,
-      mode: "replace",
-    });
+    mutation.mutate({ flags, mode: "replace" });
   };
 
   return (
@@ -238,7 +241,7 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
             <Button
               variant={jsonMode ? "outline" : "secondary"}
               size="sm"
-              onClick={() => setJsonMode(false)}
+              onClick={enterToggles}
               disabled={isError}
             >
               {t("admin.orgs.flagsViewToggles")}
@@ -279,7 +282,10 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
           <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
             {rows.map(({ key, description, defaultOn, known }) => {
               const checked = overrides[key] ?? effective[key] ?? false;
-              const isUnset = stored[key] === undefined;
+              const storedValue = stored[key];
+              const isUnset = storedValue === undefined;
+              const isInvalid =
+                storedValue !== undefined && typeof storedValue !== "boolean";
               return (
                 <div key={key} className="flex items-start gap-3">
                   <Switch
@@ -308,6 +314,11 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
                       {isUnset ? (
                         <Badge variant="outline" size="default">
                           {t("admin.orgs.flagUnset")}
+                        </Badge>
+                      ) : null}
+                      {isInvalid ? (
+                        <Badge variant="destructive" size="default">
+                          {t("admin.orgs.flagInvalid")}
                         </Badge>
                       ) : null}
                     </div>

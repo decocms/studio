@@ -30,6 +30,7 @@ export const admin = {
   "admin.orgs.failedSaveFlags": "Falha ao salvar flags",
   "admin.orgs.flagCustom": "Custom",
   "admin.orgs.flagDefaultOn": "Ligada por padrão",
+  "admin.orgs.flagInvalid": "Valor inválido",
   "admin.orgs.flagUnset": "Não definida",
   "admin.orgs.flags": "Flags",
   "admin.orgs.flagsDescription":

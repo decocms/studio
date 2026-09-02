@@ -18,14 +18,13 @@ describe("flagsResponse", () => {
     expect(flagsResponse(null).flags).toEqual({});
   });
 
-  it("drops non-boolean stored values from the raw echo", () => {
-    // Hand-written jsonb can hold garbage PUT would reject; echoing it would
-    // make the raw JSON editor unsaveable.
+  it("echoes a non-boolean stored value instead of dropping it", () => {
+    // Dropping it would silently delete it on the next replace.
     const { flags, effective } = flagsResponse({
       demo_mode: true,
       legacy: "yes",
     } as unknown as Parameters<typeof flagsResponse>[0]);
-    expect(flags).toEqual({ demo_mode: true });
+    expect(flags).toEqual({ demo_mode: true, legacy: "yes" });
     expect(effective.legacy).toBe(false);
   });
 

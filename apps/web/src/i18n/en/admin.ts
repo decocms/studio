@@ -28,6 +28,7 @@ export const admin = {
   "admin.orgs.failedSaveFlags": "Failed to save flags",
   "admin.orgs.flagCustom": "Custom",
   "admin.orgs.flagDefaultOn": "Default on",
+  "admin.orgs.flagInvalid": "Invalid value",
   "admin.orgs.flagUnset": "Unset",
   "admin.orgs.flags": "Flags",
   "admin.orgs.flagsDescription":
