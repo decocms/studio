@@ -1,11 +1,4 @@
-/**
- * E2E: POST /api/:org/deco-sites/connection must enforce the same
- * COLLECTION_CONNECTIONS_CREATE permission as the normal connection-create
- * tool. This route writes a connection row directly instead of going through
- * that tool's handler, so it previously had no permission check of its own —
- * a member on a custom role with connections:create revoked could still
- * create a connection through this deco.cx import flow.
- */
+/** E2E: POST /api/:org/deco-sites/prepare enforces COLLECTION_CONNECTIONS_CREATE — it writes org-scoped storage config directly, so a member whose role revokes connections:create must be denied (403). */
 
 import type { Client } from "pg";
 import { connectDevDb } from "../fixtures/db";
@@ -25,7 +18,7 @@ async function orgIdForSlug(db: Client, slug: string): Promise<string> {
   return id;
 }
 
-test.describe("deco-sites connection create — permission scope", () => {
+test.describe("deco-sites prepare — permission scope", () => {
   let db: Client;
 
   test.beforeAll(async () => {
@@ -95,7 +88,7 @@ test.describe("deco-sites connection create — permission scope", () => {
     ).toBe(true);
 
     const res = await memberCtx.post(
-      `/api/${encodeURIComponent(owner.orgSlug)}/deco-sites/connection`,
+      `/api/${encodeURIComponent(owner.orgSlug)}/deco-sites/prepare`,
       { data: { siteName: "some-site" } },
     );
     expect(res.status()).toBe(403);

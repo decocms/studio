@@ -14,8 +14,6 @@ import { Hono } from "hono";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
 import type { StudioContext } from "../../core/studio-context";
 import { getUserId, requireOrganization } from "../../core/studio-context";
-import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { fetchToolsFromMCP } from "../../tools/connection/fetch-tools";
 import { tenantStorageDescriptor } from "../../file-storage/tenant-credentials";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 
@@ -31,7 +29,6 @@ interface SupabaseSite {
 import {
   getDecoSupabaseConfig as getSupabaseConfig,
   supabaseGet,
-  supabasePost,
 } from "../../deco-legacy/supabase";
 
 async function resolveProfileId(
@@ -47,36 +44,6 @@ async function resolveProfileId(
   return profiles[0]?.user_id ?? null;
 }
 
-async function getOrCreateDecoApiKey(
-  supabaseUrl: string,
-  serviceKey: string,
-  profileId: string,
-): Promise<string> {
-  const existing = await supabaseGet<{ id: string }>(
-    supabaseUrl,
-    serviceKey,
-    `api_key?user_id=eq.${encodeURIComponent(profileId)}&select=id&limit=1`,
-  );
-  if (existing[0]?.id) {
-    return existing[0].id;
-  }
-
-  const created = await supabasePost<{ id: string }>(
-    supabaseUrl,
-    serviceKey,
-    "api_key",
-    { user_id: profileId },
-  );
-  return created.id;
-}
-
-const SERVICE_ACCOUNT_EMAIL_PREFIX = "deco-team-";
-const SERVICE_ACCOUNT_EMAIL_DOMAIN = "service.deco.cx";
-
-function serviceAccountEmail(teamId: number): string {
-  return `${SERVICE_ACCOUNT_EMAIL_PREFIX}${teamId}@${SERVICE_ACCOUNT_EMAIL_DOMAIN}`;
-}
-
 async function resolveTeamIdForSite(
   supabaseUrl: string,
   serviceKey: string,
@@ -90,173 +57,6 @@ async function resolveTeamIdForSite(
   return sites[0]?.team ?? null;
 }
 
-async function resolveSupabaseAuthUserIdByEmail(
-  supabaseUrl: string,
-  serviceKey: string,
-  email: string,
-): Promise<string | null> {
-  const res = await fetch(
-    `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(`email.eq.${email}`)}`,
-    {
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-      },
-    },
-  );
-  if (!res.ok) {
-    return null;
-  }
-  const data = (await res.json()) as { users?: Array<{ id: string }> };
-  return data.users?.[0]?.id ?? null;
-}
-
-/**
- * Creates a Supabase Auth user via the Admin API.
- * Returns the new user's `id` (UUID).
- */
-async function createSupabaseAuthUser(
-  supabaseUrl: string,
-  serviceKey: string,
-  email: string,
-): Promise<string> {
-  const res = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-    method: "POST",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      email_confirm: true,
-      app_metadata: {
-        studio_service_account: true,
-        // Compatibility marker consumed by older Deco infrastructure.
-        mesh_service_account: true,
-      },
-    }),
-  });
-  if (res.ok) {
-    const user = (await res.json()) as { id: string };
-    return user.id;
-  }
-
-  // Idempotent retry: a prior run may have created the auth user but failed
-  // before the profile/member rows were written.
-  if (res.status === 422 || res.status === 409) {
-    const existing = await resolveSupabaseAuthUserIdByEmail(
-      supabaseUrl,
-      serviceKey,
-      email,
-    );
-    if (existing) {
-      return existing;
-    }
-  }
-
-  const text = await res.text().catch(() => res.statusText);
-  console.error(
-    `[deco-sites] Auth admin create user error (${res.status}): ${text}`,
-  );
-  throw new Error(`Failed to create auth user (${res.status})`);
-}
-
-/**
- * Get or create a service account for the given deco.cx team.
- *
- * A service account is a Supabase auth user + profile + team member (owner role)
- * with its own API key. One service account is shared across all sites in the
- * same team.
- */
-async function getOrCreateTeamServiceAccount(
-  supabaseUrl: string,
-  serviceKey: string,
-  teamId: number,
-): Promise<string> {
-  const email = serviceAccountEmail(teamId);
-
-  const existingProfile = await supabaseGet<{ user_id: string }>(
-    supabaseUrl,
-    serviceKey,
-    `profiles?email=eq.${encodeURIComponent(email)}&select=user_id&limit=1`,
-  );
-
-  if (existingProfile[0]?.user_id) {
-    const authUserId = existingProfile[0].user_id;
-
-    // Ensure the member row exists for this team (may be missing if a previous
-    // run created the profile but failed before reaching step 3).
-    const existingMember = await supabaseGet<{ id: number }>(
-      supabaseUrl,
-      serviceKey,
-      `members?user_id=eq.${encodeURIComponent(authUserId)}&team_id=eq.${teamId}&deleted_at=is.null&select=id&limit=1`,
-    );
-
-    if (!existingMember[0]?.id) {
-      const member = await supabasePost<{ id: number }>(
-        supabaseUrl,
-        serviceKey,
-        "members",
-        { user_id: authUserId, team_id: teamId, admin: true },
-      );
-      await supabasePost<{ id: number }>(
-        supabaseUrl,
-        serviceKey,
-        "member_roles",
-        {
-          member_id: member.id,
-          role_id: 1,
-        },
-      );
-    }
-
-    return getOrCreateDecoApiKey(supabaseUrl, serviceKey, authUserId);
-  }
-
-  // 1. Create Supabase Auth user
-  const authUserId = await createSupabaseAuthUser(
-    supabaseUrl,
-    serviceKey,
-    email,
-  );
-
-  // 2. Create profile (skip if a DB trigger already created one)
-  const autoProfile = await supabaseGet<{ user_id: string }>(
-    supabaseUrl,
-    serviceKey,
-    `profiles?user_id=eq.${encodeURIComponent(authUserId)}&select=user_id&limit=1`,
-  );
-  if (!autoProfile[0]) {
-    await supabasePost<{ id: number }>(supabaseUrl, serviceKey, "profiles", {
-      user_id: authUserId,
-      email,
-      name: `Studio Service Account (team ${teamId})`,
-    });
-  }
-
-  // 3. Create team membership (admin: true)
-  const member = await supabasePost<{ id: number }>(
-    supabaseUrl,
-    serviceKey,
-    "members",
-    {
-      user_id: authUserId,
-      team_id: teamId,
-      admin: true,
-    },
-  );
-
-  // 4. Assign owner role (role_id = 1)
-  await supabasePost<{ id: number }>(supabaseUrl, serviceKey, "member_roles", {
-    member_id: member.id,
-    role_id: 1,
-  });
-
-  // 5. Create and return API key
-  return getOrCreateDecoApiKey(supabaseUrl, serviceKey, authUserId);
-}
-
 // Auth middleware shared by both factories: require an authenticated user.
 const requireAuth = async (
   c: import("hono").Context<{ Variables: Variables }>,
@@ -268,8 +68,6 @@ const requireAuth = async (
   }
   return next();
 };
-
-const ADMIN_MCP = "https://sites-admin-mcp.deco.site/api/mcp";
 
 const FILE_CONFIG_NAME_PREFIX = "deco-assets-";
 
@@ -498,14 +296,8 @@ export const createDecoSitesOrgRoutes = () => {
     }
   });
 
-  /**
-   * POST /api/deco-sites/connection
-   *
-   * Creates the deco.cx MCP connection server-side so the API key never reaches
-   * the browser. The caller supplies a pre-generated connId so subsequent
-   * project-linking tool calls can reference it without an extra round-trip.
-   */
-  app.post("/connection", async (c) => {
+  /** POST /api/deco-sites/prepare — claims the site's asset slug, provisions managed storage, and returns the favicon for the project icon (no deco.cx API key reaches the browser). */
+  app.post("/prepare", async (c) => {
     const ctx = c.get("studioContext");
     const organization = requireOrganization(ctx);
 
@@ -545,7 +337,6 @@ export const createDecoSitesOrgRoutes = () => {
     }
 
     const orgId = organization.id;
-    const connId = generatePrefixedId("conn");
 
     // Validate siteName is a safe DNS subdomain label to prevent SSRF.
     if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(siteName)) {
@@ -588,60 +379,10 @@ export const createDecoSitesOrgRoutes = () => {
         );
       }
 
-      const apiKey = await getOrCreateTeamServiceAccount(
-        supabaseUrl,
-        serviceKey,
-        teamId,
-      );
-
-      // Fetch tools and scopes from the MCP server before storing, mirroring
-      // what COLLECTION_CONNECTIONS_CREATE does so the tools list isn't empty.
-      const fetchResult = await fetchToolsFromMCP({
-        id: `pending-${connId}`,
-        title: `deco.cx — ${siteName}`,
-        connection_type: "HTTP",
-        connection_url: ADMIN_MCP,
-        connection_token: apiKey,
-      }).catch(() => null);
-      const tools = fetchResult?.tools?.length ? fetchResult.tools : null;
-      const configuration_scopes = fetchResult?.scopes?.length
-        ? fetchResult.scopes
-        : null;
-
-      // Fetch the favicon server-side to avoid CORS issues.
-      // Returned to the caller so it can be set as the project icon.
+      // Fetch the favicon server-side (avoids CORS) for use as the project icon.
       const faviconIcon = await fetchFaviconAsDataUrl(`${siteName}.deco.site`);
 
-      // Store the connection with the API key encrypted by the vault.
-      // The key is never serialised into any response body.
-      const connection = await ctx.storage.connections.create({
-        id: connId,
-        organization_id: orgId,
-        created_by: userId,
-        title: `deco.cx — ${siteName}`,
-        description: `Admin MCP for deco.cx site: ${siteName}`,
-        connection_type: "HTTP",
-        connection_url: ADMIN_MCP,
-        connection_token: apiKey,
-        connection_headers: null,
-        oauth_config: null,
-        configuration_state: {
-          SITE_NAME: siteName,
-        },
-        metadata: { source: "deco.cx-import" },
-        icon: null,
-        app_name: "deco.cx",
-        app_id: null,
-        tools,
-        configuration_scopes,
-      });
-
-      // Best-effort: claim the site in studio's tenancy table and provision a
-      // `managed` FILE_CONFIG so the sections-editor file picker can list and
-      // upload images right after import — studio mints prefix-scoped creds
-      // in-process, no dependency on admin to vend them. Any failure here is
-      // logged and swallowed — the deco.cx connection itself is already
-      // created and useful on its own.
+      // Best-effort: claim the slug + provision managed asset storage; swallow errors.
       await provisionManagedAssetsConfig({
         ctx,
         orgId,
@@ -654,10 +395,10 @@ export const createDecoSitesOrgRoutes = () => {
         );
       });
 
-      return c.json({ connId: connection.id, icon: faviconIcon });
+      return c.json({ icon: faviconIcon });
     } catch (err) {
-      console.error("[deco-sites] POST /connection error:", err);
-      return c.json({ error: "Failed to create connection" }, 500);
+      console.error("[deco-sites] POST /prepare error:", err);
+      return c.json({ error: "Failed to prepare import" }, 500);
     }
   });
 
