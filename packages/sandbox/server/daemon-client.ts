@@ -189,7 +189,7 @@ async function configRequest(
   if (!res.ok) {
     throw new ConfigRequestError(res.status, res.body);
   }
-  return JSON.parse(res.body) as ConfigResponse;
+  return parseJsonResponse<ConfigResponse>(res.body, "/_sandbox/config");
 }
 
 /**
@@ -249,7 +249,27 @@ export async function postOrgFsConfig(
       `sandbox daemon /_sandbox/orgfs-config returned ${res.status}: ${res.body}`,
     );
   }
-  return JSON.parse(res.body) as { written: boolean };
+  return parseJsonResponse<{ written: boolean }>(
+    res.body,
+    "/_sandbox/orgfs-config",
+  );
+}
+
+/**
+ * A malformed 2xx body (truncated response, a proxy's HTML error page mistaken
+ * for success) must not surface as a bare, unlabelled `SyntaxError` — see the
+ * rationale on `daemonRequest` above for why every failure on this path names
+ * its endpoint.
+ */
+function parseJsonResponse<T>(body: string, endpoint: string): T {
+  try {
+    return JSON.parse(body) as T;
+  } catch (err) {
+    throw new Error(
+      `sandbox daemon ${endpoint} returned a malformed JSON body: ${body.slice(0, 200)}`,
+      { cause: err },
+    );
+  }
 }
 
 const STRIP_REQUEST_HEADERS = [
