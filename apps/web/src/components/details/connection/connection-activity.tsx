@@ -238,7 +238,11 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
             {t("details.connectionActivity.activity")}
           </h3>
         </div>
-        <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+        <div
+          role="group"
+          aria-label={t("details.connectionActivity.timeframe")}
+          className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5"
+        >
           {TIMEFRAMES.map((tf) => (
             <button
               key={tf.value}

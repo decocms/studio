@@ -28,6 +28,7 @@ export const details = {
   "details.connectionActivity.errors": "Errors",
   "details.connectionActivity.noActivityInThisPeriod":
     "No activity in this period",
+  "details.connectionActivity.timeframe": "Timeframe",
   "details.connectionActivity.toolCalls": "Tool calls",
   "details.connectionActivity.topErrors": "Top errors",
   "details.connectionAgentsPanel.usedByAgents": "Used by agents",
