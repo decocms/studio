@@ -15,7 +15,7 @@
 }
 
 .deco-splash__entrance {
-  width: clamp(5.5rem, 12vw, 7rem);
+  width: clamp(6.5rem, 12.5vw, 11rem);
   animation: deco-splash-enter 220ms ease-out both;
 }
 
