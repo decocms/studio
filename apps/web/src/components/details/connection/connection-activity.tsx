@@ -238,6 +238,7 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
             <button
               key={tf.value}
               type="button"
+              aria-pressed={timeframe === tf.value}
               onClick={() => setTimeframe(tf.value)}
               className={cn(
                 "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
