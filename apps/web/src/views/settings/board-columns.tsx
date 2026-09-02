@@ -36,6 +36,10 @@ import {
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
+  DEFAULT_TASK_INITIAL_PROMPT,
+  TASK_INITIAL_PROMPT_VARS,
+} from "@decocms/shared/task-initial-prompt";
+import {
   SettingsCard,
   SettingsCardItem,
   SettingsSection,
@@ -115,8 +119,8 @@ function BoardColumnRows() {
   );
 }
 
-/** `prompt` null with `hasAutomation` true means the rule runs on the agent's
- *  own instruction; the column is absent from `automations` when there is no
+/** `prompt` null with `hasAutomation` true means the rule runs on the shipped
+ *  default prompt; the column is absent from `automations` when there is no
  *  rule at all. */
 function BoardColumnCard({
   columnKey,
@@ -134,12 +138,16 @@ function BoardColumnCard({
   const t = useT();
   const setRole = useSetColumnRole();
   const setAutomation = useSetColumnAutomation();
+  // An unset rule runs the shipped default, so that is what the box shows —
+  // otherwise "what does this column actually send?" is unanswerable from here,
+  // and editing it means retyping a prompt you can't see.
+  const saved = prompt ?? DEFAULT_TASK_INITIAL_PROMPT;
   // A draft, so typing is not a write per keystroke. Re-seeded on change.
-  const [draft, setDraft] = useState(prompt ?? "");
-  const [syncedWith, setSyncedWith] = useState(prompt);
-  if (syncedWith !== prompt) {
-    setSyncedWith(prompt);
-    setDraft(prompt ?? "");
+  const [draft, setDraft] = useState(saved);
+  const [syncedWith, setSyncedWith] = useState(saved);
+  if (syncedWith !== saved) {
+    setSyncedWith(saved);
+    setDraft(saved);
   }
 
   const failed = () => toast.error(t("settings.boardColumns.saveFailed"));
@@ -198,17 +206,44 @@ function BoardColumnCard({
           </div>
           <Textarea
             value={draft}
-            rows={2}
-            placeholder={t("settings.boardColumns.promptPlaceholder")}
+            rows={10}
+            className="font-mono text-xs"
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => {
-              if (draft !== (prompt ?? "")) saveAutomation(draft);
+              if (draft !== saved) saveAutomation(draft);
             }}
             data-column-automation-prompt={columnKey}
           />
           <p className="text-xs text-muted-foreground">
             {t("settings.boardColumns.promptHelp")}
           </p>
+          <ul className="flex flex-col gap-0.5">
+            {Object.entries(TASK_INITIAL_PROMPT_VARS).map(([name, help]) => (
+              <li
+                key={name}
+                className="flex gap-2 text-xs text-muted-foreground"
+              >
+                <code className="shrink-0 font-mono text-foreground">
+                  {`{{${name}}}`}
+                </code>
+                <span>{help}</span>
+              </li>
+            ))}
+          </ul>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            // Resetting a stored override is a write (back to null); resetting
+            // an unsaved edit is just discarding it.
+            disabled={prompt === null && draft === saved}
+            onClick={() => {
+              setDraft(DEFAULT_TASK_INITIAL_PROMPT);
+              if (prompt !== null) saveAutomation("");
+            }}
+          >
+            {t("settings.boardColumns.promptReset")}
+          </Button>
         </div>
       ) : (
         <Button

@@ -47,7 +47,7 @@ const PROMPTS = [
   {
     id: "super-agent-sandbox",
     label: "Super Agent (sandbox)",
-    path: "apps/api/src/tools/task-board/claude-code-task-run.ts",
+    path: "packages/shared/src/task-initial-prompt.ts",
   },
   {
     id: "super-agent",

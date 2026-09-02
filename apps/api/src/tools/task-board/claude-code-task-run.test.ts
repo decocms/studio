@@ -261,4 +261,28 @@ describe("buildClaudeCodeTaskPrompt repo choices", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null);
     expect(prompt).toContain("with no arguments to list them");
   });
+
+  // The triggering column's rule IS the template now — an org can shrink the
+  // whole opening message to a variable, which is the point of the feature.
+  test("a column rule's prompt replaces the whole message, vars filled", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+      instruction: "Ship {{taskTitle}} ({{jiraId}})",
+    });
+    expect(prompt).toBe("Ship Add a health endpoint ()");
+  });
+
+  test("a card from Jira exposes its issue key", () => {
+    const prompt = buildClaudeCodeTaskPrompt(
+      { ...task, externalUrl: "https://acme.atlassian.net/browse/DECO-9" },
+      repo,
+      { instruction: "{{jiraId}} — {{jiraUrl}}" },
+    );
+    expect(prompt).toBe("DECO-9 — https://acme.atlassian.net/browse/DECO-9");
+  });
+
+  test("no rule on the column renders the shipped default", () => {
+    expect(buildClaudeCodeTaskPrompt(task, repo)).toContain(
+      "You've been assigned this task",
+    );
+  });
 });

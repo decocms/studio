@@ -36,10 +36,10 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
   name: "TASK_BOARD_AUTOMATION_UPSERT",
   description:
     "Run the agent on every card that lands in a column. Replaces the rule " +
-    "already on that column, if any. Omit `prompt` to use the agent's own " +
-    "instruction; give one to say what it should do there instead. The card's " +
-    "title and description are always included, so the prompt is the " +
-    "instruction, not the whole message.",
+    "already on that column, if any. `prompt` is the run's whole opening " +
+    "message, as a template: `{{taskTitle}}`, `{{taskDescription}}`, " +
+    "`{{jiraId}}` and the rest are substituted per card. Omit it for the " +
+    "default prompt.",
   inputSchema: z.object({
     columnKey: z
       .string()
@@ -50,7 +50,9 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
       .max(MAX_AUTOMATION_PROMPT_LENGTH)
       .nullable()
       .optional()
-      .describe("What to do with a card landing here; null for the default."),
+      .describe(
+        "The run's opening message for a card landing here, with {{var}} placeholders; null for the default prompt.",
+      ),
   }),
   outputSchema: z.object({ automation: AutomationSchema }),
   handler: async (input, ctx) => {

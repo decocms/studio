@@ -67,10 +67,9 @@ export const settings = {
   "settings.boardColumns.addAutomation":
     "Rodar o agente nos cards que chegarem aqui",
   "settings.boardColumns.automationOn": "O agente roda em todo card que chega",
-  "settings.boardColumns.promptPlaceholder":
-    "Revise o diff e deixe comentários…",
   "settings.boardColumns.promptHelp":
-    "Opcional. O título e a descrição do card sempre vão junto, então isto é a instrução, não a mensagem inteira.",
+    "A mensagem inicial completa do run. Use estas variáveis para inserir os valores do card:",
+  "settings.boardColumns.promptReset": "Restaurar padrão",
   "settings.boardColumns.removeAriaLabel":
     "Parar de rodar o agente em {column}",
   "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",

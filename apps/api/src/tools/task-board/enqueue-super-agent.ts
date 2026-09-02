@@ -58,9 +58,15 @@ export async function reactToSuperAgentDelegation(
  */
 /** Options that steer the Super Agent prompt for a re-run on an existing PR. */
 export type SuperAgentPromptOpts = {
-  /** What the board's rule for this column says to do. Replaces the default
-   *  opening instruction; the task's own title and description still follow,
-   *  or the agent would not know which card it is on. */
+  /**
+   * The rule the triggering column carries (`task_board_column_automations`).
+   *
+   * For the sandbox harness it is the WHOLE opening message, as a `{{var}}`
+   * template — that is what makes the task prompt configurable per column
+   * (`DEFAULT_TASK_INITIAL_PROMPT` is what an unset rule renders). The
+   * Decopilot fallback still composes its own message and uses a plain
+   * instruction as its lead line only — see `instructionLead`.
+   */
   instruction?: string;
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
@@ -80,6 +86,22 @@ export type SuperAgentPromptOpts = {
    *  cap — which bounds automatic re-dispatch — does not apply to it. */
   userInitiated?: boolean;
 };
+
+/**
+ * A column rule's opening instruction, or the Super Agent's own.
+ *
+ * A rule's prompt is a `{{var}}` TEMPLATE for the sandbox harness's whole
+ * message (see `claude-code-task-run.ts`). This builder composes its own
+ * message instead, so a template pasted in as the lead line would reach the
+ * model with literal `{{...}}` in it — fall back to the built-in lead.
+ */
+function instructionLead(instruction: string | undefined): string {
+  const trimmed = instruction?.trim();
+  if (!trimmed || trimmed.includes("{{")) {
+    return "You've been assigned this task. Complete it.";
+  }
+  return trimmed;
+}
 
 /**
  * The autonomous Super Agent prompt for a task. Pure (no I/O) so the branch
@@ -102,7 +124,7 @@ export function buildSuperAgentTaskPrompt(
   return [
     // A column's rule supplies its own instruction; without one this is the
     // Super Agent's, which is what every run used before rules existed.
-    opts?.instruction?.trim() || "You've been assigned this task. Complete it.",
+    instructionLead(opts?.instruction),
     "",
     "You are running AUTONOMOUSLY — no human is watching this run, so drive it " +
       "to completion on your own. Use `user_ask` ONLY for a genuine, " +

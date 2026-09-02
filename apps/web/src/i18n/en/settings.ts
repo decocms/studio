@@ -65,10 +65,9 @@ export const settings = {
     "Run the agent on cards that arrive here",
   "settings.boardColumns.automationOn":
     "The agent runs on every card that arrives",
-  "settings.boardColumns.promptPlaceholder":
-    "Review the diff and leave comments…",
   "settings.boardColumns.promptHelp":
-    "Optional. The card's title and description always come with it, so this is the instruction, not the whole message.",
+    "The run's whole opening message. Use these variables to drop in the card's own values:",
+  "settings.boardColumns.promptReset": "Reset to default",
   "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
   "settings.boardColumns.saveFailed": "Could not save this column",
   "settings.jira.roleNone": "Nothing special",
