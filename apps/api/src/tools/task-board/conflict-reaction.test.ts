@@ -65,43 +65,27 @@ describe("isConflictResolutionCandidate", () => {
   const item = { status: "in_review", assigneeId: SUPER_AGENT_ASSIGNEE_ID };
 
   it("is true for an In Review Super Agent task with a detected conflict", () => {
-    expect(isConflictResolutionCandidate(item, "in_review", true)).toBe(true);
-  });
-
-  it("matches an org-owned board's own review column name, not Studio's literal", () => {
-    const orgItem = {
-      status: "col-review",
-      assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-    };
-    expect(isConflictResolutionCandidate(orgItem, "col-review", true)).toBe(
-      true,
-    );
-    // The literal Studio uses is meaningless once the board renamed its column.
-    expect(isConflictResolutionCandidate(orgItem, "in_review", true)).toBe(
-      false,
-    );
+    expect(isConflictResolutionCandidate(item, true)).toBe(true);
   });
 
   it("is false for a human-owned task", () => {
     expect(
       isConflictResolutionCandidate(
         { status: "in_review", assigneeId: "user-1" },
-        "in_review",
         true,
       ),
     ).toBe(false);
   });
 
   it("is false without a confirmed conflict", () => {
-    expect(isConflictResolutionCandidate(item, "in_review", null)).toBe(false);
-    expect(isConflictResolutionCandidate(item, "in_review", false)).toBe(false);
+    expect(isConflictResolutionCandidate(item, null)).toBe(false);
+    expect(isConflictResolutionCandidate(item, false)).toBe(false);
   });
 
   it("is false once the task moved on", () => {
     expect(
       isConflictResolutionCandidate(
         { status: "in_progress", assigneeId: SUPER_AGENT_ASSIGNEE_ID },
-        "in_review",
         true,
       ),
     ).toBe(false);

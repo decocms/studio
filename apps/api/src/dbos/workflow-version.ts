@@ -86,5 +86,11 @@
  * same GitHub call — only the recorded output contract widened, which is still
  * a v9 instance replaying against a shape it never wrote. Cheap to strand: one
  * throttled PR read the sweep re-issues on its next pass.
+ *
+ * Version 11 removes the Jira mirror's five workflows (`jiraSyncWorkflow` and
+ * the comment, status, sprint and remote-link pushes) along with their
+ * `jira-push` queue; in-flight v10 instances strand by design, the same way v7
+ * stranded the billing sweeps. Nothing a person is waiting on: the pushes
+ * mirrored board edits onto issues the board no longer copies.
  */
-export const DBOS_WORKFLOW_VERSION = "10";
+export const DBOS_WORKFLOW_VERSION = "11";

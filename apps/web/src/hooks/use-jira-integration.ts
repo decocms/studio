@@ -1,7 +1,7 @@
 /**
- * Per-org Jira integration (`JIRA_*` tools) — managed from Settings → Jira.
- * One integration per org: credentials, one synced project, and the
- * per-tenant Jira-status → board-status mapping.
+ * Per-org Jira integration (`JIRA_*` tools) — managed from Settings → Tasks.
+ * One integration per org: credentials, the board it watches, and the webhook
+ * that tells it when a card moves.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,8 +13,6 @@ import { useStudioTools } from "@/lib/studio-tools";
 export type JiraIntegration = NonNullable<
   StudioToolIO["JIRA_INTEGRATION_GET"]["output"]["integration"]
 >;
-export type JiraSyncRunResult =
-  StudioToolIO["JIRA_SYNC_RUN"]["output"]["result"];
 
 export function useJiraIntegration() {
   const { org } = useProjectContext();
@@ -58,69 +56,5 @@ export function useJiraBoards(connected: boolean) {
     enabled: connected,
     staleTime: 60_000,
     queryFn: async () => (await studio.call("JIRA_BOARDS_LIST", {})).boards,
-  });
-}
-
-export function useJiraBoardColumns(boardId: string | null) {
-  const { org } = useProjectContext();
-  const studio = useStudioTools();
-  return useQuery({
-    queryKey: KEYS.jiraBoardColumns(org.id, boardId ?? ""),
-    enabled: boardId !== null,
-    staleTime: 60_000,
-    queryFn: async () =>
-      (await studio.call("JIRA_BOARD_COLUMNS_LIST", { boardId: boardId ?? "" }))
-        .columns,
-  });
-}
-
-export function useRunJiraSync() {
-  const { org } = useProjectContext();
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => (await studio.call("JIRA_SYNC_RUN", {})).result,
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: KEYS.jiraIntegration(org.id) }),
-  });
-}
-
-/**
- * Ask for a full re-scan. Returns as soon as the request is recorded — the
- * scan itself is the scheduler's, paced across ticks, because a whole board is
- * far more Jira reads than a request should hold open.
- */
-export function useRequestJiraResync() {
-  const { org } = useProjectContext();
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => await studio.call("JIRA_RESYNC_REQUEST", {}),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: KEYS.jiraIntegration(org.id) }),
-  });
-}
-
-/**
- * Say what one of the board's columns means to Studio.
- *
- * Invalidates the board read, not the integration: the roles live on the
- * columns that read carries, and the settings screen and the board itself are
- * looking at the same cached list.
- */
-export function useSetColumnRole() {
-  const { locator } = useProjectContext();
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { columnKey: string; role: string | null }) =>
-      await studio.call("TASK_BOARD_COLUMN_ROLE_SET", {
-        columnKey: input.columnKey,
-        role: input.role as "in_review" | "archived" | null,
-      }),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: KEYS.taskBoardItems(locator),
-      }),
   });
 }

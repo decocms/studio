@@ -121,7 +121,6 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            org_board_columns?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -198,7 +197,6 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            org_board_columns?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -275,7 +273,6 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            org_board_columns?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
@@ -338,7 +335,17 @@ export interface StudioToolIO {
     input: {
       title: string;
       description?: string | null | undefined;
-      status?: string | undefined;
+      status?:
+        | "done"
+        | "triage"
+        | "todo"
+        | "in_progress"
+        | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
+        | "archived"
+        | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
@@ -353,17 +360,24 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: string;
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
+          | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
-        sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
-        jiraIssueKey: string | null;
         externalUrl: string | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -414,17 +428,24 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: string;
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
+          | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
-        sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
-        jiraIssueKey: string | null;
         externalUrl: string | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -466,19 +487,7 @@ export interface StudioToolIO {
         updatedAt: string;
       }[];
       repos: string[];
-      sprints: {
-        id: string;
-        name: string;
-        state: "active" | "future" | "closed";
-        startsAt: string | null;
-        endsAt: string | null;
-      }[];
-      columns: {
-        key: string;
-        title: string;
-        position: number;
-        role: string | null;
-      }[];
+      columns: { key: string; title: string; position: number }[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {
@@ -486,14 +495,23 @@ export interface StudioToolIO {
       id: string;
       title?: string | undefined;
       description?: string | null | undefined;
-      status?: string | undefined;
+      status?:
+        | "done"
+        | "triage"
+        | "todo"
+        | "in_progress"
+        | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
+        | "archived"
+        | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
-      sprintId?: string | null | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
       prUrl?: string | null | undefined;
@@ -504,17 +522,24 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: string;
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
+          | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
-        sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
-        jiraIssueKey: string | null;
         externalUrl: string | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -585,13 +610,6 @@ export interface StudioToolIO {
     input: { columnKey?: string | null | undefined };
     output: { removed: boolean };
   };
-  TASK_BOARD_COLUMN_ROLE_SET: {
-    input: {
-      columnKey: string;
-      role: "in_progress" | "todo" | "in_review" | "archived" | null;
-    };
-    output: { columnKey: string; role: string | null };
-  };
   TASK_BOARD_ITEM_PRS_GET: {
     input: { taskBoardItemId: string };
     output: {
@@ -603,7 +621,7 @@ export interface StudioToolIO {
         createdAt: string;
         title: string | null;
         body: string | null;
-        state: "closed" | "open" | null;
+        state: "open" | "closed" | null;
         draft: boolean | null;
         merged: boolean | null;
         mergeable: boolean | null;
@@ -639,11 +657,35 @@ export interface StudioToolIO {
       notes: string;
       reviewToken?: string | undefined;
     };
-    output: { status: string; merged: boolean };
+    output: {
+      status:
+        | "done"
+        | "triage"
+        | "todo"
+        | "in_progress"
+        | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
+        | "archived";
+      merged: boolean;
+    };
   };
   TASK_BOARD_PROMOTE_TO_PRODUCTION: {
     input: { taskBoardItemId: string };
-    output: { status: string; merged: boolean };
+    output: {
+      status:
+        | "done"
+        | "triage"
+        | "todo"
+        | "in_progress"
+        | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
+        | "archived";
+      merged: boolean;
+    };
   };
   TASK_BOARD_ACTIVITY_LIST: {
     input: { taskBoardItemId: string };
@@ -666,8 +708,7 @@ export interface StudioToolIO {
           | "tags_changed"
           | "review_verdict_requested"
           | "merge_conflict_resolution"
-          | "type_changed"
-          | "sprint_changed";
+          | "type_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -2111,32 +2152,6 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
-          sandboxMap?:
-            | Record<
-                string,
-                Record<
-                  string,
-                  Partial<
-                    Record<
-                      "agent-sandbox" | "local-api",
-                      {
-                        sandboxHandle: string;
-                        previewUrl: string | null;
-                        sandboxApiUrl?: string | null | undefined;
-                        createdAt?: number | undefined;
-                        startedWith?:
-                          | {
-                              packageManager?: string | null | undefined;
-                              port?: string | null | undefined;
-                              path?: string | null | undefined;
-                            }
-                          | undefined;
-                      }
-                    >
-                  >
-                >
-              >
-            | undefined;
           knowledge?:
             | {
                 id: string;
@@ -2169,6 +2184,32 @@ export interface StudioToolIO {
             | undefined;
           draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          sandboxMap?:
+            | Record<
+                string,
+                Record<
+                  string,
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
+                  >
+                >
+              >
+            | undefined;
         };
         connections: {
           connection_id: string;
@@ -2500,32 +2541,6 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
-          sandboxMap?:
-            | Record<
-                string,
-                Record<
-                  string,
-                  Partial<
-                    Record<
-                      "agent-sandbox" | "local-api",
-                      {
-                        sandboxHandle: string;
-                        previewUrl: string | null;
-                        sandboxApiUrl?: string | null | undefined;
-                        createdAt?: number | undefined;
-                        startedWith?:
-                          | {
-                              packageManager?: string | null | undefined;
-                              port?: string | null | undefined;
-                              path?: string | null | undefined;
-                            }
-                          | undefined;
-                      }
-                    >
-                  >
-                >
-              >
-            | undefined;
           knowledge?:
             | {
                 id: string;
@@ -2558,6 +2573,32 @@ export interface StudioToolIO {
             | undefined;
           draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          sandboxMap?:
+            | Record<
+                string,
+                Record<
+                  string,
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
+                  >
+                >
+              >
+            | undefined;
         };
         connections: {
           connection_id: string;
@@ -2700,32 +2741,6 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
-          sandboxMap?:
-            | Record<
-                string,
-                Record<
-                  string,
-                  Partial<
-                    Record<
-                      "agent-sandbox" | "local-api",
-                      {
-                        sandboxHandle: string;
-                        previewUrl: string | null;
-                        sandboxApiUrl?: string | null | undefined;
-                        createdAt?: number | undefined;
-                        startedWith?:
-                          | {
-                              packageManager?: string | null | undefined;
-                              port?: string | null | undefined;
-                              path?: string | null | undefined;
-                            }
-                          | undefined;
-                      }
-                    >
-                  >
-                >
-              >
-            | undefined;
           knowledge?:
             | {
                 id: string;
@@ -2758,6 +2773,32 @@ export interface StudioToolIO {
             | undefined;
           draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          sandboxMap?:
+            | Record<
+                string,
+                Record<
+                  string,
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
+                  >
+                >
+              >
+            | undefined;
         };
         connections: {
           connection_id: string;
@@ -2891,32 +2932,6 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
-          sandboxMap?:
-            | Record<
-                string,
-                Record<
-                  string,
-                  Partial<
-                    Record<
-                      "agent-sandbox" | "local-api",
-                      {
-                        sandboxHandle: string;
-                        previewUrl: string | null;
-                        sandboxApiUrl?: string | null | undefined;
-                        createdAt?: number | undefined;
-                        startedWith?:
-                          | {
-                              packageManager?: string | null | undefined;
-                              port?: string | null | undefined;
-                              path?: string | null | undefined;
-                            }
-                          | undefined;
-                      }
-                    >
-                  >
-                >
-              >
-            | undefined;
           knowledge?:
             | {
                 id: string;
@@ -2949,6 +2964,32 @@ export interface StudioToolIO {
             | undefined;
           draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          sandboxMap?:
+            | Record<
+                string,
+                Record<
+                  string,
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
+                  >
+                >
+              >
+            | undefined;
         };
         connections: {
           connection_id: string;
@@ -3253,32 +3294,6 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
-          sandboxMap?:
-            | Record<
-                string,
-                Record<
-                  string,
-                  Partial<
-                    Record<
-                      "agent-sandbox" | "local-api",
-                      {
-                        sandboxHandle: string;
-                        previewUrl: string | null;
-                        sandboxApiUrl?: string | null | undefined;
-                        createdAt?: number | undefined;
-                        startedWith?:
-                          | {
-                              packageManager?: string | null | undefined;
-                              port?: string | null | undefined;
-                              path?: string | null | undefined;
-                            }
-                          | undefined;
-                      }
-                    >
-                  >
-                >
-              >
-            | undefined;
           knowledge?:
             | {
                 id: string;
@@ -3311,6 +3326,32 @@ export interface StudioToolIO {
             | undefined;
           draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          sandboxMap?:
+            | Record<
+                string,
+                Record<
+                  string,
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
+                  >
+                >
+              >
+            | undefined;
         };
         connections: {
           connection_id: string;
@@ -3442,32 +3483,6 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
-          sandboxMap?:
-            | Record<
-                string,
-                Record<
-                  string,
-                  Partial<
-                    Record<
-                      "agent-sandbox" | "local-api",
-                      {
-                        sandboxHandle: string;
-                        previewUrl: string | null;
-                        sandboxApiUrl?: string | null | undefined;
-                        createdAt?: number | undefined;
-                        startedWith?:
-                          | {
-                              packageManager?: string | null | undefined;
-                              port?: string | null | undefined;
-                              path?: string | null | undefined;
-                            }
-                          | undefined;
-                      }
-                    >
-                  >
-                >
-              >
-            | undefined;
           knowledge?:
             | {
                 id: string;
@@ -3500,6 +3515,32 @@ export interface StudioToolIO {
             | undefined;
           draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          sandboxMap?:
+            | Record<
+                string,
+                Record<
+                  string,
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
+                  >
+                >
+              >
+            | undefined;
         };
         connections: {
           connection_id: string;
@@ -4488,32 +4529,6 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
-          sandboxMap?:
-            | Record<
-                string,
-                Record<
-                  string,
-                  Partial<
-                    Record<
-                      "agent-sandbox" | "local-api",
-                      {
-                        sandboxHandle: string;
-                        previewUrl: string | null;
-                        sandboxApiUrl?: string | null | undefined;
-                        createdAt?: number | undefined;
-                        startedWith?:
-                          | {
-                              packageManager?: string | null | undefined;
-                              port?: string | null | undefined;
-                              path?: string | null | undefined;
-                            }
-                          | undefined;
-                      }
-                    >
-                  >
-                >
-              >
-            | undefined;
           knowledge?:
             | {
                 id: string;
@@ -4546,6 +4561,32 @@ export interface StudioToolIO {
             | undefined;
           draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          sandboxMap?:
+            | Record<
+                string,
+                Record<
+                  string,
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
+                  >
+                >
+              >
+            | undefined;
         };
         connections: {
           connection_id: string;
@@ -5031,11 +5072,8 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Record<string, string[]>;
         webhookSecret: string;
         enabled: boolean;
-        lastSyncedAt: string | null;
-        lastSyncError: string | null;
         createdAt: string;
       } | null;
     };
@@ -5047,7 +5085,6 @@ export interface StudioToolIO {
       apiToken?: string | undefined;
       boardId?: string | null | undefined;
       boardName?: string | null | undefined;
-      statusMapping?: Record<string, string[]> | undefined;
       enabled?: boolean | undefined;
     };
     output: {
@@ -5057,11 +5094,8 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Record<string, string[]>;
         webhookSecret: string;
         enabled: boolean;
-        lastSyncedAt: string | null;
-        lastSyncError: string | null;
         createdAt: string;
       };
     };
@@ -5085,25 +5119,6 @@ export interface StudioToolIO {
   JIRA_BOARD_COLUMNS_LIST: {
     input: { boardId: string };
     output: { columns: { name: string; statuses: string[] }[] };
-  };
-  JIRA_SYNC_RUN: {
-    input: { [x: string]: never };
-    output: {
-      result:
-        | {
-            created: number;
-            updated: number;
-            unchanged: number;
-            skipped: number;
-            archived: number;
-            unmappedStatuses: string[];
-          }
-        | { error: string };
-    };
-  };
-  JIRA_RESYNC_REQUEST: {
-    input: { [x: string]: never };
-    output: { queued: true };
   };
   LIST_OBJECTS: {
     input: {
@@ -7232,7 +7247,7 @@ export interface StudioToolIO {
         number: number;
         title: string;
         body: string;
-        state: "closed" | "open";
+        state: "open" | "closed";
         merged: boolean;
         mergedAt: string | null;
         base: string;

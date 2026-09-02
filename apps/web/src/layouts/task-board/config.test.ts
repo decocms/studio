@@ -8,7 +8,6 @@ import {
   cardNeedsAttention,
   dropLane,
   dueDateUrgency,
-  formatSprintDates,
   insertSortOrder,
   isFeedWorthyActivity,
   isLiveAttempt,
@@ -31,14 +30,12 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     status: "todo",
     priority: "none",
     type: "chore",
-    sprintId: null,
     assigneeId: null,
     assignedBy: null,
     repo: null,
     dueDate: null,
     sortOrder,
     keySeq: 1,
-    jiraIssueKey: null,
     externalUrl: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
@@ -52,16 +49,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
   } as TaskBoardItem;
 }
 
-/** The board Studio ships with, in the shape the server sends it. */
-const column = (key: string, position: number) => ({
-  key,
-  title: key,
-  position,
-  role: null,
-});
-const STATUSES: string[] = [...CANONICAL_COLUMN_KEYS];
-const CANONICAL_COLUMNS = STATUSES.map(column);
-const CANONICAL = CANONICAL_COLUMNS;
+const STATUSES = [...CANONICAL_COLUMN_KEYS];
 
 describe("insertSortOrder", () => {
   const lane = [item("a", 0), item("b", 10), item("c", 20)];
@@ -157,40 +145,6 @@ describe("isTaskHandedToHuman", () => {
     for (const status of ["triage", "todo", "in_progress", "done"] as const) {
       expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
     }
-  });
-});
-
-describe("formatSprintDates", () => {
-  const sprint = {
-    id: "sprint_1",
-    name: "Sprint 12",
-    state: "active" as const,
-    startsAt: "2026-01-05T00:00:00.000Z",
-    endsAt: "2026-01-18T00:00:00.000Z",
-  };
-
-  test("spans the sprint's own days, read in UTC", () => {
-    // Day numbers, not the whole string: month names follow the test locale.
-    const label = formatSprintDates(sprint);
-    expect(label).toContain("5");
-    expect(label).toContain("18");
-  });
-
-  test("renders the one date it has when the other is missing", () => {
-    expect(formatSprintDates({ ...sprint, endsAt: null })).toContain("5");
-    expect(formatSprintDates({ ...sprint, startsAt: null })).toContain("18");
-  });
-
-  test("is null for a sprint nobody has scheduled", () => {
-    expect(formatSprintDates({ ...sprint, startsAt: null, endsAt: null })).toBe(
-      null,
-    );
-  });
-
-  test("is null rather than `Invalid Date` for an unparseable date", () => {
-    expect(
-      formatSprintDates({ ...sprint, startsAt: "nope", endsAt: null }),
-    ).toBe(null);
   });
 });
 
@@ -302,7 +256,7 @@ describe("cardNeedsAttention", () => {
 
 describe("moveTargets", () => {
   test("offers no delivery lane to a board that doesn't run them", () => {
-    expect(moveTargets(CANONICAL_COLUMNS, false)).toEqual([
+    expect(moveTargets(false)).toEqual([
       "triage",
       "todo",
       "in_progress",
@@ -313,49 +267,28 @@ describe("moveTargets", () => {
   });
 
   test("offers every lane once they're on", () => {
-    expect(moveTargets(CANONICAL_COLUMNS, true)).toEqual(STATUSES);
-  });
-
-  /**
-   * The menu used to be Studio's lanes whoever's board it was, so on a
-   * mirrored board every entry named a column that does not exist and the
-   * server rejected the write — a list of ways to fail.
-   */
-  test("offers the org's own columns on a board Studio doesn't define", () => {
-    expect(
-      moveTargets(
-        [column("BACKLOG", 0), column("Fazendo", 1), column("Code Review", 2)],
-        false,
-      ),
-    ).toEqual(["BACKLOG", "Fazendo", "Code Review"]);
+    expect(moveTargets(true)).toEqual(STATUSES);
   });
 });
 
 describe("dropLane", () => {
-  const columnKeys = new Set(["BACKLOG", "Fazendo"]);
   const statusOf = (id: string) =>
-    ({ card_in_column: "Fazendo", card_off_board: "triage" })[id];
-  const over = (overId: string | undefined) =>
-    dropLane({ overId, columnKeys, statusOf });
+    ({ card_in_column: "in_progress", card_in_dead_lane: "not_a_lane" })[id];
+  const over = (overId: string | undefined) => dropLane({ overId, statusOf });
 
-  /**
-   * The bug: this was matched against Studio's canonical statuses, which on a
-   * mirrored board match no column at all — so dragging a card into an empty
-   * Jira column resolved to null and the card sprang back.
-   */
-  test("lands a drag in an empty column of the org's own", () => {
-    expect(over("lane:Fazendo")).toBe("Fazendo");
+  test("lands a drag in an empty column", () => {
+    expect(over("lane:in_progress")).toBe("in_progress");
   });
 
   test("lands a drag on a card, in that card's column", () => {
-    expect(over("card_in_column")).toBe("Fazendo");
+    expect(over("card_in_column")).toBe("in_progress");
   });
 
-  /** Both ways of being over an off-board lane are the same illegal landing:
-   *  it is not a column, and the server rejects the write either way. */
-  test("refuses an off-board lane, hovered directly or through its card", () => {
-    expect(over("lane:triage")).toBeNull();
-    expect(over("card_off_board")).toBeNull();
+  /** Both ways of being over a lane the board does not have are the same
+   *  illegal landing: the server rejects the write either way. */
+  test("refuses a lane that is not a column, hovered directly or through its card", () => {
+    expect(over("lane:not_a_lane")).toBeNull();
+    expect(over("card_in_dead_lane")).toBeNull();
   });
 
   test("refuses a card it has never heard of, and no target at all", () => {
@@ -367,44 +300,18 @@ describe("dropLane", () => {
 describe("laneHeader", () => {
   const t = ((key: string) => `t:${key}`) as never;
 
-  test("calls a mirrored column whatever its tracker calls it", () => {
-    expect(
-      laneHeader("Fazendo", t, [
-        {
-          key: "Fazendo",
-          title: "Em Progresso",
-          position: 0,
-          role: null,
-        },
-      ]).label,
-    ).toBe("Em Progresso");
+  test("translates one of the board's own lanes", () => {
+    const header = laneHeader("in_progress", t);
+    expect(header.label).toBe("t:taskBoard.config.statusInProgress");
+    expect(header.visual).toBe(laneVisual("in_progress"));
   });
 
-  /** Studio's own columns carry their key as the title, because the client is
-   *  the only side that knows the reader's language. */
-  test("translates a column of Studio's own", () => {
-    expect(laneHeader("in_progress", t, CANONICAL_COLUMNS).label).toBe(
-      "t:taskBoard.config.statusInProgress",
-    );
-  });
-
-  /**
-   * The bug this exists for: a `triage` card stranded on a mirrored board was
-   * labelled with OUR translation, so it rendered as a second "Backlog" beside
-   * the tracker's real one — a column nobody could act on, because it does not
-   * exist over there.
-   */
-  test("borrows neither our name nor our icon for a status off the board", () => {
-    const header = laneHeader("triage", t, [
-      {
-        key: "BACKLOG",
-        title: "BACKLOG",
-        position: 0,
-        role: null,
-      },
-    ]);
-    expect(header.offBoard).toBe(true);
-    expect(header.label).toBe("triage");
+  /** A status this bundle does not know is still shown, by its raw key and
+   *  with the neutral visual — not hidden, and not dressed as one of ours. */
+  test("names an unknown status by its key, drawn neutral", () => {
+    const header = laneHeader("not_a_lane", t);
+    expect(header.label).toBe("not_a_lane");
+    expect(header.visual).toBe(laneVisual("not_a_lane"));
     expect(header.visual).not.toBe(laneVisual("triage"));
   });
 });
@@ -412,88 +319,8 @@ describe("laneHeader", () => {
 describe("laneVisibility", () => {
   const shown: string[] = [];
 
-  /**
-   * The board Studio ships with is one answer, not the only one. A board whose
-   * columns are the org's own has to draw THOSE — falling back to our lanes
-   * would file its cards under names nobody there chose, and the delivery-lane
-   * rules simply do not apply to a set we did not define.
-   */
-  test("draws the org's own columns, in the order the server sent them", () => {
-    const { lanes, hidden, hideable } = laneVisibility({
-      columns: [
-        column("BACKLOG", 0),
-        column("Fazendo", 1),
-        column("Code Review", 2),
-      ],
-      deliveryEnabled: false,
-      shownLanes: shown,
-      occupied: [],
-    });
-    expect(lanes).toEqual(["BACKLOG", "Fazendo", "Code Review"]);
-    expect(hidden).toEqual([]);
-    expect(hideable).toEqual([]);
-  });
-
-  /**
-   * The last way a card could vanish. A card the board cannot place — a
-   * Studio-native one on a converted board, or any status no column accounts
-   * for — gets its own lane at the end rather than being hidden or re-filed
-   * under a column we picked. Re-filing is a decision only the org can make;
-   * hiding is the invisibility this exists to prevent.
-   */
-  test("gives a card the board cannot place a lane of its own", () => {
-    const { lanes, hidden, hideable, unplaced } = laneVisibility({
-      columns: [column("BACKLOG", 0), column("Fazendo", 1)],
-      deliveryEnabled: false,
-      shownLanes: shown,
-      occupied: ["Fazendo", "triage", "done"],
-    });
-    expect(lanes).toEqual(["BACKLOG", "Fazendo", "done", "triage"]);
-    expect(hidden).toEqual([]);
-    expect(hideable).toEqual([]);
-    // Reported apart from the columns: the board draws these as what they are
-    // and refuses drops into them, neither of which it could tell from `lanes`.
-    expect(unplaced).toEqual(["done", "triage"]);
-  });
-
-  test("the extra lane goes away once its last card leaves", () => {
-    expect(
-      laneVisibility({
-        columns: [column("BACKLOG", 0)],
-        deliveryEnabled: false,
-        shownLanes: shown,
-        occupied: [],
-      }).lanes,
-    ).toEqual(["BACKLOG"]);
-  });
-
-  /** Studio's own board accounts for every canonical status, so nothing is
-   *  ever unplaced there and this cannot start inventing lanes. */
-  test("never invents a lane on the board Studio ships", () => {
-    expect(
-      laneVisibility({
-        columns: CANONICAL,
-        deliveryEnabled: true,
-        shownLanes: STATUSES,
-        occupied: ["triage", "done", "archived"],
-      }).lanes,
-    ).toEqual(STATUSES);
-  });
-
-  test("draws nothing for a board with no columns yet", () => {
-    expect(
-      laneVisibility({
-        columns: [],
-        deliveryEnabled: false,
-        shownLanes: shown,
-        occupied: [],
-      }),
-    ).toEqual({ lanes: [], hidden: [], hideable: [], unplaced: [] });
-  });
-
   test("draws the delivery lanes as columns when they're on", () => {
     const { lanes, hidden } = laneVisibility({
-      columns: CANONICAL,
       deliveryEnabled: true,
       shownLanes: shown,
       occupied: [],
@@ -514,7 +341,6 @@ describe("laneVisibility", () => {
 
   test("an empty delivery lane is absent, not hidden, when they're off", () => {
     const { lanes, hidden } = laneVisibility({
-      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: shown,
       occupied: [],
@@ -532,7 +358,6 @@ describe("laneVisibility", () => {
   // Lanes off with work still in one: the card must stay reachable.
   test("a card left in a delivery lane keeps the lane in the drawer", () => {
     const { lanes, hidden, hideable } = laneVisibility({
-      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: shown,
       occupied: ["merged"],
@@ -544,7 +369,6 @@ describe("laneVisibility", () => {
 
   test("and showing it puts the column back", () => {
     const { lanes, hidden } = laneVisibility({
-      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: ["merged"],
       occupied: ["merged"],
@@ -555,7 +379,6 @@ describe("laneVisibility", () => {
 
   test("a lane removed from the product can linger in the preference", () => {
     const { lanes } = laneVisibility({
-      columns: CANONICAL,
       deliveryEnabled: false,
       shownLanes: ["a_lane_that_no_longer_exists"],
       occupied: [],

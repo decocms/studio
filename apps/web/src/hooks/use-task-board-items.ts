@@ -8,75 +8,16 @@ import type {
 } from "@decocms/shared/tools/tool-io";
 import { useTaskBoardEvents } from "@/hooks/use-task-board-events";
 import { useDecopilotEvents } from "@/hooks/use-decopilot-events";
-import type { Sprint } from "@decocms/shared/sprints";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
 import { toast } from "sonner";
 
 type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 
-/**
- * What the board caches: the cards AND the sprints they can belong to.
- *
- * Both come from one `TASK_BOARD_ITEM_LIST` call, and a card carries only its
- * `sprintId` — caching the items alone would mean a second round trip (or a
- * second tool) just to turn that id into a name.
- */
+/** What the board caches: the cards, as one `TASK_BOARD_ITEM_LIST` answer. */
 type TaskBoardData = {
   items: TaskBoardItem[];
-  sprints: ToolOutput<"TASK_BOARD_ITEM_LIST">["sprints"];
-  /** The board's own columns. Studio's lanes for most orgs; an org that owns
-   *  its board sends its own, which is why the client cannot assume the set. */
-  columns: ToolOutput<"TASK_BOARD_ITEM_LIST">["columns"];
 };
-
-/**
- * The board's sprints, indexed by id, read from the same cached list the board
- * loads — so a card can name its sprint without the sprint being threaded down
- * through every lane and row.
- *
- * Shares `useTaskBoardItems`' query key and fetcher rather than calling that
- * hook itself: it also subscribes to the board's SSE streams, and one
- * subscription per rendered card is not what a lookup should cost.
- */
-export function useBoardSprintIndex(): Map<string, Sprint> {
-  const { locator } = useProjectContext();
-  const studio = useStudioTools();
-  const { data } = useQuery({
-    queryKey: KEYS.taskBoardItems(locator),
-    queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints, columns } = await studio.call(
-        "TASK_BOARD_ITEM_LIST",
-        {},
-      );
-      return { items, sprints, columns };
-    },
-  });
-  return new Map((data?.sprints ?? []).map((sprint) => [sprint.id, sprint]));
-}
-
-/**
- * The board's columns, read from the same cached list the board loads.
- *
- * Exists for the reason `useBoardSprintIndex` does: `useTaskBoardItems` also
- * opens the board's SSE subscriptions, and a dialog that only needs to know
- * which lanes this board HAS should not pay for a stream per render.
- */
-export function useBoardColumns(): TaskBoardData["columns"] {
-  const { locator } = useProjectContext();
-  const studio = useStudioTools();
-  const { data } = useQuery({
-    queryKey: KEYS.taskBoardItems(locator),
-    queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints, columns } = await studio.call(
-        "TASK_BOARD_ITEM_LIST",
-        {},
-      );
-      return { items, sprints, columns };
-    },
-  });
-  return data?.columns ?? [];
-}
 
 /** The board list, as options rather than a hook, so a second reader can share
  *  this query's CACHE without inheriting its live wiring. The org home reads it
@@ -92,11 +33,8 @@ export function taskBoardItemsQueryOptions(
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
     queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints, columns } = await studio.call(
-        "TASK_BOARD_ITEM_LIST",
-        {},
-      );
-      return { items, sprints, columns };
+      const { items } = await studio.call("TASK_BOARD_ITEM_LIST", {});
+      return { items };
     },
   };
 }
@@ -198,8 +136,6 @@ export function useTaskBoardItems() {
 
   return {
     items: query.data?.items ?? [],
-    sprints: query.data?.sprints ?? [],
-    columns: query.data?.columns ?? [],
     isLoading: query.isLoading,
     error: query.error,
   };

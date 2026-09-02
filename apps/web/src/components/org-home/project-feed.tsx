@@ -30,7 +30,6 @@ import { AgentAvatar } from "@/components/agent-icon";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import {
   taskBoardItemsQueryOptions,
-  useBoardColumns,
   useTaskBoardLiveSync,
 } from "@/hooks/use-task-board-items";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
@@ -204,18 +203,14 @@ function FeedCard({
   const navigate = useNavigate();
   const navigateToAgent = useNavigateToAgent();
   const orgSlug = useParams({ strict: false }).org ?? "";
-  /** The lanes only — `useTaskBoardItems` also opens the board's SSE
-   *  subscriptions, and a lane LABEL should not cost the org home a stream. */
-  const columns = useBoardColumns();
-
   const { task, project } = entry;
-  const lane = laneHeader(task.status, t, columns);
+  const lane = laneHeader(task.status, t);
   const LaneIcon = lane.visual.icon;
   const priority = PRIORITY_CONFIG[task.priority];
   const PriorityIcon = priority.icon;
   const type = TASK_TYPE_CONFIG[task.type ?? DEFAULT_TASK_TYPE];
   const TypeIcon = type.icon;
-  const key = taskKey(orgSlug, task.keySeq, task.jiraIssueKey);
+  const key = taskKey(orgSlug, task.keySeq);
   const assignee = task.assigneeId
     ? memberById.get(task.assigneeId)
     : undefined;

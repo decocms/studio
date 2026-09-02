@@ -120,14 +120,14 @@ describe("inReviewPhase", () => {
   // The whole point of migration 190: a card whose reviewer is working reads
   // In Progress, and only the open cycle says it is under review.
   it("covers an In Progress card with an open cycle", () => {
-    expect(inReviewPhase(card("in_progress", CYCLE), "in_review")).toBe(true);
-    expect(inReviewPhase(card("in_progress"), "in_review")).toBe(false);
+    expect(inReviewPhase(card("in_progress", CYCLE))).toBe(true);
+    expect(inReviewPhase(card("in_progress"))).toBe(false);
   });
 
   it("covers In Review with or without a cycle stamp", () => {
-    expect(inReviewPhase(card("in_review", CYCLE), "in_review")).toBe(true);
+    expect(inReviewPhase(card("in_review", CYCLE))).toBe(true);
     // Pre-migration cards carry no stamp; the lane still answers for them.
-    expect(inReviewPhase(card("in_review"), "in_review")).toBe(true);
+    expect(inReviewPhase(card("in_review"))).toBe(true);
   });
 
   // A stale stamp must never drag a shipped card back into the sweeper's work.
@@ -139,36 +139,12 @@ describe("inReviewPhase", () => {
       "done",
       "archived",
     ] as const) {
-      expect(inReviewPhase(card(lane, CYCLE), "in_review")).toBe(false);
+      expect(inReviewPhase(card(lane, CYCLE))).toBe(false);
     }
   });
 
   it("is false for a card that has not been worked yet", () => {
-    expect(inReviewPhase(card("triage"), "in_review")).toBe(false);
-    expect(inReviewPhase(card("todo"), "in_review")).toBe(false);
-  });
-
-  /**
-   * The bug this argument exists for. On a board mirrored from a tracker the
-   * review column is called whatever that tracker calls it, so comparing
-   * against Studio's name read every parked card as out of the phase — and the
-   * sweeper, the merge retry and the own-review guard all skipped it in
-   * silence.
-   */
-  it("answers for a review column the tracker named", () => {
-    const parked = { status: "Code Review", reviewCycleStartedAt: null };
-    expect(inReviewPhase(parked, "Code Review")).toBe(true);
-    expect(inReviewPhase(parked, "in_review")).toBe(false);
-  });
-
-  /** A board with no review column still has cards under review — the open
-   *  cycle is the durable fact, and it does not need a lane to be true. */
-  it("still covers an open cycle when the board has no review column", () => {
-    expect(
-      inReviewPhase({ status: "Fazendo", reviewCycleStartedAt: CYCLE }, null),
-    ).toBe(true);
-    expect(
-      inReviewPhase({ status: "Fazendo", reviewCycleStartedAt: null }, null),
-    ).toBe(false);
+    expect(inReviewPhase(card("triage"))).toBe(false);
+    expect(inReviewPhase(card("todo"))).toBe(false);
   });
 });

@@ -37,60 +37,16 @@ export const settings = {
   "settings.jira.cancel": "Cancel",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
-    "Everything the board covers is mirrored, its backlog included. Epics and sub-tasks are not, and cards show which sprint they are in.",
+    "The board Studio watches — a card entering one of its columns is what sets the integration off.",
   "settings.jira.boardPlaceholder": "Select a board",
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
   "settings.jira.loadingBoards": "Loading boards…",
-  "settings.boardColumns.title": "Board columns",
-  "settings.boardColumns.description":
-    "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
-  "settings.boardColumns.fieldLabel": "Columns",
-  "settings.boardColumns.fieldDescription":
-    "Studio moves a card here when the thing you pick happens. Running the agent is separate: that is what the card does on arrival.",
-  "settings.boardColumns.moveHereWhen": "Move cards here when",
-  "settings.boardColumns.whenNever": "Nothing — I move cards here myself",
-  "settings.boardColumns.whenRunStarts":
-    "A run starts on it, or a pull request opens",
-  "settings.boardColumns.whenRunFinishes": "The agent's run finishes",
-  "settings.boardColumns.whenMergedAndSettled":
-    "Its pull requests merged and it sat untouched for five days",
-  "settings.boardColumns.whenRunFailsOut": "A run fails with no retries left",
-  "settings.boardColumns.addAutomation":
-    "Run the agent on cards that arrive here",
-  "settings.boardColumns.automationOn":
-    "The agent runs on every card that arrives",
-  "settings.boardColumns.promptPlaceholder":
-    "Review the diff and leave comments…",
-  "settings.boardColumns.promptHelp":
-    "Optional. The card's title and description always come with it, so this is the instruction, not the whole message.",
-  "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
-  "settings.boardColumns.saveFailed": "Could not save this column",
-  "settings.jira.noColumnsYet":
-    "No columns yet — they arrive with the next sync.",
-  "settings.jira.mappingLabel": "Column mapping",
-  "settings.jira.mappingDescription":
-    "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
-  "settings.jira.dontSync": "Don't sync",
-  "settings.jira.columnsFailed": "Could not load the board's columns",
-  "settings.jira.enableLabel": "Sync enabled",
+  "settings.jira.enabledLabel": "Integration enabled",
+  "settings.jira.enabledDescription":
+    "While off, cards moving on the board are ignored.",
   "settings.jira.enableRequirements":
-    "Pick a project and map at least one status before enabling the sync",
-  "settings.jira.lastSynced": "Last synced {ago}",
-  "settings.jira.waitingFirstSync": "Waiting for the next sync",
-  "settings.jira.resyncAll": "Resync everything",
-  "settings.jira.resyncAllTitle": "Re-scan the whole board?",
-  "settings.jira.resyncAllQueued":
-    "Re-scan requested — the next sync will start it.",
-  "settings.jira.resyncAllDescription":
-    '"Sync now" only pulls issues changed since the last run. This marks every issue on the board to be re-read \u2014 what you want after changing the status mapping, or when cards look wrong. It starts on the next scheduled sync rather than now, can span several runs on a large board, and never assigns an agent to a card.',
-  "settings.jira.syncNow": "Sync now",
-  "settings.jira.syncing": "Syncing…",
-  "settings.jira.syncDone":
-    "Synced: {created} created, {updated} updated, {archived} archived",
-  "settings.jira.unmappedWarning":
-    "Not mapped yet: {columns}. An issue moving into one of these columns is skipped, and its card stays in whatever lane it last had — pick a lane, or \u201cDon't sync\u201d to say so on purpose.",
-  "settings.jira.syncFailed": "Sync failed",
+    "Pick a board before enabling the integration",
   "settings.jira.saveFailed": "Could not save the Jira settings",
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",

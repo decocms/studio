@@ -31,14 +31,6 @@ import { SqlThreadStorage } from "./threads";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
 /** Studio's own board, which is what these fixtures run on. */
-const CANON_LANES = {
-  intake: "triage",
-  queue: "todo",
-  progress: "in_progress",
-  review: "in_review",
-  archive: "archived",
-};
-
 const ORG = "org_advance_review";
 const USER = "user_advance_review";
 
@@ -161,11 +153,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
     await Promise.all(
       Array.from({ length: 10 }, () =>
-        taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
-          thread.id,
-          ORG,
-          CANON_LANES,
-        ),
+        taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG),
       ),
     );
 
@@ -224,11 +212,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       .execute();
 
     // No PR → stays In Progress with nothing to review.
-    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
-      thread.id,
-      ORG,
-      CANON_LANES,
-    );
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
     const before = await taskBoard.getById(task.id, ORG);
     expect(before?.status).toBe("in_progress");
     expect(before?.reviewCycleStartedAt).toBeNull();
@@ -242,11 +226,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       repoOwner: "acme",
       repoName: "site",
     });
-    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
-      thread.id,
-      ORG,
-      CANON_LANES,
-    );
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
     const after = await taskBoard.getById(task.id, ORG);
     expect(after?.status).toBe("in_progress");
     expect(after?.reviewCycleStartedAt).not.toBeNull();
@@ -265,7 +245,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
     const winners = await Promise.all(
       Array.from({ length: 8 }, () =>
-        taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES),
+        taskBoard.openReviewCycleIfInProgress(task.id, ORG),
       ),
     );
 
@@ -274,28 +254,20 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
   it("re-opens a cycle only after it is closed", async () => {
     const { task } = await cardWithFinishedRun("second round");
-    const first = await taskBoard.openReviewCycleIfInProgress(
-      task.id,
-      ORG,
-      CANON_LANES,
-    );
+    const first = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
     expect(first).not.toBeNull();
     const firstAt = first?.reviewCycleStartedAt;
 
     // Still open — the boundary must not move under a standing verdict.
     expect(
-      await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES),
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
     ).toBeNull();
     expect((await taskBoard.getById(task.id, ORG))?.reviewCycleStartedAt).toBe(
       firstAt as string,
     );
 
     await taskBoard.closeReviewCycle(task.id, ORG);
-    const second = await taskBoard.openReviewCycleIfInProgress(
-      task.id,
-      ORG,
-      CANON_LANES,
-    );
+    const second = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
     expect(second).not.toBeNull();
     expect(second?.reviewCycleStartedAt).not.toBe(firstAt as string);
   });
@@ -329,11 +301,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       repoName: "site",
     });
 
-    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
-      thread.id,
-      ORG,
-      CANON_LANES,
-    );
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
 
     const after = await taskBoard.getById(task.id, ORG);
     expect(after?.status).toBe("in_progress");
@@ -344,13 +312,9 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
   // the PR read says — that is the move this whole change exists to prevent.
   it("leaves a card with an open cycle where it is", async () => {
     const { task, thread } = await cardWithFinishedRun("already reviewing");
-    await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES);
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
 
-    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
-      thread.id,
-      ORG,
-      CANON_LANES,
-    );
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
 
     expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
   });
@@ -366,11 +330,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER);
     expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
 
-    const opened = await taskBoard.openReviewCycleIfInProgress(
-      task.id,
-      ORG,
-      CANON_LANES,
-    );
+    const opened = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
 
     expect(opened?.status).toBe("in_progress");
     expect(opened?.reviewCycleStartedAt).not.toBeNull();
@@ -381,11 +341,11 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
   // would undo that and re-stamp a boundary verdicts already stand on.
   it("leaves an In Review card with a cycle already open alone", async () => {
     const { task } = await cardWithFinishedRun("mid review");
-    await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES);
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
     await taskBoard.update(task.id, ORG, { status: "in_review" }, USER);
 
     expect(
-      await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES),
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
     ).toBeNull();
     expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
   });
@@ -404,7 +364,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     await taskBoard.unassignSuperAgent(task.id, ORG, USER);
 
     expect(
-      await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES),
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
     ).toBeNull();
     expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
   });
@@ -414,7 +374,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     await taskBoard.update(task.id, ORG, { status: "done" }, USER);
 
     expect(
-      await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES),
+      await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
     ).toBeNull();
   });
 
@@ -422,11 +382,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     const { task } = await cardWithFinishedRun("cross-org cycle");
 
     expect(
-      await taskBoard.openReviewCycleIfInProgress(
-        task.id,
-        "org_other",
-        CANON_LANES,
-      ),
+      await taskBoard.openReviewCycleIfInProgress(task.id, "org_other"),
     ).toBeNull();
     expect(
       (await taskBoard.getById(task.id, ORG))?.reviewCycleStartedAt,
@@ -437,7 +393,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
   // reviewer is working reads In Progress and still has to be swept.
   it("lists an In Progress card with an open cycle as pending review", async () => {
     const { task } = await cardWithFinishedRun("pending while in progress");
-    await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES);
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
 
     const pending = await taskBoard.listItemsPendingReview(100);
 
@@ -446,7 +402,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
   it("drops a card out of the work list once it ships", async () => {
     const { task } = await cardWithFinishedRun("shipped, stop sweeping");
-    await taskBoard.openReviewCycleIfInProgress(task.id, ORG, CANON_LANES);
+    await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
     await taskBoard.update(task.id, ORG, { status: "done" }, USER);
 
     expect(
@@ -542,11 +498,7 @@ describe("failed runs never reach In Review (real Postgres)", () => {
   it("leaves a card whose only run failed In Progress", async () => {
     const { task, thread } = await cardWithRun("failed run", "failed");
 
-    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
-      thread.id,
-      ORG2,
-      CANON_LANES,
-    );
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG2);
 
     expect((await taskBoard.getById(task.id, ORG2))?.status).toBe(
       "in_progress",
@@ -635,15 +587,7 @@ describe("failed runs never reach In Review (real Postgres)", () => {
     const { task } = await cardWithRun("retry me", "failed");
     const due = new Date(Date.now() - 1000);
 
-    expect(
-      await taskBoard.scheduleRunRetry(
-        task.id,
-        ORG2,
-        1,
-        due,
-        CANON_LANES.progress,
-      ),
-    ).toBe(true);
+    expect(await taskBoard.scheduleRunRetry(task.id, ORG2, 1, due)).toBe(true);
     expect((await taskBoard.getById(task.id, ORG2))?.retryAttempts).toBe(1);
     expect(
       (await taskBoard.listItemsDueForRetry(10, new Date())).map((r) => r.id),
@@ -700,7 +644,6 @@ describe("failed runs never reach In Review (real Postgres)", () => {
       ORG2,
       1,
       new Date(Date.now() + 60_000),
-      CANON_LANES.progress,
     );
 
     const stuck = await taskBoard.listItemsStuckAfterFailure(10, new Date());
@@ -812,31 +755,19 @@ describe("failed runs never reach In Review (real Postgres)", () => {
 
   it("sends an exhausted card back to To Do and clears its retry state", async () => {
     const { task } = await cardWithRun("out of retries", "failed");
-    await taskBoard.scheduleRunRetry(
-      task.id,
-      ORG2,
-      3,
-      new Date(),
-      CANON_LANES.progress,
-    );
+    await taskBoard.scheduleRunRetry(task.id, ORG2, 3, new Date());
 
     const returned = await taskBoard.returnToTodoAfterFailure(
       task.id,
       ORG2,
       USER2,
-      CANON_LANES,
     );
 
     expect(returned?.status).toBe("todo");
     expect(returned?.retryAttempts).toBe(0);
     // A card that already left In Progress is not dragged backwards.
     expect(
-      await taskBoard.returnToTodoAfterFailure(
-        task.id,
-        ORG2,
-        USER2,
-        CANON_LANES,
-      ),
+      await taskBoard.returnToTodoAfterFailure(task.id, ORG2, USER2),
     ).toBeNull();
   });
 });

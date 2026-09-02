@@ -6,24 +6,13 @@
  * Issue reads go through JQL search over the board's SAVED FILTER
  * ({@link JiraClient.getBoardScopeJql}), not through the Agile API's
  * `/board/{id}/issue`. That endpoint answers "what is on the board", which
- * silently excludes whatever sits in the board's Backlog tab — so an issue a
- * team files and leaves in the backlog (the normal way work arrives) was
- * invisible to the sync, and the watermark moved straight past it. The filter
- * is the board's own definition of its scope, backlog included; which sprint an
- * issue is in is data on the issue, and belongs on the card rather than
- * deciding whether the card exists.
+ * silently excludes whatever sits in the board's Backlog tab — the normal
+ * place work arrives. The filter is the board's own definition of its scope,
+ * backlog included.
  */
 
 import { retry } from "@decocms/shared/std";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
-import type { JiraRemoteLink } from "./remote-links";
-import {
-  findSprintFieldIds,
-  type JiraSprintRef,
-  parseSprintRefs,
-  pickIssueSprint,
-  stripOrderBy,
-} from "./sprint-field";
 import {
   collectWikiMentionAccountIds,
   escapeMentionName,
@@ -32,10 +21,6 @@ import {
 } from "./wiki-markdown";
 
 const REQUEST_TIMEOUT_MS = 15_000;
-
-/** Attachment uploads carry screenshot bytes, so they get their own budget —
- *  a QA run's PNG is orders of magnitude larger than any JSON call here. */
-const UPLOAD_TIMEOUT_MS = 60_000;
 
 /** Account ids per `/user/bulk` request. Jira allows 200, but each id spends
  *  ~56 URL bytes, so 200 would build a ~11KB request line — past the 4KB cap
@@ -82,9 +67,6 @@ export interface JiraIssue {
   id: string;
   key: string;
   fields: JiraIssueFields;
-  /** Sprints this issue is in, oldest first — parsed out of the site's Sprint
-   *  custom field. Empty when the site has no sprints, or the issue is in none. */
-  sprints: JiraSprintRef[];
 }
 
 export interface JiraComment {
@@ -100,21 +82,6 @@ const ISSUE_FIELDS =
 
 /** Issues per search page. Jira's own ceiling for a fields-bearing search. */
 const SEARCH_PAGE_SIZE = 100;
-
-/** Sprint fields asked for per search. One per team-managed project, so a big
- *  site has many; past this the URL grows for fields no synced board uses. */
-const MAX_SPRINT_FIELDS = 20;
-
-/** Sprints read off one board — bounds a decade of history on a busy board. */
-const MAX_BOARD_SPRINTS = 500;
-
-/** Ids per page of the reconciliation sweep. Jira allows far more for an
- *  id-only search than for one carrying fields. */
-const ID_PAGE_SIZE = 1000;
-
-/** Pages the reconciliation sweep will walk. Past this it refuses to answer
- *  rather than hand back a partial set that reads as "these cards are gone". */
-const MAX_RECONCILE_PAGES = 20;
 
 /** A non-2xx answer from Jira, carrying the status so a caller can react to a
  *  specific one (a 400 means the request body was refused, not the request). */
@@ -149,7 +116,7 @@ function isRetriableError(error: unknown): boolean {
  *
  * Restricted to Jira Cloud's own domain on purpose: this URL is fetched
  * server-side with the tenant's credentials attached and the response body
- * surfaces in `last_sync_error`, so accepting an arbitrary host would make an
+ * surfaces to the tenant, so accepting an arbitrary host would make an
  * `org:manage` principal able to read anything the API pod can reach — a link
  * local address, an internal service, a look-alike domain harvesting the
  * token. Self-hosted Data Center would need an explicit allowlist, not a
@@ -172,6 +139,11 @@ export function normalizeSiteUrl(input: string): string {
     );
   }
   return `https://${hostname}`;
+}
+
+/** A filter's JQL with its `ORDER BY` trimmed, so a caller can AND onto it. */
+function stripOrderBy(jql: string): string {
+  return jql.replace(/\s+order\s+by\s+[\s\S]*$/i, "").trim();
 }
 
 /** Guard for interpolating a board id into a path. */
@@ -290,7 +262,7 @@ export class JiraClient {
     return users;
   }
 
-  /** Boards visible to the credentials — the sync-target picker. */
+  /** Boards visible to the credentials — the board picker. */
   async listBoards(): Promise<JiraBoard[]> {
     const boards: JiraBoard[] = [];
     let startAt = 0;
@@ -320,7 +292,7 @@ export class JiraClient {
   }
 
   /** The board's columns with their status NAMES, in board order — what the
-   *  mapping UI shows (tenants know column names, not raw statuses). */
+   *  settings UI shows (tenants know column names, not raw statuses). */
   async getBoardColumns(boardId: string): Promise<JiraBoardColumn[]> {
     const config = await this.request<{
       columnConfig?: {
@@ -351,14 +323,14 @@ export class JiraClient {
    *
    * The filter, not `project = <the board's project>`: a board scoped to one
    * team inside a shared project, or spanning several projects, is only
-   * described by its filter, and pulling its whole project instead would put
-   * another team's issues on the customer's board.
+   * described by its filter, and reading its whole project instead would
+   * watch another team's issues.
    *
    * Which is why an unreadable filter FAILS rather than falling back to the
    * project — a filter can be shared with fewer people than the board it
    * drives, and the safe answer to "I can't see the scope" is to stop, not to
-   * guess a wider one. The tenant sees it in `last_sync_error` and shares the
-   * filter. Only a board with no filter at all (`/configuration` says so) is
+   * guess a wider one. The tenant sees the error and shares the filter. Only
+   * a board with no filter at all (`/configuration` says so) is
    * scoped by its project, because then nothing narrower exists.
    */
   async getBoardScopeJql(boardId: string): Promise<string> {
@@ -376,7 +348,7 @@ export class JiraClient {
         jql = stripOrderBy(filter.jql ?? "");
       } catch (cause) {
         throw new Error(
-          `Jira board ${id} is driven by filter ${filterId}, which these credentials cannot read — share that filter with the integration's account (syncing the board's project instead would pull in issues that are not on this board)`,
+          `Jira board ${id} is driven by filter ${filterId}, which these credentials cannot read — share that filter with the integration's account (reading the board's project instead would include issues that are not on this board)`,
           { cause },
         );
       }
@@ -388,111 +360,10 @@ export class JiraClient {
     const projectKey = board.location?.projectKey;
     if (!projectKey) {
       throw new Error(
-        `Jira board ${id} exposes neither a filter nor a project — nothing to sync`,
+        `Jira board ${id} exposes neither a filter nor a project — nothing to watch`,
       );
     }
     return `project = ${JSON.stringify(projectKey)}`;
-  }
-
-  /**
-   * Every Sprint custom field on the site, resolved once per client.
-   *
-   * Plural because Sprint is per-project on Cloud: each team-managed project
-   * gets its own, so picking one and reading it off every issue would report
-   * "no sprint" for every card on a board driven by a different project's
-   * field. All of them are requested and whichever the issue carries wins.
-   *
-   * Cached as a promise so concurrent callers cost one request. NOT
-   * error-swallowing: an empty list means "this site has no sprints", and
-   * pretending a failed lookup means the same thing would clear the sprint of
-   * every card the run touches.
-   */
-  private sprintFieldsPromise: Promise<string[]> | null = null;
-
-  sprintFieldIds(): Promise<string[]> {
-    this.sprintFieldsPromise ??= this.request<
-      Array<{ id: string; schema?: { custom?: string } | null }>
-    >("/rest/api/3/field").then((fields) => {
-      const ids = findSprintFieldIds(fields);
-      if (ids.length > MAX_SPRINT_FIELDS) {
-        console.warn(
-          `[jira] site has ${ids.length} Sprint fields; reading the first ${MAX_SPRINT_FIELDS}, so cards driven by the rest will sync without a sprint`,
-        );
-      }
-      return ids.slice(0, MAX_SPRINT_FIELDS);
-    });
-    return this.sprintFieldsPromise;
-  }
-
-  /**
-   * Every issue id currently in scope, for the reconciliation pass.
-   *
-   * Ids only, which is why it can ask for far bigger pages than
-   * {@link searchIssues}: this is a set-membership question ("is this card's
-   * issue still on the board?"), and getting it in two requests instead of
-   * thirty is what makes it affordable on every tick.
-   *
-   * An issue Jira has deleted or archived is absent here while
-   * `GET /issue/{key}` still answers 200 for the archived case — so absence
-   * from THIS set, not a 404 probe per card, is the signal.
-   */
-  async searchIssueIds(jql: string): Promise<Set<string>> {
-    const ids = new Set<string>();
-    let nextPageToken: string | undefined;
-    // Pages, not `ids.size`: a page that repeats ids it already sent grows the
-    // set by nothing and would spin here forever.
-    for (let page = 0; page < MAX_RECONCILE_PAGES; page++) {
-      const query = new URLSearchParams({
-        jql,
-        maxResults: String(ID_PAGE_SIZE),
-        fields: "id",
-      });
-      if (nextPageToken) query.set("nextPageToken", nextPageToken);
-      const result = await this.request<{
-        issues?: Array<{ id: string }>;
-        nextPageToken?: string | null;
-      }>(`/rest/api/3/search/jql?${query}`);
-      for (const issue of result.issues ?? []) ids.add(issue.id);
-      nextPageToken = result.nextPageToken ?? undefined;
-      if (!nextPageToken) return ids;
-    }
-    // Truncated: the caller must not read absence as "deleted" off a partial set.
-    throw new Error(
-      `Jira scope exceeds ${MAX_RECONCILE_PAGES * ID_PAGE_SIZE} issues — refusing to reconcile against a partial list`,
-    );
-  }
-
-  /**
-   * Every sprint the board knows about, so a sprint that closed in Jira reads
-   * as closed here even when no issue in it changed.
-   *
-   * Deriving the mirror from the issues alone cannot do that: a sprint's state
-   * would only refresh when one of its issues happened to land in the
-   * watermark window, leaving a finished sprint labelled "current" forever.
-   *
-   * Empty for a board with no sprint support — Jira answers 400 to
-   * `/board/{id}/sprint` on a Kanban board, which is an answer, not a failure.
-   */
-  async listBoardSprints(boardId: string): Promise<JiraSprintRef[]> {
-    const id = assertBoardId(boardId);
-    const sprints: JiraSprintRef[] = [];
-    let startAt = 0;
-    while (sprints.length < MAX_BOARD_SPRINTS) {
-      let page: { values?: unknown[]; isLast?: boolean };
-      try {
-        page = await this.request<{ values?: unknown[]; isLast?: boolean }>(
-          `/rest/agile/1.0/board/${id}/sprint?startAt=${startAt}&maxResults=50`,
-        );
-      } catch (err) {
-        if (err instanceof JiraRequestError && err.status === 400) return [];
-        throw err;
-      }
-      const values = page.values ?? [];
-      sprints.push(...parseSprintRefs(values));
-      startAt += values.length;
-      if (page.isLast !== false || values.length === 0) break;
-    }
-    return sprints;
   }
 
   /**
@@ -507,11 +378,10 @@ export class JiraClient {
     jql: string;
     nextPageToken?: string;
   }): Promise<{ issues: JiraIssue[]; nextPageToken: string | null }> {
-    const sprintFields = await this.sprintFieldIds();
     const query = new URLSearchParams({
       jql: params.jql,
       maxResults: String(SEARCH_PAGE_SIZE),
-      fields: [ISSUE_FIELDS, ...sprintFields].join(","),
+      fields: ISSUE_FIELDS,
     });
     if (params.nextPageToken) query.set("nextPageToken", params.nextPageToken);
     const page = await this.request<{
@@ -523,15 +393,7 @@ export class JiraClient {
       nextPageToken?: string | null;
     }>(`/rest/api/3/search/jql?${query}`);
     return {
-      issues: (page.issues ?? []).map((issue) => ({
-        ...issue,
-        // First field that carries any sprint: only the issue's own project's
-        // Sprint field is populated, the rest come back null.
-        sprints:
-          sprintFields
-            .map((field) => parseSprintRefs(issue.fields[field]))
-            .find((refs) => refs.length > 0) ?? [],
-      })),
+      issues: page.issues ?? [],
       nextPageToken: page.nextPageToken ?? null,
     };
   }
@@ -568,48 +430,6 @@ export class JiraClient {
     );
   }
 
-  /**
-   * The sprint an issue currently sits in, or null for the backlog.
-   *
-   * Read before a sprint push for the reason `getStatusName` is: a crash
-   * between the POST and the bookkeeping leaves Jira right and our link stale,
-   * so the retry has to ask the world rather than re-POST blind.
-   */
-  async getIssueSprintId(issueId: string): Promise<string | null> {
-    const fieldIds = await this.sprintFieldIds();
-    if (fieldIds.length === 0) return null;
-    const issue = await this.request<{ fields?: Record<string, unknown> }>(
-      `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=${fieldIds.join(",")}`,
-    );
-    const fields = issue.fields ?? {};
-    // Only the issue's own project's Sprint field is populated; the rest come
-    // back null. Same first-non-empty rule `searchIssues` uses.
-    const refs =
-      fieldIds
-        .map((field) => parseSprintRefs(fields[field]))
-        .find((found) => found.length > 0) ?? [];
-    return pickIssueSprint(refs)?.id ?? null;
-  }
-
-  /** Put an issue into a sprint. Jira moves it out of whatever sprint or
-   *  backlog it was in, so this is the whole of "pull into the sprint". */
-  async addIssueToSprint(sprintId: string, issueId: string): Promise<void> {
-    await this.request<void>(
-      `/rest/agile/1.0/sprint/${encodeURIComponent(sprintId)}/issue`,
-      { method: "POST", body: JSON.stringify({ issues: [issueId] }) },
-      { idempotent: false },
-    );
-  }
-
-  /** Take an issue out of every sprint, back to the board's backlog. */
-  async moveIssueToBacklog(issueId: string): Promise<void> {
-    await this.request<void>(
-      "/rest/agile/1.0/backlog/issue",
-      { method: "POST", body: JSON.stringify({ issues: [issueId] }) },
-      { idempotent: false },
-    );
-  }
-
   /** All comments on an issue, oldest first. */
   async listComments(issueId: string): Promise<JiraComment[]> {
     const comments: JiraComment[] = [];
@@ -638,7 +458,7 @@ export class JiraClient {
    *
    * A 400 is Jira refusing the document, so nothing was created and reposting
    * cannot duplicate: fall back once to the flat plain-text body rather than
-   * losing the mirror, since the push step is deliberately non-retriable. Any
+   * losing the comment, since the write is deliberately non-retriable. Any
    * other status propagates.
    */
   async addComment(
@@ -665,34 +485,7 @@ export class JiraClient {
     }
   }
 
-  /**
-   * Upsert a remote link on the issue — the "Web links" panel.
-   *
-   * `idempotent: true` unlike the other writes here: Jira keys the link on
-   * `globalId` and REPLACES a match rather than appending, so a retry after a
-   * timeout cannot leave two.
-   */
-  async upsertRemoteLink(issueId: string, link: JiraRemoteLink): Promise<void> {
-    await this.request<{ id: number }>(
-      `/rest/api/3/issue/${encodeURIComponent(issueId)}/remotelink`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          globalId: link.globalId,
-          object: {
-            url: link.url,
-            title: link.title,
-            ...(link.iconUrl
-              ? { icon: { url16x16: link.iconUrl, title: link.title } }
-              : {}),
-          },
-        }),
-      },
-      { idempotent: true },
-    );
-  }
-
-  /** Attachments already on the issue — the dedup check for a re-push. */
+  /** Attachments on the issue. */
   async listAttachments(
     issueId: string,
   ): Promise<Array<{ id: string; filename: string; size: number }>> {
@@ -702,96 +495,6 @@ export class JiraClient {
       };
     }>(`/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=attachment`);
     return issue.fields?.attachment ?? [];
-  }
-
-  /**
-   * Upload a file to the issue and return what an ADF `media` node needs.
-   *
-   * Two calls, because Jira splits the ids: the upload answers with a numeric
-   * attachment id, while `media.attrs.id` is a media-services uuid that no
-   * response body carries. `GET /attachment/content/{id}` answers 303 to
-   * `https://api.media.atlassian.com/file/<uuid>/binary`, which is where the
-   * uuid comes from.
-   *
-   * Not retried: Jira has no idempotency key for an upload either, so a
-   * resubmit after a lost response duplicates the file on the customer's issue.
-   * `mediaId` is null when the redirect does not yield a uuid — the caller then
-   * keeps the image as a link instead of failing the comment.
-   */
-  async addAttachment(
-    issueId: string,
-    file: { name: string; bytes: Uint8Array; contentType?: string },
-  ): Promise<{ attachmentId: string; mediaId: string | null }> {
-    const form = new FormData();
-    form.append(
-      "file",
-      // Copied: `Blob` needs an ArrayBuffer-backed view; org-fs returns wider.
-      new Blob([new Uint8Array(file.bytes)], {
-        type: file.contentType ?? "application/octet-stream",
-      }),
-      file.name,
-    );
-    const response = await fetch(
-      `${this.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueId)}/attachments`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: this.authHeader,
-          Accept: "application/json",
-          // Jira refuses an unbrowsered multipart POST without this.
-          "X-Atlassian-Token": "no-check",
-        },
-        body: form,
-        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
-      },
-    );
-    const body = await response.text();
-    if (!response.ok) {
-      throw new JiraRequestError(
-        `Jira attachment upload failed (${response.status}): ${body.slice(0, 300)}`,
-        response.status,
-      );
-    }
-    const uploaded = JSON.parse(body) as Array<{ id?: string }>;
-    const attachmentId = uploaded[0]?.id;
-    if (!attachmentId) {
-      throw new Error("Jira attachment upload returned no id");
-    }
-    return { attachmentId, mediaId: await this.resolveMediaId(attachmentId) };
-  }
-
-  /**
-   * Numeric attachment id → media-services uuid, read off the content
-   * redirect. `redirect: "manual"` exposes the `location` header on Bun and
-   * Node; the spec allows hiding it, so a followed HEAD (whose final `url` is
-   * the same media URL, and which transfers no body) is the fallback.
-   */
-  async resolveMediaId(attachmentId: string): Promise<string | null> {
-    const url = `${this.baseUrl}/rest/api/3/attachment/content/${encodeURIComponent(attachmentId)}`;
-    const headers = { Authorization: this.authHeader };
-    const uuidFrom = (candidate: string | null | undefined) =>
-      candidate?.match(/\/file\/([0-9a-f-]{36})\//i)?.[1] ?? null;
-    try {
-      const redirect = await fetch(url, {
-        headers,
-        redirect: "manual",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-      const located = uuidFrom(redirect.headers.get("location"));
-      if (located) return located;
-      const followed = await fetch(url, {
-        method: "HEAD",
-        headers,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-      return uuidFrom(followed.url);
-    } catch (err) {
-      console.warn(
-        `[jira] could not resolve the media id for attachment ${attachmentId}:`,
-        err instanceof Error ? err.message : err,
-      );
-      return null;
-    }
   }
 }
 
@@ -1096,12 +799,12 @@ export function jiraBodyToText(
 }
 
 /**
- * Account id → display name, resolved once per sync run.
+ * Account id → display name, resolved once per client.
  *
  * Unresolved ids are cached as such: a deleted account, or a credential
  * without the "Browse users and groups" global permission, must not re-cost a
  * request for every issue that mentions it. A lookup failure degrades the text
- * to `@unknown` — it never fails the sync, which would strand every other
+ * to `@unknown` — it never fails the read, which would strand every other
  * field over a cosmetic detail.
  */
 export class JiraUserDirectory {

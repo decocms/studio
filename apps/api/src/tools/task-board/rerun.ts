@@ -38,12 +38,12 @@ import {
   type StudioContext,
 } from "@/core/studio-context";
 import {
+  LANES,
   type ReviewCycleActivity,
   reviewCycleStart,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
-import { boardLanes } from "./board-handler";
 import { inReviewPhase } from "./lanes";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
@@ -259,8 +259,7 @@ export async function refuseIfMergePending(
     reviewCycleStartedAt: string | null;
   },
 ): Promise<void> {
-  const reviewLane = (await boardLanes(ctx, item.organizationId)).review;
-  if (!inReviewPhase(item, reviewLane)) return;
+  if (!inReviewPhase(item)) return;
   const settings = await ctx.storage.organizationSettings.get(
     item.organizationId,
   );
@@ -377,7 +376,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
     // best-effort: a swallowed failure here is exactly the silent no-op this
     // tool exists to remove.
-    const progress = (await boardLanes(ctx, organizationId)).progress;
+    const progress = LANES.progress;
     const updated = progress
       ? await ctx.storage.taskBoard.update(
           id,

@@ -1,4 +1,4 @@
-import { assertBoardHasColumn, boardFor } from "./board-handler";
+import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -37,14 +37,7 @@ import {
  * links.
  */
 const LOGGED_FIELDS: {
-  field:
-    | "status"
-    | "assigneeId"
-    | "priority"
-    | "dueDate"
-    | "title"
-    | "type"
-    | "sprintId";
+  field: "status" | "assigneeId" | "priority" | "dueDate" | "title" | "type";
   action: TaskBoardActivityAction;
 }[] = [
   { field: "status", action: "status_changed" },
@@ -53,7 +46,6 @@ const LOGGED_FIELDS: {
   { field: "type", action: "type_changed" },
   { field: "dueDate", action: "due_date_changed" },
   { field: "title", action: "title_changed" },
-  { field: "sprintId", action: "sprint_changed" },
 ];
 
 /**
@@ -72,7 +64,6 @@ const UPDATABLE_FIELDS = [
   "repo",
   "dueDate",
   "sortOrder",
-  "sprintId",
   "tagIds",
 ] as const;
 
@@ -139,14 +130,12 @@ export function diffTaskActivityEntries(
 export function delegatesToSuperAgent(
   inputAssigneeId: string | null | undefined,
   previous: Pick<TaskBoardItem, "assigneeId" | "status"> | null,
-  /** This board's queue column — see `BoardLanes.queue`. */
-  queueLane: string | null,
 ): boolean {
   if (inputAssigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   if (!previous) return false;
   return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
     ? true
-    : queueLane !== null && previous.status === queueLane;
+    : previous.status === LANES.queue;
 }
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
@@ -168,16 +157,13 @@ export function closesOwnReview(
   inputStatus: string | undefined,
   previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
   isTaskRun: boolean,
-  /** This board's review column — see `inReviewPhase`. */
-  reviewLane: string | null,
 ): boolean {
   const completesTask =
     inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
   // The PHASE, not the lane: a card whose reviewer is still working reads In
   // Progress since migration 190, and gating on the lane alone would let the
   // author's own run mark its work Done out from under that reviewer.
-  const awaitingReview =
-    previous !== undefined && inReviewPhase(previous, reviewLane);
+  const awaitingReview = previous !== undefined && inReviewPhase(previous);
   return isTaskRun && completesTask && awaitingReview;
 }
 
@@ -230,10 +216,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
-    /** Move the card to this sprint, or null for the backlog. On a card linked
-     *  to a tracker this is pushed there, so pulling one into the sprint here
-     *  is the same act as pulling it there. */
-    sprintId: z.string().nullable().optional(),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
@@ -267,17 +249,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
           "https://github.com/<owner>/<repo>/pull/<number>)",
       );
-    }
-
-    // Checked here rather than left to the foreign key: an unknown id would
-    // otherwise surface as `violates foreign key constraint
-    // "task_board_items_sprint_id_fkey"`, which names our schema at a caller
-    // who asked a reasonable question. Null is the backlog and always valid.
-    if (input.sprintId) {
-      const sprints = await ctx.storage.sprints.listByOrg(organizationId);
-      if (!sprints.some((sprint) => sprint.id === input.sprintId)) {
-        throw new Error("sprintId is not a sprint on this board");
-      }
     }
 
     if (input.assigneeId) {
@@ -321,11 +292,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       throw new Error(`Task board item not found: ${input.id}`);
     }
 
-    const board = await boardFor(ctx, organizationId);
-    if (input.status !== undefined) {
-      await assertBoardHasColumn(board, input.status);
-    }
-
     if (input.status !== undefined && isDeliveryLane(input.status)) {
       const settings =
         await ctx.storage.organizationSettings.get(organizationId);
@@ -344,15 +310,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    const lanes = await board.lanes();
-    if (
-      closesOwnReview(
-        input.status,
-        previous ?? undefined,
-        isTaskRun,
-        lanes.review,
-      )
-    ) {
+    if (closesOwnReview(input.status, previous ?? undefined, isTaskRun)) {
       throw new Error(
         "This task is under review — a run can't move it to Done or Archived. " +
           "Leave it for the reviewer; only a person, or " +
@@ -364,15 +322,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
-    // Delegating queues the card onto this board's queue lane, if it has one.
-    const becameSuperAgent = delegatesToSuperAgent(
-      input.assigneeId,
-      previous,
-      lanes.queue,
-    );
-    const queuedStatus = becameSuperAgent
-      ? (lanes.queue ?? undefined)
-      : undefined;
+    // Delegating queues the card onto the queue lane.
+    const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
+    const queuedStatus = becameSuperAgent ? LANES.queue : undefined;
     const nextStatus = queuedStatus ?? input.status;
 
     if (previous && isReportsTask(previous)) {
@@ -432,11 +384,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           title: input.title,
           description: input.description,
           status: nextStatus,
-          // Written with the status it describes, so a card cannot end up in a
-          // column of the org's own while still unguarded.
-          ...(nextStatus !== undefined
-            ? { boardColumnOrg: board.columnOwner() }
-            : {}),
           priority: input.priority,
           type: input.type,
           assigneeId: input.assigneeId,
@@ -449,7 +396,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
-          sprintId: input.sprintId,
         },
         getUserId(ctx)!,
       );

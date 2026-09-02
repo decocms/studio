@@ -21,11 +21,9 @@ import type {
   OrgFlags,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
-import type { SprintState } from "@decocms/shared/sprints";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { ReviewerKind } from "@decocms/shared/task-board";
 import type { PrivateRegistryDatabase } from "./registry/types";
-import type { JiraStatusMapping } from "@decocms/shared/jira-status-mapping";
 
 export type {
   OrgSsoConfigPublic,
@@ -1627,14 +1625,6 @@ export interface TaskBoardItemTable {
   /** The key of the column the card sits in — free text, because on a board
    *  whose columns are the org's own the key comes from their tracker. */
   status: ColumnType<string, string | undefined, string>;
-  /** The org id when `status` names a row in `task_board_columns`, null when it
-   *  names one of Studio's lanes. Half of the optional foreign key (migration
-   *  193): NULL is what lets the key sleep on a board built from constants. */
-  board_column_org: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
   priority: ColumnType<
     TaskBoardItemPriority,
     TaskBoardItemPriority | undefined,
@@ -1673,14 +1663,6 @@ export interface TaskBoardItemTable {
     Date | null,
     Date | string | null | undefined,
     Date | string | null
-  >;
-  /** The sprint this card belongs to (`task_board_sprints.id`). Null =
-   *  backlog, which is every card on a board that mirrors no Jira sprints.
-   *  Pull-owned: the Jira sync writes it, nothing else does. */
-  sprint_id: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
   >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
@@ -1731,24 +1713,6 @@ export interface TaskBoardItemTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
-/** One column of a board whose columns belong to the org rather than to
- *  Studio (migration 191). `key` is what a card's `status` holds; `role` is
- *  what automation keys on, null until someone says what the column means. */
-export interface TaskBoardColumnTable {
-  id: string;
-  organization_id: string;
-  key: string;
-  title: string;
-  position: number;
-  role: string | null;
-  /** Tracker statuses this column groups, in the tracker's own order. A Jira
-   *  column is a bucket of statuses, not one status, so the push needs the
-   *  whole list to pick a reachable transition. Empty for Studio's columns. */
-  tracker_statuses: ColumnType<string[], string | undefined, string>;
-  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
-}
-
 /**
  * Instructions appended to the system prompt of every agent run dispatched
  * from a board card (migration 197). `column_key` null is the org-wide row;
@@ -1776,40 +1740,6 @@ export interface TaskBoardColumnAutomationTable {
   column_key: string;
   prompt: string | null;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
-}
-
-/**
- * A sprint a card can belong to — an entity, not a window over a cadence (see
- * `migrations/182-task-board-sprints-entities.ts`).
- *
- * `jira_sprint_id` is the mirror's identity: UNIQUE per org, so the pull
- * upserts on it and a renamed Jira sprint updates in place instead of
- * splitting in two. Null means a sprint this board owns — nothing writes those
- * yet.
- */
-export interface TaskBoardSprintTable {
-  id: string;
-  organization_id: string;
-  name: string;
-  /** Jira's own vocabulary; the board renders `active` differently. */
-  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
-  starts_at: ColumnType<
-    Date | null,
-    Date | string | null | undefined,
-    Date | string | null
-  >;
-  ends_at: ColumnType<
-    Date | null,
-    Date | string | null | undefined,
-    Date | string | null
-  >;
-  jira_sprint_id: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
@@ -1965,11 +1895,7 @@ export interface TaskBoardItem {
   organizationId: string;
   title: string;
   description: string | null;
-  /** The key of the column this card sits in. A string, not the lane union:
-   *  on a board whose columns are the org's own the key comes from their
-   *  tracker. `TaskBoardItemStatus` still names Studio's OWN lanes, which is
-   *  what canonical logic reasons about. */
-  status: string;
+  status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
   /** What kind of work this is. Required; defaults to `chore`. */
   type: TaskBoardItemType;
@@ -1979,15 +1905,10 @@ export interface TaskBoardItem {
    *  created org-wide (no site context) carry none. */
   repo: string | null;
   dueDate: string | null;
-  /** Sprint this card belongs to (`TaskBoardSprint.id`); null = backlog. */
-  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
   keySeq: number;
-  /** The key this card's issue wears in the tracker (`EX-333`), for a card that
-   *  came from one — attached on reads, null for a card Studio owns. */
-  jiraIssueKey: string | null;
   /** Link to that issue in the tracker, for a human to open. Never part of the
    *  description, which is quoted into agent prompts verbatim. */
   externalUrl: string | null;
@@ -2100,7 +2021,7 @@ export interface BrandContext {
   updatedAt: Date | string;
 }
 
-/** Per-org Jira Cloud integration config (pull sync into the task board). */
+/** Per-org Jira Cloud integration config. */
 export interface OrgJiraIntegrationTable {
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
@@ -2108,31 +2029,13 @@ export interface OrgJiraIntegrationTable {
   email: string;
   /** Vault-encrypted Jira API token (Basic auth pairs it with `email`). */
   api_token: string;
-  /** Agile board the sync mirrors: its saved filter is the pull's scope (the
-   *  board's Backlog tab included) and its columns are the mapping UI's names. */
+  /** Agile board the integration watches. */
   board_id: string | null;
   board_name: string | null;
-  /** { "<board status>": ["<jira status name>", …] } — the per-tenant mapping,
-   *  each lane's Jira statuses in board order. Issues whose Jira status names
-   *  no lane are skipped by the sync. Read through `normalizeStatusMapping`,
-   *  which also accepts the pre-array shape (migration 205). */
-  status_mapping: ColumnType<JiraStatusMapping, string | undefined, string>;
-  /** Issue lands in a To Do-mapped column → assign the Super Agent. */
-  auto_delegate: ColumnType<boolean, boolean | undefined, boolean>;
   /** Capability URL segment for `/api/_jira/webhook/<secret>` — DB-generated,
    *  never updated. */
   webhook_secret: ColumnType<string, string | undefined, never>;
   enabled: ColumnType<boolean, boolean | undefined, boolean>;
-  /** Incremental-sync watermark: the max issue `updated` fully processed —
-   *  not "when the cron last ran". A truncated run advances it only as far
-   *  as it got, so the next run resumes instead of skipping. */
-  last_synced_at: ColumnType<Date | null, never, Date | string | null>;
-  last_sync_error: ColumnType<string | null, never, string | null>;
-  /** Set while a rescan (scope change, existing-card fix, or first import)
-   *  hasn't yet finished re-reading the whole scope — survives across the
-   *  multiple runs a large board needs, independent of `last_synced_at`
-   *  (see migration 186). */
-  rescan_pending: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
@@ -2147,54 +2050,19 @@ export interface OrgJiraIntegration {
   apiToken: string;
   boardId: string | null;
   boardName: string | null;
-  statusMapping: JiraStatusMapping;
-  autoDelegate: boolean;
   webhookSecret: string;
   enabled: boolean;
-  lastSyncedAt: string | null;
-  lastSyncError: string | null;
-  rescanPending: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Board card ↔ Jira issue link. `jira_updated_at` is the issue's `updated`
- *  as of our last pull — an event or page with an older-or-equal `updated`
- *  is a no-op, which dedupes the sync's watermark overlap. */
+/** Board card ↔ Jira issue link: the issue a card stands for. */
 export interface TaskBoardItemJiraLinkTable {
   item_id: string;
   organization_id: string;
   jira_issue_id: string;
   jira_issue_key: string;
-  jira_updated_at: ColumnType<Date, Date | string, Date | string>;
-  /** Last status name SEEN OR SET on the Jira side — the pull applies status
-   *  only when this changed, and the status push records its target here so
-   *  the resulting echo is a no-op. */
-  jira_status: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
-  /** Last Jira sprint id SEEN OR SET on the Jira side, same job as
-   *  `jira_status` one field over: the pull applies sprint only when this
-   *  changed, and the sprint push records its target here so the echo is a
-   *  no-op. Null means never seen, so the next pull is authoritative. */
-  jira_sprint_id: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
-}
-
-/** Board comment ↔ Jira comment link — the echo/idempotency cut for comment
- *  sync: a Jira comment id with a link row is known (either we pushed it or
- *  already pulled it), never re-imported. */
-export interface TaskBoardCommentJiraLinkTable {
-  comment_id: string;
-  organization_id: string;
-  jira_comment_id: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -2332,9 +2200,7 @@ export interface Database extends PrivateRegistryDatabase {
   org_sites: OrgSiteTable;
   org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
-  task_board_sprints: TaskBoardSprintTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
-  task_board_columns: TaskBoardColumnTable;
   task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
@@ -2344,10 +2210,9 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
-  // Jira integration (per-org pull sync into the task board)
+  // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
-  task_board_comment_jira_links: TaskBoardCommentJiraLinkTable;
 
   // Follow/inbox for the task board
   notification_subscriptions: NotificationSubscriptionTable;

@@ -11,14 +11,6 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 
 /** Studio's own board, which is what these fixtures run on. */
-const CANON_LANES = {
-  intake: "triage",
-  queue: "todo",
-  progress: "in_progress",
-  review: "in_review",
-  archive: "archived",
-};
-
 type LinkPrCall = {
   taskBoardItemId: string;
   organizationId: string;
@@ -213,14 +205,12 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     status: "in_review",
     priority: "medium",
     type: "chore",
-    sprintId: null,
     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
     assignedBy: null,
     repo: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
-    jiraIssueKey: null,
     externalUrl: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
@@ -313,20 +303,13 @@ describe("reactToFailedTaskRun on a card that already moved on", () => {
 
   it("relabels the failure and schedules nothing", async () => {
     const { taskBoard, calls } = fakeBoard("in_review");
-    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1", CANON_LANES);
+    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1");
     expect(calls).toEqual(["relabel"]);
   });
 
   it("still retries a card that is genuinely mid-work", async () => {
     const { taskBoard, calls } = fakeBoard("in_progress");
-    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1", CANON_LANES);
-    expect(calls).toEqual(["retry"]);
-  });
-
-  it("retries a card mid-work on an org-owned board whose progress column isn't named 'in_progress'", async () => {
-    const orgLanes = { ...CANON_LANES, progress: "col-doing" };
-    const { taskBoard, calls } = fakeBoard("col-doing");
-    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1", orgLanes);
+    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1");
     expect(calls).toEqual(["retry"]);
   });
 });

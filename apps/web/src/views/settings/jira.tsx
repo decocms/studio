@@ -1,9 +1,7 @@
 /**
- * Settings → Board → "Jira integration" section — connect a Jira Cloud site
- * (email + API token), pick the board to mirror, and map its columns onto the
- * board lanes. Issue fields are pull-only (cards update every ~10 minutes, or
- * in seconds with the webhook); comments flow both ways via the integration
- * account.
+ * Settings → Tasks → "Jira integration" section — connect a Jira Cloud site
+ * (email + API token), pick the board Studio watches, and wire the webhook
+ * that tells it the moment a card moves.
  */
 
 import { useState } from "react";
@@ -29,13 +27,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
 import { Page } from "@/components/page";
 import { JiraIcon } from "@/components/icons/jira-icon";
 import {
@@ -58,74 +49,11 @@ import type { TranslationKey } from "@/i18n/en";
 import {
   type JiraIntegration,
   useDeleteJiraIntegration,
-  useJiraBoardColumns,
   useJiraBoards,
   useJiraIntegration,
-  useRequestJiraResync,
-  useRunJiraSync,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
-import { timeAgo } from "@/layouts/library/cards";
-import { isDeliveryLane } from "@/layouts/task-board/config";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
-import { BoardColumnSettings } from "./board-columns";
 import { TaskSystemPromptSettings } from "./task-system-prompt";
-
-type BoardStatus = keyof JiraIntegration["statusMapping"];
-type StatusMapping = JiraIntegration["statusMapping"];
-
-/** One column of the org's Jira board, as `JIRA_BOARD_COLUMNS_LIST` returns it. */
-type BoardColumn = { name: string; statuses: string[] };
-
-/** The lane a board column currently maps to, found through any one of the
- *  statuses it groups. */
-function laneOfColumn(
-  mapping: StatusMapping,
-  column: BoardColumn,
-): BoardStatus | undefined {
-  const first = column.statuses[0];
-  if (!first) return undefined;
-  return Object.entries(mapping).find(([, names]) =>
-    (names as string[]).includes(first),
-  )?.[0] as BoardStatus | undefined;
-}
-
-const BOARD_STATUS_OPTIONS: Array<{
-  value: BoardStatus;
-  labelKey: TranslationKey;
-}> = [
-  { value: "triage", labelKey: "taskBoard.config.statusBacklog" },
-  { value: "todo", labelKey: "taskBoard.config.statusTodo" },
-  { value: "in_progress", labelKey: "taskBoard.config.statusInProgress" },
-  { value: "in_review", labelKey: "taskBoard.config.statusInReview" },
-  { value: "approved", labelKey: "taskBoard.config.statusApproved" },
-  { value: "merged", labelKey: "taskBoard.config.statusMerged" },
-  {
-    value: "post_deploy_validation",
-    labelKey: "taskBoard.config.statusPostDeployValidation",
-  },
-  { value: "done", labelKey: "taskBoard.config.statusDone" },
-  { value: "archived", labelKey: "taskBoard.config.statusArchived" },
-];
-
-/** The lanes this org can map a Jira status onto — offering an unrun delivery
- *  lane would route issues into a column the board never draws. `current` is
- *  this row's already-mapped value: if it's a delivery lane saved while the
- *  flag was on, it must stay in the list even after the flag turns off, or the
- *  Select's value stops matching any item and the row silently renders blank
- *  while the mapping underneath is untouched. */
-export function boardStatusOptions(
-  deliveryEnabled: boolean,
-  current: BoardStatus | undefined,
-): typeof BOARD_STATUS_OPTIONS {
-  if (deliveryEnabled) return BOARD_STATUS_OPTIONS;
-  return BOARD_STATUS_OPTIONS.filter(
-    (o) => !isDeliveryLane(o.value) || o.value === current,
-  );
-}
-
-/** Radix Select forbids empty item values — sentinel for "not synced". */
-const DONT_SYNC = "__dont_sync__";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
@@ -226,137 +154,6 @@ function ConnectFormFields() {
           ? t("settings.jira.connecting")
           : t("settings.jira.connect")}
       </Button>
-    </div>
-  );
-}
-
-function SyncStatusLine({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  if (integration.lastSyncError) {
-    return (
-      <p className="text-xs text-destructive truncate">
-        {integration.lastSyncError}
-      </p>
-    );
-  }
-  return (
-    <p className="text-xs text-muted-foreground">
-      {integration.lastSyncedAt
-        ? t("settings.jira.lastSynced", {
-            ago: timeAgo(integration.lastSyncedAt),
-          })
-        : t("settings.jira.waitingFirstSync")}
-    </p>
-  );
-}
-
-function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  const upsert = useUpsertJiraIntegration();
-  const columns = useJiraBoardColumns(integration.boardId);
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
-
-  // Optimistic local copy so two quick edits don't race the save round-trip and stomp each other.
-  const [mapping, setMapping] = useState(integration.statusMapping);
-  const [syncedWith, setSyncedWith] = useState(integration);
-  if (syncedWith !== integration) {
-    setSyncedWith(integration);
-    setMapping(integration.statusMapping);
-  }
-
-  if (columns.isPending) return <Skeleton className="h-24 w-full mt-3" />;
-  if (columns.isError) {
-    return (
-      <p className="text-xs text-destructive mt-3">
-        {errorMessage(columns.error, t("settings.jira.columnsFailed"))}
-      </p>
-    );
-  }
-
-  /**
-   * Rewrite the whole mapping from the column list rather than patching one
-   * entry, so each lane's statuses come out in BOARD ORDER. That order is not
-   * cosmetic: the push sends a card entering a lane to position 0, so the
-   * leftmost Jira column of a lane is where it lands.
-   */
-  function setColumnMapping(changed: BoardColumn, value: string) {
-    const previous = mapping;
-    const next: StatusMapping = {};
-    for (const column of columns.data ?? []) {
-      const lane =
-        column.name === changed.name
-          ? value === DONT_SYNC
-            ? undefined
-            : (value as BoardStatus)
-          : laneOfColumn(mapping, column);
-      if (!lane) continue;
-      next[lane] = [...(next[lane] ?? []), ...column.statuses];
-    }
-    setMapping(next);
-    upsert.mutate(
-      { statusMapping: next },
-      {
-        onError: (err) => {
-          // Roll back — a refetch matching the pre-mutation value can keep the same object reference and never resync this row otherwise.
-          setMapping(previous);
-          toast.error(errorMessage(err, t("settings.jira.saveFailed")));
-        },
-      },
-    );
-  }
-
-  /** An unmapped column is not "Don't sync" — nobody chose it. Work moving
-   *  into one freezes its card in whatever lane it last had, silently. */
-  const unmapped = (columns.data ?? []).filter(
-    (column) => !laneOfColumn(mapping, column),
-  );
-
-  return (
-    <div className="flex flex-col mt-3">
-      {unmapped.length > 0 && (
-        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
-          {t("settings.jira.unmappedWarning", {
-            columns: unmapped.map((column) => column.name).join(", "),
-          })}
-        </p>
-      )}
-      {(columns.data ?? []).map((column) => (
-        <div
-          key={column.name}
-          className="flex items-center justify-between gap-4 py-2.5 border-b border-border/60 last:border-b-0"
-        >
-          <div className="min-w-0">
-            <span className="text-sm truncate">{column.name}</span>
-            {(column.statuses.length > 1 ||
-              column.statuses[0] !== column.name) && (
-              <p className="text-xs text-muted-foreground truncate">
-                {column.statuses.join(", ")}
-              </p>
-            )}
-          </div>
-          <Select
-            value={laneOfColumn(mapping, column) ?? DONT_SYNC}
-            onValueChange={(value) => setColumnMapping(column, value)}
-          >
-            <SelectTrigger className="w-44 shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={DONT_SYNC}>
-                {t("settings.jira.dontSync")}
-              </SelectItem>
-              {boardStatusOptions(
-                deliveryEnabled,
-                laneOfColumn(mapping, column),
-              ).map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {t(option.labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ))}
     </div>
   );
 }
@@ -483,15 +280,12 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
           )}
           onChange={(boardId) => {
             if (!boardId || boardId === integration.boardId) return;
-            // A new board resets the (now stale) column mapping and disables the sync until it's remapped.
             upsert.mutate(
               {
                 boardId,
                 boardName:
                   boardOptions.find((option) => option.value === boardId)
                     ?.primary ?? null,
-                statusMapping: {},
-                enabled: false,
               },
               {
                 onError: (err) =>
@@ -505,128 +299,32 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
   );
 }
 
-function MappingRow({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  const orgOwnedColumns = useOrgFlag("org_board_columns");
-  // A board that owns its columns configures them in "Board columns" above,
-  // where the meaning and the agent toggle sit on one row. Restating half of
-  // that here is what made them read as two unrelated settings.
-  if (orgOwnedColumns) return null;
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.mappingLabel")}
-      description={t("settings.jira.mappingDescription")}
-    >
-      <ColumnMappingRows integration={integration} />
-    </SettingsCardItem>
-  );
-}
-
-function SyncRow({ integration }: { integration: JiraIntegration }) {
+function EnabledRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
-  const runSync = useRunJiraSync();
-  const requestResync = useRequestJiraResync();
-  const [resyncOpen, setResyncOpen] = useState(false);
-  const hasMapping = Object.keys(integration.statusMapping).length > 0;
 
   return (
     <SettingsCardItem
-      title={t("settings.jira.enableLabel")}
-      description={<SyncStatusLine integration={integration} />}
+      title={t("settings.jira.enabledLabel")}
+      description={t("settings.jira.enabledDescription")}
       action={
-        <div className="flex items-center gap-3">
-          <AlertDialog open={resyncOpen} onOpenChange={setResyncOpen}>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={
-                !integration.enabled ||
-                runSync.isPending ||
-                requestResync.isPending
-              }
-              onClick={() => setResyncOpen(true)}
-            >
-              {t("settings.jira.resyncAll")}
-            </Button>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {t("settings.jira.resyncAllTitle")}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t("settings.jira.resyncAllDescription")}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>
-                  {t("settings.jira.cancel")}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() =>
-                    requestResync.mutate(undefined, {
-                      onSuccess: () =>
-                        toast.success(t("settings.jira.resyncAllQueued")),
-                      onError: (err) =>
-                        toast.error(
-                          errorMessage(err, t("settings.jira.syncFailed")),
-                        ),
-                    })
-                  }
-                >
-                  {t("settings.jira.resyncAll")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!integration.enabled || runSync.isPending}
-            onClick={() =>
-              runSync.mutate(undefined, {
-                onSuccess: (result) => {
-                  if ("error" in result) {
-                    toast.error(result.error);
-                  } else {
-                    toast.success(
-                      t("settings.jira.syncDone", {
-                        created: String(result.created),
-                        updated: String(result.updated),
-                        archived: String(result.archived),
-                      }),
-                    );
-                  }
-                },
-                onError: (err) =>
-                  toast.error(errorMessage(err, t("settings.jira.syncFailed"))),
-              })
+        <Switch
+          checked={integration.enabled}
+          disabled={upsert.isPending}
+          onCheckedChange={(checked) => {
+            if (checked && !integration.boardId) {
+              toast.error(t("settings.jira.enableRequirements"));
+              return;
             }
-          >
-            {runSync.isPending
-              ? t("settings.jira.syncing")
-              : t("settings.jira.syncNow")}
-          </Button>
-          <Switch
-            checked={integration.enabled}
-            disabled={upsert.isPending}
-            onCheckedChange={(checked) => {
-              if (checked && (!integration.boardId || !hasMapping)) {
-                toast.error(t("settings.jira.enableRequirements"));
-                return;
-              }
-              upsert.mutate(
-                { enabled: checked },
-                {
-                  onError: (err) =>
-                    toast.error(
-                      errorMessage(err, t("settings.jira.saveFailed")),
-                    ),
-                },
-              );
-            }}
-          />
-        </div>
+            upsert.mutate(
+              { enabled: checked },
+              {
+                onError: (err) =>
+                  toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
+              },
+            );
+          }}
+        />
       }
     />
   );
@@ -702,8 +400,7 @@ function JiraContent() {
     <SettingsCard>
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
-      {data.boardId && <MappingRow integration={data} />}
-      <SyncRow integration={data} />
+      <EnabledRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>
   );
@@ -719,7 +416,6 @@ export function OrgTasksSettingsPage() {
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
             <TaskSystemPromptSettings />
-            <BoardColumnSettings />
             <AgentToolsSettings />
             <SettingsSection
               title={
