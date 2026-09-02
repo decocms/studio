@@ -16,7 +16,6 @@ import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
-import { useProjectContext } from "@/sdk";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { SidebarPickerHeader, SidebarPickerHeaderMobile } from "./header";
@@ -24,6 +23,7 @@ import { NavDestinationsContent } from "./nav-destinations";
 import { SidebarBackRow } from "./nav-row";
 import { NavSettingsRow } from "./nav-settings-row";
 import { ProjectNav } from "./project-nav";
+import { SidebarProjectsSection } from "./projects-section";
 import {
   SettingsBackRow,
   SettingsNav,
@@ -50,12 +50,9 @@ function OrgSidebarHeaderMobile({ onClose }: { onClose: () => void }) {
  *  naming a project you cannot see — deleted, revoked, or just not loaded yet —
  *  otherwise hides the project rows AND Library AND this row, leaving a sidebar
  *  scoped to nothing with no way out of it. The param is retained across every
- *  navigation, so that state is permanent, not transient. Reading the raw id
- *  here costs a label that names the org rather than the project, which is the
- *  honest thing to say when the project is exactly what we do not have. */
+ *  navigation, so that state is permanent, not transient. */
 function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
-  const { org } = useProjectContext();
   const scopeId = useScopeId();
   const exitToOrg = useExitProjectScope();
 
@@ -63,7 +60,7 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <SidebarBackRow
-      label={t("sidebar.picker.backToOrg", { name: org.name })}
+      label={t("sidebar.scope.allProjects")}
       /** Not a link: where leaving lands depends on whether this route
        *  RESOLVES the scope, which only `useExitProjectScope` knows. */
       onSelect={() => {
@@ -88,7 +85,14 @@ function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       <div className="flex flex-col gap-1">
         <NavDestinationsContent onNavigate={onNavigate} />
         <ProjectNav onNavigate={onNavigate} />
+        {/* Settings closes the DESTINATIONS, above the project list. The list
+            grows with the org and nests a few rows under each entry, so a row
+            pinned after it drifts further from the fixed nav it belongs to on
+            every project added — and lands at the bottom of a scroll on a big
+            org. Everything above this rule is a place; everything below is the
+            org's map. */}
         <NavSettingsRow onNavigate={onNavigate} />
+        <SidebarProjectsSection onNavigate={onNavigate} />
       </div>
     </ErrorBoundary>
   );

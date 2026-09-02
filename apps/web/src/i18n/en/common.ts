@@ -82,11 +82,11 @@ export const common = {
     "This action cannot be undone. This will permanently delete",
   "common.deleteConnectionDialogs.forceDeleteDescription": "The connection",
   "common.deleteConnectionDialogs.forceDeleteTitle":
-    "Connection Used by Agents",
+    "Connection Used by Projects",
   "common.deleteConnectionDialogs.forceDeleteWarning":
-    "Deleting this connection will remove it from those agents, which may impact existing workflows that depend on them.",
+    "Deleting this connection will remove it from those projects, which may impact existing workflows that depend on them.",
   "common.deleteConnectionDialogs.isUsedByAgents":
-    "is currently used by the following agent(s):",
+    "is currently used by the following project(s):",
   "common.deleteConnectionDialogs.title": "Delete Connection?",
   "common.errorBoundary.newVersionAvailable": "New version available",
   "common.errorBoundary.newVersionDeployed":
@@ -159,7 +159,7 @@ export const common = {
   "common.importFromDecoDialog.failedToConnectGithub":
     "Failed to connect GitHub",
   "common.importFromDecoDialog.failedToCreateAgent":
-    "Failed to create the imported agent",
+    "Failed to create the imported project",
   "common.importFromDecoDialog.failedToPrepareImport":
     "Failed to prepare deco.cx import",
   "common.importFromDecoDialog.githubNotConnected":

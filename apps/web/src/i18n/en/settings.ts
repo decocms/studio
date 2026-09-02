@@ -140,7 +140,7 @@ export const settings = {
   "settings.syncedRepos.removed": "Sync removed",
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Agents",
+  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
   "settings.nav.store": "Store",
@@ -148,7 +148,7 @@ export const settings = {
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
   "settings.nav.profile": "Profile & Preferences",
-  "settings.nav.backToOrg": "Back to {name}",
+  "settings.nav.backToHome": "Back to home",
   "settings.nav.signOut": "Sign Out",
   "settings.profile.avatar": "Avatar",
   "settings.profile.displayName": "Display name",
@@ -187,7 +187,7 @@ export const settings = {
   "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Execute all without approval",
-  "settings.automations.browseAgentsButton": "Browse agents",
+  "settings.automations.browseAgentsButton": "Browse projects",
   "settings.automations.emptyDescription":
     "Automations are created per agent. Open an agent and add one from its Automations tab.",
   "settings.automations.emptyTitle": "No automations yet",

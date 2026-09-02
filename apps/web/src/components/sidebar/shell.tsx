@@ -31,6 +31,12 @@ interface SidebarShellProps {
   sheet?: boolean;
 }
 
+/** The gutter a panel card puts above its own 48px `PanelHeader`
+ *  (`WorkspacePanelGroup`'s `pt-1` plus `PanelCard`'s `p-0.5`). The sidebar has
+ *  no card, so it repeats the inset here to start its header on the same line.
+ *  Invisible: the gutter it exposes is `bg-sidebar`, same as the sidebar. */
+const SIDEBAR_TOP_INSET = "pt-1.5";
+
 export function SidebarShell({
   header,
   back,
@@ -41,12 +47,18 @@ export function SidebarShell({
   const content = (
     <>
       {header && (
-        <div className="flex h-12 shrink-0 flex-row items-center gap-2 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:py-2">
-          {header}
-        </div>
+        <>
+          <div className="flex h-12 shrink-0 flex-row items-center gap-2 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:py-2">
+            {header}
+          </div>
+          {/* `mt-1.5` mirrors the shell's top inset, so the header sits in an
+              even band instead of crowding the rule. On the strip itself it
+              would eat the 48px box and pull the mark off the panel header. */}
+          <div className="mt-1.5 h-px shrink-0 bg-sidebar-border" />
+        </>
       )}
       {back && <div className="shrink-0 px-2">{back}</div>}
-      <SidebarContent className="gap-0 overflow-y-auto px-2 pb-2 group-data-[state=expanded]/sidebar:mt-2 group-data-[state=collapsed]/sidebar:mt-1 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
+      <SidebarContent className="gap-0 overflow-y-auto px-2 pt-2 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
         {body}
       </SidebarContent>
       {footer}
@@ -76,5 +88,9 @@ export function SidebarShell({
    *  desktop shell is `hidden md:flex`), and the tour drops a step whose first
    *  match is hidden — so the duplicate degrades to a skipped step, never to a
    *  spotlight on an invisible box. */
-  return <Sidebar data-tour={LAYOUT_TOUR_ANCHORS.nav}>{content}</Sidebar>;
+  return (
+    <Sidebar className={SIDEBAR_TOP_INSET} data-tour={LAYOUT_TOUR_ANCHORS.nav}>
+      {content}
+    </Sidebar>
+  );
 }

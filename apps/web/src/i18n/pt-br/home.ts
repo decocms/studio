@@ -5,19 +5,19 @@ export const home = {
     "N\u00e3o foi poss\u00edvel adicionar ao home \u2014 por favor, tente novamente.",
   "home.addTileDrawer.addTileLabel": "Adicionar tile",
   "home.addTileDrawer.addToHomeTitle": "Adicionar ao home",
-  "home.addTileDrawer.allAgentsOnHome": "Todos os agentes est\u00e3o no home.",
+  "home.addTileDrawer.allAgentsOnHome": "Todos os projetos est\u00e3o no home.",
   "home.addTileDrawer.cancel": "Cancelar",
   "home.addTileDrawer.configureTile": "Configurar propriedades do tile",
   "home.addTileDrawer.description":
-    "Adicione agentes ao home e fixe suas UIs interativas ou prompts.",
+    "Adicione projetos ao home e fixe suas UIs interativas ou prompts.",
   "home.addTileDrawer.dragToReorder": "Arraste para reordenar {name}",
   "home.addTileDrawer.homeFullMessage":
-    "Home est\u00e1 cheio ({limit}) \u2014 remova um agente primeiro",
+    "Home est\u00e1 cheio ({limit}) \u2014 remova um projeto primeiro",
   "home.addTileDrawer.invalidFieldError":
     "Valor inv\u00e1lido em um dos campos \u2014 por favor, corrija.",
   "home.addTileDrawer.loadMore": "Carregar mais ({count})",
-  "home.addTileDrawer.noAgentsMatch": "Nenhum agente corresponde.",
-  "home.addTileDrawer.noAgentsOnHome": "Nenhum agente no home ainda.",
+  "home.addTileDrawer.noAgentsMatch": "Nenhum projeto corresponde.",
+  "home.addTileDrawer.noAgentsOnHome": "Nenhum projeto no home ainda.",
   "home.addTileDrawer.onHomeTitle": "No home",
   "home.addTileDrawer.pin": "Fixar",
   "home.addTileDrawer.pinnedTiles": "Tiles fixados",
@@ -31,7 +31,7 @@ export const home = {
   "home.addTileDrawer.reorderError":
     "N\u00e3o foi poss\u00edvel reordenar o home \u2014 por favor, tente novamente.",
   "home.addTileDrawer.save": "Salvar",
-  "home.addTileDrawer.searchPlaceholder": "Pesquisar agentes\u2026",
+  "home.addTileDrawer.searchPlaceholder": "Pesquisar projetos\u2026",
   "home.addTileDrawer.tileCountLabel": "{count} tile(s)",
   "home.addTileDrawer.title": "Gerenciar home",
   "home.addTileDrawer.updateError":
@@ -44,7 +44,7 @@ export const home = {
   "home.agentPromptList.couldntUpdateHome":
     "N\u00e3o foi poss\u00edvel atualizar a p\u00e1gina inicial \u2014 tente novamente.",
   "home.agentPromptList.homeIsFull":
-    "P\u00e1gina inicial est\u00e1 cheia ({limit}) \u2014 remova um agente primeiro",
+    "P\u00e1gina inicial est\u00e1 cheia ({limit}) \u2014 remova um projeto primeiro",
   "home.agentPromptList.removeFromHome": "Remover da p\u00e1gina inicial",
   "home.homeGrid.couldntRemoveFromHome":
     "N\u00e3o foi poss\u00edvel remover da p\u00e1gina inicial \u2014 tente novamente.",
@@ -76,7 +76,7 @@ export const home = {
   "home.nativeTiles.commerceLabel": "E-commerce",
   "home.orgAgents.importFromGitHub": "Importar do GitHub",
   "home.orgAgents.importToGetStarted":
-    "Importe um reposit\u00f3rio do GitHub para come\u00e7ar, ou crie um agente do zero.",
+    "Importe um reposit\u00f3rio do GitHub para come\u00e7ar.",
   "home.orgHome.connectPill": "Conecte seu agente ao Studio",
   "home.orgHome.greetingMorning": "Bom dia, {name}",
   "home.orgHome.greetingAfternoon": "Boa tarde, {name}",
@@ -84,7 +84,17 @@ export const home = {
   "home.orgHome.greetingMorningBare": "Bom dia!",
   "home.orgHome.greetingAfternoonBare": "Boa tarde!",
   "home.orgHome.greetingEveningBare": "Boa noite!",
-  "home.orgHome.searchPlaceholder": "Buscar agentes, chats e tarefas\u2026",
+  "home.orgHome.searchPlaceholder": "Buscar projetos, chats e tarefas\u2026",
+  "home.projectFeed.heading": "Feed",
+  "home.newTask.placeholder": "O que precisa ser feito neste projeto?",
+  "home.newTask.submit": "Criar tarefa",
+  "home.newTask.descriptionPlaceholder": "Adicionar descri\u00e7\u00e3o\u2026",
+  "home.newTask.heading": "Nova tarefa",
+  "home.newTask.status": "Status",
+  "home.newTask.priority": "Prioridade",
+  "home.newTask.type": "Tipo",
+  "home.projectFeed.filterAll": "Todos os projetos",
+  "home.projectFeed.empty": "Nada no quadro por aqui ainda.",
   "home.orgHome.viewAll": "Ver tudo",
   "home.orgHome.recentActivity": "Atividade recente",
   "home.nativeTiles.commits": "{count} commit(s)",

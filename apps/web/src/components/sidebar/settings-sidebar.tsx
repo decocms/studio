@@ -170,7 +170,10 @@ export function SettingsBackRow({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <SidebarBackRow
-      label={t("settings.nav.backToOrg", { name: org.name })}
+      /** Names where it LANDS, not the org — the picker directly above already
+       *  says the org, so "Back to Acme" under a header reading "Acme" was a
+       *  row that said nothing twice. */
+      label={t("settings.nav.backToHome")}
       /** A real anchor here: leaving settings always lands on the org's home,
        *  so it is a URL and middle-click should honour it. */
       link={{ to: "/$org/home", params: { org: org.slug } }}

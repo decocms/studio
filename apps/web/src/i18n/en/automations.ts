@@ -25,7 +25,7 @@ export const automations = {
   "automations.automationConfig.noToolsFound": "No tools found",
   "automations.automationConfig.none": "None",
   "automations.automationConfig.otherTools": "Other tools",
-  "automations.automationConfig.pickAgentFirst": "Pick an agent first",
+  "automations.automationConfig.pickAgentFirst": "Pick a project first",
   "automations.automationConfig.pickModelPlaceholder": "Pick a model",
   "automations.automationConfig.searchToolsPlaceholder": "Search tools...",
   "automations.automationConfig.selectAll": "Select all",
@@ -71,7 +71,7 @@ export const automations = {
     "Search file contents by pattern",
   "automations.automationConfig.toolSubtask": "Subtask",
   "automations.automationConfig.toolSubtaskDesc":
-    "Spawn a focused sub-agent to handle part of the work",
+    "Spawn a focused sub-project to handle part of the work",
   "automations.automationConfig.toolWebSearch": "Web search",
   "automations.automationConfig.toolWebSearchDesc":
     "Look up current information on the web",
@@ -140,7 +140,7 @@ export const automations = {
   "automations.automationRuns.tokensHeader": "Tokens",
   "automations.automationRuns.tokensTitle": "Tokens",
   "automations.automationsList.emptyDescription":
-    "Create your first automation to run this agent on a schedule or in response to events.",
+    "Create your first automation to run this project on a schedule or in response to events.",
   "automations.automationsList.emptyTitle": "No automations yet",
   "automations.automationsList.newAutomation": "New automation",
   "automations.automationsList.noResultsDescription":

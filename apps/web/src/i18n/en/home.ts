@@ -3,19 +3,19 @@ export const home = {
     "Couldn't add to home \u2014 please try again.",
   "home.addTileDrawer.addTileLabel": "Add tile",
   "home.addTileDrawer.addToHomeTitle": "Add to home",
-  "home.addTileDrawer.allAgentsOnHome": "Every agent is on the home.",
+  "home.addTileDrawer.allAgentsOnHome": "Every project is on the home.",
   "home.addTileDrawer.cancel": "Cancel",
   "home.addTileDrawer.configureTile": "Configure tile props",
   "home.addTileDrawer.description":
-    "Add agents to the home board and pin their interactive UIs or prompts.",
+    "Add projects to the home board and pin their interactive UIs or prompts.",
   "home.addTileDrawer.dragToReorder": "Drag to reorder {name}",
   "home.addTileDrawer.homeFullMessage":
-    "Home is full ({limit}) \u2014 remove an agent first",
+    "Home is full ({limit}) \u2014 remove a project first",
   "home.addTileDrawer.invalidFieldError":
     "Invalid value in one of the fields \u2014 please fix it.",
   "home.addTileDrawer.loadMore": "Load more ({count})",
-  "home.addTileDrawer.noAgentsMatch": "No agents match.",
-  "home.addTileDrawer.noAgentsOnHome": "No agents on the home yet.",
+  "home.addTileDrawer.noAgentsMatch": "No projects match.",
+  "home.addTileDrawer.noAgentsOnHome": "No projects on the home yet.",
   "home.addTileDrawer.onHomeTitle": "On home",
   "home.addTileDrawer.pin": "Pin",
   "home.addTileDrawer.pinnedTiles": "Pinned tiles",
@@ -29,7 +29,7 @@ export const home = {
   "home.addTileDrawer.reorderError":
     "Couldn't reorder home \u2014 please try again.",
   "home.addTileDrawer.save": "Save",
-  "home.addTileDrawer.searchPlaceholder": "Search agents\u2026",
+  "home.addTileDrawer.searchPlaceholder": "Search projects\u2026",
   "home.addTileDrawer.tileCountLabel": "{count} tile(s)",
   "home.addTileDrawer.title": "Manage home",
   "home.addTileDrawer.updateError":
@@ -42,7 +42,7 @@ export const home = {
   "home.agentPromptList.couldntUpdateHome":
     "Couldn't update home \u2014 please try again.",
   "home.agentPromptList.homeIsFull":
-    "Home is full ({limit}) \u2014 remove an agent first",
+    "Home is full ({limit}) \u2014 remove a project first",
   "home.agentPromptList.removeFromHome": "Remove from home",
   "home.homeGrid.couldntRemoveFromHome":
     "Couldn't remove from home \u2014 please try again.",
@@ -73,7 +73,7 @@ export const home = {
   "home.nativeTiles.commerceLabel": "Commerce",
   "home.orgAgents.importFromGitHub": "Import from GitHub",
   "home.orgAgents.importToGetStarted":
-    "Import a repository from GitHub to get started, or create an agent from scratch.",
+    "Import a repository from GitHub to get started.",
   "home.orgHome.connectPill": "Connect your agent to Studio",
   "home.orgHome.greetingMorning": "Good morning, {name}",
   "home.orgHome.greetingAfternoon": "Good afternoon, {name}",
@@ -81,7 +81,17 @@ export const home = {
   "home.orgHome.greetingMorningBare": "Good morning!",
   "home.orgHome.greetingAfternoonBare": "Good afternoon!",
   "home.orgHome.greetingEveningBare": "Good evening!",
-  "home.orgHome.searchPlaceholder": "Search agents, chats and tasks\u2026",
+  "home.orgHome.searchPlaceholder": "Search projects, chats and tasks\u2026",
+  "home.projectFeed.heading": "Feed",
+  "home.newTask.placeholder": "What needs doing in this project?",
+  "home.newTask.submit": "Create task",
+  "home.newTask.descriptionPlaceholder": "Add description\u2026",
+  "home.newTask.heading": "New task",
+  "home.newTask.status": "Status",
+  "home.newTask.priority": "Priority",
+  "home.newTask.type": "Type",
+  "home.projectFeed.filterAll": "All projects",
+  "home.projectFeed.empty": "Nothing on the board here yet.",
   "home.orgHome.viewAll": "View all",
   "home.orgHome.recentActivity": "Recent activity",
   "home.nativeTiles.commits": "{count} commit(s)",

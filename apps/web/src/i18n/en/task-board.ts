@@ -43,7 +43,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.noTasksMatch": "No tasks match these filters.",
   "taskBoard.taskBoard.noTasksYet": "No tasks yet. Start one with New task.",
   "taskBoard.scope.clear": "Clear the {name} scope",
-  "taskBoard.scope.counts": "{routed} routed here · {unassigned} unassigned",
   "taskBoard.scope.noRepo":
     "This project has no repository, so no cards route to it yet.",
   "taskBoard.taskBoard.tasksTitle": "Tasks",

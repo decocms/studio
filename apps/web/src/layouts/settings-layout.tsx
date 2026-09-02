@@ -48,8 +48,9 @@ function SettingsInset() {
     );
   }
 
+  // `p-1.5` = the workspace panel card's gutter, where the sidebar header starts.
   return (
-    <div className="flex-1 min-h-0 p-1">
+    <div className="flex-1 min-h-0 p-1.5">
       <div
         className={cn(
           "flex flex-col h-full min-h-0 bg-background overflow-hidden",
