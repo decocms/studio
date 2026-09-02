@@ -946,14 +946,16 @@ test.describe("/api/_admin/*", () => {
     expect(moved.status()).toBe(200);
     const movedBody = (await moved.json()) as {
       reassignedFrom: string;
-      site: { organizationId: string };
+      site: { organizationId: string; source: string };
     };
     expect(movedBody.reassignedFrom).toBe(orgAId);
     expect(movedBody.site.organizationId).toBe(orgBId);
+    // Reassign is a re-claim: source must flip too, not just the owner.
+    expect(movedBody.site.source).toBe("manual");
     expect(
       (
-        await db.query<{ organization_id: string }>(
-          `SELECT organization_id FROM "org_sites" WHERE slug = $1`,
+        await db.query<{ organization_id: string; source: string }>(
+          `SELECT organization_id, source FROM "org_sites" WHERE slug = $1`,
           [slug],
         )
       ).rows[0]?.organization_id,
