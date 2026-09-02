@@ -24,10 +24,9 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "@decocms/ui/components/command.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import {
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -272,6 +271,7 @@ export function BranchPicker({
               <VersionRow
                 dot="bg-success"
                 label={t("thread.branchPicker.live")}
+                branch={baseBranch}
                 selected={isBase}
                 disabled={!baseBranch}
                 onSelect={() => baseBranch && pick(baseBranch)}
@@ -283,6 +283,7 @@ export function BranchPicker({
                 <VersionRow
                   dot={releaseDotClass("orange")}
                   label={t("thread.branchPicker.defaultVersionName")}
+                  branch={value}
                   selected
                   onSelect={() => value && pick(value)}
                 />
@@ -344,17 +345,19 @@ export function BranchPicker({
 function VersionRow({
   dot,
   label,
+  branch,
   selected = false,
   disabled = false,
   onSelect,
 }: {
   dot: string;
   label: string;
+  branch?: string | null;
   selected?: boolean;
   disabled?: boolean;
   onSelect: () => void;
 }) {
-  return (
+  const row = (
     <button
       type="button"
       disabled={disabled}
@@ -367,8 +370,16 @@ function VersionRow({
     >
       <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
       <span className="flex-1 truncate">{label}</span>
-      {selected && <Check className="h-4 w-4 shrink-0 text-muted-foreground" />}
     </button>
+  );
+  if (!branch) return row;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{row}</TooltipTrigger>
+      <TooltipContent side="bottom" className="font-mono text-xs">
+        {branch}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -394,22 +405,26 @@ function ReleaseRow({
         selected ? "bg-accent" : "hover:bg-accent/60",
       )}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
-      >
-        <span
-          className={cn(
-            "h-2 w-2 shrink-0 rounded-full",
-            releaseDotClass(release.color),
-          )}
-        />
-        <span className="flex-1 truncate">{release.name}</span>
-        {selected && (
-          <Check className="h-4 w-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onSelect}
+            className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
+          >
+            <span
+              className={cn(
+                "h-2 w-2 shrink-0 rounded-full",
+                releaseDotClass(release.color),
+              )}
+            />
+            <span className="flex-1 truncate">{release.name}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="font-mono text-xs">
+          {release.branch}
+        </TooltipContent>
+      </Tooltip>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -465,6 +480,7 @@ function AdvancedPicker({
   onAdopt: (branch: string, name: string) => void;
 }) {
   const t = useT();
+  const [tab, setTab] = useState<"branches" | "prs">("branches");
   const [search, setSearch] = useState("");
   const {
     recent,
@@ -482,16 +498,16 @@ function AdvancedPicker({
     sandboxMap,
     owner,
     repo,
-    search,
-    enabled,
+    search: tab === "branches" ? search : "",
+    enabled: enabled && tab === "branches",
   });
-  const { data: prs = [] } = useOpenPrs({
+  const { data: prs = [], isLoading: prsLoading } = useOpenPrs({
     orgId,
     orgSlug,
     connectionId: connectionId ?? "",
     owner,
     repo,
-    enabled,
+    enabled: enabled && tab === "prs",
   });
 
   const repoFullName = `${owner}/${repo}`.toLowerCase();
@@ -516,86 +532,133 @@ function AdvancedPicker({
         <ChevronLeft className="h-4 w-4 shrink-0" />
         {t("thread.branchPicker.advancedBack")}
       </button>
-      <Command filter={(v, s) => (matchesBranchSearch(v, s) ? 1 : 0)}>
+      <Command
+        filter={
+          tab === "branches"
+            ? (v, s) => (matchesBranchSearch(v, s) ? 1 : 0)
+            : undefined
+        }
+      >
         <CommandInput
-          placeholder={t("thread.branchPicker.searchBranches")}
+          placeholder={
+            tab === "branches"
+              ? t("thread.branchPicker.searchBranches")
+              : t("thread.branchPicker.searchPullRequests")
+          }
           value={search}
           onValueChange={setSearch}
         />
+        <Tabs
+          className="px-2 pt-2 pb-1"
+          value={tab}
+          onValueChange={(v) => {
+            setTab(v as "branches" | "prs");
+            setSearch("");
+          }}
+        >
+          <TabsList
+            className="h-auto w-fit justify-start gap-1 bg-accent p-1"
+            variant="pill"
+          >
+            <TabsTrigger value="branches" className="h-6 px-2.5 text-xs">
+              {t("thread.branchPicker.branchesTab")}
+            </TabsTrigger>
+            <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
+              {t("thread.branchPicker.prsTab")}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
         <CommandList
           onScroll={(e) => {
             const el = e.currentTarget;
-            if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) {
+            if (
+              tab === "branches" &&
+              el.scrollHeight - el.scrollTop - el.clientHeight < 48
+            ) {
               fetchMore();
             }
           }}
         >
-          {isLoading && (
-            <div className="p-3 text-xs text-muted-foreground">
-              {t("thread.branchPicker.loadingMore")}
-            </div>
-          )}
-          {!isLoading && branches.length === 0 && openablePrs.length === 0 && (
-            <CommandEmpty>
-              {t("thread.branchPicker.noBranchesFound")}
-            </CommandEmpty>
-          )}
-          {branches.length > 0 && (
-            <CommandGroup heading={t("thread.branchPicker.branchesTab")}>
-              {branches.map((b) => (
-                <CommandItem
-                  key={b.name}
-                  value={b.name}
-                  className="cursor-pointer"
-                  onSelect={() => onAdopt(b.name, b.name)}
-                >
-                  <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
-                  <span className="flex-1 truncate">{b.name}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-          {openablePrs.length > 0 && (
+          {tab === "branches" ? (
             <>
-              <CommandSeparator />
-              <CommandGroup heading={t("thread.branchPicker.prsTab")}>
-                {openablePrs.map((pr) => (
-                  <CommandItem
-                    key={pr.number}
-                    value={`#${pr.number} ${pr.title} ${pr.head}`}
-                    className="cursor-pointer"
-                    onSelect={() =>
-                      onAdopt(pr.head, decodeHtmlEntities(pr.title))
-                    }
+              {isLoading && (
+                <div className="p-3 text-xs text-muted-foreground">
+                  {t("thread.branchPicker.loadingMore")}
+                </div>
+              )}
+              {!isLoading && branches.length === 0 && (
+                <CommandEmpty>
+                  {t("thread.branchPicker.noBranchesFound")}
+                </CommandEmpty>
+              )}
+              {branches.length > 0 && (
+                <CommandGroup>
+                  {branches.map((b) => (
+                    <CommandItem
+                      key={b.name}
+                      value={b.name}
+                      className="cursor-pointer"
+                      onSelect={() => onAdopt(b.name, b.name)}
+                    >
+                      <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="flex-1 truncate">{b.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {hasMore && (
+                <div className="p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-full text-xs"
+                    disabled={isFetchingMore}
+                    onClick={fetchMore}
                   >
-                    <GitPullRequest className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">
-                        {decodeHtmlEntities(pr.title)}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        #{pr.number} · {pr.head}
-                      </span>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                    {isFetchingMore
+                      ? t("thread.branchPicker.loadingMore")
+                      : t("thread.branchPicker.loadMoreBranches")}
+                  </Button>
+                </div>
+              )}
             </>
-          )}
-          {hasMore && (
-            <div className="p-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-full text-xs"
-                disabled={isFetchingMore}
-                onClick={fetchMore}
-              >
-                {isFetchingMore
-                  ? t("thread.branchPicker.loadingMore")
-                  : t("thread.branchPicker.loadMoreBranches")}
-              </Button>
-            </div>
+          ) : (
+            <>
+              {prsLoading && (
+                <div className="p-3 text-xs text-muted-foreground">
+                  {t("thread.branchPicker.loadingPullRequests")}
+                </div>
+              )}
+              {!prsLoading && openablePrs.length === 0 && (
+                <CommandEmpty>
+                  {t("thread.branchPicker.noOpenPullRequests")}
+                </CommandEmpty>
+              )}
+              {openablePrs.length > 0 && (
+                <CommandGroup>
+                  {openablePrs.map((pr) => (
+                    <CommandItem
+                      key={pr.number}
+                      value={`#${pr.number} ${pr.title} ${pr.head}`}
+                      className="cursor-pointer"
+                      onSelect={() =>
+                        onAdopt(pr.head, decodeHtmlEntities(pr.title))
+                      }
+                    >
+                      <GitPullRequest className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">
+                          {decodeHtmlEntities(pr.title)}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          #{pr.number} · {pr.head}
+                        </span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </>
           )}
         </CommandList>
       </Command>
