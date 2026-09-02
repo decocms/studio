@@ -255,6 +255,8 @@ export function BranchPicker({
       <PopoverContent
         className="w-[min(300px,calc(100vw-2rem))] p-1.5"
         align="start"
+        // Don't steal focus onto the first row: it fires that row's branch tooltip.
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         {spawnsNewChat && (
           <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
