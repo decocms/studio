@@ -132,6 +132,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
       .onConflict((oc) =>
         oc.column("slug").doUpdateSet({
           organization_id: params.organizationId,
+          source: params.source ?? "manual",
           updated_by: params.by,
           updated_at: now,
         }),
