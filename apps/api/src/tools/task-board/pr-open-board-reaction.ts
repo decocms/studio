@@ -31,7 +31,7 @@ import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
 
 // Cap on cards sent to the LLM prompt, so a large backlog doesn't inflate cost per PR-open.
-export const MAX_OPEN_CARDS_FOR_DECISION = 50;
+const MAX_OPEN_CARDS_FOR_DECISION = 50;
 
 export interface BoardDecision {
   action: "create" | "update";
