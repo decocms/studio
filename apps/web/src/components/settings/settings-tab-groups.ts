@@ -1,10 +1,8 @@
-/**
- * Settings tab groups — the model behind the merged settings screens.
- *
- * A group is ONE sidebar row that fans out into sibling routes shown as tabs
- * at the top of the page (Members ↔ Roles, Buckets ↔ Synced repos, …). Every
- * route stays exactly where it was, so deep links and bookmarks keep working;
- * only the sidebar collapses.
+/** Settings tab groups — ONE sidebar row fanning out into sibling routes shown
+ *  as tabs (Members ↔ Roles, Buckets ↔ Synced repos, …). Routes stay put, so
+ *  deep links keep working; only the sidebar collapses. A group may declare NO
+ *  tabs — Connect, whose API keys tab is now a section on its own page — and
+ *  still lives here, because the page chrome reads its title from this file.
  *
  * Both the sidebar (`settings-layout.tsx`) and the in-page tab strip
  * (`settings-subnav.tsx`) read this file, so a row and its tabs can never
@@ -34,7 +32,14 @@ export interface SettingsTabGroupDef {
   key: SettingsGroupKey;
   /** Page heading shown above the tabs, for every tab in the group. */
   titleKey: TranslationKey;
+  /** Sibling routes shown as tabs. Empty for a group that is a single page. */
   tabs: SettingsTabDef[];
+  /**
+   * Routes the sidebar row owns without tabbing to them: a page that was
+   * folded into a sibling still answers its old URL, and a bookmark of it
+   * should still light the row up.
+   */
+  ownedRoutes?: string[];
 }
 
 export const SETTINGS_TAB_GROUPS: Record<
@@ -44,19 +49,8 @@ export const SETTINGS_TAB_GROUPS: Record<
   connect: {
     key: "connect",
     titleKey: "settings.connectClients.pageTitle",
-    tabs: [
-      {
-        key: "clients",
-        labelKey: "settings.subnav.clients",
-        to: "/$org/settings/connect",
-      },
-      {
-        key: "api-keys",
-        labelKey: "settings.nav.apiKeys",
-        to: "/$org/settings/api-keys",
-        requires: "api-keys:manage",
-      },
-    ],
+    tabs: [],
+    ownedRoutes: ["/$org/settings/api-keys"],
   },
   members: {
     key: "members",
@@ -115,10 +109,15 @@ export const SETTINGS_TAB_GROUPS: Record<
   },
 };
 
-/**
- * Every route a merged sidebar row owns. Drives active-state highlighting so
- * opening the Roles tab keeps "Members" lit in the sidebar.
- */
+/** Every route a merged row owns beyond its own `to`, so opening Roles keeps
+ *  "Members" lit — and so does deep-linking a route a page absorbed. */
 export function groupRoutes(key: SettingsGroupKey): string[] {
-  return SETTINGS_TAB_GROUPS[key].tabs.map((tab) => tab.to);
+  const group = SETTINGS_TAB_GROUPS[key];
+  return [...group.tabs.map((tab) => tab.to), ...(group.ownedRoutes ?? [])];
+}
+
+/** Whether the group fans out at all. A tabless group is one page: its row
+ *  keeps its own route and, unlike a group gated away, never disappears. */
+export function hasTabs(key: SettingsGroupKey): boolean {
+  return SETTINGS_TAB_GROUPS[key].tabs.length > 0;
 }
