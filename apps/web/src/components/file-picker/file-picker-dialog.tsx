@@ -1,4 +1,5 @@
 import { Suspense, useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   AlertCircle,
   Check,
@@ -7,7 +8,6 @@ import {
   File02,
   Image01,
   LinkExternal01,
-  Loading01,
   Upload01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -368,7 +368,7 @@ function BucketPanel({
             >
               {objectsQuery.isFetchingNextPage ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   {t("filePicker.filePickerDialog.loading")}
                 </>
               ) : (

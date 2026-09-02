@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -20,7 +21,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ChevronDown,
   ChevronUp,
-  Loading01,
   Play,
   Plus,
   RefreshCw01,
@@ -399,8 +399,7 @@ function ScriptControls({
   if (isKilling) {
     return (
       <Button variant="outline" size="xs" disabled>
-        <Loading01 className="size-3.5 animate-spin" />{" "}
-        {t("sandbox.toolbar.stopping")}
+        <Spinner className="size-3.5" /> {t("sandbox.toolbar.stopping")}
       </Button>
     );
   }

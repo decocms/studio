@@ -1,4 +1,5 @@
-import { SearchMd, Loading01 } from "@untitledui/icons";
+import { SearchMd } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 interface CollectionSearchProps {
@@ -42,10 +43,7 @@ export function CollectionSearch({
         )}
       >
         {isSearching ? (
-          <Loading01
-            size={16}
-            className="animate-spin text-muted-foreground shrink-0"
-          />
+          <Spinner className="size-4 text-muted-foreground shrink-0" />
         ) : (
           <SearchMd size={16} className="text-muted-foreground shrink-0" />
         )}

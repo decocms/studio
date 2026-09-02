@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/empty-state.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import {
   useMCPClient,
@@ -7,7 +8,7 @@ import {
   type ConnectionEntity,
 } from "@/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Key01, File06, Loading01 } from "@untitledui/icons";
+import { Key01, File06 } from "@untitledui/icons";
 import { Suspense } from "react";
 import { useWatch, type useForm } from "react-hook-form";
 import { useT } from "@/i18n/use-t.ts";
@@ -264,10 +265,7 @@ function SettingsTabContent(props: SettingsTabProps) {
       <Suspense
         fallback={
           <div className="flex-1 flex items-center justify-center">
-            <Loading01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner className="size-8 text-muted-foreground" />
           </div>
         }
       >

@@ -1,14 +1,9 @@
 import { useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
-import {
-  ImagePlus,
-  RefreshCcw01,
-  Trash01,
-  Link01,
-  Loading01,
-} from "@untitledui/icons";
+import { ImagePlus, RefreshCcw01, Trash01, Link01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -123,7 +118,7 @@ export function ImageUpload({
       ) : isUploading ? (
         /* ── Uploading state ── */
         <div className="relative min-h-[180px] rounded-xl border border-border bg-muted/10 flex flex-col items-center justify-center gap-3">
-          <Loading01 className="size-8 animate-spin text-muted-foreground" />
+          <Spinner className="size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             {t("registry.imageUpload.uploadingImage")}
           </p>

@@ -1,4 +1,5 @@
 import { PromptDetailsView } from "@/components/details/prompt/index.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolDetailsView } from "@/components/details/tool.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
@@ -17,7 +18,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@decocms/ui/components/breadcrumb.tsx";
-import { Loading01, Container } from "@untitledui/icons";
+import { Container } from "@untitledui/icons";
 import { Link, useParams, useRouter } from "@tanstack/react-router";
 import { Suspense, type ComponentType } from "react";
 import { ViewLayout } from "@/components/details/layout";
@@ -208,11 +209,7 @@ export default function CollectionDetails() {
       <Suspense
         fallback={
           <div className="flex h-full items-center justify-center">
-            <Loading01
-              size={32}
-              className="animate-spin text-muted-foreground"
-              aria-label={useT()("orgs.collectionDetail.loadingAriaLabel")}
-            />
+            <Spinner className="size-8 text-muted-foreground" />
           </div>
         }
       >

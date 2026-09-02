@@ -1,4 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useT } from "@/i18n/use-t";
@@ -11,7 +12,6 @@ import {
   ChevronUp,
   Code01,
   Globe01,
-  Loading01,
   CreditCardSearch,
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -372,7 +372,7 @@ export function SectionsEditor({
   if (!previewReady || decofileLoading || metaLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }

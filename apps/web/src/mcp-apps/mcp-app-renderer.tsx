@@ -1,4 +1,5 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useMCPReadResource, useUiResourceHtml } from "@/sdk";
 import type {
   McpUiDisplayMode,
@@ -156,7 +157,7 @@ function MCPAppFrame({
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
           <div className="flex items-center gap-2 text-muted-foreground">
-            <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            <Spinner className="size-4" />
             <span className="text-sm">Loading app...</span>
           </div>
         </div>

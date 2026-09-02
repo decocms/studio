@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { RequireCapability } from "@/components/require-capability";
 
 const RegistryLayout = lazy(() => import("@/views/registry/registry-layout"));
@@ -10,10 +10,7 @@ export default function SettingsRegistryPage() {
       <Suspense
         fallback={
           <div className="flex-1 flex items-center justify-center">
-            <Loading01
-              size={20}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner className="size-5 text-muted-foreground" />
           </div>
         }
       >

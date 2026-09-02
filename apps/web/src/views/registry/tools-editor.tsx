@@ -1,8 +1,8 @@
 import { useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import {
-  Loading01,
   RefreshCcw01,
   Trash01,
   AlertCircle,
@@ -108,7 +108,7 @@ export function ToolsEditor({
               disabled={discoverStatus === "loading"}
             >
               {discoverStatus === "loading" ? (
-                <Loading01 size={12} className="animate-spin" />
+                <Spinner className="size-3" />
               ) : (
                 <RefreshCcw01 size={12} />
               )}

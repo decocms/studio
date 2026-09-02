@@ -1,5 +1,6 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { Loading01, Minus, Plus } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { Minus, Plus } from "@untitledui/icons";
 
 export function ToggleButton({
   isPinned,
@@ -28,7 +29,7 @@ export function ToggleButton({
       )}
     >
       {submitting ? (
-        <Loading01 size={12} className="animate-spin" />
+        <Spinner className="size-3" />
       ) : isPinned ? (
         <Minus size={14} />
       ) : (

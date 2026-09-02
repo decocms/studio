@@ -5,6 +5,7 @@ import {
   type PermissionCapability,
 } from "@decocms/shared/tools/registry-metadata";
 import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolSetSelector } from "@/components/tool-set-selector.tsx";
 import { useMembers } from "@/hooks/use-members";
 import { type OrganizationRole } from "@/hooks/use-organization-roles";
@@ -64,7 +65,6 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
-  Loading01,
   Lock01,
   Plus,
   X,
@@ -692,7 +692,7 @@ function ModelsPermissionsTab({
             key={conn.id}
             fallback={
               <div className="px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground">
-                <Loading01 className="size-4 animate-spin" />
+                <Spinner className="size-4" />
                 {t("settings.orgRoleDetail.loadingModels")}
               </div>
             }
@@ -1016,7 +1016,7 @@ function MembersTab(props: {
     <Suspense
       fallback={
         <div className="flex items-center justify-center h-full">
-          <Loading01 size={24} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-6 text-muted-foreground" />
         </div>
       }
     >
@@ -1257,7 +1257,7 @@ export function RoleDetailPage(props: RoleDetailPageProps) {
     return (
       <Page>
         <div className="flex items-center justify-center h-full">
-          <Loading01 size={32} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-8 text-muted-foreground" />
         </div>
       </Page>
     );
