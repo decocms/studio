@@ -40,6 +40,8 @@ export const admin = {
   "admin.orgs.flagsViewJson": "JSON",
   "admin.orgs.flagsViewToggles": "Toggles",
   "admin.orgs.invalidFlagKey": "Use snake_case minúsculo (ex.: minha_flag)",
+  "admin.orgs.invalidStoredValue":
+    "Esta org tem uma flag cujo valor salvo não é true/false. Corrija na visão JSON antes de salvar.",
   "admin.orgs.invalidJson":
     "JSON inválido — esperado chaves snake_case mapeadas para valores booleanos.",
   "admin.orgs.jsonReplaceHint":
