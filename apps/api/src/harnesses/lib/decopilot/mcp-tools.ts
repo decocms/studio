@@ -34,14 +34,77 @@ export function toolNeedsApproval(
 
 /** Anthropic rejects the WHOLE request (400) if any tool's
  *  `input_schema.properties` has a key outside this pattern, so one bad MCP
- *  tool kills every run. Drop that tool instead of the run. */
+ *  tool kills every run. Rename those keys for the model and map them back on
+ *  call. Only top-level keys are validated upstream, so only those are touched.
+ */
 const LLM_SAFE_PROPERTY_KEY = /^[a-zA-Z0-9_.-]{1,64}$/;
 
-export function hasLlmSafeInputSchema(inputSchema: unknown): boolean {
+function sanitizePropertyKey(key: string): string {
+  const safe = key.replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 64);
+  return safe.length > 0 ? safe : "_";
+}
+
+/** Schema with LLM-safe top-level property keys, plus safeKey -> originalKey
+ *  for the renamed ones (empty when nothing needed renaming). */
+export function llmSafeInputSchema(inputSchema: unknown): {
+  schema: unknown;
+  keyMap: Map<string, string>;
+} {
+  const keyMap = new Map<string, string>();
   const properties = (inputSchema as { properties?: unknown } | null)
     ?.properties;
-  if (properties == null || typeof properties !== "object") return true;
-  return Object.keys(properties).every((k) => LLM_SAFE_PROPERTY_KEY.test(k));
+  if (properties == null || typeof properties !== "object") {
+    return { schema: inputSchema, keyMap };
+  }
+  const keys = Object.keys(properties);
+  if (keys.every((k) => LLM_SAFE_PROPERTY_KEY.test(k))) {
+    return { schema: inputSchema, keyMap };
+  }
+
+  const used = new Set(keys.filter((k) => LLM_SAFE_PROPERTY_KEY.test(k)));
+  const rename = new Map<string, string>();
+  for (const key of keys) {
+    if (LLM_SAFE_PROPERTY_KEY.test(key)) continue;
+    let safe = sanitizePropertyKey(key);
+    if (used.has(safe)) {
+      const base = safe.slice(0, 60);
+      let i = 2;
+      while (used.has(`${base}_${i}`)) i++;
+      safe = `${base}_${i}`;
+    }
+    used.add(safe);
+    rename.set(key, safe);
+    keyMap.set(safe, key);
+  }
+
+  const source = properties as Record<string, unknown>;
+  const renamedProperties: Record<string, unknown> = {};
+  for (const key of keys) {
+    renamedProperties[rename.get(key) ?? key] = source[key];
+  }
+  const original = inputSchema as Record<string, unknown>;
+  const schema: Record<string, unknown> = {
+    ...original,
+    properties: renamedProperties,
+  };
+  if (Array.isArray(original.required)) {
+    schema.required = original.required.map((k) =>
+      typeof k === "string" ? (rename.get(k) ?? k) : k,
+    );
+  }
+  return { schema, keyMap };
+}
+
+function restoreOriginalKeys(
+  input: Record<string, unknown>,
+  keyMap: Map<string, string>,
+): Record<string, unknown> {
+  if (keyMap.size === 0) return input;
+  const restored: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    restored[keyMap.get(key) ?? key] = value;
+  }
+  return restored;
 }
 
 export function sanitizeToolName(name: string): string {
@@ -208,28 +271,22 @@ export async function toolsFromMCP(
 }> {
   const truncate = !options.disableOutputTruncation;
   const list = await client.listTools();
-  const visibleTools = list.tools
-    .filter((t) => (options.isToolVisible ?? defaultToolVisibility)(t))
-    .filter((t) => {
-      if (hasLlmSafeInputSchema(t.inputSchema)) return true;
-      console.warn(
-        "skipping MCP tool with LLM-unsafe input schema property keys",
-        { tool: t.name },
-      );
-      return false;
-    });
+  const visibleTools = list.tools.filter((t) =>
+    (options.isToolVisible ?? defaultToolVisibility)(t),
+  );
 
   const nameMap = buildShortNameMap(visibleTools);
   const toolEntries = visibleTools.map((t) => {
     const { name, title, description, inputSchema, annotations, _meta } = t;
     const safeName = nameMap.get(name)!;
+    const { schema: safeInputSchema, keyMap } = llmSafeInputSchema(inputSchema);
 
     return [
       safeName,
       tool<Record<string, unknown>, CallToolResult>({
         title: title ?? name,
         description,
-        inputSchema: jsonSchema(inputSchema as JSONSchema7),
+        inputSchema: jsonSchema(safeInputSchema as JSONSchema7),
         outputSchema: undefined,
         needsApproval:
           toolNeedsApproval(toolApprovalLevel, annotations?.readOnlyHint, {
@@ -240,9 +297,13 @@ export async function toolsFromMCP(
           let isError = false;
           let outputBytes: number | undefined;
           try {
+            const namedInput = restoreOriginalKeys(
+              input as Record<string, unknown>,
+              keyMap,
+            );
             const resolvedInput = options.resolveArgs
-              ? await options.resolveArgs(input as Record<string, unknown>)
-              : (input as Record<string, unknown>);
+              ? await options.resolveArgs(namedInput)
+              : namedInput;
             const result = await client.callTool(
               {
                 name: t.name,
