@@ -3,6 +3,8 @@ import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
+import { useIsReadOnly } from "./fields/read-only-context";
+import { ReadOnlyFieldWrap } from "./fields/read-only-pane";
 import { StringField } from "./fields/string-field";
 import { NumberField } from "./fields/number-field";
 import { BooleanField } from "./fields/boolean-field";
@@ -156,6 +158,14 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
 export function renderField(props: FieldProps) {
   const { schema, value } = props;
 
+  // Read-only: leaf value widgets get a read-only wrap; containers stay navigable.
+  const ro = (node: ReactNode): ReactNode =>
+    props.readOnly ? (
+      <ReadOnlyFieldWrap key={props.path}>{node}</ReadOnlyFieldWrap>
+    ) : (
+      node
+    );
+
   if (isMultivariateArrayWrapper(value)) {
     const multivariateArray = unwrapMultivariateArrayValue(value);
     const arraySchema = arraySchemaForValue(schema);
@@ -276,16 +286,16 @@ export function renderField(props: FieldProps) {
 
   // image-uri → ImageField (preview + image-only picker)
   if (schema.format === "image-uri") {
-    return <ImageField key={props.path} {...props} />;
+    return ro(<ImageField key={props.path} {...props} />);
   }
   // file-uri / video-uri → FileField (filename chip + picker, video preview)
   if (schema.format === "file-uri" || schema.format === "video-uri") {
-    return <FileField key={props.path} {...props} />;
+    return ro(<FileField key={props.path} {...props} />);
   }
 
   // map → MapField (Google Maps area selector encoded as "lat,lng,radius")
   if (schema.format === "map") {
-    return <MapField key={props.path} {...props} />;
+    return ro(<MapField key={props.path} {...props} />);
   }
 
   // dynamic-options / icon-select → DynamicOptionsField.
@@ -296,17 +306,17 @@ export function renderField(props: FieldProps) {
     schema.format === "icon-select" ||
     (schema.format === "dynamic-options" && schema.options)
   ) {
-    return <DynamicOptionsField key={props.path} {...props} />;
+    return ro(<DynamicOptionsField key={props.path} {...props} />);
   }
 
   // location → LocationField (country → region → city cascade; Brazil gets a map)
   if (schema.format === "location") {
-    return <LocationField key={props.path} {...props} />;
+    return ro(<LocationField key={props.path} {...props} />);
   }
 
   // Enum (including extracted const enums)
   if (schema.enum && schema.enum.length > 0) {
-    return <EnumField key={props.path} {...props} />;
+    return ro(<EnumField key={props.path} {...props} />);
   }
 
   // anyOf without anyOfRefs (legacy path)
@@ -337,13 +347,15 @@ export function renderField(props: FieldProps) {
 
   if (effectiveValue === null || effectiveValue === undefined) {
     if (isSecretBlock(value)) {
-      return <SecretField key={props.path} {...props} />;
+      return ro(<SecretField key={props.path} {...props} />);
     }
     return null;
   }
 
   if (isSecretBlock(effectiveValue)) {
-    return <SecretField key={props.path} {...props} value={effectiveValue} />;
+    return ro(
+      <SecretField key={props.path} {...props} value={effectiveValue} />,
+    );
   }
 
   const effectiveProps = { ...props, value: effectiveValue };
@@ -362,20 +374,20 @@ export function renderField(props: FieldProps) {
 
   switch (renderType) {
     case "boolean":
-      return <BooleanField key={props.path} {...effectiveProps} />;
+      return ro(<BooleanField key={props.path} {...effectiveProps} />);
     case "number":
     case "integer":
-      return <NumberField key={props.path} {...effectiveProps} />;
+      return ro(<NumberField key={props.path} {...effectiveProps} />);
     case "string": {
       // Format-based widgets
       const fmt = schema.format;
       if (fmt === "color-input" || fmt === "color") {
-        return <StringField key={props.path} {...effectiveProps} />;
+        return ro(<StringField key={props.path} {...effectiveProps} />);
       }
       if (fmt === "textarea" || fmt === "rich-text" || fmt === "html") {
-        return <StringField key={props.path} {...effectiveProps} />;
+        return ro(<StringField key={props.path} {...effectiveProps} />);
       }
-      return <StringField key={props.path} {...effectiveProps} />;
+      return ro(<StringField key={props.path} {...effectiveProps} />);
     }
     case "object":
       if (
@@ -387,7 +399,7 @@ export function renderField(props: FieldProps) {
       }
       return null;
     default:
-      return <StringField key={props.path} {...effectiveProps} />;
+      return ro(<StringField key={props.path} {...effectiveProps} />);
   }
 }
 
@@ -453,6 +465,7 @@ export function SchemaForm({
   sandbox?: FieldProps["sandbox"];
 }) {
   const t = useT();
+  const readOnly = useIsReadOnly();
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
   // block config whose props are a plain `A | B | C` union (e.g. the VTEX
@@ -475,6 +488,7 @@ export function SchemaForm({
         onAddSectionItem,
         onRequestAddSection,
         sandbox,
+        readOnly,
       });
     }
     return null;
@@ -653,6 +667,7 @@ export function SchemaForm({
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
+          readOnly,
           required: requiredKeys.has(key),
           breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange: fieldOnBreadcrumbChangeForKey,

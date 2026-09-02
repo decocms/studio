@@ -13,10 +13,6 @@
  */
 
 import type { BranchMeta } from "@decocms/sandbox/shared";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   SplitButton,
@@ -35,7 +31,6 @@ import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
-import { authClient } from "@/lib/auth-client.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
@@ -67,7 +62,14 @@ import {
   sandboxGitStatusQueryOptions,
 } from "./sandbox-git-api.ts";
 import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
+import { useReleases } from "./use-releases";
+import { draftsModeEnabled } from "./use-version-gate";
 import { usePrReviews } from "./use-pr-reviews.ts";
+import { authClient } from "@/lib/auth-client.ts";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 
 interface Props {
   virtualMcpId: string;
@@ -89,8 +91,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
+  const { data: session } = authClient.useSession();
+  const { deleteRelease } = useReleases(virtualMcpId);
   const {
     currentBranch: branch,
     setCurrentTaskBranch,
@@ -229,17 +232,21 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     await prQuery.refetch();
   };
 
-  /**
-   * A squash-merge leaves the published commits on the branch, so the editor
-   * has to move to a fresh one or the next edit would re-publish work that is
-   * already live. Modelled as a mutation so `isPending` — not a hand-rolled
-   * flag — is what tells the state machine a publish is still settling.
-   */
+  /** Publish done: go to production and discard the merged draft (switcher entry
+   *  + branch); a mutation so `isPending` signals the publish is still settling. */
   const publishCompletion = useMutation({
     mutationFn: async () => {
-      await setCurrentTaskBranch(
-        generateBranchName(branchUserLabel(session?.user)),
-      );
+      if (!draftsModeEnabled(vm)) {
+        await setCurrentTaskBranch(
+          generateBranchName(branchUserLabel(session?.user)),
+        );
+        return;
+      }
+      const published = branch;
+      await setCurrentTaskBranch(baseBranch);
+      if (published && published !== baseBranch) {
+        await deleteRelease(published);
+      }
     },
     /** The dialog is already closed by now, so a toast is the only surface. */
     onError: (err: unknown) => {

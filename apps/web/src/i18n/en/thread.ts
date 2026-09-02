@@ -6,6 +6,20 @@ export const thread = {
   "thread.branchPicker.couldntLoadPullRequests":
     "Couldn't load pull requests from GitHub.",
   "thread.branchPicker.createBranch": 'Create "{name}"',
+  "thread.branchPicker.advanced": "Advanced",
+  "thread.branchPicker.advancedBack": "Back",
+  "thread.branchPicker.cancel": "Cancel",
+  "thread.branchPicker.defaultVersionName": "Draft",
+  "thread.branchPicker.delete": "Delete",
+  "thread.branchPicker.deleteConfirm":
+    'Delete "{name}"? This can\'t be undone.',
+  "thread.branchPicker.deleteTitle": "Discard draft?",
+  "thread.branchPicker.live": "Production",
+  "thread.branchPicker.moreActions": "More actions",
+  "thread.branchPicker.newVersion": "New draft",
+  "thread.branchPicker.rename": "Rename",
+  "thread.branchPicker.save": "Save",
+  "thread.branchPicker.selectVersion": "Select a version",
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
   "thread.branchPicker.hiddenForkPrs":

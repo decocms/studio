@@ -270,6 +270,8 @@ export const chat = {
     "Apenas leitura - você está visualizando o chat de {name}",
   "chat.input.readOnlyThread":
     "Apenas leitura - este chat não aceita respostas",
+  "chat.input.productionReadOnly": "Produção é somente leitura",
+  "chat.input.startDraftToEdit": "Comece um novo rascunho para editar",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":

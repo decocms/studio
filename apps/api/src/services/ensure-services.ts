@@ -339,6 +339,8 @@ async function ensurePostgres(home: string): Promise<ServiceInfo> {
     user: PG_USER,
     password: PG_PASSWORD,
     persistent: true,
+    // Headroom for the API's many boot-time pools; default 100 storm-retries.
+    postgresFlags: ["-c", "max_connections=500"],
     onLog: (msg: string) => {
       if (process.env.DEBUG_SERVICES) console.log(`[pg] ${msg}`);
     },

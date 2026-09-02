@@ -41,6 +41,8 @@ export {
   type SandboxMap,
   SandboxRecordSchema,
   type SandboxRecord,
+  ReleaseSchema,
+  type Release,
   type RuntimeMetadata,
   type RuntimeEnvEntry,
   type SubmoduleCredential,

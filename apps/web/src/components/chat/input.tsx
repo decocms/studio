@@ -16,6 +16,11 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import {
+  draftsModeEnabled,
+  useIsOnProduction,
+} from "@/components/thread/github/use-version-gate";
+import { StartDraftCta } from "@/components/thread/github/start-draft-cta";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -389,6 +394,10 @@ export function ChatInput({
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
   const fastPreviewActive = useSessionRuntime(selectedVm?.id).runtime === "cms";
+  const isOnProduction = useIsOnProduction(
+    selectedVm,
+    taskCtx?.currentBranch ?? null,
+  );
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -628,6 +637,11 @@ export function ChatInput({
   // in the messages POST; keep the two in step.
   if (task?.metadata?.read_only) {
     return <ChatInputDisabledState message={t("chat.input.readOnlyThread")} />;
+  }
+
+  // Production is the read-only live version — editing means branching off it.
+  if (draftsModeEnabled(selectedVm) && isOnProduction && taskCtx) {
+    return <StartDraftCta virtualMcpId={selectedVm?.id ?? ""} />;
   }
 
   if (hostedRuntimeBlocked) {

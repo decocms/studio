@@ -201,6 +201,9 @@ Defina passo a passo como o agente deve tratar as solicitações.
 3. Resumir o resultado e propor próximos passos.
 4. Pedir confirmação antes de fazer qualquer alteração.
 </workflows>`,
+  "virtualMcp.virtualMcp.draftsModeTitle": "Modo Rascunhos & Versões",
+  "virtualMcp.virtualMcp.draftsModeDescription":
+    "Troca a picker de branch/PR por rascunhos nomeados: switcher de versões, produção somente leitura e publicar para produção.",
   "virtualMcp.virtualMcp.publishing": "Publicação",
   "virtualMcp.virtualMcp.publishingDescription":
     "Controle quando as alterações deste agente podem ser publicadas diretamente, sem revisão por pull request.",

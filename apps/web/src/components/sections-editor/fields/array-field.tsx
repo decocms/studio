@@ -20,6 +20,7 @@ import {
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { useIsReadOnly } from "./read-only-context";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -127,6 +128,7 @@ export function ArrayField({
   sandbox,
 }: FieldProps) {
   const t = useT();
+  const readOnly = useIsReadOnly();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
@@ -608,8 +610,9 @@ export function ArrayField({
 
       <button
         type="button"
+        disabled={readOnly}
         onClick={handleAddClick}
-        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30"
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
       >
         <Plus size={14} />
         {usesSectionPicker

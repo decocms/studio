@@ -21,6 +21,7 @@ import { SchemaForm } from "./schema-form";
 import { type Crumb, crumbLabel } from "./schema-form-breadcrumb";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
 import type { FieldProps, SandboxConfig } from "./fields/field-props";
+import { useIsReadOnly } from "./fields/read-only-context";
 import { SeoFormFields } from "./seo-form-fields";
 import { parsePageVariants, type PageVariant } from "./page-variants";
 import { formatMatcher } from "./format-matcher";
@@ -228,6 +229,7 @@ export function PageHeaderInputs({
   onFieldChange: (field: "name" | "path", value: string) => void;
 }) {
   const t = useT();
+  const readOnly = useIsReadOnly();
   const [name, setName] = useState(initialName);
   const [path, setPath] = useState(initialPath);
   const [prevKey, setPrevKey] = useState(pageKey);
@@ -275,6 +277,7 @@ export function PageHeaderInputs({
       <input
         type="text"
         value={name}
+        readOnly={readOnly}
         onChange={(e) => {
           setName(e.target.value);
           onFieldChange("name", e.target.value);
@@ -287,6 +290,7 @@ export function PageHeaderInputs({
       <input
         type="text"
         value={path}
+        readOnly={readOnly}
         onChange={(e) => setPath(e.target.value)}
         onBlur={commitPath}
         onKeyDown={(e) => {

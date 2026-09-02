@@ -2160,6 +2160,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
@@ -2348,6 +2359,17 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              releases?:
+                | {
+                    branch: string;
+                    name: string;
+                    color: string;
+                    createdBy?: string | undefined;
+                    createdAt?: string | undefined;
+                  }[]
+                | null
+                | undefined;
+              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
             }
           | null
@@ -2521,6 +2543,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
@@ -2710,6 +2743,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
@@ -2890,6 +2934,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
@@ -3043,6 +3098,17 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              releases?:
+                | {
+                    branch: string;
+                    name: string;
+                    color: string;
+                    createdBy?: string | undefined;
+                    createdAt?: string | undefined;
+                  }[]
+                | null
+                | undefined;
+              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
             }
           | null
@@ -3224,6 +3290,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
@@ -3402,6 +3479,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {
@@ -4437,6 +4525,17 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          releases?:
+            | {
+                branch: string;
+                name: string;
+                color: string;
+                createdBy?: string | undefined;
+                createdAt?: string | undefined;
+              }[]
+            | null
+            | undefined;
+          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
         };
         connections: {

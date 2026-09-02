@@ -57,4 +57,6 @@ export interface FieldProps {
     data: Record<string, unknown>,
   ) => void;
   sandbox?: SandboxConfig | null;
+  /** Read-only form (e.g. production): leaf value widgets render inert. */
+  readOnly?: boolean;
 }
