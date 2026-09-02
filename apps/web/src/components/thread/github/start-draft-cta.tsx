@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowRight, Lock01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -19,13 +20,25 @@ export function StartDraftCta({
 }) {
   const t = useT();
   const createDraft = useCreateDraft(virtualMcpId);
+  const [pending, setPending] = useState(false);
+
+  const handleClick = async () => {
+    if (pending) return;
+    setPending(true);
+    try {
+      await createDraft();
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <button
       type="button"
-      onClick={() => void createDraft()}
+      disabled={pending}
+      onClick={() => void handleClick()}
       className={cn(
-        "group flex items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group flex items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60",
         variant === "composer" ? "w-full" : "mx-auto my-10 w-full max-w-md",
       )}
     >
