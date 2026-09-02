@@ -305,11 +305,17 @@ export function BranchPicker({
                     <input
                       // biome-ignore lint/a11y/noAutofocus: opened by an explicit click
                       autoFocus
+                      aria-label={t("thread.branchPicker.rename")}
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") void saveRename(r.branch);
-                        if (e.key === "Escape") setEditing(null);
+                        if (e.key === "Escape") {
+                          // Don't let Escape also close the popover behind it.
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditing(null);
+                        }
                       }}
                       className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
                     />
