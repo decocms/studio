@@ -1,19 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
-  agentCanBePinned,
   agentHasClonableSource,
   agentHasConnectedGithub,
-  agentIsSidebarPinned,
   agentShowsGithubHeaderActions,
 } from "./agent-capabilities";
-
-const CODE_META = {
-  githubRepo: {
-    url: "https://github.com/acme/app",
-    owner: "acme",
-    name: "app",
-  },
-};
 
 describe("agentHasClonableSource", () => {
   it("returns false for null/undefined metadata", () => {
@@ -60,36 +50,6 @@ describe("agentHasClonableSource", () => {
   it("ignores non-object metadata", () => {
     expect(agentHasClonableSource("string")).toBe(false);
     expect(agentHasClonableSource(42)).toBe(false);
-  });
-});
-
-describe("agentCanBePinned", () => {
-  it("returns true for a non-code agent (no clonable source)", () => {
-    expect(agentCanBePinned({ metadata: {} })).toBe(true);
-    expect(agentCanBePinned({ metadata: null })).toBe(true);
-  });
-
-  it("returns false for a code agent (clonable source)", () => {
-    expect(agentCanBePinned({ metadata: CODE_META })).toBe(false);
-  });
-});
-
-describe("agentIsSidebarPinned", () => {
-  it("returns true only when a non-code agent is pinned", () => {
-    expect(agentIsSidebarPinned({ pinned: true, metadata: {} })).toBe(true);
-  });
-
-  it("returns false when not pinned", () => {
-    expect(agentIsSidebarPinned({ pinned: false, metadata: {} })).toBe(false);
-    expect(agentIsSidebarPinned({ pinned: undefined, metadata: {} })).toBe(
-      false,
-    );
-  });
-
-  it("returns false for a pinned code agent (already auto-listed)", () => {
-    expect(agentIsSidebarPinned({ pinned: true, metadata: CODE_META })).toBe(
-      false,
-    );
   });
 });
 

@@ -25,6 +25,7 @@ export {
   createMCPClient,
   mcpClientQueryOptions,
   useMCPClient,
+  useMCPClientNonBlocking,
   useMCPClientOptional,
   type CreateMcpClientOptions,
   type UseMcpClientOptions,
@@ -71,6 +72,10 @@ export {
 // Virtual MCP hooks
 export {
   useVirtualMCPs,
+  useVirtualMCPNonBlocking,
+  useVirtualMCPsNonBlocking,
+  fetchVirtualMCPs,
+  useVirtualMCPsPage,
   useVirtualMCP,
   useVirtualMCPActions,
   useVirtualMCPsLastUsed,

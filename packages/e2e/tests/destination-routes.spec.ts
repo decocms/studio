@@ -3,7 +3,7 @@
  *
  * The route grammar under test: **path = which page, search = how that page is
  * laid out.** Home, Chat, Tasks, Reports and Library are real path segments,
- * and so is the main-panel view (`/agents/<project>/preview`); `sidepanel`,
+ * and so is the main-panel view (`/agents/<view>`); `sidepanel`,
  * `mainpanel` and `thread` stay in search because they describe the layout —
  * whether each panel is open, and which conversation is in it.
  *
@@ -134,8 +134,8 @@ test.describe("destination routes", () => {
     authedPage: { page, orgSlug },
   }) => {
     await page.goto(`/${orgSlug}`);
-    /* Nothing is configured in a fresh org — no main agent — so the resolver
-       lands on Home. */
+    /* The resolver forwards a scope the URL names and otherwise lands on Home.
+       Nothing names one here, so Home it is. */
     await page.waitForURL((url) => url.pathname === `/${orgSlug}/home`, {
       timeout: SHELL_TIMEOUT_MS,
     });
@@ -149,22 +149,24 @@ test.describe("destination routes", () => {
     const projectId = await createProject(request, orgSlug, "legacy shape e2e");
     const threadId = await createThread(request, orgSlug, projectId);
 
-    /* `?virtualmcpid=` is the `{-$project}` path segment now, and the thread id
-       moves out of the path into `?thread=`. */
+    /* The agent survives as `?virtualmcpid=` and the thread id moves out of
+       the path into `?thread=`. The path is what changes, not the param. */
     await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${projectId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}` &&
+        url.pathname === `/${orgSlug}/agents` &&
+        url.searchParams.get("virtualmcpid") === projectId &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
 
-    /* No agent named: no project segment either, exactly as the Super Agent
-       reads under this grammar. */
+    /* No agent named: no `?virtualmcpid=` either, which is how the Super
+       Agent reads under this grammar. */
     await page.goto(`/${orgSlug}/${threadId}`);
     await page.waitForURL(
       (url) =>
         url.pathname === `/${orgSlug}/agents` &&
+        url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -273,55 +275,125 @@ test.describe("destination routes", () => {
     const request = page.context().request;
     const projectId = await createProject(request, orgSlug, "panel path e2e");
 
-    /* The address a view is written as. */
-    await page.goto(`/${orgSlug}/agents/${projectId}/settings`);
+    /* The address a view is written as: the VIEW is the segment, the project
+       is `?virtualmcpid=`. */
+    await page.goto(`/${orgSlug}/agents/settings?virtualmcpid=${projectId}`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
     /* Closing keeps the view in the path, so reopening returns to it. */
-    await page.goto(`/${orgSlug}/agents/${projectId}/settings?mainpanel=false`);
-    await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
-    expect(new URL(page.url()).pathname).toBe(
-      `/${orgSlug}/agents/${projectId}/settings`,
+    await page.goto(
+      `/${orgSlug}/agents/settings?virtualmcpid=${projectId}&mainpanel=false`,
     );
+    await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
+    expect(new URL(page.url()).pathname).toBe(`/${orgSlug}/agents/settings`);
 
     /* A bookmark from before the split lands on the same view, with `main`
        retired out of the URL. */
-    await page.goto(`/${orgSlug}/agents/${projectId}?main=settings`);
+    await page.goto(
+      `/${orgSlug}/agents?virtualmcpid=${projectId}&main=settings`,
+    );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/agents/settings` &&
+        url.searchParams.get("virtualmcpid") === projectId &&
         url.searchParams.get("main") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
   });
 
-  /**
-   * REGRESSION. `{-$project}` and `{-$panel}` are both optional, so a view on
-   * the Super Agent — which has no project — matches as `project="<view>"`.
-   * Reading that param raw hands a VIEW name to the agent lookup and the whole
-   * workspace becomes "Agent not found". It is not a hand-typed URL either: the
-   * panel writers and the legacy `?main=` translator both mint this shape from
-   * a page that names no project.
-   */
+  /** The two-segment shape every link minted before the project moved to
+   *  search still carries — including report mail, whose CTA an external
+   *  service persists and re-sends for orgs that never re-onboard. It must
+   *  redirect and keep the view's own payload. */
+  test("a legacy /agents/<project>/<view> URL redirects into ?virtualmcpid=", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const projectId = await createProject(request, orgSlug, "legacy path e2e");
+
+    await page.goto(`/${orgSlug}/agents/${projectId}/settings`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/settings` &&
+        url.searchParams.get("virtualmcpid") === projectId,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+  });
+
+  /** A bookmarked project with no view moves into `?virtualmcpid=` too. */
+  test("a lone /agents/<projectId> redirects into ?virtualmcpid=", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const projectId = await createProject(request, orgSlug, "lone id e2e");
+
+    await page.goto(`/${orgSlug}/agents/${projectId}`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents` &&
+        url.searchParams.get("virtualmcpid") === projectId,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+  });
+
+  /** REGRESSION, kept after the project moved to search. One optional segment
+   *  makes a lone `/agents/<view>` unambiguous to the ROUTER, but `beforeLoad`
+   *  still classifies it and sweeps anything that is not a known view into
+   *  `?virtualmcpid=`. A view misclassified there hands a VIEW name to the agent
+   *  lookup and the workspace reads "Agent not found" — this pins that. */
   test("a lone /agents/<view> is the view, not a project named after it", async ({
     authedPage: { page, orgSlug },
   }) => {
-    for (const view of ["preview", "settings", "board"]) {
+    for (const view of [
+      "site-editor",
+      /* Two names the app no longer writes — `preview` before the rename,
+         `content` before Content became `?main=content` on the Site Editor —
+         both still VIEWS, and both still resolvable from a bookmark. */
+      "preview",
+      "content",
+      "settings",
+      "board",
+    ]) {
       await page.goto(`/${orgSlug}/agents/${view}`);
       await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-      /* The workspace, not the not-found page the raw read produced. */
+      /* The workspace, not the not-found page a misclassified segment gives. */
       await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
       expect(new URL(page.url()).pathname).toBe(`/${orgSlug}/agents/${view}`);
+      /* Not swept into the scope by the beforeLoad classifier. */
+      expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
+
+      /* No body assertion for `content` here, deliberately. Content is gated
+         on the agent having SOURCE (`resolveSurfaceTabs` returns [] without
+         it), and this org's only agent is the Super Agent — so the view
+         legitimately falls back to the default rather than rendering
+         Content's empty state. What this test owns is the CLASSIFIER: the
+         segment stays a view and is not swept into `?virtualmcpid=`, which
+         the assertions above prove. */
     }
 
-    /* The legacy translator mints exactly this shape off a project-less page. */
+    /* The legacy translator mints exactly this shape off a project-less page,
+       and rewrites the retired `preview` to the segment that owns the view. */
     await page.goto(`/${orgSlug}/home?main=preview`);
     await page.waitForURL(
-      (url) => url.pathname === `/${orgSlug}/agents/preview`,
+      (url) => url.pathname === `/${orgSlug}/agents/site-editor`,
       {
         timeout: SHELL_TIMEOUT_MS,
       },
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    /* INVERTED: `main=content` used to be retired into a `content` segment
+       like every other view. It is Content's own address now — the Site
+       Editor segment KEEPS the param instead of translating it away, and the
+       redirect settles rather than re-firing on its own output. */
+    await page.goto(`/${orgSlug}/home?main=content`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/site-editor` &&
+        url.searchParams.get("main") === "content",
+      { timeout: SHELL_TIMEOUT_MS },
     );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
   });
@@ -359,13 +431,16 @@ test.describe("destination routes", () => {
     await expect(row).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await row.click();
 
+    /* Landing on the agents route, the scope is legitimate — that route is one
+       of the two that resolve it. The assertion that matters for this test is
+       the one above, on `/reports`, where it must never appear. */
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}` &&
+        url.pathname === `/${orgSlug}/agents` &&
+        url.searchParams.get("virtualmcpid") === projectId &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
-    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
   });
 
   test("the short org links still redirect", async ({

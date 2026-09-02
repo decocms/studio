@@ -1,11 +1,9 @@
-/**
- * Settings navigation — the two-tier sidebar and the in-page tabs that replaced
- * the rows it absorbed.
- *
- * Black-box: drives the UI over HTTP and asserts on what a member sees. The
- * routes themselves are unchanged, so a deep link into a tab must still land on
- * that tab with its group's sidebar row highlighted.
- */
+/** Settings navigation — the two-tier sidebar and the in-page tabs that replaced
+ *  the rows it absorbed. Black-box: drives the UI over HTTP and asserts on what
+ *  a member sees. Routes are unchanged, so a deep link into a tab still lands on
+ *  it with its group's row highlighted. Connect went the other way — its two
+ *  tabs merged into one page, so it shows NO strip and carries keys as a
+ *  section. */
 
 import { expect, test } from "../fixtures/test";
 
@@ -54,44 +52,54 @@ test.describe("settings tabs", () => {
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
+    await page.goto(`/${orgSlug}/settings/roles`);
 
-    const cases = [
-      {
-        row: "Members",
-        deepLink: "roles",
-        otherTab: "Roles",
-        clickTab: "Members",
-        lands: "members",
-      },
-      {
-        row: "Connect",
-        deepLink: "connect",
-        otherTab: "Clients",
-        clickTab: "API Keys",
-        lands: "api-keys",
-      },
-    ];
+    const row = page
+      .locator(SIDEBAR)
+      .getByRole("link", { name: "Members", exact: true });
+    await expect(row, "roles lights up Members").toHaveAttribute(
+      "data-active",
+      "true",
+    );
 
-    for (const c of cases) {
-      await page.goto(`/${orgSlug}/settings/${c.deepLink}`);
+    const tabs = page.locator(SUBNAV);
+    await expect(tabs.getByRole("link", { name: "Roles" })).toBeVisible();
 
-      const row = page
-        .locator(SIDEBAR)
-        .getByRole("link", { name: c.row, exact: true });
-      await expect(row, `${c.deepLink} lights up ${c.row}`).toHaveAttribute(
-        "data-active",
-        "true",
-      );
+    await tabs.getByRole("link", { name: "Members" }).click();
+    await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/members$`));
+    await expect(row).toHaveAttribute("data-active", "true");
+  });
 
-      const tabs = page.locator(SUBNAV);
-      await expect(tabs.getByRole("link", { name: c.otherTab })).toBeVisible();
+  test("connect is one page: no tab strip, API keys inline", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    await page.goto(`/${orgSlug}/settings/connect`);
 
-      await tabs.getByRole("link", { name: c.clickTab }).click();
-      await expect(page).toHaveURL(
-        new RegExp(`/${orgSlug}/settings/${c.lands}$`),
-      );
-      await expect(row).toHaveAttribute("data-active", "true");
-    }
+    await expect(page.locator(HEADING)).toContainText("Connect to clients");
+    await expect(page.locator(SUBNAV)).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Connect a client" }),
+    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
+
+    const row = page
+      .locator(SIDEBAR)
+      .getByRole("link", { name: "Connect", exact: true });
+    await expect(row).toHaveAttribute("data-active", "true");
+  });
+
+  test("the absorbed api-keys route still opens on its own", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    await page.goto(`/${orgSlug}/settings/api-keys`);
+
+    await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
+    await expect(page.locator(SUBNAV)).toHaveCount(0);
+    await expect(
+      page.locator(SIDEBAR).getByRole("link", { name: "Connect", exact: true }),
+    ).toHaveAttribute("data-active", "true");
   });
 
   test("the heading and tabs stay put while the next tab loads", async ({

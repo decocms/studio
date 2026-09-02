@@ -74,6 +74,6 @@ export function useOpenPreviewOnRepoLoad(): void {
     }
     if (openedFor.current === taskId) return;
     openedFor.current = taskId;
-    openPanel("preview");
+    openPanel("site-editor");
   }, [loads, taskId, openPanel, manager]);
 }

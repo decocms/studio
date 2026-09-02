@@ -4,7 +4,6 @@ import {
 } from "@decocms/shared/reports/site-url";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t.ts";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { track } from "@/lib/posthog-client";
 import { KEYS } from "@/lib/query-keys";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -15,9 +14,9 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { commerceReportNavTarget } from "@/hooks/use-commerce-diagnostic";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
@@ -56,22 +55,30 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
    * and reveals the report. Target end state: the Commerce Discovery report app
    * open in the main panel, with chat (`sidepanel: false`, overriding the report
    * agent's chatDefaultOpen) and the sidebar both closed.
+   *
+   * The sidebar is closed through localStorage rather than a prop because
+   * `OrgLayout` owns that state and this modal renders above it. The report is
+   * the whole screen at this point in onboarding — the nav has nowhere useful
+   * to go yet.
+   *
+   * The target's own `search` is SPREAD, not replaced: it carries
+   * `virtualmcpid`, and a bare object here dropped it — after which
+   * `retainSearchParams` refilled the key from whatever scope was in force (the
+   * org home's Super Agent), so the report opened on the wrong agent while
+   * looking like it had one.
    */
   const goToReport = () => {
     localStorage.setItem(
       LOCALSTORAGE_KEYS.sidebarOpen(),
       JSON.stringify(false),
     );
+    const target = commerceReportNavTarget(
+      org,
+      WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
+    );
     navigate({
-      ...commerceReportNavTarget(
-        org,
-        WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
-      ),
-      search: {
-        connection: WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
-        tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-        sidepanel: false,
-      },
+      ...target,
+      search: { ...target.search, sidepanel: false },
     });
   };
 

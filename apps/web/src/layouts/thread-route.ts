@@ -27,7 +27,6 @@ import {
 import {
   clearPanelPayload,
   panelLocationForTab,
-  resolveChatSegments,
 } from "@/layouts/main-panel-tabs/panel-route";
 import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 
@@ -90,52 +89,32 @@ export function useRouteThreadId(): string | null {
   });
 }
 
-/**
- * Pure core of {@link useRouteAgentId} — the ONE answer to "which agent does
- * this route name", where naming none is a real answer (`undefined`).
+/** Pure core of {@link useRouteAgentId}: the ONE answer to "which agent does
+ *  this route name", where naming none is real (`undefined`).
  *
- * The agent is the `{-$project}` path segment, because path = which page. A
- * route with no segment is org-level and belongs to the Super Agent: Home,
- * Tasks, Reports and Library are org-wide by definition, and a bare
- * `/$org/agents` IS the Super Agent's workspace.
+ *  Three routes resolve `?virtualmcpid=`, and no more: the agents route, the
+ *  legacy `/$org/$taskId`, and HOME — whose face IS the scope's (`HomeTab`
+ *  renders the scoped project's overview, the roster only when unscoped). The
+ *  gate is the point: the param is retained so one scope can narrow Tasks and
+ *  Library, so resolving it everywhere would let a leftover param turn an
+ *  org-level page into a project workspace.
  *
- * `?virtualmcpid=` is read on the legacy `/$org/$taskId` alone, where it
- * genuinely is the only record of the agent. Everywhere else it is vestigial,
- * and reading it is what let a param left behind by an earlier navigation scope
- * a whole org-level page to one project.
- */
+ *  Home was missing, and it mattered: `useNavigateToAgent` sends an agent with
+ *  no panel to `/$org/home?virtualmcpid=X&thread=<new>`, so the thread was
+ *  minted for X and then CREATED against the Super Agent — and chat dispatched
+ *  there too. */
 export function resolveRouteAgentId(input: {
-  projectParam?: string;
   virtualMcpIdSearch?: string;
+  /** True on `/$org/agents/{-$panel}`, whose agent is the scope. */
+  onAgentsRoute?: boolean;
+  /** True on `/$org/home`, which renders the scoped project's own overview. */
+  onHomeRoute?: boolean;
   /** True only on `/$org/$taskId`, the one route whose agent lives in search. */
   legacyRoute?: boolean;
 }): string | undefined {
-  if (input.projectParam) return input.projectParam;
-  return input.legacyRoute ? input.virtualMcpIdSearch : undefined;
-}
-
-/**
- * The `{-$project}` / `{-$panel}` pair the matched route names.
- *
- * ALWAYS read the segments through this, never `params.project`: `{-$project}`
- * and `{-$panel}` are both optional, so a lone `/agents/preview` matches with
- * `project="preview"`, and a raw read hands a VIEW name to the agent lookup —
- * which then reports "Agent not found" for a URL the panel writers mint.
- */
-function useRouteChatSegments(): {
-  project: string | undefined;
-  panel: string | undefined;
-} {
-  const params = useParams({ strict: false });
-  return resolveChatSegments({
-    project: params.project,
-    panel: params.panel,
-  });
-}
-
-/** The `{-$project}` segment the matched route names, or `undefined`. */
-export function useRouteProjectId(): string | undefined {
-  return useRouteChatSegments().project;
+  return input.onAgentsRoute || input.onHomeRoute || input.legacyRoute
+    ? input.virtualMcpIdSearch || undefined
+    : undefined;
 }
 
 /** True on the legacy `/$org/$taskId`, whose thread id is its path param. */
@@ -146,12 +125,13 @@ function useLegacyThreadRoute(): boolean {
 
 /** The agent the matched route names, or `undefined` when it names none. */
 export function useRouteAgentId(): string | undefined {
-  const search = useSearch({ strict: false });
-  const projectParam = useRouteProjectId();
+  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
+  const leafPath = useLeafRoutePath();
   const legacyRoute = useLegacyThreadRoute();
   return resolveRouteAgentId({
-    projectParam,
     virtualMcpIdSearch: search.virtualmcpid,
+    onAgentsRoute: leafPath === DESTINATION_ROUTE.agents,
+    onHomeRoute: leafPath === DESTINATION_ROUTE.home,
     legacyRoute,
   });
 }
@@ -163,35 +143,21 @@ export function useRouteVirtualMcpId(): string {
   return routeAgentId ?? getWellKnownDecopilotVirtualMCP(org.id).id;
 }
 
-/**
- * Pure core of the destination branch of {@link useThreadNavigate}.
- *
- * Switching threads on a destination keeps the page you are on, so the page's
- * own search survives: panel state, board filters, Library path. `changes`
- * carries only what the switch itself decided, so it layers OVER `prev` rather
- * than replacing it, and `thread` is written last so it always names the thread
- * being navigated to.
- *
- * `virtualmcpid` is evicted unconditionally. The agent a destination is scoped
- * to is its `{-$project}` segment (see {@link resolveRouteAgentId}), so on a
- * project route the param could only contradict the path — that is how a new
- * chat started on a project used to land on the Super Agent — and an org-level
- * page has no agent of its own to record. Keeping it there is what let Home,
- * Reports and Library silently scope themselves to whichever project the last
- * thread opened from them belonged to.
- */
+/** Pure core of the destination branch of {@link useThreadNavigate}. Switching
+ *  threads keeps the page you are on, so its own search survives — panel state,
+ *  board filters, Library path — and `changes` layers OVER `prev` rather than
+ *  replacing it, with `thread` written last. A switch never INTRODUCES a scope
+ *  (`virtualmcpid` is dropped from `changes`, so opening someone else's thread
+ *  cannot scope the page to that thread's project), but a scope already in
+ *  `prev` SURVIVES: it is the filter the person chose, and deleting it would be
+ *  futile anyway since retention re-adds it. */
 export function resolveDestinationThreadSearch(input: {
   prev: Record<string, unknown>;
   changes: Record<string, unknown>;
   threadId: string;
 }): Record<string, unknown> {
-  const next: Record<string, unknown> = {
-    ...input.prev,
-    ...input.changes,
-    thread: input.threadId,
-  };
-  delete next.virtualmcpid;
-  return next;
+  const { virtualmcpid: _introduced, ...changes } = input.changes;
+  return { ...input.prev, ...changes, thread: input.threadId };
 }
 
 /**
@@ -287,10 +253,14 @@ export function useThreadNavigate() {
   const threadInSearch = useThreadInSearch();
   const { org } = useProjectContext();
   const orgSlug = params.org ?? "";
-  const { project: currentProject, panel: currentPanel } =
-    useRouteChatSegments();
-  const projectInPath = currentProject !== undefined;
   const onAgentsRoute = useLeafRoutePath() === DESTINATION_ROUTE.agents;
+  const routeSearch = useSearch({ strict: false }) as {
+    virtualmcpid?: string;
+  };
+  /** The scope only names the workspace's agent ON the agents route; elsewhere
+   *  it is an ambient filter and this navigation is org-level. */
+  const currentProject = onAgentsRoute ? routeSearch.virtualmcpid : undefined;
+  const currentPanel = params.panel;
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
   return (
@@ -349,23 +319,24 @@ export function useThreadNavigate() {
         to: DESTINATION_ROUTE.agents,
         params: {
           org: orgSlug,
-          project: switchTo.project,
           panel: view ? view.panel : currentPanel,
         },
-        search,
+        search: (prev: Record<string, unknown>) => ({
+          ...(typeof search === "function" ? search(prev) : search),
+          virtualmcpid: switchTo.project,
+        }),
         replace,
       });
     }
 
     return navigate({
       to: ".",
-      params: (prev: Record<string, unknown>) => {
-        const next = projectInPath
-          ? { ...prev, project: switchTo.project }
-          : prev;
-        return view ? { ...next, panel: view.panel } : next;
-      },
-      search,
+      params: (prev: Record<string, unknown>) =>
+        view ? { ...prev, panel: view.panel } : prev,
+      search: (prev: Record<string, unknown>) => ({
+        ...(typeof search === "function" ? search(prev) : search),
+        ...(onAgentsRoute ? { virtualmcpid: switchTo.project } : {}),
+      }),
       replace,
     });
   };

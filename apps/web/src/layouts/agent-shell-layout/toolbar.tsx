@@ -16,17 +16,13 @@
 
 import {
   createContext,
-  Suspense,
   use,
   useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useT } from "@/i18n/use-t.ts";
-import { DEFAULT_LOGO, usePublicConfig } from "@/hooks/use-public-config";
 
 type ToolbarCtx = {
   togglesEl: HTMLDivElement | null;
@@ -112,56 +108,6 @@ function ToolbarRightColumn({ children }: { children?: ReactNode }) {
   );
 }
 
-function ToolbarLogoInner() {
-  const t = useT();
-  const config = usePublicConfig();
-  const logo = config.logo ?? DEFAULT_LOGO;
-  const lightSrc = typeof logo === "string" ? logo : logo.light;
-  const darkSrc = typeof logo === "string" ? logo : logo.dark;
-  return (
-    <span className="flex items-center shrink-0 px-2">
-      <img
-        src={lightSrc}
-        alt={t("agentShellLayout.toolbar.logo")}
-        className="size-6 object-contain dark:hidden"
-      />
-      <img
-        src={darkSrc}
-        alt={t("agentShellLayout.toolbar.logo")}
-        className="size-6 object-contain hidden dark:block"
-      />
-    </span>
-  );
-}
-
-function ToolbarLogo() {
-  return (
-    <Suspense fallback={<span className="shrink-0 size-6 mx-2" />}>
-      <ToolbarLogoInner />
-    </Suspense>
-  );
-}
-
-/**
- * The logo wrapped in a link back to the org home (`/$org`). Used as the
- * "home" affordance in the shell headers.
- */
-function ToolbarLogoLink() {
-  const t = useT();
-  const { org } = useParams({ from: "/shell/$org" });
-  return (
-    <Link
-      to="/$org"
-      params={{ org }}
-      aria-label={t("agentShellLayout.toolbar.backToHome")}
-      title={t("agentShellLayout.toolbar.backToHome")}
-      className="flex items-center shrink-0 cursor-pointer pl-1"
-    >
-      <ToolbarLogo />
-    </Link>
-  );
-}
-
 function ToolbarCenterSlot() {
   const { setCenterEl } = useToolbarCtx();
   return (
@@ -216,8 +162,6 @@ Toolbar.Provider = ToolbarProviderImpl;
 Toolbar.Header = ToolbarHeader;
 Toolbar.LeftColumn = ToolbarLeftColumn;
 Toolbar.RightColumn = ToolbarRightColumn;
-Toolbar.Logo = ToolbarLogo;
-Toolbar.LogoLink = ToolbarLogoLink;
 Toolbar.CenterSlot = ToolbarCenterSlot;
 Toolbar.Center = ToolbarCenter;
 Toolbar.TabsSlot = ToolbarTabsSlot;

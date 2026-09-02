@@ -1,3 +1,4 @@
+import { agentPanelPath } from "@decocms/shared/organization-paths";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   type ConnectionEntity,
@@ -125,15 +126,16 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
      * no sidepanel param either — the vMCP's chatDefaultOpen selects Chat,
      * matching the onboarding button.
      */
-    const reportSearch = new URLSearchParams({
-      connection: connectionId,
-      tool: REPORT_TOOL_NAME,
-    });
     const claimContact = {
       email: ctx.auth.user?.email,
-      reportUrl: `${ctx.baseUrl}/${encodeURIComponent(
+      reportUrl: `${ctx.baseUrl}${agentPanelPath(
         organization.slug ?? organization.id,
-      )}/agents/${virtualMcpId}/app?${reportSearch.toString()}`,
+        {
+          projectId: virtualMcpId,
+          panel: "app",
+          search: { connection: connectionId, tool: REPORT_TOOL_NAME },
+        },
+      )}`,
     };
 
     let connection = await ctx.storage.connections.findById(

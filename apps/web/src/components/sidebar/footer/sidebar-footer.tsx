@@ -4,56 +4,16 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from "@decocms/ui/components/sidebar.tsx";
-import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
+import { UserPlus01, ZapSquare } from "@untitledui/icons";
 import { useState } from "react";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/views/virtual-mcp/add-connection-dialog";
-import { useProjectContext } from "@/sdk";
-import { useNavigate } from "@tanstack/react-router";
 import { SidebarTopActions } from "@/components/sidebar/top-actions";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t";
 import { InboxFullButton, InboxIconButton } from "./inbox";
-
-function SettingsFullButton() {
-  const t = useT();
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-  return (
-    <SidebarMenuButton
-      tooltip={t("sidebar.sidebarFooter.settings")}
-      onClick={() =>
-        navigate({
-          to: "/$org/settings",
-          params: { org: org.slug },
-        })
-      }
-    >
-      <Settings02 />
-      <span>{t("sidebar.sidebarFooter.settings")}</span>
-    </SidebarMenuButton>
-  );
-}
-
-function SettingsIconButton() {
-  const t = useT();
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-  return (
-    <button
-      type="button"
-      aria-label={t("sidebar.sidebarFooter.settings")}
-      onClick={() =>
-        navigate({ to: "/$org/settings", params: { org: org.slug } })
-      }
-      className="shrink-0 flex items-center justify-center size-7 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-    >
-      <Settings02 size={15} />
-    </button>
-  );
-}
 
 /** Quick actions in the footer: invite members, add connection. */
 function SidebarExtraActions() {
@@ -84,11 +44,16 @@ function SidebarExtraActions() {
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
-      <AddConnectionDialog
-        open={connectionsOpen}
-        onOpenChange={setConnectionsOpen}
-        mode="browse"
-      />
+      {/* Mounted only while open: its body calls useConnectionActions, which
+          suspends on the self-MCP connect, and nothing between here and the
+          router root catches that — so an unopened dialog blanked the app. */}
+      {connectionsOpen && (
+        <AddConnectionDialog
+          open={connectionsOpen}
+          onOpenChange={setConnectionsOpen}
+          mode="browse"
+        />
+      )}
     </>
   );
 }
@@ -114,15 +79,12 @@ function SidebarExtraActionsCommerce() {
   );
 }
 
-/**
- * Account footer — extra actions (invite / connections, trimmed to invite-only
- * for reports-only orgs) and the account row with Settings tucked into a
- * bottom-right icon (no full-width Settings row). The credits chip only shows
- * outside reports-only orgs.
- */
+/** Account footer — extra actions (invite / connections, trimmed to
+ *  invite-only for reports-only orgs) and the account row. Settings is a
+ *  destination row now, so it is not repeated here. The credits chip only
+ *  shows outside reports-only orgs. */
 export function SidebarAccountFooter() {
-  const { state } = useSidebar();
-  const isCollapsed = state === "collapsed";
+  const isCollapsed = useSidebarCollapsed();
   const reportsOnly = useReportsOnly();
   const showCredits = !reportsOnly;
 
@@ -138,9 +100,6 @@ export function SidebarAccountFooter() {
         <SidebarMenu>
           <SidebarMenuItem>
             <InboxFullButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SettingsFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <AccountPopover />
@@ -161,7 +120,6 @@ export function SidebarAccountFooter() {
               <AccountPopover />
             </div>
             <InboxIconButton />
-            <SettingsIconButton />
           </div>
         </SidebarMenuItem>
       </SidebarMenu>

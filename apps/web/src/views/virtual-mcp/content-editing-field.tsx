@@ -21,13 +21,10 @@ import {
 } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 
-/**
- * The CMS mode select (`metadata.ui.layout.cms`): whether this agent offers
- * content editing at all, and where the preview lands when it does. `off` hides
- * both entry points — the Content tab and the Preview toolbar's CMS toggle.
- * Ordered by how much CMS each mode gives, so the three read as one scale.
- * Only meaningful for agents with a clonable source — the caller gates on it.
- */
+/** The CMS mode select (`metadata.ui.layout.cms`) — whether this agent offers
+ *  content editing at all. `off` removes the Site Editor's Content view from
+ *  the switcher and from what a CMS session opens on. Only meaningful for
+ *  agents with a clonable source, which the caller gates on. */
 export interface ContentEditingFieldProps<T extends FieldValues> {
   control: Control<T>;
   /** Settings auto-save on change — persist immediately (blur-equivalent). */
@@ -46,14 +43,9 @@ export function ContentEditingField<T extends FieldValues>({
       description: t("sandbox.cmsSettings.contentEditing.offDescription"),
     },
     {
-      value: "manual",
-      label: t("sandbox.cmsSettings.contentEditing.manual"),
-      description: t("sandbox.cmsSettings.contentEditing.manualDescription"),
-    },
-    {
-      value: "auto",
-      label: t("sandbox.cmsSettings.contentEditing.auto"),
-      description: t("sandbox.cmsSettings.contentEditing.autoDescription"),
+      value: "on",
+      label: t("sandbox.cmsSettings.contentEditing.on"),
+      description: t("sandbox.cmsSettings.contentEditing.onDescription"),
     },
   ] as const satisfies ReadonlyArray<{
     value: CmsMode;

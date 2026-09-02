@@ -59,7 +59,8 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
+  useVirtualMCPNonBlocking,
+  useVirtualMCPsNonBlocking,
 } from "@/sdk";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
@@ -489,14 +490,26 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     validatedStoredDeepResearch ??
     defaultDeepResearchModel;
 
-  // selectedVirtualMcp — URL-derived
-  const selectedVirtualMcpData = useVirtualMCP(urlVirtualMcpId);
-  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ?? {
-    id: urlVirtualMcpId,
-    title: "",
-    description: null,
-    icon: null,
-  };
+  /** URL-derived, and read NON-BLOCKING on purpose. This provider sits above
+   *  the sidebar and outside every Suspense boundary in the shell, so a
+   *  suspending read here blanks the whole app back to the splash screen. The
+   *  id flips (Super Agent → project) on any home → /projects navigation,
+   *  because only the projects route resolves `?virtualmcpid=`, so the key
+   *  changes on a navigation whose URL param did not. */
+  const selectedVirtualMcpData = useVirtualMCPNonBlocking(urlVirtualMcpId);
+  /** The org's list is already warm — the sidebar holds it — so the title and
+   *  icon are right on the first frame; the GET only adds the fields the list
+   *  omits, and lands without a visible change. */
+  const listedVirtualMcp = useVirtualMCPsNonBlocking().find(
+    (candidate) => candidate.id === urlVirtualMcpId,
+  );
+  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ??
+    listedVirtualMcp ?? {
+      id: urlVirtualMcpId,
+      title: "",
+      description: null,
+      icon: null,
+    };
 
   // App contexts
   const [appContexts, setAppContextsState] = useState<Record<string, string>>(
@@ -904,12 +917,11 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   });
   const conn = getOrOpenStream(org.slug, taskId, { client });
-  // Suspend until the initial-page MCP fetch settles. The Suspense boundary
-  // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
-  // catches this and shows the skeleton instead of an empty message list.
-  // `conn.ready` resolves on success, error, and null-client paths so the
-  // chat unsuspends in every terminal case; error states are surfaced via
-  // `status` and rendered inline.
+  /** Suspend until the initial-page MCP fetch settles. The `MainPanelBoundary`
+   *  in side-panel-chat.tsx catches this and shows the app's one panel loader
+   *  instead of an empty message list. `conn.ready` resolves on success, error
+   *  and null-client paths so the chat unsuspends in every terminal case;
+   *  error states are surfaced via `status` and rendered inline. */
   use(conn.ready);
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
@@ -1028,7 +1040,7 @@ export function ActiveTaskProvider({
         }
         // `load_repo` finished cloning a repo into the thread's sandbox. Patch
         // the local thread row (branch + repo + sandbox record) so the preview
-        // resolves without a refetch, then open the "preview" main-panel tab.
+        // resolves without a refetch, then open the site-editor main-panel tab.
         if (chunk.type === "data-open-preview") {
           const data = (
             chunk as unknown as {
@@ -1053,7 +1065,7 @@ export function ActiveTaskProvider({
               } as Task["metadata"],
             });
           }
-          cb.openPanel("preview");
+          cb.openPanel("site-editor");
           return;
         }
       },

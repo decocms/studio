@@ -20,12 +20,14 @@ export const mainPanelTabs = {
   "mainPanelTabs.blocksTabStates.retry": "Tentar novamente",
   "mainPanelTabs.blocksTabStates.setupContentEditing":
     "Configurar edição de conteúdo",
-  "mainPanelTabs.codeTab.noSandboxToBrowse": "Nenhuma sandbox para navegar.",
+  "mainPanelTabs.codeTab.noSandboxToBrowse": "Nenhuma sandbox para navegar",
+  "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
+    "Inicie uma sessão de código neste projeto para navegar pelos arquivos.",
   "mainPanelTabs.codeTab.openInCursor": "Abrir no Cursor",
   "mainPanelTabs.codeTab.openInVscode": "Abrir no VSCode",
   "mainPanelTabs.contentTab.connectGithubDescription":
-    "Conecte um repositório do GitHub pela aba Configurações para habilitar Conteúdo.",
-  "mainPanelTabs.contentTab.noContentToEdit": "Nenhum conteúdo para editar.",
+    "Conecte um repositório do GitHub para editar o conteúdo deste site.",
+  "mainPanelTabs.contentTab.noContentToEdit": "Nenhum conteúdo para editar",
   "mainPanelTabs.fileTab.close": "Fechar",
   "mainPanelTabs.fileTab.download": "Baixar",
   "mainPanelTabs.fileTab.fileNotAvailable":

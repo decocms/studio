@@ -33,12 +33,15 @@ export function LegacyThreadRedirect() {
   const target = useLegacyThreadTarget();
   if (!target) return null;
 
-  if (target.to === "/$org/agents/{-$project}/{-$panel}") {
+  if (target.to === "/$org/agents/{-$panel}") {
     return (
       <Navigate
-        to="/$org/agents/{-$project}/{-$panel}"
-        params={target.params}
-        search={target.search}
+        to="/$org/agents/{-$panel}"
+        params={{ org: target.params.org, panel: target.params.panel }}
+        search={() => ({
+          ...target.search,
+          virtualmcpid: target.params.project,
+        })}
         replace
       />
     );

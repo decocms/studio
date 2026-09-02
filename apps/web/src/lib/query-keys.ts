@@ -276,6 +276,14 @@ export const KEYS = {
 
   // Home next-actions — agent prompts under Chat.Input.
   homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
+  /** Cross-org project search. The active ORG is deliberately absent — the
+   *  endpoint is user-scoped, so it does not change the answer — but the USER
+   *  is part of the key and must stay there. The QueryClient is module-scope
+   *  and sign-out clears only the persisted caches, so a key without the
+   *  principal would serve one user's cross-org results to the next one who
+   *  signs in and types the same term in the same tab. */
+  projectSearch: (userId: string, term: string) =>
+    ["project-search", userId, term] as const,
 
   // Home tile-board layout (positions/sizes/hidden), KV-backed per org.
   boardLayout: (orgSlug: string) => ["board-layout", orgSlug] as const,
@@ -362,9 +370,27 @@ export const KEYS = {
   viewedThreadMetadataRefresh: (orgId: string, id: string) =>
     ["viewed-thread-metadata-refresh", orgId, id] as const,
 
-  // Global search (server-side, scoped by org)
-  globalSearch: (orgId: string, query: string) =>
-    ["global-search", orgId, query] as const,
+  /** Global search (server-side, scoped by org).
+   *
+   *  `limit` and `types` are part of the key because two surfaces call
+   *  GLOBAL_SEARCH with different arguments and keep different shapes: the
+   *  command palette caches the item array, the threads-panel dialog caches the
+   *  whole `{items, totalCount}` envelope. Keyed on org+query alone they
+   *  collided, and whichever opened first decided what the other one read —
+   *  which rendered as an empty result list on a non-empty response. */
+  globalSearch: (
+    orgId: string,
+    query: string,
+    limit: number,
+    types?: readonly string[],
+  ) =>
+    [
+      "global-search",
+      orgId,
+      query,
+      limit,
+      types ? [...types].sort() : null,
+    ] as const,
 
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>

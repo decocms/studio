@@ -5,6 +5,7 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
@@ -34,7 +35,6 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   LinkExternal01,
-  Loading01,
   Lock01,
   LockUnlocked01,
 } from "@untitledui/icons";
@@ -47,7 +47,6 @@ import {
 } from "@/lib/github-installations";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import { provisionRepoScopedGithubConnection } from "@/lib/provision-repo-scoped-github-connection";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 
 export interface GitHubInstallation {
   installationId: number;
@@ -140,10 +139,7 @@ export function GitHubRepoPicker({
           <Suspense
             fallback={
               <div className="flex-1 flex items-center justify-center">
-                <Loading01
-                  size={18}
-                  className="animate-spin text-muted-foreground"
-                />
+                <Spinner className="size-4.5 text-muted-foreground" />
               </div>
             }
           >
@@ -334,7 +330,7 @@ function PickerContent({
                 ui: {
                   pinnedViews: null,
                   layout: {
-                    defaultMainView: { type: "preview" },
+                    defaultMainView: { type: "site-editor" },
                     chatDefaultOpen: true,
                   },
                 },
@@ -424,10 +420,6 @@ function PickerContent({
         t("common.githubRepoPicker.importedRepo", { name: repo.name }),
       );
       onComplete();
-      localStorage.setItem(
-        LOCALSTORAGE_KEYS.sidebarOpen(),
-        JSON.stringify(false),
-      );
       navigateToAgent(virtualMcpId);
     },
     onError: (error, repo) => {
@@ -621,7 +613,7 @@ function InstallationPicker({
   if (installationsQuery.isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loading01 size={18} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-4.5 text-muted-foreground" />
       </div>
     );
   }
@@ -643,7 +635,7 @@ function InstallationPicker({
           disabled={reconnect.isPending}
         >
           {reconnect.isPending ? (
-            <Loading01 size={14} className="animate-spin" />
+            <Spinner className="size-3.5" />
           ) : (
             <GitHubIcon className="size-3.5" />
           )}
@@ -708,7 +700,7 @@ function InstallationPicker({
               disabled={installationsQuery.isFetching}
             >
               {installationsQuery.isFetching && (
-                <Loading01 size={14} className="animate-spin" />
+                <Spinner className="size-3.5" />
               )}
               {t("common.githubRepoPicker.checkAgain")}
             </Button>
@@ -823,10 +815,7 @@ function RepoBrowser({
         <Suspense
           fallback={
             <div className="flex-1 flex items-center justify-center">
-              <Loading01
-                size={18}
-                className="animate-spin text-muted-foreground"
-              />
+              <Spinner className="size-4.5 text-muted-foreground" />
             </div>
           }
         >
@@ -1007,7 +996,7 @@ function AutoInstallGitHubUI({
           <GitHubIcon className="size-5 text-foreground" />
         </div>
         <div className="absolute -bottom-0.5 -right-0.5 size-4 rounded-full bg-background flex items-center justify-center">
-          <Loading01 size={12} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-3 text-muted-foreground" />
         </div>
       </div>
       <div className="flex flex-col items-center gap-1 text-center">

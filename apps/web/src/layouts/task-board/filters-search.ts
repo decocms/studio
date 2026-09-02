@@ -6,9 +6,7 @@
  * no persist middleware, no localStorage to reconcile with the URL.
  */
 
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { resolveGithubAttachment } from "@/lib/github-repo";
-import { useVirtualMCPs } from "@/sdk";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { DueFilter, TaskFilters } from "./task-filters";
 import { PRIORITIES, type TaskBoardItemPriority } from "./config";
 
@@ -31,17 +29,10 @@ type BoardSearch = {
 const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
-/**
- * Anything unrecognized in the URL is dropped, not trusted.
- *
- * `defaultRepo` is the repo the PATH already scopes to (`/$org/agents/<project>`);
- * it seeds the repo filter only when the URL names none, so an explicit `?repo=`
- * still wins.
- */
-export function parseBoardSearch(
-  search: BoardSearch,
-  opts?: { defaultRepo?: string | null },
-): {
+/** Anything unrecognized in the URL is dropped, not trusted. `filters.repo` is
+ *  an explicit exact-match choice; the project scope is separate and inclusive
+ *  — see `taskMatchesScope`. */
+export function parseBoardSearch(search: BoardSearch): {
   filters: TaskFilters;
   layout: Layout;
 } {
@@ -59,7 +50,7 @@ export function parseBoardSearch(
         : null,
       due: DUE_FILTERS.includes(due as DueFilter) ? (due as DueFilter) : null,
       tags: tags ? tags.split(",").filter(Boolean) : [],
-      repo: str(search.repo) ?? opts?.defaultRepo ?? null,
+      repo: str(search.repo),
       sprint: sprint,
     },
   };
@@ -82,33 +73,38 @@ export function boardSearchParams(
   };
 }
 
+/** Whether a card survives the active project scope. INCLUSIVE: hides other
+ *  projects' work, never unclassified work — `repo` is a routing hint, and is
+ *  null on every reports-imported and Jira-synced card. Case-insensitive, as
+ *  GitHub is. */
+export function taskMatchesScope(
+  item: { repo?: string | null },
+  scopeRepo: string | null,
+): boolean {
+  if (!scopeRepo) return true;
+  if (item.repo == null) return true;
+  return item.repo.toLowerCase() === scopeRepo.toLowerCase();
+}
+
 /**
- * The `owner/name` of the project the current route scopes to, or null.
- *
- * The board rendered as an overlay on `/$org/agents/{-$project}` names a project in the
- * PATH, and the board's existing repo filter is how that scope is expressed —
- * one mechanism, not two. `/$org/tasks` spends its own segment on the open card
- * and is org-wide, so it never reaches here with a project.
- * A detached repo still filters (the tasks are real either way), which is why
- * this reads `resolveGithubAttachment` rather than `getActiveGithubRepo`.
+ * The selection a bulk action is allowed to touch: only cards currently on
+ * screen. The project scope is not the board's own control — it can change
+ * under a live selection — so a stale id must never reach an update or a
+ * delete for a card the user cannot see.
  */
-function useProjectRepoFilter(): string | null {
-  const projectId = useParams({ strict: false }).project;
-  const projects = useVirtualMCPs() ?? [];
-  if (!projectId) return null;
-  const attachment = resolveGithubAttachment(
-    projects.find((candidate) => candidate.id === projectId),
-  );
-  if (attachment.status === "none") return null;
-  return `${attachment.repo.owner}/${attachment.repo.name}`;
+export function visibleSelection(
+  selection: ReadonlySet<string>,
+  visibleItems: readonly { id: string }[],
+): Set<string> {
+  const visible = new Set(visibleItems.map((item) => item.id));
+  return new Set([...selection].filter((id) => visible.has(id)));
 }
 
 /** `useState`-shaped replacement for the board's filters + layout state. */
 export function useBoardSearch() {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
-  const defaultRepo = useProjectRepoFilter();
-  const { filters, layout } = parseBoardSearch(search, { defaultRepo });
+  const { filters, layout } = parseBoardSearch(search);
 
   const write = (nextFilters: TaskFilters, nextLayout: Layout) =>
     navigate({

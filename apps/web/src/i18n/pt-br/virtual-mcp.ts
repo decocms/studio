@@ -107,13 +107,12 @@ export const virtualMcp = {
   "virtualMcp.filesSection.selectFileOrFolder": "Selecionar arquivo ou pasta",
   "virtualMcp.filesSection.selectSkill": "Selecionar skill",
   "virtualMcp.filesSection.uploadFile": "Enviar arquivo",
+  "virtualMcp.layoutTabContent.noMainView": "Sem visão principal",
   "virtualMcp.layoutTabContent.addConnectionMessage":
     "Adicione uma conexão acima para configurar visualizações fixadas.",
   "virtualMcp.layoutTabContent.automations": "Automações",
-  "virtualMcp.layoutTabContent.chat": "Chat",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "O Chat sempre aparece quando é a visualização padrão",
-  "virtualMcp.layoutTabContent.content": "Conteúdo",
   "virtualMcp.layoutTabContent.layout": "Layout",
   "virtualMcp.layoutTabContent.mainView": "Visualização principal",
   "virtualMcp.layoutTabContent.mainViewDescription":
@@ -123,11 +122,11 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.pinnedViews": "Visualizações fixadas",
   "virtualMcp.layoutTabContent.pinnedViewsDescription":
     "Colocar ferramentas interativas como abas de nível superior no agente.",
-  "virtualMcp.layoutTabContent.preview": "Visualização",
   "virtualMcp.layoutTabContent.settings": "Configurações",
   "virtualMcp.layoutTabContent.showChat": "Mostrar chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Exibir Chat no painel lateral junto com a visualização principal.",
+  "virtualMcp.layoutTabContent.siteEditor": "Editor do site",
   "virtualMcp.subAgentsSection.addSubAgent": "Adicionar sub-agente",
   "virtualMcp.subAgentsSection.anyAgent": "Qualquer agente",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":

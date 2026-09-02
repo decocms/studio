@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
 
 /**
@@ -18,8 +19,9 @@ export function SidebarResizeHandle({
   onDoubleClick?: () => void;
 }) {
   const t = useT();
-  const { state, isMobile } = useSidebar();
-  if (isMobile || state === "collapsed") return null;
+  const { isMobile } = useSidebar();
+  const collapsed = useSidebarCollapsed();
+  if (isMobile || collapsed) return null;
   return (
     <div
       role="separator"

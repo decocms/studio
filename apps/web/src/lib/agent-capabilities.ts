@@ -20,28 +20,6 @@ export function agentHasClonableSource(metadata: unknown): boolean {
 }
 
 /**
- * Whether the org-wide "pin to sidebar" action applies to this agent. Coding
- * agents (clonable source) are auto-listed in the first-class sidebar already,
- * so pinning them is a no-op — the pin affordance is offered only for non-code
- * agents, which otherwise have no standing sidebar entry.
- */
-export function agentCanBePinned(agent: { metadata?: unknown }): boolean {
-  return !agentHasClonableSource(agent.metadata);
-}
-
-/**
- * True when an agent should render in the first-class sidebar as an org-pinned
- * entry: it carries the org-wide `pinned` flag AND is a non-code agent (coding
- * agents already list there, so this keeps them from double-rendering).
- */
-export function agentIsSidebarPinned(agent: {
-  pinned?: boolean | null;
-  metadata?: unknown;
-}): boolean {
-  return !!agent.pinned && agentCanBePinned(agent);
-}
-
-/**
  * True only when the virtual MCP has a GitHub repo with an attached
  * connection (i.e. authenticated github identity, not a public-clone
  * template). Gate the git tab on this predicate.

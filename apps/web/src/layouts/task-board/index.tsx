@@ -5,6 +5,7 @@
  */
 
 import { useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -48,7 +49,6 @@ import {
   HelpCircle,
   Lightning01,
   List,
-  Loading01,
   Plus,
   RefreshCw01,
   Repeat04,
@@ -71,7 +71,6 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { LoaderCircle } from "lucide-react";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -157,7 +156,12 @@ import {
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
-import { useBoardSearch } from "./filters-search";
+import {
+  taskMatchesScope,
+  useBoardSearch,
+  visibleSelection,
+} from "./filters-search";
+import { useProjectScope } from "@/hooks/use-project-scope";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
@@ -670,22 +674,23 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
       ? "taskBoard.taskBoard.agentRunning"
       : "taskBoard.taskBoard.agentFailed",
   );
-  // LoaderCircle, not the board's `Loading01`: that one is eight evenly-spaced
-  // spokes, so rotating it lands on an identical image every 45° and
-  // `animate-spin` reads as a still frame. An arc has to be asymmetric to look
-  // like it is turning.
-  const Icon = running ? LoaderCircle : AlertTriangle;
+  // This used its own LoaderCircle because the spinner of the day was eight
+  // evenly-spaced spokes: rotating it lands on an identical image every 45°,
+  // so `animate-spin` read as a still frame. The shared `Spinner` is an arc
+  // now — asymmetric, so it looks like it is turning — which is the whole
+  // reason this call site can stop being special.
   return (
     <span className="mt-px flex shrink-0 items-center">
       <GlyphTooltip label={label}>
-        <Icon
-          size={14}
-          className={cn(
-            "shrink-0",
-            running ? "animate-spin text-primary" : "text-destructive",
-          )}
-          aria-label={label}
-        />
+        {running ? (
+          <Spinner className="size-3.5 text-primary" label={label} />
+        ) : (
+          <AlertTriangle
+            size={14}
+            className="shrink-0 text-destructive"
+            aria-label={label}
+          />
+        )}
       </GlyphTooltip>
       <span className="sr-only">{label}</span>
     </span>
@@ -916,6 +921,13 @@ export function TaskBoardPage() {
     layout,
     setLayout,
   } = useBoardSearch();
+  /** Ambient project scope — a filter over the org-wide board, never a
+   *  container. Null repo (or no scope) means the board stays org-wide. */
+  const {
+    repo: scopeRepo,
+    project: scopeProject,
+    setScope,
+  } = useProjectScope();
   // A URL outlives the sprint it names, so an unknown one is dropped rather
   // than left hiding every card behind a chip that reads like "no filter".
   const filters = isLoading
@@ -925,22 +937,22 @@ export function TaskBoardPage() {
         sprint: resolveSprintFilter(urlFilters.sprint, sprints),
       };
   const [preferences] = usePreferences();
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
-    setSelectedIds((prev) => {
+    setSelection((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
   const selectAllInLane = (status: string) =>
-    setSelectedIds((prev) => {
+    setSelection((prev) => {
       const next = new Set(prev);
       for (const item of visibleItems)
         if (item.status === status) next.add(item.id);
       return next;
     });
-  const clearSelection = () => setSelectedIds(new Set());
+  const clearSelection = () => setSelection(new Set());
   // A filter change can hide selected cards the same way the list-view toggle does.
   const handleFiltersChange = (next: TaskFilters) => {
     setFilters(next);
@@ -1053,9 +1065,26 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  const visibleItems = items.filter((item) =>
+  /**
+   * Scope first, then filters. The scope keeps unassigned cards; the explicit
+   * repo filter does not — two different questions, composed rather than
+   * conflated.
+   */
+  const scopedItems = items.filter((item) => taskMatchesScope(item, scopeRepo));
+  const visibleItems = scopedItems.filter((item) =>
     taskMatchesFilters(item, filters),
   );
+  /** What the scope actually did, said out loud in the header. */
+  const routedHere = scopeRepo
+    ? scopedItems.filter((item) => item.repo != null).length
+    : 0;
+  const unassignedHere = scopeRepo
+    ? scopedItems.filter((item) => item.repo == null).length
+    : 0;
+  /** Bulk actions read the selection reconciled against what is on screen: the
+   *  scope switcher lives outside the board, so a scope change must not leave a
+   *  hidden card's id queued for a move, an assign — or a delete. */
+  const selectedIds = visibleSelection(selection, visibleItems);
   // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
   const visibleListItems = visibleItems.filter(
     (item) =>
@@ -1099,7 +1128,7 @@ export function TaskBoardPage() {
   if (isLoading && items.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }
@@ -1133,9 +1162,36 @@ export function TaskBoardPage() {
       {/* Header — capped + centered to the same width as the board content so
         they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <h1 className="text-xl font-medium text-foreground">
-          {t("taskBoard.taskBoard.tasksTitle")}
-        </h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-xl font-medium text-foreground">
+            {t("taskBoard.taskBoard.tasksTitle")}
+          </h1>
+          {scopeProject && (
+            <button
+              type="button"
+              onClick={() => setScope(null)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent/50"
+              aria-label={t("taskBoard.scope.clear", {
+                name: scopeProject.title,
+              })}
+            >
+              <span className="truncate max-w-[16rem]">
+                {scopeProject.title}
+              </span>
+              <X size={12} className="text-muted-foreground" />
+            </button>
+          )}
+        </div>
+        {scopeProject && (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            {scopeRepo
+              ? t("taskBoard.scope.counts", {
+                  routed: String(routedHere),
+                  unassigned: String(unassignedHere),
+                })
+              : t("taskBoard.scope.noRepo")}
+          </p>
+        )}
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
@@ -1391,7 +1447,7 @@ export function TaskBoardPage() {
           onOpenPreview={(thread) => {
             if (!thread.virtualMcpId) return;
             setTaskId(thread.threadId, thread.virtualMcpId, {
-              panel: "preview",
+              panel: "site-editor",
             });
           }}
         />

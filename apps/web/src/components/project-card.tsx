@@ -1,24 +1,11 @@
-import {
-  DotsVertical,
-  Home02,
-  Pin01,
-  Settings02,
-  Trash01,
-} from "@untitledui/icons";
+import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
-import { toast } from "sonner";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
+import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
 import { usePreferences } from "@/hooks/use-preferences.ts";
-import {
-  useMainAgentId,
-  useSetMainAgent,
-} from "@/hooks/use-organization-settings";
-import { useCapabilities, useCapability } from "@/hooks/use-capability";
-import { agentCanBePinned } from "@/lib/agent-capabilities";
-import { useVirtualMCPActions } from "@/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import {
@@ -44,42 +31,25 @@ export function ProjectCard({
   const t = useT();
   const [preferences] = usePreferences();
   const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
-  const { mainAgentId } = useMainAgentId();
-  const setMainAgent = useSetMainAgent();
   // The main agent is org-wide config written via ORGANIZATION_SETTINGS_UPDATE,
   // which the backend gates on `org:manage` — not `agents:manage`. Match it so
   // the action isn't shown to users whose click would fail server-side.
-  const { granted: canSetMainAgent } = useCapability("org:manage");
-  const isMainAgent = mainAgentId === project.id;
 
-  // Org-wide pin: backend gates `pinned` on owner/admin; coding agents auto-list.
-  const actions = useVirtualMCPActions();
-  const { isPrivileged } = useCapabilities();
-  const canPin = isPrivileged && agentCanBePinned(project);
-  const isPinned = !!project.pinned;
-  const togglePin = () => {
-    actions.update.mutate({ id: project.id, data: { pinned: !isPinned } });
-  };
-
-  const toggleMainAgent = () => {
-    const next = isMainAgent ? null : project.id;
-    setMainAgent.mutate(next, {
-      onSuccess: () =>
-        toast.success(
-          isMainAgent
-            ? t("home.projectCard.mainAgentUnset", { title: project.title })
-            : t("home.projectCard.mainAgentSet", { title: project.title }),
-        ),
-      onError: () => toast.error(t("home.projectCard.mainAgentError")),
-    });
-  };
+  /**
+   * Where this card lands: the agent's OWN chosen main view, the same
+   * `defaultMainView` the workspace resolves — so a Site Editor agent opens on
+   * the Site Editor rather than a generic default. An agent that names no view
+   * (or names Chat) still lands with no panel at all, exactly as before, so the
+   * card cannot force a panel open on an agent configured chat-first.
+   */
+  const landingPanel = landingTabIdFor(project.metadata?.ui?.layout);
 
   return (
     <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
       {/* Overlay button — pins agent to sidebar and navigates */}
       <button
         type="button"
-        onClick={() => navigateToAgent(project.id)}
+        onClick={() => navigateToAgent(project.id, { panel: landingPanel })}
         className="absolute inset-0 z-0"
         aria-label={project.title}
       />
@@ -111,32 +81,6 @@ export function ProjectCard({
                     <Settings02 size={16} />
                     Settings
                   </DropdownMenuItem>
-                  {canSetMainAgent && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleMainAgent();
-                      }}
-                    >
-                      <Home02 size={16} />
-                      {isMainAgent
-                        ? t("home.projectCard.unsetMainAgent")
-                        : t("home.projectCard.setAsMainAgent")}
-                    </DropdownMenuItem>
-                  )}
-                  {canPin && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePin();
-                      }}
-                    >
-                      <Pin01 size={16} />
-                      {isPinned
-                        ? t("home.projectCard.unpinFromSidebar")
-                        : t("home.projectCard.pinToSidebar")}
-                    </DropdownMenuItem>
-                  )}
                   {onDeleteClick && (
                     <DropdownMenuItem
                       variant="destructive"
@@ -160,12 +104,6 @@ export function ProjectCard({
               <h3 className="text-sm font-medium text-foreground truncate">
                 {project.title}
               </h3>
-              {isMainAgent && (
-                <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  <Home02 size={12} />
-                  {t("home.projectCard.mainAgentBadge")}
-                </span>
-              )}
             </div>
             <p className="text-sm text-muted-foreground line-clamp-2">
               {project.description || "No description"}
