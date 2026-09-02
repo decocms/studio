@@ -270,9 +270,18 @@ export async function reactToPrOpenedForBoard(
     const pr = extractPrFromValue(source);
     if (!pr) return;
 
+    // Resolved up front: an org-owned board's archive column isn't literally "archived".
+    const board = await boardFor(ctx, orgId);
+    const lanes = await board.lanes();
+
     const cards = await ctx.storage.taskBoard.list(orgId);
     const openCards = cards
-      .filter((t) => t.status !== "done" && t.status !== "archived")
+      .filter(
+        (t) =>
+          t.status !== "done" &&
+          t.status !== "archived" &&
+          t.status !== lanes.archive,
+      )
       .slice(0, MAX_OPEN_CARDS_FOR_DECISION);
     const thread = await ctx.storage.threads.get(threadId);
 
@@ -285,9 +294,8 @@ export async function reactToPrOpenedForBoard(
     );
     if (!decision) return;
 
-    const board = await boardFor(ctx, orgId);
     await applyBoardDecision(ctx.storage.taskBoard, {
-      lanes: await board.lanes(),
+      lanes,
       columns: await board.columns(),
       columnOwner: board.columnOwner(),
       orgId,
