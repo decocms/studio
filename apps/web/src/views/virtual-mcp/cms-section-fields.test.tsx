@@ -49,7 +49,7 @@ describe("ContentEditingField", () => {
       (cms) => renderField(<CmsHarness cms={cms} />).description,
     );
     expect(new Set(descriptions).size).toBe(1);
-    expect(descriptions[0]).toBe("Whether this agent offers a CMS.");
+    expect(descriptions[0]).toBe("Whether this project offers a CMS.");
   });
 
   test("shows the selected mode in the trigger, and only its label", () => {
@@ -67,7 +67,7 @@ describe("PublishPolicyField", () => {
     );
     expect(new Set(descriptions).size).toBe(1);
     expect(descriptions[0]).toBe(
-      "Control when this agent's changes can be published directly, skipping pull-request review.",
+      "Control when this project's changes can be published directly, skipping pull-request review.",
     );
   });
 

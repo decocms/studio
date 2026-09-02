@@ -144,10 +144,10 @@ async function waitForHome(
   projectId: string,
 ): Promise<void> {
   await page.goto(`/${orgSlug}/home?virtualmcpid=${projectId}`);
-  /** "Customize" belongs to the tile board, which is the PROJECT home — an
-   *  unscoped landing renders the agent roster and never shows it. */
+  /** The task composer belongs to the PROJECT home — an unscoped landing
+   *  renders the org roster and its search instead, never this. */
   await page
-    .getByRole("button", { name: "Customize" })
+    .getByPlaceholder("What needs doing in this project?")
     .waitFor({ state: "visible", timeout: HOME_TIMEOUT_MS });
 }
 
@@ -177,7 +177,9 @@ test.describe("commerce report banner", () => {
       page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
     ).toHaveCount(0);
     // Home is still functional.
-    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible();
+    await expect(
+      page.getByPlaceholder("What needs doing in this project?"),
+    ).toBeVisible();
   });
 
   test("completed diagnostic shows the ready banner and opens the report app", async ({
@@ -272,6 +274,8 @@ test.describe("commerce report banner", () => {
     await expect(
       page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
     ).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible();
+    await expect(
+      page.getByPlaceholder("What needs doing in this project?"),
+    ).toBeVisible();
   });
 });

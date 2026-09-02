@@ -81,7 +81,7 @@ test.describe("org home — the agent roster", () => {
 
     /* Nothing was created in this org, and the managers are filtered out — so
        the roster is empty even though the org has rows. */
-    await expect(page.getByText("No agents yet")).toBeVisible({
+    await expect(page.getByText("No projects yet")).toBeVisible({
       timeout: SHELL_TIMEOUT_MS,
     });
     await expect(
