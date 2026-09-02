@@ -719,7 +719,6 @@ export function OrgTasksSettingsPage() {
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
             <TaskSystemPromptSettings />
-            <BoardColumnSettings />
             <AgentToolsSettings />
             <SettingsSection
               title={
@@ -731,6 +730,7 @@ export function OrgTasksSettingsPage() {
             >
               <JiraContent />
             </SettingsSection>
+            <BoardColumnSettings />
           </SettingsPage>
         </Page.Body>
       </Page.Content>

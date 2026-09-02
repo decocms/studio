@@ -25,7 +25,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash01 } from "@untitledui/icons";
+import { ChevronDown, Plus, Trash01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Select,
@@ -34,6 +34,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@decocms/ui/components/collapsible.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -77,28 +82,49 @@ export function BoardColumnSettings() {
   const t = useT();
   // Only a tracker's columns need saying what they mean.
   const orgOwnedColumns = useOrgFlag("org_board_columns");
+  // Collapsed by default: the prompt inside is long, and it is read far less
+  // often than everything above it on this page.
+  const [open, setOpen] = useState(false);
   return (
-    <SettingsSection
-      title={t("settings.boardColumns.title")}
-      description={t(
-        orgOwnedColumns
-          ? "settings.boardColumns.description"
-          : "settings.boardColumns.descriptionStudioBoard",
-      )}
-    >
-      <SettingsCard>
-        <SettingsCardItem
-          title={t("settings.boardColumns.fieldLabel")}
-          description={t(
-            orgOwnedColumns
-              ? "settings.boardColumns.fieldDescription"
-              : "settings.boardColumns.fieldDescriptionStudioBoard",
-          )}
-        >
-          <BoardColumnRows showRole={orgOwnedColumns} />
-        </SettingsCardItem>
-      </SettingsCard>
-    </SettingsSection>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <SettingsSection
+        title={t("settings.boardColumns.title")}
+        description={t(
+          orgOwnedColumns
+            ? "settings.boardColumns.description"
+            : "settings.boardColumns.descriptionStudioBoard",
+        )}
+        actions={
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t("settings.boardColumns.title")}
+            >
+              <ChevronDown
+                size={16}
+                className={cn("transition-transform", open && "rotate-180")}
+              />
+            </Button>
+          </CollapsibleTrigger>
+        }
+      >
+        <CollapsibleContent>
+          <SettingsCard>
+            <SettingsCardItem
+              title={t("settings.boardColumns.fieldLabel")}
+              description={t(
+                orgOwnedColumns
+                  ? "settings.boardColumns.fieldDescription"
+                  : "settings.boardColumns.fieldDescriptionStudioBoard",
+              )}
+            >
+              <BoardColumnRows showRole={orgOwnedColumns} />
+            </SettingsCardItem>
+          </SettingsCard>
+        </CollapsibleContent>
+      </SettingsSection>
+    </Collapsible>
   );
 }
 
