@@ -68,7 +68,12 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const stats = calculateStats(data?.logs ?? [], dateRange);
+  const stats = calculateStats(
+    data?.logs ?? [],
+    dateRange,
+    undefined,
+    data?.total,
+  );
   const chartData = stats.data;
   const hasData = stats.totalCalls > 0;
   const topErrors = computeTopErrors(data?.logs ?? []);
