@@ -108,7 +108,7 @@ Essa distinção importa para raciocinar sobre o sistema:
 | File & object-storage (`/api/:org/files/*`, GET/PUT presigned, uploads, `/api/:org/fs/*`) | ✅ servindo clients | ✅ tools de agent leem/escrevem arquivos e geram presigned URLs |
 | Apenas worker via HTTP | — | nenhuma — as chamadas de tool são in-process |
 
-As rotas de file e object-storage são a verdadeira superfície "chamada por ambos", e são respaldadas por um **Object Store** compatível com S3. As rotas `/api/:org/fs/*` também dão suporte ao [mount do org-filesystem](#org-filesystem-org-fs) dentro das sandboxes.
+As rotas de file e object-storage são a verdadeira superfície "chamada por ambos", e são respaldadas por um **Object Store** compatível com S3. As rotas `/api/:org/fs/*` também dão suporte ao [mount do org-filesystem](#org-filesystem) dentro das sandboxes.
 
 ## Sandboxes
 
