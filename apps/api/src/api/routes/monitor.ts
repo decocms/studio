@@ -38,6 +38,7 @@
  */
 
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import {
   isAuthenticated,
@@ -802,6 +803,33 @@ async function siteOdHosts(slug: string): Promise<string[]> {
 }
 
 /**
+ * Shared auth + tenancy guard for every `/monitor/:site/*` route below: a
+ * principal must be authenticated (`resolveOrgFromPath` lets anonymous
+ * requests through) and the org must own the site slug (404, not 403, so an
+ * unowned slug looks like a non-existent one). Returns the resolved slug, or
+ * the error Response to return as-is.
+ */
+async function requireOwnedSite(
+  c: Context<{ Variables: Variables }>,
+): Promise<{ slug: string } | Response> {
+  const ctx = c.get("studioContext");
+  if (!isAuthenticated(ctx)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const org = requireOrganization(ctx);
+  const site = c.req.param("site");
+  if (!site) {
+    return c.json({ error: "site is required" }, 400);
+  }
+  const slug = site.toLowerCase();
+  const owned = await ctx.storage.orgSites.isOwnedBy(slug, org.id);
+  if (!owned) {
+    return c.json({ error: "Site not found in organization" }, 404);
+  }
+  return { slug };
+}
+
+/**
  * Org-scoped monitor routes mounted at `/api/:org/monitor`. Direct-ClickHouse
  * reads, tenancy via `org_sites`, no control-plane and no Supabase.
  */
@@ -812,26 +840,8 @@ export const createMonitorRoutes = () => {
   // scoped. `{ available:false }` (not an error) when the warehouse isn't wired
   // so the tab can show a configuration/empty state instead of failing.
   app.get("/:site/cdn/data", async (c) => {
-    const ctx = c.get("studioContext");
-    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
-    // through, so without this a known org+site slug would expose CDN/audience
-    // analytics to anyone. Membership is proven upstream; ownership just below.
-    if (!isAuthenticated(ctx)) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const org = requireOrganization(ctx);
-    const site = c.req.param("site");
-    if (!site) return c.json({ error: "site is required" }, 400);
-
-    // Same ownership guard as the Hosting/Analytics tabs: the org must own this
-    // slug. 404 (not 403) so an unowned slug looks like a non-existent one.
-    const owned = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!owned) {
-      return c.json({ error: "Site not found in organization" }, 404);
-    }
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
 
     if (!isAnalyticsConfigured()) {
       return c.json({ available: false, error: "Monitor is not configured" });
@@ -851,10 +861,7 @@ export const createMonitorRoutes = () => {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
 
-    // The slug is the ClickHouse `dim_sites.name`; queries resolve the numeric
-    // site_id from it. Lower-cased to match the ownership check and how slugs
-    // are stored.
-    const slug = site.toLowerCase();
+    const { slug } = guard;
     const { since, until } = window;
     const filters = parseFilters(c.req.query("filters"));
 
@@ -906,24 +913,8 @@ export const createMonitorRoutes = () => {
   // visitor half (the native replacement for the old admin's OneDollarStats
   // "Analytics" tab). Same tenancy guard and shape as the CDN handler.
   app.get("/:site/audience/data", async (c) => {
-    const ctx = c.get("studioContext");
-    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
-    // through, so without this a known org+site slug would expose CDN/audience
-    // analytics to anyone. Membership is proven upstream; ownership just below.
-    if (!isAuthenticated(ctx)) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const org = requireOrganization(ctx);
-    const site = c.req.param("site");
-    if (!site) return c.json({ error: "site is required" }, 400);
-
-    const owned = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!owned) {
-      return c.json({ error: "Site not found in organization" }, 404);
-    }
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
 
     if (!isAnalyticsConfigured()) {
       return c.json({ available: false, error: "Monitor is not configured" });
@@ -943,7 +934,7 @@ export const createMonitorRoutes = () => {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
 
-    const slug = site.toLowerCase();
+    const { slug } = guard;
     const { since, until } = window;
 
     try {
@@ -984,23 +975,9 @@ export const createMonitorRoutes = () => {
   // candidates, busiest first) for the audience host picker. `{ available:false }`
   // when OneDollarStats isn't wired. The first entry is the default selection.
   app.get("/:site/hosts", async (c) => {
-    const ctx = c.get("studioContext");
-    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
-    // through, so without this a known org+site slug would expose CDN/audience
-    // analytics to anyone. Membership is proven upstream; ownership just below.
-    if (!isAuthenticated(ctx)) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const org = requireOrganization(ctx);
-    const site = c.req.param("site");
-    if (!site) return c.json({ error: "site is required" }, 400);
-    const owned = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!owned) {
-      return c.json({ error: "Site not found in organization" }, 404);
-    }
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+    const { slug } = guard;
     // Hostnames come from the CDN warehouse, so this works whenever the
     // warehouse is wired — independent of OneDollarStats (the subtitle needs it
     // even on Performance-only deployments).
@@ -1008,10 +985,10 @@ export const createMonitorRoutes = () => {
       return c.json({ available: false, hosts: [] });
     }
     try {
-      const hosts = await siteOdHosts(site.toLowerCase());
+      const hosts = await siteOdHosts(slug);
       return c.json({ available: true, hosts });
     } catch (err) {
-      console.error(`[monitor] hosts failed for site="${site}":`, err);
+      console.error(`[monitor] hosts failed for site="${slug}":`, err);
       return c.json({ available: true, hosts: [] });
     }
   });
@@ -1024,24 +1001,9 @@ export const createMonitorRoutes = () => {
   // site's hostnames to read; it is VALIDATED against the site's own host set so
   // a client can never name another tenant's site_id.
   app.get("/:site/onedollar", async (c) => {
-    const ctx = c.get("studioContext");
-    // Require a principal: `resolveOrgFromPath` lets anonymous requests fall
-    // through, so without this a known org+site slug would expose CDN/audience
-    // analytics to anyone. Membership is proven upstream; ownership just below.
-    if (!isAuthenticated(ctx)) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const org = requireOrganization(ctx);
-    const site = c.req.param("site");
-    if (!site) return c.json({ error: "site is required" }, 400);
-
-    const owned = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!owned) {
-      return c.json({ error: "Site not found in organization" }, 404);
-    }
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+    const { slug } = guard;
 
     const apiKey = getSettings().oneDollarStatsApiKey;
     if (!apiKey) {
@@ -1066,7 +1028,7 @@ export const createMonitorRoutes = () => {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
 
-    const odHosts = await siteOdHosts(site.toLowerCase());
+    const odHosts = await siteOdHosts(slug);
     const requested = c.req.query("host");
     // Only honor a requested host the site actually owns — never a client-named
     // arbitrary site_id.
