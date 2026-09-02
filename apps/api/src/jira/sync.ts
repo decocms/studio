@@ -740,10 +740,6 @@ async function runSync(
           },
           JIRA_SYNC_ACTOR,
         );
-        await ctx.storage.jiraIntegrations.touchLink(link.itemId, {
-          jiraStatus: jiraStatusName,
-          jiraSprintId: jiraSprint?.id ?? null,
-        });
         if (before && writeStatus && before.status !== status) {
           await ctx.storage.taskBoard.recordActivity({
             taskBoardItemId: link.itemId,
@@ -770,11 +766,10 @@ async function runSync(
           integrationAccountId,
           users,
         );
-        // Last, because this is what marks the issue "fully processed": moving
-        // it before `pullComments` means a failed comment fetch is never
-        // retried — the next run reads the issue as unchanged and those
-        // comments are stranded for good.
+        // Last: writing these any earlier lets a failed automation/comment pull abort the run after retry-detection already moved, stranding both for good.
         await ctx.storage.jiraIntegrations.touchLink(link.itemId, {
+          jiraStatus: jiraStatusName,
+          jiraSprintId: jiraSprint?.id ?? null,
           jiraUpdatedAt: issueUpdated,
         });
         emitTaskBoardUpdated(orgId, item);
