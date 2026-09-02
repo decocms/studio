@@ -140,7 +140,6 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
-      main_agent_id?: string | null | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -217,7 +216,6 @@ export interface StudioToolIO {
             cms_auto_fresh_branch?: boolean | undefined;
           }
         | undefined;
-      main_agent_id?: string | null | undefined;
     };
     output: {
       organizationId: string;
@@ -296,7 +294,6 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
-      main_agent_id?: string | null | undefined;
     };
   };
   NOTIFICATION_LIST: {
@@ -2041,7 +2038,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "manual" | null | undefined;
+                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2261,7 +2258,13 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
-                          cms?: "off" | "auto" | "manual" | null | undefined;
+                          cms?:
+                            | "off"
+                            | "auto"
+                            | "on"
+                            | "manual"
+                            | null
+                            | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2424,7 +2427,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "manual" | null | undefined;
+                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2624,7 +2627,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "manual" | null | undefined;
+                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2815,7 +2818,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "manual" | null | undefined;
+                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3000,7 +3003,13 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
-                          cms?: "off" | "auto" | "manual" | null | undefined;
+                          cms?:
+                            | "off"
+                            | "auto"
+                            | "on"
+                            | "manual"
+                            | null
+                            | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -3171,7 +3180,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "manual" | null | undefined;
+                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3360,7 +3369,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "manual" | null | undefined;
+                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -4406,7 +4415,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "manual" | null | undefined;
+                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -7283,19 +7292,31 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: "thread"[] | undefined;
+      types?: ("task" | "thread")[] | undefined;
     };
     output: {
-      items: {
-        type: "thread";
-        id: string;
-        title: string;
-        created_at: string;
-        updated_at: string;
-        virtual_mcp_id: string | null;
-        run_config: Record<string, unknown> | null;
-        status: string | null;
-      }[];
+      items: (
+        | {
+            type: "thread";
+            id: string;
+            title: string;
+            created_at: string;
+            updated_at: string;
+            virtual_mcp_id: string | null;
+            run_config: Record<string, unknown> | null;
+            status: string | null;
+          }
+        | {
+            type: "task";
+            id: string;
+            title: string;
+            created_at: string;
+            updated_at: string;
+            key: string | null;
+            status: string | null;
+            repo: string | null;
+          }
+      )[];
       totalCount: number;
     };
   };

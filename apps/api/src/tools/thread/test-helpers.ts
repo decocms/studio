@@ -1,7 +1,13 @@
 /**
  * Test scaffolding for thread tool tests. Mirrors the manual context
  * construction in `connection/connection-tools.test.ts`, but only wires the
- * storage modules the thread tools touch (threads, virtualMcps).
+ * storage modules the thread tools touch (threads, virtualMcps, taskBoard).
+ *
+ * `taskBoard` is REAL, not a `null as never` stub: GLOBAL_SEARCH searches
+ * threads and task-board cards in one call, so a stub would only move the
+ * failure from "undefined is not an object" to a null dereference one frame
+ * later. A real storage over the same test database also lets a caller seed
+ * cards and assert on the task half of the result.
  */
 
 import { vi } from "bun:test";
@@ -18,6 +24,7 @@ import {
   OrgScopedThreadStorage,
 } from "../../storage/threads";
 import { VirtualMCPStorage } from "../../storage/virtual";
+import { TaskBoardStorage } from "../../storage/task-board";
 import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 
 const ORG_ID = "org_test";
@@ -62,6 +69,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
   const sqlThreads = new SqlThreadStorage(database.db);
   const threads = new OrgScopedThreadStorage(sqlThreads, ORG_ID);
   const virtualMcps = new VirtualMCPStorage(database.db);
+  const taskBoard = new TaskBoardStorage(database.db);
 
   const ctx = {
     timings: {
@@ -79,6 +87,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
     storage: {
       threads,
       virtualMcps,
+      taskBoard,
       // Stub the rest — thread tools don't touch these.
       connections: null as never,
       organizationSettings: null as never,
