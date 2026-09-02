@@ -1758,6 +1758,11 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
   // changes. See `.context/org-filesystem-proposal.md`.
   "ORG_FS_READ",
   "ORG_FS_WRITE",
+  // Jira attachment proxy (`/api/:org/connections/:id/jira/attachments/:attId`)
+  // — same reasoning as the org-fs keys: any member who can read the issue
+  // through the connection can already see the attachment, so the gate is
+  // membership. Listed here so an API key must still name it explicitly.
+  "JIRA_ATTACHMENT_READ",
 ]);
 
 /**

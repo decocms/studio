@@ -19,6 +19,7 @@ import { createDevAssetsRoutes } from "./dev-assets";
 import { createCredentialVaultRoutes } from "./credential-vault";
 import { createDownstreamTokenRoutes } from "./downstream-token";
 import { createFileUploadRoutes } from "./file-uploads";
+import { createJiraAttachmentRoutes } from "./jira-attachments";
 import { createKVRoutes } from "./kv";
 import { createOrgFsRoutes } from "./org-fs";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
@@ -94,6 +95,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createTaskBoardImportRoutes()); // /api/:org/internal/task-board/import — service-token batch import
   app.route("/", createCommerceDiagnosticShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
+  app.route("/", createJiraAttachmentRoutes()); // /api/:org/connections/:connectionId/jira/attachments/:attachmentId
   app.route("/tools", createToolsRestRoutes()); // /api/:org/tools[/:toolName] — REST builtin-tool dispatch
   app.route("/", createObjectStorageRoutes()); // /api/:org/object-storage/*
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
