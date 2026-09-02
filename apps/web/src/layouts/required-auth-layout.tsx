@@ -1,6 +1,5 @@
 import { Navigate } from "@tanstack/react-router";
-import { AuthLoading, SignedIn, SignedOut } from "@daveyplate/better-auth-ui";
-import { SplashScreen } from "@/components/splash-screen";
+import { SignedIn, SignedOut } from "@daveyplate/better-auth-ui";
 
 function RedirectToLogin() {
   const currentUrl = window.location.pathname + window.location.search;
@@ -15,6 +14,13 @@ function RedirectToLogin() {
   return <Navigate to="/login" search={search} replace />;
 }
 
+/**
+ * Signed in, or off to `/login`. There is deliberately no `AuthLoading` branch:
+ * `BootGate` does not resolve until better-auth's session store has settled, so
+ * by the time this renders the answer is already known. The branch used to
+ * render a `SplashScreen`, which made it one more site that mounted its own
+ * copy mid-boot — see `layouts/boot-gate.tsx`.
+ */
 export default function RequiredAuthLayout({
   children,
 }: {
@@ -22,10 +28,6 @@ export default function RequiredAuthLayout({
 }) {
   return (
     <>
-      <AuthLoading>
-        <SplashScreen />
-      </AuthLoading>
-
       <SignedIn>{children}</SignedIn>
 
       <SignedOut>
