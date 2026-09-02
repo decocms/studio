@@ -336,9 +336,10 @@ export class TaskBoardReviewSweeper {
         const item = await this.taskBoard.getById(id, organizationId);
         // Re-read before spending a run: a human may have moved or reassigned
         // the card between the scan and here, and their move wins.
+        const lanes = await boardLanesForDb(this.db, organizationId);
         if (
           !item ||
-          item.status !== "in_progress" ||
+          item.status !== lanes.progress ||
           item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
         ) {
           continue;
@@ -413,7 +414,7 @@ export class TaskBoardReviewSweeper {
     try {
       const lanes = await boardLanesForDb(this.db, organizationId);
       const item = await this.taskBoard.getById(id, organizationId);
-      if (!item || item.status !== "in_progress") return;
+      if (!item || item.status !== lanes.progress) return;
       const returned = await this.taskBoard.returnToTodoAfterFailure(
         id,
         organizationId,
