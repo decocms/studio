@@ -3,7 +3,7 @@ import {
   DEFAULT_TASK_INITIAL_PROMPT,
   jiraKeyFromUrl,
   renderTaskInitialPrompt,
-  TASK_INITIAL_PROMPT_VARS,
+  TASK_INITIAL_PROMPT_VAR_NAMES,
   type TaskInitialPromptVars,
 } from "./task-initial-prompt";
 
@@ -15,6 +15,7 @@ const VARS: TaskInitialPromptVars = {
   jiraUrl: "https://acme.atlassian.net/browse/DECO-42",
   repoContext: "The repository acme/site is already cloned.",
   prBullet: "- Open a pull request.",
+  instruction: "You've been assigned this task.",
   prContext: "",
 };
 
@@ -40,13 +41,30 @@ describe("renderTaskInitialPrompt", () => {
     ).toBe("Title: Fix the header\n\nEnd");
   });
 
+  test("keeps blank lines the card itself wrote", () => {
+    const description = "Description:\nfirst\n\n\nsecond";
+    expect(
+      renderTaskInitialPrompt("{{taskDescription}}", {
+        ...VARS,
+        taskDescription: description,
+      }),
+    ).toBe(description);
+  });
+
+  test("does not read inherited properties for an unknown variable", () => {
+    expect(renderTaskInitialPrompt("{{constructor}}", VARS)).toBe(
+      "{{constructor}}",
+    );
+    expect(renderTaskInitialPrompt("{{toString}}", VARS)).toBe("{{toString}}");
+  });
+
   test("the default template only uses declared variables", () => {
     const used = [
       ...DEFAULT_TASK_INITIAL_PROMPT.matchAll(/\{\{\s*(\w+)\s*\}\}/g),
     ].map((m) => m[1]!);
     expect(used.length).toBeGreaterThan(0);
     for (const name of used) {
-      expect(Object.keys(TASK_INITIAL_PROMPT_VARS)).toContain(name);
+      expect([...TASK_INITIAL_PROMPT_VAR_NAMES] as string[]).toContain(name);
     }
   });
 });

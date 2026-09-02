@@ -76,6 +76,23 @@ export const settings = {
   "settings.boardColumns.promptHelp":
     "The run's whole opening message — this is where agent work starts. Use these variables to drop in the card's own values:",
   "settings.boardColumns.promptReset": "Reset to default",
+  "settings.boardColumns.var.instruction":
+    "What the column's rule says to do, or the agent's own opening line.",
+  "settings.boardColumns.var.taskTitle": "The card's title.",
+  "settings.boardColumns.var.taskDescription":
+    "The card's description block, already labelled — empty when it has none.",
+  "settings.boardColumns.var.taskId":
+    "The card's id, which the board tools the run calls need.",
+  "settings.boardColumns.var.jiraId":
+    "The card's Jira issue key (e.g. DECO-123), or empty.",
+  "settings.boardColumns.var.jiraUrl":
+    "Link to the card's Jira issue, or empty.",
+  "settings.boardColumns.var.repoContext":
+    "Where the code is: the repository already cloned into the sandbox, or the ones to pick from.",
+  "settings.boardColumns.var.prBullet":
+    "How to hand over: open a pull request, or push to the one named above on a re-run.",
+  "settings.boardColumns.var.prContext":
+    "Why this is a re-run: a reviewer's change request, a merge conflict, or the open pull request to keep pushing to. Empty on a first attempt.",
   "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
   "settings.boardColumns.saveFailed": "Could not save this column",
   "settings.jira.roleNone": "Nothing special",

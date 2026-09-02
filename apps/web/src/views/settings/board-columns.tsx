@@ -44,7 +44,7 @@ import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DEFAULT_TASK_INITIAL_PROMPT,
-  TASK_INITIAL_PROMPT_VARS,
+  TASK_INITIAL_PROMPT_VAR_NAMES,
 } from "@decocms/shared/task-initial-prompt";
 import {
   SettingsCard,
@@ -150,7 +150,9 @@ function BoardColumnRows({ showRole }: { showRole: boolean }) {
         <BoardColumnCard
           key={column.key}
           columnKey={column.key}
-          title={laneHeader(column.key, t, columns).label}
+          title={
+            showRole ? column.title : laneHeader(column.key, t, columns).label
+          }
           editsPrompt={column.role === PROMPT_COLUMN_ROLE}
           showRole={showRole}
           trigger={column.role}
@@ -285,19 +287,17 @@ function BoardColumnCard({
           {editsPrompt && (
             <>
               <ul className="flex flex-col gap-0.5">
-                {Object.entries(TASK_INITIAL_PROMPT_VARS).map(
-                  ([name, help]) => (
-                    <li
-                      key={name}
-                      className="flex gap-2 text-xs text-muted-foreground"
-                    >
-                      <code className="shrink-0 font-mono text-foreground">
-                        {`{{${name}}}`}
-                      </code>
-                      <span>{help}</span>
-                    </li>
-                  ),
-                )}
+                {TASK_INITIAL_PROMPT_VAR_NAMES.map((name) => (
+                  <li
+                    key={name}
+                    className="flex gap-2 text-xs text-muted-foreground"
+                  >
+                    <code className="shrink-0 font-mono text-foreground">
+                      {`{{${name}}}`}
+                    </code>
+                    <span>{t(`settings.boardColumns.var.${name}`)}</span>
+                  </li>
+                ))}
               </ul>
               <Button
                 variant="outline"
@@ -306,9 +306,21 @@ function BoardColumnCard({
                 // Resetting a stored override is a write (back to null);
                 // resetting an unsaved edit only discards it.
                 disabled={prompt === null && draft === saved}
+                // Keeps the textarea from blurring, whose autosave would
+                // otherwise write the draft this click is discarding.
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  setDraft(DEFAULT_TASK_INITIAL_PROMPT);
-                  if (prompt !== null) saveAutomation("");
+                  if (prompt === null) {
+                    setDraft(DEFAULT_TASK_INITIAL_PROMPT);
+                    return;
+                  }
+                  setAutomation.mutate(
+                    { columnKey, prompt: "" },
+                    {
+                      onSuccess: () => setDraft(DEFAULT_TASK_INITIAL_PROMPT),
+                      onError: failed,
+                    },
+                  );
                 }}
               >
                 {t("settings.boardColumns.promptReset")}

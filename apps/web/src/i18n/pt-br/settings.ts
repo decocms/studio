@@ -78,6 +78,22 @@ export const settings = {
   "settings.boardColumns.promptHelp":
     "A mensagem inicial completa do run — é aqui que o trabalho do agente começa. Use estas variáveis para inserir os valores do card:",
   "settings.boardColumns.promptReset": "Restaurar padrão",
+  "settings.boardColumns.var.instruction":
+    "O que a regra da coluna manda fazer, ou a frase de abertura do pr\u00f3prio agente.",
+  "settings.boardColumns.var.taskTitle": "O t\u00edtulo do card.",
+  "settings.boardColumns.var.taskDescription":
+    "A descri\u00e7\u00e3o do card, j\u00e1 rotulada \u2014 vazio quando n\u00e3o tem nenhuma.",
+  "settings.boardColumns.var.taskId":
+    "O id do card, de que as ferramentas do board usadas no run precisam.",
+  "settings.boardColumns.var.jiraId":
+    "A chave da issue do Jira (ex.: DECO-123), ou vazio.",
+  "settings.boardColumns.var.jiraUrl": "Link para a issue do Jira, ou vazio.",
+  "settings.boardColumns.var.repoContext":
+    "Onde est\u00e1 o c\u00f3digo: o reposit\u00f3rio j\u00e1 clonado no sandbox, ou os que h\u00e1 para escolher.",
+  "settings.boardColumns.var.prBullet":
+    "Como entregar: abrir um pull request, ou dar push no que foi citado acima num re-run.",
+  "settings.boardColumns.var.prContext":
+    "Por que este \u00e9 um re-run: um pedido de mudan\u00e7a do revisor, um conflito de merge, ou o pull request aberto para continuar. Vazio numa primeira tentativa.",
   "settings.boardColumns.removeAriaLabel":
     "Parar de rodar o agente em {column}",
   "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",

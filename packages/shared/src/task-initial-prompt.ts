@@ -12,33 +12,28 @@
  * shows the default and offers "reset to default".
  */
 
-/** Every variable the renderer substitutes, with the help text the UI lists. */
-export const TASK_INITIAL_PROMPT_VARS = {
-  instruction:
-    "What the column's rule says to do, or the Super Agent's own opening line.",
-  taskTitle: "The card's title.",
-  taskDescription:
-    "The card's description block (already labelled), or empty when it has none.",
-  taskId: "The card's id — needed by the board tools the run calls.",
-  jiraId: "The card's Jira issue key (e.g. DECO-123), or empty.",
-  jiraUrl: "Link to the card's Jira issue, or empty.",
-  repoContext:
-    "Where the code is: the repository already cloned into the sandbox, or the list of repositories to pick from.",
-  prBullet:
-    "How to hand over: open a pull request, or — on a re-run — push to the one named above.",
-  prContext:
-    "Why this is a re-run: the reviewer's change request, a merge conflict to resolve, or the open PR to keep pushing to. Empty on a first attempt.",
-} as const;
-
-export type TaskInitialPromptVar = keyof typeof TASK_INITIAL_PROMPT_VARS;
-export type TaskInitialPromptVars = Record<TaskInitialPromptVar, string>;
-
 /**
- * Cap on the template. It is the opening message of EVERY task run, so an
- * unbounded textarea is a per-run token bill. Generous enough that the default
- * (~5k) can be extended rather than only trimmed.
+ * Every variable the renderer substitutes.
+ *
+ * Names only: what each one MEANS is user-facing copy, so it lives in the web
+ * app's dictionaries (`settings.boardColumns.var.*`) where it can be
+ * translated, not in a string here that would render English in every locale.
  */
-export const TASK_INITIAL_PROMPT_MAX_LENGTH = 12_000;
+export const TASK_INITIAL_PROMPT_VAR_NAMES = [
+  "instruction",
+  "taskTitle",
+  "taskDescription",
+  "taskId",
+  "jiraId",
+  "jiraUrl",
+  "repoContext",
+  "prBullet",
+  "prContext",
+] as const;
+
+export type TaskInitialPromptVar =
+  (typeof TASK_INITIAL_PROMPT_VAR_NAMES)[number];
+export type TaskInitialPromptVars = Record<TaskInitialPromptVar, string>;
 
 /**
  * The prompt as it stood before it was configurable. Guidance tuned from
@@ -82,20 +77,30 @@ export const DEFAULT_TASK_INSTRUCTION =
  *
  * An UNKNOWN `{{name}}` is left verbatim rather than blanked: a typo the org
  * can see in a run's first message is fixable, one that silently vanished is
- * not. Runs of blank lines collapse to one, so a variable that renders empty
- * (no description, a first attempt) doesn't leave a hole the way inline
- * interpolation would.
+ * not. A variable that renders EMPTY (no description, a first attempt) takes
+ * its own separating blank line with it, so it leaves no hole — but only its
+ * own: a substituted value keeps whatever blank lines the card actually wrote,
+ * which a global collapse would rewrite.
  */
 export function renderTaskInitialPrompt(
   template: string,
   vars: TaskInitialPromptVars,
 ): string {
-  return template
-    .replace(/\{\{\s*(\w+)\s*\}\}/g, (match, name: string) =>
-      name in vars ? vars[name as TaskInitialPromptVar] : match,
-    )
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const out: string[] = [];
+  const pattern = /\{\{\s*(\w+)\s*\}\}/g;
+  let last = 0;
+  for (let match; (match = pattern.exec(template)) !== null; ) {
+    const name = match[1]!;
+    if (!Object.hasOwn(vars, name)) continue;
+    const value = vars[name as TaskInitialPromptVar];
+    out.push(template.slice(last, match.index), value);
+    last = match.index + match[0].length;
+    if (value) continue;
+    const gap = /^\n[ \t]*\n|^\n/.exec(template.slice(last));
+    if (gap) last += gap[0].length;
+  }
+  out.push(template.slice(last));
+  return out.join("").trim();
 }
 
 /** The Jira issue key in a `{site}/browse/{KEY}` issue URL, or "". */
