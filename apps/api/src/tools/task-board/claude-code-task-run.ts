@@ -24,6 +24,7 @@ import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import {
   DEFAULT_TASK_INITIAL_PROMPT,
+  DEFAULT_TASK_INSTRUCTION,
   jiraKeyFromUrl,
   renderTaskInitialPrompt,
   type TaskInitialPromptVars,
@@ -206,13 +207,24 @@ export function buildClaudeCodeTaskPrompt(
   repo: TaskRepo | null,
   opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): string {
-  // The triggering column's rule IS the template (`run-column-automation.ts`);
-  // a column with no rule of its own, and every other way a card is delegated,
-  // gets the shipped default.
   return renderTaskInitialPrompt(
-    opts?.instruction?.trim() || DEFAULT_TASK_INITIAL_PROMPT,
+    taskPromptTemplate(opts?.instruction),
     taskInitialPromptVars(task, repo, opts),
   );
+}
+
+/**
+ * The template a column rule's prompt selects.
+ *
+ * A rule carrying `{{` is a full template and replaces the whole message —
+ * that is the In Progress column's editor, where the run's prompt is
+ * configured. Any other rule stays what it has always been, a lead line the
+ * default template drops into `{{instruction}}`, so a column that just says
+ * "review the diff" is not silently promoted to the entire prompt.
+ */
+function taskPromptTemplate(instruction: string | undefined): string {
+  const trimmed = instruction?.trim();
+  return trimmed?.includes("{{") ? trimmed : DEFAULT_TASK_INITIAL_PROMPT;
 }
 
 /**
@@ -230,7 +242,12 @@ export function taskInitialPromptVars(
   repo: TaskRepo | null,
   opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): TaskInitialPromptVars {
+  const instruction = opts?.instruction?.trim();
   return {
+    instruction:
+      instruction && !instruction.includes("{{")
+        ? instruction
+        : DEFAULT_TASK_INSTRUCTION,
     taskTitle: task.title,
     taskDescription: descriptionBlock(task.description),
     taskId: task.id,

@@ -14,6 +14,8 @@
 
 /** Every variable the renderer substitutes, with the help text the UI lists. */
 export const TASK_INITIAL_PROMPT_VARS = {
+  instruction:
+    "What the column's rule says to do, or the Super Agent's own opening line.",
   taskTitle: "The card's title.",
   taskDescription:
     "The card's description block (already labelled), or empty when it has none.",
@@ -44,7 +46,7 @@ export const TASK_INITIAL_PROMPT_MAX_LENGTH = 12_000;
  * `claude-code-task-run.ts`, since that is where they were earned.
  */
 // prompt-region:start super-agent-sandbox
-export const DEFAULT_TASK_INITIAL_PROMPT = `You've been assigned this task. Complete it and finish with a pull request if it makes sense (like a coding task) or is explicitly requested.
+export const DEFAULT_TASK_INITIAL_PROMPT = `{{instruction}}
 
 You are running AUTONOMOUSLY — no human is watching, so drive this to completion yourself. Make reasonable decisions and move on; do not stop to ask for confirmation.
 
@@ -69,6 +71,11 @@ How to finish:
 
 (task id: {{taskId}})`;
 // prompt-region:end super-agent-sandbox
+
+/** The opening line a run gets when its column's rule names no other. */
+export const DEFAULT_TASK_INSTRUCTION =
+  "You've been assigned this task. Complete it and finish with a pull request " +
+  "if it makes sense (like a coding task) or is explicitly requested.";
 
 /**
  * Render `template` with `vars`.

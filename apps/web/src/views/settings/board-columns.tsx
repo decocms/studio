@@ -36,6 +36,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DEFAULT_TASK_INITIAL_PROMPT,
   TASK_INITIAL_PROMPT_VARS,
@@ -58,6 +59,10 @@ import { laneHeader } from "@/layouts/task-board/config";
 
 /** Nothing moves a card here on its own. */
 const NO_TRIGGER = "__none__";
+
+/** The lane a run actually starts in, and so the only one whose rule is the
+ *  run's whole prompt rather than an instruction inside it. */
+const PROMPT_COLUMN_ROLE = "in_progress";
 
 /** Each role, named by the moment Studio detects. Ordered the way work flows,
  *  so the list reads as a sequence. */
@@ -120,6 +125,7 @@ function BoardColumnRows({ showRole }: { showRole: boolean }) {
           key={column.key}
           columnKey={column.key}
           title={laneHeader(column.key, t, columns).label}
+          editsPrompt={column.role === PROMPT_COLUMN_ROLE}
           showRole={showRole}
           trigger={column.role}
           hasAutomation={promptOf.has(column.key)}
@@ -136,6 +142,7 @@ function BoardColumnRows({ showRole }: { showRole: boolean }) {
 function BoardColumnCard({
   columnKey,
   title,
+  editsPrompt,
   showRole,
   trigger,
   hasAutomation,
@@ -143,6 +150,7 @@ function BoardColumnCard({
 }: {
   columnKey: string;
   title: string;
+  editsPrompt: boolean;
   showRole: boolean;
   trigger: string | null;
   hasAutomation: boolean;
@@ -151,10 +159,9 @@ function BoardColumnCard({
   const t = useT();
   const setRole = useSetColumnRole();
   const setAutomation = useSetColumnAutomation();
-  // An unset rule runs the shipped default, so that is what the box shows —
-  // otherwise "what does this column actually send?" is unanswerable from here,
-  // and editing it means retyping a prompt you can't see.
-  const saved = prompt ?? DEFAULT_TASK_INITIAL_PROMPT;
+  // Where the prompt is edited, an unset rule shows the shipped default it
+  // actually runs — otherwise editing it means retyping what you cannot see.
+  const saved = prompt ?? (editsPrompt ? DEFAULT_TASK_INITIAL_PROMPT : "");
   // A draft, so typing is not a write per keystroke. Re-seeded on change.
   const [draft, setDraft] = useState(saved);
   const [syncedWith, setSyncedWith] = useState(saved);
@@ -221,8 +228,13 @@ function BoardColumnCard({
           </div>
           <Textarea
             value={draft}
-            rows={10}
-            className="font-mono text-xs"
+            rows={editsPrompt ? 10 : 2}
+            className={cn(editsPrompt && "font-mono text-xs")}
+            placeholder={
+              editsPrompt
+                ? undefined
+                : t("settings.boardColumns.promptPlaceholder")
+            }
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => {
               if (draft !== saved) saveAutomation(draft);
@@ -230,35 +242,45 @@ function BoardColumnCard({
             data-column-automation-prompt={columnKey}
           />
           <p className="text-xs text-muted-foreground">
-            {t("settings.boardColumns.promptHelp")}
+            {t(
+              editsPrompt
+                ? "settings.boardColumns.promptHelp"
+                : "settings.boardColumns.instructionHelp",
+            )}
           </p>
-          <ul className="flex flex-col gap-0.5">
-            {Object.entries(TASK_INITIAL_PROMPT_VARS).map(([name, help]) => (
-              <li
-                key={name}
-                className="flex gap-2 text-xs text-muted-foreground"
+          {editsPrompt && (
+            <>
+              <ul className="flex flex-col gap-0.5">
+                {Object.entries(TASK_INITIAL_PROMPT_VARS).map(
+                  ([name, help]) => (
+                    <li
+                      key={name}
+                      className="flex gap-2 text-xs text-muted-foreground"
+                    >
+                      <code className="shrink-0 font-mono text-foreground">
+                        {`{{${name}}}`}
+                      </code>
+                      <span>{help}</span>
+                    </li>
+                  ),
+                )}
+              </ul>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                // Resetting a stored override is a write (back to null);
+                // resetting an unsaved edit only discards it.
+                disabled={prompt === null && draft === saved}
+                onClick={() => {
+                  setDraft(DEFAULT_TASK_INITIAL_PROMPT);
+                  if (prompt !== null) saveAutomation("");
+                }}
               >
-                <code className="shrink-0 font-mono text-foreground">
-                  {`{{${name}}}`}
-                </code>
-                <span>{help}</span>
-              </li>
-            ))}
-          </ul>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-fit"
-            // Resetting a stored override is a write (back to null); resetting
-            // an unsaved edit is just discarding it.
-            disabled={prompt === null && draft === saved}
-            onClick={() => {
-              setDraft(DEFAULT_TASK_INITIAL_PROMPT);
-              if (prompt !== null) saveAutomation("");
-            }}
-          >
-            {t("settings.boardColumns.promptReset")}
-          </Button>
+                {t("settings.boardColumns.promptReset")}
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <Button

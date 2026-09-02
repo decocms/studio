@@ -280,6 +280,16 @@ describe("buildClaudeCodeTaskPrompt repo choices", () => {
     expect(prompt).toBe("DECO-9 — https://acme.atlassian.net/browse/DECO-9");
   });
 
+  // A rule on any column but In Progress is still a lead line, not a template.
+  test("a plain instruction leads the default prompt instead of replacing it", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+      instruction: "Review the diff and leave comments.",
+    });
+    expect(prompt.startsWith("Review the diff and leave comments.")).toBe(true);
+    expect(prompt).toContain("Title: Add a health endpoint");
+    expect(prompt).toContain("How to finish:");
+  });
+
   test("no rule on the column renders the shipped default", () => {
     expect(buildClaudeCodeTaskPrompt(task, repo)).toContain(
       "You've been assigned this task",
