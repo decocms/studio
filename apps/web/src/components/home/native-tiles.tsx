@@ -373,7 +373,8 @@ function AnalyticsMetricTile({
   const connected = useConnections({ slug: "google-analytics" }).length > 0;
   const { connect, isConnecting } = useConnectApp("deco/google-analytics");
   const cfg = METRIC_CONFIG[metricKey];
-  if (connected || !cfg) return <ConnectedSoon label="Analytics" />;
+  if (connected || !cfg)
+    return <ConnectedSoon label={t("home.nativeTiles.analyticsLabel")} />;
   return (
     <div className="relative flex h-full flex-col">
       <div className="min-h-0 flex-1">
@@ -405,7 +406,8 @@ function CommerceMetricTile({
   const connected = vtexConnections.length > 0 || shopifyConnections.length > 0;
   const [open, setOpen] = useState(false);
   const cfg = METRIC_CONFIG[metricKey];
-  if (connected || !cfg) return <ConnectedSoon label="Commerce" />;
+  if (connected || !cfg)
+    return <ConnectedSoon label={t("home.nativeTiles.commerceLabel")} />;
   return (
     <>
       <div className="relative flex h-full flex-col">
