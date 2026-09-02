@@ -1440,6 +1440,7 @@ export class TaskBoardStorage {
         taskId,
         organizationId,
         item.updatedBy,
+        lanes,
       );
       if (!advanced) continue;
       moved.push(advanced);
@@ -1449,7 +1450,7 @@ export class TaskBoardStorage {
         taskBoardItemId: taskId,
         action: "status_changed",
         actorId: null,
-        data: { from: item.status, to: "in_review" },
+        data: { from: item.status, to: advanced.status },
       }).catch((err) =>
         console.error("[task-board] in_review activity write failed", err),
       );
@@ -1550,10 +1551,17 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Flip a task to In Review only if it is still `in_progress`, returning the
+   * Flip a task to In Review only if it is still In Progress, returning the
    * updated item or null when another caller already moved it.
    *
-   * The `where status = 'in_progress'` predicate is the whole point: it makes
+   * `lanes` defaults to Studio's own board — the only board this ever ran
+   * against until a real column-based board could reach it too. An org-owned
+   * board's progress/review columns are whatever it named them, not the
+   * literals `"in_progress"`/`"in_review"`: hardcoding those made the WHERE
+   * match nothing (the advance silently never fired) and, had it matched,
+   * would have written a status that names no column on that board.
+   *
+   * The `where status = lanes.progress` predicate is the whole point: it makes
    * the advance idempotent under concurrency, which the plain `update()` is not.
    * See the caller above for what the duplicates cost.
    *
@@ -1566,17 +1574,22 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     by: string,
+    lanes: { progress: string | null; review: string | null } = {
+      progress: "in_progress",
+      review: "in_review",
+    },
   ): Promise<TaskBoardItem | null> {
+    if (lanes.progress === null || lanes.review === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
-        status: "in_review",
+        status: lanes.review,
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      .where("status", "=", lanes.progress)
       .where("dismissed_at", "is", null)
       .returningAll()
       .executeTakeFirst();
