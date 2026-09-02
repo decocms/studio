@@ -1,6 +1,7 @@
 "use client";
 
 import { useT } from "@/i18n/use-t.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
 import { MCPAppRenderer as MCPAppIframeRenderer } from "@/mcp-apps/mcp-app-renderer";
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
@@ -473,7 +474,7 @@ export function GenericToolCallPart({
               fallback={
                 <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <Spinner className="size-4" />
                     <span className="text-sm">
                       {t("chat.generic.loadingApp")}
                     </span>

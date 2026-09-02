@@ -8,6 +8,7 @@ import {
   type AutomationTrigger,
 } from "@/hooks/use-automations";
 import { useT } from "@/i18n/use-t.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { WebhookSecretDialog } from "@/components/automations/webhook-secret-dialog";
 import {
   buildCronFromInterval,
@@ -31,7 +32,6 @@ import {
   Clock,
   Edit01,
   Globe01,
-  Loading01,
   RefreshCw01,
   XClose,
   Zap,
@@ -225,10 +225,7 @@ export function TriggerCard({
 
         <div className="ml-auto flex items-center gap-1">
           {isSaving && (
-            <Loading01
-              size={13}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner className="size-[13px] text-muted-foreground" />
           )}
           {isCron && !interval && !isEditing && (
             <Button

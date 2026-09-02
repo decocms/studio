@@ -1,10 +1,10 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState } from "react";
 import {
   ArrowRight,
   File02,
   LinkExternal01,
-  Loading01,
   Pilcrow01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -387,7 +387,7 @@ export function CategoryEditor({
             >
               {isRenaming ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   {t("sandbox.categoryEditor.renamingLabel")}
                 </>
               ) : (

@@ -1,4 +1,5 @@
 import { useProjectContext } from "@/sdk";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   type OrganizationRole,
   useOrganizationRoles,
@@ -26,13 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import {
-  Plus,
-  Lock01,
-  DotsVertical,
-  Trash01,
-  Loading01,
-} from "@untitledui/icons";
+import { Plus, Lock01, DotsVertical, Trash01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -418,10 +413,7 @@ function RolesPage() {
           roleParam ? (
             <Page>
               <div className="flex items-center justify-center h-full">
-                <Loading01
-                  size={32}
-                  className="animate-spin text-muted-foreground"
-                />
+                <Spinner className="size-8 text-muted-foreground" />
               </div>
             </Page>
           ) : (

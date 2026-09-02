@@ -13,6 +13,7 @@
  * we cannot tell a genuinely streaming run from a wedged one.
  */
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +22,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import { Loading01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import type { TaskBoardItem } from "./config";
 
@@ -80,7 +80,7 @@ export function RerunDialog({
             {t("taskBoard.rerun.cancel")}
           </Button>
           <Button onClick={onConfirm} disabled={pending}>
-            {pending && <Loading01 className="size-4 animate-spin" />}
+            {pending && <Spinner className="size-4" />}
             {t("taskBoard.rerun.confirm")}
           </Button>
         </DialogFooter>

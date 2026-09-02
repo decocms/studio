@@ -4,6 +4,7 @@ import {
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
 import { getPrompt, listPrompts, useMCPClient, useProjectContext } from "@/sdk";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
@@ -30,7 +31,6 @@ import {
   Globe02,
   Image01,
   Link01,
-  Loading01,
   Plus,
   Settings04,
   ShieldTick,
@@ -457,7 +457,7 @@ export function ToolsPopover({
             <DropdownMenuSubContent className="w-80 max-h-72 overflow-y-auto p-1.5">
               {isPromptsLoading ? (
                 <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   {t("chat.toolsPopover.loadingPrompts")}
                 </div>
               ) : prompts.length === 0 ? (

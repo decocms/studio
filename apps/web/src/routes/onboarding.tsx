@@ -1,4 +1,5 @@
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import {
   OrganizationChoice,
@@ -17,7 +18,6 @@ import {
   Building02,
   CheckCircle,
   Globe04,
-  Loading01,
   Palette,
   Upload01,
   Users03,
@@ -143,7 +143,7 @@ function OnboardingPage() {
     return (
       <AuthSplitLayout>
         <div className="flex items-center gap-2">
-          <Loading01 size={14} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-3.5 text-muted-foreground" />
         </div>
       </AuthSplitLayout>
     );
@@ -199,7 +199,7 @@ function OnboardingContent({
     return (
       <AuthSplitLayout>
         <div className="flex items-center gap-2 py-4">
-          <Loading01 size={14} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-3.5 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
             {t("routes.onboarding.checking", { domain: emailDomain })}
           </span>
@@ -506,8 +506,7 @@ function SetupForm({
         >
           {isSubmitting || domainSetupMutation.isPending ? (
             <span className="flex items-center gap-2">
-              <Loading01 size={14} className="animate-spin" />{" "}
-              {t("routes.onboarding.creating")}
+              <Spinner className="size-3.5" /> {t("routes.onboarding.creating")}
             </span>
           ) : (
             t("routes.onboarding.continue")
@@ -702,14 +701,12 @@ function SetupWorkflow({
                   )}
                   aria-hidden="true"
                 />
-                <Loading01
-                  size={16}
+                <Spinner
                   className={cn(
-                    "absolute animate-spin",
+                    "absolute size-4",
                     "motion-safe:transition-opacity motion-safe:duration-200",
                     isActive ? "opacity-100" : "opacity-0",
                   )}
-                  aria-hidden="true"
                 />
                 <Icon
                   size={16}

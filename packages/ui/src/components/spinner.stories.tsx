@@ -5,17 +5,12 @@ const meta = {
   title: "Components/Spinner",
   component: Spinner,
   args: {
-    variant: "default",
     size: "default",
   },
   argTypes: {
-    variant: {
-      control: "select",
-      options: ["default", "destructive", "secondary", "success", "special"],
-    },
     size: {
       control: "select",
-      options: ["default", "sm", "xs", "lg", "icon"],
+      options: ["2xs", "xs", "sm", "default", "lg", "icon"],
     },
   },
 } satisfies Meta<typeof Spinner>;
@@ -25,14 +20,17 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
-export const Variants: Story = {
+/** Colour is not a prop. The spinner inherits `currentColor`, so it takes the
+ *  colour of whatever it sits in — which is what lets one component serve a
+ *  muted row, a destructive action and a filled button alike. */
+export const Colors: Story = {
   render: () => (
     <div className="flex items-center gap-4">
-      <Spinner variant="default" />
-      <Spinner variant="secondary" />
-      <Spinner variant="destructive" />
-      <Spinner variant="success" />
-      <Spinner variant="special" />
+      <Spinner />
+      <Spinner className="text-secondary" />
+      <Spinner className="text-destructive" />
+      <Spinner className="text-success" />
+      <Spinner className="text-special" />
     </div>
   ),
 };
@@ -40,11 +38,26 @@ export const Variants: Story = {
 export const Sizes: Story = {
   render: () => (
     <div className="flex items-center gap-4">
+      <Spinner size="2xs" />
       <Spinner size="xs" />
       <Spinner size="sm" />
       <Spinner size="default" />
       <Spinner size="lg" />
     </div>
+  ),
+};
+
+/** Inside a filled button — the case the old palette variants could not serve,
+ *  because a `fill-primary` spinner on a primary button is invisible. */
+export const OnFilledButton: Story = {
+  render: () => (
+    <button
+      type="button"
+      className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground"
+    >
+      <Spinner size="xs" />
+      Saving
+    </button>
   ),
 };
 

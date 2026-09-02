@@ -1,4 +1,5 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Archive, Zap } from "@untitledui/icons";
 import {
   Tooltip,
@@ -146,13 +147,11 @@ export function TaskRow({
               status: t(config.labelKey),
             })}
           >
-            <StatusIcon
-              size={14}
-              className={cn(
-                config.iconClassName,
-                task.status === "in_progress" && "animate-spin",
-              )}
-            />
+            {task.status === "in_progress" ? (
+              <Spinner className={cn("size-3.5", config.iconClassName)} />
+            ) : (
+              <StatusIcon size={14} className={config.iconClassName} />
+            )}
           </span>
         )}
         {onArchive && (

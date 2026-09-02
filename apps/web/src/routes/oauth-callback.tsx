@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { handleOAuthCallback } from "@/lib/mcp-oauth";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -60,7 +60,7 @@ export default function OAuthCallback() {
         {/* Loading spinner */}
         {!success && !error && (
           <div className="flex items-center justify-center py-4">
-            <Loading01 size={32} className="animate-spin text-primary" />
+            <Spinner className="size-8 text-primary" />
           </div>
         )}
 

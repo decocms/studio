@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState, type ReactNode } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
@@ -1628,10 +1629,13 @@ function ThreadActivityItem({
               state.className,
             )}
           >
-            <state.icon
-              size={15}
-              className={cn(state.spin && "animate-spin")}
-            />
+            {/* A spinning status glyph is a loading indicator, so it is the
+                shared Spinner; the settled states keep their own icon. */}
+            {state.spin ? (
+              <Spinner className="size-[15px]" label={state.label} />
+            ) : (
+              <state.icon size={15} />
+            )}
             <span className="text-sm">{state.label}</span>
           </span>
           {message && (
@@ -1907,14 +1911,14 @@ function PrCard({
                 return (
                   <div key={c.name} className="rounded-md bg-muted/40 p-2">
                     <div className="flex items-center gap-2">
-                      <cs.icon
-                        size={13}
-                        className={cn(
-                          "shrink-0",
-                          cs.className,
-                          cs.spin && "animate-spin",
-                        )}
-                      />
+                      {cs.spin ? (
+                        <Spinner className={cn("size-[13px]", cs.className)} />
+                      ) : (
+                        <cs.icon
+                          size={13}
+                          className={cn("shrink-0", cs.className)}
+                        />
+                      )}
                       <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                         {c.name}
                       </span>

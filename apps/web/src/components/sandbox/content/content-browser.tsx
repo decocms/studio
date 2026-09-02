@@ -1,4 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
@@ -8,7 +9,6 @@ import {
   Globe02,
   Grid01,
   LayoutAlt01,
-  Loading01,
   Plus,
   SearchLg,
   Tag01,
@@ -510,7 +510,7 @@ function ContentBrowserReady({
   if (decofileLoading || metaLoading || (dataMissing && sandboxWarming)) {
     return (
       <div className="h-full w-full flex items-center justify-center">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }
@@ -1198,10 +1198,7 @@ function ContentBrowserReady({
           <Suspense
             fallback={
               <div className="h-full flex items-center justify-center">
-                <Loading01
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
+                <Spinner className="size-5 text-muted-foreground" />
               </div>
             }
           >
@@ -1500,7 +1497,7 @@ function ContentBrowserReady({
             >
               {isDeleting ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   Deleting…
                 </>
               ) : (
@@ -1937,10 +1934,7 @@ function ItemList({
           ) : activeCollection === "apps" ? (
             appCatalogLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loading01
-                  size={18}
-                  className="animate-spin text-muted-foreground"
-                />
+                <Spinner className="size-4.5 text-muted-foreground" />
               </div>
             ) : filteredApps.length === 0 ? (
               <ListEmpty

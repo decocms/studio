@@ -11,6 +11,7 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, useState } from "react";
 import {
   closestCenter,
@@ -66,7 +67,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ChevronDown,
   DotsGrid,
-  Loading01,
   Plus,
   SearchSm,
   Settings01,
@@ -578,11 +578,7 @@ function AvailableAgentRow({
           }
           className="shrink-0 inline-flex size-7 items-center justify-center rounded-md bg-foreground text-background text-xs hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {adding ? (
-            <Loading01 size={12} className="animate-spin" />
-          ) : (
-            <Plus size={14} />
-          )}
+          {adding ? <Spinner className="size-3" /> : <Plus size={14} />}
         </button>
       </div>
       {expanded && (
@@ -881,11 +877,7 @@ function TileConfigForm({
           disabled={submitting}
           onClick={onSubmit}
         >
-          {submitting ? (
-            <Loading01 size={12} className="animate-spin" />
-          ) : (
-            submitLabel
-          )}
+          {submitting ? <Spinner className="size-3" /> : submitLabel}
         </Button>
       </div>
     </div>

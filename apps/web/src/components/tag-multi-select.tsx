@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -27,7 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import { ChevronDown, Plus, XClose, Loading01 } from "@untitledui/icons";
+import { ChevronDown, Plus, XClose } from "@untitledui/icons";
 import {
   useTags,
   useCreateTag,
@@ -134,10 +135,7 @@ export function TagMultiSelect({
           disabled={disabled || isLoading}
         >
           {isLoading ? (
-            <Loading01
-              size={14}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner className="size-3.5 text-muted-foreground" />
           ) : memberTags.length > 0 ? (
             <div className="flex items-center gap-1 flex-wrap">
               {memberTags.slice(0, maxDisplay).map((tag) => (
@@ -250,7 +248,7 @@ export function TagMultiSelect({
                   >
                     <div className="flex items-center gap-2 text-primary">
                       {isPending ? (
-                        <Loading01 size={14} className="animate-spin" />
+                        <Spinner className="size-3.5" />
                       ) : (
                         <Plus size={14} />
                       )}

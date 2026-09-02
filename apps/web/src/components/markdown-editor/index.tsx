@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { Selection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { Attachment01, Loading02 } from "@untitledui/icons";
+import { Attachment01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -227,7 +228,7 @@ export function MarkdownEditor({
             aria-live="polite"
             role="status"
           >
-            <Loading02 size={12} className="animate-spin" />
+            <Spinner className="size-3" />
             {pending === 1
               ? t("markdownEditor.uploading")
               : t("markdownEditor.uploadingCount", { count: String(pending) })}

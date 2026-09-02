@@ -5,6 +5,7 @@
  */
 
 import { useMCPClient } from "@/sdk";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
 import {
@@ -19,7 +20,6 @@ import {
   Eye,
   GitPullRequest,
   Globe01,
-  Loading01,
   RefreshCw01,
 } from "@untitledui/icons";
 import {
@@ -532,7 +532,7 @@ function CmsPublishContent({
     if (gate.pending) {
       return (
         <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
-          <Loading01 className="size-3.5 animate-spin motion-reduce:animate-none" />
+          <Spinner className="size-3.5 motion-reduce:animate-none" />
           {t("thread.publishPopover.reviewing")}
         </div>
       );
@@ -694,7 +694,7 @@ function CmsPublishContent({
                 disabled={!canSubmit}
               >
                 {isPublishing ? (
-                  <Loading01 className="size-4 animate-spin motion-reduce:animate-none" />
+                  <Spinner className="size-4 motion-reduce:animate-none" />
                 ) : null}
                 {isPublishing
                   ? isReview

@@ -3,6 +3,7 @@
  */
 
 import type { useConnections, useVirtualMCPs } from "@/sdk";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useMCPClient } from "@/sdk";
 import type { useProjectContext } from "@/sdk";
 import { useQuery, useSuspenseInfiniteQuery } from "@tanstack/react-query";
@@ -283,7 +284,7 @@ function MonitoringLogsTableContent({
               <div className="flex-1 overflow-y-auto min-h-0">
                 {detailQuery.isLoading ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="size-5 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                    <Spinner className="size-5 text-muted-foreground" />
                   </div>
                 ) : detailQuery.isError ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-sm text-muted-foreground">

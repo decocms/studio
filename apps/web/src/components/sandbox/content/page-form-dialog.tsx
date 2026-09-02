@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import {
@@ -204,7 +204,7 @@ export function PageFormDialog({
             >
               {isPending ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   {t(PENDING_LABEL_KEYS[mode])}
                 </>
               ) : (

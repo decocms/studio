@@ -1,4 +1,5 @@
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolAnnotationBadges } from "@/components/tools";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
@@ -19,7 +20,7 @@ import {
   useMCPToolsList,
   useProjectContext,
 } from "@/sdk";
-import { AlertTriangle, Loading01, LockUnlocked01 } from "@untitledui/icons";
+import { AlertTriangle, LockUnlocked01 } from "@untitledui/icons";
 import type { ReactNode } from "react";
 import { Suspense, useReducer } from "react";
 import type { VirtualMCPConnection } from "@decocms/shared/sdk/types";
@@ -45,7 +46,7 @@ interface SelectableItem {
 function LoadingSpinner() {
   return (
     <div className="flex items-center justify-center h-32">
-      <Loading01 className="animate-spin text-muted-foreground" size={24} />
+      <Spinner className="size-6 text-muted-foreground" />
     </div>
   );
 }

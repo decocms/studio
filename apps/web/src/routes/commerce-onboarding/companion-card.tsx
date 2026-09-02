@@ -1,4 +1,5 @@
 import { siteUrlToHost } from "@decocms/shared/reports/site-url";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -18,7 +19,7 @@ import {
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@/sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loading01, SlashCircle01 } from "@untitledui/icons";
+import { SlashCircle01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
@@ -90,7 +91,7 @@ function UnlinkButton({
           )}
         >
           {disconnecting ? (
-            <Loading01 size={16} className="animate-spin" />
+            <Spinner className="size-4" />
           ) : (
             <SlashCircle01 size={16} />
           )}

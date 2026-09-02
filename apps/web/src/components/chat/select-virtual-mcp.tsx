@@ -1,4 +1,5 @@
 import { useT } from "@/i18n/use-t.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -16,7 +17,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { isDecopilot, type VirtualMCPEntity } from "@/sdk";
 import { useVirtualMCPs } from "@/sdk";
-import { Check, Loading01, SearchMd, Users03 } from "@untitledui/icons";
+import { Check, SearchMd, Users03 } from "@untitledui/icons";
 import {
   Suspense,
   useEffect,
@@ -85,7 +86,7 @@ export interface VirtualMCPPopoverContentProps {
 function PopoverContentLoading() {
   return (
     <div className="flex items-center justify-center py-12">
-      <Loading01 size={20} className="animate-spin text-muted-foreground" />
+      <Spinner className="size-5 text-muted-foreground" />
     </div>
   );
 }

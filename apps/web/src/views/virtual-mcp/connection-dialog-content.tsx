@@ -1,4 +1,5 @@
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { groupConnections } from "@/utils/group-connections";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/components/connections/connection-card.tsx";
@@ -27,13 +28,7 @@ import {
 } from "@/sdk";
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
-import {
-  Check,
-  CheckVerified02,
-  Container,
-  Loading01,
-  Plus,
-} from "@untitledui/icons";
+import { Check, CheckVerified02, Container, Plus } from "@untitledui/icons";
 import { useDeferredValue } from "react";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
@@ -433,7 +428,7 @@ export function ConnectionDialogContent({
               }}
             >
               {connectingItemId === item.id ? (
-                <Loading01 size={14} className="animate-spin" />
+                <Spinner className="size-3.5" />
               ) : mode === "browse" ? (
                 t("virtualMcp.connectionDialogContent.connect")
               ) : (
@@ -513,10 +508,7 @@ export function ConnectionDialogContent({
           <div ref={connectedSentinelRef} className="col-span-full h-1" />
           {isFetchingNextConnectionsPage && (
             <div className="col-span-full flex justify-center py-6">
-              <Loading01
-                size={24}
-                className="animate-spin text-muted-foreground"
-              />
+              <Spinner className="size-6 text-muted-foreground" />
             </div>
           )}
 
@@ -552,10 +544,7 @@ export function ConnectionDialogContent({
           )}
           {showCatalog && mergedDiscovery.isLoadingMore && (
             <div className="col-span-full flex justify-center py-6">
-              <Loading01
-                size={24}
-                className="animate-spin text-muted-foreground"
-              />
+              <Spinner className="size-6 text-muted-foreground" />
             </div>
           )}
         </div>

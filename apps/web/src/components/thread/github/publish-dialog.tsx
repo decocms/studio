@@ -1,4 +1,5 @@
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -15,13 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  ArrowRight,
-  Eye,
-  GitBranch01,
-  Loading01,
-  Stars01,
-} from "@untitledui/icons";
+import { ArrowRight, Eye, GitBranch01, Stars01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -496,9 +491,7 @@ function PublishDialogBody({
                   onClick={handleDiscardAll}
                   disabled={isDiscardingAll}
                 >
-                  {isDiscardingAll ? (
-                    <Loading01 className="h-3 w-3 animate-spin" />
-                  ) : null}
+                  {isDiscardingAll ? <Spinner className="h-3 w-3" /> : null}
                   {t("thread.publishDialog.discardAll")}
                 </Button>
               </div>
@@ -532,7 +525,7 @@ function PublishDialogBody({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoadingGitDiff ? (
             <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-              <Loading01 className="h-4 w-4 animate-spin" />
+              <Spinner className="h-4 w-4" />
               <span className="text-sm">
                 {t("thread.publishDialog.loadingChanges")}
               </span>
@@ -558,7 +551,7 @@ function PublishDialogBody({
                       onClick={regenerateSuggestion}
                     >
                       {isGeneratingSuggestion ? (
-                        <Loading01 className="h-3 w-3 animate-spin" />
+                        <Spinner className="h-3 w-3" />
                       ) : (
                         <Stars01 className="h-3 w-3" />
                       )}
@@ -686,7 +679,7 @@ function PublishDialogBody({
                     disabled={isSubmittingForReview}
                   >
                     {isSubmittingForReview ? (
-                      <Loading01 className="h-4 w-4 animate-spin" />
+                      <Spinner className="h-4 w-4" />
                     ) : (
                       <GitBranch01 className="h-4 w-4" />
                     )}
@@ -709,7 +702,7 @@ function PublishDialogBody({
                 disabled={!canSubmitForReview || isSubmittingForReview}
               >
                 {isSubmittingForReview ? (
-                  <Loading01 className="h-4 w-4 animate-spin" />
+                  <Spinner className="h-4 w-4" />
                 ) : (
                   <GitBranch01 className="h-4 w-4" />
                 )}
@@ -749,7 +742,7 @@ function PublishButton({
       onClick={onPublish}
       disabled={!canPublish || isPublishing}
     >
-      {isPublishing ? <Loading01 className="h-4 w-4 animate-spin" /> : null}
+      {isPublishing ? <Spinner className="h-4 w-4" /> : null}
       {label}
     </Button>
   );

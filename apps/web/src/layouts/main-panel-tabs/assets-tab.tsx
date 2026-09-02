@@ -9,6 +9,7 @@
  */
 
 import { useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Check,
   Copy01,
@@ -16,7 +17,6 @@ import {
   File02,
   Image01,
   LinkExternal01,
-  Loading01,
   Package,
   Trash01,
   Upload01,
@@ -201,7 +201,7 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
           onClick={() => fileInputRef.current?.click()}
         >
           {upload.isPending ? (
-            <Loading01 size={14} className="animate-spin" />
+            <Spinner className="size-3.5" />
           ) : (
             <Upload01 size={14} />
           )}
@@ -300,7 +300,7 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
             >
               {objectsQuery.isFetchingNextPage ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   {t("filePicker.filePickerDialog.loading")}
                 </>
               ) : (
@@ -490,9 +490,7 @@ function DeleteAssetDialog({
               confirmDelete();
             }}
           >
-            {del.isPending ? (
-              <Loading01 size={14} className="animate-spin" />
-            ) : null}
+            {del.isPending ? <Spinner className="size-3.5" /> : null}
             {t("assets.browser.deleteConfirm")}
           </AlertDialogAction>
         </AlertDialogFooter>

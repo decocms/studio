@@ -1,4 +1,5 @@
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   getUIResourceUri,
   MCP_APP_DISPLAY_MODES,
@@ -24,7 +25,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { Loading01 } from "@untitledui/icons";
 import { Link, useSearch } from "@tanstack/react-router";
 import {
   Breadcrumb,
@@ -663,7 +663,7 @@ function ToolDetailsAuthenticated({
             fallback={
               <div className="flex items-center justify-center h-48">
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <Spinner className="size-4" />
                   <span className="text-sm">
                     {t("details.tool.loadingApp")}
                   </span>
@@ -747,10 +747,7 @@ function ToolDetailsAuthenticated({
               {toolsQuery.isSuccess ? (
                 <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
               ) : toolsQuery.isLoading ? (
-                <Loading01
-                  size={10}
-                  className="animate-spin text-warning shrink-0"
-                />
+                <Spinner className="size-[10px] text-warning shrink-0" />
               ) : (
                 <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
               )}
@@ -839,7 +836,7 @@ export function ToolDetailsView({
     <Suspense
       fallback={
         <div className="flex h-full items-center justify-center">
-          <Loading01 size={32} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-8 text-muted-foreground" />
         </div>
       }
     >

@@ -1,7 +1,8 @@
 import { useConnection, useConnections, useProjectContext } from "@/sdk";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { resolveBindingType } from "@/hooks/use-binding";
 import { useInstallFromRegistry } from "@/hooks/use-install-from-registry";
-import { Loading01, Plus } from "@untitledui/icons";
+import { Plus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Select,
@@ -246,7 +247,7 @@ function BindingSelector({
             >
               {isInstalling ? (
                 <>
-                  <Loading01 size={16} className="animate-spin" />
+                  <Spinner className="size-4" />
                   <span>{t("details.mcpConfigurationForm.connecting")}</span>
                 </>
               ) : (

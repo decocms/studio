@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { File02, Loading01, X } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { File02, X } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import {
@@ -183,7 +184,7 @@ export function BulkCategoryPanel({
               >
                 {isPending ? (
                   <>
-                    <Loading01 size={14} className="animate-spin" />
+                    <Spinner className="size-3.5" />
                     {t("sandbox.bulkCategoryPanel.updatingButton")}
                   </>
                 ) : (

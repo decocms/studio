@@ -5,13 +5,9 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@decocms/ui/components/context-menu.tsx";
-import {
-  ChevronDown,
-  ChevronRight,
-  Folder,
-  Loading01,
-} from "@untitledui/icons";
+import { ChevronDown, ChevronRight, Folder } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { TreeNode } from "./types";
 import type { FileIcon } from "./utils";
@@ -71,10 +67,7 @@ export function FileTreeRow({
           {isDir ? (
             <>
               {isLoading ? (
-                <Loading01
-                  size={14}
-                  className="shrink-0 animate-spin text-muted-foreground"
-                />
+                <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
               ) : isExpanded ? (
                 <ChevronDown
                   size={14}
