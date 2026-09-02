@@ -454,8 +454,8 @@ export async function reactToFailedTaskRun(
             action: "status_changed",
             actorId: null,
             data: {
-              from: "in_progress",
-              to: "in_progress",
+              from: lanes.progress,
+              to: lanes.progress,
               retry: attempts + 1,
               of: budget,
               reason: failure.errorText ?? failure.kind,
@@ -477,8 +477,8 @@ export async function reactToFailedTaskRun(
           action: "status_changed",
           actorId: null,
           data: {
-            from: "in_progress",
-            to: "todo",
+            from: lanes.progress,
+            to: lanes.queue,
             reason: failure.errorText ?? failure.kind,
             retriesSpent: attempts,
           },
@@ -586,7 +586,7 @@ export async function parkReviewedCardForHuman(
         taskBoardItemId: item.id,
         action: "status_changed",
         actorId: null,
-        data: { from: item.status, to: "in_review" },
+        data: { from: item.status, to: lanes.review },
       })
       .catch(() => {});
     emitTaskBoardUpdated(item.organizationId, parked);
