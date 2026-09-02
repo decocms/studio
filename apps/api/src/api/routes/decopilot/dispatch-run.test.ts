@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { UIMessageChunk } from "ai";
+import { NoResultError } from "kysely";
 import {
   isRunSuperseded,
   RunSupersededError,
 } from "@/harnesses/sandbox-dispatch-client";
+import { PermanentRunError } from "@/core/dispatch-errors";
+import type { StudioContext } from "@/core/studio-context";
 import {
   assertHostedDispatchHarness,
   assertSinglePersistedRequestMessage,
   buildAgentSandboxUiStream,
   buildDurableDispatchInput,
   resolveAgentInstructions,
+  resolveSecretModelSource,
 } from "./dispatch-run";
 import type { ChatMessage } from "./types";
 
@@ -412,5 +416,49 @@ describe("resolveAgentInstructions", () => {
   test("stays undefined when there is nothing to say", () => {
     expect(resolveAgentInstructions({}, null)).toBeUndefined();
     expect(resolveAgentInstructions({}, { instructions: 42 })).toBeUndefined();
+  });
+});
+
+describe("resolveSecretModelSource", () => {
+  test("surfaces an unconfigured credential as a permanent, readable error", async () => {
+    const ctx = {
+      storage: {
+        aiProviderKeys: {
+          resolve: () => Promise.reject(new NoResultError({} as never)),
+        },
+      },
+    } as unknown as StudioContext;
+
+    const rejection = resolveSecretModelSource(
+      ctx,
+      "org-1",
+      "cred-missing",
+      "model-1",
+    );
+
+    await expect(rejection).rejects.toThrow(PermanentRunError);
+    await expect(rejection).rejects.toMatchObject({
+      code: "model_credential_not_found",
+    });
+  });
+
+  test("propagates a transient lookup failure unchanged, not as permanent", async () => {
+    const dbError = new Error("connection terminated unexpectedly");
+    const ctx = {
+      storage: {
+        aiProviderKeys: {
+          resolve: () => Promise.reject(dbError),
+        },
+      },
+    } as unknown as StudioContext;
+
+    const rejection = resolveSecretModelSource(
+      ctx,
+      "org-1",
+      "cred-1",
+      "model-1",
+    );
+
+    await expect(rejection).rejects.toBe(dbError);
   });
 });

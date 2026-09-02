@@ -21,6 +21,42 @@ export class ConfigRequestError extends Error {
   }
 }
 
+/**
+ * Call a daemon endpoint and read its whole body, labelling any transport
+ * failure with the endpoint that failed.
+ *
+ * `AbortSignal.timeout()` rejects with a bare DOMException whose message is
+ * "The operation timed out." — no URL, no endpoint, no hint that a sandbox was
+ * even involved. Unwrapped, that string is what a run surfaces to the user: a
+ * montecarlo run failed with exactly `Error: The operation timed out.` and
+ * nothing anywhere — not the thread row, not the logs — recorded what had timed
+ * out. Every other timeout on this path already says what it was waiting for;
+ * these are the ones that did not.
+ *
+ * The body is read HERE, not by the caller, because the same signal aborts it:
+ * a daemon that sends headers and then stalls rejects the `.text()`, and a
+ * `.text()` awaited outside this try is exactly the unlabelled DOMException
+ * again. Every caller wants the body anyway.
+ */
+async function daemonRequest(
+  url: string,
+  init: RequestInit,
+  endpoint: string,
+): Promise<{ status: number; ok: boolean; body: string }> {
+  try {
+    const res = await fetch(url, init);
+    return { status: res.status, ok: res.ok, body: await res.text() };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[SANDBOX_UNREACHABLE] sandbox daemon ${endpoint} request failed: ${message}`,
+      {
+        cause: err,
+      },
+    );
+  }
+}
+
 const HEALTH_PROBE_TIMEOUT_MS = 500;
 // Config application can run a cold clone + install on a heavy sandbox; 10s was
 // too tight and routinely tripped `AbortSignal.timeout()`, surfacing benign
@@ -137,20 +173,23 @@ async function configRequest(
 ): Promise<ConfigResponse> {
   const wire: Record<string, unknown> = { ...payload };
   if (auth && auth.rotateToken !== undefined) wire.auth = auth;
-  const res = await fetch(`${daemonUrl}/_sandbox/config`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await daemonRequest(
+    `${daemonUrl}/_sandbox/config`,
+    {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(wire),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
     },
-    body: JSON.stringify(wire),
-    signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
-  });
-  const body = await res.text();
+    "/_sandbox/config",
+  );
   if (!res.ok) {
-    throw new ConfigRequestError(res.status, body);
+    throw new ConfigRequestError(res.status, res.body);
   }
-  return JSON.parse(body) as ConfigResponse;
+  return JSON.parse(res.body) as ConfigResponse;
 }
 
 /**
@@ -164,14 +203,18 @@ export async function postSetupStep(
   token: string,
   step: "clone" | "install" | "start",
 ): Promise<void> {
-  const res = await fetch(`${daemonUrl}/_sandbox/setup/${step}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
-  });
+  const res = await daemonRequest(
+    `${daemonUrl}/_sandbox/setup/${step}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+    },
+    `/_sandbox/setup/${step}`,
+  );
   if (!res.ok) {
     throw new Error(
-      `sandbox daemon /_sandbox/setup/${step} returned ${res.status}: ${await res.text()}`,
+      `sandbox daemon /_sandbox/setup/${step} returned ${res.status}: ${res.body}`,
     );
   }
 }
@@ -188,22 +231,25 @@ export async function postOrgFsConfig(
   token: string,
   configJson: string,
 ): Promise<{ written: boolean }> {
-  const res = await fetch(`${daemonUrl}/_sandbox/orgfs-config`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await daemonRequest(
+    `${daemonUrl}/_sandbox/orgfs-config`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: configJson,
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
     },
-    body: configJson,
-    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
-  });
-  const body = await res.text();
+    "/_sandbox/orgfs-config",
+  );
   if (!res.ok) {
     throw new Error(
-      `sandbox daemon /_sandbox/orgfs-config returned ${res.status}: ${body}`,
+      `sandbox daemon /_sandbox/orgfs-config returned ${res.status}: ${res.body}`,
     );
   }
-  return JSON.parse(body) as { written: boolean };
+  return JSON.parse(res.body) as { written: boolean };
 }
 
 const STRIP_REQUEST_HEADERS = [

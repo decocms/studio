@@ -262,6 +262,7 @@ function SandboxActionControls({
                 variant="outline"
                 size="xs"
                 className="rounded-l-none px-1"
+                aria-label={t("sandbox.toolbar.moreActions")}
               >
                 <ChevronDown className="size-3" />
               </Button>

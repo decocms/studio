@@ -1730,8 +1730,54 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Atomically move a card into its in-progress lane when a PR opens, claiming
+   * it for the Super Agent in the SAME statement when nobody owns it yet.
+   *
+   * Both writes are fenced on `fromLane`, the status the caller decided
+   * against: that decision is made from a card snapshot taken before an LLM
+   * call, so by the time it lands a human may have dragged the card to Done or
+   * a reviewer may have moved it on. Replaying the stale advance would drag a
+   * finished card back to In Progress — the very regression `canAdvance`
+   * exists to prevent. Losing the race returns null and the caller leaves the
+   * live card alone. One statement, so the status and the claim can't disagree.
+   */
+  async advanceToProgressOnPrOpen(
+    id: string,
+    organizationId: string,
+    fromLane: string,
+    toLane: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        status: toLane,
+        // Column reads on the right-hand side are the row's OLD values, so this
+        // claims only an unowned card and leaves a human's ownership intact.
+        assignee_id: sql`coalesce(assignee_id, ${SUPER_AGENT_ASSIGNEE_ID})`,
+        assigned_by: sql`case when assignee_id is null then ${by} else assigned_by end`,
+        // Same rule as `update()`: leaving the review phase ends the cycle.
+        ...(REVIEW_PHASE_LANES.has(toLane)
+          ? {}
+          : { review_cycle_started_at: null }),
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", fromLane)
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
    * Atomically hand a task from the Super Agent to a human: clear
-   * `assigneeId` ONLY if it's still the Super Agent, returning the updated
+   * `assigneeId` and `assignedBy` ONLY if it's still the Super Agent — an
+   * unassigned card keeps no delegation metadata — returning the updated
    * item, or null if it already changed. `handTaskToHuman`'s caller re-checks
    * a stale, previously-read `item.assigneeId` before calling this — several
    * dead-end paths (a bounce limit, a burned reviewer retry, a PR-less card)
@@ -1749,6 +1795,7 @@ export class TaskBoardStorage {
       .updateTable("task_board_items")
       .set({
         assignee_id: null,
+        assigned_by: null,
         updated_by: by,
         updated_at: new Date().toISOString(),
       })

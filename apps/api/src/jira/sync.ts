@@ -25,7 +25,11 @@
  */
 
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { boardFor } from "@/tools/task-board/board-handler";
+import {
+  type BoardHandler,
+  boardFor,
+  shippedPatch,
+} from "@/tools/task-board/board-handler";
 import type { StudioContext } from "@/core/studio-context";
 import type {
   OrgJiraIntegration,
@@ -218,6 +222,34 @@ export function rewritesStatus({
 }): boolean {
   if (jiraStatusChanged) return true;
   return currentStatus !== null && !boardColumns.has(currentStatus);
+}
+
+/**
+ * Whether an updated issue should run its landing column's automation rule.
+ *
+ * Gated on the BOARD column actually changing, not on Jira's status literal
+ * changing: several Jira statuses can map to the same board column (a
+ * many-to-one `statusMapping`, or several Kanban-board statuses mirrored onto
+ * one column), so an issue can flip between two of them without the card ever
+ * leaving its column. `runColumnAutomation` is a no-op on an already-owned
+ * card, but a card a prior run un-delegated (a quota rejection, a burned
+ * retry) would otherwise be re-claimed and re-dispatched by a same-column
+ * status ping-pong that never moved it anywhere. The board's own drag path
+ * (`TASK_BOARD_ITEM_UPDATE`) already gates the same way, on `previous.status
+ * !== item.status` — this is that same rule for the Jira leg.
+ */
+export function triggersColumnAutomation({
+  previousStatus,
+  newStatus,
+  isRescan,
+}: {
+  /** This card's board column before this sync wrote to it. */
+  previousStatus: string | null;
+  /** This card's board column after this sync wrote to it. */
+  newStatus: string;
+  isRescan: boolean;
+}): boolean {
+  return !isRescan && previousStatus !== newStatus;
 }
 
 export function buildJql(
@@ -507,6 +539,7 @@ async function reconcileVanishedIssues(
   integration: OrgJiraIntegration,
   client: JiraClient,
   scopeJql: string,
+  board: BoardHandler,
 ): Promise<number> {
   const orgId = integration.organizationId;
   const live = await client.searchIssueIds(
@@ -530,7 +563,7 @@ async function reconcileVanishedIssues(
     const item = await ctx.storage.taskBoard.update(
       link.itemId,
       orgId,
-      { status: "archived" },
+      shippedPatch(board, "archived"),
       JIRA_SYNC_ACTOR,
     );
     await ctx.storage.taskBoard.recordActivity({
@@ -719,7 +752,13 @@ async function runSync(
             data: { from: before.status, to: status },
           });
         }
-        if (statusChangedOnJira && !isRescan) {
+        if (
+          triggersColumnAutomation({
+            previousStatus: before?.status ?? null,
+            newStatus: item.status,
+            isRescan,
+          })
+        ) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
@@ -805,6 +844,7 @@ async function runSync(
       integration,
       client,
       scopeJql,
+      board,
     );
   }
 

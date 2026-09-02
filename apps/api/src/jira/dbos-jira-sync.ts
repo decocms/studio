@@ -8,6 +8,7 @@
  * boot via `setJiraSyncRuntime` BEFORE `DBOS.launch()`.
  */
 
+import { createHash } from "node:crypto";
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import type { Kysely } from "kysely";
 import { isMaxStepRetriesError } from "@/dbos/step-errors";
@@ -34,6 +35,11 @@ import {
   plannedAttachments,
 } from "./comment-media";
 import { type AdfMedia, collectImageTargets } from "./markdown-adf";
+import {
+  type JiraRemoteLink,
+  type RemoteLinkInput,
+  remoteLinkPlan,
+} from "./remote-links";
 import { JIRA_SYNC_ACTOR, syncJiraIntegrationSafe } from "./sync";
 
 /** Every 10 minutes, offset from the public-sets (:04) and org-repo (:07)
@@ -573,11 +579,62 @@ async function jiraStatusPushWorkflowFn(
   });
 }
 
+export interface JiraRemoteLinkPushParams extends RemoteLinkInput {
+  organizationId: string;
+}
+
+/**
+ * One remote link → the issue's Web links panel. Re-reads the row so the
+ * credential never crosses a step boundary, and re-checks the issue link so a
+ * card unlinked since the enqueue is a no-op.
+ */
+async function pushRemoteLink(
+  params: JiraRemoteLinkPushParams,
+  link: JiraRemoteLink,
+): Promise<void> {
+  const storage = storageFromRuntime();
+  const integration = await storage.getByOrg(params.organizationId);
+  if (!integration?.enabled) return;
+  const issue = await storage.getLinkByItemId(
+    params.taskBoardItemId,
+    params.organizationId,
+  );
+  if (!issue) return;
+  const client = new JiraClient(
+    integration.siteUrl,
+    integration.email,
+    integration.apiToken,
+  );
+  await client.upsertRemoteLink(issue.jiraIssueId, link);
+}
+
+/**
+ * Mirror a card's PR and deploy preview onto its Jira issue as web links.
+ *
+ * `remoteLinkPlan` is pure over the params, so the workflow stays
+ * deterministic: the same params always drive the same steps in the same
+ * order, which is what lets a replay resume at the link that failed.
+ */
+async function jiraRemoteLinkPushWorkflowFn(
+  params: JiraRemoteLinkPushParams,
+): Promise<void> {
+  for (const link of remoteLinkPlan(params)) {
+    await DBOS.runStep(() => pushRemoteLink(params, link), {
+      name: `pushRemoteLink:${link.globalId}`,
+      retriesAllowed: true,
+      maxAttempts: 3,
+    });
+  }
+}
+
 let registeredWorkflow: typeof jiraSyncWorkflowFn | null = null;
 let registeredCommentPushWorkflow: typeof jiraCommentPushWorkflowFn | null =
   null;
 let registeredStatusPushWorkflow: typeof jiraStatusPushWorkflowFn | null = null;
 let registeredSprintPushWorkflow: typeof jiraSprintPushWorkflowFn | null = null;
+let registeredRemoteLinkPushWorkflow:
+  | typeof jiraRemoteLinkPushWorkflowFn
+  | null = null;
 
 /**
  * Mirror a board card's status onto its linked Jira issue — called from
@@ -680,6 +737,44 @@ export async function enqueueJiraCommentPush(
   }
 }
 
+/**
+ * Put a card's PR and deploy-preview URLs on its Jira issue as web links.
+ *
+ * Fire-and-forget with the same cheap declines as the other pushes (no Jira
+ * link, nothing worth linking). The `workflowID` is keyed on the PLAN, so an
+ * unchanged set of URLs never re-enqueues and a new deploy's preview does —
+ * that is the whole rate control, no cadence to tune.
+ */
+export function maybeEnqueueJiraRemoteLinkPush(
+  params: JiraRemoteLinkPushParams,
+): void {
+  if (!registeredRemoteLinkPushWorkflow || !runtime) return;
+  const plan = remoteLinkPlan(params);
+  if (plan.length === 0) return;
+  const workflow = registeredRemoteLinkPushWorkflow;
+  const fingerprint = createHash("sha1")
+    .update(plan.map((link) => `${link.globalId}\n${link.url}`).join("\n"))
+    .digest("hex")
+    .slice(0, 16);
+  void (async () => {
+    const issue = await storageFromRuntime().getLinkByItemId(
+      params.taskBoardItemId,
+      params.organizationId,
+    );
+    if (!issue) return;
+    await DBOS.startWorkflow(workflow, {
+      queueName: JIRA_PUSH_QUEUE,
+      workflowID: `jira-links:${params.taskBoardItemId}:${fingerprint}`,
+      enqueueOptions: { queuePartitionKey: params.organizationId },
+    })(params);
+  })().catch((err) => {
+    console.warn(
+      `[jira] remote-link push enqueue failed for ${params.taskBoardItemId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  });
+}
+
 /** Must run before `DBOS.launch()`; guarded so HMR repeats don't re-register.
  *  ⚠️ Durable workflows — changing a STEP SEQUENCE requires bumping
  *  DBOS_WORKFLOW_VERSION (apps/api/src/dbos/workflow-version.ts). */
@@ -704,5 +799,9 @@ export function registerJiraSyncWorkflow(): void {
   registeredSprintPushWorkflow = DBOS.registerWorkflow(
     jiraSprintPushWorkflowFn,
     { name: "jiraSprintPushWorkflow" },
+  );
+  registeredRemoteLinkPushWorkflow = DBOS.registerWorkflow(
+    jiraRemoteLinkPushWorkflowFn,
+    { name: "jiraRemoteLinkPushWorkflow" },
   );
 }

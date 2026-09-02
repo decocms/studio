@@ -139,12 +139,14 @@ export function diffTaskActivityEntries(
 export function delegatesToSuperAgent(
   inputAssigneeId: string | null | undefined,
   previous: Pick<TaskBoardItem, "assigneeId" | "status"> | null,
+  /** This board's queue column — see `BoardLanes.queue`. */
+  queueLane: string | null,
 ): boolean {
   if (inputAssigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   if (!previous) return false;
   return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
     ? true
-    : previous.status === "todo";
+    : queueLane !== null && previous.status === queueLane;
 }
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
@@ -342,12 +344,13 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
+    const lanes = await board.lanes();
     if (
       closesOwnReview(
         input.status,
         previous ?? undefined,
         isTaskRun,
-        (await board.lanes()).review,
+        lanes.review,
       )
     ) {
       throw new Error(
@@ -361,9 +364,16 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
-    // Delegating a task to the Super Agent queues it to run — force To Do,
-    // overriding any status the caller passed alongside the reassignment.
-    const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
+    // Delegating queues the card onto this board's queue lane, if it has one.
+    const becameSuperAgent = delegatesToSuperAgent(
+      input.assigneeId,
+      previous,
+      lanes.queue,
+    );
+    const queuedStatus = becameSuperAgent
+      ? (lanes.queue ?? undefined)
+      : undefined;
+    const nextStatus = queuedStatus ?? input.status;
 
     if (previous && isReportsTask(previous)) {
       // Reports-pushed tasks are the report's findings — their CONTENT is
@@ -421,10 +431,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         {
           title: input.title,
           description: input.description,
-          status: becameSuperAgent ? "todo" : input.status,
+          status: nextStatus,
           // Written with the status it describes, so a card cannot end up in a
           // column of the org's own while still unguarded.
-          ...(input.status !== undefined || becameSuperAgent
+          ...(nextStatus !== undefined
             ? { boardColumnOrg: board.columnOwner() }
             : {}),
           priority: input.priority,

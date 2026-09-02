@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -74,6 +75,11 @@ type daemon struct {
 	// grace/budget bookkeeping; devWatchMu guards it (kept off the hot d.mu).
 	devWatchMu sync.Mutex
 	devTracker *devwatch.Tracker
+	// Longest successful `starting`→`running` this process has seen, in ms. It
+	// sizes the watchdog's post-restart window (see restartGraceForBoot). Held
+	// separately from the tracker because a boot can finish before devWatchLoop
+	// has constructed one — the loop replays this value on startup.
+	observedBootMs atomic.Int64
 
 	broadcaster  *events.Broadcaster
 	sniffer      *proc.PortSniffer
@@ -161,6 +167,18 @@ func (d *daemon) getDevPort() int {
 	return 0
 }
 
+// devTaskRunning reports whether a dev-script task (`dev`/`start`) is alive
+// right now — the evidence that a serving port belongs to this sandbox's dev
+// server rather than to something that merely outlived it.
+func (d *daemon) devTaskRunning() bool {
+	for _, t := range d.tasks.List([]string{proc.StatusRunning}) {
+		if proc.IsWellKnownStarter(t.LogName) {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *daemon) getActiveTasks() []events.ActiveTaskSummary {
 	running := d.tasks.List([]string{proc.StatusRunning})
 	out := make([]events.ActiveTaskSummary, 0, len(running))
@@ -242,13 +260,31 @@ func (d *daemon) onProbeChange(s probe.State) {
 		d.mu.Lock()
 		isCrashedRecovery := phase == events.PhaseCrashed && s.Port == d.lastRunningPort
 		d.mu.Unlock()
-		if phase != events.PhaseStarting && phase != events.PhaseRunning && !isCrashedRecovery {
+		// `start-failed` is a verdict, not a fact, and a serving dev server
+		// refutes it — but only OUR dev server does. The watchdog reaches that
+		// phase by giving up after a bounded number of restarts, so the last
+		// respawn is still booting when it fires; when that boot finally
+		// serves — as it did on the sandbox this branch exists for, five
+		// minutes later — the sandbox is working and the UI must stop saying
+		// "Blocos indisponíveis". Without this the phase latches for the life
+		// of the pod and only an explicit RestartDev clears it, throwing away
+		// the very server that just proved itself and paying for another cold
+		// boot.
+		//
+		// The dev-task check is what keeps this from being credulous: the probe
+		// falls back to the *configured* application.port (getDevPort), which
+		// some unrelated or stale process can be sitting on long after the dev
+		// script died. A terminal verdict is only overturned while a dev task
+		// is actually alive to own the port.
+		startFailedRecovery := phase == events.PhaseStartFailed && d.devTaskRunning()
+		recovered := startFailedRecovery || isCrashedRecovery
+		if phase != events.PhaseStarting && phase != events.PhaseRunning && !recovered {
 			return
 		}
 		d.mu.Lock()
 		d.lastRunningPort = s.Port
 		d.mu.Unlock()
-		wasDown := phase == events.PhaseStarting || phase == events.PhaseCrashed
+		wasDown := phase != events.PhaseRunning
 		d.lifecycle.Transition(events.LifecycleState{
 			Phase: events.PhaseRunning, Port: s.Port, HtmlSupport: s.HtmlSupport,
 		})
@@ -286,6 +322,84 @@ func (d *daemon) onProbeChange(s probe.State) {
 	}
 }
 
+// How much of a dead dev server's output reaches the pod log. Enough for a
+// stack trace or a compiler error, small enough that a crash-loop cannot flood
+// the log pipeline.
+const deadDevTailBytes = 4000
+
+// logDeadDevServer writes the tail of a dev server's own output to the daemon's
+// stdout when it dies unexpectedly.
+//
+// Task chunks are broadcast with Tee:false, so a dev server's stdout/stderr
+// goes to SSE subscribers and a pod-local log file and nowhere else. When the
+// montecarlo sandbox's dev server died mid-session there was consequently no
+// record anywhere of WHY — the pod log jumped straight from the last proxied
+// request to "connection refused", and the log file died with the pod. The
+// process's last words are exactly what a postmortem needs, so they go to
+// stdout, where the cluster's log pipeline can keep them.
+//
+// Intentional kills (our own restarts, an install stopping the dev task) are
+// skipped: those are expected exits and say nothing.
+func (d *daemon) logDeadDevServer(s proc.TaskSummary, label string, exitCode int) {
+	if s.Intentional || !proc.IsWellKnownStarter(s.LogName) {
+		return
+	}
+	out, ok := d.tasks.Output(s.ID)
+	if !ok {
+		return
+	}
+	slog.Error("dev server exited",
+		"task", label,
+		"status", s.Status,
+		"exit_code", exitCode,
+		"timed_out", s.TimedOut,
+		"stderr_tail", tailBytes(out.Stderr, deadDevTailBytes),
+		"stdout_tail", tailBytes(out.Stdout, deadDevTailBytes),
+	)
+}
+
+// tailBytes returns the last n bytes of s, marked when it truncated.
+func tailBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return "…" + s[len(s)-n:]
+}
+
+// restartGraceForBoot converts an observed `starting`→`running` duration into
+// the window a respawn should get. Doubling is not tuning for its own sake: a
+// restart re-runs the same work the measured boot did, on a machine that is now
+// also serving a user and possibly an agent, so the honest expectation is "at
+// least as long, probably longer". Under-waiting kills a healthy boot; the only
+// cost of over-waiting is that a genuinely broken dev server takes longer to
+// surface its terminal error, which is the far cheaper mistake.
+func restartGraceForBoot(bootMs int64) time.Duration {
+	return time.Duration(bootMs) * time.Millisecond * 2
+}
+
+// noteBootDuration records a successful boot and widens the watchdog's
+// post-restart window to match. Safe before devWatchLoop has built a tracker:
+// the value is kept on the daemon and replayed when the loop starts.
+func (d *daemon) noteBootDuration(ms int64) {
+	if ms <= 0 {
+		return
+	}
+	for {
+		prev := d.observedBootMs.Load()
+		if ms <= prev {
+			break
+		}
+		if d.observedBootMs.CompareAndSwap(prev, ms) {
+			break
+		}
+	}
+	d.devWatchMu.Lock()
+	defer d.devWatchMu.Unlock()
+	if d.devTracker != nil {
+		d.devTracker.RaiseRestartGrace(restartGraceForBoot(ms))
+	}
+}
+
 // restartablePhase reports the phases where a dev server is meant to be up, so
 // the watchdog respawns a dead one there but never interrupts a legitimate
 // build (installing/cloning/checking-out) or loops on a terminal *-failed.
@@ -307,9 +421,13 @@ func (d *daemon) devWatchLoop() {
 	d.devWatchMu.Lock()
 	d.devTracker = devwatch.NewTracker(devwatch.Config{
 		Grace:        envDuration("SANDBOX_DEV_WATCH_GRACE_MS", devwatch.DefaultGracePeriod, time.Second),
+		RestartGrace: envDuration("SANDBOX_DEV_WATCH_RESTART_GRACE_MS", devwatch.DefaultRestartGrace, time.Second),
 		StableWindow: envDuration("SANDBOX_DEV_WATCH_STABLE_MS", devwatch.DefaultStableWindow, time.Second),
 		MaxRestarts:  envInt("SANDBOX_DEV_WATCH_MAX_RESTARTS", devwatch.DefaultMaxRestarts, 1),
 	})
+	if ms := d.observedBootMs.Load(); ms > 0 {
+		d.devTracker.RaiseRestartGrace(restartGraceForBoot(ms))
+	}
 	d.devWatchMu.Unlock()
 	for {
 		time.Sleep(tick)
@@ -800,6 +918,9 @@ func main() {
 	d.lifecycle = lifecycle.New(d.broadcaster)
 	d.lifecycle.OnStartPhase = func(status string, durationMs int64) {
 		telemetry.RecordPhase(context.Background(), "start", status, durationMs)
+		if status == "done" {
+			d.noteBootDuration(durationMs)
+		}
 	}
 	d.lifecycle.OnTransition = func(prev, next events.LifecycleState) {
 		if prev.Phase == events.PhaseRunning && next.Phase != events.PhaseRunning {
@@ -863,7 +984,14 @@ func main() {
 		if label == "" {
 			label = s.ID
 		}
-		slog.Info("task exit", "task", label, "status", s.Status, "exit_code", s.ExitCode)
+		// ExitCode is a *int; logging it directly printed the pointer address
+		// ("exit_code=0xc0027f06a0") for every task exit in production.
+		exitCode := -1
+		if s.ExitCode != nil {
+			exitCode = *s.ExitCode
+		}
+		slog.Info("task exit", "task", label, "status", s.Status, "exit_code", exitCode)
+		d.logDeadDevServer(s, label, exitCode)
 	})
 
 	// The watcher is what makes edits the daemon did not perform itself visible —

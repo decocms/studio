@@ -25,6 +25,7 @@ import { z } from "zod";
 import { boardLanes } from "./board-handler";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth, requireOrganization } from "@/core/studio-context";
+import { maybeEnqueueJiraRemoteLinkPush } from "@/jira/dbos-jira-sync";
 import { extractPrFromText } from "./pr-extract";
 import { resolveRunTaskTargets } from "./run-reactions";
 import { requireTaskRunContext } from "./task-run-context";
@@ -102,6 +103,15 @@ export const TASK_BOARD_ITEM_PR_LINK = defineTool({
         taskBoardItemId,
         organizationId,
       );
+      // The PR on the Jira issue as a web link, now rather than whenever
+      // someone next opens the card. No preview yet — the deploy has not run;
+      // `TASK_BOARD_ITEM_PRS_GET` adds it once one resolves.
+      maybeEnqueueJiraRemoteLinkPush({
+        organizationId,
+        taskBoardItemId,
+        prUrl: pr.url,
+        prNumber: pr.number,
+      });
     }
 
     return { url: pr.url, prNumber: pr.number, taskBoardItemIds };
