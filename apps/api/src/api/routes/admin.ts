@@ -618,14 +618,19 @@ export function createAdminRoutes(): Hono<Env> {
     if (!org) {
       return c.json({ error: "Organization not found" }, 404);
     }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
     const released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
     if (!released) {
       return c.json({ error: "Site not found for this organization" }, 404);
     }
 
-    const { actorId: effectiveActorId, impersonatedBy } =
-      await getAuditActor(c);
-    const actorId = impersonatedBy ?? effectiveActorId;
     auditAdminAction("org_site_release", {
       actor_user_id: actorId,
       ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
