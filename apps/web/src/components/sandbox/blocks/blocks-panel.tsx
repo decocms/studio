@@ -106,7 +106,11 @@ export function BlocksPanel({
   // On production the editor stays visible but read-only per widget.
   const gateReadOnly = (children: ReactNode) => (
     <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
-      <ReadOnlyPane readOnly={readOnly} className="h-full min-h-0">
+      <ReadOnlyPane
+        readOnly={readOnly}
+        virtualMcpId={virtualMcpId}
+        className="h-full min-h-0"
+      >
         {children}
       </ReadOnlyPane>
     </div>
