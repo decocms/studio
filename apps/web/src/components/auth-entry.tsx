@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import type { ReactNode } from "react";
 import { retry, RetryError } from "@decocms/shared/std";
-import { SplashScreen } from "@/components/splash-screen";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { UnifiedAuthForm } from "@/components/unified-auth-form";
 import type {
   AuthFlowEvent,
@@ -160,7 +160,25 @@ function AutoLogin({
     );
   }
 
-  return <SplashScreen />;
+  return <AuthWait />;
+}
+
+/**
+ * The auth screen's own wait.
+ *
+ * NOT `SplashScreen`: that plays a definite animation — a wave that fills the
+ * mark once — and is honest only if it is mounted once per boot, which is what
+ * `BootGate` guarantees. Auth runs INSIDE that boundary, after the splash has
+ * already played, so rendering it again restarted the animation mid-flow and
+ * made a stalled or failed login look like the app was still starting up. A
+ * spinner says "working" without claiming to be the boot.
+ */
+export function AuthWait() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner size="lg" label="Signing in" />
+    </div>
+  );
 }
 
 function RunSSO({
@@ -214,7 +232,7 @@ function RunSSO({
     })();
   }, [providerId, callbackURL]);
 
-  return <SplashScreen />;
+  return <AuthWait />;
 }
 
 export function AuthEntry({

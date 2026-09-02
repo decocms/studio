@@ -5,6 +5,7 @@ import { setCollectionToastTranslations } from "@/sdk";
 import { AuthConfigProvider } from "@/providers/auth-config-provider";
 import { BetterAuthUIProvider } from "@/providers/better-auth-ui-provider";
 import { PostHogIdentitySync } from "@/providers/posthog-provider";
+import { BootGate } from "@/layouts/boot-gate";
 import { SplashScreen } from "@/components/splash-screen";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { hydrateQueryClient, persistQueryClient } from "@/lib/query-persist";
@@ -62,13 +63,19 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <Toaster />
+      {/* The app's ONE splash boundary. It stays suspended from first paint
+          until `BootGate` has the shell's prerequisites in hand, so the splash
+          is a single mounted element that plays its animation once — see
+          `layouts/boot-gate.tsx`. Nothing below here may render a splash of its
+          own: a second boundary is a second element, and a second element
+          restarts the animation. */}
       <Suspense fallback={<SplashScreen />}>
         <ThemeProvider>
           <AuthConfigProvider>
             <BetterAuthUIProvider>
               <PostHogIdentitySync>
                 <SdkTranslationInitializer>
-                  {children}
+                  <BootGate>{children}</BootGate>
                 </SdkTranslationInitializer>
               </PostHogIdentitySync>
             </BetterAuthUIProvider>
