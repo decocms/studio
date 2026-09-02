@@ -34,12 +34,14 @@ import { toast } from "sonner";
 import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 
 export default function AgentsListPage() {
   const t = useT();
   const { org } = useProjectContext();
   const [search, setSearch] = useState("");
-  const agents = useVirtualMCPs({ searchTerm: search });
+  const searchTerm = useDebouncedValue(search, 300);
+  const agents = useVirtualMCPs({ searchTerm });
   const actions = useVirtualMCPActions();
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
