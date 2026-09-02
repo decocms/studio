@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Lock01 } from "@untitledui/icons";
+import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useCreateDraft } from "./use-version-gate";
@@ -27,6 +28,8 @@ export function StartDraftCta({
     setPending(true);
     try {
       await createDraft();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setPending(false);
     }
@@ -36,6 +39,7 @@ export function StartDraftCta({
     <button
       type="button"
       disabled={pending}
+      aria-busy={pending}
       onClick={() => void handleClick()}
       className={cn(
         "group flex items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60",
