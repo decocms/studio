@@ -33,6 +33,8 @@ type ThreadResult = {
   status: string | null;
 };
 
+const SEARCH_TYPES = ["thread"] as const;
+
 type SearchResult = ThreadResult;
 
 type SearchResponse = {
@@ -55,14 +57,30 @@ export function GlobalSearchDialog({
 
   const trimmed = query.trim();
 
+  const limit = trimmed ? 20 : 10;
+  /** This dialog renders THREAD rows and nothing else (see the row map below),
+   *  so it asks for threads only. Without the filter the widened GLOBAL_SEARCH
+   *  also returns task rows, which fall through the map as `null` — a non-empty
+   *  response drawing zero rows, with `CommandEmpty` suppressed because
+   *  `items.length` is not 0. */
   const { data, isFetching } = useQuery({
-    queryKey: KEYS.globalSearch(org.id, trimmed),
+    queryKey: KEYS.globalSearch(org.id, trimmed, limit, SEARCH_TYPES),
     enabled: open,
     queryFn: async (): Promise<SearchResponse> => {
-      return await studio.call("GLOBAL_SEARCH", {
+      const res = await studio.call("GLOBAL_SEARCH", {
         query: trimmed,
-        limit: trimmed ? 20 : 10,
+        limit,
+        types: [...SEARCH_TYPES],
       });
+      /** `types` narrows the REQUEST; the response type stays the full union,
+       *  so narrow on the discriminant rather than casting — a new member then
+       *  fails to compile here instead of rendering as a blank row. */
+      return {
+        ...res,
+        items: res.items.filter(
+          (item): item is ThreadResult => item.type === "thread",
+        ),
+      };
     },
     staleTime: 10_000,
   });
