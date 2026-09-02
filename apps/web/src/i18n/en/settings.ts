@@ -51,6 +51,10 @@ export const settings = {
   "settings.boardColumns.description":
     "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
   "settings.boardColumns.fieldLabel": "Columns",
+  "settings.boardColumns.descriptionStudioBoard":
+    "Say which columns should put the agent to work, and what to tell it when a card lands there.",
+  "settings.boardColumns.fieldDescriptionStudioBoard":
+    "Running the agent is what a card does on arrival. Studio decides what moves a card between these lanes.",
   "settings.boardColumns.fieldDescription":
     "Studio moves a card here when the thing you pick happens. Running the agent is separate: that is what the card does on arrival.",
   "settings.boardColumns.moveHereWhen": "Move cards here when",

@@ -53,6 +53,10 @@ export const settings = {
   "settings.boardColumns.description":
     "As colunas são do seu tracker. Diga o que deve mover um card para cada uma, e quais delas devem colocar o agente para trabalhar.",
   "settings.boardColumns.fieldLabel": "Colunas",
+  "settings.boardColumns.descriptionStudioBoard":
+    "Diga quais colunas devem colocar o agente para trabalhar, e o que dizer a ele quando um card chega ali.",
+  "settings.boardColumns.fieldDescriptionStudioBoard":
+    "Rodar o agente \u00e9 o que o card faz ao chegar. O Studio decide o que move um card entre estas lanes.",
   "settings.boardColumns.fieldDescription":
     "O Studio move o card para cá quando a coisa que você escolher acontecer. Rodar o agente é separado: é o que o card faz ao chegar.",
   "settings.boardColumns.moveHereWhen": "Mover cards para cá quando",

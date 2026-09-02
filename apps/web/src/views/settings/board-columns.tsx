@@ -1,6 +1,6 @@
 /**
- * Settings → Tasks → "Board columns", for a board whose columns are the org's
- * own.
+ * Settings → Tasks → "Board columns", for every board: Studio's own lanes and
+ * the columns an org mirrors from its tracker alike.
  *
  * One card per column, answering the two questions a column raises, in the
  * words of what actually happens rather than in the words of the schema:
@@ -17,9 +17,10 @@
  *                                deleting it is how you turn it off, which is
  *                                also literally what the storage does.
  *
- * Studio's own board has no section here — its lifecycle is decided, and
- * offering the same choices per canonical lane would invite a team to turn off
- * what makes the board work.
+ * Studio's own board shows the same cards WITHOUT the role picker: its
+ * lifecycle is decided, and offering that choice per canonical lane would
+ * invite a team to turn off what makes the board work. What it does get is the
+ * automation and the prompt the automation runs, which belong to every board.
  */
 
 import { useState } from "react";
@@ -53,6 +54,7 @@ import {
 } from "@/hooks/use-column-automations";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { laneHeader } from "@/layouts/task-board/config";
 
 /** Nothing moves a card here on its own. */
 const NO_TRIGGER = "__none__";
@@ -68,26 +70,34 @@ const TRIGGERS: { value: string; labelKey: TranslationKey }[] = [
 
 export function BoardColumnSettings() {
   const t = useT();
+  // Only a tracker's columns need saying what they mean.
   const orgOwnedColumns = useOrgFlag("org_board_columns");
-  if (!orgOwnedColumns) return null;
   return (
     <SettingsSection
       title={t("settings.boardColumns.title")}
-      description={t("settings.boardColumns.description")}
+      description={t(
+        orgOwnedColumns
+          ? "settings.boardColumns.description"
+          : "settings.boardColumns.descriptionStudioBoard",
+      )}
     >
       <SettingsCard>
         <SettingsCardItem
           title={t("settings.boardColumns.fieldLabel")}
-          description={t("settings.boardColumns.fieldDescription")}
+          description={t(
+            orgOwnedColumns
+              ? "settings.boardColumns.fieldDescription"
+              : "settings.boardColumns.fieldDescriptionStudioBoard",
+          )}
         >
-          <BoardColumnRows />
+          <BoardColumnRows showRole={orgOwnedColumns} />
         </SettingsCardItem>
       </SettingsCard>
     </SettingsSection>
   );
 }
 
-function BoardColumnRows() {
+function BoardColumnRows({ showRole }: { showRole: boolean }) {
   const t = useT();
   const { columns, isLoading } = useTaskBoardItems();
   const { automations, isPending } = useColumnAutomations();
@@ -109,7 +119,8 @@ function BoardColumnRows() {
         <BoardColumnCard
           key={column.key}
           columnKey={column.key}
-          title={column.title}
+          title={laneHeader(column.key, t, columns).label}
+          showRole={showRole}
           trigger={column.role}
           hasAutomation={promptOf.has(column.key)}
           prompt={promptOf.get(column.key) ?? null}
@@ -125,12 +136,14 @@ function BoardColumnRows() {
 function BoardColumnCard({
   columnKey,
   title,
+  showRole,
   trigger,
   hasAutomation,
   prompt,
 }: {
   columnKey: string;
   title: string;
+  showRole: boolean;
   trigger: string | null;
   hasAutomation: boolean;
   prompt: string | null;
@@ -158,34 +171,36 @@ function BoardColumnCard({
     <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
       <span className="truncate text-sm font-medium">{title}</span>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">
-          {t("settings.boardColumns.moveHereWhen")}
-        </span>
-        <Select
-          value={trigger ?? NO_TRIGGER}
-          onValueChange={(value) =>
-            setRole.mutate(
-              { columnKey, role: value === NO_TRIGGER ? null : value },
-              { onError: failed },
-            )
-          }
-        >
-          <SelectTrigger className="w-64">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NO_TRIGGER}>
-              {t("settings.boardColumns.whenNever")}
-            </SelectItem>
-            {TRIGGERS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {t(option.labelKey)}
+      {showRole && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {t("settings.boardColumns.moveHereWhen")}
+          </span>
+          <Select
+            value={trigger ?? NO_TRIGGER}
+            onValueChange={(value) =>
+              setRole.mutate(
+                { columnKey, role: value === NO_TRIGGER ? null : value },
+                { onError: failed },
+              )
+            }
+          >
+            <SelectTrigger className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_TRIGGER}>
+                {t("settings.boardColumns.whenNever")}
               </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+              {TRIGGERS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {hasAutomation ? (
         <div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-2.5">
