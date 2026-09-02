@@ -35,13 +35,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .describe(
         "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
       ),
-    main_agent_id: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "Virtual MCP id the org lands on instead of the Super Agent. Pass null to clear.",
-      ),
   }),
 
   outputSchema: z.object({
@@ -52,7 +45,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
-    main_agent_id: z.string().nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -79,7 +71,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         flags: input.flags,
-        main_agent_id: input.main_agent_id,
       },
     );
 

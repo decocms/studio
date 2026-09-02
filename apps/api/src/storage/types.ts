@@ -189,7 +189,6 @@ export interface OrganizationSettingsTable {
   // (@decocms/shared/organization/schema); updates shallow-merge.
   flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
-  main_agent_id: string | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -202,7 +201,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
-  main_agent_id: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }

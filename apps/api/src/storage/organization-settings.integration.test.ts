@@ -57,14 +57,14 @@ describe("OrganizationSettingsStorage — flags bag", () => {
 
   it("updating an unrelated field leaves flags untouched", async () => {
     await storage.upsert("org_1", { flags: { demo_mode: true } });
-    await storage.upsert("org_1", { main_agent_id: "vmcp-1" });
+    await storage.upsert("org_1", { enabled_plugins: ["p1"] });
     const got = await storage.get("org_1");
     expect(got?.flags).toEqual({ demo_mode: true });
-    expect(got?.main_agent_id).toBe("vmcp-1");
+    expect(got?.enabled_plugins).toEqual(["p1"]);
   });
 
   it("reads null when no flag was ever set", async () => {
-    await storage.upsert("org_1", { main_agent_id: "vmcp-1" });
+    await storage.upsert("org_1", { enabled_plugins: ["p1"] });
     expect((await storage.get("org_1"))?.flags).toBeNull();
   });
 });

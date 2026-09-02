@@ -53,7 +53,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
-  main_agent_id: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -66,7 +65,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   flags: null,
-  main_agent_id: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -150,7 +148,6 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "flags"
-    | "main_agent_id"
   >
 >;
 
@@ -468,37 +465,6 @@ export function useHomeAgentsWriter(): HomeAgentsWriter {
   };
 
   return { currentIds, apply };
-}
-
-/**
- * The org's "main agent" — the virtual MCP id the org lands on (`/$org`)
- * instead of the Super Agent, or null when unset. `isPending` lets the landing
- * resolver wait for the first read so it doesn't flash the Super Agent then
- * redirect. Once the shell prefetches org settings, reads resolve from cache.
- */
-export function useMainAgentId(): {
-  mainAgentId: string | null;
-  isPending: boolean;
-} {
-  const { data, isPending } = useOrganizationSettings(
-    (s) => s.main_agent_id ?? null,
-  );
-  return { mainAgentId: data ?? null, isPending };
-}
-
-/**
- * Writer for the org's main agent. Pass a virtual MCP id to set it, or null to
- * clear (fall back to the Super Agent). Org-scoped: applies to every member.
- */
-export function useSetMainAgent() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (id: string | null, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ main_agent_id: id }, options),
-    mutateAsync: (id: string | null, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ main_agent_id: id }, options),
-  };
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {

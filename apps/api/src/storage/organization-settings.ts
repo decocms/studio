@@ -50,7 +50,6 @@ export class OrganizationSettingsStorage
         OrganizationSettings["default_home_agents"]
       >(record.default_home_agents),
       flags: parseJsonColumn<OrganizationSettings["flags"]>(record.flags),
-      main_agent_id: record.main_agent_id ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -67,7 +66,6 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "flags"
-        | "main_agent_id"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -85,7 +83,6 @@ export class OrganizationSettingsStorage
       .values({
         organizationId,
         ...json,
-        main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -104,7 +101,6 @@ export class OrganizationSettingsStorage
             : undefined,
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
-          main_agent_id: data?.main_agent_id,
           updatedAt: now,
         }),
       )
@@ -121,7 +117,6 @@ export class OrganizationSettingsStorage
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
         flags: data?.flags ?? null,
-        main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
       };

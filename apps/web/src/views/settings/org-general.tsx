@@ -1,7 +1,5 @@
 import { Page } from "@/components/page";
-import { ConnectBanner } from "@/components/connect/connect-banner";
 import { OrganizationForm } from "@/components/settings/organization-form";
-import { MainAgentSettings } from "@/components/settings/main-agent-settings";
 import { CodeAgentsSettings } from "@/components/settings/review-settings";
 import { DomainSettings } from "@/components/settings/domain-settings";
 import { DeleteOrganizationSection } from "@/components/settings/delete-organization-section";
@@ -16,9 +14,7 @@ export function OrgGeneralPage() {
         <Page.Body>
           <SettingsPage>
             <Page.Title>{t("settings.orgGeneral.organization")}</Page.Title>
-            <ConnectBanner />
             <OrganizationForm />
-            <MainAgentSettings />
             <CodeAgentsSettings />
             <DomainSettings />
             <DeleteOrganizationSection />
