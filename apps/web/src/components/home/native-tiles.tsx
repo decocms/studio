@@ -18,6 +18,7 @@
  * body is just the card interior (label + content), matching the redesign.
  */
 import { Suspense, useId, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { formatTimeAgo } from "@/lib/format-time";
@@ -42,7 +43,6 @@ import {
   BarChart10,
   CheckCircle,
   GitBranch01,
-  Loading01,
   MessageChatCircle,
   ShoppingCart01,
 } from "@untitledui/icons";
@@ -331,17 +331,23 @@ function ConnectOverlay({
   onConnect: () => void;
   pending?: boolean;
 }) {
+  const t = useT();
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-background/30 backdrop-blur-[2px]">
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/30 backdrop-blur-[2px]">
       <Button
         size="sm"
         onClick={onConnect}
         disabled={pending}
         className="gap-2 shadow-sm"
       >
-        {pending ? <Loading01 className="size-4 animate-spin" /> : icon}
+        {pending ? <Spinner className="size-4" /> : icon}
         {label}
       </Button>
+      {/* The chart behind this is invented. Saying so is the difference between
+          a teaser and a fabricated number. */}
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {t("home.nativeTiles.sampleData")}
+      </span>
     </div>
   );
 }
