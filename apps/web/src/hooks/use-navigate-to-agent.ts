@@ -16,7 +16,8 @@ import { appendAgentToPersonalOrder } from "@/components/sidebar/task-groups/sta
 import { useBumpSidebarOrderRevision } from "@/components/sidebar/sidebar-agent-groups-context";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
-import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { findAgentEntryThread } from "@/lib/reusable-new-chat";
+import { getActiveGithubRepo } from "@/lib/github-repo";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 const NO_THREADS: Task[] = [];
@@ -60,15 +61,15 @@ export function useNavigateToAgent() {
       serverPinnedIds,
     );
     bumpOrderRevision();
-    // Focus the agent's existing empty chat if it has one; otherwise a fresh id
-    // (the route loader's ensure-fallback creates the thread on landing).
+    // Resume the last branch (repo-backed) or the empty chat, else a fresh id.
     const target = (allAgents ?? []).find((a) => a.id === virtualMcpId);
     const taskId =
-      findReusableNewChat(
+      findAgentEntryThread(
         threads,
         virtualMcpId,
         session?.user?.id,
         target ? defaultThreadRuntime(target.metadata) : undefined,
+        !!(target && getActiveGithubRepo(target)),
       )?.id ?? crypto.randomUUID();
     const view = options?.panel ? panelLocationForTab(options.panel) : null;
     navigate({

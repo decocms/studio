@@ -49,7 +49,7 @@ import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { useThreadManager } from "@/components/chat/store/hooks";
-import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -635,13 +635,14 @@ function AgentInsetProvider() {
    * Super Agent (no repo) keeps its lazy threadless composer.
    */
   if (routeThreadId === null && hasActiveGithubRepo) {
-    // Focus the user's idle empty chat for this agent, else mint one — as useNavigateToAgent does.
+    // Resume the last branch for this repo-backed agent, else its empty chat, else mint one.
     const threadId =
-      findReusableNewChat(
+      findAgentEntryThread(
         threads,
         virtualMcpId,
         session?.user?.id,
         defaultThreadRuntime(entity.metadata),
+        hasActiveGithubRepo,
       )?.id ?? generatedThreadId;
     return (
       <Navigate

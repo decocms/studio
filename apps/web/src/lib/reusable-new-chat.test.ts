@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "@/components/chat/task/types";
-import { findReusableNewChat } from "./reusable-new-chat";
+import { findAgentEntryThread, findReusableNewChat } from "./reusable-new-chat";
 
 const USER = "user-1";
 
@@ -115,5 +115,71 @@ describe("findReusableNewChat", () => {
         "sandbox",
       );
     });
+  });
+});
+
+describe("findAgentEntryThread", () => {
+  const empty = task({
+    id: "empty",
+    title: "New chat",
+    updated_at: "2026-01-01T00:00:00Z",
+  });
+  const lastReal = task({
+    id: "last",
+    title: "Fix the login bug",
+    harness_id: "claude-code",
+    branch: "tavano-newbranch",
+    updated_at: "2026-02-01T00:00:00Z",
+  });
+
+  // Inverts the old always-reuse-empty behavior that stranded repo-backed agents on the empty chat's stale branch.
+  it("resumes the most-recent real thread (last branch) for a repo-backed agent", () => {
+    expect(
+      findAgentEntryThread([empty, lastReal], "agent-1", USER, undefined, true)
+        ?.id,
+    ).toBe("last");
+  });
+
+  it("keeps reusing the empty chat for a branchless agent", () => {
+    expect(
+      findAgentEntryThread([empty, lastReal], "agent-1", USER, undefined, false)
+        ?.id,
+    ).toBe("empty");
+  });
+
+  it("falls back to the empty chat when a repo-backed agent has no real thread", () => {
+    expect(
+      findAgentEntryThread([empty], "agent-1", USER, undefined, true)?.id,
+    ).toBe("empty");
+  });
+
+  it("returns undefined when nothing matches (caller mints a fresh id)", () => {
+    expect(
+      findAgentEntryThread([], "agent-1", USER, undefined, true),
+    ).toBeUndefined();
+  });
+
+  it("never resumes a thread of the other runtime for a repo-backed agent", () => {
+    const cmsReal = task({
+      id: "cms-real",
+      title: "Edit copy",
+      harness_id: "decopilot",
+      metadata: { runtime: "cms" },
+      updated_at: "2026-03-01T00:00:00Z",
+    });
+    const sandboxEmpty = task({
+      id: "sandbox-empty",
+      metadata: { runtime: "sandbox" },
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    expect(
+      findAgentEntryThread(
+        [cmsReal, sandboxEmpty],
+        "agent-1",
+        USER,
+        "sandbox",
+        true,
+      )?.id,
+    ).toBe("sandbox-empty");
   });
 });
