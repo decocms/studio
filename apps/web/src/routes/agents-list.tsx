@@ -38,9 +38,9 @@ import { useT } from "@/i18n/use-t.ts";
 export default function AgentsListPage() {
   const t = useT();
   const { org } = useProjectContext();
-  const agents = useVirtualMCPs();
-  const actions = useVirtualMCPActions();
   const [search, setSearch] = useState("");
+  const agents = useVirtualMCPs({ searchTerm: search });
+  const actions = useVirtualMCPActions();
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
@@ -53,15 +53,8 @@ export default function AgentsListPage() {
   const { granted: canManageAgents } = useCapability("agents:manage");
   const showDecoImport = useIsDecoStaff();
 
-  const lowerSearch = search.toLowerCase();
-
-  // Filter out org-admin and apply search
-  const filteredAgents = agents.filter(
-    (s) =>
-      s.id !== org.id &&
-      (s.title.toLowerCase().includes(lowerSearch) ||
-        s.description?.toLowerCase().includes(lowerSearch)),
-  );
+  // Search is server-side via searchTerm; only the org-admin exclusion stays here.
+  const filteredAgents = agents.filter((s) => s.id !== org.id);
 
   const { data: lastUsedMap } = useVirtualMCPsLastUsed(
     filteredAgents.map((a) => a.id),
