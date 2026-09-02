@@ -92,6 +92,13 @@ export function AddConnectionDialog({
   const [connectingItemId, setConnectingItemId] = useState<string | null>(null);
   const [search, setSearch] = useState(initialSearch);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Dialog stays mounted across opens — reset the search term each time it opens.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSearch(initialSearch);
+  }
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const connectionActions = useConnectionActions();
