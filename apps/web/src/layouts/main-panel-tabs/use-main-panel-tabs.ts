@@ -10,6 +10,7 @@
  * independently; `useVirtualMCP` / `useSuspenseQuery` dedupe the reads.
  */
 
+import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { Globe01, Monitor01 } from "@untitledui/icons";
@@ -64,7 +65,12 @@ import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-co
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { useReportsOnly } from "@/hooks/use-organization-settings";
+import {
+  useControlPlaneViews,
+  useReportsOnly,
+} from "@/hooks/use-organization-settings";
+import { usePublicConfig } from "@/hooks/use-public-config";
+import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
 export type AgentTabDef = {
@@ -169,6 +175,24 @@ export function useMainPanelTabs(ctx: {
     agentHasClonableSource(entity?.metadata) ||
     agentHasClonableSource(metadata);
   const reportsOnly = useReportsOnly();
+  // Per-view product gate for the control-plane tabs (Hosting · E2E · Deco
+  // Analytics) while the surface rolls out: local dev / deco.cx staff / GA turn
+  // all three on; otherwise each view follows its own org flag. Layered ON TOP
+  // of the deployment/ownership gates below — not a replacement for them.
+  const controlPlaneViews = useControlPlaneViews();
+  // Per-site Hosting tab: only surfaces when the deployment wired the
+  // control-plane BFF proxy (public config `hostingEnabled`).
+  const hostingEnabled = usePublicConfig().hostingEnabled === true;
+  // Warehouse-wired prerequisite for the CDN Monitor tab (public config
+  // `monitorEnabled` = stats-lake ClickHouse creds set), independent of the
+  // control-plane. The product gate (deco.cx staff / MONITOR_GA / the org's
+  // `monitor_enabled` flag) is layered on top at the tab push via
+  // `controlPlaneViews.monitor`; ownership is enforced by `hostingOwned`.
+  // Local dev opens the tab even without warehouse creds so the shell can be
+  // validated; it then renders its own "warehouse not wired" state.
+  const monitorEnabled =
+    usePublicConfig().monitorEnabled === true ||
+    usePublicConfig().auth.localMode === true;
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -280,6 +304,30 @@ export function useMainPanelTabs(ctx: {
    * blocks on the bucket list.
    */
   const siteSlug = resolveAgentSiteSlug(entity);
+  // Per-site ownership gate for the control-plane tabs (Hosting / E2E /
+  // Analytics). `hostingEnabled` only says the DEPLOYMENT wired the BFF; it does
+  // NOT say this org owns THIS site. Without the ownership probe the three tabs
+  // render for every site and then fail with 404 "Site not found in
+  // organization" (the BFF's own isolation guard). Probe the local access
+  // endpoint (no control-plane call) and only surface the tabs when the org owns
+  // the resolved slug. Undefined while loading → tabs stay hidden until settled,
+  // so an unowned site never flashes the tabs then drops them.
+  const hostingAccessQuery = useQuery({
+    queryKey: KEYS.hostingAccess(org.slug, siteSlug ?? ""),
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/${org.slug}/hosting/${encodeURIComponent(siteSlug ?? "")}/access`,
+      );
+      if (!res.ok) return { owned: false, canWrite: false };
+      return (await res.json()) as { owned: boolean; canWrite: boolean };
+    },
+    // The /access probe reads only `org_sites` (no control-plane), so it also
+    // gates the native CDN Monitor tab — fire it whenever EITHER the
+    // control-plane tabs or the CDN tab could surface.
+    enabled: (hostingEnabled || monitorEnabled) && !!siteSlug,
+    staleTime: 60_000,
+  });
+  const hostingOwned = hostingAccessQuery.data?.owned === true;
   const fileConfigsQuery = useFileConfigsQuery();
   const showAssetsTab = !!matchSiteSlugConfig(
     fileConfigsQuery.data?.configs ?? [],
@@ -287,6 +335,21 @@ export function useMainPanelTabs(ctx: {
   );
   // Don't bounce a deep-linked Assets view away before the first config load resolves.
   const assetsTabPending = fileConfigsQuery.isPending;
+
+  // Per-view visibility for the control-plane (Hosting/E2E/Analytics) and
+  // Monitor tabs — the single source of truth for both the tab push below AND
+  // the deep-link normalization further down, so a `?main=hosting` URL can't
+  // mount a tab whose button is hidden. `hostingOwned` is false while the
+  // `/access` probe is in flight, so a deep-linked control-plane tab is kept
+  // until ownership settles (`hostingAccessPending`) rather than bounced early.
+  const hostingAccessPending = hostingAccessQuery.isPending;
+  const showHostingTab =
+    hostingEnabled && hostingOwned && controlPlaneViews.hosting;
+  const showE2eTab = hostingEnabled && hostingOwned && controlPlaneViews.e2e;
+  const showAnalyticsTab =
+    hostingEnabled && hostingOwned && controlPlaneViews.analytics;
+  const showCdnTab =
+    monitorEnabled && hostingOwned && controlPlaneViews.monitor;
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
@@ -312,14 +375,49 @@ export function useMainPanelTabs(ctx: {
           tabs: layoutTabs.map((t) => ({ id: t.id })),
         }
       : null;
+  // The agent's configured default main view — but never a hidden gated view.
+  // An agent whose default is a hosting/e2e/analytics/cdn the current user can't
+  // see would otherwise make every fallback below resolve to that same hidden
+  // id; drop to the base default ("settings", never gated) in that case.
+  //
+  // Gate on the default view's TYPE (the NATIVE control-plane view), not on the
+  // resolved id: an agent-declared ext-app whose id merely collides with
+  // "analytics"/"hosting"/etc. is not the native gated view and must still open.
+  // And, like `controlPlaneTabHidden` below, only drop once ownership is known
+  // (`!hostingAccessPending`) — `hostingOwned` is false while the probe is in
+  // flight, so without this guard the default (and `leadTabId`) would flip from
+  // "settings" back to the gated tab after load, reordering the bar.
+  const configuredDefaultTabId = resolveDefaultTabId(layoutForDefault);
+  const defaultViewType = effectiveDefaultMainView?.type;
+  const defaultTabHidden =
+    !hostingAccessPending &&
+    ((defaultViewType === "hosting" && !showHostingTab) ||
+      (defaultViewType === "e2e" && !showE2eTab) ||
+      (defaultViewType === "analytics" && !showAnalyticsTab) ||
+      (defaultViewType === "cdn" && !showCdnTab));
+  const visibleDefaultTabId = defaultTabHidden
+    ? resolveDefaultTabId(null)
+    : configuredDefaultTabId;
+  // A deep-linked control-plane / Monitor tab whose button is hidden (no BFF, no
+  // ownership, or the org isn't flagged in) falls back to the default view once
+  // ownership is known — mirroring git/content/assets — so a stale URL never
+  // mounts a tab that only 503/404s.
+  const controlPlaneTabHidden =
+    !hostingAccessPending &&
+    ((rawActiveTab === "hosting" && !showHostingTab) ||
+      (rawActiveTab === "e2e" && !showE2eTab) ||
+      (rawActiveTab === "analytics" && !showAnalyticsTab) ||
+      (rawActiveTab === "cdn" && !showCdnTab));
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
-      ? resolveDefaultTabId(layoutForDefault)
+      ? visibleDefaultTabId
       : rawActiveTab === "content" && !showContentTab && !contentTabPending
-        ? resolveDefaultTabId(layoutForDefault)
+        ? visibleDefaultTabId
         : rawActiveTab === "assets" && !showAssetsTab && !assetsTabPending
-          ? resolveDefaultTabId(layoutForDefault)
-          : rawActiveTab;
+          ? visibleDefaultTabId
+          : controlPlaneTabHidden
+            ? visibleDefaultTabId
+            : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
@@ -364,6 +462,45 @@ export function useMainPanelTabs(ctx: {
     systemTabs.push({
       id: "assets",
       title: t("common.mainPanelTabs.assets"),
+    });
+  }
+  // Hosting, E2E, and Deco Analytics are peers over the same control-plane
+  // connection, ordered Hosting · E2E · Deco Analytics — but each is gated by
+  // its own org flag (see useControlPlaneViews), so a client can get one without
+  // the others. All still require org ownership of the resolved site
+  // (`hostingOwned`), not just the deployment-wide `hostingEnabled`, so a site
+  // the org doesn't own never surfaces them (matching the BFF's per-site
+  // isolation guard).
+  if (showHostingTab) {
+    systemTabs.push({
+      id: "hosting",
+      title: t("common.mainPanelTabs.hosting"),
+    });
+  }
+  if (showE2eTab) {
+    systemTabs.push({
+      id: "e2e",
+      title: t("common.mainPanelTabs.e2e"),
+    });
+  }
+  if (showAnalyticsTab) {
+    systemTabs.push({
+      id: "analytics",
+      title: t("common.mainPanelTabs.analytics"),
+    });
+  }
+  // Native CDN Monitor tab — the first-class replacement for the old admin
+  // "Monitor" iframe. Gated on the warehouse being wired (`monitorEnabled`), org
+  // ownership of the site (`hostingOwned`), AND the per-view product gate
+  // (`controlPlaneViews.monitor`: local dev / deco.cx staff / MONITOR_GA / the
+  // org's `monitor_enabled` flag) so a client never sees it until deco.cx opts
+  // that org in. Independent of `hostingEnabled`: it reads the stats-lake
+  // warehouse directly, not the control-plane, so a deployment can offer CDN
+  // without hosting.
+  if (showCdnTab) {
+    systemTabs.push({
+      id: "cdn",
+      title: t("common.mainPanelTabs.cdn"),
     });
   }
   if (gitTabVisible) {
@@ -535,14 +672,14 @@ export function useMainPanelTabs(ctx: {
   // The default main view leads the tab bar (see selectBarSlots) — but only
   // when it's a genuine landing view. The anchored trailing tabs (Settings,
   // Automations, git) and Chat keep their position rather than jumping to the
-  // front, so they're not promoted.
-  const rawDefaultTabId = resolveDefaultTabId(layoutForDefault);
+  // front, so they're not promoted. Uses the visibility-filtered default so a
+  // hidden gated view never leads the bar.
   const leadTabId =
-    rawDefaultTabId === "settings" ||
-    rawDefaultTabId === "automations" ||
-    rawDefaultTabId === "git"
+    visibleDefaultTabId === "settings" ||
+    visibleDefaultTabId === "automations" ||
+    visibleDefaultTabId === "git"
       ? null
-      : rawDefaultTabId;
+      : visibleDefaultTabId;
 
   const setActiveTab = (id: string) => {
     // On a reports-only org sitting on any shell other than the Report Agent

@@ -152,8 +152,16 @@ export function genTitle(config: {
           maxAttempts,
           minTimeout: 200,
           maxTimeout: 2_000,
-          // Don't retry a cancel/timeout — only genuine model failures.
-          isRetriable: (err) => (err as Error)?.name !== "AbortError",
+          // Don't retry a cancel/timeout — only genuine model failures. A call
+          // the AI SDK itself marked non-retryable (a provider that rejected
+          // the REQUEST — a 400 on the schema or the prompt) returns the
+          // identical 400 to every attempt against the SAME model, so stop
+          // once the model list is exhausted; until then the next attempt is a
+          // different model, i.e. a different request, and worth making.
+          isRetriable: (err) =>
+            (err as Error)?.name !== "AbortError" &&
+            ((err as { isRetryable?: boolean })?.isRetryable !== false ||
+              attempt < models.length - 1),
           signal: titleAbortController.signal,
         },
       );

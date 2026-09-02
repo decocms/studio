@@ -20,6 +20,7 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
+import { runColumnAutomation } from "./run-column-automation";
 import { extractPrFromText } from "./pr-extract";
 import {
   ensureTaskExecutionAllowed,
@@ -138,12 +139,14 @@ export function diffTaskActivityEntries(
 export function delegatesToSuperAgent(
   inputAssigneeId: string | null | undefined,
   previous: Pick<TaskBoardItem, "assigneeId" | "status"> | null,
+  /** This board's queue column — see `BoardLanes.queue`. */
+  queueLane: string | null,
 ): boolean {
   if (inputAssigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   if (!previous) return false;
   return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
     ? true
-    : previous.status === "todo";
+    : queueLane !== null && previous.status === queueLane;
 }
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
@@ -165,13 +168,16 @@ export function closesOwnReview(
   inputStatus: string | undefined,
   previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
   isTaskRun: boolean,
+  /** This board's review column — see `inReviewPhase`. */
+  reviewLane: string | null,
 ): boolean {
   const completesTask =
     inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
   // The PHASE, not the lane: a card whose reviewer is still working reads In
   // Progress since migration 190, and gating on the lane alone would let the
   // author's own run mark its work Done out from under that reviewer.
-  const awaitingReview = previous !== undefined && inReviewPhase(previous);
+  const awaitingReview =
+    previous !== undefined && inReviewPhase(previous, reviewLane);
   return isTaskRun && completesTask && awaitingReview;
 }
 
@@ -338,7 +344,15 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    if (closesOwnReview(input.status, previous ?? undefined, isTaskRun)) {
+    const lanes = await board.lanes();
+    if (
+      closesOwnReview(
+        input.status,
+        previous ?? undefined,
+        isTaskRun,
+        lanes.review,
+      )
+    ) {
       throw new Error(
         "This task is under review — a run can't move it to Done or Archived. " +
           "Leave it for the reviewer; only a person, or " +
@@ -350,9 +364,16 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
-    // Delegating a task to the Super Agent queues it to run — force To Do,
-    // overriding any status the caller passed alongside the reassignment.
-    const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
+    // Delegating queues the card onto this board's queue lane, if it has one.
+    const becameSuperAgent = delegatesToSuperAgent(
+      input.assigneeId,
+      previous,
+      lanes.queue,
+    );
+    const queuedStatus = becameSuperAgent
+      ? (lanes.queue ?? undefined)
+      : undefined;
+    const nextStatus = queuedStatus ?? input.status;
 
     if (previous && isReportsTask(previous)) {
       // Reports-pushed tasks are the report's findings — their CONTENT is
@@ -410,10 +431,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         {
           title: input.title,
           description: input.description,
-          status: becameSuperAgent ? "todo" : input.status,
+          status: nextStatus,
           // Written with the status it describes, so a card cannot end up in a
           // column of the org's own while still unguarded.
-          ...(input.status !== undefined || becameSuperAgent
+          ...(nextStatus !== undefined
             ? { boardColumnOrg: board.columnOwner() }
             : {}),
           priority: input.priority,
@@ -498,6 +519,21 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
     if (becameSuperAgent) {
       await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+      return { item };
+    }
+
+    // A card that just landed in a column runs that column's rule, whoever
+    // moved it. Only on an actual lane change: re-saving a title must not
+    // re-trigger, and the card is already owned once the rule has fired.
+    if (
+      input.status !== undefined &&
+      previous !== null &&
+      previous.status !== item.status
+    ) {
+      item = await runColumnAutomation(ctx, item, {
+        assignedBy: getUserId(ctx)!,
+        actor: getUserId(ctx)!,
+      });
     }
 
     return { item };

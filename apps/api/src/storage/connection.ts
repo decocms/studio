@@ -384,8 +384,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
       }
     }
 
-    // Apply pagination
-    if (options?.limit) {
+    // Apply pagination. `!== undefined`, not truthiness — an explicit `limit: 0` must return zero rows, not "no limit".
+    if (options?.limit !== undefined) {
       query = query.limit(options.limit);
     }
     if (options?.offset) {

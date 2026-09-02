@@ -139,6 +139,11 @@ import {
   setMcpListCache,
   type McpListCache,
 } from "../mcp-clients/mcp-list-cache";
+import {
+  JetStreamKVSkillCatalogCache,
+  setSkillCatalogCache,
+  type SkillCatalogCache,
+} from "../file-storage/skill-catalog-cache";
 import { isMcpCacheEnabled } from "../mcp-clients/mcp-read-cache";
 import {
   startMcpCacheInvalidation,
@@ -171,6 +176,7 @@ import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-event
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { TaskBoardStorage } from "../storage/task-board";
+import { boardLanesForDb } from "../tools/task-board/board-handler";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
@@ -980,6 +986,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   let mcpListCache: McpListCache | null;
+  let skillCatalogCache: SkillCatalogCache | null;
   let connectionCircuitStore: ConnectionCircuitStore;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
@@ -1002,6 +1009,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       invalidate: async () => {},
       teardown: () => {},
     };
+    // Without NATS every read rebuilds the catalog — the behavior before the
+    // cache existed.
+    skillCatalogCache = null;
     connectionCircuitStore = new NoopConnectionCircuitStore();
     cancelBroadcast = {
       start: async () => {},
@@ -1072,6 +1082,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     tlc?.init().catch(() => {});
     mcpListCache = tlc;
 
+    const scc = new JetStreamKVSkillCatalogCache({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    scc.init().catch(() => {});
+    skillCatalogCache = scc;
+
     const ccs = new JetStreamKVConnectionCircuitStore({
       getJetStream: () => natsProvider!.getJetStream(),
     });
@@ -1098,6 +1114,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       tlc?.init().catch((err: unknown) => {
         console.error("[McpListCache] Deferred init failed:", err);
       });
+      scc.init().catch((err: unknown) => {
+        console.error("[SkillCatalogCache] Deferred init failed:", err);
+      });
       ccs.init().catch((err: unknown) => {
         console.error("[ConnectionCircuitStore] Deferred init failed:", err);
       });
@@ -1120,6 +1139,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
+  setSkillCatalogCache(skillCatalogCache);
   setConnectionCircuitStore(connectionCircuitStore);
 
   const threadStorage = new SqlThreadStorage(database.db);
@@ -1131,12 +1151,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     // reaches the projector, so this reactor is its only terminal writer — and
     // owes the board the pass the projector's own terminals already run. Same
     // storages, built here because this wiring precedes theirs.
-    onThreadFinished: (threadId, orgId) =>
+    onThreadFinished: async (threadId, orgId) =>
       advanceTasksToReviewOnThreadFinish(
         new TaskBoardStorage(database.db),
         threadId,
         orgId,
         new OrganizationBillingStorage(database.db),
+        await boardLanesForDb(database.db, orgId),
       ),
   };
 
@@ -1202,11 +1223,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     stopFlipBroadcast();
     streamBuffer.teardown();
     mcpListCache?.teardown();
+    skillCatalogCache?.teardown();
     modelListCache.teardown();
     providerKeyCache.teardown();
     teardownMcpCacheInvalidation();
     connectionCircuitStore.teardown();
     setMcpListCache(null);
+    setSkillCatalogCache(null);
     setConnectionCircuitStore(null);
   };
 
@@ -1626,6 +1649,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     projectorTaskBoard,
     automationContextFactory,
     projectorBilling,
+    database.db,
   );
   if (getSettings().taskBoardReviewSweeperEnabled) {
     taskBoardReviewSweeper.start();
@@ -1684,6 +1708,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
+          await boardLanesForDb(database.db, orgId),
         );
         // The headless reviewer trigger used to be called here and could never
         // work: this callback runs inside a DBOS step, and the dispatch bottoms
@@ -1718,6 +1743,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
+          await boardLanesForDb(database.db, orgId),
         );
         // No reviewer trigger here either — see completeRunIfNotCompleted above
         // for why it cannot live in a step. `TaskBoardReviewSweeper` owns it.

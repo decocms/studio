@@ -33,6 +33,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     sortOrder: 0,
     keySeq: 1,
     jiraIssueKey: null,
+    externalUrl: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],
@@ -168,6 +169,7 @@ describe("delegatesToSuperAgent", () => {
       delegatesToSuperAgent(
         SUPER_AGENT_ASSIGNEE_ID,
         item({ assigneeId: null, status: "todo" }),
+        "todo",
       ),
     ).toBe(true);
   });
@@ -180,6 +182,7 @@ describe("delegatesToSuperAgent", () => {
       delegatesToSuperAgent(
         SUPER_AGENT_ASSIGNEE_ID,
         item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "todo" }),
+        "todo",
       ),
     ).toBe(true);
   });
@@ -190,6 +193,7 @@ describe("delegatesToSuperAgent", () => {
         delegatesToSuperAgent(
           SUPER_AGENT_ASSIGNEE_ID,
           item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status }),
+          "todo",
         ),
       ).toBe(false);
     }
@@ -197,13 +201,35 @@ describe("delegatesToSuperAgent", () => {
 
   it("does not delegate for any other assignee, or when none was passed", () => {
     const previous = item({ assigneeId: null, status: "todo" });
-    expect(delegatesToSuperAgent("user_2", previous)).toBe(false);
-    expect(delegatesToSuperAgent(null, previous)).toBe(false);
-    expect(delegatesToSuperAgent(undefined, previous)).toBe(false);
+    expect(delegatesToSuperAgent("user_2", previous, "todo")).toBe(false);
+    expect(delegatesToSuperAgent(null, previous, "todo")).toBe(false);
+    expect(delegatesToSuperAgent(undefined, previous, "todo")).toBe(false);
   });
 
   it("does not delegate without a pre-update item", () => {
-    expect(delegatesToSuperAgent(SUPER_AGENT_ASSIGNEE_ID, null)).toBe(false);
+    expect(delegatesToSuperAgent(SUPER_AGENT_ASSIGNEE_ID, null, "todo")).toBe(
+      false,
+    );
+  });
+
+  it("re-delegates a parked card on the lane THIS board queues to", () => {
+    expect(
+      delegatesToSuperAgent(
+        SUPER_AGENT_ASSIGNEE_ID,
+        item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "Refinement" }),
+        "Refinement",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not re-delegate when the board has no queue column at all", () => {
+    expect(
+      delegatesToSuperAgent(
+        SUPER_AGENT_ASSIGNEE_ID,
+        item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "Backlog" }),
+        null,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -218,20 +244,33 @@ describe("closesOwnReview", () => {
   ) => ({ status, reviewCycleStartedAt });
 
   it("catches a run completing a task under review", () => {
-    expect(closesOwnReview("done", underReview(), true)).toBe(true);
+    expect(closesOwnReview("done", underReview(), true, "in_review")).toBe(
+      true,
+    );
   });
 
   it("catches a run archiving a task under review — archiving skips review just like completing", () => {
-    expect(closesOwnReview("archived", underReview(), true)).toBe(true);
+    expect(closesOwnReview("archived", underReview(), true, "in_review")).toBe(
+      true,
+    );
   });
 
   // Shipping yourself past review also drops the card out of the review sweep.
   it("catches a run shipping a task under review into a delivery lane", () => {
-    expect(closesOwnReview("approved", underReview(), true)).toBe(true);
-    expect(closesOwnReview("merged", underReview(), true)).toBe(true);
-    expect(closesOwnReview("post_deploy_validation", underReview(), true)).toBe(
+    expect(closesOwnReview("approved", underReview(), true, "in_review")).toBe(
       true,
     );
+    expect(closesOwnReview("merged", underReview(), true, "in_review")).toBe(
+      true,
+    );
+    expect(
+      closesOwnReview(
+        "post_deploy_validation",
+        underReview(),
+        true,
+        "in_review",
+      ),
+    ).toBe(true);
   });
 
   // The lane alone used to answer this, and In Progress read as "not under
@@ -243,27 +282,34 @@ describe("closesOwnReview", () => {
         "done",
         underReview("in_progress", "2026-08-13T02:39:20Z"),
         true,
+        "in_review",
       ),
     ).toBe(true);
   });
 
   it("allows a run to complete a task that needed no code change", () => {
-    expect(closesOwnReview("done", underReview("in_progress"), true)).toBe(
+    expect(
+      closesOwnReview("done", underReview("in_progress"), true, "in_review"),
+    ).toBe(false);
+  });
+
+  it("allows a run to move a task under review BACKWARD, or not at all", () => {
+    expect(
+      closesOwnReview("in_progress", underReview(), true, "in_review"),
+    ).toBe(false);
+    expect(closesOwnReview(undefined, underReview(), true, "in_review")).toBe(
       false,
     );
   });
 
-  it("allows a run to move a task under review BACKWARD, or not at all", () => {
-    expect(closesOwnReview("in_progress", underReview(), true)).toBe(false);
-    expect(closesOwnReview(undefined, underReview(), true)).toBe(false);
-  });
-
   it("never catches a person", () => {
-    expect(closesOwnReview("done", underReview(), false)).toBe(false);
+    expect(closesOwnReview("done", underReview(), false, "in_review")).toBe(
+      false,
+    );
   });
 
   it("has nothing to protect without a pre-update card", () => {
-    expect(closesOwnReview("done", undefined, true)).toBe(false);
+    expect(closesOwnReview("done", undefined, true, "in_review")).toBe(false);
   });
 });
 

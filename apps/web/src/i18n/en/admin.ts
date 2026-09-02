@@ -16,8 +16,34 @@ export const admin = {
   "admin.orgs.created": "Created",
   "admin.orgs.email": "Email",
   "admin.orgs.emailPlaceholder": "user@example.com",
+  "admin.orgs.add": "Add",
+  "admin.orgs.addCustomFlag": "Add custom flag",
+  "admin.orgs.customFlagKeyLabel": "Custom flag key",
+  "admin.orgs.customFlagKeyPlaceholder": "my_custom_flag",
+  "admin.orgs.jsonEditorLabel": "Flags JSON",
+  "admin.orgs.duplicateFlagKey": "That flag already exists",
   "admin.orgs.failedAddMember": "Failed to add member",
+  "admin.orgs.failedLoadFlags": "Failed to load flags",
   "admin.orgs.failedLoadOrgs": "Failed to load organizations",
+  "admin.orgs.failedSaveFlags": "Failed to save flags",
+  "admin.orgs.flagCustom": "Custom",
+  "admin.orgs.flagDefaultOn": "Default on",
+  "admin.orgs.flagInvalid": "Invalid value",
+  "admin.orgs.flagUnset": "Unset",
+  "admin.orgs.flags": "Flags",
+  "admin.orgs.flagsDescription":
+    "Toggle feature flags for this organization. Changes are saved to the org's settings.",
+  "admin.orgs.flagsFor": "Feature flags for {org}",
+  "admin.orgs.flagsSaved": "Flags updated for {org}",
+  "admin.orgs.flagsViewJson": "JSON",
+  "admin.orgs.flagsViewToggles": "Toggles",
+  "admin.orgs.invalidFlagKey": "Use lowercase snake_case (e.g. my_flag)",
+  "admin.orgs.invalidStoredValue":
+    "This org has a flag whose stored value is not true/false. Fix it in the JSON view before saving.",
+  "admin.orgs.invalidJson":
+    "Invalid JSON — expected snake_case keys mapped to boolean values.",
+  "admin.orgs.jsonReplaceHint":
+    "This replaces the entire flags object. Removing a key unsets it.",
   "admin.orgs.failedLoadOrgsDescription":
     "Something went wrong. Refresh to try again.",
   "admin.orgs.memberAdded": "Added {email} to {org}",
@@ -26,6 +52,8 @@ export const admin = {
   "admin.orgs.noOrgsMatchSearch": 'No organizations match "{search}"',
   "admin.orgs.noOrgsYet": "No organizations exist yet.",
   "admin.orgs.organization": "Organization",
+  "admin.orgs.save": "Save",
+  "admin.orgs.saving": "Saving...",
   "admin.orgs.searchPlaceholder": "Search organizations by name or slug...",
   "admin.prompts.description":
     "These prompts are hardcoded in {repo}. Edits here are read from {branch} and committed back as a pull request, using the GitHub connection of your {org} organization.",

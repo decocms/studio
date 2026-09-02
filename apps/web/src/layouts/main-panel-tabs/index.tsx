@@ -36,11 +36,29 @@ import {
   parsePinnedViewTabId,
 } from "./tab-id";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { useControlPlaneViews } from "@/hooks/use-organization-settings";
+import { usePublicConfig } from "@/hooks/use-public-config";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
     default: m.AppViewContent,
   })),
+);
+
+// The control-plane / Monitor tabs are product-gated and heavy (charts, maps,
+// locale data), so lazy-load them: users without access never download them.
+// TabBody renders inside MainPanelContent's Suspense boundary.
+const HostingTab = lazy(() =>
+  import("./hosting-tab").then((m) => ({ default: m.HostingTab })),
+);
+const E2eTab = lazy(() =>
+  import("./e2e-tab").then((m) => ({ default: m.E2eTab })),
+);
+const AnalyticsTab = lazy(() =>
+  import("./analytics-tab").then((m) => ({ default: m.AnalyticsTab })),
+);
+const CdnTab = lazy(() =>
+  import("./cdn-tab").then((m) => ({ default: m.CdnTab })),
 );
 
 function TabBody({
@@ -60,6 +78,16 @@ function TabBody({
     typeof useMainPanelTabs
   >["automationTabParsed"];
 }) {
+  const controlPlaneViews = useControlPlaneViews();
+  // Native CDN Monitor tab gate — warehouse wired, independent of the
+  // control-plane. Ownership is enforced by the BFF; combined with
+  // `controlPlaneViews.monitor` below this guards the deep-link `?main=cdn`
+  // against a deployment with no warehouse AND against a client the org's
+  // `monitor_enabled` flag hasn't opted in.
+  const monitorEnabled =
+    usePublicConfig().monitorEnabled === true ||
+    usePublicConfig().auth.localMode === true;
+
   // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
   // crash the active tab and exercise the ErrorBoundary recovery flow.
   // Dead-stripped from real production builds; alive in dev and in the e2e
@@ -108,6 +136,22 @@ function TabBody({
   }
   if (activeTab === "assets") {
     return <AssetsTab virtualMcpId={virtualMcpId} />;
+  }
+  // Control-plane tabs are behind the same per-view product gate as their tab
+  // buttons (see useControlPlaneViews) so a deep-link `?main=hosting` can't
+  // bypass it while the surface rolls out. Access to the data itself is enforced
+  // by the BFF.
+  if (activeTab === "hosting" && controlPlaneViews.hosting) {
+    return <HostingTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "e2e" && controlPlaneViews.e2e) {
+    return <E2eTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "analytics" && controlPlaneViews.analytics) {
+    return <AnalyticsTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "cdn" && monitorEnabled && controlPlaneViews.monitor) {
+    return <CdnTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {
     return <LibraryTab />;

@@ -35,6 +35,7 @@ import {
 } from "@/billing/subsidized-runs";
 import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
+import { NoResultError } from "kysely";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
@@ -266,7 +267,7 @@ export function buildAgentSandboxUiStream(
   });
 }
 
-async function resolveSecretModelSource(
+export async function resolveSecretModelSource(
   ctx: StudioContext,
   organizationId: string,
   credentialId: string,
@@ -278,10 +279,16 @@ async function resolveSecretModelSource(
    *  run on the org's own key. */
   subsidyApiKey?: string,
 ): Promise<DecopilotSecretModelSource> {
-  const { keyInfo, apiKey } = await ctx.storage.aiProviderKeys.resolve(
-    credentialId,
-    organizationId,
-  );
+  // Replace Kysely's raw NoResultError with a clear, permanent one (#2265) — any other rejection (a transient DB/vault failure) propagates unchanged.
+  const { keyInfo, apiKey } = await ctx.storage.aiProviderKeys
+    .resolve(credentialId, organizationId)
+    .catch((err) => {
+      if (!(err instanceof NoResultError)) throw err;
+      throw new PermanentRunError(
+        "model_credential_not_found",
+        `Model credential ${credentialId} was not found — configure a model provider before running this agent`,
+      );
+    });
   const source = applySubsidizedBilling(
     createSecretModelSource({
       providerId: keyInfo.providerId,
@@ -325,6 +332,15 @@ export interface AgentConfig {
    * Super Agent.
    */
   instructions?: string;
+  /**
+   * Text APPENDED to whatever instructions this run ends up with — the agent's
+   * own, or an `instructions` override above. For standing context that is not
+   * a persona and must not displace one: the board's system prompt, which
+   * applies to the Super Agent and the reviewer alike (see
+   * `withOrgTaskPrompt`). Setting `instructions` for that would silently drop
+   * the org agent's own, since the resolution below is `??`, not a merge.
+   */
+  appendInstructions?: string;
   /** Built-in harness tools this run must not have. See the wire schema. */
   disallowedTools?: string[];
 }
@@ -767,6 +783,31 @@ export async function resolveUserContext(
     }));
   }
   return result;
+}
+
+/**
+ * The instructions one run ends up with.
+ *
+ * `agent.instructions` REPLACES the agent's own — that is a persona swap, and
+ * the reviewer relies on it (it borrows the org agent for its model and MCP
+ * surface but is not that agent). `agent.appendInstructions` ADDS to whichever
+ * of the two won, for standing context that is not a persona: the board's
+ * system prompt, which must not displace the agent it rides along with.
+ *
+ * Pure and exported so the replace-vs-append distinction is unit-tested — the
+ * `??` below is exactly what silently drops an agent's persona when a caller
+ * reaches for the wrong field.
+ */
+export function resolveAgentInstructions(
+  agent: Pick<AgentConfig, "instructions" | "appendInstructions">,
+  virtualMcpMetadata: unknown,
+): string | undefined {
+  const own = (virtualMcpMetadata as { instructions?: unknown } | null)
+    ?.instructions;
+  const resolved =
+    agent.instructions ?? (typeof own === "string" ? own : undefined);
+  if (!agent.appendInstructions) return resolved;
+  return [resolved, agent.appendInstructions].filter(Boolean).join("\n\n");
 }
 
 async function resolveEffectiveVirtualMcpForHarness({
@@ -1299,13 +1340,10 @@ async function prepareRun(
     // The dispatcher's override wins over the agent's own instructions: a
     // reviewer run borrows the org agent (for its model + MCP surface) but is
     // not that agent.
-    const agentInstructions =
-      input.agent.instructions ??
-      (typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
-        ?.instructions === "string"
-        ? (effectiveVirtualMcp.metadata as { instructions: string })
-            .instructions
-        : undefined);
+    const agentInstructions = resolveAgentInstructions(
+      input.agent,
+      effectiveVirtualMcp.metadata,
+    );
     const decopilotRunContext = {
       taskId: input.taskId,
       isSubagent: input.isSubagent,

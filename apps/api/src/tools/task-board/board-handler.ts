@@ -1,10 +1,13 @@
 import type { BoardColumn } from "@decocms/shared/task-board";
 import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
-import type {
-  ColumnAutomation,
+import type { Kysely } from "kysely";
+import {
+  type ColumnAutomation,
   ColumnAutomationStorage,
 } from "@/storage/task-board-column-automations";
-import type { BoardColumnStorage } from "@/storage/task-board-columns";
+import { BoardColumnStorage } from "@/storage/task-board-columns";
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import type { Database } from "@/storage/types";
 import type { StudioContext } from "@/core/studio-context";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 
@@ -22,6 +25,30 @@ import { orgFlagEnabled } from "@decocms/shared/organization/schema";
  * nothing is — which is most columns, and must stay uneventful rather than
  * fall back to a guess.
  */
+/**
+ * The columns a board gives Studio's lifecycle meanings.
+ *
+ * Every field but `intake` is nullable, and null means the same thing
+ * throughout: this board has no column that means this. The honest response is
+ * then to do nothing — not to write one of Studio's keys, which on a mirrored
+ * board files the card under a column that does not exist and makes it vanish.
+ *
+ * `intake` cannot be null because a card has to be created somewhere, and
+ * refusing to create it is worse than any column.
+ */
+export interface BoardLanes {
+  /** Where a card is born. */
+  intake: string;
+  /** Queued for the agent to pick up — the claim's starting line. */
+  queue: string | null;
+  /** Being worked on. */
+  progress: string | null;
+  /** Waiting on review. */
+  review: string | null;
+  /** Retired. */
+  archive: string | null;
+}
+
 export interface BoardHandler {
   /** The columns to render, left to right. */
   columns(): Promise<BoardColumn[]>;
@@ -44,6 +71,16 @@ export interface BoardHandler {
   archiveColumn(): Promise<string | null>;
 
   /**
+   * Every column Studio's own lifecycle needs a name for, resolved together.
+   *
+   * Together rather than one method each, for two reasons. It is one read
+   * instead of five. And the storage layer needs these as VALUES — its fences
+   * and sweeps are SQL predicates, so "which column means in-progress" has to
+   * be answered before the query is built, not asked from inside it.
+   */
+  lanes(): Promise<BoardLanes>;
+
+  /**
    * What to write into a card's `board_column_org` — the org id when this
    * board's columns are rows the foreign key can hold it to, null when they
    * are Studio's constants and the key must stay asleep.
@@ -53,6 +90,22 @@ export interface BoardHandler {
    */
   columnOwner(): string | null;
 }
+
+/**
+ * Studio's own board, as lanes.
+ *
+ * These are exactly the string literals that used to be hardcoded at every
+ * writer and every SQL predicate. Keeping them identical is what makes this
+ * seam a no-op for every org on the canonical board — which is every org but
+ * the ones that opted into mirroring.
+ */
+const STUDIO_LANES: BoardLanes = {
+  intake: "triage",
+  queue: "todo",
+  progress: "in_progress",
+  review: "in_review",
+  archive: "archived",
+};
 
 /** `title` is the key: the canonical columns are translated by the client,
  *  which is the only place that knows the reader's language. A mirrored column
@@ -85,7 +138,11 @@ class StudioBoardHandler implements BoardHandler {
   }
 
   archiveColumn(): Promise<string | null> {
-    return Promise.resolve("archived");
+    return Promise.resolve(STUDIO_LANES.archive);
+  }
+
+  lanes(): Promise<BoardLanes> {
+    return Promise.resolve(STUDIO_LANES);
   }
 
   columnOwner(): string | null {
@@ -124,8 +181,36 @@ class OrgBoardHandler implements BoardHandler {
    *  column mirrored from a tracker means nothing to us until someone says it
    *  does. */
   async archiveColumn(): Promise<string | null> {
+    return (await this.lanes()).archive;
+  }
+
+  /**
+   * Whichever columns the org gave these meanings to, and none by default: a
+   * column mirrored from a tracker means nothing to us until someone says it
+   * does.
+   *
+   * `intake` is the leftmost column rather than a role. Intake is the one
+   * decision with no acceptable null, and making it a role would turn "create
+   * a card" into a setup step; the left edge of a board is where new work
+   * appears in every tracker that has one.
+   */
+  async lanes(): Promise<BoardLanes> {
     const columns = await this.boardColumns.listByOrg(this.organizationId);
-    return columns.find((column) => column.role === "archived")?.key ?? null;
+    const withRole = (role: string) =>
+      columns.find((column) => column.role === role)?.key ?? null;
+    const first = columns[0];
+    if (!first) {
+      throw new Error(
+        "This board has no columns yet — nothing has been mirrored from the tracker",
+      );
+    }
+    return {
+      intake: first.key,
+      queue: withRole("todo"),
+      progress: withRole("in_progress"),
+      review: withRole("in_review"),
+      archive: withRole("archived"),
+    };
   }
 
   columnOwner(): string | null {
@@ -174,6 +259,127 @@ export async function boardFor(
     boardColumns: ctx.storage.boardColumns,
     orgOwnedColumns: orgFlagEnabled(settings?.flags, "org_board_columns"),
   });
+}
+
+/**
+ * Whether a card sitting in `from` may still be advanced to `to`.
+ *
+ * True when `from` is at or before `to` in the board's OWN order, which is
+ * what stops a re-opened PR dragging a finished card backwards.
+ *
+ * Position rather than a fixed list of lane names, because a mirrored board's
+ * columns are ordered and named by its tracker — "has it got past this yet" is
+ * a question only the board can answer. On Studio's board the answer is the
+ * same set the hardcoded list held. A column this board does not have is not
+ * advanceable at all: a card nobody can place is not one to move.
+ */
+export function canAdvance(
+  columns: readonly BoardColumn[],
+  from: string,
+  to: string,
+): boolean {
+  const at = (key: string) => columns.find((c) => c.key === key)?.position;
+  const fromAt = at(from);
+  const toAt = at(to);
+  return fromAt !== undefined && toAt !== undefined && fromAt <= toAt;
+}
+
+/** One warning per org and meaning. A board nobody configured would otherwise
+ *  log on every sweep tick, which is the fastest way to make the signal
+ *  worthless. Capped rather than TTL'd: the key set is bounded by orgs times
+ *  meanings, and a full reset just re-warns once. */
+const warnedLanes = new Set<string>();
+const WARNED_LANES_CAP = 10_000;
+
+/**
+ * Whether this board can express `meaning`, warning once when it cannot.
+ *
+ * A fence that declines for want of a column looks exactly like a fence that
+ * lost a race — both just return null — so an unconfigured board does nothing
+ * and says nothing. This is the line that tells the difference, and it narrows
+ * `lane` to a string for the caller that proceeds.
+ */
+export function boardCan(
+  organizationId: string,
+  meaning: string,
+  lane: string | null,
+  /** What will not happen, in words a person can act on. */
+  what: string,
+): lane is string {
+  if (lane !== null) return true;
+  const key = `${organizationId}:${meaning}`;
+  if (!warnedLanes.has(key)) {
+    if (warnedLanes.size >= WARNED_LANES_CAP) warnedLanes.clear();
+    warnedLanes.add(key);
+    console.warn(
+      `[task-board] no column on this board means "${meaning}", so ${what} ` +
+        `will not happen — set the role on a column in the board's settings`,
+    );
+  }
+  return false;
+}
+
+/**
+ * This org's lanes, in one await.
+ *
+ * `(await boardLanes(ctx, org)).review` is what asking the long
+ * way looks like, and almost every caller wants exactly this. Naming the
+ * question is cheaper than reading the nesting.
+ */
+export async function boardLanes(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<BoardLanes> {
+  return await (await boardFor(ctx, organizationId)).lanes();
+}
+
+/** What this org's board runs when a card lands in `columnKey`, in one await.
+ *  See {@link boardLanes}. */
+export async function boardAutomationFor(
+  ctx: StudioContext,
+  organizationId: string,
+  columnKey: string,
+): Promise<ColumnAutomation | null> {
+  return await (await boardFor(ctx, organizationId)).automationFor(columnKey);
+}
+
+/** This org's columns, in one await. See {@link boardLanes}. */
+export async function boardColumnsOf(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<BoardColumn[]> {
+  return await (await boardFor(ctx, organizationId)).columns();
+}
+
+/**
+ * The same board, for the callers that have no `StudioContext`.
+ *
+ * The projector wiring, the sweeper and the thread-finish reactions run with a
+ * database handle and nothing else. Without this they would each have to be
+ * TOLD which columns mean what, by whoever called them — and a caller that
+ * forgot would silently reintroduce Studio's vocabulary on someone else's
+ * board. Building the same handler from the same rows keeps one answer.
+ */
+async function boardForDb(
+  db: Kysely<Database>,
+  organizationId: string,
+): Promise<BoardHandler> {
+  const settings = await new OrganizationSettingsStorage(db).get(
+    organizationId,
+  );
+  return boardHandler(organizationId, {
+    automations: new ColumnAutomationStorage(db),
+    boardColumns: new BoardColumnStorage(db),
+    orgOwnedColumns: orgFlagEnabled(settings?.flags, "org_board_columns"),
+  });
+}
+
+/** This org's lanes from a database handle. See {@link boardLanes}. */
+export async function boardLanesForDb(
+  db: Kysely<Database>,
+  organizationId: string,
+): Promise<BoardLanes> {
+  return await (await boardForDb(db, organizationId)).lanes();
 }
 
 /**

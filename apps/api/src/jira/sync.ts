@@ -25,15 +25,18 @@
  */
 
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { boardFor } from "@/tools/task-board/board-handler";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  type BoardHandler,
+  boardFor,
+  shippedPatch,
+} from "@/tools/task-board/board-handler";
 import type { StudioContext } from "@/core/studio-context";
 import type {
   OrgJiraIntegration,
   TaskBoardItem,
   TaskBoardItemPriority,
 } from "@/storage/types";
-import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
+import { runColumnAutomation } from "@/tools/task-board/run-column-automation";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import { laneIndex } from "@decocms/shared/jira-status-mapping";
 import {
@@ -221,6 +224,34 @@ export function rewritesStatus({
   return currentStatus !== null && !boardColumns.has(currentStatus);
 }
 
+/**
+ * Whether an updated issue should run its landing column's automation rule.
+ *
+ * Gated on the BOARD column actually changing, not on Jira's status literal
+ * changing: several Jira statuses can map to the same board column (a
+ * many-to-one `statusMapping`, or several Kanban-board statuses mirrored onto
+ * one column), so an issue can flip between two of them without the card ever
+ * leaving its column. `runColumnAutomation` is a no-op on an already-owned
+ * card, but a card a prior run un-delegated (a quota rejection, a burned
+ * retry) would otherwise be re-claimed and re-dispatched by a same-column
+ * status ping-pong that never moved it anywhere. The board's own drag path
+ * (`TASK_BOARD_ITEM_UPDATE`) already gates the same way, on `previous.status
+ * !== item.status` — this is that same rule for the Jira leg.
+ */
+export function triggersColumnAutomation({
+  previousStatus,
+  newStatus,
+  isRescan,
+}: {
+  /** This card's board column before this sync wrote to it. */
+  previousStatus: string | null;
+  /** This card's board column after this sync wrote to it. */
+  newStatus: string;
+  isRescan: boolean;
+}): boolean {
+  return !isRescan && previousStatus !== newStatus;
+}
+
 export function buildJql(
   integration: OrgJiraIntegration,
   scopeJql: string,
@@ -304,17 +335,27 @@ function isCardIssue(issue: JiraIssue): boolean {
   return typeof level !== "number" || level === 0;
 }
 
+/**
+ * The issue's body as the card's description — the issue text and nothing else.
+ *
+ * The link to the issue used to lead this string, which put it in front of
+ * every agent run: `buildSuperAgentTaskPrompt` quotes the description verbatim.
+ * It rides `TaskBoardItem.externalUrl` now, where the UI can link it and the
+ * prompt never sees it.
+ */
 async function cardDescription(
-  siteUrl: string,
   issue: JiraIssue,
   users: JiraUserDirectory,
 ): Promise<string> {
   const body = issue.fields.description;
   const names = await users.resolve(collectMentionAccountIds(body));
-  const text = jiraBodyToText(body, names);
-  return `${siteUrl}/browse/${issue.key}\n\n${text}`
-    .trim()
-    .slice(0, MAX_DESCRIPTION_CHARS);
+  return jiraBodyToText(body, names).trim().slice(0, MAX_DESCRIPTION_CHARS);
+}
+
+/** Where a person opens this issue in Jira. `siteUrl` is normalized to
+ *  `https://<host>` on connect, so this is a plain join. */
+function issueUrl(siteUrl: string, issueKey: string): string {
+  return `${siteUrl}/browse/${issueKey}`;
 }
 
 function mapPriority(issue: JiraIssue): TaskBoardItemPriority {
@@ -322,58 +363,20 @@ function mapPriority(issue: JiraIssue): TaskBoardItemPriority {
   return (name && PRIORITY_MAP[name]) || "medium";
 }
 
-/** The Jira-driven agent trigger: an unassigned card that just landed in the
- *  To Do lane gets the Super Agent, running under the integration's creator
- *  (`enqueueAgentRunForTask` acts as the card's `assigned_by`). A quota
- *  rejection un-delegates — import-route precedent — instead of leaving a
- *  card assigned-but-never-running. */
-async function maybeAutoDelegate(
+/** The Jira-driven leg of the column rule: an issue whose status just changed
+ *  landed the card in a column, and that column may have a rule on it. The
+ *  rule itself is shared with the board's own drag — see
+ *  {@link runColumnAutomation}. Runs as the integration's creator, which is
+ *  what `enqueueAgentRunForTask` records as the card's `assigned_by`. */
+function maybeAutoDelegate(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
   item: TaskBoardItem,
 ): Promise<TaskBoardItem> {
-  if (item.assigneeId) return item;
-  const orgId = integration.organizationId;
-  // The board decides: a column with no rule on it is uneventful. This is also
-  // what replaced `integration.autoDelegate`, which could only ever mean the
-  // Super Agent, on To Do, for an org that had Jira.
-  const automation = await (await boardFor(ctx, orgId)).automationFor(
-    item.status,
-  );
-  if (!automation) return item;
-  // Conditional claim, not a plain update: the cron, a webhook wake-up (its
-  // debounce is per-pod) and a manual JIRA_SYNC_RUN can all be mid-sync on the
-  // same issue, and a read-then-write would dispatch two paid agent runs on it.
-  const delegated = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(
-    item.id,
-    orgId,
-    integration.createdBy,
-    JIRA_SYNC_ACTOR,
-  );
-  if (!delegated) return item;
-  await ctx.storage.taskBoard.recordActivity({
-    taskBoardItemId: item.id,
-    action: "assignee_changed",
-    actorId: null,
-    data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
+  return runColumnAutomation(ctx, item, {
+    assignedBy: integration.createdBy,
+    actor: JIRA_SYNC_ACTOR,
   });
-  try {
-    await reactToSuperAgentDelegation(ctx, delegated, {
-      instruction: automation.prompt ?? undefined,
-    });
-  } catch (err) {
-    console.warn(
-      `[jira] auto-delegate of ${item.id} rejected, un-delegating:`,
-      err instanceof Error ? err.message : err,
-    );
-    return await ctx.storage.taskBoard.update(
-      item.id,
-      orgId,
-      { assigneeId: null, assignedBy: null },
-      JIRA_SYNC_ACTOR,
-    );
-  }
-  return delegated;
 }
 
 /** Import a changed issue's comments not yet on the card. The link table is
@@ -536,6 +539,7 @@ async function reconcileVanishedIssues(
   integration: OrgJiraIntegration,
   client: JiraClient,
   scopeJql: string,
+  board: BoardHandler,
 ): Promise<number> {
   const orgId = integration.organizationId;
   const live = await client.searchIssueIds(
@@ -559,7 +563,7 @@ async function reconcileVanishedIssues(
     const item = await ctx.storage.taskBoard.update(
       link.itemId,
       orgId,
-      { status: "archived" },
+      shippedPatch(board, "archived"),
       JIRA_SYNC_ACTOR,
     );
     await ctx.storage.taskBoard.recordActivity({
@@ -698,7 +702,8 @@ async function runSync(
       const jiraSprint = pickIssueSprint(issue.sprints);
       const fields = {
         title: issue.fields.summary,
-        description: await cardDescription(integration.siteUrl, issue, users),
+        description: await cardDescription(issue, users),
+        externalUrl: issueUrl(integration.siteUrl, issue.key),
         priority: mapPriority(issue),
         // Asked of the board, not recomputed from the flag: one answer for
         // every writer, so a card cannot be guarded by one path and not by
@@ -747,7 +752,13 @@ async function runSync(
             data: { from: before.status, to: status },
           });
         }
-        if (statusChangedOnJira && !isRescan) {
+        if (
+          triggersColumnAutomation({
+            previousStatus: before?.status ?? null,
+            newStatus: item.status,
+            isRescan,
+          })
+        ) {
           item = await maybeAutoDelegate(ctx, integration, item);
         }
         await pullComments(
@@ -833,6 +844,7 @@ async function runSync(
       integration,
       client,
       scopeJql,
+      board,
     );
   }
 

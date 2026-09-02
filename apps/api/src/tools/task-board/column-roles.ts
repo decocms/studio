@@ -1,18 +1,18 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import { boardFor } from "./board-handler";
+import { boardColumnsOf } from "./board-handler";
 
 /**
  * What a column means to Studio's automation.
  *
  * A column mirrored from a tracker is a name and a position — nothing tells us
- * that "Code Review" is where review happens or that "Arquivado" retires a
- * card. These are the meanings Studio acts on, and a column carries at most
+ * that "Fazendo" is where work happens, "Code Review" is where review happens,
+ * or that "Arquivado" retires a card. These are the meanings Studio acts on, and a column carries at most
  * one; every other column simply means nothing, which is the safe default for
  * a column we did not invent.
  */
-const COLUMN_ROLES = ["in_review", "archived"] as const;
+const COLUMN_ROLES = ["todo", "in_progress", "in_review", "archived"] as const;
 
 const roleSchema = z.enum(COLUMN_ROLES);
 
@@ -45,7 +45,7 @@ export const TASK_BOARD_COLUMN_ROLE_SET = defineTool({
 
     // Rejected rather than stored: a role on a column this board does not have
     // never fires, and reads as configured to whoever set it.
-    const columns = await (await boardFor(ctx, organizationId)).columns();
+    const columns = await boardColumnsOf(ctx, organizationId);
     if (!columns.some((column) => column.key === input.columnKey)) {
       throw new Error(
         `This board has no column "${input.columnKey}" — it has ${

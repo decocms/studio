@@ -271,6 +271,36 @@ describe("boardHandler — a board whose columns are the org's own", () => {
     expect(card.status).toBe("not_a_column");
   });
 
+  /** Delegation used to write Studio's `"todo"` here regardless of whose
+   *  columns the board has — the shape that made assigning to the Super Agent
+   *  fail outright once the key was awake. */
+  it("refuses Studio's queue lane on a guarded card, and takes the board's own", async () => {
+    await boardColumns.replaceAll(ORG_M, [
+      { key: "BACKLOG", title: "Backlog", trackerStatuses: [] },
+      { key: "Refinamento", title: "Refinamento", trackerStatuses: [] },
+    ]);
+    await boardColumns.setRole(ORG_M, "Refinamento", "todo");
+    const card = await taskBoard.create({
+      organizationId: ORG_M,
+      title: "delegated",
+      status: "BACKLOG",
+      boardColumnOrg: ORG_M,
+      by: USER_M,
+    });
+    await expect(
+      taskBoard.update(card.id, ORG_M, { status: "todo" }, USER_M),
+    ).rejects.toThrow(/foreign key|violates/i);
+    const queue = (await board().lanes()).queue;
+    expect(queue).toBe("Refinamento");
+    const queued = await taskBoard.update(
+      card.id,
+      ORG_M,
+      { status: queue!, boardColumnOrg: ORG_M },
+      USER_M,
+    );
+    expect(queued.status).toBe("Refinamento");
+  });
+
   /** The value every writer asks for instead of recomputing. Getting it from
    *  the board is what stops one path guarding a card and another not. */
   it("names itself as the owner a guarded card is held to", () => {
@@ -283,5 +313,120 @@ describe("boardHandler — a board whose columns are the org's own", () => {
       "Review it.",
     );
     expect(await board().automationFor("todo")).toBe(null);
+  });
+});
+
+/**
+ * The property that makes this seam safe to introduce at all.
+ *
+ * Every lane decision used to be a string literal spelled out at the call
+ * site. Studio's board has to keep answering with exactly those literals, or
+ * the conversion is not a refactor for the orgs that never opted into
+ * mirroring — which is nearly all of them.
+ */
+describe("the canonical board answers what the code used to hardcode", () => {
+  it("gives back Studio's own lane names, unchanged", async () => {
+    const board = boardHandler(ORG, {
+      automations: new ColumnAutomationStorage(database.db),
+      boardColumns: new BoardColumnStorage(database.db),
+      orgOwnedColumns: false,
+    });
+    expect(await board.lanes()).toEqual({
+      intake: "triage",
+      queue: "todo",
+      progress: "in_progress",
+      review: "in_review",
+      archive: "archived",
+    });
+  });
+});
+
+describe("a mirrored board answers with its own columns", () => {
+  const board = () =>
+    boardHandler(ORG, {
+      automations: new ColumnAutomationStorage(database.db),
+      boardColumns: new BoardColumnStorage(database.db),
+      orgOwnedColumns: true,
+    });
+
+  it("names each lane by the role the org gave a column", async () => {
+    await new BoardColumnStorage(database.db).replaceAll(ORG, [
+      { key: "Backlog", title: "Backlog", trackerStatuses: ["BACKLOG"] },
+      { key: "Fazendo", title: "Fazendo", trackerStatuses: ["Fazendo"] },
+      {
+        key: "Code Review",
+        title: "Code Review",
+        trackerStatuses: ["Code Review"],
+      },
+    ]);
+    await new BoardColumnStorage(database.db).setRole(
+      ORG,
+      "Fazendo",
+      "in_progress",
+    );
+    await new BoardColumnStorage(database.db).setRole(
+      ORG,
+      "Code Review",
+      "in_review",
+    );
+
+    expect(await board().lanes()).toEqual({
+      // The leftmost column, not a role: a card has to be born somewhere, and
+      // making intake configurable would make "create a card" a setup step.
+      intake: "Backlog",
+      queue: null,
+      progress: "Fazendo",
+      review: "Code Review",
+      archive: null,
+    });
+  });
+
+  /** Null is the honest answer, and the callers all read it as "do nothing"
+   *  rather than writing one of Studio's keys into a column that is not there. */
+  it("answers null for a meaning nobody assigned", async () => {
+    await new BoardColumnStorage(database.db).replaceAll(ORG, [
+      { key: "Backlog", title: "Backlog", trackerStatuses: ["BACKLOG"] },
+    ]);
+    const lanes = await board().lanes();
+    expect(lanes.intake).toBe("Backlog");
+    expect([lanes.queue, lanes.progress, lanes.review, lanes.archive]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  /**
+   * `tracker_statuses` is jsonb, and `pg` serialises a JS array as a Postgres
+   * ARRAY literal. A populated one is rejected outright; an EMPTY one is
+   * accepted as `{}` — an empty OBJECT — so the failure that shipped was the
+   * silent half. Asserting the shape read back is what catches both.
+   */
+  it("round-trips a column's tracker statuses as an array, not an object", async () => {
+    await new BoardColumnStorage(database.db).replaceAll(ORG, [
+      { key: "Em Progresso", title: "Em Progresso", trackerStatuses: [] },
+      {
+        key: "Code Review",
+        title: "Code Review",
+        trackerStatuses: ["Code Review", "Revisao"],
+      },
+    ]);
+    const columns = await new BoardColumnStorage(database.db).listByOrg(ORG);
+    expect(columns.map((c) => c.trackerStatuses)).toEqual([
+      [],
+      ["Code Review", "Revisao"],
+    ]);
+    expect(Array.isArray(columns[0]?.trackerStatuses)).toBe(true);
+  });
+
+  /** A board nothing has been mirrored onto cannot say where a card is born,
+   *  and inventing an answer would strand whatever is created next. */
+  it("refuses to invent an intake column for an empty board", async () => {
+    await database.db
+      .deleteFrom("task_board_columns")
+      .where("organization_id", "=", ORG)
+      .execute();
+    await expect(board().lanes()).rejects.toThrow(/no columns yet/);
   });
 });

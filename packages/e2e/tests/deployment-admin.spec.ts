@@ -585,6 +585,247 @@ test.describe("/api/_admin/*", () => {
     await ownerCtx.dispose();
   });
 
+  test("flags: PUT toggles, GET reflects stored + effective, merge preserves neighbors", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // Fresh org: demo_mode (default-off) reads false, reviewer_enabled (default-on) reads true.
+    const initial = await adminCtx.get(`/api/_admin/orgs/${orgId}/flags`);
+    expect(initial.status()).toBe(200);
+    const initialBody = (await initial.json()) as {
+      flags: Record<string, boolean | undefined>;
+      effective: Record<string, boolean>;
+    };
+    expect(initialBody.flags.demo_mode).toBeUndefined();
+    expect(initialBody.effective.demo_mode).toBe(false);
+    expect(initialBody.effective.reviewer_enabled).toBe(true);
+
+    // Turn one flag on.
+    const put1 = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: true } },
+    });
+    expect(put1.status()).toBe(200);
+    const put1Body = (await put1.json()) as {
+      flags: Record<string, boolean>;
+      effective: Record<string, boolean>;
+    };
+    expect(put1Body.flags.demo_mode).toBe(true);
+    expect(put1Body.effective.demo_mode).toBe(true);
+
+    // Persisted to the jsonb column, keyed by org.
+    const storedRow = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(storedRow.rows[0]?.flags?.demo_mode).toBe(true);
+
+    // A second partial write must MERGE, not replace: demo_mode survives.
+    const put2 = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { hosting_enabled: true } },
+    });
+    expect(put2.status()).toBe(200);
+    const put2Body = (await put2.json()) as { flags: Record<string, boolean> };
+    expect(put2Body.flags.demo_mode).toBe(true);
+    expect(put2Body.flags.hosting_enabled).toBe(true);
+
+    // An explicit false persists (opting a default-on flag out).
+    const put3 = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { reviewer_enabled: false } },
+    });
+    expect(put3.status()).toBe(200);
+    const put3Body = (await put3.json()) as {
+      flags: Record<string, boolean>;
+      effective: Record<string, boolean>;
+    };
+    expect(put3Body.flags.reviewer_enabled).toBe(false);
+    expect(put3Body.effective.reviewer_enabled).toBe(false);
+    expect(put3Body.flags.demo_mode).toBe(true);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("flags: a custom snake_case key is accepted; a malformed key or non-boolean is 400", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // A well-formed key outside the schema is now a valid custom flag.
+    const custom = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { not_in_schema_yet: true } },
+    });
+    expect(custom.status()).toBe(200);
+    const customBody = (await custom.json()) as {
+      flags: Record<string, boolean>;
+      effective: Record<string, boolean>;
+    };
+    expect(customBody.flags.not_in_schema_yet).toBe(true);
+    expect(customBody.effective.not_in_schema_yet).toBe(true);
+
+    // A malformed key (not lowercase snake_case) is rejected.
+    const badKey = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { "Bad-Key!": true } },
+    });
+    expect(badKey.status()).toBe(400);
+
+    const nonBoolean = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: "yes" } },
+    });
+    expect(nonBoolean.status()).toBe(400);
+
+    // A trailing/doubled underscore is not snake_case.
+    const trailing = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { trailing_: true } },
+    });
+    expect(trailing.status()).toBe(400);
+
+    // An unsupported mode must not silently fall back to merge.
+    const badMode = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { mode: "REPLACE", flags: {} },
+    });
+    expect(badMode.status()).toBe(400);
+
+    // A non-object body is rejected instead of succeeding as a no-op merge.
+    const nullBody = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: null,
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(nullBody.status()).toBe(400);
+
+    // The rejected writes left the earlier custom flag untouched.
+    const stored = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(stored.rows[0]?.flags?.demo_mode).toBeUndefined();
+    expect(stored.rows[0]?.flags?.not_in_schema_yet).toBe(true);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("flags: replace mode overwrites the whole bag, deleting omitted keys", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // Seed two flags via the default merge path.
+    await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: true, hosting_enabled: true } },
+    });
+
+    // Replace with a single key: demo_mode must disappear, hosting_enabled kept.
+    const replace = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { mode: "replace", flags: { hosting_enabled: true } },
+    });
+    expect(replace.status()).toBe(200);
+    const replaceBody = (await replace.json()) as {
+      flags: Record<string, boolean>;
+    };
+    expect(replaceBody.flags.hosting_enabled).toBe(true);
+    expect(replaceBody.flags.demo_mode).toBeUndefined();
+
+    const stored = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(stored.rows[0]?.flags).toEqual({ hosting_enabled: true });
+
+    // An empty replace clears the bag entirely.
+    const clear = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { mode: "replace", flags: {} },
+    });
+    expect(clear.status()).toBe(200);
+    const cleared = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(cleared.rows[0]?.flags ?? {}).toEqual({});
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("flags: a nonexistent org is 404 on both GET and PUT", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const get = await adminCtx.get(
+      `/api/_admin/orgs/nonexistent-${Date.now()}/flags`,
+    );
+    expect(get.status()).toBe(404);
+
+    const put = await adminCtx.put(
+      `/api/_admin/orgs/nonexistent-${Date.now()}/flags`,
+      { data: { flags: { demo_mode: true } } },
+    );
+    expect(put.status()).toBe(404);
+
+    await adminCtx.dispose();
+  });
+
+  test("flags: a non-admin cannot read or write them (surface not advertised)", async ({
+    playwright,
+  }) => {
+    const outsiderCtx = await newApiContext(playwright);
+    const outsider = await signUpViaApi(outsiderCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [outsider.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // Instance-admin surface, not org-scoped: even the org's own owner is refused.
+    const get = await outsiderCtx.get(`/api/_admin/orgs/${orgId}/flags`);
+    expect([401, 403]).toContain(get.status());
+
+    const put = await outsiderCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: true } },
+      headers: { Origin: getE2EAppOrigin() },
+    });
+    expect([401, 403]).toContain(put.status());
+
+    await outsiderCtx.dispose();
+  });
+
   test("the SSO-enforcement middleware exempts /api/_admin/*", async ({
     playwright,
   }) => {

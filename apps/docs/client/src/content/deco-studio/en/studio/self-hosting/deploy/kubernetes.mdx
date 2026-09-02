@@ -470,7 +470,7 @@ helm template studio-previews deploy/helm/studio-previews \
   --set applicationSet.repo.name=your-fork \
   --set applicationSet.repo.tokenSecret.name=preview-github-token \
   --set studioChart.repoURL=oci://ghcr.io/decocms \
-  --set studioChart.version=0.14.0 \
+  --set studioChart.version="$STUDIO_CHART_VERSION" \
   --set studioChart.valuesRepo.url=https://github.com/your-org/your-fork.git \
   --set images.api=ghcr.io/your-org/studio-preview \
   --set images.nginx=ghcr.io/your-org/studio-nginx-preview \

@@ -30,6 +30,7 @@ export const details = {
     "No activity in this period",
   "details.connectionActivity.toolCalls": "Tool calls",
   "details.connectionActivity.topErrors": "Top errors",
+  "details.connectionAgentsPanel.usedByAgents": "Used by agents",
   "details.connectionCapabilities.capabilities": "Capabilities",
   "details.connectionCapabilities.noCapabilitiesDiscovered":
     "No capabilities discovered yet. The connection may still be connecting.",
@@ -111,6 +112,7 @@ export const details = {
   "details.prompt.notFoundTitle": "Prompt not found",
   "details.prompt.title": "Title",
   "details.prompt.titlePlaceholder": "Untitled prompt",
+  "details.settingsTab.authenticate": "Authenticate",
   "details.settingsTab.authenticationRequired": "Authentication Required",
   "details.settingsTab.manualAuthenticationDescription":
     "This server requires an API key or token that must be configured manually. Check the server's documentation for instructions on obtaining credentials.",

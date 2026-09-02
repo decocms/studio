@@ -102,6 +102,11 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     }
 
     const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+    // Lanes named by the board: Studio's keys are not columns on an org's own.
+    const lanes = await board.lanes();
+    const status = delegatedToSuperAgent
+      ? (lanes.queue ?? lanes.intake)
+      : (input.status ?? lanes.intake);
 
     if (input.tagIds?.length) {
       const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
@@ -117,8 +122,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       organizationId,
       title: input.title,
       description: input.description ?? null,
-      // A task handed to the Super Agent is queued to run — land it in To Do.
-      status: delegatedToSuperAgent ? "todo" : input.status,
+      status,
       // Guarded from birth, not from whenever a sync first touches it.
       boardColumnOrg: board.columnOwner(),
       priority: input.priority,

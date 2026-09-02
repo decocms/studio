@@ -403,13 +403,44 @@ describe("mcpServersFor", () => {
 });
 
 describe("isTransientProviderRejection", () => {
-  test("matches OpenRouter's upstream relay, whatever the status", () => {
-    expect(
-      isTransientProviderRejection("API Error: 400 Provider returned error"),
-    ).toBe(true);
+  test("matches OpenRouter's upstream relay on a server-side status", () => {
     expect(
       isTransientProviderRejection("API Error: 502 Provider returned error"),
     ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 529 Provider returned error"),
+    ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 429 Provider returned error"),
+    ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 408 Provider returned error"),
+    ).toBe(true);
+  });
+
+  // Inverts the previous "whatever the status" case: OpenRouter now flattens a
+  // malformed request to the same relay wording, and fails over across its
+  // upstreams before answering, so a 4xx is one every upstream refused.
+  test("a 4xx relay is fatal — every upstream already refused it", () => {
+    expect(
+      isTransientProviderRejection("API Error: 400 Provider returned error"),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("API Error: 404 Provider returned error"),
+    ).toBe(false);
+  });
+
+  test("an unparseable status keeps the benefit of the doubt", () => {
+    expect(isTransientProviderRejection("Provider returned error")).toBe(true);
+  });
+
+  test("only a 5xx retries — a 2xx/3xx relay is not a server failure", () => {
+    expect(
+      isTransientProviderRejection("API Error: 302 Provider returned error"),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("API Error: 200 Provider returned error"),
+    ).toBe(false);
   });
 
   test("a 400 that describes the request stays fatal", () => {

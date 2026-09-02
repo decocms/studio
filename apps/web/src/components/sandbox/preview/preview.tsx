@@ -85,6 +85,7 @@ import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-k
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
 import {
   buildGlobalSectionPreviewUrl,
+  buildPageRenderRequest,
   DRAFT_OFF,
   resolveSectionPreviewBase,
   withDraftPointer,
@@ -748,6 +749,34 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? productionOrigin
       : previewOrigin(previewUrl);
 
+  /**
+   * Fast Preview in-place editing: while the Blocks panel is open on a Fast
+   * Preview (production) frame, edits refresh the frame by POSTing the merged
+   * decofile to /live/previews (an in-place DOM swap, no commit, no reload — see
+   * the `cms-editor::render` trigger below). The autosave commit still runs, but
+   * its version bump must NOT reload the frame — that reload is the ~15s round
+   * trip this path avoids — so the draft URL's version is pinned while editing in
+   * place, and re-tracks live once the panel closes.
+   */
+  const inPlaceRenderEnabled =
+    inset?.entity?.id === virtualMcpId &&
+    inset.entity.metadata?.fastPreviewInPlace === true;
+  const inPlaceRenderActive =
+    display.mode === "production" &&
+    fastPreviewEnabled &&
+    inPlaceRenderEnabled &&
+    editingMode === "blocks";
+  const pinnedDraftUrlRef = useRef<string | null>(null);
+  if (!inPlaceRenderActive) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- track the live draft URL while not editing in place; pin it while editing
+    pinnedDraftUrlRef.current = draftPreviewUrl;
+  }
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the value pinned during this same render (written just above when inactive)
+  const pinnedDraftUrl = pinnedDraftUrlRef.current;
+  const effectiveDraftPreviewUrl = inPlaceRenderActive
+    ? (pinnedDraftUrl ?? draftPreviewUrl)
+    : draftPreviewUrl;
+
   const iframeSrc = withDecoFBT(
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
@@ -766,7 +795,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               // Waking pill up ⇒ no draft is renderable yet, so ask for published.
               withDraftPointer(
                 directPreviewUrl ??
-                  draftPreviewUrl ??
+                  effectiveDraftPreviewUrl ??
                   resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
                   display.iframeBase!,
                 display.showWakingPill ? DRAFT_OFF : null,
@@ -991,6 +1020,111 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   }, [draftPreviewUrl, iframeSrc]);
 
+  // Post the current page's merged decofile to the frame for an in-place render.
+  const renderPreviewInPlace = () => {
+    const win = previewIframeRef.current?.contentWindow;
+    const origin = editorBridgeOrigin;
+    if (!win || !origin || !decofile || !currentPageKey) return;
+    const pageBlock = decofile[currentPageKey];
+    if (!pageBlock || typeof pageBlock !== "object") return;
+    const req = buildPageRenderRequest({
+      previewBaseUrl: origin,
+      pageBlock: pageBlock as Record<string, unknown>,
+      decofile: decofile as Record<string, unknown>,
+      path: resolvedPath,
+      pathTemplate: currentPath,
+    });
+    if (!req) return;
+    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
+    const src = withVariantMatcherOverride(
+      req.src,
+      workspace.state.variantOverride ?? [],
+    );
+    win.postMessage(
+      { type: "cms-editor::render", src, body: req.body },
+      origin,
+    );
+  };
+
+  /**
+   * Refresh the in-place render on a content or page/path change. The frame's
+   * `src` is pinned here, so a page switch can't navigate it — the signature
+   * folds in page + path to fire a render, deduped so onMutate + onSuccess
+   * render once.
+   */
+  const renderSigRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative postMessage refresh of a cross-origin frame on content/page change
+  useEffect(() => {
+    if (
+      !inPlaceRenderActive ||
+      activeGlobalSection ||
+      activeLoaderKey ||
+      !currentPageKey ||
+      !decofile
+    ) {
+      renderSigRef.current = null;
+      return;
+    }
+    const sig = JSON.stringify({
+      page: currentPageKey,
+      path: resolvedPath,
+      pathTemplate: currentPath,
+      decofile,
+    });
+    if (renderSigRef.current === sig) return;
+    const isBaseline = renderSigRef.current === null;
+    renderSigRef.current = sig;
+    // The frame already shows this content via its src; only edits after it render.
+    if (isBaseline) return;
+    renderPreviewInPlace();
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- renderPreviewInPlace reads live values; retrigger only on content/page change
+  }, [
+    decofile,
+    inPlaceRenderActive,
+    activeGlobalSection,
+    activeLoaderKey,
+    currentPageKey,
+    resolvedPath,
+    currentPath,
+  ]);
+
+  /**
+   * Re-run the in-place render on a variant switch. Under Fast Preview in-place
+   * mode the frame is pinned (no reload on the reload-based `iframeSrc`), and a
+   * variant switch only changes `x-deco-matchers-override` — a query param, not
+   * the decofile — so the content-change effect above never fires for it. Post a
+   * fresh `/live/previews` render instead, so each variant selection reaches the
+   * frame. Page-scoped baseline: a page switch (which clears the override) is not
+   * a switch to render — the frame's own src already carries the new page's variant.
+   */
+  const variantRenderRef = useRef<{ page: string; sig: string } | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative in-place re-render on variant change; the pinned frame won't reload
+  useEffect(() => {
+    if (
+      !inPlaceRenderActive ||
+      activeGlobalSection ||
+      activeLoaderKey ||
+      !currentPageKey ||
+      !decofile
+    ) {
+      variantRenderRef.current = null;
+      return;
+    }
+    const sig = JSON.stringify(workspace.state.variantOverride ?? null);
+    const prev = variantRenderRef.current;
+    variantRenderRef.current = { page: currentPageKey, sig };
+    // Baseline (first run or page switch): the frame's src already reflects this variant.
+    if (!prev || prev.page !== currentPageKey || prev.sig === sig) return;
+    renderPreviewInPlace();
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- renderPreviewInPlace reads live values; retrigger only on variant change
+  }, [
+    workspace.state.variantOverride,
+    inPlaceRenderActive,
+    activeGlobalSection,
+    activeLoaderKey,
+    currentPageKey,
+  ]);
+
   // Daemon is reachable independent of the dev script: ready claim, handle
   // still present, not user-stopped. Gates surfaces (FileExplorer,
   // terminal) that talk to the daemon's HTTP API and don't need a dev server.
@@ -1027,6 +1161,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             index: result.data.sectionIndex,
             seq: result.data.clickSeq,
           });
+      } else if (e.data?.type === "cms-editor::render-start") {
+        beginNavigation();
+      } else if (
+        e.data?.type === "cms-editor::render-end" ||
+        e.data?.type === "cms-editor::render-error"
+      ) {
+        endNavigation();
       }
     };
     window.addEventListener("message", handler);

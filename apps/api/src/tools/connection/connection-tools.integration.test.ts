@@ -118,6 +118,7 @@ describe("Connection Tools", () => {
         jiraIntegrations: null as never,
         taskBoard: null as never,
         sprints: null as never,
+        taskBoardPrompts: null as never,
         columnAutomations: null as never,
         boardColumns: null as never,
         notifications: null as never,

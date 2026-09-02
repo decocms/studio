@@ -1651,6 +1651,14 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** The card's issue in the tracker it came from (`{site}/browse/{KEY}`), for
+   *  a human to open. Written by the Jira pull; null for a card Studio owns.
+   *  Deliberately NOT in the description — see migration 198. */
+  external_url: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) — the
    *  import refreshes an OPEN item with the same key instead of duplicating
    *  it. Null for human-created cards. */
@@ -1738,7 +1746,25 @@ export interface TaskBoardColumnTable {
   /** Tracker statuses this column groups, in the tracker's own order. A Jira
    *  column is a bucket of statuses, not one status, so the push needs the
    *  whole list to pick a reachable transition. Empty for Studio's columns. */
-  tracker_statuses: ColumnType<string[], string[] | undefined, string[]>;
+  tracker_statuses: ColumnType<string[], string | undefined, string>;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/**
+ * Instructions appended to the system prompt of every agent run dispatched
+ * from a board card (migration 197). `column_key` null is the org-wide row;
+ * a non-null key scopes the text to one column.
+ *
+ * Distinct from `TaskBoardColumnAutomationTable` below: that one's `prompt` is
+ * the opening USER instruction of the run a column rule fires, this one is
+ * standing context every run carries.
+ */
+export interface TaskBoardPromptTable {
+  id: string;
+  organization_id: string;
+  column_key: string | null;
+  prompt: string;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -1964,6 +1990,9 @@ export interface TaskBoardItem {
   /** The key this card's issue wears in the tracker (`EX-333`), for a card that
    *  came from one — attached on reads, null for a card Studio owns. */
   jiraIssueKey: string | null;
+  /** Link to that issue in the tracker, for a human to open. Never part of the
+   *  description, which is quoted into agent prompts verbatim. */
+  externalUrl: string | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
@@ -2308,6 +2337,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_sprints: TaskBoardSprintTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_columns: TaskBoardColumnTable;
+  task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;

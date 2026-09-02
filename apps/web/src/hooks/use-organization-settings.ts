@@ -1,4 +1,6 @@
 import { useProjectContext, WellKnownOrgMCPId } from "@/sdk";
+import { authClient } from "@/lib/auth-client";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import {
   useMutation,
   useQuery,
@@ -257,6 +259,56 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
     orgFlagEnabled(s.flags, flag),
   );
   return data ?? DEFAULT_ON_FLAGS.has(flag);
+}
+
+/** deco.cx staff — the internal audience the in-flight surfaces open to first. */
+function isDecoStaffEmail(email: string | null | undefined): boolean {
+  return !!email && email.trim().toLowerCase().endsWith("@deco.cx");
+}
+
+/** The three control-plane views, each toggled by its own org flag. */
+export interface ControlPlaneViews {
+  hosting: boolean;
+  analytics: boolean;
+  e2e: boolean;
+  monitor: boolean;
+}
+
+/**
+ * Per-view gate for the Deco control-plane tabs (Hosting · Deco Analytics ·
+ * E2E). Each view is enabled when ANY of these is on:
+ *  - local mode — always in local dev (deco-infra feature, never self-hosted,
+ *    so no reason to hide it from a developer whose deployment wired the BFF);
+ *  - deco.cx staff (by email) — always, while the surface rolls out;
+ *  - a deployment-wide GA switch — the "open to every org at once" env: the
+ *    control-plane trio (Hosting/Analytics/E2E) shares `HOSTING_CONTROL_PLANE_GA`;
+ *    Monitor has its own `MONITOR_GA`;
+ *  - the view's own org flag (`hosting_enabled` / `deco_analytics_enabled` /
+ *    `e2e_enabled` / `monitor_enabled`) — the per-client lever set via
+ *    `organization_settings`.
+ *
+ * A client never sees a view — even an org admin — until deco.cx turns that
+ * view's flag (or GA) on; deco.cx controls the rollout. Product gating only —
+ * the BFF still enforces deployment wiring, per-site ownership, and org
+ * membership server-side.
+ */
+export function useControlPlaneViews(): ControlPlaneViews {
+  const { data: session } = authClient.useSession();
+  const config = usePublicConfig();
+  const staffOrLocal =
+    config.auth.localMode === true || isDecoStaffEmail(session?.user?.email);
+  const controlPlaneGa = config.hostingControlPlaneGa === true;
+  const monitorGa = config.monitorGa === true;
+  const hostingFlag = useOrgFlag("hosting_enabled");
+  const analyticsFlag = useOrgFlag("deco_analytics_enabled");
+  const e2eFlag = useOrgFlag("e2e_enabled");
+  const monitorFlag = useOrgFlag("monitor_enabled");
+  return {
+    hosting: staffOrLocal || controlPlaneGa || hostingFlag,
+    analytics: staffOrLocal || controlPlaneGa || analyticsFlag,
+    e2e: staffOrLocal || controlPlaneGa || e2eFlag,
+    monitor: staffOrLocal || monitorGa || monitorFlag,
+  };
 }
 
 /**

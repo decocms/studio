@@ -66,6 +66,19 @@ describe("release change classification", () => {
     }
   });
 
+  /** The harness runner is packed into the sandbox image, which is tagged from
+   *  packages/sandbox/package.json. Bumping only the runner leaves the tag
+   *  where it is, the rebuild overwrites it in place, and nodes holding the
+   *  cached layer keep running the old code — #6816 reached 4 of 21 prod pods. */
+  test("a harness-runner change also bumps the sandbox manifest", () => {
+    expect(
+      releaseManifestCandidates(["packages/harness-runner/main.ts"]),
+    ).toEqual([
+      "packages/harness-runner/package.json",
+      "packages/sandbox/package.json",
+    ]);
+  });
+
   test("maps release inputs to sorted, deduplicated manifests", () => {
     const files = [
       "packages/ui/src/button.tsx",

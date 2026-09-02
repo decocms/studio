@@ -567,6 +567,10 @@ export const sandbox = {
     "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
+  "sandbox.cmsSettings.fastPreviewInPlace.label":
+    "Instant preview (experimental)",
+  "sandbox.cmsSettings.fastPreviewInPlace.description":
+    "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.cmsSettings.contentEditing.description":
     "Whether this agent offers a CMS, and where the preview lands when it does.",
@@ -732,6 +736,7 @@ export const sandbox = {
   "sandbox.submoduleCredentialsField.tokenLabel": "Personal access token",
   "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
   "sandbox.toolbar.closeTab": "Close {tab}",
+  "sandbox.toolbar.moreActions": "More actions",
   "sandbox.toolbar.noScriptsFound": "No scripts found",
   "sandbox.toolbar.restart": "Restart",
   "sandbox.toolbar.resume": "Resume",

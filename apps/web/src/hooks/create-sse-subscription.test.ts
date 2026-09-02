@@ -12,7 +12,9 @@ class FakeEventSource {
     FakeEventSource.instances.push(this);
   }
   addEventListener(): void {}
-  close(): void {}
+  close(): void {
+    this.readyState = FakeEventSource.CLOSED;
+  }
 }
 
 describe("createSSESubscription", () => {
@@ -44,5 +46,23 @@ describe("createSSESubscription", () => {
     expect(FakeEventSource.instances[0]?.url).toBe("/watch/org1");
 
     unsubscribe();
+  });
+
+  it("dispose() closes every live connection", () => {
+    // Lets a call site's own import.meta.hot tear this down on reload.
+    const sub = createSSESubscription({
+      buildUrl: (key) => `/watch/${key}`,
+      eventTypes: ["foo"],
+    });
+
+    sub.subscribe("org1", () => {});
+    sub.subscribe("org2", () => {});
+    expect(FakeEventSource.instances.length).toBe(2);
+
+    sub.dispose();
+
+    for (const es of FakeEventSource.instances) {
+      expect(es.readyState).toBe(FakeEventSource.CLOSED);
+    }
   });
 });

@@ -10,6 +10,15 @@ import {
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 
+/** Studio's own board, which is what these fixtures run on. */
+const CANON_LANES = {
+  intake: "triage",
+  queue: "todo",
+  progress: "in_progress",
+  review: "in_review",
+  archive: "archived",
+};
+
 type LinkPrCall = {
   taskBoardItemId: string;
   organizationId: string;
@@ -212,6 +221,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     sortOrder: 0,
     keySeq: 1,
     jiraIssueKey: null,
+    externalUrl: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],
@@ -230,6 +240,9 @@ describe("handTaskToHuman", () => {
     const activityCalls: unknown[] = [];
     const ctx = {
       storage: {
+        // The hand-off parks the card first, and parking asks the board where
+        // its review column is. No settings row = Studio's own board.
+        organizationSettings: { get: async () => null },
         taskBoard: {
           unassignSuperAgent: async () => makeItem({ assigneeId: null }),
           recordActivity: async (p: unknown) => {
@@ -300,13 +313,13 @@ describe("reactToFailedTaskRun on a card that already moved on", () => {
 
   it("relabels the failure and schedules nothing", async () => {
     const { taskBoard, calls } = fakeBoard("in_review");
-    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1");
+    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1", CANON_LANES);
     expect(calls).toEqual(["relabel"]);
   });
 
   it("still retries a card that is genuinely mid-work", async () => {
     const { taskBoard, calls } = fakeBoard("in_progress");
-    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1");
+    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1", CANON_LANES);
     expect(calls).toEqual(["retry"]);
   });
 });

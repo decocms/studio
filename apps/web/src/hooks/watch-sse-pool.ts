@@ -39,6 +39,11 @@ const watchSSE: SSESubscription = createSSESubscription({
   crossTab: true,
 });
 
+// This module's own `import.meta.hot` — fires when THIS file hot-reloads.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => watchSSE.dispose());
+}
+
 /** Decopilot thread events (step / finish / thread.status). */
 export const decopilotWatchView: SSESubscription = filterEventTypes(watchSSE, [
   ...ALL_DECOPILOT_EVENT_TYPES,

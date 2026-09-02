@@ -14,6 +14,13 @@
  */
 
 import { generateObject } from "ai";
+import type { BoardColumn } from "@decocms/shared/task-board";
+import {
+  type BoardLanes,
+  boardCan,
+  boardFor,
+  canAdvance,
+} from "./board-handler";
 import { z } from "zod";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -22,15 +29,6 @@ import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
-
-/** Statuses from which a PR-open may put a card into the review phase. Terminal
- *  lanes (and in_review itself) are left alone so a re-opened PR never regresses
- *  a finished card. */
-const ADVANCEABLE: ReadonlySet<string> = new Set([
-  "triage",
-  "todo",
-  "in_progress",
-]);
 
 export interface BoardDecision {
   action: "create" | "update";
@@ -75,7 +73,10 @@ const SYSTEM = `You maintain a team's task board. A coding agent just opened a p
 - If no existing card covers it, choose \`create\` and return a short \`title\` describing the change.
 - Optionally add a one-line \`comment\` for the reviewer. Leave it empty when there is nothing worth saying.
 
-Be conservative about creating: when a plausible card already exists, prefer \`update\`.`;
+Be conservative about creating: when a plausible card already exists, prefer \`update\`.
+
+Respond with ONLY a JSON object of this shape, and nothing else:
+{"action": "create" | "update", "taskId": string | null, "title": string | null, "comment": string | null}`;
 
 /**
  * Ask the org's cheap "fast" tier whether this PR maps to an existing card.
@@ -133,9 +134,28 @@ export async function applyBoardDecision(
     decision: BoardDecision;
     /** The card set the decision was made against (this org's), for taskId validation. */
     openCards: TaskBoardItem[];
+    /** This org's board lanes. */
+    lanes: BoardLanes;
+    /** Its columns, in the board's own order — what decides whether a card has
+     *  already got past the lane a PR-open would move it to. */
+    columns: readonly BoardColumn[];
+    /** What a freshly-created card's `board_column_org` must carry — see
+     *  {@link BoardHandler.columnOwner}. Null wakes nothing; the org id wakes
+     *  the FK guard for a board whose lanes are the org's own columns. */
+    columnOwner: string | null;
   },
 ): Promise<TaskBoardItem | null> {
-  const { orgId, userId, threadId, pr, decision, openCards } = params;
+  const {
+    orgId,
+    userId,
+    threadId,
+    pr,
+    decision,
+    openCards,
+    lanes,
+    columns,
+    columnOwner,
+  } = params;
 
   const linkPr = (taskBoardItemId: string) =>
     storage.linkPr({
@@ -155,36 +175,58 @@ export async function applyBoardDecision(
 
   let item: TaskBoardItem | null;
   if (target) {
-    // Enter the review phase only from an earlier lane; never regress a finished card.
-    const advancing = ADVANCEABLE.has(target.status);
-    // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's.
-    const claimSuperAgent = advancing && target.assigneeId == null;
-    item = await storage.update(
-      target.id,
-      orgId,
-      {
-        // In Progress, not In Review: a reviewer is about to work on this PR,
-        // and In Review is what the board says once it is a person's turn.
-        // The open cycle below is what puts it on the reviewer's work list.
-        status: advancing ? "in_progress" : undefined,
-        ...(claimSuperAgent
-          ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
-          : {}),
-      },
-      userId,
-    );
-    if (advancing) await storage.openReviewCycleIfInProgress(target.id, orgId);
+    // Enter the review phase only from an earlier lane; never regress a finished
+    // card — and only onto a lane this board HAS. A null `advanceTo` is
+    // "nowhere to advance to", and skips the claim and the review cycle with it.
+    const progressLane = lanes.progress;
+    // The LANE, not a boolean: `boardCan` narrows `progressLane` inside this
+    // expression, and a boolean would not carry that to the write below.
+    const advanceTo =
+      boardCan(
+        orgId,
+        "in_progress",
+        progressLane,
+        "moving a card when its PR opens",
+      ) && canAdvance(columns, target.status, progressLane)
+        ? progressLane
+        : null;
+    // In Progress, not In Review: a reviewer is about to work on this PR, and
+    // In Review is what the board says once it is a person's turn. The open
+    // cycle below is what puts it on the reviewer's work list. The move also
+    // claims an unowned card for the Super Agent (reviewer dispatch gates on
+    // it) — never a human's. One fenced write, because `target` predates the
+    // LLM call above: a card someone moved since must not be dragged back.
+    const advanced =
+      advanceTo === null
+        ? null
+        : await storage.advanceToProgressOnPrOpen(
+            target.id,
+            orgId,
+            target.status,
+            advanceTo,
+            userId,
+          );
+    if (advanced) {
+      await storage.openReviewCycleIfInProgress(target.id, orgId, lanes);
+    }
+    // Lost the race (or nowhere to advance): link the PR onto the card as it
+    // now stands rather than dropping the whole reaction.
+    item = advanced ?? (await storage.getById(target.id, orgId));
   } else {
     // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
       organizationId: orgId,
       title: decision.title?.trim() || `PR #${pr.number}`,
-      status: "in_progress",
+      // A card born mid-review with no in-progress column starts at intake —
+      // the one lane every board has.
+      status: lanes.progress ?? lanes.intake,
+      // Same `{ status, boardColumnOrg }` pairing `shippedPatch` enforces elsewhere.
+      boardColumnOrg: columnOwner,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
       by: userId,
     });
-    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId);
+    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId, lanes);
   }
   if (!item) return null;
 
@@ -240,7 +282,11 @@ export async function reactToPrOpenedForBoard(
     );
     if (!decision) return;
 
+    const board = await boardFor(ctx, orgId);
     await applyBoardDecision(ctx.storage.taskBoard, {
+      lanes: await board.lanes(),
+      columns: await board.columns(),
+      columnOwner: board.columnOwner(),
       orgId,
       userId,
       threadId,

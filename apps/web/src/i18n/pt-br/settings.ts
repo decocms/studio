@@ -49,7 +49,34 @@ export const settings = {
   "settings.jira.rolesLabel": "O que cada coluna significa",
   "settings.jira.rolesDescription":
     "As colunas do seu board vêm do Jira. Diga ao Studio qual delas é onde a revisão acontece, e qual arquiva um card — a maioria não significa nada pra ele, e tudo bem.",
+  "settings.boardColumns.title": "Colunas do board",
+  "settings.boardColumns.description":
+    "As colunas são do seu tracker. Diga o que deve mover um card para cada uma, e quais delas devem colocar o agente para trabalhar.",
+  "settings.boardColumns.fieldLabel": "Colunas",
+  "settings.boardColumns.fieldDescription":
+    "O Studio move o card para cá quando a coisa que você escolher acontecer. Rodar o agente é separado: é o que o card faz ao chegar.",
+  "settings.boardColumns.moveHereWhen": "Mover cards para cá quando",
+  "settings.boardColumns.whenNever": "Nada — eu movo os cards para cá na mão",
+  "settings.boardColumns.whenRunStarts":
+    "Um run começa nele, ou um pull request é aberto",
+  "settings.boardColumns.whenRunFinishes": "O run do agente termina",
+  "settings.boardColumns.whenMergedAndSettled":
+    "Os pull requests dele mergeiam e ele fica cinco dias sem ninguém mexer",
+  "settings.boardColumns.whenRunFailsOut":
+    "Um run falha sem tentativas restantes",
+  "settings.boardColumns.addAutomation":
+    "Rodar o agente nos cards que chegarem aqui",
+  "settings.boardColumns.automationOn": "O agente roda em todo card que chega",
+  "settings.boardColumns.promptPlaceholder":
+    "Revise o diff e deixe comentários…",
+  "settings.boardColumns.promptHelp":
+    "Opcional. O título e a descrição do card sempre vão junto, então isto é a instrução, não a mensagem inteira.",
+  "settings.boardColumns.removeAriaLabel":
+    "Parar de rodar o agente em {column}",
+  "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",
   "settings.jira.roleNone": "Nada em especial",
+  "settings.jira.roleQueued": "Pra onde volta se o agente desistir",
+  "settings.jira.roleInProgress": "Em progresso",
   "settings.jira.roleInReview": "Em revisão",
   "settings.jira.roleArchived": "Arquivo",
   "settings.jira.noColumnsYet":
@@ -122,6 +149,7 @@ export const settings = {
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Agentes",
   "settings.nav.automations": "Automações",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Loja",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
@@ -175,6 +203,39 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Importar skill",
+  "settings.skills.importing": "Importando\u2026",
+  "settings.skills.importSuccess": '"{name}" importada',
+  "settings.skills.importError": "Falha ao importar a skill",
+  "settings.skills.importMissingSkillMd":
+    "Essa pasta n\u00e3o tem um SKILL.md na raiz. Selecione a pasta da pr\u00f3pria skill.",
+  "settings.skills.importNeedsFolder":
+    "Selecione uma pasta, não arquivos individuais — este navegador pode não suportar upload de pastas.",
+  "settings.skills.searchPlaceholder": "Pesquisar skills...",
+  "settings.skills.noDescription": "Sem descri\u00e7\u00e3o",
+  "settings.skills.filterAll": "Todas",
+  "settings.skills.emptyTitle": "Nenhuma skill ainda",
+  "settings.skills.emptyDescription":
+    "Importe uma pasta com um SKILL.md para dar aos seus agentes instru\u00e7\u00f5es reutiliz\u00e1veis que eles podem carregar sob demanda.",
+  "settings.skills.noResultsTitle": "Nenhuma skill encontrada",
+  "settings.skills.noResultsDescription":
+    'Nenhuma skill corresponde a "{search}"',
+  "settings.skills.cancel": "Cancelar",
+  "settings.skills.deleteButton": "Excluir",
+  "settings.skills.deleteDialogTitle": "Excluir esta skill?",
+  "settings.skills.deleteDialogDescription":
+    'Isso remove "{name}" e seus arquivos. Essa a\u00e7\u00e3o n\u00e3o pode ser desfeita.',
+  "settings.skills.deleteSuccess": "Skill exclu\u00edda",
+  "settings.skills.deleteError": "Falha ao excluir a skill",
+  "settings.skills.importTooManyFiles":
+    "Essa pasta tem {count} arquivos (limite {max}). Importe uma pasta com apenas os arquivos da skill.",
+  "settings.skills.importSlugTaken":
+    'Já existe uma skill chamada "{slug}". Exclua-a antes de reimportar.',
+  "settings.skills.errorTitle": "Não foi possível carregar as skills",
+  "settings.skills.errorDescription":
+    "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
+  "settings.skills.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",
@@ -502,6 +563,14 @@ export const settings = {
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.fieldLabel": "Instru\u00e7\u00f5es",
+  "settings.taskPrompt.placeholder":
+    "ex.: Use pnpm, nunca npm. Nunca edite arquivos em src/generated/.",
+  "settings.taskPrompt.save": "Salvar",
+  "settings.taskPrompt.saved": "System prompt salvo",
+  "settings.taskPrompt.failed":
+    "N\u00e3o foi poss\u00edvel salvar o system prompt",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
     "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",
@@ -839,24 +908,6 @@ export const settings = {
     "Deco AI Gateway conectado com sucesso",
   "settings.aiProviders.decoConnectError":
     "Falha ao conectar o Deco AI Gateway: {error}",
-  "settings.billing.autoTasksTitle": "Tarefas automáticas",
-  "settings.billing.unlimitedDescription":
-    "As execuções de tarefas automáticas são ilimitadas neste deployment. Tarefas criadas por você também nunca têm limite.",
-  "settings.billing.autoTasksDescriptionTrial":
-    "3 execuções grátis vitalícias, depois R$ 250/mês para 10 execuções por ciclo de cobrança.",
-  "settings.billing.autoTasksDescriptionSubscribed":
-    "10 execuções de tarefas automáticas por ciclo de cobrança. Tarefas criadas por você nunca têm limite.",
-  "settings.billing.statusTrial": "Teste grátis",
-  "settings.billing.statusActive": "Ativa",
-  "settings.billing.statusPastDue": "Problema no pagamento",
-  "settings.billing.runsUsedLabel": "execuções usadas",
-  "settings.billing.renewsOn": "Renova em {date}",
-  "settings.billing.subscribeButton": "Assinar",
-  "settings.billing.manageButton": "Gerenciar cobrança",
-  "settings.billing.checkoutError":
-    "Não foi possível iniciar o checkout: {message}",
-  "settings.billing.portalError":
-    "Não foi possível abrir o portal de cobrança: {message}",
 
   "settings.infraBilling.noSites":
     "Esta organização ainda não é dona de nenhum site deco.cx.",

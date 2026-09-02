@@ -47,7 +47,33 @@ export const settings = {
   "settings.jira.rolesLabel": "What each column means",
   "settings.jira.rolesDescription":
     "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
+  "settings.boardColumns.title": "Board columns",
+  "settings.boardColumns.description":
+    "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
+  "settings.boardColumns.fieldLabel": "Columns",
+  "settings.boardColumns.fieldDescription":
+    "Studio moves a card here when the thing you pick happens. Running the agent is separate: that is what the card does on arrival.",
+  "settings.boardColumns.moveHereWhen": "Move cards here when",
+  "settings.boardColumns.whenNever": "Nothing — I move cards here myself",
+  "settings.boardColumns.whenRunStarts":
+    "A run starts on it, or a pull request opens",
+  "settings.boardColumns.whenRunFinishes": "The agent's run finishes",
+  "settings.boardColumns.whenMergedAndSettled":
+    "Its pull requests merged and it sat untouched for five days",
+  "settings.boardColumns.whenRunFailsOut": "A run fails with no retries left",
+  "settings.boardColumns.addAutomation":
+    "Run the agent on cards that arrive here",
+  "settings.boardColumns.automationOn":
+    "The agent runs on every card that arrives",
+  "settings.boardColumns.promptPlaceholder":
+    "Review the diff and leave comments…",
+  "settings.boardColumns.promptHelp":
+    "Optional. The card's title and description always come with it, so this is the instruction, not the whole message.",
+  "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
+  "settings.boardColumns.saveFailed": "Could not save this column",
   "settings.jira.roleNone": "Nothing special",
+  "settings.jira.roleQueued": "Where the agent gives up",
+  "settings.jira.roleInProgress": "Being worked on",
   "settings.jira.roleInReview": "Under review",
   "settings.jira.roleArchived": "Archive",
   "settings.jira.noColumnsYet":
@@ -118,6 +144,7 @@ export const settings = {
   "settings.nav.connections": "Connections",
   "settings.nav.agents": "Agents",
   "settings.nav.automations": "Automations",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Store",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
@@ -170,6 +197,38 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Import skill",
+  "settings.skills.importing": "Importing…",
+  "settings.skills.importSuccess": 'Imported "{name}"',
+  "settings.skills.importError": "Failed to import skill",
+  "settings.skills.importMissingSkillMd":
+    "That folder has no SKILL.md at its root. Pick the skill's own folder.",
+  "settings.skills.importNeedsFolder":
+    "Pick a folder, not individual files — this browser may not support folder upload.",
+  "settings.skills.searchPlaceholder": "Search skills...",
+  "settings.skills.noDescription": "No description",
+  "settings.skills.filterAll": "All",
+  "settings.skills.emptyTitle": "No skills yet",
+  "settings.skills.emptyDescription":
+    "Import a folder with a SKILL.md to give your agents reusable instructions they can load on demand.",
+  "settings.skills.noResultsTitle": "No skills found",
+  "settings.skills.noResultsDescription": 'No skills match "{search}"',
+  "settings.skills.cancel": "Cancel",
+  "settings.skills.deleteButton": "Delete",
+  "settings.skills.deleteDialogTitle": "Delete this skill?",
+  "settings.skills.deleteDialogDescription":
+    'This removes "{name}" and its files. This can\'t be undone.',
+  "settings.skills.deleteSuccess": "Skill deleted",
+  "settings.skills.deleteError": "Failed to delete skill",
+  "settings.skills.importTooManyFiles":
+    "That folder has {count} files (limit {max}). Import a folder with just the skill's own files.",
+  "settings.skills.importSlugTaken":
+    'A skill named "{slug}" already exists. Delete it first to re-import.',
+  "settings.skills.errorTitle": "Couldn't load skills",
+  "settings.skills.errorDescription":
+    "The skill catalog could not be loaded. You may not have access to this org's files.",
+  "settings.skills.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",
@@ -485,6 +544,13 @@ export const settings = {
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.fieldLabel": "Instructions",
+  "settings.taskPrompt.placeholder":
+    "e.g. Use pnpm, never npm. Never edit files under src/generated/.",
+  "settings.taskPrompt.save": "Save",
+  "settings.taskPrompt.saved": "System prompt saved",
+  "settings.taskPrompt.failed": "Couldn't save the system prompt",
   "settings.agentTools.title": "Agent tools",
   "settings.agentTools.description":
     "What a coding-agent run reaches beyond the repository it is working in.",
@@ -796,22 +862,6 @@ export const settings = {
     "Deco AI Gateway connected successfully",
   "settings.aiProviders.decoConnectError":
     "Failed to connect Deco AI Gateway: {error}",
-  "settings.billing.autoTasksTitle": "Auto tasks",
-  "settings.billing.unlimitedDescription":
-    "Auto-task runs are unlimited on this deployment. Tasks you create yourself are never limited either.",
-  "settings.billing.autoTasksDescriptionTrial":
-    "3 free lifetime runs, then $50/month for 10 runs per billing cycle.",
-  "settings.billing.autoTasksDescriptionSubscribed":
-    "10 auto-task runs per billing cycle. Tasks you create yourself are never limited.",
-  "settings.billing.statusTrial": "Free trial",
-  "settings.billing.statusActive": "Active",
-  "settings.billing.statusPastDue": "Payment issue",
-  "settings.billing.runsUsedLabel": "runs used",
-  "settings.billing.renewsOn": "Renews {date}",
-  "settings.billing.subscribeButton": "Subscribe",
-  "settings.billing.manageButton": "Manage billing",
-  "settings.billing.checkoutError": "Couldn't start checkout: {message}",
-  "settings.billing.portalError": "Couldn't open billing portal: {message}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",

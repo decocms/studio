@@ -32,6 +32,11 @@ import {
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -48,6 +53,7 @@ import {
   FilterLines,
   Repeat04,
   SearchSm,
+  Settings02,
   Tag01,
   User01,
   X,
@@ -227,6 +233,22 @@ export function matchesTaskKey(
   return keySeq != null && parseTaskKeySeq(term) === keySeq;
 }
 
+/**
+ * Whether a card belongs to `userId`, delegation included.
+ *
+ * Handing a card to the Super Agent does not hand it away: the board renders
+ * the delegator's avatar beside the capybara, so a card that reads as "mine and
+ * the Super Agent's" has to survive filtering by me. Delegation counts only on
+ * Super Agent cards — `assignedBy` is stamped on every assignee change, so a
+ * card one teammate assigned to another is the assignee's, not the assigner's.
+ */
+function assignedTo(item: TaskBoardItem, userId: string): boolean {
+  if (item.assigneeId === userId) return true;
+  return (
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID && item.assignedBy === userId
+  );
+}
+
 export function taskMatchesFilters(
   item: TaskBoardItem,
   f: TaskFilters,
@@ -244,7 +266,7 @@ export function taskMatchesFilters(
   if (f.assignee !== null) {
     if (f.assignee === UNASSIGNED_FILTER) {
       if (item.assigneeId !== null) return false;
-    } else if (item.assigneeId !== f.assignee) {
+    } else if (!assignedTo(item, f.assignee)) {
       return false;
     }
   }
@@ -848,6 +870,48 @@ function SearchToggle({
   );
 }
 
+/**
+ * Button to the board's settings page. Navigation itself is the caller's
+ * job (passed in as `onClick`) — this component stays presentational like
+ * the rest of the bar, with no router or org dependency of its own.
+ *
+ * Icon-only with a hover tooltip in the inline bar; in the mobile drawer
+ * (`block`) the tooltip never shows (Radix tooltips are hover/focus-only,
+ * and drawer taps are touch), so it renders the label as text instead, like
+ * every other drawer control.
+ */
+function BoardSettingsButton({
+  block,
+  onClick,
+}: {
+  block?: boolean;
+  onClick: () => void;
+}) {
+  const t = useT();
+  const label = t("taskBoard.taskFilters.boardSettingsLabel");
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={cn(
+        chipClass(false, block),
+        block ? "h-10 w-full" : "w-8 justify-center px-0",
+      )}
+    >
+      <Settings02 size={14} className="shrink-0" />
+      {block && <span>{label}</span>}
+    </button>
+  );
+  if (block) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** The filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
@@ -856,6 +920,7 @@ function FilterControls({
   repos,
   sprints,
   onChange,
+  onOpenBoardSettings,
   block,
 }: {
   filters: TaskFilters;
@@ -864,6 +929,7 @@ function FilterControls({
   repos: string[];
   sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
   block?: boolean;
 }) {
   return (
@@ -917,6 +983,7 @@ function FilterControls({
           onChange={(sprint) => onChange({ ...filters, sprint })}
         />
       )}
+      <BoardSettingsButton block={block} onClick={onOpenBoardSettings} />
     </>
   );
 }
@@ -929,6 +996,7 @@ export function TaskFiltersBar({
   repos,
   sprints,
   onChange,
+  onOpenBoardSettings,
 }: {
   filters: TaskFilters;
   members: Member[];
@@ -936,6 +1004,7 @@ export function TaskFiltersBar({
   repos: string[];
   sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
 }) {
   const t = useT();
   return (
@@ -951,6 +1020,7 @@ export function TaskFiltersBar({
         repos={repos}
         sprints={sprints}
         onChange={onChange}
+        onOpenBoardSettings={onOpenBoardSettings}
       />
       {hasActiveFilters(filters, currentSprintId(sprints)) && (
         <button
@@ -977,6 +1047,7 @@ export function TaskFiltersDrawer({
   repos,
   sprints,
   onChange,
+  onOpenBoardSettings,
 }: {
   filters: TaskFilters;
   members: Member[];
@@ -984,6 +1055,7 @@ export function TaskFiltersDrawer({
   repos: string[];
   sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -1015,6 +1087,7 @@ export function TaskFiltersDrawer({
             repos={repos}
             sprints={sprints}
             onChange={onChange}
+            onOpenBoardSettings={onOpenBoardSettings}
           />
         </div>
         <DrawerFooter className="flex-row gap-2">

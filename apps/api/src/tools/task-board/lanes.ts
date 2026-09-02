@@ -110,15 +110,25 @@ export function isTaggableMergedStatus(status: string): boolean {
  * of the phase whatever a stale cycle stamp says, so a missed `closeReviewCycle`
  * can never drag a merged card back into the sweeper's work.
  */
-export function inReviewPhase(item: {
-  status: string;
-  reviewCycleStartedAt: string | null;
-}): boolean {
+export function inReviewPhase(
+  item: {
+    status: string;
+    reviewCycleStartedAt: string | null;
+  },
+  /** The column this board parks a card in for review, or null when it has
+   *  none. Passed rather than assumed: on a board mirrored from a tracker the
+   *  lane is called whatever that tracker calls it, and comparing against
+   *  Studio's name reads every such card as out of the phase. */
+  reviewLane: string | null,
+): boolean {
   const rank = laneRank(item.status);
   // A column Studio did not define has no place in this order, so the rank
   // bound simply does not apply to it.
   if (rank !== null && rank > LANE_RANK.in_review) return false;
   // Truthiness, not `!== null`: an absent stamp must read as "no cycle", and
   // a partial item (a fixture, a projection) carries `undefined`, not `null`.
-  return item.status === "in_review" || Boolean(item.reviewCycleStartedAt);
+  return (
+    (reviewLane !== null && item.status === reviewLane) ||
+    Boolean(item.reviewCycleStartedAt)
+  );
 }

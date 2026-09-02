@@ -194,6 +194,11 @@ export const TaskBoardItemSchema = z.object({
   // came from one. It is what the card shows, because it is what people say
   // out loud about it. Null for a card Studio owns.
   jiraIssueKey: z.string().nullable(),
+  /** Link to that issue in the tracker (`{site}/browse/{KEY}`), for the UI to
+   *  render as a link. Kept OUT of `description` on purpose: the description is
+   *  quoted verbatim into every agent run's prompt, and a URL there is context
+   *  the run does not need and used to act on. Null for a card Studio owns. */
+  externalUrl: z.string().nullable(),
   // Infrastructure retries already spent on this card's runs — the budget
   // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
   // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:
