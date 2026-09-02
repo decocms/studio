@@ -565,6 +565,9 @@ export const KEYS = {
   // An org's feature flags (stored + effective) in the deployment-admin editor.
   deploymentAdminOrgFlags: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "flags"] as const,
+  // An org's owned site slugs (org_sites) in the deployment-admin editor.
+  deploymentAdminOrgSites: (orgId: string) =>
+    ["deployment-admin", "orgs", orgId, "sites"] as const,
 
   // Brand context (scoped by organization)
   defaultBrand: (organizationId: string) =>

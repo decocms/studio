@@ -58,6 +58,27 @@ export const admin = {
   "admin.orgs.save": "Salvar",
   "admin.orgs.saving": "Salvando...",
   "admin.orgs.searchPlaceholder": "Procure organizações por nome ou slug...",
+  "admin.orgs.anotherOrg": "outra organização",
+  "admin.orgs.close": "Fechar",
+  "admin.orgs.failedAddSite": "Falha ao adicionar site",
+  "admin.orgs.failedLoadSites": "Falha ao carregar sites",
+  "admin.orgs.failedRemoveSite": "Falha ao remover site",
+  "admin.orgs.invalidSiteSlug":
+    "Use letras minúsculas, dígitos e hifens (ex.: meu-site)",
+  "admin.orgs.loading": "Carregando...",
+  "admin.orgs.noSites": "Esta organização não é dona de nenhum site.",
+  "admin.orgs.reassignConfirm": "Mover site pra cá",
+  "admin.orgs.remove": "Remover",
+  "admin.orgs.siteAdded": "{slug} adicionado a {org}",
+  "admin.orgs.siteReassigned": "{slug} movido para {org}",
+  "admin.orgs.siteReassignWarning":
+    '"{slug}" pertence a {owner} e será movido para esta organização.',
+  "admin.orgs.siteRemoved": "{slug} removido de {org}",
+  "admin.orgs.siteSlugPlaceholder": "meu-site",
+  "admin.orgs.sites": "Sites",
+  "admin.orgs.sitesDescription":
+    "Slugs que esta organização possui. Ser dona de um slug habilita as abas de Hosting, E2E, Analytics e Monitor dele.",
+  "admin.orgs.sitesFor": "Posse de sites de {org}",
   "admin.prompts.description":
     "Estes prompts são fixos no código em {repo}. As edições aqui são lidas de {branch} e enviadas de volta como um pull request, usando a conexão do GitHub da sua organização {org}.",
   "admin.prompts.failedToLoadDescription":

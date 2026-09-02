@@ -826,6 +826,190 @@ test.describe("/api/_admin/*", () => {
     await outsiderCtx.dispose();
   });
 
+  test("sites: claim, list, release", async ({ playwright }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    const slug = `e2e-site-${Date.now()}`;
+
+    const claim = await adminCtx.post(`/api/_admin/orgs/${orgId}/sites`, {
+      data: { slug },
+    });
+    expect(claim.status()).toBe(200);
+    const claimBody = (await claim.json()) as {
+      site: { slug: string; organizationId: string; source: string };
+    };
+    expect(claimBody.site.slug).toBe(slug);
+    expect(claimBody.site.organizationId).toBe(orgId);
+    expect(claimBody.site.source).toBe("manual");
+
+    const ownerRow = await db.query<{ organization_id: string }>(
+      `SELECT organization_id FROM "org_sites" WHERE slug = $1`,
+      [slug],
+    );
+    expect(ownerRow.rows[0]?.organization_id).toBe(orgId);
+
+    const list = await adminCtx.get(`/api/_admin/orgs/${orgId}/sites`);
+    expect(list.status()).toBe(200);
+    const listBody = (await list.json()) as { sites: Array<{ slug: string }> };
+    expect(listBody.sites.some((s) => s.slug === slug)).toBe(true);
+
+    const release = await adminCtx.delete(
+      `/api/_admin/orgs/${orgId}/sites/${slug}`,
+    );
+    expect(release.status()).toBe(200);
+    const gone = await db.query(`SELECT 1 FROM "org_sites" WHERE slug = $1`, [
+      slug,
+    ]);
+    expect(gone.rows).toHaveLength(0);
+
+    // Releasing a slug the org doesn't own is a 404, not a silent success.
+    const releaseMissing = await adminCtx.delete(
+      `/api/_admin/orgs/${orgId}/sites/${slug}`,
+    );
+    expect(releaseMissing.status()).toBe(404);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("sites: claiming a slug owned by another org needs explicit reassign", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const orgACtx = await newApiContext(playwright);
+    const orgA = await signUpViaApi(orgACtx);
+    const orgAId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [orgA.orgSlug],
+      )
+    ).rows[0]?.id;
+    const orgBCtx = await newApiContext(playwright);
+    const orgB = await signUpViaApi(orgBCtx);
+    const orgBId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [orgB.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgAId || !orgBId) throw new Error("Org not found after signup");
+
+    const slug = `e2e-shared-${Date.now()}`;
+    expect(
+      (
+        await adminCtx.post(`/api/_admin/orgs/${orgAId}/sites`, {
+          data: { slug },
+        })
+      ).status(),
+    ).toBe(200);
+
+    // Org B claims the same slug without confirming: 409 naming the current owner.
+    const conflict = await adminCtx.post(`/api/_admin/orgs/${orgBId}/sites`, {
+      data: { slug },
+    });
+    expect(conflict.status()).toBe(409);
+    const conflictBody = (await conflict.json()) as {
+      error: string;
+      ownerOrganizationId: string;
+    };
+    expect(conflictBody.error).toBe("owned_by_other_org");
+    expect(conflictBody.ownerOrganizationId).toBe(orgAId);
+
+    // Still owned by A — the refused claim changed nothing.
+    expect(
+      (
+        await db.query<{ organization_id: string }>(
+          `SELECT organization_id FROM "org_sites" WHERE slug = $1`,
+          [slug],
+        )
+      ).rows[0]?.organization_id,
+    ).toBe(orgAId);
+
+    // With reassign:true it moves to B.
+    const moved = await adminCtx.post(`/api/_admin/orgs/${orgBId}/sites`, {
+      data: { slug, reassign: true },
+    });
+    expect(moved.status()).toBe(200);
+    const movedBody = (await moved.json()) as {
+      reassignedFrom: string;
+      site: { organizationId: string };
+    };
+    expect(movedBody.reassignedFrom).toBe(orgAId);
+    expect(movedBody.site.organizationId).toBe(orgBId);
+    expect(
+      (
+        await db.query<{ organization_id: string }>(
+          `SELECT organization_id FROM "org_sites" WHERE slug = $1`,
+          [slug],
+        )
+      ).rows[0]?.organization_id,
+    ).toBe(orgBId);
+
+    await adminCtx.dispose();
+    await orgACtx.dispose();
+    await orgBCtx.dispose();
+  });
+
+  test("sites: invalid slug 400, unknown org 404, non-admin blocked", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const outsiderCtx = await newApiContext(playwright);
+    const outsider = await signUpViaApi(outsiderCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [outsider.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    const badSlug = await adminCtx.post(`/api/_admin/orgs/${orgId}/sites`, {
+      data: { slug: "Bad Slug!" },
+    });
+    expect(badSlug.status()).toBe(400);
+
+    const unknownOrg = await adminCtx.post(
+      `/api/_admin/orgs/nonexistent-${Date.now()}/sites`,
+      { data: { slug: `e2e-x-${Date.now()}` } },
+    );
+    expect(unknownOrg.status()).toBe(404);
+
+    // Instance-admin surface: the org's own owner (not a deployment admin) is refused.
+    const outsiderGet = await outsiderCtx.get(
+      `/api/_admin/orgs/${orgId}/sites`,
+    );
+    expect([401, 403]).toContain(outsiderGet.status());
+    const outsiderPost = await outsiderCtx.post(
+      `/api/_admin/orgs/${orgId}/sites`,
+      {
+        data: { slug: `e2e-y-${Date.now()}` },
+        headers: { Origin: getE2EAppOrigin() },
+      },
+    );
+    expect([401, 403]).toContain(outsiderPost.status());
+
+    await adminCtx.dispose();
+    await outsiderCtx.dispose();
+  });
+
   test("the SSO-enforcement middleware exempts /api/_admin/*", async ({
     playwright,
   }) => {

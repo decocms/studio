@@ -25,6 +25,8 @@ import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import {
   flagsResponse,
   type OrgFlagsPatch,
@@ -498,6 +500,146 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json(flagsResponse(settings?.flags ?? null));
+  });
+
+  // Site ownership (org_sites): which org owns a globally-unique slug, the gate behind Hosting/E2E/Analytics/Monitor.
+  app.get("/orgs/:orgId/sites", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const sites = await new OrgSiteStorage(db).listByOrg(orgId);
+    return c.json({ sites });
+  });
+
+  app.post("/orgs/:orgId/sites", async (c) => {
+    const orgId = c.req.param("orgId");
+    const raw = await c.req.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return c.json({ error: "Invalid body" }, 400);
+    }
+    const body = raw as { slug?: unknown; reassign?: unknown };
+    const slug = typeof body.slug === "string" ? body.slug.trim() : "";
+    if (!isValidSiteSlug(slug)) {
+      return c.json({ error: "Invalid site slug" }, 400);
+    }
+    const reassign = body.reassign === true;
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const storage = new OrgSiteStorage(db);
+
+    const audit = (action: string, extra: Record<string, unknown>) => {
+      auditAdminAction(action, {
+        actor_user_id: actorId,
+        ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+        organization_id: orgId,
+        slug,
+        ...extra,
+      });
+      posthog.capture({
+        distinctId: actorId,
+        event: `deployment_admin_${action}`,
+        groups: { organization: orgId },
+        properties: { actor_user_id: actorId, organization_id: orgId, slug },
+      });
+    };
+
+    try {
+      const site = await storage.claimSite({
+        slug,
+        organizationId: orgId,
+        source: "manual",
+        by: actorId,
+      });
+      audit("org_site_claim", {});
+      return c.json({ site });
+    } catch (error) {
+      if (!(error instanceof OrgSiteConflictError)) throw error;
+      // Owned by another org: refuse unless the caller explicitly confirms the move.
+      if (!reassign) {
+        const owner = await db
+          .selectFrom("organization")
+          .select(["name", "slug"])
+          .where("id", "=", error.ownerOrganizationId)
+          .executeTakeFirst();
+        return c.json(
+          {
+            error: "owned_by_other_org",
+            ownerOrganizationId: error.ownerOrganizationId,
+            ownerOrganizationName: owner?.name ?? null,
+            ownerOrganizationSlug: owner?.slug ?? null,
+          },
+          409,
+        );
+      }
+      const site = await storage.reassignSite({
+        slug,
+        organizationId: orgId,
+        source: "manual",
+        by: actorId,
+      });
+      audit("org_site_reassign", {
+        from_organization_id: error.ownerOrganizationId,
+      });
+      return c.json({ site, reassignedFrom: error.ownerOrganizationId });
+    }
+  });
+
+  app.delete("/orgs/:orgId/sites/:slug", async (c) => {
+    const orgId = c.req.param("orgId");
+    const slug = c.req.param("slug");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    if (!released) {
+      return c.json({ error: "Site not found for this organization" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    auditAdminAction("org_site_release", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      slug,
+    });
+    posthog.capture({
+      distinctId: actorId ?? orgId,
+      event: "deployment_admin_org_site_release",
+      groups: { organization: orgId },
+      properties: { actor_user_id: actorId, organization_id: orgId, slug },
+    });
+
+    return c.json({ ok: true });
   });
 
   // The agent-prompt editor (reads/writes decocms/studio over GitHub) — its own

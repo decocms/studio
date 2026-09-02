@@ -105,6 +105,51 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
     return toEntity(updated as OrgSiteRow);
   }
 
+  async reassignSite(params: {
+    slug: string;
+    organizationId: string;
+    source?: string;
+    by: string;
+  }): Promise<OrgSite> {
+    if (!isValidSiteSlug(params.slug)) {
+      throw new Error(
+        `Invalid site slug "${params.slug}" — must be 1-60 chars of lowercase letters, digits, or hyphens, starting with a letter or digit`,
+      );
+    }
+    const now = new Date();
+    // Unconditional override (deployment-admin only): take the slug from whatever org owns it.
+    const row = await this.db
+      .insertInto("org_sites")
+      .values({
+        slug: params.slug,
+        organization_id: params.organizationId,
+        source: params.source ?? "manual",
+        created_by: params.by,
+        created_at: now,
+        updated_by: params.by,
+        updated_at: now,
+      })
+      .onConflict((oc) =>
+        oc.column("slug").doUpdateSet({
+          organization_id: params.organizationId,
+          updated_by: params.by,
+          updated_at: now,
+        }),
+      )
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return toEntity(row as OrgSiteRow);
+  }
+
+  async releaseSite(slug: string, organizationId: string): Promise<boolean> {
+    const res = await this.db
+      .deleteFrom("org_sites")
+      .where("slug", "=", slug)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return Number(res.numDeletedRows ?? 0n) > 0;
+  }
+
   async getBySlug(slug: string): Promise<OrgSite | null> {
     const row = await this.db
       .selectFrom("org_sites")
