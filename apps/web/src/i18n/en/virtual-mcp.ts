@@ -104,13 +104,12 @@ export const virtualMcp = {
   "virtualMcp.filesSection.selectFileOrFolder": "Select file or folder",
   "virtualMcp.filesSection.selectSkill": "Select skill",
   "virtualMcp.filesSection.uploadFile": "Upload file",
+  "virtualMcp.layoutTabContent.noMainView": "No main view",
   "virtualMcp.layoutTabContent.addConnectionMessage":
     "Add a connection above to configure pinned views.",
   "virtualMcp.layoutTabContent.automations": "Automations",
-  "virtualMcp.layoutTabContent.chat": "Chat",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "Chat is always shown when it is the default view",
-  "virtualMcp.layoutTabContent.content": "Content",
   "virtualMcp.layoutTabContent.layout": "Layout",
   "virtualMcp.layoutTabContent.mainView": "Main view",
   "virtualMcp.layoutTabContent.mainViewDescription":
@@ -120,11 +119,11 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.pinnedViews": "Pinned views",
   "virtualMcp.layoutTabContent.pinnedViewsDescription":
     "Surface interactive tools as top-level tabs in the agent.",
-  "virtualMcp.layoutTabContent.preview": "Preview",
   "virtualMcp.layoutTabContent.settings": "Settings",
   "virtualMcp.layoutTabContent.showChat": "Show chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Display Chat in the side panel alongside the main view.",
+  "virtualMcp.layoutTabContent.siteEditor": "Site Editor",
   "virtualMcp.subAgentsSection.addSubAgent": "Add sub-agent",
   "virtualMcp.subAgentsSection.anyAgent": "Any agent",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":

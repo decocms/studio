@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import {
   draftsModeEnabled,
@@ -27,7 +27,7 @@ import {
   BlocksEmptyState,
   BlocksErrorState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
-import { MainPanelLoading } from "@/layouts/main-panel-tabs/main-panel-loading";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 
 const SectionsEditor = lazy(() =>
   import("@/components/sections-editor/sections-editor").then((m) => ({
@@ -90,7 +90,7 @@ export function BlocksPanel({
     fastPreviewActive: useSessionRuntime(virtualMcpId).runtime === "cms",
   });
 
-  if (state.kind === "loading") return <MainPanelLoading />;
+  if (state.kind === "loading") return <PanelLoading />;
   if (state.kind === "empty") return <BlocksEmptyState />;
   if (state.kind === "error") {
     const retry = () => {
@@ -162,7 +162,7 @@ export function BlocksPanel({
     <Suspense
       fallback={
         <div className="h-full flex items-center justify-center">
-          <Loading01 size={20} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-5 text-muted-foreground" />
         </div>
       }
     >

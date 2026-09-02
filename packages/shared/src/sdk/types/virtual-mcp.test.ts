@@ -8,25 +8,26 @@ import {
   SandboxRecordSchema,
   parseBranchMap,
   normalizeSandboxMap,
+  normalizeCmsMode,
   resolveCmsMode,
   withCmsMode,
 } from "./virtual-mcp";
 
 describe("withCmsMode", () => {
   it("writes the mode and drops the boolean it supersedes", () => {
-    expect(withCmsMode({ cmsDefaultOpen: true }, "manual")).toEqual({
-      cms: "manual",
+    expect(withCmsMode({ cmsDefaultOpen: true }, "on")).toEqual({
+      cms: "on",
       cmsDefaultOpen: null,
     });
-    expect(
-      resolveCmsMode(withCmsMode({ cmsDefaultOpen: true }, "manual")),
-    ).toBe("manual");
+    expect(resolveCmsMode(withCmsMode({ cmsDefaultOpen: true }, "on"))).toBe(
+      "on",
+    );
   });
 
   it("keeps every other layout setting", () => {
     const layout = {
       chatDefaultOpen: true,
-      defaultMainView: { type: "preview" },
+      defaultMainView: { type: "site-editor" },
       tabs: [
         {
           id: "analytics",
@@ -35,24 +36,22 @@ describe("withCmsMode", () => {
         },
       ],
     };
-    const next = withCmsMode(layout, "auto");
+    const next = withCmsMode(layout, "on");
     expect(next.chatDefaultOpen).toBe(true);
-    expect(next.defaultMainView).toEqual({ type: "preview" });
+    expect(next.defaultMainView).toEqual({ type: "site-editor" });
     expect(next.tabs).toEqual(layout.tabs);
   });
 
   it("moves an agent off a Content home when the CMS goes off", () => {
     const next = withCmsMode({ defaultMainView: { type: "content" } }, "off");
-    expect(next.defaultMainView).toEqual({ type: "preview" });
+    expect(next.defaultMainView).toEqual({ type: "site-editor" });
   });
 
   it("leaves a Content home alone while the CMS is still offered", () => {
-    for (const mode of ["manual", "auto"] as const) {
-      expect(
-        withCmsMode({ defaultMainView: { type: "content" } }, mode)
-          .defaultMainView,
-      ).toEqual({ type: "content" });
-    }
+    expect(
+      withCmsMode({ defaultMainView: { type: "content" } }, "on")
+        .defaultMainView,
+    ).toEqual({ type: "content" });
   });
 
   it("leaves any other home alone when the CMS goes off", () => {
@@ -71,30 +70,55 @@ describe("withCmsMode", () => {
   });
 });
 
+describe("normalizeCmsMode", () => {
+  /** THE migration this collapse turns on: `auto` and `manual` are persisted
+   *  on real agents, and reading either as anything but `on` would take a
+   *  configured CMS away from every one of them. */
+  it("reads the retired modes as on", () => {
+    expect(normalizeCmsMode("auto")).toBe("on");
+    expect(normalizeCmsMode("manual")).toBe("on");
+  });
+
+  it("passes the live modes through", () => {
+    expect(normalizeCmsMode("on")).toBe("on");
+    expect(normalizeCmsMode("off")).toBe("off");
+  });
+
+  it("has no answer for an absent or unknown value", () => {
+    expect(normalizeCmsMode(null)).toBeNull();
+    expect(normalizeCmsMode(undefined)).toBeNull();
+    expect(normalizeCmsMode("")).toBeNull();
+    expect(normalizeCmsMode("hidden")).toBeNull();
+  });
+});
+
 describe("resolveCmsMode", () => {
-  it("defaults to manual for an agent that never configured a CMS", () => {
-    expect(resolveCmsMode(null)).toBe("manual");
-    expect(resolveCmsMode(undefined)).toBe("manual");
-    expect(resolveCmsMode({})).toBe("manual");
+  it("defaults to on for an agent that never configured a CMS", () => {
+    expect(resolveCmsMode(null)).toBe("on");
+    expect(resolveCmsMode(undefined)).toBe("on");
+    expect(resolveCmsMode({})).toBe("on");
   });
 
-  it("reads the legacy cmsDefaultOpen boolean the enum replaced", () => {
-    expect(resolveCmsMode({ cmsDefaultOpen: true })).toBe("auto");
-    expect(resolveCmsMode({ cmsDefaultOpen: false })).toBe("manual");
-    expect(resolveCmsMode({ cmsDefaultOpen: null })).toBe("manual");
+  it("reads a stored auto / manual as on", () => {
+    expect(resolveCmsMode({ cms: "auto" })).toBe("on");
+    expect(resolveCmsMode({ cms: "manual" })).toBe("on");
   });
 
-  it("lets an explicit mode win over the legacy boolean", () => {
-    expect(resolveCmsMode({ cms: "off", cmsDefaultOpen: true })).toBe("off");
-    expect(resolveCmsMode({ cms: "manual", cmsDefaultOpen: true })).toBe(
-      "manual",
-    );
-    expect(resolveCmsMode({ cms: "auto", cmsDefaultOpen: false })).toBe("auto");
+  it("keeps off, the only mode anyone opts into", () => {
+    expect(resolveCmsMode({ cms: "off" })).toBe("off");
   });
 
   it("round-trips every mode through the layout schema", () => {
-    for (const cms of ["off", "manual", "auto"] as const) {
+    for (const cms of ["off", "on"] as const) {
       expect(resolveCmsMode(VirtualMcpUILayoutSchema.parse({ cms }))).toBe(cms);
+    }
+  });
+
+  it("still parses a layout carrying a retired mode", () => {
+    for (const cms of ["manual", "auto"] as const) {
+      expect(resolveCmsMode(VirtualMcpUILayoutSchema.parse({ cms }))).toBe(
+        "on",
+      );
     }
   });
 
