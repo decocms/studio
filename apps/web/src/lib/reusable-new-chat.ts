@@ -1,5 +1,6 @@
 import type { Task } from "@/components/chat/task/types";
-import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import { findLastThreadForAgent } from "@/lib/find-last-thread-for-agent";
+import { threadRuntimeMatches } from "@/lib/thread-runtime-match";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 /**
@@ -36,25 +37,23 @@ export function findReusableNewChat(
       t.created_by === userId &&
       t.title === "New chat" &&
       !t.harness_id &&
-      runtimeMatches(t, expectedRuntime),
+      threadRuntimeMatches(t, expectedRuntime),
   );
 }
 
-/**
- * A thread's runtime is immutable, so an empty chat stamped with the OTHER
- * runtime is not reusable — focusing it would silently drop the user into a
- * coding session (or a CMS one) they didn't ask for.
- *
- * An unstamped row always matches: it predates the stamp and resolves to the
- * project default by definition. `undefined` — the caller couldn't resolve the
- * project — keeps the pre-existing unfiltered behavior rather than guessing.
- */
-function runtimeMatches(thread: Task, expected: ThreadRuntime | undefined) {
-  if (!expected) return true;
-  // A `/watch` synthetic carries no metadata, so its absent stamp is "not
-  // loaded", not "unstamped" — trusting it would reuse a CMS chat for a coding
-  // session (or the reverse) on nothing more than a race with the feed.
-  if (thread.partial) return false;
-  const stamp = parseThreadRuntime(thread.metadata?.runtime);
-  return stamp === null || stamp === expected;
+/** Thread to land on when *entering* an agent: a `hasBranch` agent resumes its last real thread (last branch worked on); else reuse the empty chat, then `undefined` (caller mints a fresh id). */
+export function findAgentEntryThread(
+  threads: Task[],
+  agentId: string,
+  userId: string | undefined,
+  expectedRuntime: ThreadRuntime | undefined,
+  hasBranch: boolean,
+): Task | undefined {
+  if (hasBranch) {
+    return (
+      findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??
+      findReusableNewChat(threads, agentId, userId, expectedRuntime)
+    );
+  }
+  return findReusableNewChat(threads, agentId, userId, expectedRuntime);
 }

@@ -24,14 +24,16 @@ import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
   useVirtualMCP,
+  useVirtualMCPs,
 } from "@/sdk";
+import { getActiveGithubRepo } from "@/lib/github-repo";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { OrgIcon, OrgSwitcherPopover } from "@/components/header/org-switcher";
 import { AgentScopePicker } from "@/components/sidebar/agents-section";
 import { useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
 import { authClient } from "@/lib/auth-client.ts";
 import { usePendingInvitations } from "@/hooks/use-pending-invitations";
@@ -179,6 +181,7 @@ export function AgentSwitcherCrumb({
 } = {}) {
   const { org } = useProjectContext();
   const { threads } = useThreads();
+  const allAgents = useVirtualMCPs();
   const { data: session } = authClient.useSession();
   const { setTaskId, createNewTask } = usePanelActions();
   const projectDefaultRuntime = useProjectDefaultRuntime();
@@ -196,11 +199,13 @@ export function AgentSwitcherCrumb({
   // Decopilot id.
   const handlePickAgent = (id: string | null) => {
     const targetId = id ?? decopilotId;
-    const existing = findReusableNewChat(
+    const target = (allAgents ?? []).find((a) => a.id === targetId);
+    const existing = findAgentEntryThread(
       threads,
       targetId,
       session?.user?.id,
       projectDefaultRuntime(targetId),
+      !!(target && getActiveGithubRepo(target)),
     );
     if (existing) {
       setTaskId(existing.id, targetId);
