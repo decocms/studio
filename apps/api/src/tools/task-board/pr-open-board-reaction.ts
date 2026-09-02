@@ -18,8 +18,7 @@ import type { BoardColumn } from "@decocms/shared/task-board";
 import {
   type BoardLanes,
   boardCan,
-  boardColumnsOf,
-  boardLanes,
+  boardFor,
   canAdvance,
 } from "./board-handler";
 import { z } from "zod";
@@ -140,10 +139,23 @@ export async function applyBoardDecision(
     /** Its columns, in the board's own order — what decides whether a card has
      *  already got past the lane a PR-open would move it to. */
     columns: readonly BoardColumn[];
+    /** What a freshly-created card's `board_column_org` must carry — see
+     *  {@link BoardHandler.columnOwner}. Null wakes nothing; the org id wakes
+     *  the FK guard for a board whose lanes are the org's own columns. */
+    columnOwner: string | null;
   },
 ): Promise<TaskBoardItem | null> {
-  const { orgId, userId, threadId, pr, decision, openCards, lanes, columns } =
-    params;
+  const {
+    orgId,
+    userId,
+    threadId,
+    pr,
+    decision,
+    openCards,
+    lanes,
+    columns,
+    columnOwner,
+  } = params;
 
   const linkPr = (taskBoardItemId: string) =>
     storage.linkPr({
@@ -208,6 +220,8 @@ export async function applyBoardDecision(
       // A card born mid-review with no in-progress column starts at intake —
       // the one lane every board has.
       status: lanes.progress ?? lanes.intake,
+      // Same `{ status, boardColumnOrg }` pairing `shippedPatch` enforces elsewhere.
+      boardColumnOrg: columnOwner,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
       by: userId,
@@ -268,9 +282,11 @@ export async function reactToPrOpenedForBoard(
     );
     if (!decision) return;
 
+    const board = await boardFor(ctx, orgId);
     await applyBoardDecision(ctx.storage.taskBoard, {
-      lanes: await boardLanes(ctx, orgId),
-      columns: await boardColumnsOf(ctx, orgId),
+      lanes: await board.lanes(),
+      columns: await board.columns(),
+      columnOwner: board.columnOwner(),
       orgId,
       userId,
       threadId,
