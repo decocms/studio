@@ -16,6 +16,7 @@ import { mainPanelTabs } from "./main-panel-tabs.ts";
 import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
 import { layouts } from "./layouts.ts";
+import { layoutTour } from "./layout-tour.ts";
 import { home } from "./home.ts";
 import { header } from "./header.ts";
 import { filePicker } from "./file-picker.ts";
@@ -23,11 +24,12 @@ import { devAgent } from "./dev-agent.ts";
 import { downloadApp } from "./download-app.ts";
 import { details } from "./details.ts";
 import { deck } from "./deck.ts";
+import { discover } from "./discover.ts";
+import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
 import { common } from "./common.ts";
 import { commerceOnboarding } from "./commerce-onboarding.ts";
 import { collections } from "./collections.ts";
-import { cmsTour } from "./cms-tour.ts";
 import { chooseEditor } from "./choose-editor.ts";
 import { chat } from "./chat.ts";
 import { automations } from "./automations.ts";
@@ -58,6 +60,7 @@ export const ptBR = {
   ...markdownEditor,
   ...library,
   ...layouts,
+  ...layoutTour,
   ...home,
   ...header,
   ...filePicker,
@@ -65,11 +68,12 @@ export const ptBR = {
   ...downloadApp,
   ...details,
   ...deck,
+  ...discover,
+  ...commandPalette,
   ...connections,
   ...common,
   ...commerceOnboarding,
   ...collections,
-  ...cmsTour,
   ...chooseEditor,
   ...chat,
   ...automations,

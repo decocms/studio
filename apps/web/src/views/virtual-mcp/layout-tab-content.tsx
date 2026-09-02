@@ -1,11 +1,14 @@
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
-import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
-import { FIXED_SYSTEM_TABS } from "@/layouts/main-panel-tabs/tab-id";
+import {
+  DESTINATION_MAIN_VIEWS,
+  FIXED_SYSTEM_TABS,
+  normalizePanelSegment,
+} from "@/layouts/main-panel-tabs/tab-id";
 import { useT } from "@/i18n/use-t.ts";
 import { Card, CardContent } from "@decocms/ui/components/card.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -29,6 +32,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import type { VirtualMcpFormReturn } from "./types";
+
+/** The merged landing view: the surface Preview, Content and Code are tabs on. */
+const SITE_EDITOR_VIEW = "site-editor";
+
+/** Stored `defaultMainView.type` values that all mean "land on the Site
+ *  Editor" — its own id, and `content`, which was a sibling option before the
+ *  three views became tabs on one surface. */
+const SITE_EDITOR_VIEW_TYPES: ReadonlySet<string> = new Set([
+  SITE_EDITOR_VIEW,
+  "content",
+]);
 
 interface UITool {
   name: string;
@@ -119,7 +133,12 @@ export function LayoutTabContent({
     connectionsWithTools ?? []
   ).filter((c) => c.uiTools.length > 0);
 
-  const fixedTabTypeSet = new Set<string>(FIXED_SYSTEM_TABS);
+  /** What `defaultMainView.type` may hold: a tab on the bar, or one of the
+   *  destinations an agent can land on instead. */
+  const fixedTabTypeSet = new Set<string>([
+    ...FIXED_SYSTEM_TABS,
+    ...DESTINATION_MAIN_VIEWS,
+  ]);
 
   // Layout state lives in the parent form under metadata.ui.{pinnedViews, layout}.
   // form.watch subscribes the component to changes from any source — direct user
@@ -128,29 +147,40 @@ export function LayoutTabContent({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  /** No main view: the chat is the whole workspace, so its switch is forced on
+   *  and locked. This was the old `chat` main view, which no longer exists. */
   // Convert the stored {type, id, toolName} object into the string composite
   // key used by the <Select> UI. Legacy tab types fold into "settings".
   const defaultMainView = (() => {
-    if (!currentDefaultMain || currentDefaultMain.type === "chat")
-      return "chat";
+    /** Chat is retired as a main view. An agent still stored on it — or on
+     *  nothing — selects no option, so the trigger shows its placeholder rather
+     *  than naming a view the agent does not actually open on. */
+    if (!currentDefaultMain || currentDefaultMain.type === "chat") return "";
+    /** Stored rows predate the `preview` → `site-editor` rename. */
+    const type = normalizePanelSegment(currentDefaultMain.type);
     if (
-      currentDefaultMain.type === "instructions" ||
-      currentDefaultMain.type === "connections" ||
-      currentDefaultMain.type === "layout"
+      type === "instructions" ||
+      type === "connections" ||
+      type === "layout"
     ) {
       return "settings";
     }
-    if (fixedTabTypeSet.has(currentDefaultMain.type)) {
-      return currentDefaultMain.type;
+    /** …and predate the merge, so a stored `content` selects the option that
+     *  now owns that surface rather than rendering a blank trigger. */
+    if (SITE_EDITOR_VIEW_TYPES.has(type)) return SITE_EDITOR_VIEW;
+    if (fixedTabTypeSet.has(type)) {
+      return type;
     }
-    return `${currentDefaultMain.type}:${currentDefaultMain.id ?? ""}:${currentDefaultMain.toolName ?? ""}`;
+    return `${type}:${currentDefaultMain.id ?? ""}:${currentDefaultMain.toolName ?? ""}`;
   })();
+
+  const noMainView = defaultMainView === "";
 
   // Inverse — converts the string composite key back to the stored object form.
   const parseDefaultMainView = (value: string) => {
     const [type, id, toolName] = value.split(":");
     if (!type) return null;
-    if (type === "chat") return { type };
+
     if (fixedTabTypeSet.has(type)) {
       return { type };
     }
@@ -215,7 +245,7 @@ export function LayoutTabContent({
             pv.toolName === currentDefaultMain.toolName,
         )
       ) {
-        writeLayout({ defaultMainView: { type: "chat" } });
+        writeLayout({ defaultMainView: null });
       }
     }
   }
@@ -232,7 +262,7 @@ export function LayoutTabContent({
       // If the unpinned view was the default, reset to chat
       const unpinnedKey = `ext-apps:${connectionId}:${toolName}`;
       if (defaultMainView === unpinnedKey) {
-        writeLayout({ defaultMainView: { type: "chat" } });
+        writeLayout({ defaultMainView: null });
       }
     } else {
       const toolTitle = connectionsData
@@ -298,32 +328,26 @@ export function LayoutTabContent({
   // the gating in `use-main-panel-tabs.ts`.
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
 
-  // Build options for the default main view selector.
-  // Order mirrors the right-panel tab order in the unified chat layout:
-  // Chat (no main panel), then fixed system tabs, then pinned ext-apps.
+  /**
+   * Options in SIDEBAR order, so the list of places an agent can land reads the
+   * same here as in the nav a person actually uses: the org destinations
+   * (`NAV_DESTINATION_KEYS` — Home, Reports, Tasks; Library is org-only and
+   * never an agent's view), then the project rows, then Settings last.
+   */
   const defaultMainOptions: { value: string; label: string }[] = [
-    { value: "chat", label: t("virtualMcp.layoutTabContent.chat") },
-    { value: "settings", label: t("virtualMcp.layoutTabContent.settings") },
-    {
-      value: "automations",
-      label: t("virtualMcp.layoutTabContent.automations"),
-    },
+    { value: "overview", label: t("sidebar.navDestinations.home") },
+    { value: "reports", label: t("sidebar.navDestinations.reports") },
+    { value: "board", label: t("sidebar.navDestinations.tasks") },
   ];
   if (hasClonableSource) {
+    /** ONE option for one surface. Preview, Content and Code are tabs on the
+     *  Site Editor, so offering them as sibling landing views would contradict
+     *  the consolidation — and the CMS mode no longer gates anything here,
+     *  because `off` only removes a tab, never the surface itself. */
     defaultMainOptions.push({
-      value: "preview",
-      label: t("virtualMcp.layoutTabContent.preview"),
+      value: SITE_EDITOR_VIEW,
+      label: t("virtualMcp.layoutTabContent.siteEditor"),
     });
-    // Content is only offerable while the agent has a CMS — `off` takes that
-    // tab off the bar, so landing on it is not a layout anyone can choose.
-    // Switching the mode to `off` rewrites an agent already set to it
-    // (`withCmsMode`), so the stored value can't outlive the option.
-    if (resolveCmsMode(layoutMeta) !== "off") {
-      defaultMainOptions.push({
-        value: "content",
-        label: t("virtualMcp.layoutTabContent.content"),
-      });
-    }
   }
   for (const pv of pinnedViews) {
     defaultMainOptions.push({
@@ -331,6 +355,13 @@ export function LayoutTabContent({
       label: pv.label || pv.toolName,
     });
   }
+  defaultMainOptions.push(
+    {
+      value: "automations",
+      label: t("virtualMcp.layoutTabContent.automations"),
+    },
+    { value: "settings", label: t("virtualMcp.layoutTabContent.settings") },
+  );
 
   const hasPinnedContent =
     connectionsData.length > 0 || noConnections || noInteractiveTools;
@@ -358,7 +389,9 @@ export function LayoutTabContent({
               onValueChange={handleDefaultMainViewChange}
             >
               <SelectTrigger className="w-44 h-8 text-sm capitalize shrink-0">
-                <SelectValue />
+                <SelectValue
+                  placeholder={t("virtualMcp.layoutTabContent.noMainView")}
+                />
               </SelectTrigger>
               <SelectContent>
                 {defaultMainOptions.map((opt) => (
@@ -387,10 +420,8 @@ export function LayoutTabContent({
               <TooltipTrigger asChild>
                 <span className="shrink-0">
                   <Switch
-                    checked={
-                      defaultMainView === "chat" ? true : chatDefaultOpen
-                    }
-                    disabled={defaultMainView === "chat"}
+                    checked={noMainView ? true : chatDefaultOpen}
+                    disabled={noMainView}
                     onCheckedChange={(checked) => {
                       writeLayout({ chatDefaultOpen: checked });
                       flushAndSave();
@@ -398,7 +429,7 @@ export function LayoutTabContent({
                   />
                 </span>
               </TooltipTrigger>
-              {defaultMainView === "chat" && (
+              {noMainView && (
                 <TooltipContent side="top">
                   {t("virtualMcp.layoutTabContent.chatAlwaysShown")}
                 </TooltipContent>

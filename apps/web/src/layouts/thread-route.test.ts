@@ -101,33 +101,42 @@ describe("resolveThreadNavTarget", () => {
 });
 
 describe("resolveRouteAgentId", () => {
-  /**
-   * THE BUG: "New chat" on `/$org/agents/<project>` created the thread on the
-   * Super Agent, because the control only knew the legacy grammar — it read
-   * `?virtualmcpid=` (absent there) and fell back to Decopilot. The
-   * `{-$project}` segment IS the scope on a destination.
-   */
-  test("a destination's project segment names the agent", () => {
-    expect(resolveRouteAgentId({ projectParam: "project-1" })).toBe(
-      "project-1",
-    );
+  /** THE BUG: "New chat" on a project's workspace made the thread on the Super
+   *  Agent, because nothing read the scope. The scope IS the agent — but only
+   *  on the agents route; the next test says why. */
+  test("the agents route reads its agent from ?virtualmcpid=", () => {
+    expect(
+      resolveRouteAgentId({
+        virtualMcpIdSearch: "project-1",
+        onAgentsRoute: true,
+      }),
+    ).toBe("project-1");
   });
 
-  /**
-   * INVERTED: a destination used to fall back to `?virtualmcpid=` when it named
-   * no project, so a param left behind by an earlier thread switch scoped the
-   * whole org-level page — `/$org/reports?virtualmcpid=vir_x` served the report
-   * as if it belonged to one project. Home, Tasks, Reports and Library are
-   * org-wide, so they answer with the Super Agent and nothing else.
-   */
+  /** THE GATE: the param is RETAINED across navigation, so a destination that
+   *  resolved it would let a leftover param turn `/$org/reports?virtualmcpid=`
+   *  into a project workspace. Reports/Tasks/Library still ignore it. */
   test("an org-level destination ignores ?virtualmcpid=", () => {
     expect(
       resolveRouteAgentId({ virtualMcpIdSearch: "vir_x" }),
     ).toBeUndefined();
   });
 
-  /** The legacy `/$org/$taskId` route has no project segment and genuinely
-   *  carries its agent in search — the one reader left. */
+  /** Home renders the SCOPED project's own overview (`HomeTab`), so it names
+   *  that agent too. Without this, `useNavigateToAgent`'s no-panel branch sent
+   *  a thread minted for the project to `/$org/home`, where it was created
+   *  against the Super Agent and chat dispatched there. */
+  test("home reads its agent from ?virtualmcpid=", () => {
+    expect(
+      resolveRouteAgentId({
+        virtualMcpIdSearch: "project-1",
+        onHomeRoute: true,
+      }),
+    ).toBe("project-1");
+  });
+
+  /** The legacy `/$org/$taskId` route has no panel segment and genuinely
+   *  carries its agent in search — the third and last reader. */
   test("the legacy route still reads ?virtualmcpid=", () => {
     expect(
       resolveRouteAgentId({
@@ -137,15 +146,12 @@ describe("resolveRouteAgentId", () => {
     ).toBe("legacy-agent");
   });
 
-  /** Path beats search even there, so a stale param cannot flip the workspace. */
-  test("the path segment beats ?virtualmcpid= on the legacy route", () => {
+  /** A blank value is not an agent. Reading it as one would send a project
+   *  workspace to the Super Agent rather than leaving the scope unset. */
+  test("a blank scope reads as no agent", () => {
     expect(
-      resolveRouteAgentId({
-        projectParam: "project-1",
-        virtualMcpIdSearch: DECOPILOT,
-        legacyRoute: true,
-      }),
-    ).toBe("project-1");
+      resolveRouteAgentId({ virtualMcpIdSearch: "", onAgentsRoute: true }),
+    ).toBeUndefined();
   });
 
   test("a route naming no agent anywhere answers undefined", () => {
@@ -164,29 +170,27 @@ describe("resolveDestinationThreadSearch", () => {
     ).toEqual({ main: "preview", sidepanel: true, thread: "thread-2" });
   });
 
-  /**
-   * INVERTED: the switch used to layer straight over `prev`, so a
-   * `virtualmcpid` written by an earlier navigation outlived the project it
-   * contradicted and re-scoped the workspace on the next render.
-   */
-  test("a project in the path evicts the legacy agent param", () => {
+  /** INVERTED once the scope and the legacy agent param became one key: the
+   *  switch used to delete it unconditionally, which would now discard a filter
+   *  the person chose — and futilely, since retention re-adds it anyway. */
+  test("a scope the person chose survives a thread switch", () => {
     expect(
       resolveDestinationThreadSearch({
         prev: { virtualmcpid: DECOPILOT, sidepanel: true },
-        changes: { virtualmcpid: DECOPILOT },
+        changes: {},
         threadId: "thread-2",
       }),
-    ).toEqual({ sidepanel: true, thread: "thread-2" });
+    ).toEqual({
+      virtualmcpid: DECOPILOT,
+      sidepanel: true,
+      thread: "thread-2",
+    });
   });
 
-  /**
-   * INVERTED: a destination with no project segment used to KEEP carrying the
-   * param, on the claim that it was the only record of the agent there. It is
-   * not — `threads.virtual_mcp_id` is NOT NULL, so the row carries it — and
-   * keeping it is what scoped `/$org/reports` to one project. Org-level pages
-   * belong to the Super Agent, so the key is written nowhere.
-   */
-  test("an org-level destination evicts it too", () => {
+  /** The half that must NOT invert: a switch never INTRODUCES a scope. The
+   *  thread row carries its own agent (`threads.virtual_mcp_id` is NOT NULL),
+   *  so opening one never needs to write the URL. */
+  test("a thread switch never introduces a scope", () => {
     expect(
       resolveDestinationThreadSearch({
         prev: { sidepanel: true },

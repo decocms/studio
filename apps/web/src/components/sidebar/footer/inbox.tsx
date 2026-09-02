@@ -13,14 +13,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import {
-  SidebarMenuButton,
-  useSidebar,
-} from "@decocms/ui/components/sidebar.tsx";
+import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { useInboxFeed } from "@/hooks/use-inbox-feed";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useProjectContext } from "@/sdk";
 import { taskKey } from "@decocms/shared/task-key";
 import { useT } from "@/i18n/use-t.ts";
@@ -166,12 +164,12 @@ export function InboxIconButton() {
 export function InboxFullButton() {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const { state } = useSidebar();
+  const collapsed = useSidebarCollapsed();
   return (
     <InboxPopover open={open} onOpenChange={setOpen} side="right">
       <PopoverTrigger asChild>
         <SidebarMenuButton
-          tooltip={state === "collapsed" ? t("sidebar.inbox.title") : undefined}
+          tooltip={collapsed ? t("sidebar.inbox.title") : undefined}
           className="relative"
         >
           <Inbox01 />

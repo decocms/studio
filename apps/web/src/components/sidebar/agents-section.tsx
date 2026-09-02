@@ -1,6 +1,7 @@
 import {
   Suspense,
   cloneElement,
+  useDeferredValue,
   useState,
   type MouseEvent,
   type ReactElement,
@@ -48,8 +49,6 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useThreadActions } from "@/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/lib/read-cached-task-branch";
-import { authClient } from "@/lib/auth-client";
-import { getServerPinnedIds } from "@/hooks/use-navigate-to-agent";
 import {
   agentHasClonableSource,
   getDevAgentIds,
@@ -58,7 +57,6 @@ import {
   useSidebarAgentGroupsEmpty,
   useBumpSidebarOrderRevision,
 } from "./sidebar-agent-groups-context";
-import { appendAgentToPersonalOrder } from "./task-groups/stable-order";
 import { useT } from "@/i18n/use-t.ts";
 
 function CollectionSearchWrapper({
@@ -377,12 +375,20 @@ function PinAgentPopoverContent({
   onImportFromGithub: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const allAgents = useVirtualMCPs();
+  /**
+   * The query runs on the DEFERRED term while the input keeps the immediate
+   * one, so typing never suspends the field out from under the cursor.
+   *
+   * The term goes to the server rather than filtering the returned array: the
+   * list is capped at 100 rows with no cursor, so a client-side filter could
+   * only ever search the first hundred and silently miss the rest.
+   *
+   * Every predicate below reads this term, never `search`.
+   */
+  const deferredSearch = useDeferredValue(search);
+  const allAgents = useVirtualMCPs({ searchTerm: deferredSearch || undefined });
   const agents = allAgents ?? [];
   const { org } = useProjectContext();
-  const { data: session } = authClient.useSession();
-  const sidebarUserId = session?.user?.id ?? "anon";
-  const serverPinnedIds = getServerPinnedIds(allAgents);
   const bumpOrderRevision = useBumpSidebarOrderRevision();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
@@ -390,14 +396,15 @@ function PinAgentPopoverContent({
   // Dev agents are reached via the Develop/Live toggle on their live
   // counterpart, not as standalone browse entries.
   const devAgentIds = getDevAgentIds(allAgents);
-  const lowerSearch = search.toLowerCase();
+  const lowerSearch = deferredSearch.toLowerCase();
+  /** The term already went to the server, which matches description too — a
+   *  title filter here would drop those hits. */
   const userAgents = agents
     .filter((s) => !isDecopilot(s.id))
     .filter((s) => !devAgentIds.has(s.id))
     // Studio Pack default agents live only on the agents page, not this browse
     // list.
-    .filter((s) => !isStudioPackAgent(s.id))
-    .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
+    .filter((s) => !isStudioPackAgent(s.id));
 
   // "Code agents" are agents backed by a GitHub repo (imported from GitHub or
   // cloned from a template); plain agents have no clonable source. They render
@@ -414,7 +421,7 @@ function PinAgentPopoverContent({
   // The well-known agent isn't in the collection list, so build it directly.
   const decopilotAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const showDecopilot =
-    !search || decopilotAgent.title.toLowerCase().includes(lowerSearch);
+    !deferredSearch || decopilotAgent.title.toLowerCase().includes(lowerSearch);
   // Decopilot only renders in scope-picker mode; when it's shown the list is
   // never truly empty, so the "No agents yet" hint would be misleading.
   const decopilotRowShown = Boolean(onSelectAgent && showDecopilot);
@@ -433,11 +440,6 @@ function PinAgentPopoverContent({
       setSearch("");
       return;
     }
-    appendAgentToPersonalOrder(
-      { orgId: org.id, userId: sidebarUserId },
-      agent.id,
-      serverPinnedIds,
-    );
     bumpOrderRevision();
     onClose();
     setSearch("");
@@ -462,7 +464,7 @@ function PinAgentPopoverContent({
 
         {/* Code Agents — repo-backed. The Import button is always available
             when not filtering, so a repo can be imported even with none yet. */}
-        {(codeAgents.length > 0 || !search) && (
+        {(codeAgents.length > 0 || !deferredSearch) && (
           <SectionLabelCodeAgents onImportFromGithub={onImportFromGithub} />
         )}
         {codeAgents.map((agent) => (
@@ -485,7 +487,7 @@ function PinAgentPopoverContent({
           />
         ))}
 
-        {userAgents.length === 0 && !decopilotRowShown && search && (
+        {userAgents.length === 0 && !decopilotRowShown && deferredSearch && (
           <NoAgentsFound />
         )}
       </div>

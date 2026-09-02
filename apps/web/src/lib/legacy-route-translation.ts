@@ -10,7 +10,7 @@
  * minted) translates itself on entry.
  *
  * The governing rule: **path = which page, search = how that page is laid out.**
- * So `virtualmcpid` is promoted to the `{-$project}` path segment, the thread id
+ * So `virtualmcpid` becomes `?virtualmcpid=`, the thread id
  * moves from the path to `?thread=`, and `main` splits in two: the view it named
  * becomes the `{-$panel}` segment, and its `0` closed sentinel becomes
  * `?mainpanel=false`, which is layout and stays in search.
@@ -33,6 +33,7 @@
  */
 
 import {
+  CONTENT_MAIN,
   type DestinationPanel,
   isDestinationPanel,
   panelLocationForTab,
@@ -42,7 +43,8 @@ import {
  *  key (`sidepanel`, `task`, `connect`, board filters, …) is carried through
  *  verbatim. */
 export interface LegacyThreadSearch {
-  /** Legacy agent selector. Promoted to the `{-$project}` path segment. */
+  /** Legacy agent selector. Carried through as `?virtualmcpid=`, the one
+   *  carrier of the project scope — it is search on the new routes too. */
   virtualmcpid?: string;
   /** Active main-panel view, or the `0` closed sentinel. Retired into the
    *  `{-$panel}` segment and `?mainpanel` by {@link translateLegacyMainParam}. */
@@ -52,11 +54,12 @@ export interface LegacyThreadSearch {
 
 /** Full paths of the destination routes this translator can land on. */
 export type LegacyThreadDestination =
-  | "/$org/agents/{-$project}/{-$panel}"
+  | "/$org/agents/{-$panel}"
   | "/$org/tasks/{-$taskKey}"
   | "/$org/reports"
   | "/$org/library"
-  | "/$org/home";
+  | "/$org/home"
+  | "/$org/discover";
 
 /** Shaped for TanStack's `navigate()` / `<Navigate />`: `{ to, params, search }`. */
 export interface LegacyThreadTarget {
@@ -78,6 +81,9 @@ const DESTINATION_BY_PANEL: Readonly<
   files: "/$org/library",
   reports: "/$org/reports",
   overview: "/$org/home",
+  /** No legacy `?main=discover` was ever minted — Discover postdates the
+   *  overlay grammar. Mapped anyway so the record stays exhaustive. */
+  discover: "/$org/discover",
 };
 
 /**
@@ -98,8 +104,19 @@ export interface LegacyMainTranslation {
 
 export function translateLegacyMainParam(
   main: string | 0 | undefined,
+  /** The `{-$panel}` segment the URL already carries, when it has one. */
+  currentPanel?: string,
 ): LegacyMainTranslation | null {
   if (main === undefined) return null;
+  /**
+   * `main=content` is the ONE value that is not legacy: it is Content's own
+   * address on the Site Editor segment (see `CONTENT_MAIN`), so it is carried
+   * onto that segment rather than retired into one. Once the URL holds both
+   * halves there is nothing left to translate — without this the redirect
+   * would re-fire on the target it just produced. Every other `main=<tab>`
+   * falls through and translates exactly as it did before.
+   */
+  if (main === CONTENT_MAIN && currentPanel === "site-editor") return null;
   const cleared = { main: undefined };
 
   if (main === 0 || main === "0") {
@@ -121,7 +138,7 @@ export function translateLegacyMainParam(
   }
 
   return {
-    to: "/$org/agents/{-$project}/{-$panel}",
+    to: "/$org/agents/{-$panel}",
     panel,
     search: { ...cleared, ...payload },
   };
@@ -137,11 +154,20 @@ export function translateLegacyThreadRoute(args: {
 
   const view = translateLegacyMainParam(main);
 
-  if (view && view.to && view.to !== "/$org/agents/{-$project}/{-$panel}") {
+  if (view && view.to && view.to !== "/$org/agents/{-$panel}") {
     return {
       to: view.to,
       params: { org, project: undefined, panel: undefined },
-      search: { ...rest, ...view.search, thread: taskId },
+      /** `virtualmcpid: undefined` is written, not omitted. The key is retained
+       *  across navigation, and retention re-adds a key the next search leaves
+       *  out — so dropping it by omission would hand the scope straight back on
+       *  a page that has no project. */
+      search: {
+        ...rest,
+        ...view.search,
+        virtualmcpid: undefined,
+        thread: taskId,
+      },
     };
   }
 
@@ -150,7 +176,7 @@ export function translateLegacyThreadRoute(args: {
   const project = virtualmcpid?.trim() ? virtualmcpid : undefined;
 
   return {
-    to: "/$org/agents/{-$project}/{-$panel}",
+    to: "/$org/agents/{-$panel}",
     params: { org, project, panel: view?.panel },
     search: { ...rest, ...(view?.search ?? {}), thread: taskId },
   };

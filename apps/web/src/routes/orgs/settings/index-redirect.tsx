@@ -1,7 +1,7 @@
 import { Navigate, useParams } from "@tanstack/react-router";
-import { Loading01 } from "@untitledui/icons";
 import { useCapabilities, type CapabilityId } from "@/hooks/use-capability";
 import { CapabilityLoadError } from "@/components/capability-load-error";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 
 /**
  * Capability-aware /settings index. Redirects each member to the first
@@ -16,11 +16,7 @@ export default function SettingsIndexRedirect() {
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
 
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PanelLoading />;
   }
 
   // Don't fall through to the Profile redirect on a failed lookup — that reads

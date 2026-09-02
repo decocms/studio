@@ -20,15 +20,12 @@ import {
   type GroupImperativeHandle,
 } from "@/components/resizable";
 import { useSidePanelWidth } from "@/hooks/use-side-panel-width";
-import { useElementWidth } from "@/hooks/use-element-width";
 import {
   computeWorkspacePanelSizes,
   type WorkspaceVisibility,
 } from "@/hooks/use-layout-state";
 import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-drawer";
 import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
-import { CmsTour } from "@/components/cms-tour/cms-tour";
-import { headerLayout } from "./header-layout";
 import { VirtualMcpHeaderInfo } from "@/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/components/chat/context";
@@ -76,28 +73,22 @@ function PanelCard({
   );
 }
 
-/**
- * The agent's main-panel controls: the view tab bar, which also folds in the
- * agent-independent overlays (Library / Tasks) and caps itself at 3 buttons
- * plus a stack popover. Rendered in whichever header hosts the main panel.
- */
+/** The agent's main-panel controls: the per-thread tab bar. Rendered in
+ *  whichever header hosts the main panel. */
 function MainControls({
   virtualMcpId,
   taskId,
   disableActiveMainToggle,
-  maxVisible,
 }: {
   virtualMcpId: string;
   taskId: string | null;
   disableActiveMainToggle: boolean;
-  maxVisible?: number;
 }) {
   return (
     <MainPanelTabsBar
       virtualMcpId={virtualMcpId}
       taskId={taskId}
       disableActiveMainToggle={disableActiveMainToggle}
-      maxVisible={maxVisible}
     />
   );
 }
@@ -127,16 +118,6 @@ export function WorkspacePanelGroup({
   const sizes = computeWorkspacePanelSizes({ sidePanelOpen, mainOpen });
   const sideSize = sidePanelOpen && mainOpen ? sidePanelWidth : sizes.side;
   const mainSize = 100 - sideSize;
-
-  // Responsive header: measure the whole header (== panel width) and the right
-  // actions cluster. `headerLayout` derives BOTH the tab count and whether the
-  // center page selector shows from that single stable pair — never from the
-  // center gap, which grows when a tab folds and used to flicker the selector
-  // back. Widths read `-1` until measured, treated as "roomy" so the header
-  // opens fully first.
-  const [headerWidth, headerRef] = useElementWidth();
-  const [rightWidth, rightRef] = useElementWidth();
-  const { maxTabs } = headerLayout(headerWidth, rightWidth);
 
   // The thread list and new-chat action live in the chat panel header.
   const newChatCrumb = <NewChatCrumb />;
@@ -187,7 +168,7 @@ export function WorkspacePanelGroup({
   // group). When the selector slot is empty (non-Preview views), the publish
   // actions still land far right.
   const mainHeader = (
-    <PanelHeader ref={headerRef} className="justify-between gap-2">
+    <PanelHeader className="justify-between gap-2">
       {/* min-w-0 + overflow-hidden is the safety net: if the tab count estimate
           runs optimistic, THIS group yields (its trailing tabs clip) so the
           right actions on the far side are never pushed off-screen. */}
@@ -202,7 +183,6 @@ export function WorkspacePanelGroup({
           virtualMcpId={virtualMcpId}
           taskId={taskId}
           disableActiveMainToggle={!sidePanelOpen}
-          maxVisible={maxTabs}
         />
       </div>
       {/* The page selector centers between the two side groups in this flex-1
@@ -239,10 +219,7 @@ export function WorkspacePanelGroup({
         <div className="flex min-w-0 shrink items-center justify-end">
           {branchSelector}
         </div>
-        <div
-          ref={rightRef}
-          className="flex shrink-0 items-center justify-end gap-1"
-        >
+        <div className="flex shrink-0 items-center justify-end gap-1">
           <MainPanelHeaderEndSlot />
           {publishActions}
           <PanelCollapseToggle
@@ -258,7 +235,6 @@ export function WorkspacePanelGroup({
 
   return (
     <MainPanelHeaderProvider>
-      <CmsTour virtualMcpId={virtualMcpId} />
       <ResizablePanelGroup
         ref={panelGroupRef}
         key={`${virtualMcpId}-${taskId}`}

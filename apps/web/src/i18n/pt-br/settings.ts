@@ -9,14 +9,12 @@ export const settings = {
   "settings.nav.connect": "Conectar",
   "settings.nav.aiProviders": "Provedores de IA",
   "settings.nav.secrets": "Segredos",
-  "settings.nav.apiKeys": "Chaves de API",
   "settings.nav.billing": "Cobrança e IA",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Repos sincronizados",
   "settings.nav.storage": "Armazenamento",
   "settings.nav.advanced": "Avançado",
   "settings.subnav.ariaLabel": "Seções de configurações",
-  "settings.subnav.clients": "Clientes",
   "settings.subnav.infrastructure": "Infraestrutura",
   "settings.nav.tasks": "Quadro",
   "settings.jira.sectionTitle": "Integração com o Jira",
@@ -155,6 +153,7 @@ export const settings = {
   "settings.nav.members": "Membros",
   "settings.nav.security": "Segurança",
   "settings.nav.profile": "Perfil e preferências",
+  "settings.nav.backToOrg": "Voltar para {name}",
   "settings.nav.signOut": "Sair",
   "settings.profile.avatar": "Avatar",
   "settings.profile.displayName": "Nome de exibição",
@@ -313,38 +312,28 @@ export const settings = {
     "Armazena apenas um endpoint de atualiza\u00e7\u00e3o + chave API; credenciais de curta dura\u00e7\u00e3o s\u00e3o buscadas sob demanda e atualizadas automaticamente.",
   "settings.buckets.temporarySessionOption":
     "Sess\u00e3o tempor\u00e1ria (STS, auto-atualizada)",
-  "settings.connectClients.activeKeys": "Chaves ativas",
-  "settings.connectClients.activeKeysDescription":
-    "Chaves que você gerou para clientes headless. Revogue quando quiser.",
-  "settings.connectClients.apiKeyTab": "Chave API",
+  "settings.connectClients.anyOtherClientDescription":
+    "Qualquer outro cliente MCP: cole este endpoint nele para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
+  "settings.connectClients.apiKeyOption": "Chave API",
+  "settings.connectClients.connectAClient": "Conectar um cliente",
   "settings.connectClients.copy": "Copiar",
-  "settings.connectClients.createdAt": "Criada em {date}",
-  "settings.connectClients.customClientHint":
-    "Conectando um cliente personalizado?",
   "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
-  "settings.connectClients.failedToLoadKeys":
-    "Falha ao carregar chaves: {error}",
+  "settings.connectClients.generateKey": "Gerar chave",
   "settings.connectClients.generateKeyFor": "Gerar chave para {client}",
   "settings.connectClients.generatingKey": "Gerando…",
   "settings.connectClients.headlessKeyHint":
     "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
+  "settings.connectClients.installMethod": "Método de instalação",
   "settings.connectClients.keyCreated": "Chave criada",
-  "settings.connectClients.keyRevoked": "Chave revogada",
-  "settings.connectClients.loadingActiveKeys": "Carregando chaves ativas…",
-  "settings.connectClients.noConnectKeysYet":
-    "Nenhuma chave de conexão criada ainda. Gere uma na aba de um cliente acima para configurações headless.",
+  "settings.connectClients.oauthDiscoveryDetails":
+    "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
     "Recomendado para seu laptop. O navegador abrirá no primeiro uso para você entrar — sem token para gerenciar.",
   "settings.connectClients.oauthMetadataHint":
     "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
-  "settings.connectClients.oauthTab": "OAuth",
-  "settings.connectClients.orgUnifiedMcp": "O MCP unificado da sua org",
-  "settings.connectClients.orgUnifiedMcpDescription":
-    "Insira esta URL em qualquer cliente MCP para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
+  "settings.connectClients.oauthOption": "OAuth",
+  "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar a clientes",
-  "settings.connectClients.revoke": "Revogar",
-  "settings.connectClients.revokeConfirm":
-    'Revogar "{name}"? Qualquer cliente que ainda use esta chave perderá o acesso.',
   "settings.connectClients.snippetOneTimeWarning":
     "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
@@ -526,17 +515,6 @@ export const settings = {
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
-  "settings.mainAgent.title": "Agente principal",
-  "settings.mainAgent.description":
-    "O agente em que esta organiza\u00e7\u00e3o abre. Todos os membros chegam aqui em vez do Super Agent.",
-  "settings.mainAgent.itemTitle": "Agente de entrada",
-  "settings.mainAgent.itemDescription":
-    "Escolha o agente que abre ao entrar nesta organiza\u00e7\u00e3o.",
-  "settings.mainAgent.superAgentOption": "Super Agent (padr\u00e3o)",
-  "settings.mainAgent.setToast": '"{title}" agora \u00e9 o agente principal',
-  "settings.mainAgent.resetToast": "Redefinido para o Super Agent",
-  "settings.mainAgent.errorToast":
-    "N\u00e3o foi poss\u00edvel atualizar o agente principal",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
     "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
@@ -830,14 +808,16 @@ export const settings = {
   "settings.apiKeys.failedToLoadError":
     "Falha ao carregar chaves de API: {error}",
   "settings.apiKeys.keyDeleted": 'Chave de API "{name}" excluída',
-  "settings.apiKeys.keysCountPlural": "{count} chaves",
-  "settings.apiKeys.keysCountSingular": "{count} chave",
+  "settings.apiKeys.loading": "Carregando chaves de API…",
   "settings.apiKeys.nameLabel": "Nome",
   "settings.apiKeys.namePlaceholder": "Minha integração",
   "settings.apiKeys.newKey": "Nova chave",
   "settings.apiKeys.newKeyDescription":
     "Dê um nome à chave para reconhecê-la depois.",
   "settings.apiKeys.newKeyTitle": "Nova chave de API",
+  "settings.apiKeys.sectionDescription":
+    "Chaves de longa duração para scripts e clientes que não conseguem entrar por um navegador.",
+  "settings.apiKeys.sectionTitle": "Chaves de API",
   "settings.secrets.cancelButton": "Cancelar",
   "settings.secrets.createButton": "Criar segredo",
   "settings.secrets.creatingButton": "Criando\u2026",

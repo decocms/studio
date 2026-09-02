@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { boardSearchParams, parseBoardSearch } from "./filters-search";
+import {
+  boardSearchParams,
+  parseBoardSearch,
+  taskMatchesScope,
+  visibleSelection,
+} from "./filters-search";
 import { EMPTY_FILTERS, type TaskFilters } from "./task-filters";
 
 const filters: TaskFilters = {
@@ -50,26 +55,67 @@ describe("board search params", () => {
   });
 });
 
-describe("project-scoped board", () => {
-  test("the route's project seeds the repo filter", () => {
-    expect(
-      parseBoardSearch({}, { defaultRepo: "acme/site" }).filters.repo,
-    ).toBe("acme/site");
+/**
+ * The scope used to seed `filters.repo`, which made the two indistinguishable
+ * and — because the repo filter is exact-match — hid every repo-less card the
+ * moment a project was picked. They are separate concepts now: these tests are
+ * the inverted form of the ones that encoded the old behaviour.
+ */
+describe("the project scope does not touch the repo filter", () => {
+  test("a scoped route leaves filters.repo null", () => {
+    expect(parseBoardSearch({}).filters.repo).toBeNull();
   });
 
-  test("an explicit ?repo= beats the route's project", () => {
-    expect(
-      parseBoardSearch({ repo: "acme/other" }, { defaultRepo: "acme/site" })
-        .filters.repo,
-    ).toBe("acme/other");
+  test("an explicit ?repo= is still the only thing that sets it", () => {
+    expect(parseBoardSearch({ repo: "acme/other" }).filters.repo).toBe(
+      "acme/other",
+    );
+  });
+});
+
+describe("taskMatchesScope", () => {
+  test("no scope keeps everything", () => {
+    expect(taskMatchesScope({ repo: "acme/site" }, null)).toBe(true);
+    expect(taskMatchesScope({ repo: null }, null)).toBe(true);
   });
 
-  /** A project with no GitHub attachment scopes nothing — the board stays
-   *  org-wide rather than filtering to a repo that does not exist. */
-  test("no project repo leaves the board unfiltered", () => {
-    expect(parseBoardSearch({}, { defaultRepo: null })).toEqual({
-      filters: EMPTY_FILTERS,
-      layout: "board",
-    });
+  test("a scope keeps its own repo's cards", () => {
+    expect(taskMatchesScope({ repo: "acme/site" }, "acme/site")).toBe(true);
+  });
+
+  test("a scope drops another repo's cards", () => {
+    expect(taskMatchesScope({ repo: "acme/other" }, "acme/site")).toBe(false);
+  });
+
+  /** The load-bearing one. Reports imports and the Jira sync both write no
+   *  repo at all, so hiding unassigned cards would empty most boards. */
+  test("a scope KEEPS cards with no repo", () => {
+    expect(taskMatchesScope({ repo: null }, "acme/site")).toBe(true);
+    expect(taskMatchesScope({}, "acme/site")).toBe(true);
+  });
+
+  test("matching is case-insensitive, as GitHub is", () => {
+    expect(taskMatchesScope({ repo: "Acme/Site" }, "acme/site")).toBe(true);
+  });
+});
+
+describe("visibleSelection", () => {
+  const visible = [{ id: "a" }, { id: "b" }];
+
+  test("keeps ids that are still on screen", () => {
+    expect(visibleSelection(new Set(["a"]), visible)).toEqual(new Set(["a"]));
+  });
+
+  /** The load-bearing one: a scope change hides cards without touching the
+   *  selection state, and bulk delete must not reach them. */
+  test("drops ids a scope or filter change hid", () => {
+    expect(visibleSelection(new Set(["a", "hidden"]), visible)).toEqual(
+      new Set(["a"]),
+    );
+    expect(visibleSelection(new Set(["hidden"]), visible)).toEqual(new Set());
+  });
+
+  test("an empty board selects nothing", () => {
+    expect(visibleSelection(new Set(["a"]), [])).toEqual(new Set());
   });
 });

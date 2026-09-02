@@ -445,10 +445,7 @@ export const sandbox = {
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":
     "Clique em qualquer elemento para perguntar à IA",
-  "sandbox.preview.cms": "CMS",
   "sandbox.preview.collapseTerminal": "Recolher terminal",
-  "sandbox.preview.editContent": "Editar conteúdo",
-  "sandbox.preview.exitEditor": "Sair do editor",
   "sandbox.preview.expandTerminal": "Expandir terminal",
   "sandbox.preview.resizeTerminal": "Redimensionar terminal",
   "sandbox.preview.copyCurrentUrl": "Copiar URL atual",
@@ -458,8 +455,10 @@ export const sandbox = {
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Celular (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
+  "sandbox.preview.editContent": "Editar conteúdo",
   "sandbox.preview.editSeo": "Editar SEO",
   "sandbox.preview.enterToGo": "Enter para ir",
+  "sandbox.preview.exitEditor": "Sair do editor",
   "sandbox.preview.failedToCopyUrl": "Falha ao copiar URL",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
@@ -597,16 +596,13 @@ export const sandbox = {
     "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em sites que têm a rota /live/previews.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
-    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
-  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Quem edita abre o CMS pelo preview quando precisa.",
-  "sandbox.cmsSettings.contentEditing.auto": "Automático",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "O preview abre o CMS assim que for possível editar o conteúdo.",
+    "Se este agente oferece um CMS.",
+  "sandbox.cmsSettings.contentEditing.on": "Ativado",
+  "sandbox.cmsSettings.contentEditing.onDescription":
+    "O Editor do Site oferece Conteúdo, e um chat de CMS abre nele.",
   "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
+    "Sem a visão Conteúdo no Editor do Site. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
   "sandbox.cmsUnavailable.title":
     "Este chat não consegue pré-visualizar seu site",
   "sandbox.cmsUnavailable.noPreviewServer":

@@ -13,8 +13,9 @@ export interface ChatNavigation {
   /** The thread the matched route names, or `null` where it names none. */
   taskId: string | null;
   /** Navigate to a task: the chat route, with the thread in `?thread=` and the
-   *  agent as its project segment. `autosend` tells the route to consume the
-   *  stored handoff message. */
+   *  agent in `?virtualmcpid=` — the one carrier of the project scope, written
+   *  explicitly because retention would otherwise hand back the scope in force.
+   *  `autosend` tells the route to consume the stored handoff message. */
   navigateToTask: (
     taskId: string,
     opts?: { virtualMcpId?: string; autosend?: boolean },
@@ -32,9 +33,9 @@ export function useChatNavigation(): ChatNavigation {
   const taskId = useRouteThreadId();
 
   /**
-   * The same route-aware answer the shell and the breadcrumb use. Reading only
-   * `?virtualmcpid=` made a chat on `/$org/agents/<project>` — where that param
-   * is absent by construction — dispatch its messages to the Super Agent.
+   * The same route-aware answer the shell and the breadcrumb use: only the
+   * routes whose agent IS the scope resolve `?virtualmcpid=`, so a leftover
+   * filter on an org-level page cannot redirect a chat's messages.
    */
   const virtualMcpId = useRouteVirtualMcpId();
   const activeTabId = useActivePanelTabId();
@@ -51,12 +52,9 @@ export function useChatNavigation(): ChatNavigation {
     const view = carried ? panelLocationForTab(carried) : null;
     navigate({
       to: DESTINATION_ROUTE.agents,
-      params: {
-        org: org.slug,
-        project: opts?.virtualMcpId ?? virtualMcpId,
-        panel: view?.panel,
-      },
+      params: { org: org.slug, panel: view?.panel },
       search: {
+        virtualmcpid: opts?.virtualMcpId ?? virtualMcpId,
         thread: taskId,
         ...(view?.payload ?? {}),
         ...(typeof search.sidepanel === "boolean"

@@ -31,7 +31,7 @@ const CLEARED_PAYLOAD = {
 describe("translateLegacyThreadRoute", () => {
   it("sends a bare legacy thread URL to the project-less chat route", () => {
     expect(translate()).toEqual({
-      to: "/$org/agents/{-$project}/{-$panel}",
+      to: "/$org/agents/{-$panel}",
       params: { org: ORG, project: undefined, panel: undefined },
       search: { thread: THREAD },
     });
@@ -41,15 +41,15 @@ describe("translateLegacyThreadRoute", () => {
     expect(translate(null)).toEqual(translate({}));
   });
 
-  it("promotes virtualmcpid to the project path segment", () => {
+  it("carries the agent onto the agents route", () => {
     expect(translate({ virtualmcpid: PROJECT })).toEqual({
-      to: "/$org/agents/{-$project}/{-$panel}",
+      to: "/$org/agents/{-$panel}",
       params: { org: ORG, project: PROJECT, panel: undefined },
       search: { thread: THREAD },
     });
   });
 
-  it("reads a blank virtualmcpid as no project", () => {
+  it("reads a blank virtualmcpid as no agent", () => {
     expect(translate({ virtualmcpid: "   " }).params.project).toBeUndefined();
   });
 
@@ -79,22 +79,48 @@ describe("translateLegacyThreadRoute", () => {
         expect(target.search).toEqual({
           thread: THREAD,
           main: undefined,
+          virtualmcpid: undefined,
           ...CLEARED_PAYLOAD,
         });
+      });
+
+      /** The key must be PRESENT-and-undefined, not absent. `virtualmcpid` is
+       *  retained across navigation, and retention re-adds a key the next
+       *  search omits — so an absent key hands the scope back on a page that
+       *  has no project. `toEqual` cannot see this difference; `in` can. */
+      it(`writes the dropped scope explicitly for main=${main}`, () => {
+        const target = translate({ main, virtualmcpid: PROJECT });
+        expect("virtualmcpid" in target.search).toBe(true);
+        expect(target.search.virtualmcpid).toBeUndefined();
       });
     }
   });
 
   describe("per-agent views become the chat route's panel segment", () => {
-    for (const main of ["preview", "code", "content", "settings", "git"]) {
+    for (const main of ["site-editor", "code", "settings", "git"]) {
       it(`makes main=${main} the panel segment`, () => {
         expect(translate({ main, virtualmcpid: PROJECT })).toEqual({
-          to: "/$org/agents/{-$project}/{-$panel}",
+          to: "/$org/agents/{-$panel}",
           params: { org: ORG, project: PROJECT, panel: main },
           search: { thread: THREAD, main: undefined, ...CLEARED_PAYLOAD },
         });
       });
     }
+
+    /** INVERTED. `content` used to become a segment of its own like the rest;
+     *  it is a view ON the Site Editor now, so the param it arrives in is the
+     *  param it stays in — carried onto that segment rather than retired. */
+    it("carries main=content onto the site-editor segment", () => {
+      expect(translate({ main: "content", virtualmcpid: PROJECT })).toEqual({
+        to: "/$org/agents/{-$panel}",
+        params: { org: ORG, project: PROJECT, panel: "site-editor" },
+        search: {
+          thread: THREAD,
+          ...CLEARED_PAYLOAD,
+          main: "content",
+        },
+      });
+    });
 
     /** An overlay tab with no destination route of its own. */
     it("makes main=connect-sources the panel segment", () => {
@@ -102,7 +128,7 @@ describe("translateLegacyThreadRoute", () => {
       expect(
         translate({ main: "connect-sources", virtualmcpid: PROJECT }),
       ).toEqual({
-        to: "/$org/agents/{-$project}/{-$panel}",
+        to: "/$org/agents/{-$panel}",
         params: { org: ORG, project: PROJECT, panel: "connect-sources" },
         search: { thread: THREAD, main: undefined, ...CLEARED_PAYLOAD },
       });
@@ -114,7 +140,7 @@ describe("translateLegacyThreadRoute", () => {
         main: formatPinnedViewTabId("conn_1", "get_my_diagnostic"),
         virtualmcpid: PROJECT,
       });
-      expect(target.to).toBe("/$org/agents/{-$project}/{-$panel}");
+      expect(target.to).toBe("/$org/agents/{-$panel}");
       expect(target.params).toEqual({
         org: ORG,
         project: PROJECT,
@@ -130,7 +156,7 @@ describe("translateLegacyThreadRoute", () => {
 
     it("turns the main=0 closed sentinel into ?mainpanel=false", () => {
       expect(translate({ main: 0, virtualmcpid: PROJECT })).toEqual({
-        to: "/$org/agents/{-$project}/{-$panel}",
+        to: "/$org/agents/{-$panel}",
         params: { org: ORG, project: PROJECT, panel: undefined },
         search: { thread: THREAD, main: undefined, mainpanel: false },
       });
@@ -167,9 +193,7 @@ describe("translateLegacyThreadRoute", () => {
   it("maps the overlay tabs that have a destination route", () => {
     for (const main of ["board", "files", "reports"]) {
       expect(OVERLAY_TABS.has(main)).toBe(true);
-      expect(translate({ main }).to).not.toBe(
-        "/$org/agents/{-$project}/{-$panel}",
-      );
+      expect(translate({ main }).to).not.toBe("/$org/agents/{-$panel}");
     }
   });
 });
@@ -235,11 +259,26 @@ describe("translateLegacyMainParam", () => {
     expect(translateLegacyMainParam("files")?.to).toBe("/$org/library");
   });
 
-  it("makes a bookmarked ?main=preview the panel segment", () => {
+  /** The retired name is accepted on input and rewritten on output, so a
+   *  bookmark minted before the rename lands on the segment that owns the
+   *  view rather than on one nothing renders. */
+  it("makes a bookmarked ?main=preview the site-editor panel segment", () => {
     expect(translateLegacyMainParam("preview")).toEqual({
-      to: "/$org/agents/{-$project}/{-$panel}",
-      panel: "preview",
+      to: "/$org/agents/{-$panel}",
+      panel: "site-editor",
       search: { main: undefined, ...CLEARED_PAYLOAD },
+    });
+  });
+
+  /** The carve-out's other half: once the URL carries both the segment and the
+   *  param there is nothing left to retire, so the redirect that produced it
+   *  cannot fire on its own output. */
+  it("leaves main=content alone once it is on the site-editor segment", () => {
+    expect(translateLegacyMainParam("content", "site-editor")).toBeNull();
+    expect(translateLegacyMainParam("content")).toEqual({
+      to: "/$org/agents/{-$panel}",
+      panel: "site-editor",
+      search: { ...CLEARED_PAYLOAD, main: "content" },
     });
   });
 
@@ -251,7 +290,7 @@ describe("translateLegacyMainParam", () => {
     expect(
       translateLegacyMainParam(formatPinnedViewTabId("conn_1", "get_orders")),
     ).toEqual({
-      to: "/$org/agents/{-$project}/{-$panel}",
+      to: "/$org/agents/{-$panel}",
       panel: "app",
       search: {
         main: undefined,
