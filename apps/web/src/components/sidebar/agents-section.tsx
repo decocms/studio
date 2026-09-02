@@ -1,4 +1,11 @@
-import { Suspense, useState, type ReactElement, type ReactNode } from "react";
+import {
+  Suspense,
+  cloneElement,
+  useState,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -499,7 +506,7 @@ function PinAgentPopover({
 }: {
   compact?: boolean;
   /** Custom trigger (e.g. the breadcrumb agent crumb); defaults to the "+" btn. */
-  trigger?: ReactElement;
+  trigger?: ReactElement<{ onClick?: (event: MouseEvent) => void }>;
   /** Scope-picker mode: set the sidebar agent filter instead of opening a task. */
   onSelectAgent?: (id: string | null) => void;
   selectedAgentId?: string | null;
@@ -555,13 +562,13 @@ function PinAgentPopover({
       {isMobile ? (
         <>
           {trigger ? (
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="contents"
-            >
-              {trigger}
-            </button>
+            // trigger is always a <button> — merge onto it, don't wrap it in another one.
+            cloneElement(trigger, {
+              onClick: (event: MouseEvent) => {
+                trigger.props.onClick?.(event);
+                setOpen(true);
+              },
+            })
           ) : compact ? (
             wrapEmptyHint(
               <MobileCompactButton
