@@ -5,6 +5,7 @@
 
 import type { ConfigPatch, TenantConfig } from "../daemon-protocol";
 import { sleep } from "../shared";
+import { retry, type RetryOptions } from "@decocms/shared/std";
 
 export type { ConfigPatch };
 
@@ -21,9 +22,24 @@ export class ConfigRequestError extends Error {
   }
 }
 
+/** Returns true if an error is transient and should be retried. Distinguishes
+ * network/timeout failures (retriable) from other errors (permanent). */
+function isTransientError(err: unknown): boolean {
+  // Network errors (DNS, connection refused, etc.) are transient
+  if (err instanceof TypeError) {
+    return true;
+  }
+  // AbortError from timeout is transient
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Call a daemon endpoint and read its whole body, labelling any transport
- * failure with the endpoint that failed.
+ * failure with the endpoint that failed. Retries on transient errors
+ * (network timeouts, connection failures) with exponential backoff.
  *
  * `AbortSignal.timeout()` rejects with a bare DOMException whose message is
  * "The operation timed out." — no URL, no endpoint, no hint that a sandbox was
@@ -44,8 +60,19 @@ async function daemonRequest(
   endpoint: string,
 ): Promise<{ status: number; ok: boolean; body: string }> {
   try {
-    const res = await fetch(url, init);
-    return { status: res.status, ok: res.ok, body: await res.text() };
+    const retryOpts: RetryOptions = {
+      maxAttempts: 3,
+      minTimeout: 50,
+      maxTimeout: 500,
+      multiplier: 2,
+      jitter: 0.5,
+      isRetriable: isTransientError,
+    };
+
+    return await retry(async () => {
+      const res = await fetch(url, init);
+      return { status: res.status, ok: res.ok, body: await res.text() };
+    }, retryOpts);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
