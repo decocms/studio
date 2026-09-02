@@ -30,6 +30,9 @@ import type { TaskBoardItem } from "@/storage/types";
 import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
 
+// Cap on cards sent to the LLM prompt, so a large backlog doesn't inflate cost per PR-open.
+const MAX_OPEN_CARDS_FOR_DECISION = 50;
+
 export interface BoardDecision {
   action: "create" | "update";
   /** The existing card to update. Required for `update`, ignored for `create`. */
@@ -268,9 +271,9 @@ export async function reactToPrOpenedForBoard(
     if (!pr) return;
 
     const cards = await ctx.storage.taskBoard.list(orgId);
-    const openCards = cards.filter(
-      (t) => t.status !== "done" && t.status !== "archived",
-    );
+    const openCards = cards
+      .filter((t) => t.status !== "done" && t.status !== "archived")
+      .slice(0, MAX_OPEN_CARDS_FOR_DECISION);
     const thread = await ctx.storage.threads.get(threadId);
 
     const decision = await decideBoardActionForPr(
