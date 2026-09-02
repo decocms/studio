@@ -35,6 +35,7 @@ import {
 } from "@/billing/subsidized-runs";
 import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
+import { NoResultError } from "kysely";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
@@ -278,10 +279,11 @@ export async function resolveSecretModelSource(
    *  run on the org's own key. */
   subsidyApiKey?: string,
 ): Promise<DecopilotSecretModelSource> {
-  // Replace Kysely's raw NoResultError with a clear, permanent one (#2265).
+  // Replace Kysely's raw NoResultError with a clear, permanent one (#2265) — any other rejection (a transient DB/vault failure) propagates unchanged.
   const { keyInfo, apiKey } = await ctx.storage.aiProviderKeys
     .resolve(credentialId, organizationId)
-    .catch(() => {
+    .catch((err) => {
+      if (!(err instanceof NoResultError)) throw err;
       throw new PermanentRunError(
         "model_credential_not_found",
         `Model credential ${credentialId} was not found — configure a model provider before running this agent`,

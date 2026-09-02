@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { UIMessageChunk } from "ai";
+import { NoResultError } from "kysely";
 import {
   isRunSuperseded,
   RunSupersededError,
@@ -423,7 +424,7 @@ describe("resolveSecretModelSource", () => {
     const ctx = {
       storage: {
         aiProviderKeys: {
-          resolve: () => Promise.reject(new Error("no result")),
+          resolve: () => Promise.reject(new NoResultError({} as never)),
         },
       },
     } as unknown as StudioContext;
@@ -439,5 +440,25 @@ describe("resolveSecretModelSource", () => {
     await expect(rejection).rejects.toMatchObject({
       code: "model_credential_not_found",
     });
+  });
+
+  test("propagates a transient lookup failure unchanged, not as permanent", async () => {
+    const dbError = new Error("connection terminated unexpectedly");
+    const ctx = {
+      storage: {
+        aiProviderKeys: {
+          resolve: () => Promise.reject(dbError),
+        },
+      },
+    } as unknown as StudioContext;
+
+    const rejection = resolveSecretModelSource(
+      ctx,
+      "org-1",
+      "cred-1",
+      "model-1",
+    );
+
+    await expect(rejection).rejects.toBe(dbError);
   });
 });
