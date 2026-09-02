@@ -1,7 +1,5 @@
 import { useProjectContext, useVirtualMCP, useVirtualMCPActions } from "@/sdk";
 import { useQueryClient } from "@tanstack/react-query";
-import { callStudioTool } from "@/lib/studio-tools";
-import { getActiveGithubRepo } from "@/lib/github-repo";
 import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
 
 /**
@@ -32,19 +30,13 @@ export function releaseDotClass(color: string | undefined): string {
 
 type ItemData = { item: VirtualMCPEntity | null };
 
-/**
- * The curated, branch-backed release list stored at `metadata.releases` — NOT
- * the git branch list. Writers patch the cached VIRTUAL_MCP item first so the
- * switcher updates instantly, then persist (a failure reverts). Delete also
- * removes the git branch so a discarded draft leaves nothing behind.
- */
+/** Curated branch-backed release list at `metadata.releases`; discard drops only the entry, leaving the branch on GitHub. */
 export function useReleases(virtualMcpId: string) {
   const vm = useVirtualMCP(virtualMcpId);
   const actions = useVirtualMCPActions();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const releases: Release[] = vm?.metadata?.releases ?? [];
-  const repo = getActiveGithubRepo(vm);
 
   const isItemQuery = (queryKey: readonly unknown[]) =>
     queryKey[1] === org.id &&
@@ -87,17 +79,8 @@ export function useReleases(virtualMcpId: string) {
   const renameRelease = (branch: string, name: string) =>
     write(releases.map((r) => (r.branch === branch ? { ...r, name } : r)));
 
-  const deleteRelease = async (branch: string) => {
-    await write(releases.filter((r) => r.branch !== branch));
-    if (repo?.connectionId) {
-      await callStudioTool(org.slug, "GITHUB_DELETE_BRANCH", {
-        connectionId: repo.connectionId,
-        owner: repo.owner,
-        repo: repo.name,
-        branch,
-      });
-    }
-  };
+  const deleteRelease = (branch: string) =>
+    write(releases.filter((r) => r.branch !== branch));
 
   return { releases, createRelease, renameRelease, deleteRelease };
 }

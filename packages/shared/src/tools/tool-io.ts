@@ -7279,15 +7279,6 @@ export interface StudioToolIO {
       } | null;
     };
   };
-  GITHUB_DELETE_BRANCH: {
-    input: {
-      connectionId: string;
-      owner: string;
-      repo: string;
-      branch: string;
-    };
-    output: { deleted: boolean };
-  };
   GLOBAL_SEARCH: {
     input: {
       query: string;
