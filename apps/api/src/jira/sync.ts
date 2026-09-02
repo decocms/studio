@@ -25,7 +25,11 @@
  */
 
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { boardFor } from "@/tools/task-board/board-handler";
+import {
+  type BoardHandler,
+  boardFor,
+  shippedPatch,
+} from "@/tools/task-board/board-handler";
 import type { StudioContext } from "@/core/studio-context";
 import type {
   OrgJiraIntegration,
@@ -535,6 +539,7 @@ async function reconcileVanishedIssues(
   integration: OrgJiraIntegration,
   client: JiraClient,
   scopeJql: string,
+  board: BoardHandler,
 ): Promise<number> {
   const orgId = integration.organizationId;
   const live = await client.searchIssueIds(
@@ -558,7 +563,7 @@ async function reconcileVanishedIssues(
     const item = await ctx.storage.taskBoard.update(
       link.itemId,
       orgId,
-      { status: "archived" },
+      shippedPatch(board, "archived"),
       JIRA_SYNC_ACTOR,
     );
     await ctx.storage.taskBoard.recordActivity({
@@ -839,6 +844,7 @@ async function runSync(
       integration,
       client,
       scopeJql,
+      board,
     );
   }
 
