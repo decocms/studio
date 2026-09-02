@@ -5,6 +5,14 @@ import type { Settings } from "../../settings";
 
 const DEFAULT_INTERNAL_API_URL = new URL(COMMERCE_DISCOVERY_MCP_URL).origin;
 
+/**
+ * None of these calls carried a timeout — a hung Commerce Discovery request
+ * (dead connection, stalled upstream) would block the calling tool call
+ * indefinitely. 15s matches the jira client's REQUEST_TIMEOUT_MS for the same
+ * kind of external-service call.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 const UpgradeResponseSchema = z.object({
   token: z.string().min(1),
 });
@@ -239,6 +247,7 @@ export async function fetchCommerceDiscoveryAuth(
       ...(input.email ? { email: input.email } : {}),
       ...(input.reportUrl ? { report_url: input.reportUrl } : {}),
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -301,6 +310,7 @@ export async function bindCommerceDiscoveryResource(
       provider: input.provider,
       resource_id: input.resourceId,
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (response.status === 409) {
@@ -376,6 +386,7 @@ export async function triggerCommerceDiscoveryRun(
       org_id: input.orgId,
       ...(input.githubRepo ? { github_repo: input.githubRepo } : {}),
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (response.status === 409) {
@@ -429,6 +440,7 @@ export async function fetchCommerceDiscoveryConnectionStatus(
   const response = await fetchImpl(url, {
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (response.status === 404 || response.status === 409) {
