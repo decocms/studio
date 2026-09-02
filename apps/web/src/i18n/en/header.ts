@@ -1,5 +1,6 @@
 export const header = {
   "header.orgSwitcher.accept": "Accept",
+  "header.orgSwitcher.createOrganization": "Create organization",
   "header.orgSwitcher.declineInvitationTo": "Decline invitation to {name}",
   "header.orgSwitcher.failedToAcceptInvitation": "Failed to accept invitation",
   "header.orgSwitcher.failedToDeclineInvitation":
