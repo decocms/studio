@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { canRefresh } from "../../oauth/token-refresh";
 import { resolveOriginTokenEndpoint } from "../../oauth/resolve-token-endpoint";
+import { isPrivateUrl } from "../../tools/registry/discover-tools";
 import {
   DownstreamTokenStorage,
   type DownstreamTokenData,
@@ -77,6 +78,14 @@ export const createDownstreamTokenRoutes = () => {
 
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         return c.json({ error: "tokenEndpoint must be an http(s) URL" }, 400);
+      }
+
+      // Same SSRF guard applied to origin-controlled endpoint URLs elsewhere (oauth-proxy.ts).
+      if (isPrivateUrl(body.tokenEndpoint)) {
+        return c.json(
+          { error: "tokenEndpoint must not target a private network" },
+          400,
+        );
       }
     }
 
