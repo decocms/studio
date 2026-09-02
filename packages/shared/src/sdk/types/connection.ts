@@ -11,7 +11,7 @@ import { z } from "zod";
 /**
  * OAuth configuration schema for downstream MCP
  */
-const OAuthConfigSchema = z.object({
+export const OAuthConfigSchema = z.object({
   authorizationEndpoint: z.string().url(),
   tokenEndpoint: z.string().url(),
   introspectionEndpoint: z.string().url().optional(),

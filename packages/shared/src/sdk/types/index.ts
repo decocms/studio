@@ -2,6 +2,7 @@ export {
   ConnectionEntitySchema,
   ConnectionCreateDataSchema,
   ConnectionUpdateDataSchema,
+  OAuthConfigSchema,
   isStdioParameters,
   parseVirtualUrl,
   buildVirtualUrl,

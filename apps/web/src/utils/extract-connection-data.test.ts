@@ -44,4 +44,51 @@ describe("extractConnectionData", () => {
     expect(data.connection_type).toBe("HTTP");
     expect(data.connection_url).toBe("https://example.com/mcp");
   });
+
+  // Registry oauth_config is untrusted third-party _meta; a non-URL endpoint must not survive.
+  it("drops oauth_config when an endpoint isn't a valid URL", () => {
+    const item: RegistryItem = {
+      ...packageOnlyItem,
+      _meta: {
+        "mcp.studio": {
+          oauth_config: {
+            authorizationEndpoint: "not-a-url",
+            tokenEndpoint: "https://example.com/token",
+            clientId: "client-1",
+            scopes: ["read"],
+            grantType: "authorization_code",
+          },
+        },
+      },
+    };
+
+    const data = extractConnectionData(item, "org-1", "user-1", {
+      remoteIndex: 0,
+    });
+
+    expect(data.oauth_config).toBeNull();
+  });
+
+  it("keeps a well-formed oauth_config", () => {
+    const item: RegistryItem = {
+      ...packageOnlyItem,
+      _meta: {
+        "mcp.studio": {
+          oauth_config: {
+            authorizationEndpoint: "https://example.com/authorize",
+            tokenEndpoint: "https://example.com/token",
+            clientId: "client-1",
+            scopes: ["read"],
+            grantType: "authorization_code",
+          },
+        },
+      },
+    };
+
+    const data = extractConnectionData(item, "org-1", "user-1", {
+      remoteIndex: 0,
+    });
+
+    expect(data.oauth_config).toMatchObject({ clientId: "client-1" });
+  });
 });
