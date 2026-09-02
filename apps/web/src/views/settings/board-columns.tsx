@@ -136,9 +136,17 @@ function BoardColumnRows({ showRole }: { showRole: boolean }) {
   );
 }
 
-/** `prompt` null with `hasAutomation` true means the rule runs on the shipped
- *  default prompt; the column is absent from `automations` when there is no
- *  rule at all. */
+/**
+ * `prompt` null with `hasAutomation` true means the rule runs on the shipped
+ * default prompt; the column is absent from `automations` when there is no rule
+ * at all.
+ *
+ * A rule can only be ADDED on the lane that starts the work (`editsPrompt`).
+ * One already sitting on another column still shows, with its instruction and
+ * its remove button — the engine fires whatever rule it finds
+ * (`runColumnAutomation`), so hiding it would leave a rule running that nobody
+ * could see or switch off.
+ */
 function BoardColumnCard({
   columnKey,
   title,
@@ -283,15 +291,17 @@ function BoardColumnCard({
           )}
         </div>
       ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-fit"
-          onClick={() => saveAutomation("")}
-        >
-          <Plus size={14} />
-          {t("settings.boardColumns.addAutomation")}
-        </Button>
+        editsPrompt && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            onClick={() => saveAutomation("")}
+          >
+            <Plus size={14} />
+            {t("settings.boardColumns.addAutomation")}
+          </Button>
+        )
       )}
     </div>
   );
