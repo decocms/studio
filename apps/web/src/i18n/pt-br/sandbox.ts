@@ -596,13 +596,13 @@ export const sandbox = {
     "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em sites que têm a rota /live/previews.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
-    "Se este agente oferece um CMS.",
+    "Se este projeto oferece um CMS.",
   "sandbox.cmsSettings.contentEditing.on": "Ativado",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "O Editor do Site oferece Conteúdo, e um chat de CMS abre nele.",
   "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "Sem a visão Conteúdo no Editor do Site. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
+    "Sem a visão Conteúdo no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
   "sandbox.cmsUnavailable.title":
     "Este chat não consegue pré-visualizar seu site",
   "sandbox.cmsUnavailable.noPreviewServer":
@@ -621,7 +621,7 @@ export const sandbox = {
   "sandbox.repoRow.label": "Repositório",
   "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
   "sandbox.repoRow.tooltipContent":
-    "O repositório GitHub conectado para este agente. Gerencie em Conexões.",
+    "O repositório GitHub conectado para este projeto. Gerencie em Conexões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.backToList": "Voltar para a lista",
@@ -710,7 +710,7 @@ export const sandbox = {
     "A conexão do GitHub usada neste chat foi removida. Vincule o repositório novamente para iniciar o sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Vincular repositório",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
-    "O repositório GitHub deste agente não está autenticado. Reconecte em Conexões e tente novamente.",
+    "O repositório GitHub deste projeto não está autenticado. Reconecte em Conexões e tente novamente.",
   "sandbox.stateCard.reconnectGithub": "Reconectar GitHub",
   "sandbox.stateCard.resume": "Retomar",
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",

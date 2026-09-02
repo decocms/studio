@@ -572,13 +572,13 @@ export const sandbox = {
     "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.cmsSettings.contentEditing.description":
-    "Whether this agent offers a CMS.",
+    "Whether this project offers a CMS.",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "The Site Editor offers Content, and a CMS chat opens on it.",
   "sandbox.cmsSettings.contentEditing.off": "Disabled",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "No Content view in the Site Editor. The site still previews, and the agent can still edit content.",
+    "No Content view in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsUnavailable.title": "This chat can't preview your site",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",
@@ -596,7 +596,7 @@ export const sandbox = {
   "sandbox.repoRow.label": "Repository",
   "sandbox.repoRow.noRepositoryConnected": "No repository connected",
   "sandbox.repoRow.tooltipContent":
-    "The connected GitHub repository for this agent. Manage in Connections.",
+    "The connected GitHub repository for this project. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.backToList": "Back to list",
@@ -681,7 +681,7 @@ export const sandbox = {
     "The GitHub connection this chat used was removed. Link the repository again to start the sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Link repository",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
-    "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
+    "This project's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
   "sandbox.stateCard.resume": "Resume",
   "sandbox.stateCard.suspendedHeadline": "Sandbox is paused",

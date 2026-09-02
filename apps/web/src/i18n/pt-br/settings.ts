@@ -145,7 +145,7 @@ export const settings = {
   "settings.syncedRepos.removed": "Sincronização removida",
   "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
   "settings.nav.connections": "Conexões",
-  "settings.nav.agents": "Agentes",
+  "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",
   "settings.nav.skills": "Skills",
   "settings.nav.store": "Loja",
@@ -153,7 +153,7 @@ export const settings = {
   "settings.nav.members": "Membros",
   "settings.nav.security": "Segurança",
   "settings.nav.profile": "Perfil e preferências",
-  "settings.nav.backToOrg": "Voltar para {name}",
+  "settings.nav.backToHome": "Voltar para o início",
   "settings.nav.signOut": "Sair",
   "settings.profile.avatar": "Avatar",
   "settings.profile.displayName": "Nome de exibição",
@@ -192,7 +192,7 @@ export const settings = {
   "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Executa tudo sem aprovação",
-  "settings.automations.browseAgentsButton": "Procurar agentes",
+  "settings.automations.browseAgentsButton": "Procurar projetos",
   "settings.automations.emptyDescription":
     "As automa\u00e7\u00f5es s\u00e3o criadas por agente. Abra um agente e adicione uma na aba de Automa\u00e7\u00f5es.",
   "settings.automations.emptyTitle": "Nenhuma automa\u00e7\u00e3o ainda",

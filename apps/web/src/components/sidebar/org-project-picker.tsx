@@ -33,6 +33,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
 import { useNavigate } from "@tanstack/react-router";
 import { AgentAvatar } from "@/components/agent-icon";
 import { CreateOrganizationDialog } from "@/components/create-organization-dialog";
@@ -119,6 +120,11 @@ const rowValue = {
   foreignProject: (slug: string, id: string) => `travel:${slug}:${id}`,
 } as const;
 
+/** The warning strip, for the one row whose Enter does something you cannot see
+ *  coming: leaving the organization you are in. Scoping a project is visible in
+ *  the row itself and needs no narration — a strip that spoke for every row put
+ *  a line of prose under a list of nine words and made the safe case look as
+ *  consequential as the unsafe one. */
 function VerbStrip({
   active,
   rows,
@@ -129,27 +135,11 @@ function VerbStrip({
   const t = useT();
   const meta = rows.get(active);
 
-  if (!meta) {
-    return (
-      <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-        {t("sidebar.picker.verbIdle")}
-      </div>
-    );
-  }
-
-  const text =
-    meta.kind === "scope"
-      ? t("sidebar.picker.verbScope", { name: meta.label })
-      : t("sidebar.picker.verbTravel", { name: meta.label });
+  if (meta?.kind !== "travel") return null;
 
   return (
-    <div
-      className={cn(
-        "border-t border-border px-3 py-2 text-xs",
-        meta.kind === "travel" ? "text-warning" : "text-muted-foreground",
-      )}
-    >
-      {text}
+    <div className="border-t border-border px-3 py-2 text-xs text-warning">
+      {t("sidebar.picker.verbTravel", { name: meta.label })}
       {meta.leaves && (
         <span className="text-muted-foreground">
           {" "}
@@ -300,12 +290,13 @@ function PickerContent({
           </>
         ) : (
           <>
+            {/* "Projects", not "{org} · current": the trigger this popover
+                hangs off already names the org, and the org is listed again
+                below — three copies of one word in a list nine words long. */}
             <CommandGroup
               heading={
                 <GroupHeading
-                  label={t("sidebar.picker.currentOrgHeading", {
-                    name: org.name,
-                  })}
+                  label={t("sidebar.picker.projectsHeading")}
                   createLabel={t("sidebar.picker.newProject")}
                   onCreate={createProject}
                 />
@@ -340,12 +331,10 @@ function PickerContent({
                     <span className="min-w-0 flex-1 truncate">
                       {project.title}
                     </span>
-                    {/* The org rides at the end of every project row, so a
-                        project reads the same here as it does in a search
-                        result that spans organizations. */}
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {org.name}
-                    </span>
+                    {/* No org tag here, unlike a search hit: every row in this
+                        group belongs to the org the trigger names, so the tag
+                        was the same word repeated down the list. Search spans
+                        organizations, so there it earns its place. */}
                     {scopeId === project.id && <Check size={14} />}
                   </CommandItem>
                 );
@@ -401,11 +390,10 @@ function PickerContent({
                     <span className="min-w-0 flex-1 truncate">
                       {candidate.name}
                     </span>
-                    {isCurrent && (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {t("sidebar.picker.currentTag")}
-                      </span>
-                    )}
+                    {/* The same check the scoped project wears: "where you
+                        are" reads as one mark throughout, rather than a tick
+                        in one group and the word "current" in the next. */}
+                    {isCurrent && <Check size={14} />}
                   </CommandItem>
                 );
               })}
@@ -480,8 +468,7 @@ function SearchHitRow({
  *
  *  `project` (the resolved scope), never `displayTarget` (scope ELSE oldest): a
  *  fallback nobody chose must not be presented as a choice. Both marks are
- *  24px, so `pl-[5px]` lands either on the axis the rail centres and nothing
- *  shifts when the selection changes kind. */
+ *  24px, so nothing shifts when the selection changes kind. */
 export function OrgProjectPicker({
   collapsed = false,
 }: {
@@ -536,7 +523,17 @@ export function OrgProjectPicker({
       type="button"
       data-tour={LAYOUT_TOUR_ANCHORS.switcher}
       aria-label={t("sidebar.picker.ariaLabel", { name: label })}
-      className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-1.5 pl-[5px] pr-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      /* A nav row's pill edge; `pl-1` centres the 24px mark on its 16px icon. */
+      className={cn(
+        /* `md:h-[34px]` is the collapse toggle's height, so the two hover
+           surfaces in this strip are one shape rather than two off by 2px. */
+        "flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pl-1 pr-1.5 text-left md:h-[34px] md:py-0",
+        /* The sidebar's own hover, not the main panel's: `accent` is a lighter
+           token than `sidebar-accent`, and at 60% over the sidebar it barely
+           registered next to the collapse toggle it shares a strip with. */
+        "[transition:background-color_180ms_ease] hover:bg-sidebar-accent",
+        INSET_FOCUS_RING,
+      )}
     >
       {icon}
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">

@@ -85,11 +85,11 @@ export const common = {
     "Esta ação não pode ser desfeita. Isso excluirá permanentemente",
   "common.deleteConnectionDialogs.forceDeleteDescription": "A conexão",
   "common.deleteConnectionDialogs.forceDeleteTitle":
-    "Conexão Usada por Agentes",
+    "Conexão Usada por Projetos",
   "common.deleteConnectionDialogs.forceDeleteWarning":
-    "Excluir esta conexão a removerá desses agentes, o que pode impactar fluxos de trabalho existentes que dependem deles.",
+    "Excluir esta conexão a removerá desses projetos, o que pode impactar fluxos de trabalho existentes que dependem deles.",
   "common.deleteConnectionDialogs.isUsedByAgents":
-    "está sendo usada pelos seguintes agente(s):",
+    "está sendo usada pelos seguintes projeto(s):",
   "common.deleteConnectionDialogs.title": "Excluir Conexão?",
   "common.errorBoundary.newVersionAvailable": "Nova versão disponível",
   "common.errorBoundary.newVersionDeployed":
@@ -164,7 +164,7 @@ export const common = {
   "common.importFromDecoDialog.failedToConnectGithub":
     "Falha ao conectar GitHub",
   "common.importFromDecoDialog.failedToCreateAgent":
-    "Falha ao criar o agente importado",
+    "Falha ao criar o projeto importado",
   "common.importFromDecoDialog.failedToPrepareImport":
     "Falha ao preparar a importação da deco.cx",
   "common.importFromDecoDialog.githubNotConnected":

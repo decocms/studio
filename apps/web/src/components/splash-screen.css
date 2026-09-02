@@ -33,7 +33,7 @@
 .deco-splash__outline {
   fill: none;
   stroke: var(--border);
-  stroke-width: var(--border-hairline);
+  stroke-width: calc(var(--border-hairline) * 2);
   stroke-linecap: round;
   stroke-linejoin: round;
   filter: drop-shadow(var(--shadow-xs));

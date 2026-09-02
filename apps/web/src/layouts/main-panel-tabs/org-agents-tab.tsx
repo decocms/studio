@@ -10,25 +10,22 @@
  *  get you somewhere, that one to manage what you have. */
 
 import { Suspense, useState, type ReactNode } from "react";
-import { FolderClosed, SearchLg } from "@untitledui/icons";
+import { SearchLg } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
 import { openCommandPalette } from "@/components/command-palette-store";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { AgentListGroup } from "@/components/org-home/agent-list";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { ConnectPill } from "@/components/org-home/connect-pill";
 import { firstName, greetingSlot } from "@/components/org-home/greeting";
 import {
-  RecentActivity,
-  useRecentTasksSuspense,
-} from "@/components/org-home/recent-activity";
+  ProjectFeed,
+  useOrgTasksSuspense,
+} from "@/components/org-home/project-feed";
 import { useCapability } from "@/hooks/use-capability";
 import { scopableProjects } from "@/hooks/use-project-scope";
-import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { authClient } from "@/lib/auth-client";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
 import { track } from "@/lib/posthog-client";
@@ -77,7 +74,10 @@ function HomeSearch() {
         track("command_palette_opened", { source: "org_home_search" });
         openCommandPalette();
       }}
-      className="flex w-full max-w-[720px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-accent/60"
+      /* `card-shadow`, not a border: the ring IS the card's border in this
+         system, drawn as a shadow so it can carry the drop under it. The
+         width comes from the page's column now. */
+      className="card-shadow flex w-full items-center gap-2 rounded-xl bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent/60"
     >
       <SearchLg className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
@@ -118,19 +118,17 @@ function OrgHomeBody({
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  /** Both SUSPEND, so this component renders once, with the answer to both —
-   *  which is what makes the layout decision below final.
+  /** Both SUSPEND, so this component renders once with the answer to both and
+   *  the feed is built in a single pass.
    *
    *  The page size is raised off the collection default (100) because this
    *  roster is presented as COMPLETE — the header carries a count badge, and
    *  `scopableProjects` then filters the list further, so a truncated read
    *  would show a number that is simply wrong rather than a short list. */
   const all = useVirtualMCPs({ pageSize: 1000 });
-  const hasActivity = useRecentTasksSuspense().length > 0;
+  const tasks = useOrgTasksSuspense();
 
   const agents = scopableProjects(all).filter((a) => a.id !== org.id);
-  const codeAgents = agents.filter((a) => agentHasClonableSource(a.metadata));
-  const plainAgents = agents.filter((a) => !agentHasClonableSource(a.metadata));
 
   if (agents.length === 0) {
     return (
@@ -139,7 +137,7 @@ function OrgHomeBody({
         data-tour={LAYOUT_TOUR_ANCHORS.agents}
       >
         <EmptyState
-          image={<FolderClosed size={48} className="text-muted-foreground" />}
+          image={null}
           title={t("routes.agentsList.noAgentsYet")}
           description={
             canManageAgents
@@ -153,40 +151,11 @@ function OrgHomeBody({
   }
 
   return (
-    <div className="@container">
-      <div
-        className={cn(
-          "grid grid-cols-1 gap-10 @[860px]:gap-8",
-          /** Activity only earns half the width when it has something to show;
-           *  with an empty board the roster spans the row instead of sitting
-           *  beside a blank panel. */
-          hasActivity && "@[860px]:grid-cols-2",
-        )}
-      >
-        <section
-          className="flex flex-col gap-4"
-          data-tour={LAYOUT_TOUR_ANCHORS.agents}
-        >
-          <div className="flex h-8 items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                {t("routes.agentsList.agentsHeading")}
-              </h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                {agents.length}
-              </span>
-            </div>
-            {canManageAgents && importButton("org_home")}
-          </div>
-          {/* One list, no sub-headings: the section header above already says
-              "Agents" and carries the count. Repo-backed agents still lead, and
-              their row badge is what tells them apart. */}
-          <AgentListGroup agents={[...codeAgents, ...plainAgents]} />
-        </section>
-
-        {hasActivity && <RecentActivity agents={all} />}
-      </div>
-    </div>
+    <ProjectFeed
+      projects={agents}
+      tasks={tasks}
+      action={canManageAgents && importButton("org_home")}
+    />
   );
 }
 
@@ -223,7 +192,13 @@ export function OrgAgentsTab() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body className="flex flex-col gap-12 pt-0 md:pt-0">
+        {/* One reading column for the whole page: the search field was already
+            capped at 720px, so a full-width feed under it read as a second,
+            wider page stapled to the first. */}
+        <Page.Body
+          maxWidth="max-w-[720px]"
+          className="flex flex-col gap-12 pt-0 md:pt-0"
+        >
           <div className="flex flex-col items-center gap-12 text-center">
             <ConnectPill />
             {/* Greeting and search are one unit; the pill is a separate offer,

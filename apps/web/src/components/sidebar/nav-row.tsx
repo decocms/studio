@@ -107,9 +107,7 @@ export function SidebarNavRow({
  *  they are the same affordance, so they are one component: a caller supplies
  *  the label and either a `link` (a real anchor, when the destination is
  *  knowable) or an `onSelect` (when leaving is a decision rather than a URL).
- *  This is the shell's `back` slot's content, its trailing margin included: the
- *  slot cannot own that gap, because a back row that renders nothing would
- *  otherwise leave the gap behind. */
+ *  It owns its band, since the slot holding it may render nothing. */
 export function SidebarBackRow({
   label,
   link,
@@ -120,14 +118,16 @@ export function SidebarBackRow({
   onSelect?: () => void;
 }) {
   return (
-    <SidebarMenu className="mb-1 shrink-0">
-      <SidebarNavRow
-        icon={<ArrowLeft size={16} />}
-        label={label}
-        className="text-sidebar-foreground/70"
-        link={link}
-        onSelect={onSelect}
-      />
-    </SidebarMenu>
+    <div className="-mx-2 border-b border-sidebar-border px-2 py-2">
+      <SidebarMenu className="shrink-0">
+        <SidebarNavRow
+          icon={<ArrowLeft size={16} />}
+          label={label}
+          className="text-sidebar-foreground/70"
+          link={link}
+          onSelect={onSelect}
+        />
+      </SidebarMenu>
+    </div>
   );
 }

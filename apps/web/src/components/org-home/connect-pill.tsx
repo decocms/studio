@@ -17,15 +17,21 @@ import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 
-/** Brand names are never translated; `size` balances stroke vs. filled marks. */
+/**
+ * Brand names are never translated; `size` balances stroke vs. filled marks.
+ * `bg`/`fg` are each client's real brand mark colors, not design-system
+ * tokens — Claude's clay orange, and OpenAI/Cursor's monochrome black marks.
+ */
 const CLIENTS: {
   name: string;
   Icon: (props: { size?: number }) => ReactNode;
   size: number;
+  bg: string;
+  fg: string;
 }[] = [
-  { name: "Claude", Icon: ClaudeCodeIcon, size: 14 },
-  { name: "Cursor", Icon: CursorIcon, size: 12 },
-  { name: "Codex", Icon: CodexIcon, size: 12 },
+  { name: "Claude", Icon: ClaudeCodeIcon, size: 14, bg: "#D97757", fg: "#fff" },
+  { name: "Cursor", Icon: CursorIcon, size: 12, bg: "#000", fg: "#fff" },
+  { name: "Codex", Icon: CodexIcon, size: 12, bg: "#4F46E5", fg: "#fff" },
 ];
 
 export function ConnectPill() {
@@ -43,11 +49,12 @@ export function ConnectPill() {
         {t("home.orgHome.connectPill")}
       </span>
       <span aria-hidden="true" className="flex items-center gap-1">
-        {CLIENTS.map(({ name, Icon, size }) => (
+        {CLIENTS.map(({ name, Icon, size, bg, fg }) => (
           <span
             key={name}
             title={name}
-            className="flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground"
+            className="flex size-6 items-center justify-center rounded-full"
+            style={{ backgroundColor: bg, color: fg }}
           >
             <Icon size={size} />
           </span>

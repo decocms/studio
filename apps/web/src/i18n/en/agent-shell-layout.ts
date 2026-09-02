@@ -3,9 +3,9 @@ export const agentShellLayout = {
     "This chat isn't available on the web",
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription":
     "Coding-agent chats run locally in Studio Desktop. Open this chat there to continue.",
-  "agentShellLayout.agentShellLayout.agentNotFound": "Agent not found",
+  "agentShellLayout.agentShellLayout.agentNotFound": "Project not found",
   "agentShellLayout.agentShellLayout.agentNotFoundDescription":
-    'The agent "{virtualMcpId}" does not exist in this organization.',
+    'The project "{virtualMcpId}" does not exist in this organization.',
   "agentShellLayout.agentShellLayout.chatLoadingError":
     "Something went wrong loading the chat. Try refreshing.",
   "agentShellLayout.agentShellLayout.creatingTask": "Creating task…",

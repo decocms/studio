@@ -1074,13 +1074,6 @@ export function TaskBoardPage() {
   const visibleItems = scopedItems.filter((item) =>
     taskMatchesFilters(item, filters),
   );
-  /** What the scope actually did, said out loud in the header. */
-  const routedHere = scopeRepo
-    ? scopedItems.filter((item) => item.repo != null).length
-    : 0;
-  const unassignedHere = scopeRepo
-    ? scopedItems.filter((item) => item.repo == null).length
-    : 0;
   /** Bulk actions read the selection reconciled against what is on screen: the
    *  scope switcher lives outside the board, so a scope change must not leave a
    *  hidden card's id queued for a move, an assign — or a delete. */
@@ -1182,14 +1175,14 @@ export function TaskBoardPage() {
             </button>
           )}
         </div>
-        {scopeProject && (
+        {/* Only the case a person can act on. The counts that used to sit here
+            ("N routed here · N unassigned") narrated the scope filter's
+            fail-open in its own vocabulary — "routed" is the mechanism, and
+            "unassigned" means "no repo" here while it means "no assignee"
+            everywhere else in the product. */}
+        {scopeProject && !scopeRepo && (
           <p className="-mt-2 text-xs text-muted-foreground">
-            {scopeRepo
-              ? t("taskBoard.scope.counts", {
-                  routed: String(routedHere),
-                  unassigned: String(unassignedHere),
-                })
-              : t("taskBoard.scope.noRepo")}
+            {t("taskBoard.scope.noRepo")}
           </p>
         )}
 
