@@ -454,9 +454,7 @@ export const sandbox = {
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Celular (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
-  "sandbox.preview.editContent": "Editar conteúdo",
   "sandbox.preview.enterToGo": "Enter para ir",
-  "sandbox.preview.exitEditor": "Sair do editor",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
   "sandbox.preview.globalLoaders": "Loaders globais",
@@ -589,7 +587,7 @@ export const sandbox = {
     "Se este projeto oferece um CMS.",
   "sandbox.cmsSettings.contentEditing.on": "Ativado",
   "sandbox.cmsSettings.contentEditing.onDescription":
-    "O Editor do Site oferece Conteúdo e Blocos no desktop, e um chat de CMS abre com o editor de Blocos aberto no desktop.",
+    "O Editor do Site oferece Conteúdo e abre Blocos ao lado do Preview no desktop.",
   "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
     "Sem a visão Conteúdo nem o formulário de Blocos no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",

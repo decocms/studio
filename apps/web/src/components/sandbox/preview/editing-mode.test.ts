@@ -3,7 +3,7 @@ import {
   defaultPreviewEditingMode,
   isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
-  togglePreviewEditorMode,
+  toggleVisualEditingMode,
 } from "./editing-mode";
 
 describe("isBlocksEditingEnabled", () => {
@@ -20,69 +20,44 @@ describe("isBlocksEditingEnabled", () => {
   });
 });
 
-describe("togglePreviewEditorMode", () => {
-  test("activates an editor from the neutral preview", () => {
-    expect(togglePreviewEditorMode("preview", "visual")).toBe("visual");
-    expect(togglePreviewEditorMode("preview", "blocks")).toBe("blocks");
+describe("toggleVisualEditingMode", () => {
+  test("activates Visual from Preview or Blocks", () => {
+    expect(toggleVisualEditingMode("preview", false)).toBe("visual");
+    expect(toggleVisualEditingMode("blocks", true)).toBe("visual");
   });
 
-  test("turns off the active editor", () => {
-    expect(togglePreviewEditorMode("visual", "visual")).toBe("preview");
-    expect(togglePreviewEditorMode("blocks", "blocks")).toBe("preview");
+  test("returns from Visual to Blocks when content editing is enabled", () => {
+    expect(toggleVisualEditingMode("visual", true)).toBe("blocks");
   });
 
-  test("switches directly between mutually exclusive editors", () => {
-    expect(togglePreviewEditorMode("visual", "blocks")).toBe("blocks");
-    expect(togglePreviewEditorMode("blocks", "visual")).toBe("visual");
+  test("returns from Visual to Preview when Blocks is unavailable", () => {
+    expect(toggleVisualEditingMode("visual", false)).toBe("preview");
   });
 });
 
-/** MOVED from `defaultSurfaceTabId`, inverted: the Site Editor row lands on
- *  Preview for every session now, and what a desktop CMS session gets there is
- *  the blocks editor already open — not the Content view. */
 describe("defaultPreviewEditingMode", () => {
-  test("a desktop CMS session opens on the blocks editor", () => {
+  test("desktop opens Blocks whenever Content is enabled", () => {
     expect(
       defaultPreviewEditingMode({
-        runtime: "cms",
         cmsMode: "on",
         isMobile: false,
       }),
     ).toBe("blocks");
   });
 
-  test("a mobile CMS session opens on the plain preview", () => {
+  test("mobile opens the plain preview", () => {
     expect(
       defaultPreviewEditingMode({
-        runtime: "cms",
         cmsMode: "on",
         isMobile: true,
       }),
     ).toBe("preview");
   });
 
-  test("a sandbox session opens on the plain preview", () => {
-    expect(
-      defaultPreviewEditingMode({
-        runtime: "sandbox",
-        cmsMode: "on",
-        isMobile: false,
-      }),
-    ).toBe("preview");
-  });
-
-  /** `off` is the one thing that overrides the runtime: an agent with no CMS
-   *  has no blocks editor to land in. */
-  test("off keeps even a CMS session on the plain preview", () => {
-    for (const runtime of ["cms", "sandbox"] as const) {
-      expect(
-        defaultPreviewEditingMode({
-          runtime,
-          cmsMode: "off",
-          isMobile: false,
-        }),
-      ).toBe("preview");
-    }
+  test("CMS off opens the plain preview", () => {
+    expect(defaultPreviewEditingMode({ cmsMode: "off", isMobile: false })).toBe(
+      "preview",
+    );
   });
 });
 

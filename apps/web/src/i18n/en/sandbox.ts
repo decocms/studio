@@ -437,9 +437,7 @@ export const sandbox = {
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Mobile (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
-  "sandbox.preview.editContent": "Edit content",
   "sandbox.preview.enterToGo": "Enter to go",
-  "sandbox.preview.exitEditor": "Exit editor",
   "sandbox.preview.failedToCreatePage": "Failed to create page",
   "sandbox.preview.globalComponents": "Global components",
   "sandbox.preview.globalLoaders": "Global loaders",
@@ -566,7 +564,7 @@ export const sandbox = {
     "Whether this project offers a CMS.",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
-    "The Site Editor offers Content and desktop Blocks, and a CMS chat opens with Blocks active on desktop.",
+    "The Site Editor offers Content and opens Blocks beside Preview on desktop.",
   "sandbox.cmsSettings.contentEditing.off": "Disabled",
   "sandbox.cmsSettings.contentEditing.offDescription":
     "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",

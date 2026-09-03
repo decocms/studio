@@ -8,8 +8,8 @@
  *
  * Portal targets live in the main panel header:
  *   - `MainPanelHeaderSlot` — the flexible middle region. Preview fills it with
- *     its Blocks toggle + page controls, so Preview needs no second toolbar
- *     (single top bar in CMS).
+ *     its page controls, so Preview needs no second toolbar (single top bar in
+ *     CMS).
  *
  * When no provider is present (mobile, where the main panel is full-screen and
  * uses the shared header), `useMainPanelHeaderSlot` returns null and consumers
@@ -75,8 +75,7 @@ export function MainPanelHeaderProvider({ children }: { children: ReactNode }) {
 
 /**
  * The centered middle portal target in the main panel header. Preview fills it
- * with its Blocks toggle and page controls so the group sits centered over the
- * page.
+ * with its page controls so the group sits centered over the page.
  */
 export function MainPanelHeaderSlot({ className }: { className?: string }) {
   const ctx = use(MainPanelHeaderContext);

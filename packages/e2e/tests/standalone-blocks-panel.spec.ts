@@ -50,7 +50,7 @@ async function createClonableAgent(
 test.describe("Blocks preview mode", () => {
   test.setTimeout(90_000);
 
-  test("desktop offers Blocks and Content under the same enabled gate", async ({
+  test("desktop renders Blocks and Content under the same enabled gate", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -64,7 +64,6 @@ test.describe("Blocks preview mode", () => {
 
     const chat = page.getByTestId("chat-panel");
     const main = page.getByTestId("main-panel");
-    const blocksToggle = page.getByTestId("preview-blocks-toggle");
     const contentTab = page.getByRole("button", {
       name: "Content",
       exact: true,
@@ -72,8 +71,7 @@ test.describe("Blocks preview mode", () => {
 
     await expect(chat).toBeVisible({ timeout: 30_000 });
     await expect(main).toBeVisible();
-    // Both controls are local to the Site Editor surface.
-    await expect(blocksToggle).toHaveCount(0);
+    // Both editing surfaces are local to the Site Editor.
     await expect(contentTab).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
@@ -91,10 +89,8 @@ test.describe("Blocks preview mode", () => {
       (url) => url.searchParams.get("virtualmcpid") === agentId,
     );
     await expect(contentTab).toBeVisible();
-    await expect(blocksToggle).toBeVisible();
-    await expect(blocksToggle).toHaveAttribute("aria-label", "CMS");
-    await blocksToggle.click();
-    await expect(blocksToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toBeVisible();
     await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
   });
