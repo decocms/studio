@@ -157,6 +157,8 @@ import {
   visibleSelection,
 } from "./filters-search";
 import { useProjectScope } from "@/hooks/use-project-scope";
+import { useProjectIndex } from "@/hooks/use-project-index";
+import { filterAfterCreate } from "@/lib/project-index";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
@@ -825,7 +827,8 @@ export function TaskBoardPage() {
   const hasRepo = githubConnections.some(
     (c) => c.status === "active" && getRepoScope(c) !== null,
   );
-  // Repo filter options: distinct `owner/name` repos the org can reach.
+  // Distinct `owner/name` repos the org can reach — enrichment for the project
+  // index, so a repo imported but not yet on any card still gets a bucket.
   const repos = listRepoScopeLabels(githubConnections);
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
@@ -902,6 +905,9 @@ export function TaskBoardPage() {
     project: scopeProject,
     setScope,
   } = useProjectScope();
+  /** The board's buckets, closed over every repo a loaded card names so the
+   *  "No project" bucket cannot claim a card that plainly has one. */
+  const projectIndex = useProjectIndex(items, repos);
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -1034,13 +1040,13 @@ export function TaskBoardPage() {
   };
 
   /**
-   * Scope first, then filters. The scope keeps unassigned cards; the explicit
-   * repo filter does not — two different questions, composed rather than
-   * conflated.
+   * Scope first, then filters. The ambient scope keeps unclassified cards; the
+   * board's own project filter does not — two different questions, composed
+   * rather than conflated, exactly as #6801 left them.
    */
   const scopedItems = items.filter((item) => taskMatchesScope(item, scopeRepo));
   const visibleItems = scopedItems.filter((item) =>
-    taskMatchesFilters(item, filters),
+    taskMatchesFilters(item, filters, projectIndex),
   );
   /** Bulk actions read the selection reconciled against what is on screen: the
    *  scope switcher lives outside the board, so a scope change must not leave a
@@ -1052,6 +1058,24 @@ export function TaskBoardPage() {
       !HIDDEN_STATUSES.includes(item.status) ||
       preferences.shownTaskBoardLanes.includes(item.status),
   );
+
+  /**
+   * Keep a newly created card visible: drop the project filter when the card
+   * would fall outside it. Widening back is visible; an empty lane is not.
+   *
+   * Calls `setFilters` rather than `handleFiltersChange`, which also clears the
+   * selection: creating a card must not discard a bulk selection.
+   *
+   * Only the project filter is rescued. A board narrowed by assignee or search
+   * can still swallow a new card — that predates this and is not a promise
+   * made here.
+   */
+  const widenProjectFilterFor = (repo: string | null) => {
+    const next = filterAfterCreate({ repo }, filters.project, projectIndex);
+    if (next !== filters.project) {
+      setFilters({ ...filters, project: next });
+    }
+  };
 
   const openCreate = () => {
     setCreateStatus(null);
@@ -1167,7 +1191,7 @@ export function TaskBoardPage() {
                   filters={filters}
                   members={members}
                   tags={orgTags}
-                  repos={repos}
+                  index={projectIndex}
                   onChange={handleFiltersChange}
                   onOpenBoardSettings={openBoardSettings}
                 />
@@ -1177,7 +1201,7 @@ export function TaskBoardPage() {
                   filters={filters}
                   members={members}
                   tags={orgTags}
-                  repos={repos}
+                  index={projectIndex}
                   onChange={handleFiltersChange}
                   onOpenBoardSettings={openBoardSettings}
                 />
@@ -1375,6 +1399,7 @@ export function TaskBoardPage() {
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
             });
+            widenProjectFilterFor(openItem.repo ?? null);
             toast.success(t("taskBoard.taskDialog.cloneSuccess"));
             closeTask();
           }}
@@ -1423,6 +1448,7 @@ export function TaskBoardPage() {
             return;
           }
           actions.create.mutate(input);
+          widenProjectFilterFor(input.repo ?? null);
           closeCreate();
         }}
       />

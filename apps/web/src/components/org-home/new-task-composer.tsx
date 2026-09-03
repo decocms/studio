@@ -20,7 +20,7 @@ import {
   type CanonicalColumnKey,
 } from "@decocms/shared/task-board";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { AgentAvatar } from "@/components/agent-icon";
+import { ProjectIcon } from "@/components/project-icon";
 import { useTaskBoardItemActions } from "@/hooks/use-task-board-items";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import {
@@ -177,12 +177,7 @@ export function NewTaskComposer() {
       {project && (
         <p className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-foreground">
-            <AgentAvatar
-              icon={project.icon}
-              name={project.title}
-              size="2xs"
-              className="size-3.5 shrink-0"
-            />
+            <ProjectIcon icon={project.icon} name={project.title} />
             {project.title}
           </span>
           <span aria-hidden="true">›</span>

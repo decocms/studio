@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   MIN_PROJECTS_FOR_SWITCHER,
-  projectRepo,
   scopableProjects,
 } from "./use-project-scope";
 
@@ -48,13 +47,6 @@ describe("scopableProjects", () => {
   test("tolerates null", () => {
     expect(scopableProjects(null)).toEqual([]);
     expect(scopableProjects(undefined)).toEqual([]);
-  });
-});
-
-describe("projectRepo", () => {
-  test("null when no repository is attached", () => {
-    expect(projectRepo(project("vir_a"))).toBeNull();
-    expect(projectRepo(null)).toBeNull();
   });
 });
 

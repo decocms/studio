@@ -5,7 +5,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render as renderBare } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
+import { buildProjectIndex } from "@/lib/project-index";
 import { TaskFiltersBar, EMPTY_FILTERS } from "./task-filters";
+
+const EMPTY_INDEX = buildProjectIndex([]);
+/** A repository no project claims — the bucket is titled `owner/name`, which
+ *  is what the chip and the option row read. */
+const SITE_INDEX = buildProjectIndex([], ["acme/site"]);
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -41,7 +47,7 @@ describe("task filter options — searchable value matches the displayed label",
         filters={EMPTY_FILTERS}
         members={[]}
         tags={[]}
-        repos={[]}
+        index={EMPTY_INDEX}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -54,20 +60,20 @@ describe("task filter options — searchable value matches the displayed label",
     }
   });
 
-  test("repo filter", () => {
+  test("project filter", () => {
     const { getByText } = render(
       <TaskFiltersBar
-        filters={{ ...EMPTY_FILTERS, repo: "acme/site" }}
+        filters={{ ...EMPTY_FILTERS, project: "acme/site" }}
         members={[]}
         tags={[]}
-        repos={["acme/site"]}
+        index={SITE_INDEX}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
     );
     fireEvent.click(getByText("acme/site"));
 
-    for (const label of ["Qualquer repositório", "Sem repositório"]) {
+    for (const label of ["Todos os projetos", "Sem projeto"]) {
       const item = getByText(label).closest("[cmdk-item]");
       expect(item?.getAttribute("data-value")).toBe(label);
     }
@@ -85,7 +91,7 @@ describe("search toggle — collapses when cleared externally", () => {
         filters={{ ...EMPTY_FILTERS, search: "login" }}
         members={[]}
         tags={[]}
-        repos={[]}
+        index={EMPTY_INDEX}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -99,7 +105,7 @@ describe("search toggle — collapses when cleared externally", () => {
         filters={EMPTY_FILTERS}
         members={[]}
         tags={[]}
-        repos={[]}
+        index={EMPTY_INDEX}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -114,7 +120,7 @@ describe("search toggle — collapses when cleared externally", () => {
         filters={{ ...EMPTY_FILTERS, search: "login" }}
         members={[]}
         tags={[]}
-        repos={[]}
+        index={EMPTY_INDEX}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -128,7 +134,7 @@ describe("search toggle — collapses when cleared externally", () => {
         filters={EMPTY_FILTERS}
         members={[]}
         tags={[]}
-        repos={[]}
+        index={EMPTY_INDEX}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,

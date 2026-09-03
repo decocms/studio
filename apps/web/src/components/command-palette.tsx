@@ -41,7 +41,7 @@ import {
   CommandItem,
   CommandList,
 } from "@decocms/ui/components/command.tsx";
-import { AgentAvatar } from "@/components/agent-icon";
+import { ProjectIcon } from "@/components/project-icon";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
@@ -264,11 +264,7 @@ export function CommandPalette({
                   )
                 }
               >
-                <AgentAvatar
-                  icon={project.icon}
-                  name={project.title}
-                  size="2xs"
-                />
+                <ProjectIcon icon={project.icon} name={project.title} />
                 <span>{project.title}</span>
               </CommandItem>
             ))}

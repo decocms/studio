@@ -26,14 +26,22 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { AgentAvatar } from "@/components/agent-icon";
+import { ProjectIcon } from "@/components/project-icon";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import {
   taskBoardItemsQueryOptions,
   useTaskBoardLiveSync,
 } from "@/hooks/use-task-board-items";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
-import { projectRepo } from "@/hooks/use-project-scope";
+import {
+  buildProjectIndex,
+  entryForFilter,
+  entryForTask,
+  projectForTask,
+  type ProjectIndex,
+  type ProjectIndexEntry,
+} from "@/lib/project-index";
 import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
 import {
   DEFAULT_TASK_TYPE,
@@ -61,35 +69,17 @@ const NOTABLE_PRIORITIES = new Set(["high", "urgent"]);
 
 export interface FeedEntry {
   task: TaskBoardItem;
-  project: VirtualMCPEntity;
-}
-
-/**
- * Which project a task belongs to.
- *
- * Its threads first — a run names the project it ran in, which is the only
- * link that survives a card with no repo. Then `repo`, which is what a card
- * nobody has run yet still carries. Returning null rather than guessing keeps
- * an unattributable card out of a project it may have nothing to do with.
- */
-function projectFor(
-  task: TaskBoardItem,
-  byId: Map<string, VirtualMCPEntity>,
-  byRepo: Map<string, VirtualMCPEntity>,
-): VirtualMCPEntity | null {
-  for (const thread of task.threads) {
-    const found = thread.virtualMcpId
-      ? byId.get(thread.virtualMcpId)
-      : undefined;
-    if (found) return found;
-  }
-  const repo = task.repo?.toLowerCase();
-  return (repo ? byRepo.get(repo) : undefined) ?? null;
+  /** The bucket the card belongs to — a project, or the repository two
+   *  projects share. */
+  bucket: ProjectIndexEntry;
+  /** The one project to name on the card, or null when the bucket holds
+   *  several and nothing says which. */
+  project: VirtualMCPEntity | null;
 }
 
 /**
  * The stack, in render order: every attributable card newest first, optionally
- * narrowed to one project.
+ * narrowed to one bucket.
  *
  * The feed is the board's list view, not a trophy cabinet — a card belongs here
  * from the moment it exists, in whatever lane it is in. It carried only settled
@@ -98,31 +88,31 @@ function projectFor(
  * until something shipped. `archived` is still excluded: deleted work is not
  * activity.
  *
+ * Attribution comes from the shared project index rather than a local
+ * `Map<repo, project>` — the two copies of that map (here and in the sidebar)
+ * resolved a repository two projects share by iteration order, silently routing
+ * one project's cards to its sibling.
+ *
+ * A card no bucket claims is still left out rather than guessed at. The index
+ * is built from the projects this feed was GIVEN — the project home passes one
+ * — so "no bucket" is also how the project home stays one project's feed.
+ *
  * Pure, and exported for its test — the ordering and the attribution rule ARE
  * the feature, and neither is something a screenshot can verify.
  */
 export function buildFeed(
-  projects: VirtualMCPEntity[],
+  index: ProjectIndex,
   tasks: TaskBoardItem[],
-  projectId: string | null,
+  bucketId: string | null,
 ): FeedEntry[] {
-  const byId = new Map(projects.map((p) => [p.id, p] as const));
-  const byRepo = new Map<string, VirtualMCPEntity>();
-  for (const project of projects) {
-    const repo = projectRepo(project);
-    if (repo) byRepo.set(repo.toLowerCase(), project);
-  }
-
   const entries: FeedEntry[] = [];
   for (const task of tasks) {
-    // Deleted work is never an entry. Everything else is: the feed IS the
-    // board's list view, newest activity first, so a card is here from the
-    // moment it exists rather than from the moment it ships.
+    /** Deleted work is not activity; every other lane belongs here. */
     if (task.status === "archived") continue;
-    const project = projectFor(task, byId, byRepo);
-    if (!project) continue;
-    if (projectId && project.id !== projectId) continue;
-    entries.push({ task, project });
+    const bucket = entryForTask(task, index);
+    if (!bucket) continue;
+    if (bucketId && bucket.id !== bucketId) continue;
+    entries.push({ task, bucket, project: projectForTask(task, index) });
   }
 
   return entries
@@ -132,18 +122,23 @@ export function buildFeed(
     .slice(0, MAX_CARDS);
 }
 
-/** The filter, in the section header the way GitHub puts it above the stack. */
+/** The filter, in the section header the way GitHub puts it above the stack.
+ *  Its options are the index's buckets, so two projects over one monorepo offer
+ *  one row rather than two that select the same cards. */
 function ProjectFilter({
-  projects,
+  index,
   value,
   onChange,
 }: {
-  projects: VirtualMCPEntity[];
+  index: ProjectIndex;
   value: string | null;
   onChange: (id: string | null) => void;
 }) {
   const t = useT();
-  const selected = value ? projects.find((p) => p.id === value) : undefined;
+  /** Resolved the way the board resolves it, so a bucket re-keyed since the
+   *  link was made (a project gaining a repository) still names itself rather
+   *  than reading "All projects" over an empty feed. */
+  const selected = value ? entryForFilter(value, index) : undefined;
 
   return (
     <DropdownMenu>
@@ -161,9 +156,18 @@ function ProjectFilter({
           <DropdownMenuRadioItem value="">
             {t("home.projectFeed.filterAll")}
           </DropdownMenuRadioItem>
-          {projects.map((project) => (
-            <DropdownMenuRadioItem key={project.id} value={project.id}>
-              <span className="truncate">{project.title}</span>
+          {index.entries.map((entry) => (
+            <DropdownMenuRadioItem key={entry.id} value={entry.id}>
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate">{entry.title}</span>
+                {/* A monorepo's row names its projects, so neither sibling
+                    becomes unnameable by sharing a repository. */}
+                {entry.projects.length > 1 && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {entry.projects.map((p) => p.title).join(", ")}
+                  </span>
+                )}
+              </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
@@ -203,7 +207,7 @@ function FeedCard({
   const navigate = useNavigate();
   const navigateToAgent = useNavigateToAgent();
   const orgSlug = useParams({ strict: false }).org ?? "";
-  const { task, project } = entry;
+  const { task, bucket, project } = entry;
   const lane = laneHeader(task.status, t);
   const LaneIcon = lane.visual.icon;
   const priority = PRIORITY_CONFIG[task.priority];
@@ -230,25 +234,30 @@ function FeedCard({
           wrapper around it: one card, two destinations, and nesting them would
           put a button inside a button. No repo beside the name either — a
           project is usually NAMED for its repo, so the line read
-          "decocms-tanstack deco-sites/decocms-tanstack". */}
+          "decocms-tanstack deco-sites/decocms-tanstack".
+          A bucket several projects share names the REPOSITORY and opens
+          nothing: neither sibling's workspace is the honest destination for
+          work that could belong to either. */}
       <div className="flex items-center gap-2.5">
-        <button
-          type="button"
-          onClick={() =>
-            navigateToAgent(project.id, {
-              panel: landingTabIdFor(project.metadata?.ui?.layout),
-            })
-          }
-          className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
-        >
-          <AgentAvatar
-            icon={project.icon}
-            name={project.title}
-            size="xs"
-            className="shrink-0"
-          />
-          <span className="truncate">{project.title}</span>
-        </button>
+        {project ? (
+          <button
+            type="button"
+            onClick={() =>
+              navigateToAgent(project.id, {
+                panel: landingTabIdFor(project.metadata?.ui?.layout),
+              })
+            }
+            className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
+          >
+            <ProjectIcon icon={project.icon} name={project.title} />
+            <span className="truncate">{project.title}</span>
+          </button>
+        ) : (
+          <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground">
+            <GitHubIcon className="size-4 shrink-0" />
+            <span className="truncate">{bucket.title}</span>
+          </span>
+        )}
         {key && (
           <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
             {key}
@@ -358,8 +367,12 @@ export function ProjectFeed({
   showFilter?: boolean;
 }) {
   const t = useT();
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const entries = buildFeed(projects, tasks, projectId);
+  const [bucketId, setBucketId] = useState<string | null>(null);
+  /** From the projects this feed was GIVEN, and nothing else. The project home
+   *  passes one project, and that is what keeps its feed to one project's work
+   *  — a card whose repository is not in this index simply has no bucket. */
+  const index = buildProjectIndex(projects);
+  const entries = buildFeed(index, tasks, bucketId);
   /** Non-blocking and resolved ONCE for the stack: an assignee is decoration on
    *  a card that is already legible without it, so the feed must not wait on
    *  the member list to paint. Until it lands, a human assignee simply has no
@@ -392,9 +405,9 @@ export function ProjectFeed({
         <div className="flex items-center gap-2">
           {showFilter && (
             <ProjectFilter
-              projects={projects}
-              value={projectId}
-              onChange={setProjectId}
+              index={index}
+              value={bucketId}
+              onChange={setBucketId}
             />
           )}
           {action}

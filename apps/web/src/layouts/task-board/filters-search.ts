@@ -22,15 +22,23 @@ type BoardSearch = {
   priority?: string;
   due?: string;
   tags?: string;
+  /**
+   * The project filter. Still keyed `repo` because that key is DECLARED — on
+   * `tasksRoute.validateSearch` and on `unifiedChatSearchSchema`, which are
+   * bare `z.object`s that strip anything they do not enumerate — and because
+   * every `?repo=owner/name` link anyone has shared has to keep working. The
+   * VALUE domain widened (a bucket id: `owner/name`, a `vir_…` project, or
+   * `__no_repo__`); the key did not.
+   */
   repo?: string;
 };
 
 const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
-/** Anything unrecognized in the URL is dropped, not trusted. `filters.repo` is
- *  an explicit exact-match choice; the project scope is separate and inclusive
- *  — see `taskMatchesScope`. */
+/** Anything unrecognized in the URL is dropped, not trusted. `filters.project`
+ *  is an explicit exact-match choice; the ambient project scope is separate and
+ *  inclusive — see `taskMatchesScope`. */
 export function parseBoardSearch(search: BoardSearch): {
   filters: TaskFilters;
   layout: Layout;
@@ -48,7 +56,7 @@ export function parseBoardSearch(search: BoardSearch): {
         : null,
       due: DUE_FILTERS.includes(due as DueFilter) ? (due as DueFilter) : null,
       tags: tags ? tags.split(",").filter(Boolean) : [],
-      repo: str(search.repo),
+      project: str(search.repo),
     },
   };
 }
@@ -65,7 +73,7 @@ export function boardSearchParams(
     priority: filters.priority ?? undefined,
     due: filters.due ?? undefined,
     tags: filters.tags.length > 0 ? filters.tags.join(",") : undefined,
-    repo: filters.repo ?? undefined,
+    repo: filters.project ?? undefined,
   };
 }
 

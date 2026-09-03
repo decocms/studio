@@ -76,12 +76,12 @@ export function TaskRow({
         // Indented rows stretch their background out to the group's left edge
         // (-ml-4 cancels the wrapper's pl-4) while pl-6 keeps the content where
         // it sat before, so the button surface spans the full sidebar width.
-        // Flat rows use pl-[7px] so the (smaller, 20px) agent avatar centers on
+        // Flat rows use pl-[9px] so the (smaller, 16px) agent avatar centers on
         // the same x=25 axis as the org icon and the sidebar-toggle glyph (that
         // axis is the collapsed icon-rail's midpoint, so nothing shifts between
         // open/collapsed). No right padding: the status/archive slot then reaches
         // the same right edge as the toolbar's search / new buttons.
-        indented ? "-ml-4 pl-6" : "pl-[7px]",
+        indented ? "-ml-4 pl-6" : "pl-[9px]",
         "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
         isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
       )}

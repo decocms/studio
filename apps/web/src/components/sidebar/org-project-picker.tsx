@@ -36,6 +36,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
 import { useNavigate } from "@tanstack/react-router";
 import { AgentAvatar } from "@/components/agent-icon";
+import { ProjectIcon } from "@/components/project-icon";
 import { CreateOrganizationDialog } from "@/components/create-organization-dialog";
 import { InvitationRow, OrgIcon } from "@/components/header/org-switcher";
 import { usePendingInvitations } from "@/hooks/use-pending-invitations";
@@ -335,12 +336,7 @@ function PickerContent({
                     className={ROW}
                     onSelect={() => scopeTo(project.id)}
                   >
-                    <AgentAvatar
-                      icon={project.icon}
-                      name={project.title}
-                      size="2xs"
-                      className="shrink-0"
-                    />
+                    <ProjectIcon icon={project.icon} name={project.title} />
                     <span className="min-w-0 flex-1 truncate">
                       {project.title}
                     </span>
@@ -454,12 +450,7 @@ function SearchHitRow({
         isHere ? onScope(hit.id) : onTravel(hit.orgSlug, hit.id)
       }
     >
-      <AgentAvatar
-        icon={hit.icon}
-        name={hit.title}
-        size="2xs"
-        className="shrink-0"
-      />
+      <ProjectIcon icon={hit.icon} name={hit.title} />
       <span className="min-w-0 flex-1 truncate">{hit.title}</span>
       <span className="shrink-0 text-xs text-muted-foreground">
         {hit.orgName}

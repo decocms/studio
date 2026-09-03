@@ -126,6 +126,9 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections, useProjectContext } from "@/sdk";
+import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
+import { entryForFilter, stampableEntries } from "@/lib/project-index";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -427,8 +430,12 @@ function TaskBoardItemEditor({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
-  // The org's repos (which site a task pertains to).
+  /** Which project this task pertains to, offered as the board offers it: one
+   *  list where a repository IS the project that pins it. Narrowed to the
+   *  repositories the org can actually reach — see {@link stampableEntries}. */
   const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
+  const projectIndex = useProjectIndex(NO_TASKS, repos);
+  const projectEntries = stampableEntries(projectIndex);
 
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
@@ -444,6 +451,17 @@ function TaskBoardItemEditor({
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
+  /**
+   * The bucket this card's repository belongs to, so the control shows the
+   * PROJECT — its avatar and its name — rather than the string underneath.
+   *
+   * Resolved against the WHOLE index, not the stampable subset: a card already
+   * stamped for a repository whose connection has since gone still belongs to
+   * its project and should say so. The reachability gate decides what you can
+   * PICK, not what an existing value is called. Undefined only when nothing in
+   * the org names that repository, which renders as the raw `owner/name`.
+   */
+  const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
   const taskType = form.type;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -1337,38 +1355,40 @@ function TaskBoardItemEditor({
             </PropertyGroup>
 
             <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which repo (site) this task pertains to — scopes it to a
-                  site's task pill in the task-based flow. */}
+              {/* Which project this task pertains to. The value persisted is
+                  still the repository — that is the only per-card link there
+                  is — but what you PICK is a project, named as you know it. */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     /* Hugs its label like every other property; the cap is
-                       what keeps a long repo name inside the column. */
+                       what keeps a long project name inside the column. */
                     className={cn(
                       PROPERTY_BUTTON,
                       "max-w-full",
                       !repo && EMPTY_PROPERTY,
                     )}
                   >
-                    <GitHubIcon className="size-4 shrink-0" />
+                    <ProjectEntryIcon entry={selectedEntry} />
                     <span className="min-w-0 truncate text-left">
-                      {repo ?? t("taskBoard.taskDialog.repoButton")}
+                      {selectedEntry?.title ??
+                        repo ??
+                        t("taskBoard.taskDialog.projectButton")}
                     </span>
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem onSelect={() => patch({ repo: null })}>
-                    {t("taskBoard.taskDialog.noRepo")}
+                    {t("taskBoard.taskDialog.noProject")}
                   </DropdownMenuItem>
-                  {repos.map((r) => (
+                  {projectEntries.map((entry) => (
                     <DropdownMenuItem
-                      key={r}
+                      key={entry.id}
                       className="gap-2"
-                      onSelect={() => patch({ repo: r })}
+                      onSelect={() => patch({ repo: entry.repo })}
                     >
-                      <GitHubIcon className="size-4 shrink-0" />
-                      <span className="truncate">{r}</span>
+                      <ProjectEntryRow entry={entry} />
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
