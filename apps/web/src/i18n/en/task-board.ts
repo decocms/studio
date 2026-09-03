@@ -23,14 +23,16 @@ export const taskBoard = {
   "taskBoard.taskBoard.checksLabel": "{passed} of {total} reviews approved",
   "taskBoard.taskBoard.checksPending": "not reviewed yet",
   "taskBoard.taskBoard.checksUnverified": "approved (unverified)",
-  "taskBoard.taskBoard.autoFix": "Auto-fix",
+  // The key stays `autoFix` (it drives the auto-fix run); only the label
+  // people read was renamed. Same split as thread-vs-chat.
+  "taskBoard.taskBoard.autoFix": "Run",
   "taskBoard.taskBoard.rerun": "Re-run",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "The agent is waiting for your input",
   "taskBoard.taskBoard.clearFilters": "Clear filters",
   "taskBoard.taskBoard.connectGithubButton": "Connect GitHub",
   "taskBoard.taskBoard.connectGithubDescription":
-    "Auto-fix puts the Super Agent to work on this task and saves the change to your codebase, ready for your team to review and approve.",
+    "Run puts the Super Agent to work on this task and saves the change to your codebase, ready for your team to review and approve.",
   "taskBoard.taskBoard.connectGithubTitle": "Connect GitHub",
   "taskBoard.taskBoard.handedToHumanBadgeTitle":
     "Automation stopped on this task — open it to see why",
@@ -166,6 +168,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.prStateMerged": "Merged",
   "taskBoard.taskDialog.prStateOpen": "Open",
   "taskBoard.taskDialog.previewLabel": "Open preview",
+  "taskBoard.taskDialog.previewUnavailable": "Preview unavailable",
+  "taskBoard.taskDialog.previewUnavailableTitle":
+    "The deploy preview isn't responding yet — it may still be building",
   "taskBoard.taskDialog.shipToProductionButton": "Ship to production",
   "taskBoard.taskDialog.shipSuccess": "Merged and shipped to production",
   "taskBoard.taskDialog.shipError": "Couldn't merge the pull request",

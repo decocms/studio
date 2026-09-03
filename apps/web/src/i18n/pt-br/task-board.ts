@@ -25,14 +25,14 @@ export const taskBoard = {
   "taskBoard.taskBoard.checksLabel": "{passed} de {total} revisões aprovadas",
   "taskBoard.taskBoard.checksPending": "ainda não revisado",
   "taskBoard.taskBoard.checksUnverified": "aprovado (não verificado)",
-  "taskBoard.taskBoard.autoFix": "Auto-correção",
+  "taskBoard.taskBoard.autoFix": "Executar",
   "taskBoard.taskBoard.rerun": "Executar de novo",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "O agente está aguardando sua entrada",
   "taskBoard.taskBoard.clearFilters": "Limpar filtros",
   "taskBoard.taskBoard.connectGithubButton": "Conectar GitHub",
   "taskBoard.taskBoard.connectGithubDescription":
-    "O Auto-fix coloca o Super Agent para trabalhar nesta tarefa e salva a mudança no seu projeto, pronta para seu time revisar e aprovar.",
+    "Executar coloca o Super Agent para trabalhar nesta tarefa e salva a mudança no seu projeto, pronta para seu time revisar e aprovar.",
   "taskBoard.taskBoard.connectGithubTitle": "Conectar GitHub",
   "taskBoard.taskBoard.handedToHumanBadgeTitle":
     "A automação parou nesta tarefa — abra para ver o motivo",
@@ -174,6 +174,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.prStateMerged": "Mesclado",
   "taskBoard.taskDialog.prStateOpen": "Aberto",
   "taskBoard.taskDialog.previewLabel": "Abrir preview",
+  "taskBoard.taskDialog.previewUnavailable": "Preview indisponível",
+  "taskBoard.taskDialog.previewUnavailableTitle":
+    "O deploy preview ainda não está respondendo — pode estar em construção",
   "taskBoard.taskDialog.shipToProductionButton": "Subir para produção",
   "taskBoard.taskDialog.shipSuccess": "Mesclado e enviado para produção",
   "taskBoard.taskDialog.shipError": "Não foi possível mesclar o pull request",

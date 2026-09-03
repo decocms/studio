@@ -1571,7 +1571,8 @@ export function TaskBoardPage() {
 /**
  * Small prompt shown when Auto-fix is used in an org with no GitHub connection.
  * The Super Agent needs GitHub to open a PR, so we connect first. Once the
- * connection lands the card's Auto-fix button works on the next click.
+ * connection lands the card's Run button (the auto-fix flow) works on the
+ * next click.
  */
 /**
  * Floating pill toolbar that appears once at least one card is selected —
