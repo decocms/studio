@@ -1,9 +1,18 @@
-import { useRef, useState } from "react";
+import {
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useIsReadOnly } from "./fields/read-only-context";
+import {
+  ReadOnlyEditPopover,
+  ReadOnlyEditPopoverContent,
+} from "./fields/read-only-pane";
+import { Popover, PopoverAnchor } from "@decocms/ui/components/popover.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Copy01,
@@ -264,15 +273,48 @@ function SortableSectionItem({
 
   const enableMakeReusable = canMakeSectionReusable(section);
 
+  // Read-only: detect a drag-to-reorder attempt and surface the popover instead.
+  const dragPressRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressSelectRef = useRef(false);
+  const [dragBlockAt, setDragBlockAt] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const readOnlyDragProps = readOnly
+    ? {
+        onPointerDown: (e: ReactPointerEvent) => {
+          suppressSelectRef.current = false;
+          dragPressRef.current = { x: e.clientX, y: e.clientY };
+        },
+        onPointerMove: (e: ReactPointerEvent) => {
+          const start = dragPressRef.current;
+          if (!start) return;
+          if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) {
+            dragPressRef.current = null;
+            suppressSelectRef.current = true;
+            setDragBlockAt({ x: e.clientX, y: e.clientY });
+          }
+        },
+        onPointerUp: () => {
+          dragPressRef.current = null;
+        },
+      }
+    : { ...attributes, ...listeners };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      {...(readOnly ? {} : attributes)}
-      {...(readOnly ? {} : listeners)}
+      {...readOnlyDragProps}
       role="button"
       tabIndex={0}
-      onClick={onSelect}
+      onClick={() => {
+        if (suppressSelectRef.current) {
+          suppressSelectRef.current = false;
+          return;
+        }
+        onSelect();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -327,13 +369,12 @@ function SortableSectionItem({
         </Tooltip>
       )}
 
-      <Tooltip>
-        <TooltipTrigger asChild>
+      {readOnly ? (
+        <ReadOnlyEditPopover>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            disabled={readOnly}
             aria-label={
               isHidden
                 ? t("sectionsEditor.sectionList.showSection")
@@ -342,10 +383,7 @@ function SortableSectionItem({
             className={cn(
               actionButtonVisibilityClass(reserveActionButtonSpace, isHidden),
             )}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleHidden();
-            }}
+            onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {isHidden ? (
@@ -354,89 +392,152 @@ function SortableSectionItem({
               <Eye className="h-3.5 w-3.5" />
             )}
           </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {isHidden
-            ? t("sectionsEditor.sectionList.showSection")
-            : t("sectionsEditor.sectionList.hideSection")}
-        </TooltipContent>
-      </Tooltip>
+        </ReadOnlyEditPopover>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={
+                isHidden
+                  ? t("sectionsEditor.sectionList.showSection")
+                  : t("sectionsEditor.sectionList.hideSection")
+              }
+              className={cn(
+                actionButtonVisibilityClass(reserveActionButtonSpace, isHidden),
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleHidden();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {isHidden ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {isHidden
+              ? t("sectionsEditor.sectionList.showSection")
+              : t("sectionsEditor.sectionList.hideSection")}
+          </TooltipContent>
+        </Tooltip>
+      )}
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      {readOnly ? (
+        <ReadOnlyEditPopover>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            disabled={readOnly}
             aria-label={t("sectionsEditor.sectionList.sectionActionsMenu")}
             className={cn(
               actionButtonVisibilityClass(reserveActionButtonSpace, false),
-              "data-[state=open]:ml-0 data-[state=open]:w-7 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
             )}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
             <DotsHorizontal className="h-3.5 w-3.5" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              onDuplicate();
-            }}
-          >
-            <Copy01 className="h-4 w-4" />
-            {t("sectionsEditor.sectionList.duplicateMenuItem")}
-          </DropdownMenuItem>
-          {enableAddVariant && (
-            <DropdownMenuItem
-              className={VARIANT_MENU_ITEM_CLASS}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddVariant();
-              }}
+        </ReadOnlyEditPopover>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t("sectionsEditor.sectionList.sectionActionsMenu")}
+              className={cn(
+                actionButtonVisibilityClass(reserveActionButtonSpace, false),
+                "data-[state=open]:ml-0 data-[state=open]:w-7 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
+              )}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
             >
-              <Flag01 className="h-4 w-4" />
-              {t("sectionsEditor.sectionList.addVariantMenuItem")}
-            </DropdownMenuItem>
-          )}
-          {enableMakeReusable && (
-            <DropdownMenuItem
-              className={GLOBAL_SECTION_MENU_ITEM_CLASS}
-              onClick={(e) => {
-                e.stopPropagation();
-                onMakeReusable();
-              }}
-            >
-              <LayoutAlt01 className="h-4 w-4" />
-              {t("sectionsEditor.sectionList.makeReusableMenuItem")}
-            </DropdownMenuItem>
-          )}
-          {section.isSavedBlock === true && !section.isMultivariate && (
+              <DotsHorizontal className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
-                onDetach();
+                onDuplicate();
               }}
             >
-              <LayoutAlt01 className="h-4 w-4" />
-              {t("sectionsEditor.sectionList.detachMenuItem")}
+              <Copy01 className="h-4 w-4" />
+              {t("sectionsEditor.sectionList.duplicateMenuItem")}
             </DropdownMenuItem>
-          )}
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Trash01 className="h-4 w-4" />
-            {t("sectionsEditor.sectionList.deleteMenuItem")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            {enableAddVariant && (
+              <DropdownMenuItem
+                className={VARIANT_MENU_ITEM_CLASS}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddVariant();
+                }}
+              >
+                <Flag01 className="h-4 w-4" />
+                {t("sectionsEditor.sectionList.addVariantMenuItem")}
+              </DropdownMenuItem>
+            )}
+            {enableMakeReusable && (
+              <DropdownMenuItem
+                className={GLOBAL_SECTION_MENU_ITEM_CLASS}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMakeReusable();
+                }}
+              >
+                <LayoutAlt01 className="h-4 w-4" />
+                {t("sectionsEditor.sectionList.makeReusableMenuItem")}
+              </DropdownMenuItem>
+            )}
+            {section.isSavedBlock === true && !section.isMultivariate && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDetach();
+                }}
+              >
+                <LayoutAlt01 className="h-4 w-4" />
+                {t("sectionsEditor.sectionList.detachMenuItem")}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash01 className="h-4 w-4" />
+              {t("sectionsEditor.sectionList.deleteMenuItem")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {readOnly && (
+        <Popover
+          open={dragBlockAt !== null}
+          onOpenChange={(open) => {
+            if (!open) setDragBlockAt(null);
+          }}
+        >
+          <PopoverAnchor asChild>
+            <div
+              className="pointer-events-none fixed"
+              style={{ left: dragBlockAt?.x ?? 0, top: dragBlockAt?.y ?? 0 }}
+            />
+          </PopoverAnchor>
+          <ReadOnlyEditPopoverContent />
+        </Popover>
+      )}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 import { useOptionalChatTask } from "@/components/chat/context";
 import { usePrByBranch } from "./use-pr-data.ts";
-import { nextReleaseColor, useReleases } from "./use-releases";
+import { nextDraftName, nextReleaseColor, useReleases } from "./use-releases";
 
 /**
  * The project's production branch — the PR base of the current branch, or "main"
@@ -72,7 +72,9 @@ export function useCreateDraft(virtualMcpId: string) {
     const branch = generateBranchName(userLabel);
     await createRelease({
       branch,
-      name: name?.trim() || t("thread.branchPicker.defaultVersionName"),
+      name:
+        name?.trim() ||
+        nextDraftName(releases, t("thread.branchPicker.defaultVersionName")),
       color: nextReleaseColor(releases.length),
       createdAt: new Date().toISOString(),
     });

@@ -56,7 +56,12 @@ import { useT } from "@/i18n/use-t.ts";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
-import { nextReleaseColor, releaseDotClass, useReleases } from "./use-releases";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  releaseDotClass,
+  useReleases,
+} from "./use-releases";
 
 interface Props {
   virtualMcpId: string;
@@ -152,23 +157,14 @@ export function BranchPicker({
     setOpen(false);
   };
 
-  // One above the highest existing "Rascunho N" — renamed releases don't count.
-  const nextDraftName = () => {
-    const base = t("thread.branchPicker.defaultVersionName");
-    const prefix = `${base} `;
-    const max = releases.reduce((m, r) => {
-      if (!r.name.startsWith(prefix)) return m;
-      const n = Number(r.name.slice(prefix.length));
-      return Number.isInteger(n) && n > m ? n : m;
-    }, 0);
-    return `${base} ${max + 1}`;
-  };
-
   const create = () => {
     const branch = generateBranchName(userLabel);
     void createRelease({
       branch,
-      name: nextDraftName(),
+      name: nextDraftName(
+        releases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
       color: nextReleaseColor(releases.length),
       createdAt: new Date().toISOString(),
     });

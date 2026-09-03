@@ -1183,7 +1183,11 @@ function ContentBrowserReady({
             }
           />
         )}
-      <ReadOnlyPane readOnly={readOnly} className="flex-1 min-w-0">
+      <ReadOnlyPane
+        readOnly={readOnly}
+        virtualMcpId={virtualMcpId}
+        className="flex-1 min-w-0"
+      >
         {activeCollection === "loaders" || activeCollection === "actions" ? (
           <RunnableBlocksBrowser
             orgSlug={orgSlug}
