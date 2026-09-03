@@ -6,6 +6,7 @@ import { Label } from "@decocms/ui/components/label.tsx";
 import { ImagePlus, RefreshCcw01, Trash01, Link01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { safeImageUrl } from "@/lib/safe-image-url";
 
 interface ImageUploadProps {
   value: string;
@@ -14,28 +15,6 @@ interface ImageUploadProps {
   onFileUpload: (file: File) => void | Promise<void>;
   error?: string;
   isUploading?: boolean;
-}
-
-/**
- * A `src` we can prove is inert: an absolute https URL, or a same-origin path.
- *
- * `value` is whatever the user pasted into the URL field, and everything else a
- * URL can be — `javascript:`, `data:text/html`, `vbscript:` — is a script sink
- * wearing an image's clothes. Protocol-relative `//host` is excluded too: it
- * inherits the page's scheme rather than stating one. Mirrors
- * `safeEditorImageUrl`, which does the same job for the sections editor.
- */
-function safeImageSrc(raw: string): string | undefined {
-  const trimmed = raw.trim();
-  if (!trimmed) return undefined;
-  if (trimmed.startsWith("//")) return undefined;
-  if (trimmed.startsWith("/")) return trimmed;
-  try {
-    const url = new URL(trimmed);
-    return url.protocol === "https:" ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export function ImageUpload({
@@ -89,7 +68,7 @@ export function ImageUpload({
   };
 
   const hasImage = value.length > 0;
-  const previewSrc = safeImageSrc(value);
+  const previewSrc = safeImageUrl(value);
 
   return (
     <div className="grid gap-1.5">
