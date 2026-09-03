@@ -471,10 +471,7 @@ export async function authenticateMcp(params: {
             resolve({
               tokens,
               clientId: clientInfo.client_id ?? null,
-              clientSecret:
-                "client_secret" in clientInfo
-                  ? (clientInfo.client_secret as string)
-                  : null,
+              clientSecret: clientInfo.client_secret ?? null,
               tokenEndpoint: authServerMetadata?.token_endpoint ?? null,
               userinfoEndpoint:
                 (authServerMetadata?.userinfo_endpoint as
@@ -604,10 +601,7 @@ export async function authenticateMcp(params: {
             expiresIn: tokens.expires_in ?? null,
             scope: tokens.scope ?? null,
             clientId: clientInfo?.client_id ?? null,
-            clientSecret:
-              clientInfo && "client_secret" in clientInfo
-                ? (clientInfo.client_secret as string)
-                : null,
+            clientSecret: clientInfo?.client_secret ?? null,
             tokenEndpoint: null, // Would need to be passed through
             userinfoEndpoint: null,
             idToken: tokens.id_token ?? null,
