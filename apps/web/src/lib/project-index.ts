@@ -28,7 +28,7 @@
  */
 
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { projectRepo } from "./github-repo";
+import { projectRepo, resolveGithubAttachment } from "./github-repo";
 
 /** A card, as everything here reads one: its stamped repo and its runs. */
 export interface AttributableTask {
@@ -360,26 +360,25 @@ export function filterAfterCreate(
 /**
  * The buckets a card can be STAMPED with.
  *
- * Two conditions, and the second is the one that matters. A bucket needs a
- * repository, because `task_board_items.repo` is the only per-card link there
- * is — and that repository needs a LIVE connection, which `reachable` carries
- * (the org's active repo-scoped `mcp-github` labels).
+ * A bucket needs a repository, because `task_board_items.repo` is the only
+ * per-card link there is — and it must not be one whose connection was torn
+ * down. `projectRepo` deliberately still answers for a `detached` project so
+ * its existing cards stay visible, but no PR can ever be opened there, and the
+ * server refuses to advance a card with `repo != null && !hasPr`. Stamping one
+ * parks a card In Progress forever.
  *
- * Offering a repository the org cannot reach is not a cosmetic slip: a project
- * whose connection was torn down still reports its repo (`projectRepo` answers
- * for `detached` and `public-clone` on purpose, so its cards stay visible), and
- * a card stamped with one can never have a PR opened against it. The server
- * then refuses to advance it — `shouldAdvanceToReview` is
- * `item.repo != null && !hasPr` — and it sits In Progress after every run
- * finishes, forever. The picker this replaced listed connection labels and so
- * could not produce that value; neither may this one.
+ * The test is the project's own attachment, NOT the org's connection list. A
+ * list-based gate empties this picker whenever the org reaches its repositories
+ * some other way, and again on every frame before that list resolves — which is
+ * a worse failure than the one it prevents, because it is the common case.
  */
-export function stampableEntries(
-  index: ProjectIndex,
-  reachable: readonly string[],
-): ProjectIndexEntry[] {
-  const live = new Set(reachable.map(normalizeRepo));
+export function stampableEntries(index: ProjectIndex): ProjectIndexEntry[] {
   return index.entries.filter(
-    (entry) => entry.repo !== null && live.has(normalizeRepo(entry.repo)),
+    (entry) =>
+      entry.repo !== null &&
+      (entry.projects.length === 0 ||
+        entry.projects.some(
+          (project) => resolveGithubAttachment(project).status !== "detached",
+        )),
   );
 }

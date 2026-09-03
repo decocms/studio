@@ -550,13 +550,11 @@ describe("filterAfterCreate", () => {
 });
 
 describe("stampableEntries", () => {
-  const LIVE = ["acme/alpha", "acme/orphan"];
-
   /** `task_board_items.repo` is the only per-card link, so a project pinning
    *  no repository has nothing a card can point at. */
   test("offers only buckets a card can be stamped with", () => {
     const index = buildProjectIndex([ALPHA, BARE], ["acme/orphan"]);
-    expect(stampableEntries(index, LIVE).map((e) => e.id)).toEqual([
+    expect(stampableEntries(index).map((e) => e.id)).toEqual([
       "acme/alpha",
       "acme/orphan",
     ]);
@@ -564,28 +562,44 @@ describe("stampableEntries", () => {
 
   /**
    * A project whose repo connection was torn down still REPORTS its repo —
-   * `projectRepo` answers for `detached` on purpose, so its cards stay visible.
-   * Stamping a card with it would be unrecoverable: no PR can be opened there,
-   * so `shouldAdvanceToReview`'s `repo != null && !hasPr` never passes and the
-   * card sits In Progress forever. The picker this replaced listed connection
-   * labels and could not produce that value.
+   * `projectRepo` answers for `detached` on purpose, so its existing cards stay
+   * visible. Stamping a NEW card with it would be unrecoverable: no PR can be
+   * opened there, so `shouldAdvanceToReview`'s `repo != null && !hasPr` never
+   * passes and the card sits In Progress forever.
    */
-  test("refuses a repository the org cannot reach", () => {
-    const index = buildProjectIndex([ALPHA, BRAVO]);
-    expect(index.byRepo.has("acme/bravo")).toBe(true);
-    expect(stampableEntries(index, ["acme/alpha"]).map((e) => e.id)).toEqual([
-      "acme/alpha",
-    ]);
+  test("refuses a project whose connection was torn down", () => {
+    const detached = {
+      id: "vir_d",
+      title: "Detached",
+      created_at: "2026-01-01T00:00:00Z",
+      metadata: {
+        githubRepo: {
+          url: "https://github.com/acme/gone",
+          owner: "acme",
+          name: "gone",
+          connectionId: "c_gone",
+        },
+      },
+      connections: [],
+    } as unknown as VirtualMCPEntity;
+    const index = buildProjectIndex([ALPHA, detached]);
+    expect(index.byRepo.has("acme/gone")).toBe(true);
+    expect(stampableEntries(index).map((e) => e.id)).toEqual(["acme/alpha"]);
   });
 
-  test("matches reachability case-insensitively, as GitHub does", () => {
+  /**
+   * The gate reads the PROJECT's attachment, never the org's connection list.
+   * A list-based gate emptied this picker in every org that reaches its
+   * repositories another way, and on every frame before that list resolved —
+   * a worse failure than the one it prevents, because it is the common case.
+   */
+  test("offers a project the org lists no mcp-github connection for", () => {
     const index = buildProjectIndex([ALPHA]);
-    expect(stampableEntries(index, ["ACME/Alpha"]).map((e) => e.id)).toEqual([
-      "acme/alpha",
-    ]);
+    expect(stampableEntries(index).map((e) => e.id)).toEqual(["acme/alpha"]);
   });
 
-  test("offers nothing when the org has no live repository", () => {
-    expect(stampableEntries(buildProjectIndex([ALPHA]), [])).toEqual([]);
+  test("offers a repository no project claims", () => {
+    const index = buildProjectIndex([], ["acme/orphan"]);
+    expect(stampableEntries(index).map((e) => e.id)).toEqual(["acme/orphan"]);
   });
 });

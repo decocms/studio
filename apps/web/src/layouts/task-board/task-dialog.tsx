@@ -442,7 +442,7 @@ function TaskBoardItemEditor({
    *  repositories the org can actually reach — see {@link stampableEntries}. */
   const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
   const projectIndex = useProjectIndex(NO_TASKS, repos);
-  const projectEntries = stampableEntries(projectIndex, repos);
+  const projectEntries = stampableEntries(projectIndex);
 
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
