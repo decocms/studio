@@ -18,7 +18,7 @@ import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
-import { AgentAvatar } from "@/components/agent-icon";
+import { ProjectIcon } from "@/components/project-icon";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
@@ -201,14 +201,7 @@ export function SidebarProjectsSection({
           return (
             <li key={project.id} className="flex flex-col">
               <SidebarNavRow
-                icon={
-                  <AgentAvatar
-                    icon={project.icon}
-                    name={project.title}
-                    size="2xs"
-                    className="size-4 shrink-0"
-                  />
-                }
+                icon={<ProjectIcon icon={project.icon} name={project.title} />}
                 label={project.title}
                 isActive={project.id === scopeId}
                 /** A button, not a link: these resolve a SESSION, so the

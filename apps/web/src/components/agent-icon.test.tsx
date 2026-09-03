@@ -7,6 +7,33 @@ import { describe, expect, it } from "bun:test";
 import { AgentAvatar, buildImageIconString } from "./agent-icon";
 
 describe("AgentAvatar", () => {
+  /**
+   * The glyph carries its size and its color as CLASSES, not just as the
+   * `size` prop and an inherited `color`.
+   *
+   * `CommandItem` and `DropdownMenuItem` both carry
+   * `[&_svg:not([class*='size-'])]:size-4` and
+   * `[&_svg:not([class*='text-'])]:text-muted-foreground`, and a CSS rule beats
+   * a presentational `width`/`height` attribute — so a class-less glyph was
+   * blown to 16px and repainted grey inside every menu and command list in the
+   * app, while the same avatar rendered correctly just outside one. Both
+   * `:not()` guards are satisfied only by the classes asserted here.
+   */
+  it("stamps the glyph's size and color so a menu cannot override them", () => {
+    const { container } = render(
+      <AgentAvatar icon="icon://folder" name="Test Agent" size="2xs" />,
+    );
+
+    const box = container.firstElementChild;
+    expect(box?.className).toContain("size-4");
+
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+    // 12px glyph in a 16px box — the step the sidebar established.
+    expect(svg?.getAttribute("class")).toContain("size-3");
+    expect(svg?.getAttribute("class")).toMatch(/text-\w+-\d+/);
+  });
+
   it("applies the picker's palette color as a background for an uploaded image icon", () => {
     const { container } = render(
       <AgentAvatar

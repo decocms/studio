@@ -26,7 +26,7 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { AgentAvatar } from "@/components/agent-icon";
+import { ProjectIcon } from "@/components/project-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import {
@@ -241,12 +241,7 @@ function FeedCard({
             }
             className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
           >
-            <AgentAvatar
-              icon={project.icon}
-              name={project.title}
-              size="xs"
-              className="shrink-0"
-            />
+            <ProjectIcon icon={project.icon} name={project.title} />
             <span className="truncate">{project.title}</span>
           </button>
         ) : (

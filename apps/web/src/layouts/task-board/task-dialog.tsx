@@ -1396,10 +1396,7 @@ function TaskBoardItemEditor({
                       !repo && EMPTY_PROPERTY,
                     )}
                   >
-                    <ProjectEntryIcon
-                      entry={selectedEntry}
-                      className="size-4"
-                    />
+                    <ProjectEntryIcon entry={selectedEntry} />
                     <span className="min-w-0 truncate text-left">
                       {selectedEntry?.title ??
                         repo ??

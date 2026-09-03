@@ -13,9 +13,8 @@
  * `lib/project-index.ts` exists to remove, one layer up.
  */
 
-import { AgentAvatar } from "@/components/agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { ProjectIcon } from "@/components/project-icon";
 import type { ProjectIndexEntry } from "@/lib/project-index";
 
 /** The single project that gives a bucket its identity, or undefined when the
@@ -35,23 +34,27 @@ function entrySubtitle(entry: ProjectIndexEntry): string | null {
   return null;
 }
 
-/** A bucket's glyph. `undefined` — an unset control — wears the neutral one. */
+/**
+ * A bucket's glyph. `undefined` — an unset control — wears the neutral one.
+ *
+ * No `className`: the size is {@link ProjectIcon}'s to decide, and the two
+ * branches have to occupy the same footprint or a list of buckets steps in and
+ * out as you read down it. The GitHub mark is centred in a matching 16px slot
+ * rather than filling one — it stays visibly a different ink (it is a filled
+ * path where a project's is stroked), which is the point: it means "no single
+ * project claims this".
+ */
 export function ProjectEntryIcon({
   entry,
-  className,
 }: {
   entry: ProjectIndexEntry | undefined;
-  className?: string;
 }) {
   const lead = leadProject(entry);
-  if (!lead) return <GitHubIcon className={cn("shrink-0", className)} />;
+  if (lead) return <ProjectIcon icon={lead.icon} name={lead.title} />;
   return (
-    <AgentAvatar
-      icon={lead.icon}
-      name={lead.title}
-      size="2xs"
-      className={cn("shrink-0", className)}
-    />
+    <span className="flex size-4 shrink-0 items-center justify-center">
+      <GitHubIcon className="size-3" />
+    </span>
   );
 }
 
@@ -60,7 +63,7 @@ export function ProjectEntryRow({ entry }: { entry: ProjectIndexEntry }) {
   const subtitle = entrySubtitle(entry);
   return (
     <>
-      <ProjectEntryIcon entry={entry} className="size-4" />
+      <ProjectEntryIcon entry={entry} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate">{entry.title}</span>
         {subtitle && (

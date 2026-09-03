@@ -750,10 +750,7 @@ function ProjectFilter({
         <button type="button" className={triggerClass}>
           {/* The glyph follows the label: an unresolved bucket reads as unset,
               so it must not wear a project's face either. */}
-          <ProjectEntryIcon
-            entry={narrows ? selected : undefined}
-            className="size-3.5"
-          />
+          <ProjectEntryIcon entry={narrows ? selected : undefined} />
           <span className="max-w-[12rem] truncate">{label}</span>
           <ChevronDown size={12} className={chevronClass} />
         </button>
