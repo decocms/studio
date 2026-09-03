@@ -71,7 +71,9 @@ export const home = {
   "home.homeTasks.tabInProgress": "Em andamento",
   "home.homeTasks.tabInReview": "Em revis\u00e3o",
   "home.homeTasks.tasksHeading": "Tarefas",
+  "home.nativeTiles.analyticsLabel": "An\u00e1lise",
   "home.nativeTiles.coding": "C\u00f3digo",
+  "home.nativeTiles.commerceLabel": "E-commerce",
   "home.nativeTiles.commits": "{count} commit(s)",
   "home.nativeTiles.connectCommercePlatform":
     "Conectar plataforma de e-commerce",
