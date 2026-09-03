@@ -412,8 +412,17 @@ export function ProjectFeed({
           so outright instead of leaving the project unreachable. */}
       <div className="flex items-center justify-between gap-3">
         {/* A step ABOVE the card titles, not two: it is a heading, but the
-            cards are the content and it must not out-shout them. */}
-        <h2 className="text-lg font-medium text-foreground">
+            cards are the content and it must not out-shout them.
+
+            The tour anchors HERE rather than on the stack below: the heading
+            is painted whether or not there is anything under it, and "nothing
+            has run yet" is exactly when someone needs telling what this column
+            is for. Anchored on the stack, the step vanished on an empty feed —
+            `skipMissingElement` swallows it without a word. */}
+        <h2
+          className="text-lg font-medium text-foreground"
+          data-tour={LAYOUT_TOUR_ANCHORS.recentActivity}
+        >
           {t("home.projectFeed.heading")}
         </h2>
         <div className="flex items-center gap-2">
@@ -432,10 +441,7 @@ export function ProjectFeed({
           {t("home.projectFeed.empty")}
         </p>
       ) : (
-        <div
-          className="flex flex-col gap-4"
-          data-tour={LAYOUT_TOUR_ANCHORS.recentActivity}
-        >
+        <div className="flex flex-col gap-4">
           {entries.map((entry) => (
             <FeedCard
               key={entry.task.id}
