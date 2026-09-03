@@ -469,10 +469,7 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
-    // First-class repository with Studio-owned credentials (GitHub App or a
-    // GitLab account): mint through its provider account. Anything else — a
-    // legacy `mcp-github` binding, an anonymous public clone — keeps the path
-    // below unchanged.
+    // Studio-owned credentials mint through the repository's provider account.
     const repository = await findRepositoryForLegacyBinding(
       ctx.storage,
       orgId,
@@ -531,8 +528,7 @@ async function provisionSandbox(
     // Running it here piggybacks on the same request so the baked workload
     // always matches the detected PM; the result is persisted so subsequent
     // starts skip the probe.
-    // The Studio-credential path skips the GitHub Contents probe: the daemon
-    // autodetects the package manager from the lockfile after clone.
+    // Studio-credentialed repos skip the probe: the daemon reads the lockfile.
     if (!packageManager && !studioRepository) {
       const detected = githubRepo.connectionId
         ? await detectRepoRuntime(

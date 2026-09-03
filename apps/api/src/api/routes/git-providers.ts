@@ -180,8 +180,7 @@ async function consumeState(
   if (!state || state.provider !== provider) {
     return { ok: false, error: "invalid_state", returnTo: "/" };
   }
-  // Re-sanitized on read: only mintState ever writes it, but a redirect target
-  // is worth validating on both sides of storage.
+  // Re-sanitized on read: a redirect target is checked on both sides of storage.
   const returnTo = sanitizeReturnTo(state.returnTo);
   // The flow must be completed by the browser session that started it.
   if (ctx.auth.user?.id !== state.userId) {

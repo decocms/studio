@@ -347,3 +347,32 @@ func TestCliEnvFromCloneUrl(t *testing.T) {
 		})
 	}
 }
+
+func TestGlabConfigFromCloneUrl(t *testing.T) {
+	got := GlabConfigFromCloneUrl("https://oauth2:tok-gl@gitlab.acme.com:8443/g/sub/p.git")
+	want := "hosts:\n  gitlab.acme.com:8443:\n    token: tok-gl\n" +
+		"    api_host: gitlab.acme.com:8443\n    api_protocol: https\n    is_oauth2: true\n"
+	if got != want {
+		t.Errorf("GlabConfigFromCloneUrl() =\n%q\nwant\n%q", got, want)
+	}
+
+	// Anything that is not a credentialed GitLab remote yields no config, so the
+	// writer removes the file instead of leaving another provider's token behind.
+	for _, url := range []string{
+		"https://x-access-token:tok-gh@github.com/acme/site.git",
+		"https://gitlab.com/acme/site.git",
+		"git@gitlab.com:acme/site.git",
+		"https://oauth2:@gitlab.com/acme/site.git",
+		"",
+	} {
+		if got := GlabConfigFromCloneUrl(url); got != "" {
+			t.Errorf("GlabConfigFromCloneUrl(%q) = %q, want empty", url, got)
+		}
+	}
+}
+
+func TestGlabConfigPath(t *testing.T) {
+	if got, want := GlabConfigPath("/home/sandbox"), "/home/sandbox/.config/glab-cli/config.yml"; got != want {
+		t.Errorf("GlabConfigPath() = %q, want %q", got, want)
+	}
+}

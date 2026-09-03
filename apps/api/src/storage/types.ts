@@ -2151,9 +2151,7 @@ export interface NotificationTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-// ============================================================================
-// Git providers (migration 199)
-// ============================================================================
+// ============================== Git providers ===============================
 
 export type GitProviderKindColumn = "github" | "gitlab";
 export type GitAuthKindColumn = "github_app" | "oauth" | "token";

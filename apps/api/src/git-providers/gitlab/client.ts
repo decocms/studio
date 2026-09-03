@@ -241,7 +241,10 @@ export class GitlabProviderClient implements GitProviderClient {
   async listRepos(opts: ListReposOptions = {}): Promise<RepoSummary[]> {
     const params = new URLSearchParams({
       membership: "true",
-      order_by: "last_activity_at",
+      // The simple representation still carries every field the summary needs.
+      simple: "true",
+      // By id: gitlab.com 500s when `membership=true` is ordered by activity.
+      order_by: "id",
       sort: "desc",
       per_page: String(
         Math.min(MAX_PER_PAGE, Math.max(1, opts.perPage ?? DEFAULT_PER_PAGE)),

@@ -81,8 +81,7 @@ describe("refreshSandboxGitCredentials", () => {
       organization: { id: "org_1" },
       storage: {
         connections: { findById: async () => null },
-        // No first-class repository row for this binding: the refresh takes the
-        // legacy `mcp-github` path this test covers.
+        // No repository row: this test covers the legacy `mcp-github` path.
         repositories: { get: async () => null, findByRef: async () => null },
         gitProviderAccounts: { getUnscoped: async () => null },
       },

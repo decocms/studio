@@ -66,10 +66,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     )
   `.execute(db);
 
-  // Single-use proof that a git provider OAuth redirect was started by this
-  // org+user, plus where to send the browser afterwards. The provider echoes
-  // only the id back, so the row is the whole state; rows are consumed on
-  // callback and swept by expiry.
+  /**
+   * Single-use proof that a git provider OAuth redirect was started by this
+   * org+user, plus where to send the browser afterwards. The provider echoes
+   * only the id back, so the row is the whole state; rows are consumed on
+   * callback and pruned by expiry.
+   */
   await sql`
     CREATE TABLE git_provider_oauth_states (
       id text PRIMARY KEY,
@@ -127,12 +129,14 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       ADD COLUMN repository_id text REFERENCES repositories(id) ON DELETE SET NULL
   `.execute(db);
 
-  // ── Backfill ────────────────────────────────────────────────────────────
-  //
-  // `connections.metadata` is TEXT holding a JSON string, so every read casts.
-  // The cast is wrapped so one malformed row cannot abort the migration (the
-  // same defensive pattern migration 125 used); the helper is dropped again at
-  // the end, under its own name so it cannot collide with another migration's.
+  /**
+   * ── Backfill ──
+   *
+   * `connections.metadata` is TEXT holding a JSON string, so every read casts.
+   * The cast is wrapped so one malformed row cannot abort the migration (the
+   * same defensive pattern migration 125 used); the helper is dropped again at
+   * the end, under its own name so it cannot collide with another migration's.
+   */
   await sql`
     CREATE OR REPLACE FUNCTION git_provider_try_jsonb(t text)
     RETURNS jsonb AS $fn$
@@ -144,9 +148,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     $fn$ LANGUAGE plpgsql IMMUTABLE;
   `.execute(db);
 
-  // Accounts: one per (org, GitHub App installation) seen in a repo-scoped
-  // mcp-github child. The installation's login is not recorded in repoScope;
-  // the repo owner is the installation account for user/org installs.
+  /**
+   * Accounts: one per (org, GitHub App installation) seen in a repo-scoped
+   * mcp-github child. The installation's login is not recorded in repoScope;
+   * the repo owner is the installation account for user/org installs.
+   */
   await sql`
     INSERT INTO git_provider_accounts (
       organization_id, type, host, auth_kind, external_account_id, login,
@@ -183,9 +189,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     ON CONFLICT (organization_id, host, external_account_id) DO NOTHING
   `.execute(db);
 
-  // Repositories from repo-scoped children. The org-shared connection wins as
-  // the legacy credential when several children cover one repo (it outlives
-  // any single agent), mirroring findReusableRepoConnection.
+  /**
+   * Repositories from repo-scoped children. The org-shared connection wins as
+   * the legacy credential when several children cover one repo (it outlives
+   * any single agent), mirroring findReusableRepoConnection.
+   */
   await sql`
     INSERT INTO repositories (
       organization_id, account_id, provider, host, path, external_id, web_url,
@@ -225,9 +233,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     ON CONFLICT (organization_id, host, lower(path)) DO NOTHING
   `.execute(db);
 
-  // The winning connection above is the longest-lived one, which is not
-  // necessarily the one that recorded the provider's repository id — fill it
-  // from any child covering the same repo.
+  /**
+   * The winning connection above is the longest-lived one, which is not
+   * necessarily the one that recorded the provider's repository id — fill it
+   * from any child covering the same repo.
+   */
   await sql`
     UPDATE repositories r
        SET external_id = s.repository_id
@@ -245,8 +255,10 @@ export async function up(db: Kysely<unknown>): Promise<void> {
        AND lower(s.owner || '/' || s.repo) = lower(r.path)
   `.execute(db);
 
-  // Repositories agents point at without a repo-scoped child (public clones,
-  // or children that were deleted). Virtual MCPs are connections rows.
+  /**
+   * Repositories agents point at without a repo-scoped child (public clones,
+   * or children that were deleted). Virtual MCPs are connections rows.
+   */
   await sql`
     INSERT INTO repositories (
       organization_id, account_id, provider, host, path, web_url, created_by

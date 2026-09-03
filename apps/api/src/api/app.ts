@@ -1447,8 +1447,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
   app.route("/api/_github", githubWebhookRoutes);
-  // Git provider OAuth callbacks: the provider redirects here with code+state;
-  // the state (not the URL) says which org/user started the flow.
+  // Git provider OAuth callbacks: the state, not the URL, carries org+user.
   app.route("/api/_git", gitProviderCallbackRoutes);
 
   // Jira: the issue-event intake that starts runs, and the attachment grant

@@ -1141,6 +1141,10 @@ func main() {
 		// fail — it answers wrongly and silently, which is the worse outcome. See
 		// `WaitHomeReady` for why this one place waits where the rest fail open.
 		BeforeRun: func(info dispatch.RunInfo) {
+			// `glab` cannot authenticate from the environment for an OAuth token
+			// (see CliEnvFromCloneUrl), so the credential goes in its config file
+			// instead — refreshed per run, because the clone URL's token rotates.
+			writeGlabConfig(d.store.Read())
 			// Two different waits, in dependency order. This one is for the org
 			// HOME volume to be attached at all: it is what the thread's saved
 			// Claude Code session is restored from, and what the user-scope skills
@@ -1322,4 +1326,34 @@ func main() {
 	}
 	slog.Error("http server exited", "err", server.ListenAndServe())
 	os.Exit(1)
+}
+
+// writeGlabConfig puts the git credential where `glab` reads it, for a GitLab
+// checkout. Best-effort and silent: the CLI is a convenience for the harness,
+// and the clone/push path does not depend on it — a failure here must never
+// fail a run. No-op (and removes a stale file) for any non-GitLab remote, so a
+// pod that switches repos cannot leave another provider's token behind.
+//
+// ⚠️ SECURITY: the file embeds a live token — 0600, and never logged.
+func writeGlabConfig(cfg *config.Enriched) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	path := config.GlabConfigPath(home)
+	content := ""
+	if cfg != nil {
+		content = config.GlabConfigFromCloneUrl(cfg.CloneUrl())
+	}
+	if content == "" {
+		os.Remove(path)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return
+	}
+	// Remove first: WriteFile's mode applies only on create, so writing over a
+	// leftover would inherit its permissions. glab refuses anything but 0600.
+	os.Remove(path)
+	os.WriteFile(path, []byte(content), 0o600)
 }

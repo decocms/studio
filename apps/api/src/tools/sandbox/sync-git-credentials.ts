@@ -52,8 +52,7 @@ export async function refreshSandboxGitCredentials(
     throw new GitPushAuthError(RECONNECT_ERROR);
   }
 
-  // A first-class repository with Studio-owned credentials refreshes through
-  // its provider account; everything else through the legacy connection.
+  // Studio-owned credentials refresh through the repository's provider account.
   const repository = await findRepositoryForLegacyBinding(
     ctx.storage,
     organizationId,
