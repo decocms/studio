@@ -5,6 +5,10 @@
 
 import { getSettings } from "../settings";
 
+/** Fat-finger cap on any signup/initial-credit grant ($1,000). Keep in sync
+ *  with the DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS cap in resolve-config.ts. */
+export const MAX_SIGNUP_GRANT_CENTS = 100_000;
+
 /** Whether this deployment can reach the gateway admin API at all
  *  (self-hosted deployments can't). */
 export function gatewayAdminConfigured(): boolean {

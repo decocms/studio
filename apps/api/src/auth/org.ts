@@ -90,8 +90,16 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
  * Create default MCP connections for a new organization
  * This is deferred to run after the Better Auth request completes
  * to avoid deadlocks when issuing tokens
+ *
+ * `opts.signupGrantCents` overrides the deployment-default AI-credit grant for
+ * this org (the control-plane passes it per-org at creation); omitted → the
+ * `signupGrantCents` setting applies.
  */
-export async function seedOrgDb(organizationId: string, createdBy: string) {
+export async function seedOrgDb(
+  organizationId: string,
+  createdBy: string,
+  opts?: { signupGrantCents?: number },
+) {
   try {
     const database = getDb();
     const settings = getSettings();
@@ -195,11 +203,13 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
     }
 
     // Idempotent at the gateway per `signup-credit:<orgId>`; fail-soft.
-    if (settings.signupGrantCents > 0 && gatewayAdminConfigured()) {
+    const signupGrantCents =
+      opts?.signupGrantCents ?? settings.signupGrantCents;
+    if (signupGrantCents > 0 && gatewayAdminConfigured()) {
       try {
         await grantGatewaySignupCredit({
           organizationId,
-          amountCents: settings.signupGrantCents,
+          amountCents: signupGrantCents,
         });
       } catch (err) {
         console.error("Failed to grant signup AI credit:", err);
