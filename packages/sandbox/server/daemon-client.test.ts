@@ -135,6 +135,29 @@ describe("retry timeout budget", () => {
   });
 });
 
+describe("Bun-style connection errors", () => {
+  it("retries a Bun fetch connection-refused error (plain Error + .code, not TypeError)", async () => {
+    let attempts = 0;
+    const { calls } = installFetch(() => {
+      attempts++;
+      if (attempts === 1) {
+        // Bun's actual shape for a refused/cold-start connection: plain Error + .code.
+        const err = new Error(
+          "Unable to connect. Is the computer able to access the url?",
+        ) as Error & { code: string };
+        err.code = "ConnectionRefused";
+        throw err;
+      }
+      return new Response(
+        JSON.stringify({ bootId: "b", transition: "t", config: {} }),
+        { status: 200 },
+      );
+    });
+    await postConfig("http://daemon:9000", "tok", { env: {} } as never);
+    expect(calls.length).toBe(2);
+  });
+});
+
 describe("proxyDaemonRequest", () => {
   it("injects Authorization: Bearer <token> header", async () => {
     const { calls } = installFetch(() => new Response("", { status: 204 }));
