@@ -14,6 +14,7 @@ function makeCtx(options: {
   const deleteConnection = mock(async () => {});
   const isReferencedByThread = mock(async () => options.referencedByThread);
   const deactivateAutomation = mock(async () => {});
+  const deleteTokenByConnection = mock(async () => {});
   const ctx = {
     auth: { user: { id: "user_123" } },
     organization: { id: "org_123" },
@@ -32,9 +33,16 @@ function makeCtx(options: {
         deactivateAutomation,
       },
       organizationSettings: { get: mock(async () => null) },
+      triggerCallbackTokens: { deleteByConnection: deleteTokenByConnection },
     },
   } as unknown as Parameters<typeof COLLECTION_CONNECTIONS_DELETE.handler>[1];
-  return { ctx, deleteConnection, isReferencedByThread, deactivateAutomation };
+  return {
+    ctx,
+    deleteConnection,
+    isReferencedByThread,
+    deactivateAutomation,
+    deleteTokenByConnection,
+  };
 }
 
 describe("COLLECTION_CONNECTIONS_DELETE", () => {
@@ -71,6 +79,20 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
 
     expect(result.item.id).toBe("conn_repo");
     expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
+  });
+
+  it("revokes the connection's trigger callback token on delete", async () => {
+    // Regression: trigger_callback_tokens.connection_id has no FK and stayed valid forever.
+    const { ctx, deleteTokenByConnection } = makeCtx({
+      referencedByThread: false,
+    });
+
+    await COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx);
+
+    expect(deleteTokenByConnection).toHaveBeenCalledWith(
+      "conn_repo",
+      "org_123",
+    );
   });
 
   it("refuses to delete a connection with an active automation event trigger", async () => {

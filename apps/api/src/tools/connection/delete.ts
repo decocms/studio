@@ -133,6 +133,12 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     // Delete connection
     await ctx.storage.connections.delete(input.id);
 
+    // trigger_callback_tokens.connection_id has no FK either — same class of orphan.
+    await ctx.storage.triggerCallbackTokens.deleteByConnection(
+      input.id,
+      organization.id,
+    );
+
     // Cleanup registry_config references to the deleted connection
     const orgSettings = await ctx.storage.organizationSettings.get(
       organization.id,
