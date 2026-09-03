@@ -16,6 +16,28 @@ interface ImageUploadProps {
   isUploading?: boolean;
 }
 
+/**
+ * A `src` we can prove is inert: an absolute https URL, or a same-origin path.
+ *
+ * `value` is whatever the user pasted into the URL field, and everything else a
+ * URL can be — `javascript:`, `data:text/html`, `vbscript:` — is a script sink
+ * wearing an image's clothes. Protocol-relative `//host` is excluded too: it
+ * inherits the page's scheme rather than stating one. Mirrors
+ * `safeEditorImageUrl`, which does the same job for the sections editor.
+ */
+function safeImageSrc(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("//")) return undefined;
+  if (trimmed.startsWith("/")) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function ImageUpload({
   value,
   onChange,
@@ -67,6 +89,7 @@ export function ImageUpload({
   };
 
   const hasImage = value.length > 0;
+  const previewSrc = safeImageSrc(value);
 
   return (
     <div className="grid gap-1.5">
@@ -77,11 +100,13 @@ export function ImageUpload({
         <div className="relative group min-h-[180px] rounded-xl border border-border overflow-hidden bg-muted/10">
           <div className="flex items-center gap-3 p-3 h-full">
             <div className="size-20 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0">
-              <img
-                src={value}
-                alt={t("registry.imageUpload.previewAlt")}
-                className="w-full h-full object-cover"
-              />
+              {previewSrc ? (
+                <img
+                  src={previewSrc}
+                  alt={t("registry.imageUpload.previewAlt")}
+                  className="w-full h-full object-cover"
+                />
+              ) : null}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground truncate">{value}</p>
