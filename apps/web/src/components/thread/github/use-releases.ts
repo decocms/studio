@@ -14,6 +14,22 @@ export function nextReleaseColor(count: number): string {
   return RELEASE_COLORS[count % RELEASE_COLORS.length]!;
 }
 
+/**
+ * Next auto name for an unnamed draft: one above the highest existing
+ * "`{base}` N" (e.g. "Rascunho 3" → "Rascunho 4"), starting at "`{base}` 1".
+ * Renamed releases don't count. Shared so the branch picker and the "start a
+ * new draft" CTAs number drafts identically.
+ */
+export function nextDraftName(releases: Release[], base: string): string {
+  const prefix = `${base} `;
+  const max = releases.reduce((m, r) => {
+    if (!r.name.startsWith(prefix)) return m;
+    const n = Number(r.name.slice(prefix.length));
+    return Number.isInteger(n) && n > m ? n : m;
+  }, 0);
+  return `${base} ${max + 1}`;
+}
+
 const DOT_CLASS: Record<string, string> = {
   orange: "bg-orange-500",
   violet: "bg-violet-500",

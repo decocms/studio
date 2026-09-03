@@ -317,7 +317,7 @@ func Publish(deps PublishDeps, message string) error {
 		if deps.GetOperator != nil {
 			operator = deps.GetOperator()
 		}
-		commitMsg := AppendCoAuthorTrailer(msg, operator)
+		commitMsg, authorArgs := CommitAttribution(msg, operator)
 		env := map[string]string{
 			"GIT_CEILING_DIRECTORIES": repoDir,
 			"GIT_OPTIONAL_LOCKS":      "0",
@@ -325,7 +325,9 @@ func Publish(deps PublishDeps, message string) error {
 		for k, v := range skipHooksEnv {
 			env[k] = v
 		}
-		args := []string{"-c", "core.hooksPath=" + getEmptyHooksDir(), "commit", "--no-verify", "-m", commitMsg}
+		args := []string{"-c", "core.hooksPath=" + getEmptyHooksDir(), "commit", "--no-verify"}
+		args = append(args, authorArgs...)
+		args = append(args, "-m", commitMsg)
 		if _, err := Run(args, RunOpts{Cwd: repoDir, Env: env}); err != nil {
 			return err
 		}

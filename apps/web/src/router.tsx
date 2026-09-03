@@ -431,7 +431,6 @@ const unifiedChatSearchSchema = z.object({
   due: z.string().optional(),
   tags: z.string().optional(),
   repo: z.string().optional(),
-  sprint: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({
@@ -627,7 +626,6 @@ const tasksRoute = createRoute({
     due: z.string().optional(),
     tags: z.string().optional(),
     repo: z.string().optional(),
-    sprint: z.string().optional(),
   }),
   beforeLoad: ({ params, search }) => {
     const promoted = promoteLegacyTaskParam(params.taskKey, search);

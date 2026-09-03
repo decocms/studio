@@ -23,10 +23,24 @@ export class ConfigRequestError extends Error {
 }
 
 /** Returns true if an error is transient and should be retried. Distinguishes
- * network/timeout failures (retriable) from other errors (permanent). */
+ * network/timeout failures (retriable) from other errors (permanent).
+ *
+ * Node/undici's fetch throws these as `TypeError`. Bun's fetch — the actual
+ * runtime this server runs on — throws a plain `Error` with a `.code` (e.g.
+ * `"ConnectionRefused"`, `"ConnectionClosed"`) instead: a cold sandbox pod
+ * that isn't accepting connections yet is exactly this, so without the
+ * `.code` check the daemon's single most common transient failure never
+ * actually retried. */
 function isTransientError(err: unknown): boolean {
   // Network errors (DNS, connection refused, etc.) are transient
   if (err instanceof TypeError) {
+    return true;
+  }
+  if (
+    err instanceof Error &&
+    !(err instanceof DOMException) &&
+    typeof (err as { code?: unknown }).code === "string"
+  ) {
     return true;
   }
   // AbortError from timeout is transient
@@ -53,11 +67,18 @@ function isTransientError(err: unknown): boolean {
  * a daemon that sends headers and then stalls rejects the `.text()`, and a
  * `.text()` awaited outside this try is exactly the unlabelled DOMException
  * again. Every caller wants the body anyway.
+ *
+ * `timeoutMs` is applied via a *fresh* `AbortSignal.timeout()` on every
+ * attempt — not one built once by the caller and reused. A signal that has
+ * already fired stays fired, so reusing it across retries would make every
+ * attempt after the first one that times out fail instantly with the same
+ * stale AbortError instead of getting its own timeout window.
  */
 async function daemonRequest(
   url: string,
-  init: RequestInit,
+  init: Omit<RequestInit, "signal">,
   endpoint: string,
+  timeoutMs: number,
 ): Promise<{ status: number; ok: boolean; body: string }> {
   try {
     const retryOpts: RetryOptions = {
@@ -70,7 +91,10 @@ async function daemonRequest(
     };
 
     return await retry(async () => {
-      const res = await fetch(url, init);
+      const res = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
       return { status: res.status, ok: res.ok, body: await res.text() };
     }, retryOpts);
   } catch (err) {
@@ -114,7 +138,15 @@ export async function probeDaemonHealth(
     const res = await fetch(`${daemonUrl}/health`, {
       signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Drain the body to ensure connection cleanup even on non-2xx responses.
+      try {
+        await res.text();
+      } catch {
+        // Ignore drain errors; connection cleanup is best-effort.
+      }
+      return null;
+    }
     const body = (await res.json()) as Partial<DaemonHealth>;
     if (
       typeof body === "object" &&
@@ -209,9 +241,9 @@ async function configRequest(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(wire),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
     },
     "/_sandbox/config",
+    opts?.timeoutMs ?? CONFIG_TIMEOUT_MS,
   );
   if (!res.ok) {
     throw new ConfigRequestError(res.status, res.body);
@@ -235,9 +267,9 @@ export async function postSetupStep(
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
     },
     `/_sandbox/setup/${step}`,
+    CONFIG_TIMEOUT_MS,
   );
   if (!res.ok) {
     throw new Error(
@@ -267,9 +299,9 @@ export async function postOrgFsConfig(
         Authorization: `Bearer ${token}`,
       },
       body: configJson,
-      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
     },
     "/_sandbox/orgfs-config",
+    CONFIG_TIMEOUT_MS,
   );
   if (!res.ok) {
     throw new Error(

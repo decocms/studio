@@ -1,6 +1,6 @@
 /**
- * Board markdown → Atlassian Document Format, for the comments the sync
- * mirrors onto a Jira issue.
+ * Markdown → Atlassian Document Format, for the comments Studio posts on a
+ * Jira issue.
  *
  * Jira Cloud's v3 comment API takes ADF — not markdown, not the wiki markup of
  * the v2 API — so a comment posted as plain text shows the customer its own

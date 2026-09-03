@@ -24,7 +24,6 @@ import type { TaskBoardItem } from "@/storage/types";
 import { shippedLane } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { cardWorkLanded, type PrLanding } from "./archive-merged";
-import { boardFor, boardLanes, shippedPatch } from "./board-handler";
 import { inReviewPhase } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
@@ -55,7 +54,7 @@ export async function advanceToDoneIfMerged(
   prs: PrLanding[],
 ): Promise<boolean> {
   const orgId = item.organizationId;
-  if (!inReviewPhase(item, (await boardLanes(ctx, orgId)).review)) return false;
+  if (!inReviewPhase(item)) return false;
   if (!cardWorkLanded(prs)) return false;
   if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
     return false;
@@ -64,11 +63,10 @@ export async function advanceToDoneIfMerged(
   // Read only once the card is actually shipping.
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const shipped = shippedLane(settings?.flags);
-  const board = await boardFor(ctx, orgId);
   const done = await ctx.storage.taskBoard.update(
     item.id,
     orgId,
-    shippedPatch(board, shipped),
+    { status: shipped },
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {

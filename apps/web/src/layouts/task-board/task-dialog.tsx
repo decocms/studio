@@ -60,7 +60,6 @@ import {
   Lock01,
   Plus,
   RefreshCw01,
-  Repeat04,
   Link03,
   Tag01,
   Trash03,
@@ -71,6 +70,7 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import {
+  CANONICAL_COLUMN_KEYS,
   isReportsTask,
   isReviewerThreadTitle,
 } from "@decocms/shared/task-board";
@@ -81,7 +81,6 @@ import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
-  formatSprintDates,
   nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
@@ -91,7 +90,6 @@ import {
   DEFAULT_TASK_TYPE,
   laneHeader,
   laneVisual,
-  type Sprint,
   STATUS_CONFIG,
   moveTargets,
   statusIconClassName,
@@ -110,10 +108,6 @@ import { summarizeTaskCost } from "./task-cost";
 import { prCardActions } from "./pr-card-actions";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
-import {
-  useBoardColumns,
-  useBoardSprintIndex,
-} from "@/hooks/use-task-board-items";
 import {
   useTaskBoardActivity,
   type TaskBoardActivity,
@@ -429,7 +423,6 @@ function TaskBoardItemEditor({
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
-  const columns = useBoardColumns();
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -447,9 +440,8 @@ function TaskBoardItemEditor({
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
     description: item?.description ?? "",
-    // The board's leftmost column, not `"triage"`: a mirrored board has no such
-    // column and the server refuses the create.
-    status: item?.status ?? defaultStatus ?? columns[0]?.key ?? "triage",
+    // The board's leftmost column — where a card nobody placed is born.
+    status: item?.status ?? defaultStatus ?? CANONICAL_COLUMN_KEYS[0],
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
@@ -471,10 +463,6 @@ function TaskBoardItemEditor({
    */
   const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
   const taskType = form.type;
-  const sprintIndex = useBoardSprintIndex();
-  const cardSprint = item?.sprintId
-    ? (sprintIndex.get(item.sprintId) ?? null)
-    : null;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
@@ -636,7 +624,7 @@ function TaskBoardItemEditor({
     item && onRerun && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
   /** The card's human key (`DECO-01`), the one identity a person can quote. */
-  const key = item ? taskKey(org.slug, item.keySeq, item.jiraIssueKey) : null;
+  const key = item ? taskKey(org.slug, item.keySeq) : null;
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
@@ -1011,12 +999,12 @@ function TaskBoardItemEditor({
                           : laneVisual(status).iconClassName,
                       )}
                     />
-                    {laneHeader(status, t, columns).label}
+                    {laneHeader(status, t).label}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {moveTargets(columns, deliveryEnabled).map((s) => {
-                    const { label, visual } = laneHeader(s, t, columns);
+                  {moveTargets(deliveryEnabled).map((s) => {
+                    const { label, visual } = laneHeader(s, t);
                     const Icon = visual.icon;
                     return (
                       <DropdownMenuItem
@@ -1274,22 +1262,6 @@ function TaskBoardItemEditor({
                   />
                 </PopoverContent>
               </Popover>
-
-              {/* Read-only HERE, not read-only in principle: a card's sprint
-                  is writable and pushes to the tracker, but planning is a
-                  backlog gesture rather than a field on one card, so this
-                  stays a label until that surface exists. */}
-              {cardSprint && (
-                <span className={cn(PROPERTY_BUTTON, "cursor-default")}>
-                  <Repeat04 size={16} className="text-muted-foreground" />
-                  <span className="truncate">{cardSprint.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {cardSprint.state === "active"
-                      ? t("taskBoard.taskDialog.sprintCurrent")
-                      : formatSprintDates(cardSprint)}
-                  </span>
-                </span>
-              )}
 
               <TaskCost threads={item?.threads} />
             </PropertyGroup>
@@ -2332,7 +2304,6 @@ function describeActivity(
   a: TaskBoardActivity,
   t: ReturnType<typeof useT>,
   memberByUserId: Map<string, Member>,
-  sprintById: Map<string, Sprint>,
 ): ReactNode {
   const statusChip = (s: unknown) => {
     const cfg =
@@ -2418,19 +2389,6 @@ function describeActivity(
     <ValueChip
       icon={<ReviewerIcon size={14} />}
       label={reviewerName(reviewer, t)}
-    />
-  );
-  /** A sprint by its local id. Null is the backlog, and a sprint the board no
-   *  longer has still gets a chip — the move happened either way. */
-  const sprintChip = (sprintId: unknown) => (
-    <ValueChip
-      icon={<Repeat04 size={14} />}
-      label={
-        typeof sprintId === "string"
-          ? (sprintById.get(sprintId)?.name ??
-            t("taskBoard.taskDialog.sprintGoneLabel"))
-          : t("taskBoard.taskFilters.sprintBacklog")
-      }
     />
   );
 
@@ -2573,11 +2531,6 @@ function describeActivity(
             : t("taskBoard.taskDialog.activityMergeFailed");
       }
     }
-    case "sprint_changed":
-      return interleaveChips(
-        t("taskBoard.taskDialog.activityMovedFromTo", { from, to }),
-        { from: sprintChip(d.from), to: sprintChip(d.to) },
-      );
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);
@@ -2600,7 +2553,6 @@ function TimelineBlock({
   memberByUserId: Map<string, Member>;
 }) {
   const t = useT();
-  const sprintById = useBoardSprintIndex();
   const [expanded, setExpanded] = useState(false);
 
   const actorName = (actorId: string | null) => {
@@ -2649,8 +2601,7 @@ function TimelineBlock({
         <div key={a.id} className="relative flex items-center gap-2.5">
           {actorAvatar(a.actorId)}
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {actorName(a.actorId)}{" "}
-            {describeActivity(a, t, memberByUserId, sprintById)}
+            {actorName(a.actorId)} {describeActivity(a, t, memberByUserId)}
             <span className="text-muted-foreground/60">
               {" · "}
               {formatTimeAgo(new Date(a.occurredAt))}

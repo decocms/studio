@@ -17,15 +17,7 @@ export function taskKeyPrefix(orgSlug: string): string {
 }
 
 /**
- * A card's human key: `DECO-01`, or the tracker's own key for a card synced
- * from one.
- *
- * A synced card wears the tracker's key because that is the name it already
- * has: the issue is `EX-333` in Jira, in the branch, in the PR title and in
- * everything anyone says about it, and a second Studio-only number is one
- * translation step every reader has to make. The internal `keySeq` is
- * unaffected — it is still allocated, still unique per org, and still what the
- * card is ordered and addressed by.
+ * A card's human key: `DECO-01`.
  *
  * `keySeq` is null only for a row written before the backfill migration ran,
  * which has no key to show — the caller falls back to whatever it showed
@@ -34,10 +26,7 @@ export function taskKeyPrefix(orgSlug: string): string {
 export function taskKey(
   orgSlug: string,
   keySeq: number | null | undefined,
-  trackerKey?: string | null,
 ): string | null {
-  const tracker = trackerKey?.trim();
-  if (tracker) return tracker;
   if (keySeq == null) return null;
   return `${taskKeyPrefix(orgSlug)}-${String(keySeq).padStart(2, "0")}`;
 }

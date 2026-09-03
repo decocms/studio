@@ -56,7 +56,12 @@ import { useT } from "@/i18n/use-t.ts";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
-import { nextReleaseColor, releaseDotClass, useReleases } from "./use-releases";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  releaseDotClass,
+  useReleases,
+} from "./use-releases";
 
 interface Props {
   virtualMcpId: string;
@@ -152,23 +157,14 @@ export function BranchPicker({
     setOpen(false);
   };
 
-  // One above the highest existing "Rascunho N" — renamed releases don't count.
-  const nextDraftName = () => {
-    const base = t("thread.branchPicker.defaultVersionName");
-    const prefix = `${base} `;
-    const max = releases.reduce((m, r) => {
-      if (!r.name.startsWith(prefix)) return m;
-      const n = Number(r.name.slice(prefix.length));
-      return Number.isInteger(n) && n > m ? n : m;
-    }, 0);
-    return `${base} ${max + 1}`;
-  };
-
   const create = () => {
     const branch = generateBranchName(userLabel);
     void createRelease({
       branch,
-      name: nextDraftName(),
+      name: nextDraftName(
+        releases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
       color: nextReleaseColor(releases.length),
       createdAt: new Date().toISOString(),
     });
@@ -416,10 +412,12 @@ function VersionRow({
   disabled?: boolean;
   onSelect: () => void;
 }) {
+  const t = useT();
   const row = (
     <button
       type="button"
       disabled={disabled}
+      aria-pressed={selected}
       onClick={onSelect}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors",
@@ -436,7 +434,7 @@ function VersionRow({
     <Tooltip>
       <TooltipTrigger asChild>{row}</TooltipTrigger>
       <TooltipContent side="bottom" className="font-mono text-xs">
-        {branch}
+        {t("thread.branchPicker.branchTooltip", { branch })}
       </TooltipContent>
     </Tooltip>
   );
@@ -468,6 +466,7 @@ function ReleaseRow({
         <TooltipTrigger asChild>
           <button
             type="button"
+            aria-pressed={selected}
             onClick={onSelect}
             className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
           >
@@ -481,7 +480,7 @@ function ReleaseRow({
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="font-mono text-xs">
-          {release.branch}
+          {t("thread.branchPicker.branchTooltip", { branch: release.branch })}
         </TooltipContent>
       </Tooltip>
       <DropdownMenu>

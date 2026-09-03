@@ -137,12 +137,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
-  org_board_columns: z
-    .boolean()
-    .optional()
-    .describe(
-      "The task board's columns are this org's own, mirrored from its tracker, rather than the set Studio ships. Off means the canonical lanes, which is the only board most orgs want.",
-    ),
   reviewer_enabled: z
     .boolean()
     .optional()
@@ -282,6 +276,17 @@ export function autoResolveConflictsEnabled(
 }
 
 /**
+ * `images` and `metadata` are caller-supplied JSON blobs with no other size
+ * limit on the write path (BRAND_CONTEXT_CREATE/UPDATE pass this schema
+ * straight through to storage) — an org member with ordinary brand-write
+ * permission could otherwise stash an arbitrarily large payload in a brand
+ * context row. Mirrors the `configuration_state`/`metadata` cap on
+ * `ConnectionEntitySchema`.
+ */
+const MAX_BRAND_JSON_FIELD_BYTES = 256 * 1024;
+const MAX_BRAND_IMAGES = 50;
+
+/**
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({
@@ -317,6 +322,7 @@ export const BrandContextSchema = z.object({
     .describe("Semantic color palette"),
   images: z
     .array(z.record(z.string(), z.unknown()))
+    .max(MAX_BRAND_IMAGES)
     .nullable()
     .optional()
     .describe("Brand images"),
@@ -324,6 +330,15 @@ export const BrandContextSchema = z.object({
     .record(z.string(), z.unknown())
     .nullable()
     .optional()
+    .refine(
+      (value) =>
+        value === null ||
+        value === undefined ||
+        JSON.stringify(value).length <= MAX_BRAND_JSON_FIELD_BYTES,
+      {
+        message: `metadata must serialize to at most ${MAX_BRAND_JSON_FIELD_BYTES} bytes`,
+      },
+    )
     .describe(
       "Extra design tokens (typography, components, spacing, layout, tone, etc.)",
     ),

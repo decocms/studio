@@ -50,9 +50,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.hideColumn": "Hide",
   "taskBoard.taskBoard.hiddenColumns": "Hidden columns",
-  "taskBoard.taskBoard.offBoardLaneBadge": "off board",
-  "taskBoard.taskBoard.offBoardLaneTooltip":
-    "No column on this board is “{status}”. These cards are shown here so they aren\u2019t lost — move them to a column to file them.",
   "taskBoard.taskBoard.showColumn": "Show",
   "taskBoard.taskBoard.selectedCount": "{count} selected",
   "taskBoard.taskBoard.clearSelectionButton": "Clear",
@@ -154,7 +151,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.descriptionPlaceholder":
     "Describe a task for an agent...",
   "taskBoard.taskDialog.dueDateLabel": "Due date",
-  "taskBoard.taskDialog.sprintCurrent": "current",
   "taskBoard.taskDetail.breadcrumbTasks": "Tasks",
   "taskBoard.taskDetail.breadcrumbTask": "Task",
   "taskBoard.taskDialog.membersGroupHeading": "Members",
@@ -215,7 +211,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.deleteTask": "Delete",
   "taskBoard.taskDialog.setPriorityButton": "Set priority",
   "taskBoard.taskDialog.someoneLabel": "someone",
-  "taskBoard.taskDialog.sprintGoneLabel": "a sprint that is gone",
   "taskBoard.taskDialog.startedByLabel": "started by",
   "taskBoard.taskDialog.reviewerLabel": "Reviewer",
   // The two-reviewer era's names, still on older cards' timelines.
@@ -260,10 +255,6 @@ export const taskBoard = {
   "taskBoard.taskFilters.projectGroupProjects": "Projects",
   "taskBoard.taskFilters.projectGroupRepos": "Repositories",
   "taskBoard.taskFilters.boardSettingsLabel": "Board settings",
-  "taskBoard.taskFilters.sprintLabel": "Sprint",
-  "taskBoard.taskFilters.sprintAnySprint": "Any sprint",
-  "taskBoard.taskFilters.sprintBacklog": "No sprint",
-  "taskBoard.taskFilters.sprintCurrent": "current",
   "taskBoard.taskFilters.projectNone": "No project",
   "taskBoard.taskFilters.projectNoneFound": "No projects found.",
   "taskBoard.taskFilters.searchLabel": "Search tasks",

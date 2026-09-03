@@ -31,25 +31,19 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
-import {
-  type BoardLanes,
-  boardCan,
-  boardFor,
-  boardLanes,
-  canAdvance,
-} from "./board-handler";
 import { extractPrFromValue } from "./pr-extract";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
   isReportsTask,
+  LANES,
   SUPER_AGENT_ASSIGNEE_ID,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { LANE_RANK, inReviewPhase, laneRank } from "./lanes";
+import { LANE_RANK, inReviewPhase, laneRank, atOrBefore } from "./lanes";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 
@@ -73,10 +67,7 @@ function captureTaskRunEvent(
   });
 }
 
-/** Push a task board item change to every SSE listener on its org. Also the
- *  one funnel every board write passes through, so it feeds the Jira status
- *  and sprint pushes — dynamic import because the jira sync itself imports
- *  this module. */
+/** Push a task board item change to every SSE listener on its org. */
 export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
   sseHub.emit(orgId, {
     id: crypto.randomUUID(),
@@ -86,16 +77,6 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
     data: item,
     time: new Date().toISOString(),
   });
-  void import("@/jira/dbos-jira-sync")
-    .then((jira) => {
-      jira.maybeEnqueueJiraStatusPush(orgId, item);
-      jira.maybeEnqueueJiraSprintPush(orgId, item);
-    })
-    .catch((err) => {
-      // Swallowing this silently would make the whole Jira push dead on
-      // arrival with no signal anywhere — the enqueues log their own failures.
-      console.warn("[jira] push hooks unavailable:", err);
-    });
 }
 
 /** Push a task board item deletion to every SSE listener on its org. */
@@ -158,32 +139,21 @@ export async function resolveRunTaskTargets(
  */
 export async function advanceTaskBoardForRun(
   ctx: StudioContext,
-  lane: keyof BoardLanes,
+  lane: keyof typeof LANES,
   threadId?: string,
 ): Promise<void> {
   const orgId = ctx.organization?.id;
   if (!orgId) return;
   try {
-    const board = await boardFor(ctx, orgId);
-    const [columns, lanes] = await Promise.all([
-      board.columns(),
-      board.lanes(),
-    ]);
-    const status = lanes[lane];
-    // Null: this board has no column meaning `lane`, so there is nowhere to go.
-    if (!status) return;
+    const status = LANES[lane];
     for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
       const current = await ctx.storage.taskBoard.getById(itemId, orgId);
       if (!current) continue;
-      // ponytail: read-then-write guard, ordered by the board's own columns. A
-      // single run's transitions are sequential, so the race window is
-      // negligible; it buys idempotency — a repeated PR tool call, or a run
-      // start re-fired on a DBOS retry, must not drag a card that is already
-      // further right back to this lane.
-      if (
-        current.status === status ||
-        !canAdvance(columns, current.status, status)
-      ) {
+      // Read-then-write guard, by lane order. A single run's transitions are
+      // sequential, so the race window is negligible; it buys idempotency — a
+      // repeated PR tool call, or a run start re-fired on a DBOS retry, must
+      // not drag a card that is already further right back to this lane.
+      if (current.status === status || !atOrBefore(current.status, status)) {
         continue;
       }
       const item = await ctx.storage.taskBoard.update(
@@ -243,7 +213,6 @@ export async function openReviewCycleForRun(
       const opened = await ctx.storage.taskBoard.openReviewCycleIfInProgress(
         itemId,
         orgId,
-        await boardLanes(ctx, orgId),
       );
       if (!opened) continue;
       emitTaskBoardUpdated(orgId, opened);
@@ -307,14 +276,11 @@ export async function advanceTasksToReviewOnThreadFinish(
   /** Quota bookkeeping (billing/task-quota.ts). Required on purpose: an
    *  optional arg here is a silent way for a caller to stop refunding. */
   billing: OrganizationBillingStorage,
-  /** This org's board lanes — see `reactToFailedTaskRun`. */
-  lanes: BoardLanes,
 ): Promise<void> {
   try {
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
       threadId,
       orgId,
-      lanes,
     );
     for (const item of moved) {
       emitTaskBoardUpdated(orgId, item);
@@ -331,7 +297,7 @@ export async function advanceTasksToReviewOnThreadFinish(
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
   }
-  await reactToFailedTaskRun(taskBoard, threadId, orgId, lanes);
+  await reactToFailedTaskRun(taskBoard, threadId, orgId);
   await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
 }
 
@@ -396,10 +362,6 @@ export async function reactToFailedTaskRun(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
-  /** This org's board lanes. Passed rather than resolved here: the caller
-   *  already holds a board or a handle to build one from, and taking the I/O
-   *  out keeps this reaction testable without a database. */
-  lanes: BoardLanes,
 ): Promise<void> {
   try {
     const failure = await taskBoard.failedRunInfo(threadId, orgId);
@@ -417,7 +379,7 @@ export async function reactToFailedTaskRun(
           .relabelDeliveredFailure(threadId, orgId, DELIVERED_FAILURE_REASON)
           .catch(() => {});
       }
-      if (item.status !== lanes.progress) continue;
+      if (item.status !== LANES.progress) continue;
       // A REVIEWER's run failed, not the author's: the card is In Progress only
       // because that is where a card under review sits now. Retrying it here
       // would dispatch a fresh Super Agent run over a PR that is waiting for a
@@ -445,7 +407,6 @@ export async function reactToFailedTaskRun(
           orgId,
           attempts + 1,
           new Date(Date.now() + delay),
-          lanes.progress,
         );
         if (!scheduled) continue;
         await taskBoard
@@ -454,8 +415,8 @@ export async function reactToFailedTaskRun(
             action: "status_changed",
             actorId: null,
             data: {
-              from: lanes.progress,
-              to: lanes.progress,
+              from: LANES.progress,
+              to: LANES.progress,
               retry: attempts + 1,
               of: budget,
               reason: failure.errorText ?? failure.kind,
@@ -468,7 +429,6 @@ export async function reactToFailedTaskRun(
         itemId,
         orgId,
         item.updatedBy,
-        lanes,
       );
       if (!returned) continue;
       await taskBoard
@@ -477,8 +437,8 @@ export async function reactToFailedTaskRun(
           action: "status_changed",
           actorId: null,
           data: {
-            from: lanes.progress,
-            to: lanes.queue,
+            from: LANES.progress,
+            to: LANES.queue,
             reason: failure.errorText ?? failure.kind,
             retriesSpent: attempts,
           },
@@ -561,24 +521,12 @@ export async function parkReviewedCardForHuman(
   ctx: StudioContext,
   item: TaskBoardItem,
 ): Promise<void> {
-  const lanes = await boardLanes(ctx, item.organizationId);
-  if (item.status !== lanes.progress || !inReviewPhase(item, lanes.review))
-    return;
-  if (
-    !boardCan(
-      item.organizationId,
-      "in_review",
-      lanes.review,
-      "parking a reviewed card for a person",
-    )
-  ) {
-    return;
-  }
+  if (item.status !== LANES.progress || !inReviewPhase(item)) return;
   try {
     const parked = await ctx.storage.taskBoard.update(
       item.id,
       item.organizationId,
-      { status: lanes.review },
+      { status: LANES.review },
       item.updatedBy,
     );
     await ctx.storage.taskBoard
@@ -586,7 +534,7 @@ export async function parkReviewedCardForHuman(
         taskBoardItemId: item.id,
         action: "status_changed",
         actorId: null,
-        data: { from: item.status, to: lanes.review },
+        data: { from: item.status, to: LANES.review },
       })
       .catch(() => {});
     emitTaskBoardUpdated(item.organizationId, parked);

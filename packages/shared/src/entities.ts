@@ -166,15 +166,10 @@ export interface TaskBoardItem {
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
   dueDate: string | null;
-  /** Sprint this card belongs to (`Sprint.id`); null = backlog. */
-  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`). */
   keySeq: number | null;
-  /** The key this card's issue wears in the tracker (`EX-333`), for a card
-   *  synced from one — what `taskKey` shows. Null for a card Studio owns. */
-  jiraIssueKey: string | null;
   /** Link to that issue in the tracker, for a human to open. Never folded into
    *  `description`, which agent prompts quote verbatim. */
   externalUrl: string | null;

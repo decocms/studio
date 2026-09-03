@@ -193,8 +193,6 @@ const ALL_TOOL_NAMES = [
   "JIRA_INTEGRATION_DELETE",
   "JIRA_BOARDS_LIST",
   "JIRA_BOARD_COLUMNS_LIST",
-  "JIRA_SYNC_RUN",
-  "JIRA_RESYNC_REQUEST",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -260,7 +258,6 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_PROMPT_LIST",
   "TASK_BOARD_PROMPT_UPSERT",
   "TASK_BOARD_PROMPT_DELETE",
-  "TASK_BOARD_COLUMN_ROLE_SET",
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_ITEM_PR_LINK",
   "TASK_BOARD_ITEM_RERUN",
@@ -919,17 +916,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
-    name: "JIRA_SYNC_RUN",
-    description: "Pull from Jira into the task board right now",
-    category: "Jira",
-  },
-  {
-    name: "JIRA_RESYNC_REQUEST",
-    description:
-      "Mark the whole Jira board to be re-read on the next scheduled sync",
-    category: "Jira",
-  },
-  {
     name: "FILE_CONFIG_UPDATE",
     description:
       "Update an S3 bucket configuration, optionally rotating credentials",
@@ -1233,11 +1219,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
-    name: "TASK_BOARD_COLUMN_ROLE_SET",
-    description: "Say what one of the board's columns means to Studio",
-    category: "Task Board",
-  },
-  {
     name: "TASK_BOARD_ITEM_PRS_GET",
     description: "Get a task board item's linked pull requests with live state",
     category: "Task Board",
@@ -1448,7 +1429,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_PROMPT_LIST",
       "TASK_BOARD_PROMPT_UPSERT",
       "TASK_BOARD_PROMPT_DELETE",
-      "TASK_BOARD_COLUMN_ROLE_SET",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_ITEM_PR_LINK",
       "TASK_BOARD_ITEM_RERUN",
@@ -1498,8 +1478,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_INTEGRATION_DELETE",
       "JIRA_BOARDS_LIST",
       "JIRA_BOARD_COLUMNS_LIST",
-      "JIRA_SYNC_RUN",
-      "JIRA_RESYNC_REQUEST",
     ],
   },
   {

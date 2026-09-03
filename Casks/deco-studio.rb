@@ -14,8 +14,8 @@
 # once a version bump lands on main) rewrites both to real values and the tap
 # becomes installable. Until then this file only reserves the cask name.
 cask "deco-studio" do
-  version "4.319.16"
-  sha256 "b32c507b70a6445d5b7cb47bdba18c548ced1426ef6888b09b283f0c90ab5ff9"
+  version "4.322.2"
+  sha256 "3312074c41549591cc9661fe1201a4a18cff2c4448d71c9e572228ee5dcedd2a"
 
   url "https://github.com/decocms/studio/releases/download/native-v#{version}/deco-#{version}-aarch64.zip"
   name "deco studio"

@@ -1,13 +1,9 @@
-/**
- * E2E: the sandbox PreviewDrawer renders below every main-panel tab on
- * cloneable agents — not just the preview tab. See spec at
- * docs/superpowers/specs/2026-06-03-sandbox-drawer-everywhere-design.md.
- */
+/** E2E: the sandbox PreviewDrawer renders on the Site Editor and nowhere else. */
 import { expect, test } from "../fixtures/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
-test.describe("sandbox drawer is available on every main-panel tab", () => {
-  test("drawer toolbar renders on Settings and Preview tabs", async ({
+test.describe("sandbox drawer is scoped to the Site Editor", () => {
+  test("drawer toolbar renders on the Site Editor and not on Settings", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -30,7 +26,7 @@ test.describe("sandbox drawer is available on every main-panel tab", () => {
       "COLLECTION_VIRTUAL_MCP_CREATE",
       {
         data: {
-          title: "drawer-everywhere e2e",
+          title: "drawer site-editor e2e",
           description: "cloneable",
           status: "active",
           pinned: false,
@@ -60,19 +56,19 @@ test.describe("sandbox drawer is available on every main-panel tab", () => {
     // we deliberately don't try to start the sandbox.
     const sandboxToolbarTab = page.getByRole("button", { name: /^sandbox$/i });
 
-    /** Settings is the most common non-preview tab, so landing the drawer there
-     *  proves it was hoisted out of PreviewContent. The legacy `?main=` URL is
-     *  translated on entry, which this pins too. */
-    await page.goto(
-      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=settings`,
-    );
-    await expect(sandboxToolbarTab).toBeVisible({ timeout: 15_000 });
-
-    // Switch to the preview tab via URL — the drawer was already visible
-    // here before the refactor, so this is the regression-prevention half.
+    /** The legacy `?main=preview` is translated to `site-editor` on entry. */
     await page.goto(
       `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=preview`,
     );
     await expect(sandboxToolbarTab).toBeVisible({ timeout: 15_000 });
+
+    /** Wait on the settings body, so the absence below is a painted panel. */
+    await page.goto(
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=settings`,
+    );
+    await expect(page.getByPlaceholder("Project name")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(sandboxToolbarTab).toHaveCount(0);
   });
 });

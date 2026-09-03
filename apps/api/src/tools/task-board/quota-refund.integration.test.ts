@@ -26,14 +26,6 @@ import {
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 
 /** Studio's own board, which is what these fixtures run on. */
-const CANON_LANES = {
-  intake: "triage",
-  queue: "todo",
-  progress: "in_progress",
-  review: "in_review",
-  archive: "archived",
-};
-
 const ORG = "org_refund_wiring";
 const USER = "user_refund_wiring";
 
@@ -148,7 +140,6 @@ describe("quota refund on thread finish (wiring)", () => {
       thread.id,
       ORG,
       billing,
-      CANON_LANES,
     );
 
     expect(await stateOf(task.id)).toBe("released");
@@ -166,7 +157,6 @@ describe("quota refund on thread finish (wiring)", () => {
       thread.id,
       ORG,
       billing,
-      CANON_LANES,
     );
 
     expect(await stateOf(task.id)).toBe("held");
@@ -191,7 +181,6 @@ describe("quota refund on thread finish (wiring)", () => {
       thread.id,
       ORG,
       billing,
-      CANON_LANES,
     );
 
     expect(await stateOf(task.id)).toBe("held");
@@ -206,7 +195,6 @@ describe("quota refund on thread finish (wiring)", () => {
       thread.id,
       ORG,
       billing,
-      CANON_LANES,
     );
 
     expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
@@ -229,7 +217,6 @@ describe("quota refund on thread finish (wiring)", () => {
       thread.id,
       ORG,
       billing,
-      CANON_LANES,
     );
 
     expect(await billing.taskClaim(task.id)).toBeNull();

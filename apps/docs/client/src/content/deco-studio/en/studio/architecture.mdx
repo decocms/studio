@@ -108,7 +108,7 @@ This distinction matters for reasoning about the system:
 | File & object-storage (`/api/:org/files/*`, presigned GET/PUT, uploads, `/api/:org/fs/*`) | ✅ serving clients | ✅ agent tools read/write files & mint presigned URLs |
 | Worker-only over HTTP | — | none — tool calls are in-process |
 
-File and object-storage routes are the genuine "called by both" surface, and they are backed by an S3-compatible **Object Store**. The `/api/:org/fs/*` routes also back the [org-filesystem mount](#org-filesystem) inside sandboxes.
+File and object-storage routes are the genuine "called by both" surface, and they are backed by an S3-compatible **Object Store**. The `/api/:org/fs/*` routes also back the [org-filesystem mount](#org-filesystem-org-fs) inside sandboxes.
 
 ## Sandboxes
 

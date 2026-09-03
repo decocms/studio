@@ -17,6 +17,7 @@ import {
   type Workload,
 } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
 import { secondaryRepoDirNames } from "@decocms/shared/secondary-repo-dirs";
 import { sleep } from "@decocms/shared/std";
@@ -646,7 +647,8 @@ async function provisionSandbox(
   // infrastructure.
   await waitForSchedulableCapacity(runner);
 
-  const sandbox = await runner.ensure(
+  const sandbox = await ensureOrRephrase(
+    runner,
     { userId: sandboxUserId, projectRef },
     {
       // Annotation only — the handle comes from `projectRef`, which already
@@ -855,6 +857,36 @@ const CAPACITY_POLL_MS = 5_000;
  * everyone behind it. That is the trade — one run pays the readiness timeout
  * instead of every run in the burst.
  */
+/**
+ * `runner.ensure`, with daemon-config failures rephrased for the caller.
+ *
+ * A `ConfigRequestError` is the bootstrap handshake failing against the pod —
+ * most often a sentinel 401, meaning the pool handed out a pod already bound to
+ * another claim. The runner already tore the claim down, so the correct next
+ * step is another attempt on a different pod. Two callers need that said in
+ * words: the task board decides a retry by matching the message
+ * (`isTransientRunFailure` — "sandbox provisioning failed" is one of its
+ * patterns), and the agent gets this as a tool error, where the raw
+ * `/_sandbox/config returned 401: {"error":"unauthorized"}` reads as a bug in
+ * the tool call it just made and it stops using the filesystem instead of
+ * retrying. The status stays in the message for the logs; `cause` keeps the
+ * original for anything that wants it.
+ */
+async function ensureOrRephrase(
+  runner: AgentSandboxProvider,
+  ...args: Parameters<AgentSandboxProvider["ensure"]>
+): Promise<Awaited<ReturnType<AgentSandboxProvider["ensure"]>>> {
+  try {
+    return await runner.ensure(...args);
+  } catch (err) {
+    if (!(err instanceof ConfigRequestError)) throw err;
+    throw new Error(
+      `sandbox provisioning failed: the sandbox pod rejected the bootstrap handshake (HTTP ${err.status}). The claim was released; retrying gets a different pod.`,
+      { cause: err },
+    );
+  }
+}
+
 async function waitForSchedulableCapacity(
   runner: AgentSandboxProvider,
 ): Promise<void> {

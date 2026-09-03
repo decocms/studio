@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from "bun:test";
 import {
+  AgentKickstartPromptSchema,
   SandboxMapSchema,
   VirtualMCPEntitySchema,
   VirtualMCPCreateDataSchema,
@@ -12,6 +13,24 @@ import {
   resolveCmsMode,
   withCmsMode,
 } from "./virtual-mcp";
+
+describe("AgentKickstartPromptSchema", () => {
+  it("rejects a text longer than 4000 chars", () => {
+    const result = AgentKickstartPromptSchema.safeParse({
+      title: "Say hi",
+      text: "a".repeat(4001),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a text at the 4000 char boundary", () => {
+    const result = AgentKickstartPromptSchema.safeParse({
+      title: "Say hi",
+      text: "a".repeat(4000),
+    });
+    expect(result.success).toBe(true);
+  });
+});
 
 describe("withCmsMode", () => {
   it("writes the mode and drops the boolean it supersedes", () => {
@@ -216,6 +235,56 @@ test("VirtualMCPUpdateDataSchema accepts metadata.runtime", () => {
   });
   expect(parsed.metadata?.runtime?.selected).toBe("bun");
   expect(parsed.metadata?.runtime?.port).toBeNull();
+});
+
+test("VirtualMCPCreateDataSchema rejects a description over 500 chars", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    description: "a".repeat(501),
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 20 kickstart prompts", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: [],
+    prompts: Array.from({ length: 21 }, (_, i) => ({
+      title: `Prompt ${i}`,
+      text: "hi",
+    })),
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 200 connections", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: Array.from({ length: 201 }, (_, i) => ({
+      connection_id: `conn-${i}`,
+    })),
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects more than 500 selected_tools on a connection", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    connections: [
+      {
+        connection_id: "conn-1",
+        selected_tools: Array.from({ length: 501 }, (_, i) => `tool-${i}`),
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects a description over 500 chars", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    description: "a".repeat(501),
+  });
+  expect(result.success).toBe(false);
 });
 
 test("SandboxRecord.startedWith is optional with nullable packageManager/port/path", () => {

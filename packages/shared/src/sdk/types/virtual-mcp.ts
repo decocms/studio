@@ -34,15 +34,45 @@ const VirtualMCPConnectionSchema = z.object({
 
 export type VirtualMCPConnection = z.infer<typeof VirtualMCPConnectionSchema>;
 
+/** Cap on how many tool/resource/prompt names a single connection can select
+ *  on write — an unbounded array here is attacker-controlled payload size on
+ *  a mutation input, not a real agent config (no connection realistically
+ *  exposes more than a few hundred tools). */
+const SELECTED_ITEMS_MAX = 500;
+
+/** Cap on how many connections a single virtual MCP can list on write — same
+ *  rationale as {@link SELECTED_ITEMS_MAX}: no real agent config connects to
+ *  hundreds of MCPs. */
+const CONNECTIONS_MAX = 200;
+
 /**
  * Virtual MCP connection schema for input (Create/Update) - fields can be optional
  */
 const VirtualMCPConnectionInputSchema = VirtualMCPConnectionSchema.extend({
-  selected_tools: VirtualMCPConnectionSchema.shape.selected_tools.optional(),
-  selected_resources:
-    VirtualMCPConnectionSchema.shape.selected_resources.optional(),
-  selected_prompts:
-    VirtualMCPConnectionSchema.shape.selected_prompts.optional(),
+  selected_tools: z
+    .array(z.string())
+    .max(SELECTED_ITEMS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Selected tool names. null = all tools included, array = only these tools included",
+    ),
+  selected_resources: z
+    .array(z.string())
+    .max(SELECTED_ITEMS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Selected resource URIs or patterns. Supports * and ** wildcards for pattern matching. null = all resources included, array = only these resources included",
+    ),
+  selected_prompts: z
+    .array(z.string())
+    .max(SELECTED_ITEMS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Selected prompt names. null = all prompts included, array = only these prompts included",
+    ),
 });
 
 /**
@@ -858,6 +888,7 @@ export const AgentKickstartPromptSchema = z.object({
   text: z
     .string()
     .min(1)
+    .max(4000)
     .describe("The message sent to the agent when the prompt is clicked"),
 });
 
@@ -870,6 +901,7 @@ export const VirtualMCPCreateDataSchema = z.object({
   title: z.string().min(1).max(255).describe("Name for the virtual MCP"),
   description: z
     .string()
+    .max(500)
     .nullable()
     .optional()
     .describe("Optional description"),
@@ -897,11 +929,13 @@ export const VirtualMCPCreateDataSchema = z.object({
     .describe("Additional metadata including MCP server instructions"),
   connections: z
     .array(VirtualMCPConnectionInputSchema)
+    .max(CONNECTIONS_MAX)
     .describe(
       "Connections to include/exclude (can be empty for exclusion mode)",
     ),
   prompts: z
     .array(AgentKickstartPromptSchema)
+    .max(20)
     .optional()
     .describe(
       "Optional kickstart prompts to seed on the agent. Each becomes a clickable conversation starter (icebreaker) on the agent. Author them from the agent's role and the tools it will have so they're coherent and immediately useful.",
@@ -917,6 +951,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
   title: z.string().min(1).max(255).optional().describe("New name"),
   description: z
     .string()
+    .max(500)
     .nullable()
     .optional()
     .describe("New description (null to clear)"),
@@ -940,10 +975,12 @@ export const VirtualMCPUpdateDataSchema = z.object({
     .describe("Additional metadata including MCP server instructions"),
   connections: z
     .array(VirtualMCPConnectionInputSchema)
+    .max(CONNECTIONS_MAX)
     .optional()
     .describe("New connections (replaces existing)"),
   prompts: z
     .array(AgentKickstartPromptSchema)
+    .max(20)
     .optional()
     .describe(
       "Replace the agent's kickstart prompts with this full set. Omit to leave them unchanged; pass an empty array to remove all. Each becomes a clickable conversation starter (icebreaker).",

@@ -102,4 +102,36 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects oversized sidebar_items, blockedMcps, default_home_agents.ids, and enabled_plugins", () => {
+    const item = { title: "x", url: "/x", icon: "star" };
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        sidebar_items: Array(51).fill(item),
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        enabled_plugins: Array(201).fill("plugin"),
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        registry_config: { registries: {}, blockedMcps: Array(501).fill("x") },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        default_home_agents: { ids: Array(101).fill("vmcp") },
+      }).success,
+    ).toBe(false);
+  });
 });

@@ -2,6 +2,7 @@ import type { thread as threadEn } from "../en/thread.ts";
 
 export const thread = {
   "thread.branchPicker.allLoaded": "Todas carregadas",
+  "thread.branchPicker.branchTooltip": "branch: {branch}",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",

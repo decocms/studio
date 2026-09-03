@@ -209,8 +209,7 @@ export const GATED_CONTROL_PLANE_TABS = new Set<string>([
 
 // Agent-independent overlays (Tasks `board`, Library `files`, the commerce
 // report's `connect-sources`, the empty `reports`) take over the panel and aren't
-// sandbox-backed views. Shared by the drawer-visibility check and the
-// in-panel-app navigate allowlist so the two stay in sync.
+// sandbox-backed views. Also the in-panel-app navigate allowlist.
 export const OVERLAY_TABS = new Set([
   "board",
   "files",

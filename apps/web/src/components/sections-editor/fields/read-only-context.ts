@@ -13,3 +13,16 @@ export const ReadOnlyProvider = ReadOnlyContext.Provider;
 export function useIsReadOnly(): boolean {
   return useContext(ReadOnlyContext);
 }
+
+/**
+ * The agent whose production a read-only pane is showing — so a blocked field
+ * can offer "start a new draft" without threading the id through every field
+ * prop. `null` outside a {@link ReadOnlyProvider} that supplied one.
+ */
+const ReadOnlyVirtualMcpContext = createContext<string | null>(null);
+
+export const ReadOnlyVirtualMcpProvider = ReadOnlyVirtualMcpContext.Provider;
+
+export function useReadOnlyVirtualMcpId(): string | null {
+  return useContext(ReadOnlyVirtualMcpContext);
+}

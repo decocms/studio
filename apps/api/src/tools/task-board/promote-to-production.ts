@@ -12,7 +12,7 @@ import {
 import { TaskBoardItemStatusSchema } from "./schema";
 import { SHIP_ELIGIBLE_LANES } from "./lanes";
 import { recordTaskActivity } from "./activity";
-import { boardFor, shippedPatch } from "./board-handler";
+
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { mergeLinkedPr } from "./merge-pr";
 
@@ -107,11 +107,10 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
     }
 
     const shipped = shippedLane(settings?.flags);
-    const board = await boardFor(ctx, organizationId);
     const updated = await ctx.storage.taskBoard.update(
       taskBoardItemId,
       organizationId,
-      shippedPatch(board, shipped),
+      { status: shipped },
       item.updatedBy,
     );
     if (item.status !== shipped) {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,6 +81,41 @@ func TestInstallSandboxHooksWritesTheBranchList(t *testing.T) {
 			t.Fatal("feature branch was refused as protected")
 		}
 		// Any other error is expected — this repo has no `origin` to push to.
+	}
+}
+
+// The published commit must be authored by the operator (the human publisher),
+// while the committer stays the configured bot identity.
+func TestPublishAuthorsCommitAsOperator(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature/x")
+	if err := os.WriteFile(filepath.Join(repo, "f.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No origin: Publish commits, then fails at push. The commit is what we assert.
+	_ = Publish(PublishDeps{
+		RepoDir: repo,
+		GetOperator: func() *CoAuthorIdentity {
+			return &CoAuthorIdentity{UserName: "Jane Doe", UserEmail: "jane@example.com"}
+		},
+	}, "Publish content")
+
+	show := func(format string) string {
+		cmd := exec.Command("git", "log", "-1", "--pretty="+format)
+		cmd.Dir = repo
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("git log: %v", err)
+		}
+		return string(out)
+	}
+	if got := show("%an <%ae>"); got != "Jane Doe <jane@example.com>\n" {
+		t.Fatalf("author = %q, want the operator", got)
+	}
+	if got := show("%cn <%ce>"); got != "t <t@example.com>\n" {
+		t.Fatalf("committer = %q, want the configured bot identity", got)
+	}
+	if body := show("%B"); strings.Contains(body, "Co-authored-by:") {
+		t.Fatalf("commit body still has a co-author trailer: %q", body)
 	}
 }
 

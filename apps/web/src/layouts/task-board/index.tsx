@@ -51,7 +51,6 @@ import {
   List,
   Plus,
   RefreshCw01,
-  Repeat04,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -85,8 +84,6 @@ import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
-  useBoardColumns,
-  useBoardSprintIndex,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
@@ -108,7 +105,6 @@ import {
   statusIconClassName,
   dropLane,
   LANE_DROPPABLE_PREFIX,
-  type BoardColumn,
   laneHeader,
   laneVisual,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -116,6 +112,7 @@ import {
   TASK_TYPES,
   type TaskBoardItem,
   type TaskBoardItemPriority,
+  type TaskBoardItemStatus,
   type TaskBoardItemTag,
   type Member,
 } from "./config";
@@ -124,7 +121,6 @@ import {
   useOrgFlag,
   useReviewerEnabled,
 } from "@/hooks/use-organization-settings";
-import type { Sprint } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDetail,
@@ -150,7 +146,6 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
-  resolveSprintFilter,
   TaskFiltersBar,
   TaskFiltersDrawer,
   taskMatchesFilters,
@@ -496,7 +491,7 @@ function CardFooter({
   onDueDateChange?: (iso: string) => void;
 }) {
   const { org } = useProjectContext();
-  const key = taskKey(org.slug, item.keySeq, item.jiraIssueKey);
+  const key = taskKey(org.slug, item.keySeq);
   return (
     // No inset of its own: the footer shares the card's padding, so the type glyph starts on the same left edge as the title and the labels.
     <div className="mt-auto flex shrink-0 items-center justify-between gap-2 pt-1">
@@ -563,22 +558,6 @@ function DueDatePill({ iso }: { iso: string }) {
       {label}
     </span>
   );
-}
-
-/** The sprint a card belongs to, named the way its tracker names it. */
-function SprintPill({ sprint }: { sprint: Sprint }) {
-  return (
-    <span className={PILL}>
-      <Repeat04 size={FOOTER_GLYPH} />
-      {sprint.name}
-    </span>
-  );
-}
-
-/** The sprint of the card being rendered, or null when it's in the backlog. */
-function useCardSprint(item: TaskBoardItem): Sprint | null {
-  const sprints = useBoardSprintIndex();
-  return item.sprintId ? (sprints.get(item.sprintId) ?? null) : null;
 }
 
 /** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
@@ -831,7 +810,7 @@ function AssigneeDisplay({
 
 export function TaskBoardPage() {
   const t = useT();
-  const { items, sprints, columns, isLoading } = useTaskBoardItems();
+  const { items, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -918,12 +897,7 @@ export function TaskBoardPage() {
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
-  const {
-    filters: urlFilters,
-    setFilters,
-    layout,
-    setLayout,
-  } = useBoardSearch();
+  const { filters, setFilters, layout, setLayout } = useBoardSearch();
   /** Ambient project scope — a filter over the org-wide board, never a
    *  container. Null repo (or no scope) means the board stays org-wide. */
   const {
@@ -934,14 +908,6 @@ export function TaskBoardPage() {
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
-  // A URL outlives the sprint it names, so an unknown one is dropped rather
-  // than left hiding every card behind a chip that reads like "no filter".
-  const filters = isLoading
-    ? urlFilters
-    : {
-        ...urlFilters,
-        sprint: resolveSprintFilter(urlFilters.sprint, sprints),
-      };
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -968,7 +934,9 @@ export function TaskBoardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   // Status a newly-created task should start in (set by a lane's "+"); null for
   // the generic "New task" button.
-  const [createStatus, setCreateStatus] = useState<string | null>(null);
+  const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
+    null,
+  );
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
@@ -1095,20 +1063,17 @@ export function TaskBoardPage() {
    * Keep a newly created card visible: drop the project filter when the card
    * would fall outside it. Widening back is visible; an empty lane is not.
    *
-   * Writes onto `urlFilters`, NOT the resolved `filters` — the latter carries
-   * the running sprint that `resolveSprintFilter` supplied, and persisting that
-   * would pin a bookmark to a sprint nobody chose (see `sprintNarrowed`). And
-   * it calls `setFilters` rather than `handleFiltersChange`, which also clears
-   * the selection: creating a card must not discard a bulk selection.
+   * Calls `setFilters` rather than `handleFiltersChange`, which also clears the
+   * selection: creating a card must not discard a bulk selection.
    *
-   * Only the project filter is rescued. A board narrowed by sprint, assignee or
-   * search can still swallow a new card — that predates this and is not a
-   * promise made here.
+   * Only the project filter is rescued. A board narrowed by assignee or search
+   * can still swallow a new card — that predates this and is not a promise
+   * made here.
    */
   const widenProjectFilterFor = (repo: string | null) => {
-    const next = filterAfterCreate({ repo }, urlFilters.project, projectIndex);
-    if (next !== urlFilters.project) {
-      setFilters({ ...urlFilters, project: next });
+    const next = filterAfterCreate({ repo }, filters.project, projectIndex);
+    if (next !== filters.project) {
+      setFilters({ ...filters, project: next });
     }
   };
 
@@ -1117,7 +1082,7 @@ export function TaskBoardPage() {
     setDialogOpen(true);
   };
 
-  const openCreateInLane = (status: string) => {
+  const openCreateInLane = (status: TaskBoardItemStatus) => {
     setCreateStatus(status);
     setDialogOpen(true);
   };
@@ -1227,7 +1192,6 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   index={projectIndex}
-                  sprints={sprints}
                   onChange={handleFiltersChange}
                   onOpenBoardSettings={openBoardSettings}
                 />
@@ -1238,7 +1202,6 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   index={projectIndex}
-                  sprints={sprints}
                   onChange={handleFiltersChange}
                   onOpenBoardSettings={openBoardSettings}
                 />
@@ -1299,7 +1262,6 @@ export function TaskBoardPage() {
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
-          columns={columns}
           items={visibleItems}
           members={members}
           memberByUserId={memberByUserId}
@@ -1631,7 +1593,7 @@ function SelectionBar({
 }: {
   count: number;
   members: Member[];
-  onMoveTo: (status: string) => void;
+  onMoveTo: (status: TaskBoardItemStatus) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
   onAssign: (userId: string | null) => void;
@@ -1648,7 +1610,6 @@ function SelectionBar({
   const t = useT();
   const { data: orgTags = [] } = useTags();
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
-  const columns = useBoardColumns();
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
@@ -1671,12 +1632,12 @@ function SelectionBar({
                 {t("taskBoard.taskBoard.moveToButton")}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {moveTargets(columns, deliveryEnabled).map((status) => (
+                {moveTargets(deliveryEnabled).map((status) => (
                   <DropdownMenuItem
                     key={status}
                     onClick={() => onMoveTo(status)}
                   >
-                    {laneHeader(status, t, columns).label}
+                    {laneHeader(status, t).label}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>
@@ -1820,7 +1781,7 @@ function LayoutToggle({
 /** Where a card sits locally: while a drag is in flight, and then until the
  *  server's optimistic patch catches up. */
 interface Placement {
-  status: string;
+  status: TaskBoardItemStatus;
   sortOrder: number;
 }
 
@@ -1836,7 +1797,6 @@ function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
 }
 
 function Lanes({
-  columns,
   items,
   members,
   memberByUserId,
@@ -1854,8 +1814,6 @@ function Lanes({
   onDueDateChange,
   visible,
 }: {
-  /** The board's own columns, as the server sent them. */
-  columns: readonly BoardColumn[];
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
@@ -1863,8 +1821,12 @@ function Lanes({
   onToggleSelect: (id: string) => void;
   onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: string) => void;
-  onMove: (ids: string[], status: string, sortOrder: number) => void;
+  onCreate: (status: TaskBoardItemStatus) => void;
+  onMove: (
+    ids: string[],
+    status: TaskBoardItemStatus,
+    sortOrder: number,
+  ) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
@@ -1970,9 +1932,7 @@ function Lanes({
     lanes: boardLanes,
     hidden: hiddenLanes,
     hideable: hideableLanes,
-    unplaced: unplacedLanes,
   } = laneVisibility({
-    columns,
     deliveryEnabled,
     shownLanes: preferences.shownTaskBoardLanes,
     occupied: placed.map((item) => item.status),
@@ -1985,16 +1945,11 @@ function Lanes({
         : prev.shownTaskBoardLanes.filter((s) => s !== status),
     }));
 
-  /** The columns a drag may land in — the board's own, never an off-board
-   *  lane: a card can leave one, never be filed into one. */
-  const columnKeys = new Set(columns.map((column) => column.key));
-
   /** Resolved against `placed` rather than dnd-kit's `over.data`, which is a
    *  ref and can't be read during render. */
   const laneOf = (overId: string | number | undefined) =>
     dropLane({
       overId,
-      columnKeys,
       statusOf: (cardId) => placed.find((item) => item.id === cardId)?.status,
     });
 
@@ -2005,7 +1960,7 @@ function Lanes({
       ? [id, ...Array.from(selectedIds).filter((other) => other !== id)]
       : [id];
 
-  const place = (ids: string[], status: string, slot: number) => {
+  const place = (ids: string[], status: TaskBoardItemStatus, slot: number) => {
     const orders = runSortOrders(slot, ids.length);
     setOverrides((prev) => {
       const next = new Map(prev);
@@ -2129,8 +2084,6 @@ function Lanes({
             <Lane
               key={status}
               status={status}
-              columns={columns}
-              offBoard={unplacedLanes.includes(status)}
               items={laneItems(status)}
               members={members}
               memberByUserId={memberByUserId}
@@ -2162,7 +2115,6 @@ function Lanes({
           {hiddenLanes.length > 0 && (
             <HiddenLanes
               statuses={hiddenLanes}
-              columns={columns}
               countOf={(status) => laneItems(status).length}
               onShow={(status) => setLaneShown(status, true)}
             />
@@ -2218,12 +2170,10 @@ function Lanes({
  *  gives the collapse (closed by default) without any state of its own. */
 function HiddenLanes({
   statuses,
-  columns,
   countOf,
   onShow,
 }: {
   statuses: string[];
-  columns: readonly BoardColumn[];
   countOf: (status: string) => number;
   onShow: (status: string) => void;
 }) {
@@ -2239,7 +2189,7 @@ function HiddenLanes({
       </summary>
       <div className="flex flex-col gap-2 px-1 pt-1">
         {statuses.map((status) => {
-          const { label, visual } = laneHeader(status, t, columns);
+          const { label, visual } = laneHeader(status, t);
           const LaneIcon = visual.icon;
           return (
             <div
@@ -2285,8 +2235,6 @@ function HiddenLanes({
 
 function Lane({
   status,
-  columns,
-  offBoard,
   items,
   members,
   memberByUserId,
@@ -2306,12 +2254,7 @@ function Lane({
   onDueDateChange,
   onHide,
 }: {
-  status: string;
-  /** The board's own columns — what gives this lane its name. */
-  columns: readonly BoardColumn[];
-  /** No column on this board accounts for this status; the lane exists only
-   *  because cards are sitting in it. */
-  offBoard: boolean;
+  status: TaskBoardItemStatus;
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
@@ -2324,7 +2267,7 @@ function Lane({
   onToggleSelect: (id: string) => void;
   onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: string) => void;
+  onCreate: (status: TaskBoardItemStatus) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
@@ -2335,7 +2278,7 @@ function Lane({
   onHide?: () => void;
 }) {
   const t = useT();
-  const { label, visual } = laneHeader(status, t, columns);
+  const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
@@ -2378,14 +2321,6 @@ function Lane({
         <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
           {items.length}
         </span>
-        {offBoard && (
-          <span
-            className="rounded-md border border-border px-1.5 text-[11px] font-medium text-muted-foreground"
-            title={t("taskBoard.taskBoard.offBoardLaneTooltip", { status })}
-          >
-            {t("taskBoard.taskBoard.offBoardLaneBadge")}
-          </span>
-        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -2409,21 +2344,17 @@ function Lane({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        {/* No "new task here" off board: the lane is not a column, so a card
-            created in it would be stranded the moment it existed. */}
-        {!offBoard && (
-          <button
-            type="button"
-            aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-              lane: label,
-            })}
-            title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-            onClick={() => onCreate(status)}
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Plus size={15} />
-          </button>
-        )}
+        <button
+          type="button"
+          aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+            lane: label,
+          })}
+          title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
+          onClick={() => onCreate(status)}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Plus size={15} />
+        </button>
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
           overflow-y container clips the x-axis too, which would clip a FLIP-
@@ -2581,7 +2512,6 @@ function TaskCard({
   onDueDateChange?: (iso: string) => void;
 }) {
   const t = useT();
-  const sprint = useCardSprint(item);
   const checks = useCardChecks(item);
   const runState = agentRunState(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
@@ -2642,9 +2572,8 @@ function TaskCard({
         {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {(sprint != null || item.tags.length > 0) && (
+      {item.tags.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-          {sprint != null && <SprintPill sprint={sprint} />}
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
@@ -2696,7 +2625,6 @@ function ListRow({
   onOpen: () => void;
 }) {
   const StatusIcon = laneVisual(item.status).icon;
-  const sprint = useCardSprint(item);
   return (
     <button
       type="button"
@@ -2720,11 +2648,6 @@ function ListRow({
       {item.dueDate && (
         <span className="hidden sm:inline-flex">
           <DueDatePill iso={item.dueDate} />
-        </span>
-      )}
-      {sprint != null && (
-        <span className="hidden sm:inline-flex">
-          <SprintPill sprint={sprint} />
         </span>
       )}
       {item.tags.length > 0 && (

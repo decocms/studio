@@ -41,6 +41,8 @@ interface SidebarNavRowProps {
   className?: string;
   /** `data-tour` anchor, for the rows a product tour highlights. */
   dataTour?: string;
+  /** Rows nested under this one, rendered inside its `<li>` after the button. */
+  children?: ReactNode;
 }
 
 export function SidebarNavRow({
@@ -52,6 +54,7 @@ export function SidebarNavRow({
   ariaLabel,
   className,
   dataTour,
+  children,
 }: SidebarNavRowProps) {
   const isCollapsed = useSidebarCollapsed();
   const name = ariaLabel ?? label;
@@ -89,6 +92,7 @@ export function SidebarNavRow({
             {body}
           </Link>
         </SidebarMenuButton>
+        {children}
       </SidebarMenuItem>
     );
   }
@@ -98,6 +102,7 @@ export function SidebarNavRow({
       <SidebarMenuButton {...shared} aria-label={name} onClick={onSelect}>
         {body}
       </SidebarMenuButton>
+      {children}
     </SidebarMenuItem>
   );
 }
