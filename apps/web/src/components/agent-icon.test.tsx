@@ -19,20 +19,30 @@ describe("AgentAvatar", () => {
    * app, while the same avatar rendered correctly just outside one. Both
    * `:not()` guards are satisfied only by the classes asserted here.
    */
-  it("stamps the glyph's size and color so a menu cannot override them", () => {
-    const { container } = render(
-      <AgentAvatar icon="icon://folder" name="Test Agent" size="2xs" />,
-    );
+  it.each([
+    ["2xs", "size-4", "size-3"],
+    ["xs", "w-6", "size-3.5"],
+    ["sm", "w-8", "size-4"],
+    ["sm+", "w-10", "size-5"],
+    ["md", "w-12", "size-6"],
+    ["lg", "w-16", "size-8"],
+    ["xl", "w-20", "size-10"],
+  ] as const)(
+    "stamps the glyph's size and color so a menu cannot override them (%s)",
+    (size, boxClass, glyphClass) => {
+      const { container } = render(
+        <AgentAvatar icon="icon://folder" name="Test Agent" size={size} />,
+      );
 
-    const box = container.firstElementChild;
-    expect(box?.className).toContain("size-4");
+      expect(container.firstElementChild?.className).toContain(boxClass);
 
-    const svg = container.querySelector("svg");
-    expect(svg).toBeInTheDocument();
-    // 12px glyph in a 16px box — the step the sidebar established.
-    expect(svg?.getAttribute("class")).toContain("size-3");
-    expect(svg?.getAttribute("class")).toMatch(/text-\w+-\d+/);
-  });
+      const svg = container.querySelector("svg");
+      expect(svg).toBeInTheDocument();
+      // The class is what survives a menu's `[&_svg:not([class*='size-'])]`.
+      expect(svg?.getAttribute("class")).toContain(glyphClass);
+      expect(svg?.getAttribute("class")).toMatch(/text-\w+-\d+/);
+    },
+  );
 
   it("applies the picker's palette color as a background for an uploaded image icon", () => {
     const { container } = render(

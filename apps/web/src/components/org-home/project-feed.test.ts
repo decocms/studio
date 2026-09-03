@@ -4,10 +4,16 @@ import type { TaskBoardItem } from "@/layouts/task-board/config";
 import { buildProjectIndex } from "@/lib/project-index";
 import { buildFeed } from "./project-feed";
 
-function project(id: string, title: string, repo?: string): VirtualMCPEntity {
+function project(
+  id: string,
+  title: string,
+  repo?: string,
+  createdAt = "2026-01-01T00:00:00Z",
+): VirtualMCPEntity {
   return {
     id,
     title,
+    created_at: createdAt,
     metadata: repo
       ? {
           githubRepo: {
@@ -110,8 +116,15 @@ describe("buildFeed", () => {
   });
 
   describe("two projects over one repository", () => {
-    const M1 = project("p_m1", "storefront", "acme/mono");
-    const M2 = project("p_m2", "checkout", "acme/mono");
+    /** `created_at` is what `byCreation` orders on, so the fixtures have to
+     *  carry it or the ordering under test is never exercised. */
+    const M1 = project(
+      "p_m1",
+      "storefront",
+      "acme/mono",
+      "2026-01-01T00:00:00Z",
+    );
+    const M2 = project("p_m2", "checkout", "acme/mono", "2026-02-01T00:00:00Z");
 
     /** REGRESSION. The `Map<repo, project>` this replaced let the last project
      *  iterated win, so the card was silently filed under a sibling. */
@@ -126,6 +139,9 @@ describe("buildFeed", () => {
       expect(feed[0]?.bucket.title).toBe("acme/mono");
     });
 
+    /** `bucket.title` is the repo for any shared bucket, so comparing only that
+     *  passes even with the ordering deleted. Compare what the ordering
+     *  actually decides: which projects, in which order. */
     it("reversing the project order changes nothing", () => {
       const cards = [
         task("shared", "2026-01-01T00:00:00Z", { repo: "acme/mono" }),
@@ -133,6 +149,13 @@ describe("buildFeed", () => {
       const forward = buildFeed(buildProjectIndex([M1, M2]), cards, null);
       const reverse = buildFeed(buildProjectIndex([M2, M1]), cards, null);
       expect(reverse[0]?.bucket.title).toBe(forward[0]?.bucket.title);
+      expect(reverse[0]?.bucket.projects.map((p) => p.id)).toEqual(
+        forward[0]?.bucket.projects.map((p) => p.id) ?? [],
+      );
+      expect(forward[0]?.bucket.projects.map((p) => p.id)).toEqual([
+        "p_m1",
+        "p_m2",
+      ]);
     });
 
     /** A run names the project it ran in, which is a better answer than the

@@ -166,16 +166,19 @@ function sprintNarrowed(f: TaskFilters, defaultSprint: string | null): boolean {
   return f.sprint !== null && f.sprint !== defaultSprint;
 }
 
+/** `index` so the project clause agrees with the chip: a filter that narrows
+ *  nothing must not offer a Clear that visibly does nothing. */
 function hasActiveFilters(
   f: TaskFilters,
   defaultSprint: string | null,
+  index: ProjectIndex,
 ): boolean {
   return (
     f.assignee !== null ||
     f.priority !== null ||
     f.due !== null ||
     f.tags.length > 0 ||
-    f.project !== null ||
+    projectFilterNarrows(f.project, index) ||
     sprintNarrowed(f, defaultSprint) ||
     f.search.trim() !== ""
   );
@@ -184,13 +187,14 @@ function hasActiveFilters(
 function activeFilterCount(
   f: TaskFilters,
   defaultSprint: string | null,
+  index: ProjectIndex,
 ): number {
   return (
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
     (f.due !== null ? 1 : 0) +
     (f.tags.length > 0 ? 1 : 0) +
-    (f.project !== null ? 1 : 0) +
+    (projectFilterNarrows(f.project, index) ? 1 : 0) +
     (sprintNarrowed(f, defaultSprint) ? 1 : 0) +
     (f.search.trim() !== "" ? 1 : 0)
   );
@@ -788,7 +792,7 @@ function ProjectFilter({
                   <ProjectOption
                     key={entry.id}
                     entry={entry}
-                    selected={value === entry.id}
+                    selected={selected === entry}
                     onSelect={() => select(entry.id)}
                   />
                 ))}
@@ -802,7 +806,7 @@ function ProjectFilter({
                   <ProjectOption
                     key={entry.id}
                     entry={entry}
-                    selected={value === entry.id}
+                    selected={selected === entry}
                     onSelect={() => select(entry.id)}
                   />
                 ))}
@@ -1050,7 +1054,8 @@ function FilterControls({
       {/* Keep the control mounted while a project filter is active even if the
           option list empties (last project and repo removed) — otherwise it
           silently hides tasks with no visible chip to clear. */}
-      {(index.entries.length > 0 || filters.project !== null) && (
+      {(index.entries.length > 0 ||
+        projectFilterNarrows(filters.project, index)) && (
         <ProjectFilter
           block={block}
           value={filters.project}
@@ -1108,7 +1113,7 @@ export function TaskFiltersBar({
         onChange={onChange}
         onOpenBoardSettings={onOpenBoardSettings}
       />
-      {hasActiveFilters(filters, currentSprintId(sprints)) && (
+      {hasActiveFilters(filters, currentSprintId(sprints), index) && (
         <button
           type="button"
           onClick={() => onChange(EMPTY_FILTERS)}
@@ -1145,7 +1150,7 @@ export function TaskFiltersDrawer({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const count = activeFilterCount(filters, currentSprintId(sprints));
+  const count = activeFilterCount(filters, currentSprintId(sprints), index);
   const triggerClass = chipClass(count > 0);
   return (
     <Drawer open={open} onOpenChange={setOpen} direction="bottom">

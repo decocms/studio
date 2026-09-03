@@ -253,19 +253,29 @@ export function projectForTask(
 }
 
 /**
- * The bucket a filter value names, by id and then by repository.
+ * The bucket a filter value names — by bucket id, then by repository, then by
+ * project id. All three, because a bucket's id is not stable for the lifetime
+ * of a link.
  *
- * The second lookup is what makes a `?repo=` link written before this existed
- * resolve to a BUCKET rather than to a bare string: those links carry whatever
- * casing GitHub showed at the time, and `byId` is keyed on the folded form. A
- * shouty `?repo=ACME/Monorepo` should read as the project that pins it, not as
- * itself.
+ * The repository lookup makes a `?repo=` link written before any of this
+ * existed resolve to a BUCKET rather than a bare string: those carry whatever
+ * casing GitHub showed at the time, and `byId` is keyed on the folded form.
+ *
+ * The project lookup covers the other drift: a project with no repository is
+ * keyed by its `vir_…` id, and the day someone imports a repository into it
+ * that bucket is re-keyed to `owner/name`. Without this, every link anyone
+ * shared while it was repo-less would fall through to the unresolved branch,
+ * quietly stop filtering, and say nothing about it.
  */
 export function entryForFilter(
   filterId: string,
   index: ProjectIndex,
 ): ProjectIndexEntry | undefined {
-  return index.byId.get(filterId) ?? index.byRepo.get(normalizeRepo(filterId));
+  return (
+    index.byId.get(filterId) ??
+    index.byRepo.get(normalizeRepo(filterId)) ??
+    index.byProject.get(filterId)
+  );
 }
 
 /**
@@ -273,16 +283,15 @@ export function entryForFilter(
  *
  * The four branches, and why each is what it is:
  *  - No filter: everything.
- *  - {@link NO_PROJECT_FILTER}: exactly the cards no bucket claims. Because the
- *    index unions every loaded card's own repository, a card carrying one
- *    ALWAYS has a bucket — so this is a strict subset of the `repo == null`
- *    test it replaces. The only cards it loses are repo-less ones whose thread
- *    names a real project, which now belong to that project.
+ *  - {@link NO_PROJECT_FILTER}: the cards no bucket claims. Once the project
+ *    list has loaded this is a strict subset of the `repo == null` test it
+ *    replaces; on the first frame `byProject` is still empty, so a
+ *    thread-attributed card appears here and then leaves.
  *  - A resolved bucket: the card's literal `repo` matches it (the exact test
- *    this replaces, verbatim) OR the card resolves into it (the widening the
- *    merge buys — a card with no repo whose run named a project pinning one).
- *    Strictly more inclusive than before, so this filter cannot lose a card the
- *    repo filter kept.
+ *    this replaces) OR the card RESOLVES into it. Since `entryForTask` reads
+ *    threads before `repo`, that second clause also admits a card stamped for
+ *    another repository that one of this project's runs touched — so buckets
+ *    are inclusive, not a partition.
  *  - An id with no bucket: a repo-shaped id falls back to the raw
  *    case-insensitive compare, which is byte-identical to today and right for a
  *    link naming a repository nothing carries. Anything else — an unresolved
@@ -348,9 +357,29 @@ export function filterAfterCreate(
   return taskMatchesProjectFilter(created, filterId, index) ? filterId : null;
 }
 
-/** The buckets a card can be STAMPED with — those backed by a repository.
- *  `task_board_items.repo` is the only per-card link there is, so a project
- *  that pins no repository has nothing for a card to point at. */
-export function stampableEntries(index: ProjectIndex): ProjectIndexEntry[] {
-  return index.entries.filter((entry) => entry.repo !== null);
+/**
+ * The buckets a card can be STAMPED with.
+ *
+ * Two conditions, and the second is the one that matters. A bucket needs a
+ * repository, because `task_board_items.repo` is the only per-card link there
+ * is — and that repository needs a LIVE connection, which `reachable` carries
+ * (the org's active repo-scoped `mcp-github` labels).
+ *
+ * Offering a repository the org cannot reach is not a cosmetic slip: a project
+ * whose connection was torn down still reports its repo (`projectRepo` answers
+ * for `detached` and `public-clone` on purpose, so its cards stay visible), and
+ * a card stamped with one can never have a PR opened against it. The server
+ * then refuses to advance it — `shouldAdvanceToReview` is
+ * `item.repo != null && !hasPr` — and it sits In Progress after every run
+ * finishes, forever. The picker this replaced listed connection labels and so
+ * could not produce that value; neither may this one.
+ */
+export function stampableEntries(
+  index: ProjectIndex,
+  reachable: readonly string[],
+): ProjectIndexEntry[] {
+  const live = new Set(reachable.map(normalizeRepo));
+  return index.entries.filter(
+    (entry) => entry.repo !== null && live.has(normalizeRepo(entry.repo)),
+  );
 }

@@ -37,6 +37,7 @@ import {
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import {
   buildProjectIndex,
+  entryForFilter,
   entryForTask,
   projectForTask,
   type ProjectIndex,
@@ -135,7 +136,10 @@ function ProjectFilter({
   onChange: (id: string | null) => void;
 }) {
   const t = useT();
-  const selected = value ? index.byId.get(value) : undefined;
+  /** Resolved the way the board resolves it, so a bucket re-keyed since the
+   *  link was made (a project gaining a repository) still names itself rather
+   *  than reading "All projects" over an empty feed. */
+  const selected = value ? entryForFilter(value, index) : undefined;
 
   return (
     <DropdownMenu>
@@ -155,7 +159,16 @@ function ProjectFilter({
           </DropdownMenuRadioItem>
           {index.entries.map((entry) => (
             <DropdownMenuRadioItem key={entry.id} value={entry.id}>
-              <span className="truncate">{entry.title}</span>
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate">{entry.title}</span>
+                {/* A monorepo's row names its projects, so neither sibling
+                    becomes unnameable by sharing a repository. */}
+                {entry.projects.length > 1 && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {entry.projects.map((p) => p.title).join(", ")}
+                  </span>
+                )}
+              </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

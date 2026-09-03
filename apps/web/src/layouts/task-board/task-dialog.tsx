@@ -132,8 +132,8 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections, useProjectContext } from "@/sdk";
-import { useProjectIndex } from "@/hooks/use-project-index";
-import { normalizeRepo, stampableEntries } from "@/lib/project-index";
+import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
+import { entryForFilter, stampableEntries } from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -438,11 +438,11 @@ function TaskBoardItemEditor({
   const deleteTag = useDeleteTag();
 
   /** Which project this task pertains to, offered as the board offers it: one
-   *  list where a repository IS the project that pins it. Only buckets backed
-   *  by a repository can be stamped — `task_board_items.repo` is the whole
-   *  link, so a project pinning nothing has nothing for a card to point at. */
+   *  list where a repository IS the project that pins it. Narrowed to the
+   *  repositories the org can actually reach — see {@link stampableEntries}. */
   const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
-  const projectEntries = stampableEntries(useProjectIndex([], repos));
+  const projectIndex = useProjectIndex(NO_TASKS, repos);
+  const projectEntries = stampableEntries(projectIndex, repos);
 
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
@@ -459,15 +459,17 @@ function TaskBoardItemEditor({
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
-  /** The bucket this card's repository belongs to, so the control shows the
-   *  PROJECT — its avatar and its name — rather than the string underneath.
-   *  Undefined for a repository the org no longer has, which still renders as
-   *  the raw `owner/name` the card carries rather than as unset. */
-  const selectedEntry = repo
-    ? projectEntries.find(
-        (entry) => normalizeRepo(entry.repo) === normalizeRepo(repo),
-      )
-    : undefined;
+  /**
+   * The bucket this card's repository belongs to, so the control shows the
+   * PROJECT — its avatar and its name — rather than the string underneath.
+   *
+   * Resolved against the WHOLE index, not the stampable subset: a card already
+   * stamped for a repository whose connection has since gone still belongs to
+   * its project and should say so. The reachability gate decides what you can
+   * PICK, not what an existing value is called. Undefined only when nothing in
+   * the org names that repository, which renders as the raw `owner/name`.
+   */
+  const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
   const taskType = form.type;
   const sprintIndex = useBoardSprintIndex();
   const cardSprint = item?.sprintId

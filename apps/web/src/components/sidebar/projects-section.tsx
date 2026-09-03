@@ -88,21 +88,36 @@ export function tasksNeedingMeByProject(
   tasks: TaskBoardItem[],
   userId: string | undefined,
 ): Map<string, TaskBoardItem[]> {
-  const out = new Map<string, TaskBoardItem[]>();
+  const out = new Map<string, { task: TaskBoardItem; only: boolean }[]>();
   for (const task of tasks) {
     if (!needsAttention(task, userId)) continue;
-    for (const project of projectsForTask(task, index)) {
-      const bucket = out.get(project.id);
-      if (bucket) bucket.push(task);
-      else out.set(project.id, [task]);
+    const named = projectsForTask(task, index);
+    for (const project of named) {
+      const bucket = out.get(project.id) ?? [];
+      bucket.push({ task, only: named.length === 1 });
+      out.set(project.id, bucket);
     }
   }
 
+  /**
+   * A card this project alone owns outranks one it merely shares, THEN newest
+   * first. Without the first key the cap is spent on a monorepo's ambiguous
+   * cards — which are listed under every sibling — and evicts the one card that
+   * unambiguously belongs here.
+   */
+  const listed = new Map<string, TaskBoardItem[]>();
   for (const [id, bucket] of out) {
-    bucket.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-    out.set(id, bucket.slice(0, MAX_TASKS_PER_PROJECT));
+    bucket.sort(
+      (a, b) =>
+        Number(b.only) - Number(a.only) ||
+        (b.task.updatedAt ?? "").localeCompare(a.task.updatedAt ?? ""),
+    );
+    listed.set(
+      id,
+      bucket.slice(0, MAX_TASKS_PER_PROJECT).map((entry) => entry.task),
+    );
   }
-  return out;
+  return listed;
 }
 
 /**

@@ -411,6 +411,39 @@ describe("taskMatchesProjectFilter", () => {
       ).toBe(true);
     });
 
+    /**
+     * A bucket's id is not stable for the lifetime of a link: a repo-less
+     * project is keyed `vir_…` until someone imports a repository into it, at
+     * which point the bucket is re-keyed `owner/name`. Without the `byProject`
+     * leg of `entryForFilter`, every link shared while it was repo-less falls
+     * through to the unresolved branch and silently stops filtering.
+     */
+    test("a link naming a project that has since gained a repo still resolves", () => {
+      const before = buildProjectIndex([BARE]);
+      expect(before.byId.has("vir_bare")).toBe(true);
+
+      const attached = project("vir_bare", "Ideas", "acme/ideas");
+      const after = buildProjectIndex([attached]);
+      expect(after.byId.has("vir_bare")).toBe(false);
+
+      expect(entryForFilter("vir_bare", after)?.id).toBe("acme/ideas");
+      expect(projectFilterNarrows("vir_bare", after)).toBe(true);
+      expect(
+        taskMatchesProjectFilter(
+          task({ repo: "acme/ideas" }),
+          "vir_bare",
+          after,
+        ),
+      ).toBe(true);
+      expect(
+        taskMatchesProjectFilter(
+          task({ repo: "acme/alpha" }),
+          "vir_bare",
+          after,
+        ),
+      ).toBe(false);
+    });
+
     /** A shared `?repo=` link naming a repository nothing carries: the raw
      *  compare it always did, byte for byte. */
     test("an unresolved repo id falls back to the raw compare", () => {
@@ -467,11 +500,13 @@ describe("projectFilterNarrows", () => {
     expect(projectFilterNarrows("acme/ghost", index)).toBe(true);
   });
 
-  /** The invariant tying the two together: anything that does not narrow must
-   *  keep every card, and anything that keeps every card must not narrow. */
-  test("agrees with the matcher on every card", () => {
+  /** The invariant tying the two together, asserted in BOTH directions:
+   *  a filter narrows exactly when it drops some card. Stating it one way let
+   *  `projectFilterNarrows` return true for everything and stay green. */
+  test("narrows exactly when it drops a card", () => {
     const cards = [
       task({ repo: "acme/alpha" }),
+      task({ repo: "acme/bravo" }),
       task({ virtualMcpId: "vir_bare" }),
       task(),
     ];
@@ -479,14 +514,17 @@ describe("projectFilterNarrows", () => {
       null,
       "vir_gone",
       "acme/alpha",
+      "acme/ghost",
+      "vir_bare",
       NO_PROJECT_FILTER,
     ]) {
-      const keepsEverything = cards.every((c) =>
-        taskMatchesProjectFilter(c, filterId, index),
+      const dropsSomething = cards.some(
+        (c) => !taskMatchesProjectFilter(c, filterId, index),
       );
-      if (!projectFilterNarrows(filterId, index)) {
-        expect(keepsEverything).toBe(true);
-      }
+      expect({
+        filterId,
+        narrows: projectFilterNarrows(filterId, index),
+      }).toEqual({ filterId, narrows: dropsSomething });
     }
   });
 });
@@ -512,13 +550,42 @@ describe("filterAfterCreate", () => {
 });
 
 describe("stampableEntries", () => {
+  const LIVE = ["acme/alpha", "acme/orphan"];
+
   /** `task_board_items.repo` is the only per-card link, so a project pinning
    *  no repository has nothing a card can point at. */
   test("offers only buckets a card can be stamped with", () => {
     const index = buildProjectIndex([ALPHA, BARE], ["acme/orphan"]);
-    expect(stampableEntries(index).map((e) => e.id)).toEqual([
+    expect(stampableEntries(index, LIVE).map((e) => e.id)).toEqual([
       "acme/alpha",
       "acme/orphan",
     ]);
+  });
+
+  /**
+   * A project whose repo connection was torn down still REPORTS its repo —
+   * `projectRepo` answers for `detached` on purpose, so its cards stay visible.
+   * Stamping a card with it would be unrecoverable: no PR can be opened there,
+   * so `shouldAdvanceToReview`'s `repo != null && !hasPr` never passes and the
+   * card sits In Progress forever. The picker this replaced listed connection
+   * labels and could not produce that value.
+   */
+  test("refuses a repository the org cannot reach", () => {
+    const index = buildProjectIndex([ALPHA, BRAVO]);
+    expect(index.byRepo.has("acme/bravo")).toBe(true);
+    expect(stampableEntries(index, ["acme/alpha"]).map((e) => e.id)).toEqual([
+      "acme/alpha",
+    ]);
+  });
+
+  test("matches reachability case-insensitively, as GitHub does", () => {
+    const index = buildProjectIndex([ALPHA]);
+    expect(stampableEntries(index, ["ACME/Alpha"]).map((e) => e.id)).toEqual([
+      "acme/alpha",
+    ]);
+  });
+
+  test("offers nothing when the org has no live repository", () => {
+    expect(stampableEntries(buildProjectIndex([ALPHA]), [])).toEqual([]);
   });
 });

@@ -1091,6 +1091,27 @@ export function TaskBoardPage() {
       preferences.shownTaskBoardLanes.includes(item.status),
   );
 
+  /**
+   * Keep a newly created card visible: drop the project filter when the card
+   * would fall outside it. Widening back is visible; an empty lane is not.
+   *
+   * Writes onto `urlFilters`, NOT the resolved `filters` — the latter carries
+   * the running sprint that `resolveSprintFilter` supplied, and persisting that
+   * would pin a bookmark to a sprint nobody chose (see `sprintNarrowed`). And
+   * it calls `setFilters` rather than `handleFiltersChange`, which also clears
+   * the selection: creating a card must not discard a bulk selection.
+   *
+   * Only the project filter is rescued. A board narrowed by sprint, assignee or
+   * search can still swallow a new card — that predates this and is not a
+   * promise made here.
+   */
+  const widenProjectFilterFor = (repo: string | null) => {
+    const next = filterAfterCreate({ repo }, urlFilters.project, projectIndex);
+    if (next !== urlFilters.project) {
+      setFilters({ ...urlFilters, project: next });
+    }
+  };
+
   const openCreate = () => {
     setCreateStatus(null);
     setDialogOpen(true);
@@ -1416,6 +1437,7 @@ export function TaskBoardPage() {
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
             });
+            widenProjectFilterFor(openItem.repo ?? null);
             toast.success(t("taskBoard.taskDialog.cloneSuccess"));
             closeTask();
           }}
@@ -1464,16 +1486,7 @@ export function TaskBoardPage() {
             return;
           }
           actions.create.mutate(input);
-          /** A card you just typed must not land outside the filter you typed
-           *  it under. Widening back is visible; an empty lane is not. */
-          const next = filterAfterCreate(
-            { repo: input.repo ?? null },
-            filters.project,
-            projectIndex,
-          );
-          if (next !== filters.project) {
-            handleFiltersChange({ ...filters, project: next });
-          }
+          widenProjectFilterFor(input.repo ?? null);
           closeCreate();
         }}
       />
