@@ -115,6 +115,12 @@ import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { githubWebhookRoutes } from "./routes/github-webhook";
+import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
+import { createJiraWebhookRoutes } from "./routes/jira-webhook";
+import {
+  registerJiraTriggerSweepWorkflow,
+  setJiraTriggerSweepRuntime,
+} from "@/jira/dbos-jira-trigger-sweep";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -1392,6 +1398,15 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
   app.route("/api/_github", githubWebhookRoutes);
+  // Jira: the issue-event intake that starts runs, and the attachment grant
+  // route those runs download through. Both authenticate by capability
+  // (per-org secret, signed token), not by session.
+  const jiraRouteDeps = {
+    db: database.db,
+    encryptionKey: getSettings().encryptionKey,
+  };
+  app.route("/api/_jira", createJiraWebhookRoutes(jiraRouteDeps));
+  app.route("/api/_jira", createJiraAttachmentRoutes(jiraRouteDeps));
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
@@ -1542,6 +1557,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
+
+  // Every 10 minutes: the Jira transitions the webhook may have missed.
+  setJiraTriggerSweepRuntime({
+    db: database.db,
+    encryptionKey: getSettings().encryptionKey,
+  });
 
   // Every 5 minutes: email what's still unread, then prune the 30-day window.
   setNotificationDigestRuntime({ db: database.db });
@@ -1815,6 +1836,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerJiraTriggerSweepWorkflow();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();

@@ -12,6 +12,7 @@
  */
 
 import { retry } from "@decocms/shared/std";
+import { getSettings } from "@/settings";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
 import {
   collectWikiMentionAccountIds,
@@ -21,6 +22,9 @@ import {
 } from "./wiki-markdown";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/** Attachment bytes can be large; the download gets its own budget. */
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 /** Account ids per `/user/bulk` request. Jira allows 200, but each id spends
  *  ~56 URL bytes, so 200 would build a ~11KB request line — past the 4KB cap
@@ -67,6 +71,20 @@ export interface JiraIssue {
   id: string;
   key: string;
   fields: JiraIssueFields;
+}
+
+export interface JiraAttachment {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType?: string;
+}
+
+/** One changelog entry: what changed on the issue, and when. */
+export interface JiraChangelogHistory {
+  id: string;
+  created: string;
+  items: Array<{ field: string; toString?: string | null; to?: string | null }>;
 }
 
 export interface JiraComment {
@@ -121,17 +139,36 @@ function isRetriableError(error: unknown): boolean {
  * local address, an internal service, a look-alike domain harvesting the
  * token. Self-hosted Data Center would need an explicit allowlist, not a
  * loosening of this.
+ *
+ * The one exception is opt-in and for a stand-in Jira on the developer's own
+ * machine: `JIRA_ALLOW_LOCAL_SITE_URL` admits `http://localhost:<port>` and
+ * `http://127.0.0.1:<port>`, nothing else. Off unless set, so a deployment
+ * that never heard of it behaves exactly as before.
  */
 const JIRA_CLOUD_HOST = /^[a-z0-9][a-z0-9-]*\.atlassian\.net$/;
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
+function localSiteUrlsAllowed(): boolean {
+  try {
+    return getSettings().jiraAllowLocalSiteUrl;
+  } catch {
+    // Settings not initialized (unit tests): the strict rule applies.
+    return false;
+  }
+}
 
 export function normalizeSiteUrl(input: string): string {
   const raw = input.trim().replace(/\/+$/, "");
   const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  let hostname: string;
+  let url: URL;
   try {
-    hostname = new URL(withScheme).hostname.toLowerCase();
+    url = new URL(withScheme);
   } catch {
     throw new Error(`Invalid Jira site URL: ${input}`);
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (LOCAL_HOSTS.has(hostname) && localSiteUrlsAllowed()) {
+    return `http://${hostname}${url.port ? `:${url.port}` : ""}`;
   }
   if (!JIRA_CLOUD_HOST.test(hostname)) {
     throw new Error(
@@ -377,18 +414,27 @@ export class JiraClient {
   async searchIssues(params: {
     jql: string;
     nextPageToken?: string;
-  }): Promise<{ issues: JiraIssue[]; nextPageToken: string | null }> {
+    /** Carry each issue's changelog, for a caller that needs its transitions. */
+    expandChangelog?: boolean;
+  }): Promise<{
+    issues: Array<
+      JiraIssue & { changelog?: { histories: JiraChangelogHistory[] } }
+    >;
+    nextPageToken: string | null;
+  }> {
     const query = new URLSearchParams({
       jql: params.jql,
       maxResults: String(SEARCH_PAGE_SIZE),
       fields: ISSUE_FIELDS,
     });
+    if (params.expandChangelog) query.set("expand", "changelog");
     if (params.nextPageToken) query.set("nextPageToken", params.nextPageToken);
     const page = await this.request<{
       issues?: Array<{
         id: string;
         key: string;
         fields: JiraIssueFields & Record<string, unknown>;
+        changelog?: { histories: JiraChangelogHistory[] };
       }>;
       nextPageToken?: string | null;
     }>(`/rest/api/3/search/jql?${query}`);
@@ -396,6 +442,39 @@ export class JiraClient {
       issues: page.issues ?? [],
       nextPageToken: page.nextPageToken ?? null,
     };
+  }
+
+  /** One issue with what a run's opening message shows. */
+  async getIssue(issueId: string): Promise<{
+    id: string;
+    key: string;
+    fields: {
+      summary: string;
+      status: { name: string };
+      description: unknown;
+      attachment?: JiraAttachment[];
+    };
+  }> {
+    return this.request(
+      `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=summary,status,description,attachment`,
+    );
+  }
+
+  /**
+   * The bytes of one attachment, as the upstream response so a route can
+   * stream them. Jira answers the content URL with a 303 to the media CDN;
+   * `fetch` follows it, and the platform drops the Authorization header on
+   * the cross-origin hop, which the CDN's signed URL does not need.
+   */
+  async downloadAttachment(attachmentId: string): Promise<Response> {
+    return fetch(
+      `${this.baseUrl}/rest/api/3/attachment/content/${encodeURIComponent(attachmentId)}`,
+      {
+        headers: { Authorization: this.authHeader },
+        redirect: "follow",
+        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+      },
+    );
   }
 
   /** Transitions available from the issue's CURRENT status — Jira never sets
@@ -486,13 +565,9 @@ export class JiraClient {
   }
 
   /** Attachments on the issue. */
-  async listAttachments(
-    issueId: string,
-  ): Promise<Array<{ id: string; filename: string; size: number }>> {
+  async listAttachments(issueId: string): Promise<JiraAttachment[]> {
     const issue = await this.request<{
-      fields?: {
-        attachment?: Array<{ id: string; filename: string; size: number }>;
-      };
+      fields?: { attachment?: JiraAttachment[] };
     }>(`/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=attachment`);
     return issue.fields?.attachment ?? [];
   }

@@ -54,7 +54,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Criar um API token",
   "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
   "settings.jira.webhookDescription":
-    "Opcional. Sem ele, mudanças feitas no Jira chegam ao quadro na próxima sincronização de 10 minutos; com ele, chegam em segundos.",
+    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 10 minutos; com ele, a run começa em segundos.",
   "settings.jira.webhookCopy": "Copiar",
   "settings.jira.webhookCopied": "URL do webhook copiada",
   "settings.jira.webhookStep1":
@@ -66,7 +66,20 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Opcionalmente restrinja com um filtro JQL, ex.: project = <chave do projeto>.",
   "settings.jira.webhookStep5":
-    "Salve. Mudanças feitas no Jira passam a aparecer no quadro em segundos.",
+    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run em segundos.",
+  "settings.jira.automationsLabel":
+    "Rodar o agente quando uma issue entrar em…",
+  "settings.jira.automationsDescription":
+    "Quando uma issue entra em um destes status, o Studio inicia um run do agente nela. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+  "settings.jira.addAutomation": "Adicionar automação",
+  "settings.jira.automationOn": "Automação ativa",
+  "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
+  "settings.jira.promptHelp":
+    "Deixe vazio para usar a instrução do próprio agente. A descrição, os comentários e os anexos da issue sempre vão junto.",
+  "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
+  "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
+  "settings.jira.columnsFailed":
+    "Não foi possível carregar as colunas do board",
   "settings.syncedRepos.pageDescription":
     "Repositórios do GitHub espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",

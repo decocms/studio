@@ -1642,6 +1642,10 @@ export interface TaskBoardItemTable {
   /** The card's issue in the tracker it came from (`{site}/browse/{KEY}`), for
    *  a human to open. Written by the Jira pull; null for a card Studio owns.
    *  Deliberately NOT in the description — see migration 198. */
+  /** What created the card, when not a person or an import: `jira` for the
+   *  hidden anchor a Jira-triggered run hangs off. Null for a card the board
+   *  shows. */
+  source: ColumnType<"jira" | null, "jira" | null | undefined, "jira" | null>;
   external_url: ColumnType<
     string | null,
     string | null | undefined,
@@ -1912,6 +1916,9 @@ export interface TaskBoardItem {
   /** Link to that issue in the tracker, for a human to open. Never part of the
    *  description, which is quoted into agent prompts verbatim. */
   externalUrl: string | null;
+  /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
+   *  board shows. */
+  source: "jira" | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
@@ -2066,6 +2073,26 @@ export interface TaskBoardItemJiraLinkTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** A rule the Jira integration runs when an issue enters a status (migration
+ *  200). Row existence is the switch; `prompt` null is the agent's own
+ *  instruction. */
+export interface OrgJiraColumnAutomationTable {
+  organization_id: string;
+  jira_status: string;
+  prompt: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One row per Jira transition a run was dispatched for — the fence between
+ *  a redelivered webhook, the safety-net poll, and a second paid run. */
+export interface JiraTriggerClaimTable {
+  organization_id: string;
+  jira_issue_id: string;
+  changelog_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /**
  * Complete database schema
  * All tables exist within the organization scope (database boundary)
@@ -2213,6 +2240,8 @@ export interface Database extends PrivateRegistryDatabase {
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
+  org_jira_column_automations: OrgJiraColumnAutomationTable;
+  jira_trigger_claims: JiraTriggerClaimTable;
 
   // Follow/inbox for the task board
   notification_subscriptions: NotificationSubscriptionTable;

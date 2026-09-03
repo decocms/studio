@@ -34,6 +34,9 @@ export interface Settings {
   studioJwtSecret: string | undefined;
   localMode: boolean;
   disableRateLimit: boolean;
+  /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
+   *  local development and e2e. See `normalizeSiteUrl`. */
+  jiraAllowLocalSiteUrl: boolean;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];

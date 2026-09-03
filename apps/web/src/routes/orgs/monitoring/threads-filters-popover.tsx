@@ -21,6 +21,7 @@ interface ThreadsFiltersPopoverProps {
   filterAgentIds: string[];
   filterUserIds: string[];
   filterStatus: string;
+  filterSource: string;
   virtualMcpOptions: Array<{ value: string; label: string }>;
   memberOptions: Array<{ value: string; label: string }>;
   activeFiltersCount: number;
@@ -28,6 +29,7 @@ interface ThreadsFiltersPopoverProps {
     filterAgentIds?: string[];
     filterUserIds?: string[];
     filterStatus?: string;
+    filterSource?: string;
   }) => void;
 }
 
@@ -35,6 +37,7 @@ export function ThreadsFiltersPopover({
   filterAgentIds,
   filterUserIds,
   filterStatus,
+  filterSource,
   virtualMcpOptions,
   memberOptions,
   activeFiltersCount,
@@ -139,6 +142,30 @@ export function ThreadsFiltersPopover({
                 </SelectContent>
               </Select>
             </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                {t("orgs.threadsFiltersPopover.source")}
+              </label>
+              <Select
+                value={filterSource}
+                onValueChange={(value) =>
+                  onUpdateFilters({ filterSource: value })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    {t("orgs.threadsFiltersPopover.allSources")}
+                  </SelectItem>
+                  <SelectItem value="jira">
+                    {t("orgs.threadsFiltersPopover.sourceJira")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {activeFiltersCount > 0 && (
@@ -151,6 +178,7 @@ export function ThreadsFiltersPopover({
                   filterAgentIds: [],
                   filterUserIds: [],
                   filterStatus: "all",
+                  filterSource: "all",
                 });
                 setOpen(false);
               }}

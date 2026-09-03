@@ -169,6 +169,9 @@ export const TaskBoardItemSchema = z.object({
    *  verbatim into every agent run's prompt, and a URL there is context the run
    *  does not need and used to act on. Null for a card Studio owns. */
   externalUrl: z.string().nullable(),
+  /** `jira` for the hidden anchor of a Jira-triggered run — never in
+   *  `TASK_BOARD_ITEM_LIST`; null for a card the board shows. */
+  source: z.enum(["jira"]).nullable(),
   // Infrastructure retries already spent on this card's runs — the budget
   // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
   // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:

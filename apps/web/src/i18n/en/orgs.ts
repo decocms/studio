@@ -287,5 +287,8 @@ export const orgs = {
   "orgs.threadsFiltersPopover.filterChats": "Filter Chats",
   "orgs.threadsFiltersPopover.filters": "Filters",
   "orgs.threadsFiltersPopover.status": "Status",
+  "orgs.threadsFiltersPopover.source": "Source",
+  "orgs.threadsFiltersPopover.allSources": "All sources",
+  "orgs.threadsFiltersPopover.sourceJira": "Jira",
   "orgs.threadsFiltersPopover.user": "User",
 } as const;

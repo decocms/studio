@@ -105,6 +105,9 @@ export async function enqueueAgentRunForTask(
      * twice. Omit for a caller with a single trigger.
      */
     fence?: { threadId: string; workflowID: string };
+    /** Extra thread metadata, merged over the run's own — how a Jira-triggered
+     *  run is stamped for its tool surface and the monitoring filter. */
+    metadata?: Record<string, unknown>;
   },
 ): Promise<{ threadId: string; isNew: boolean }> {
   const organizationId = task.organizationId;
@@ -164,6 +167,7 @@ export async function enqueueAgentRunForTask(
   // optimization.
   const metadata = {
     ...(thread.metadata ?? {}),
+    ...(opts.metadata ?? {}),
     // Read back by `resolveSandboxBranch` at provision time (via the thread, so
     // a durable re-dispatch resolves the same pod). See `pinnedRef` above.
     ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),

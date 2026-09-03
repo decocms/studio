@@ -79,6 +79,11 @@ export type SuperAgentPromptOpts = {
   /** A human asked for this run (`TASK_BOARD_ITEM_RERUN`), so the per-task run
    *  cap — which bounds automatic re-dispatch — does not apply to it. */
   userInitiated?: boolean;
+  /** The run works on something outside the board — a Jira issue — and the
+   *  card is only its anchor. `body` replaces the card's description in the
+   *  prompt, `title` names the thread, and the thread is stamped so its tools
+   *  and the monitoring filter can tell it apart. */
+  source?: { kind: "jira"; issueKey: string; title: string; body: string };
 };
 
 /**
@@ -316,6 +321,16 @@ export async function enqueueSuperAgentForTask(
     // no repos imported runs Decopilot exactly as before.
     const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
 
+    // A run on an external issue reads the issue, not the card: the card's
+    // description is empty on purpose, so the prompt gets the rendered issue.
+    const promptTask = opts?.source
+      ? { ...task, description: opts.source.body }
+      : task;
+    const title = opts?.source?.title ?? `Super Agent: ${task.title}`;
+    const runMetadata = opts?.source
+      ? { source: opts.source.kind, jira_issue_key: opts.source.issueKey }
+      : undefined;
+
     // Set here, not per caller, so the automatic hand-back and the manual
     // "Resolve conflict" button land on the same tier.
     const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
@@ -326,10 +341,11 @@ export async function enqueueSuperAgentForTask(
       harness = "claude-code";
       const repo = "repo" in choice ? choice.repo : null;
       await enqueueAgentRunForTask(ctx, task, {
-        title: `Super Agent: ${task.title}`,
+        title,
+        ...(runMetadata ? { metadata: runMetadata } : {}),
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
         ...(pinnedRef ? { pinnedRef } : {}),
-        prompt: buildClaudeCodeTaskPrompt(task, repo, {
+        prompt: buildClaudeCodeTaskPrompt(promptTask, repo, {
           ...promptOpts,
           // Names the candidates in the prompt so the run doesn't spend its first
           // step asking what exists.
@@ -342,9 +358,10 @@ export async function enqueueSuperAgentForTask(
       });
     } else {
       await enqueueAgentRunForTask(ctx, task, {
-        title: `Super Agent: ${task.title}`,
+        title,
+        ...(runMetadata ? { metadata: runMetadata } : {}),
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
-        prompt: buildSuperAgentTaskPrompt(task, promptOpts),
+        prompt: buildSuperAgentTaskPrompt(promptTask, promptOpts),
         temperature: 0.5,
         ...(pinnedRef ? { pinnedRef } : {}),
       });

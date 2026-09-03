@@ -379,6 +379,7 @@ export interface StudioToolIO {
         sortOrder: number;
         keySeq: number | null;
         externalUrl: string | null;
+        source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
         threads: {
@@ -447,6 +448,7 @@ export interface StudioToolIO {
         sortOrder: number;
         keySeq: number | null;
         externalUrl: string | null;
+        source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
         threads: {
@@ -541,6 +543,7 @@ export interface StudioToolIO {
         sortOrder: number;
         keySeq: number | null;
         externalUrl: string | null;
+        source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
         threads: {
@@ -3887,6 +3890,8 @@ export interface StudioToolIO {
                 | undefined;
               read_only?: boolean | undefined;
               runtime?: "cms" | "sandbox" | undefined;
+              source?: "jira" | undefined;
+              jira_issue_key?: string | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3919,6 +3924,7 @@ export interface StudioToolIO {
       status?: string | undefined;
       userId?: string | undefined;
       agentId?: string | undefined;
+      source?: string | undefined;
     };
     output: {
       items: {
@@ -3954,6 +3960,8 @@ export interface StudioToolIO {
                 | undefined;
               read_only?: boolean | undefined;
               runtime?: "cms" | "sandbox" | undefined;
+              source?: "jira" | undefined;
+              jira_issue_key?: string | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3998,6 +4006,8 @@ export interface StudioToolIO {
                 | undefined;
               read_only?: boolean | undefined;
               runtime?: "cms" | "sandbox" | undefined;
+              source?: "jira" | undefined;
+              jira_issue_key?: string | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4030,6 +4040,8 @@ export interface StudioToolIO {
                 | undefined;
               read_only?: boolean | undefined;
               runtime?: "cms" | "sandbox" | undefined;
+              source?: "jira" | undefined;
+              jira_issue_key?: string | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -4070,6 +4082,8 @@ export interface StudioToolIO {
                 | undefined;
               read_only?: boolean | undefined;
               runtime?: "cms" | "sandbox" | undefined;
+              source?: "jira" | undefined;
+              jira_issue_key?: string | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4112,6 +4126,8 @@ export interface StudioToolIO {
                 | undefined;
               read_only?: boolean | undefined;
               runtime?: "cms" | "sandbox" | undefined;
+              source?: "jira" | undefined;
+              jira_issue_key?: string | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -5119,6 +5135,36 @@ export interface StudioToolIO {
   JIRA_BOARD_COLUMNS_LIST: {
     input: { boardId: string };
     output: { columns: { name: string; statuses: string[] }[] };
+  };
+  JIRA_AUTOMATION_LIST: {
+    input: { [x: string]: never };
+    output: { automations: { jiraStatus: string; prompt: string | null }[] };
+  };
+  JIRA_AUTOMATION_UPSERT: {
+    input: { jiraStatus: string; prompt?: string | null | undefined };
+    output: { automation: { jiraStatus: string; prompt: string | null } };
+  };
+  JIRA_AUTOMATION_DELETE: {
+    input: { jiraStatus: string };
+    output: { removed: boolean };
+  };
+  JIRA_ISSUE_GET: {
+    input: { [x: string]: never };
+    output: { key: string; url: string; status: string; markdown: string };
+  };
+  JIRA_COMMENT_ADD: { input: { body: string }; output: { commentId: string } };
+  JIRA_ISSUE_TRANSITION: {
+    input: { toStatus: string };
+    output: { status: string };
+  };
+  JIRA_ATTACHMENT_DOWNLOAD: {
+    input: { attachmentId: string };
+    output: {
+      url: string;
+      filename: string;
+      expiresAt: string;
+      command: string;
+    };
   };
   LIST_OBJECTS: {
     input: {

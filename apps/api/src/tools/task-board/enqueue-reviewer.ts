@@ -65,7 +65,7 @@ function isThreadRunLive(
  * The Super Agent is told to link the PR and set In Review *while still
  * running* (`claude-code-task-run.ts`), so the card is reviewable long before
  * the run that owns the branch is finished. Title is the discriminator the rest
- * of the board already uses (`resolveReviewRunToolNames`); liveness is
+ * of the board already uses (`resolveTaskRunToolNames`); liveness is
  * {@link isThreadRunLive}, so a dead author's stall window releases the card
  * rather than stranding it.
  */
