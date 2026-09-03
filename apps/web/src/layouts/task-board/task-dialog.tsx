@@ -105,7 +105,11 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { summarizeTaskCost } from "./task-cost";
-import { prCardActions } from "./pr-card-actions";
+import {
+  collapsedChecksScore,
+  isSuccessfulCheck,
+  prCardActions,
+} from "./pr-card-actions";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import {
@@ -1729,7 +1733,7 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
   if (c && FAILED_CHECK_CONCLUSIONS.has(c)) {
     return { icon: AlertCircle, className: "text-destructive", spin: false };
   }
-  if (c === "success" || c === "neutral" || c === "skipped") {
+  if (isSuccessfulCheck(check)) {
     return { icon: CheckCircle, className: "text-success", spin: false };
   }
   return { icon: HelpCircle, className: "text-muted-foreground", spin: false };
@@ -1763,7 +1767,7 @@ function PrCard({
   const t = useT();
   const [checksOpen, setChecksOpen] = useState(false);
   const style = prStateStyle(pr, t);
-  const checksHeader = prChecksStyle(pr.checksStatus, t);
+  const checksState = prChecksStyle(pr.checksStatus, t);
   const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
     pr,
     reviewsReady,
@@ -1772,8 +1776,16 @@ function PrCard({
     !!previewThread || !!pr.previewUrl || showShip || showResolveConflict;
   // Null-safe: react-query cache from before `checks` shipped can lack it.
   const checks = pr.checks ?? [];
-  const hasChecksFooter = checks.length > 0 || checksHeader != null;
+  const hasChecksFooter = checks.length > 0 || checksState != null;
   const expandable = checks.length > 0;
+  const score = collapsedChecksScore(pr.checksStatus, checks, checksOpen);
+  const checksHeader = score
+    ? {
+        label: t("taskBoard.taskDialog.prChecksScore", score),
+        className: "text-warning",
+        icon: AlertCircle,
+      }
+    : checksState;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
