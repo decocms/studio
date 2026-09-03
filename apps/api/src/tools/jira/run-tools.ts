@@ -23,14 +23,24 @@ import type { OrgJiraIntegration } from "@/storage/types";
 
 const MAX_COMMENT_LENGTH = 50_000;
 
-/** The issue this run is on, with a client to reach it. */
-async function resolveRunIssue(ctx: StudioContext): Promise<{
+interface RunIssue {
   integration: OrgJiraIntegration;
   client: JiraClient;
   issueId: string;
   issueKey: string;
-}> {
-  const { threadId } = requireTaskRunContext();
+}
+
+/**
+ * The issue a run is on, with a client to reach it.
+ *
+ * `threadId` is the run's thread. Omitted on the MCP endpoint, where the path
+ * already names it; passed explicitly by the built-in path, which has no
+ * request scope to read it from.
+ */
+async function resolveRunIssue(
+  ctx: StudioContext,
+  threadId = requireTaskRunContext().threadId,
+): Promise<RunIssue> {
   const organization = requireOrganization(ctx);
   const integration = await ctx.storage.jiraIntegrations.getByOrg(
     organization.id,

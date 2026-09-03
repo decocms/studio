@@ -20,6 +20,13 @@ const commerceMockKey = "e2e-commerce-key";
 const githubStubPort = process.env.GITHUB_STUB_PORT || "4102";
 const githubStubOrigin = `http://localhost:${githubStubPort}`;
 
+// The Jira run trigger reads a board, an issue and an attachment from the
+// tenant's Jira site. jira-run-trigger.spec.ts points an integration at a local
+// stub (jira-stub-server.ts, started as a webServer below) instead of a real
+// site; JIRA_ALLOW_LOCAL_SITE_URL lets the server accept that `siteUrl`, which
+// it otherwise restricts to *.atlassian.net.
+const jiraStubPort = process.env.JIRA_STUB_PORT || "4103";
+
 // e2e exercises production-like behavior; the MCP read/list cache is on in prod
 // but defaults off under NODE_ENV=development (which the API `dev` script sets),
 // so opt it back in here. Without this, cache-dependent specs (e.g. proxy
@@ -49,7 +56,7 @@ const githubStubOrigin = `http://localhost:${githubStubPort}`;
 // the config isn't a spec module).
 const vaultServiceToken = "e2e-vault-service-token";
 
-const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} JIRA_ALLOW_LOCAL_SITE_URL=1 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy
@@ -117,6 +124,16 @@ export default defineConfig({
       // imports).
       command: `GITHUB_STUB_PORT=${githubStubPort} bun run fixtures/github-stub-server.ts`,
       url: `${githubStubOrigin}/health`,
+      reuseExistingServer: true,
+      timeout: 30_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      // Stand-in Jira for the run trigger. Started before the studio server so
+      // an integration can point at it. Standalone process (no app imports).
+      command: `JIRA_STUB_PORT=${jiraStubPort} bun run fixtures/jira-stub-server.ts`,
+      url: `http://localhost:${jiraStubPort}/health`,
       reuseExistingServer: true,
       timeout: 30_000,
       stdout: "pipe",
