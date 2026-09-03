@@ -6,6 +6,7 @@ import {
   filterAfterCreate,
   NO_PROJECT_FILTER,
   normalizeRepo,
+  projectFilterNarrows,
   projectForTask,
   projectsForTask,
   stampableEntries,
@@ -401,6 +402,64 @@ describe("taskMatchesProjectFilter", () => {
         ),
       ).toBe(false);
     });
+  });
+});
+
+/**
+ * The control has to READ the way it behaves. The one id
+ * `taskMatchesProjectFilter` lets every card through must not render as a set
+ * filter — otherwise the chip claims a narrowing the board is not doing.
+ */
+describe("projectFilterNarrows", () => {
+  const index = buildProjectIndex([ALPHA, BARE]);
+
+  test("no filter narrows nothing", () => {
+    expect(projectFilterNarrows(null, index)).toBe(false);
+  });
+
+  test("a resolved bucket narrows", () => {
+    expect(projectFilterNarrows("acme/alpha", index)).toBe(true);
+    expect(projectFilterNarrows("vir_bare", index)).toBe(true);
+  });
+
+  test("the no-project bucket narrows", () => {
+    expect(projectFilterNarrows(NO_PROJECT_FILTER, index)).toBe(true);
+  });
+
+  /** The cold-load frame and a link naming a deleted project: every card
+   *  passes, so the chip must read unset. */
+  test("an unresolved project id narrows nothing", () => {
+    expect(projectFilterNarrows("vir_gone", index)).toBe(false);
+    expect(projectFilterNarrows("vir_bare", buildProjectIndex([]))).toBe(false);
+  });
+
+  /** An unresolved REPO id still narrows — it falls back to an exact compare
+   *  against the card's own `repo`, which is a real answer. */
+  test("an unresolved repo id still narrows", () => {
+    expect(projectFilterNarrows("acme/ghost", index)).toBe(true);
+  });
+
+  /** The invariant tying the two together: anything that does not narrow must
+   *  keep every card, and anything that keeps every card must not narrow. */
+  test("agrees with the matcher on every card", () => {
+    const cards = [
+      task({ repo: "acme/alpha" }),
+      task({ virtualMcpId: "vir_bare" }),
+      task(),
+    ];
+    for (const filterId of [
+      null,
+      "vir_gone",
+      "acme/alpha",
+      NO_PROJECT_FILTER,
+    ]) {
+      const keepsEverything = cards.every((c) =>
+        taskMatchesProjectFilter(c, filterId, index),
+      );
+      if (!projectFilterNarrows(filterId, index)) {
+        expect(keepsEverything).toBe(true);
+      }
+    }
   });
 });
 

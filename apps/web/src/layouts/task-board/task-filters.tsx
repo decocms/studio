@@ -64,6 +64,7 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { getInitials } from "@/lib/get-initials";
 import {
   NO_PROJECT_FILTER,
+  projectFilterNarrows,
   taskMatchesProjectFilter,
   type ProjectIndex,
   type ProjectIndexEntry,
@@ -669,7 +670,15 @@ function ProjectOption({
       : null;
   return (
     <CommandItem
-      value={`${entry.title} ${entry.repo ?? ""} ${entry.projects
+      /**
+       * The bucket id leads, because cmdk keys a row's HIGHLIGHT on this string
+       * and nothing else: two repo-less projects both titled "Docs" would
+       * otherwise share a value, so both would render selected, arrow-down
+       * could not move between them, and Enter would fire whichever came first
+       * in the DOM. The rest of the string is what the row is searchable BY —
+       * its name, its repository, and its siblings' names.
+       */
+      value={`${entry.id} ${entry.title} ${entry.repo ?? ""} ${entry.projects
         .map((p) => p.title)
         .join(" ")}`}
       onSelect={onSelect}
@@ -699,18 +708,24 @@ function ProjectOption({
 }
 
 /**
- * The filter chip's own label.
+ * The filter chip's own label, which has to agree with what the board is
+ * actually doing.
  *
- * A bucket the index cannot resolve still reads as what the URL says rather
- * than as the unset label — a chip that says "Project" while the board is
- * narrowed is the one label here that can mislead.
+ * A `vir_…` the index cannot resolve — the first frame, or a link naming a
+ * project since deleted — lets every card through, so the chip reads UNSET
+ * rather than echoing the raw id back. A chip showing `vir_01j9x…` over a
+ * board that is not narrowed is the one label here that can mislead. An
+ * unresolved repo-shaped id still narrows (an exact compare against the card's
+ * own `repo`), so that one keeps saying what it filters by.
  */
 function projectChipLabel(
   value: string | null,
   entry: ProjectIndexEntry | undefined,
+  narrows: boolean,
   t: ReturnType<typeof useT>,
 ): string {
-  if (value === null) return t("taskBoard.taskFilters.projectLabel");
+  if (value === null || !narrows)
+    return t("taskBoard.taskFilters.projectLabel");
   if (value === NO_PROJECT_FILTER)
     return t("taskBoard.taskFilters.projectNone");
   return entry?.title ?? value;
@@ -738,7 +753,8 @@ function ProjectFilter({
   const t = useT();
   const [open, setOpen] = useState(false);
   const selected = value === null ? undefined : index.byId.get(value);
-  const label = projectChipLabel(value, selected, t);
+  const narrows = projectFilterNarrows(value, index);
+  const label = projectChipLabel(value, selected, narrows, t);
   const chipProject =
     selected?.projects.length === 1 ? selected.projects[0] : undefined;
   const select = (next: string | null) => {
@@ -749,7 +765,9 @@ function ProjectFilter({
   const unclaimed = index.entries.filter(
     (entry) => entry.projects.length === 0,
   );
-  const triggerClass = chipClass(value !== null, block);
+  /** `narrows`, not `value !== null`: the chip must look set only when the
+   *  board is actually narrowed. */
+  const triggerClass = chipClass(narrows, block);
   const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
     <Popover open={open} onOpenChange={setOpen}>

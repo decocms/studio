@@ -295,6 +295,28 @@ export function taskMatchesProjectFilter(
 }
 
 /**
+ * Whether this filter is actually narrowing anything.
+ *
+ * False for the one id {@link taskMatchesProjectFilter} lets every card
+ * through: a `vir_…` the index cannot resolve — the first frame before the
+ * project list has loaded, and a link naming a project since deleted. The
+ * control must READ the way it behaves; a chip that shows a raw `vir_01j9x…`
+ * over an unnarrowed board claims a filter that is not being applied.
+ *
+ * A repo-shaped id is always narrowing, resolved or not: it falls back to an
+ * exact compare against the card's own `repo`, which is a real answer even
+ * when nothing in the org declares that repository.
+ */
+export function projectFilterNarrows(
+  filterId: string | null,
+  index: ProjectIndex,
+): boolean {
+  if (filterId === null) return false;
+  if (filterId === NO_PROJECT_FILTER) return true;
+  return index.byId.has(filterId) || filterId.includes("/");
+}
+
+/**
  * The filter to keep after creating a card, or null to widen back to all.
  *
  * A person who types a task while the board is narrowed must see it appear.
