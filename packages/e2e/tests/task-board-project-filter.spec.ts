@@ -131,11 +131,15 @@ test.describe("task board project filter", () => {
     await expect(card(page, "Unfiled work")).toBeHidden();
     /** The board's filter and the ambient app-wide scope stay two questions:
      *  picking a project here must never write `?virtualmcpid=`, which would
-     *  re-couple them and hide every unclassified card app-wide. */
-    await expect(page).toHaveURL(
-      new RegExp(`[?&]repo=${solo.replace("/", "%2F")}`),
-    );
-    await expect(page).not.toHaveURL(/[?&]virtualmcpid=/);
+     *  re-couple them and hide every unclassified card app-wide.
+     *
+     *  Read as parsed params rather than matched against a pattern built from
+     *  `solo`: a repository name is not regex- or percent-escaped by anything
+     *  here, and `searchParams` decodes it for us. */
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("repo"))
+      .toBe(solo);
+    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
     /** The chip reads the PROJECT, not the repository it pins. */
     await expect(chip(page, "Marketing Site")).toBeVisible();
   });
@@ -161,7 +165,9 @@ test.describe("task board project filter", () => {
     await expect(card(page, "Site work")).toBeHidden();
     /** The sentinel's WIRE VALUE is unchanged from the repo filter's, so a
      *  link written before the merge still selects this control. */
-    await expect(page).toHaveURL(/[?&]repo=__no_repo__/);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("repo"))
+      .toBe("__no_repo__");
   });
 
   /** A `?repo=` link anyone shared before the merge. The key did not change,
