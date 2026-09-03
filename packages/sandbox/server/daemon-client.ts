@@ -23,10 +23,24 @@ export class ConfigRequestError extends Error {
 }
 
 /** Returns true if an error is transient and should be retried. Distinguishes
- * network/timeout failures (retriable) from other errors (permanent). */
+ * network/timeout failures (retriable) from other errors (permanent).
+ *
+ * Node/undici's fetch throws these as `TypeError`. Bun's fetch — the actual
+ * runtime this server runs on — throws a plain `Error` with a `.code` (e.g.
+ * `"ConnectionRefused"`, `"ConnectionClosed"`) instead: a cold sandbox pod
+ * that isn't accepting connections yet is exactly this, so without the
+ * `.code` check the daemon's single most common transient failure never
+ * actually retried. */
 function isTransientError(err: unknown): boolean {
   // Network errors (DNS, connection refused, etc.) are transient
   if (err instanceof TypeError) {
+    return true;
+  }
+  if (
+    err instanceof Error &&
+    !(err instanceof DOMException) &&
+    typeof (err as { code?: unknown }).code === "string"
+  ) {
     return true;
   }
   // AbortError from timeout is transient
