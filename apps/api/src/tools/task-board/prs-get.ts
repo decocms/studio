@@ -80,6 +80,38 @@ type GetPrClient = () => Promise<
 >;
 
 /**
+ * Memoizes `open`'s in-flight/resolved promise so concurrent callers share one
+ * attempt — but clears the memo on failure, so the NEXT `get()` actually
+ * retries `open()` instead of replaying the same rejection forever. Without
+ * this, `retry()`'s attempts around a `get()` call are hollow once the first
+ * attempt fails: each "retry" just re-awaits the already-rejected promise, so
+ * a transient failure never gets a real second try. Exported for the unit
+ * test.
+ */
+export function lazyOnce<T>(open: () => Promise<T>): {
+  get: () => Promise<T>;
+  current: () => T | null;
+} {
+  let value: T | null = null;
+  let promise: Promise<T> | null = null;
+  return {
+    get: () => {
+      promise ??= open()
+        .then((v) => {
+          value = v;
+          return v;
+        })
+        .catch((err) => {
+          promise = null;
+          throw err;
+        });
+      return promise;
+    },
+    current: () => value,
+  };
+}
+
+/**
  * A GitHub MCP client for `conn`, opened AT MOST ONCE and only if a read
  * actually misses the SWR cache.
  *
@@ -95,17 +127,11 @@ function lazyPrClient(
   conn: ConnectionEntity,
   ctx: StudioContext,
 ): { get: GetPrClient; closeWhenIdle: (pending: Promise<void>[]) => void } {
-  type PrClient = Awaited<ReturnType<typeof clientFromConnection>>;
-  let client: PrClient | null = null;
-  let promise: Promise<PrClient> | null = null;
+  const { get, current } = lazyOnce(() =>
+    clientFromConnection(conn, ctx, true),
+  );
   return {
-    get: () => {
-      promise ??= clientFromConnection(conn, ctx, true).then((c) => {
-        client = c;
-        return c;
-      });
-      return promise;
-    },
+    get,
     // Do NOT await this — the whole point of serving a stale value is to return
     // without waiting on GitHub. Closing eagerly (which this did) killed every
     // revalidation the moment it started, so a cached entry could never
@@ -113,7 +139,9 @@ function lazyPrClient(
     // and no checks until the entry aged out half an hour later.
     closeWhenIdle: (pending) => {
       void Promise.allSettled(pending).then(() =>
-        client?.close().catch(() => {}),
+        current()
+          ?.close()
+          .catch(() => {}),
       );
     },
   };
