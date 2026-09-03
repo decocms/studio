@@ -201,31 +201,31 @@ export function SidebarProjectsSection({
         {projects.map((project) => {
           const tasks = byProject.get(project.id) ?? [];
           return (
-            <li key={project.id} className="flex flex-col">
-              <SidebarNavRow
-                icon={
-                  <AgentAvatar
-                    icon={project.icon}
-                    name={project.title}
-                    size="2xs"
-                    className="size-4 shrink-0"
-                  />
-                }
-                label={project.title}
-                isActive={project.id === scopeId}
-                /** A button, not a link: these resolve a SESSION, so the
-                 *  destination id is not knowable at render time — the same
-                 *  reason `ProjectNav`'s rows are buttons. */
-                onSelect={() => {
-                  track("sidebar_project_clicked");
-                  navigateToAgent(project.id, {
-                    panel: landingTabIdFor(project.metadata?.ui?.layout),
-                  });
-                  onNavigate?.();
-                }}
-              />
+            <SidebarNavRow
+              key={project.id}
+              icon={
+                <AgentAvatar
+                  icon={project.icon}
+                  name={project.title}
+                  size="2xs"
+                  className="size-4 shrink-0"
+                />
+              }
+              label={project.title}
+              isActive={project.id === scopeId}
+              /** A button, not a link: these resolve a SESSION, so the
+               *  destination id is not knowable at render time — the same
+               *  reason `ProjectNav`'s rows are buttons. */
+              onSelect={() => {
+                track("sidebar_project_clicked");
+                navigateToAgent(project.id, {
+                  panel: landingTabIdFor(project.metadata?.ui?.layout),
+                });
+                onNavigate?.();
+              }}
+            >
               {!collapsed && tasks.length > 0 && (
-                <ul className={cn("flex flex-col")}>
+                <ul className="flex flex-col">
                   {tasks.map((task, index) => (
                     <TaskRow
                       key={task.id}
@@ -237,7 +237,7 @@ export function SidebarProjectsSection({
                   ))}
                 </ul>
               )}
-            </li>
+            </SidebarNavRow>
           );
         })}
       </SidebarMenu>
