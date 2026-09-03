@@ -56,18 +56,21 @@ test.describe("org home — the agent roster", () => {
     await createAgent(page.request, orgSlug, title);
 
     await page.goto(`/${orgSlug}/home`);
-    await expect(page.getByTestId("main-panel")).toBeVisible({
+    const mainPanel = page.getByTestId("main-panel");
+    await expect(mainPanel).toBeVisible({
       timeout: SHELL_TIMEOUT_MS,
     });
 
-    await expect(page.getByText(title, { exact: true })).toBeVisible({
-      timeout: SHELL_TIMEOUT_MS,
-    });
+    await expect(
+      mainPanel.getByRole("button", { name: title, exact: true }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
     /* The backfilled managers are plumbing, not the org's work. If this ever
        fails, the home is rendering the unfiltered list again. */
     for (const manager of ["Agent Manager", "Automation Manager"]) {
-      await expect(page.getByText(manager, { exact: true })).toHaveCount(0);
+      await expect(mainPanel.getByText(manager, { exact: true })).toHaveCount(
+        0,
+      );
     }
   });
 
