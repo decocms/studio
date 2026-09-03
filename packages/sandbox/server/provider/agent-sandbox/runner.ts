@@ -1492,9 +1492,27 @@ export class AgentSandboxProvider {
       if (this.sentinelToken !== null) {
         const probedHealth = await probeDaemonHealth(daemonUrl);
         if (probedHealth) resolvedBootId = probedHealth.bootId;
-        await postConfig(daemonUrl, this.sentinelToken, configPayload ?? {}, {
-          rotateToken: token,
-        });
+        try {
+          await postConfig(daemonUrl, this.sentinelToken, configPayload ?? {}, {
+            rotateToken: token,
+          });
+        } catch (err) {
+          // A sentinel 401 means this pod already rotated to some *other*
+          // claim's token, so it is not ours and the catch below is right to
+          // tear the claim down. There is no local recovery: `token` was just
+          // minted here, so the pod has never accepted it (unlike
+          // `rebootstrapDaemon`, whose token is the persisted one the pod was
+          // rotated to). Seen in prod as six consecutive fs-tool failures
+          // before a clean pod was handed out, which points at the pool
+          // reusing a released-but-not-recycled pod. Name the pod so that
+          // upstream cause is findable in the next occurrence.
+          if (err instanceof ConfigRequestError && err.status === 401) {
+            console.warn(
+              `[${LOG_LABEL}] sentinel rejected by adopted pod (handle=${handle}, sandbox=${adoptedSandboxName}): pod belongs to another claim; tearing down and reprovisioning`,
+            );
+          }
+          throw err;
+        }
       } else if (configPayload) {
         await postConfig(daemonUrl, token, configPayload);
       }
