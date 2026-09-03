@@ -176,8 +176,8 @@ export function SidebarProjectsSection({
    *  underneath them turns the one place that says where you are into a place
    *  that says where you could be instead. The picker and the way back out are
    *  the controls for leaving; this section is the org's map.
-   *  The rail is icons only, and a nested task row has no icon to be. */
-  if (scopeId || collapsed || projects.length === 0) return null;
+   *  Collapsed keeps the rows at icon width; only the heading and the nested task rows drop, having no icon to be. */
+  if (scopeId || projects.length === 0) return null;
 
   const byProject = tasksNeedingMeByProject(
     projects,
@@ -187,43 +187,45 @@ export function SidebarProjectsSection({
 
   return (
     <div
-      className="flex flex-col gap-1"
+      className={cn("flex flex-col gap-1", collapsed && "pt-3")}
       data-tour={LAYOUT_TOUR_ANCHORS.projects}
     >
-      {/* The gap above is what separates the org's map from the destinations
-          it follows; the one below only sets the heading on its own list. */}
-      <p className="px-2 pt-5 pb-0.5 text-xs font-medium text-muted-foreground/60">
-        {t("sidebar.projects.heading")}
-      </p>
+      {/* The heading carries the gap that separates the org's map from the
+          destinations above it; collapsed, the container carries it instead. */}
+      {!collapsed && (
+        <p className="px-2 pt-5 pb-0.5 text-xs font-medium text-muted-foreground/60">
+          {t("sidebar.projects.heading")}
+        </p>
+      )}
       <SidebarMenu className="gap-1">
         {projects.map((project) => {
           const tasks = byProject.get(project.id) ?? [];
           return (
-            <li key={project.id} className="flex flex-col">
-              <SidebarNavRow
-                icon={
-                  <AgentAvatar
-                    icon={project.icon}
-                    name={project.title}
-                    size="2xs"
-                    className="size-4 shrink-0"
-                  />
-                }
-                label={project.title}
-                isActive={project.id === scopeId}
-                /** A button, not a link: these resolve a SESSION, so the
-                 *  destination id is not knowable at render time — the same
-                 *  reason `ProjectNav`'s rows are buttons. */
-                onSelect={() => {
-                  track("sidebar_project_clicked");
-                  navigateToAgent(project.id, {
-                    panel: landingTabIdFor(project.metadata?.ui?.layout),
-                  });
-                  onNavigate?.();
-                }}
-              />
-              {tasks.length > 0 && (
-                <ul className={cn("flex flex-col")}>
+            <SidebarNavRow
+              key={project.id}
+              icon={
+                <AgentAvatar
+                  icon={project.icon}
+                  name={project.title}
+                  size="2xs"
+                  className="size-4 shrink-0"
+                />
+              }
+              label={project.title}
+              isActive={project.id === scopeId}
+              /** A button, not a link: these resolve a SESSION, so the
+               *  destination id is not knowable at render time — the same
+               *  reason `ProjectNav`'s rows are buttons. */
+              onSelect={() => {
+                track("sidebar_project_clicked");
+                navigateToAgent(project.id, {
+                  panel: landingTabIdFor(project.metadata?.ui?.layout),
+                });
+                onNavigate?.();
+              }}
+            >
+              {!collapsed && tasks.length > 0 && (
+                <ul className="flex flex-col">
                   {tasks.map((task, index) => (
                     <TaskRow
                       key={task.id}
@@ -235,7 +237,7 @@ export function SidebarProjectsSection({
                   ))}
                 </ul>
               )}
-            </li>
+            </SidebarNavRow>
           );
         })}
       </SidebarMenu>
