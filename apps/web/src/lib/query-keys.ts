@@ -512,6 +512,9 @@ export const KEYS = {
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
   jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,
+  jiraBoardColumns: (orgId: string, boardId: string | null) =>
+    ["jira-board-columns", orgId, boardId] as const,
+  jiraAutomations: (orgId: string) => ["jira-automations", orgId] as const,
   // Cross-volume recent-files feed (Library home). Separate root key so a
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.

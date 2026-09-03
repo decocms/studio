@@ -37,6 +37,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     sortOrder,
     keySeq: 1,
     externalUrl: null,
+    source: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],

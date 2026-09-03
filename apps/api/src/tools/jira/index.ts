@@ -236,3 +236,15 @@ export const JIRA_BOARD_COLUMNS_LIST = defineTool({
     return { columns: await client.getBoardColumns(input.boardId) };
   },
 });
+
+export {
+  JIRA_AUTOMATION_DELETE,
+  JIRA_AUTOMATION_LIST,
+  JIRA_AUTOMATION_UPSERT,
+} from "./automations";
+export {
+  JIRA_ATTACHMENT_DOWNLOAD,
+  JIRA_COMMENT_ADD,
+  JIRA_ISSUE_GET,
+  JIRA_ISSUE_TRANSITION,
+} from "./run-tools";

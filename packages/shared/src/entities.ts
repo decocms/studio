@@ -173,6 +173,9 @@ export interface TaskBoardItem {
   /** Link to that issue in the tracker, for a human to open. Never folded into
    *  `description`, which agent prompts quote verbatim. */
   externalUrl: string | null;
+  /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
+   *  board shows. */
+  source: "jira" | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;

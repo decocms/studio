@@ -1,10 +1,11 @@
 /**
  * Settings → Tasks → "Jira integration" section — connect a Jira Cloud site
- * (email + API token), pick the board Studio watches, and wire the webhook
- * that tells it the moment a card moves.
+ * (email + API token), pick the board Studio watches, choose which statuses
+ * start an agent run, and wire the webhook that tells it the moment an issue
+ * moves.
  */
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -12,11 +13,14 @@ import {
   ArrowUpRight,
   Check,
   ChevronSelectorVertical,
+  Plus,
+  Trash01,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,8 +53,11 @@ import type { TranslationKey } from "@/i18n/en";
 import {
   type JiraIntegration,
   useDeleteJiraIntegration,
+  useJiraAutomations,
+  useJiraBoardColumns,
   useJiraBoards,
   useJiraIntegration,
+  useSetJiraAutomation,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
 import { TaskSystemPromptSettings } from "./task-system-prompt";
@@ -299,6 +306,153 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
   );
 }
 
+/**
+ * One card per Jira STATUS on the selected board. A Jira column is a bucket of
+ * statuses, so the card is headed by the column and names the status beneath
+ * it whenever that adds information. Rules are keyed by status name.
+ */
+function AutomationsRow({ boardId }: { boardId: string }) {
+  const t = useT();
+  const columns = useJiraBoardColumns(boardId);
+  const automations = useJiraAutomations();
+
+  let body: ReactNode;
+  if (columns.isPending || automations.isPending) {
+    body = <Skeleton className="h-40 w-full" />;
+  } else if (columns.isError) {
+    body = (
+      <p className="text-xs text-muted-foreground">
+        {t("settings.jira.columnsFailed")}
+      </p>
+    );
+  } else if ((columns.data ?? []).length === 0) {
+    body = (
+      <p className="text-xs text-muted-foreground">
+        {t("settings.jira.noColumnsYet")}
+      </p>
+    );
+  } else {
+    const promptOf = new Map(
+      (automations.data ?? []).map((a) => [a.jiraStatus, a.prompt]),
+    );
+    body = (
+      <div className="flex w-full flex-col gap-3">
+        {(columns.data ?? []).flatMap((column) =>
+          column.statuses.map((status) => (
+            <StatusAutomationCard
+              key={`${column.name}:${status}`}
+              columnName={column.name}
+              status={status}
+              showStatus={status !== column.name || column.statuses.length > 1}
+              hasAutomation={promptOf.has(status)}
+              prompt={promptOf.get(status) ?? null}
+            />
+          )),
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <SettingsCardItem
+      title={t("settings.jira.automationsLabel")}
+      description={t("settings.jira.automationsDescription")}
+    >
+      <div className="mt-3">{body}</div>
+    </SettingsCardItem>
+  );
+}
+
+/** `prompt` null with `hasAutomation` true means the rule runs on the agent's
+ *  own instruction; the status is absent from the automations list when there
+ *  is no rule at all. */
+function StatusAutomationCard({
+  columnName,
+  status,
+  showStatus,
+  hasAutomation,
+  prompt,
+}: {
+  columnName: string;
+  status: string;
+  showStatus: boolean;
+  hasAutomation: boolean;
+  prompt: string | null;
+}) {
+  const t = useT();
+  const setAutomation = useSetJiraAutomation();
+  // A draft, so typing is not a write per keystroke. Re-seeded on change.
+  const [draft, setDraft] = useState(prompt ?? "");
+  const [syncedWith, setSyncedWith] = useState(prompt);
+  if (syncedWith !== prompt) {
+    setSyncedWith(prompt);
+    setDraft(prompt ?? "");
+  }
+
+  const save = (next: string | null) =>
+    setAutomation.mutate(
+      { jiraStatus: status, prompt: next },
+      {
+        onError: (err) =>
+          toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
+      },
+    );
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
+      <div className="flex flex-col min-w-0">
+        <span className="truncate text-sm font-medium">{columnName}</span>
+        {showStatus && (
+          <span className="truncate text-xs text-muted-foreground">
+            {status}
+          </span>
+        )}
+      </div>
+
+      {hasAutomation ? (
+        <div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium">
+              {t("settings.jira.automationOn")}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t("settings.jira.removeAriaLabel", { status })}
+              onClick={() => save(null)}
+            >
+              <Trash01 size={14} />
+            </Button>
+          </div>
+          <Textarea
+            value={draft}
+            rows={2}
+            placeholder={t("settings.jira.promptPlaceholder")}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              if (draft !== (prompt ?? "")) save(draft);
+            }}
+            data-jira-automation-prompt={status}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("settings.jira.promptHelp")}
+          </p>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={() => save("")}
+        >
+          <Plus size={14} />
+          {t("settings.jira.addAutomation")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function EnabledRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -400,6 +554,7 @@ function JiraContent() {
     <SettingsCard>
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
+      {data.boardId && <AutomationsRow boardId={data.boardId} />}
       <EnabledRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>

@@ -252,6 +252,9 @@ export class TaskBoardStorage {
       .where("organization_id", "=", organizationId)
       // Dismissed findings are off the board; `getById` still resolves them.
       .where("dismissed_at", "is", null)
+      // So is a Jira run's anchor: the issue lives in Jira, the item only
+      // carries the run.
+      .where("source", "is", null)
       .orderBy("sort_order", "asc")
       .execute();
 
@@ -279,6 +282,8 @@ export class TaskBoardStorage {
       .selectAll()
       .where("organization_id", "=", organizationId)
       .where("dismissed_at", "is", null)
+      // A Jira run's anchor is not a card, so it is not a search result either.
+      .where("source", "is", null)
       .where("title", "ilike", `%${escapeLikePattern(search)}%`)
       .orderBy("updated_at", "desc")
       .limit(limit)
@@ -320,6 +325,9 @@ export class TaskBoardStorage {
     externalKey?: string | null;
     /** Link to the card's issue in the tracker it came from. */
     externalUrl?: string | null;
+    /** `jira` hides the card from the board: it anchors a run, it is not work
+     *  the board shows. */
+    source?: "jira" | null;
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -350,6 +358,7 @@ export class TaskBoardStorage {
           due_date: params.dueDate ?? null,
           external_key: params.externalKey ?? null,
           external_url: params.externalUrl ?? null,
+          source: params.source ?? null,
           sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
           from task_board_items
@@ -2400,6 +2409,7 @@ export class TaskBoardStorage {
     repo: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
+    source?: "jira" | null;
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
@@ -2425,6 +2435,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       externalUrl: row.external_url ?? null,
+      source: row.source ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,

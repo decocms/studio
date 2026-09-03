@@ -1,5 +1,5 @@
 /**
- * Which task-board tools a run's MCP endpoint serves, by run thread title.
+ * Which tools a run's MCP endpoint serves, by run thread.
  *
  * The bug this encodes: reviewer runs were told to finish by calling
  * `TASK_BOARD_REVIEW_DECISION` and never had it — reviews reached a verdict and
@@ -10,13 +10,14 @@
 import { describe, expect, test } from "bun:test";
 import {
   REVIEW_RUN_TOOL_NAMES,
-  resolveReviewRunToolNames,
+  JIRA_RUN_TOOL_NAMES,
+  resolveTaskRunToolNames,
   TASK_RUN_TOOL_NAMES,
 } from "./task-run-context";
 
-describe("resolveReviewRunToolNames", () => {
+describe("resolveTaskRunToolNames", () => {
   test("a Reviewer run can record its decision", () => {
-    expect(resolveReviewRunToolNames("Reviewer: Add an H1")).toContain(
+    expect(resolveTaskRunToolNames({ title: "Reviewer: Add an H1" })).toContain(
       "TASK_BOARD_REVIEW_DECISION",
     );
   });
@@ -26,23 +27,25 @@ describe("resolveReviewRunToolNames", () => {
   // Review forever.
   for (const legacy of ["QA Agent", "Code Reviewer"]) {
     test(`a ${legacy} run from before the merge still can`, () => {
-      expect(resolveReviewRunToolNames(`${legacy}: Add an H1`)).toContain(
-        "TASK_BOARD_REVIEW_DECISION",
-      );
+      expect(
+        resolveTaskRunToolNames({ title: `${legacy}: Add an H1` }),
+      ).toContain("TASK_BOARD_REVIEW_DECISION");
     });
   }
 
   // The invariant the narrow list exists for: the worker must not be able to
   // approve or bounce its own work.
   test("a Super Agent run cannot record a review decision", () => {
-    expect(resolveReviewRunToolNames("Super Agent: Add an H1")).toEqual(
-      TASK_RUN_TOOL_NAMES,
-    );
+    expect(
+      resolveTaskRunToolNames({ title: "Super Agent: Add an H1" }),
+    ).toEqual(TASK_RUN_TOOL_NAMES);
   });
 
   test("an unknown or missing title falls back to the narrow surface", () => {
     for (const title of [null, undefined, "", "Some chat"]) {
-      expect(resolveReviewRunToolNames(title)).toEqual(TASK_RUN_TOOL_NAMES);
+      expect(resolveTaskRunToolNames({ title: title })).toEqual(
+        TASK_RUN_TOOL_NAMES,
+      );
     }
   });
 
@@ -66,5 +69,27 @@ describe("resolveReviewRunToolNames", () => {
       expect(REVIEW_RUN_TOOL_NAMES).toContain(name);
     }
     expect(REVIEW_RUN_TOOL_NAMES).toHaveLength(TASK_RUN_TOOL_NAMES.length + 1);
+  });
+
+  // The card behind a Jira-triggered run is only its anchor. Serving the board
+  // tools there would let the agent update a card nobody reads instead of the
+  // issue everybody does — so the Jira surface has none of them.
+  test("a Jira-triggered run gets the issue's tools and none of the board's", () => {
+    const names = resolveTaskRunToolNames({
+      title: "Jira EX-12: Fix the checkout button",
+      metadata: { source: "jira" },
+    });
+    expect(names).toEqual(JIRA_RUN_TOOL_NAMES);
+    expect(names).toContain("JIRA_COMMENT_ADD");
+    expect(names.some((n) => n.startsWith("TASK_BOARD_"))).toBe(false);
+  });
+
+  test("the Jira stamp wins over a title that looks like a reviewer's", () => {
+    expect(
+      resolveTaskRunToolNames({
+        title: "Reviewer: EX-12",
+        metadata: { source: "jira" },
+      }),
+    ).toEqual(JIRA_RUN_TOOL_NAMES);
   });
 });

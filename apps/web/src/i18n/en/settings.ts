@@ -51,7 +51,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, changes made in Jira reach the board on the next 10-minute sync; with it, they arrive in seconds.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts within seconds.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -63,7 +63,18 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. Changes made in Jira now show up on the board within seconds.",
+    "Save. An issue entering an automated status now starts its run within seconds.",
+  "settings.jira.automationsLabel": "Run the agent when an issue enters…",
+  "settings.jira.automationsDescription":
+    "When an issue enters one of these statuses, Studio starts an agent run on it. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+  "settings.jira.addAutomation": "Add automation",
+  "settings.jira.automationOn": "Automation on",
+  "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
+  "settings.jira.promptHelp":
+    "Leave empty to use the agent's own instruction. The issue's description, comments and attachments are always included.",
+  "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
+  "settings.jira.noColumnsYet": "No columns on this board yet",
+  "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.syncedRepos.pageDescription":
     "GitHub repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",

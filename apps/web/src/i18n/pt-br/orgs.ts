@@ -293,5 +293,8 @@ export const orgs = {
   "orgs.threadsFiltersPopover.filterChats": "Filtrar chats",
   "orgs.threadsFiltersPopover.filters": "Filtros",
   "orgs.threadsFiltersPopover.status": "Status",
+  "orgs.threadsFiltersPopover.source": "Origem",
+  "orgs.threadsFiltersPopover.allSources": "Todas as origens",
+  "orgs.threadsFiltersPopover.sourceJira": "Jira",
   "orgs.threadsFiltersPopover.user": "Usuário",
 } satisfies Record<keyof typeof orgsEn, string>;

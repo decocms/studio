@@ -230,6 +230,14 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_INTEGRATION_DELETE,
   JiraTools.JIRA_BOARDS_LIST,
   JiraTools.JIRA_BOARD_COLUMNS_LIST,
+  JiraTools.JIRA_AUTOMATION_LIST,
+  JiraTools.JIRA_AUTOMATION_UPSERT,
+  JiraTools.JIRA_AUTOMATION_DELETE,
+  // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
+  JiraTools.JIRA_ISSUE_GET,
+  JiraTools.JIRA_COMMENT_ADD,
+  JiraTools.JIRA_ISSUE_TRANSITION,
+  JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
