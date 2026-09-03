@@ -5,7 +5,7 @@
 
 import type { ConfigPatch, TenantConfig } from "../daemon-protocol";
 import { sleep } from "../shared";
-import { retry, type RetryOptions } from "@decocms/shared/std";
+import { retry, RetryError, type RetryOptions } from "@decocms/shared/std";
 
 export type { ConfigPatch };
 
@@ -47,7 +47,27 @@ function isTransientError(err: unknown): boolean {
   if (err instanceof DOMException && err.name === "AbortError") {
     return true;
   }
+  if (err instanceof TransientStatusError) {
+    return true;
+  }
   return false;
+}
+
+/** HTTP statuses the daemon can return while restarting/behind a proxy that
+ * are worth one more attempt, same as a network-level connection failure.
+ * Deliberately excludes 500 (an application bug, not infra hiccup). */
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+
+/** Marks a non-2xx response as retriable so it flows through the same retry
+ * path as a thrown network error, instead of returning immediately as a
+ * "successful" (but failed) response. */
+class TransientStatusError extends Error {
+  constructor(
+    readonly status: number,
+    readonly responseBody: string,
+  ) {
+    super(`transient status ${status}`);
+  }
 }
 
 /**
@@ -95,9 +115,18 @@ async function daemonRequest(
         ...init,
         signal: AbortSignal.timeout(timeoutMs),
       });
-      return { status: res.status, ok: res.ok, body: await res.text() };
+      const body = await res.text();
+      if (TRANSIENT_STATUSES.has(res.status)) {
+        throw new TransientStatusError(res.status, body);
+      }
+      return { status: res.status, ok: res.ok, body };
     }, retryOpts);
   } catch (err) {
+    // Unwrap RetryError's cause: a transient status is a real response.
+    const cause = err instanceof RetryError ? err.cause : err;
+    if (cause instanceof TransientStatusError) {
+      return { status: cause.status, ok: false, body: cause.responseBody };
+    }
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
       `[SANDBOX_UNREACHABLE] sandbox daemon ${endpoint} request failed: ${message}`,

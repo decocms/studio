@@ -158,6 +158,37 @@ describe("Bun-style connection errors", () => {
   });
 });
 
+describe("transient HTTP status retries", () => {
+  it("retries a 503 and returns the eventual success", async () => {
+    let attempts = 0;
+    const { calls } = installFetch(() => {
+      attempts++;
+      if (attempts === 1) return new Response("unavailable", { status: 503 });
+      return new Response(
+        JSON.stringify({ bootId: "b", transition: "t", config: {} }),
+        { status: 200 },
+      );
+    });
+    await postConfig("http://daemon:9000", "tok", { env: {} } as never);
+    expect(calls.length).toBe(2);
+  });
+
+  it("surfaces the last 503 as a ConfigRequestError once retries are exhausted", async () => {
+    installFetch(() => new Response("still unavailable", { status: 503 }));
+    await expect(
+      postConfig("http://daemon:9000", "tok", { env: {} } as never),
+    ).rejects.toThrow("/_sandbox/config returned 503");
+  });
+
+  it("does not retry a plain 500", async () => {
+    const { calls } = installFetch(() => new Response("boom", { status: 500 }));
+    await expect(
+      postConfig("http://daemon:9000", "tok", { env: {} } as never),
+    ).rejects.toThrow("/_sandbox/config returned 500");
+    expect(calls.length).toBe(1);
+  });
+});
+
 describe("proxyDaemonRequest", () => {
   it("injects Authorization: Bearer <token> header", async () => {
     const { calls } = installFetch(() => new Response("", { status: 204 }));
