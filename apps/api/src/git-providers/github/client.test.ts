@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { RepoRef } from "@decocms/shared/git-providers";
 import {
   type GithubRepoJson,
+  githubTarballPath,
   mapGithubIdentity,
   mapGithubRepo,
   matchesRepoQuery,
@@ -156,5 +158,32 @@ describe("githubErrorMessage", () => {
     );
     expect(githubErrorMessage("")).toBe("");
     expect(githubErrorMessage("a".repeat(500))).toHaveLength(300);
+  });
+});
+
+describe("githubTarballPath", () => {
+  const repo: RepoRef = {
+    provider: "github",
+    host: "github.com",
+    path: "octocat/Hello-World",
+  };
+
+  test("pins the archive to a ref when one is given", () => {
+    expect(githubTarballPath(repo, "main")).toBe(
+      "/repos/octocat/Hello-World/tarball/main",
+    );
+  });
+
+  test("omitting the ref leaves the endpoint on the default branch", () => {
+    expect(githubTarballPath(repo)).toBe("/repos/octocat/Hello-World/tarball");
+  });
+
+  test("escapes refs and names that are not URL-safe", () => {
+    expect(githubTarballPath(repo, "feat/new thing")).toBe(
+      "/repos/octocat/Hello-World/tarball/feat%2Fnew%20thing",
+    );
+    expect(githubTarballPath({ ...repo, path: "my org/my repo" }, "v1.0")).toBe(
+      "/repos/my%20org/my%20repo/tarball/v1.0",
+    );
   });
 });

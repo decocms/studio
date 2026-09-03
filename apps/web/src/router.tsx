@@ -912,6 +912,15 @@ const settingsBucketsRoute = createRoute({
   ),
 });
 
+const settingsRepositoriesRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/repositories",
+  pendingComponent: settingsGroupPendingComponent("storage"),
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/repositories.tsx"),
+  ),
+});
+
 const settingsSyncedReposRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/synced-repos",
@@ -1050,6 +1059,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsSecretsRoute,
   settingsApiKeysRoute,
   settingsBucketsRoute,
+  settingsRepositoriesRoute,
   settingsSyncedReposRoute,
   settingsTaskBoardRoute,
   settingsTasksRoute,

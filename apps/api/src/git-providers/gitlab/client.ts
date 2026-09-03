@@ -26,6 +26,8 @@ import {
 } from "../types";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+/** A whole-repo archive is a download, not a REST call — it needs room to stream. */
+const ARCHIVE_TIMEOUT_MS = 60_000;
 const DEFAULT_PER_PAGE = 30;
 const MAX_PER_PAGE = 100;
 
@@ -40,6 +42,15 @@ export function encodeProjectPath(path: string): string {
 /** Repository file paths follow the same rule: `src/app.ts` → `src%2Fapp.ts`. */
 export function encodeFilePath(path: string): string {
   return encodeURIComponent(path.replace(/^\/+/, ""));
+}
+
+/**
+ * Pure: API path+query of the gzipped-tar archive endpoint for `repo` at
+ * `ref`. Omitting `sha` leaves GitLab on the project's default branch.
+ */
+export function gitlabArchivePath(repo: RepoRef, ref?: string): string {
+  const base = `/projects/${encodeProjectPath(repo.path)}/repository/archive.tar.gz`;
+  return ref ? `${base}?sha=${encodeURIComponent(ref)}` : base;
 }
 
 /**
@@ -135,7 +146,7 @@ async function errorMessage(res: Response): Promise<string> {
 async function gitlabRequest(
   url: string,
   token: string,
-  init: { accept?: string } = {},
+  init: { accept?: string; timeoutMs?: number } = {},
 ): Promise<Response | null> {
   let res: Response;
   try {
@@ -145,7 +156,7 @@ async function gitlabRequest(
         Authorization: `Bearer ${token}`,
         Accept: init.accept ?? "application/json",
       },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(init.timeoutMs ?? REQUEST_TIMEOUT_MS),
     });
   } catch (cause) {
     throw new GitProviderError({
@@ -283,6 +294,22 @@ export class GitlabProviderClient implements GitProviderClient {
     );
     if (!res) return null;
     return res.text();
+  }
+
+  async archiveTarball(
+    repo: RepoRef,
+    ref?: string,
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const { token } = await this.tokenForRepo(repo);
+    const res = await gitlabRequest(
+      `${this.apiBase}${gitlabArchivePath(repo, ref)}`,
+      token,
+      {
+        accept: "application/octet-stream, */*",
+        timeoutMs: ARCHIVE_TIMEOUT_MS,
+      },
+    );
+    return res?.body ?? null;
   }
 
   async identity(): Promise<GitIdentity | null> {

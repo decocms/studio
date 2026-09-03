@@ -5294,15 +5294,17 @@ export interface StudioToolIO {
   };
   ORG_REPO_SYNC_CREATE: {
     input: {
-      connectionId: string;
       volume: string;
+      repositoryId?: string | undefined;
+      connectionId?: string | undefined;
       ref?: string | undefined;
       paths?: { from: string; to?: string | undefined }[] | undefined;
     };
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5320,7 +5322,8 @@ export interface StudioToolIO {
     output: {
       configs: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5343,7 +5346,8 @@ export interface StudioToolIO {
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;

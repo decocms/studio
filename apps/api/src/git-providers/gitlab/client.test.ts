@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { RepoRef } from "@decocms/shared/git-providers";
 import {
   encodeFilePath,
   encodeProjectPath,
+  gitlabArchivePath,
   gitlabRetryAfterMs,
   mapGitlabProject,
 } from "./client";
@@ -149,5 +151,31 @@ describe("gitlabRetryAfterMs", () => {
     expect(
       gitlabRetryAfterMs(new Headers({ "Retry-After": "soon" }), now),
     ).toBeNull();
+  });
+});
+
+describe("gitlabArchivePath", () => {
+  const repo: RepoRef = {
+    provider: "gitlab",
+    host: "gitlab.com",
+    path: "group/sub/project",
+  };
+
+  test("addresses the project by encoded full path and pins the sha", () => {
+    expect(gitlabArchivePath(repo, "main")).toBe(
+      "/projects/group%2Fsub%2Fproject/repository/archive.tar.gz?sha=main",
+    );
+  });
+
+  test("omitting the ref leaves GitLab on the default branch", () => {
+    expect(gitlabArchivePath(repo)).toBe(
+      "/projects/group%2Fsub%2Fproject/repository/archive.tar.gz",
+    );
+  });
+
+  test("escapes a ref containing slashes", () => {
+    expect(gitlabArchivePath(repo, "release/2.0")).toBe(
+      "/projects/group%2Fsub%2Fproject/repository/archive.tar.gz?sha=release%2F2.0",
+    );
   });
 });

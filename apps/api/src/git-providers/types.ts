@@ -87,6 +87,20 @@ export interface GitProviderClient {
   readFile(repo: RepoRef, path: string, ref?: string): Promise<string | null>;
 
   /**
+   * A gzipped tar of the whole repository at `ref` (default branch when
+   * omitted), or null when the provider answers 404. The stream is the
+   * response body — the caller owns it and must consume or cancel it.
+   *
+   * Providers disagree on the archive's single top-level directory name
+   * (`owner-repo-sha/` vs `project-ref-sha/`); consumers strip one leading
+   * segment rather than reconstructing either convention.
+   */
+  archiveTarball(
+    repo: RepoRef,
+    ref?: string,
+  ): Promise<ReadableStream<Uint8Array> | null>;
+
+  /**
    * Commit author identity for the account's token, or null when the token
    * does not map to a user (GitHub App installation tokens). Callers fall back
    * to a bot identity.

@@ -98,6 +98,17 @@ export const common = {
   "common.errorBoundary.somethingWentWrong": "Algo deu errado",
   "common.errorBoundary.tryAgain": "Tentar novamente",
   "common.errorBoundary.unexpectedError": "Um erro inesperado ocorreu",
+  "common.repositoryPicker.linkedSection": "Repositórios vinculados",
+  "common.repositoryPicker.browseSection": "Navegar por uma conta",
+  "common.repositoryPicker.searchPlaceholder": "Buscar repositórios",
+  "common.repositoryPicker.searchEmpty": "Nenhum repositório encontrado",
+  "common.repositoryPicker.searchFailed": "Não foi possível buscar nesta conta",
+  "common.repositoryPicker.linkFailed":
+    "Não foi possível vincular o repositório",
+  "common.repositoryPicker.createAgentFailed":
+    "Não foi possível criar o agente",
+  "common.repositoryPicker.agentDescription": "Importado de {path}",
+  "common.repositoryPicker.back": "Voltar",
   "common.githubRepoPicker.accountNotListed": "Conta não listada?",
   "common.githubRepoPicker.addRepo": "Adicionar repositório",
   "common.githubRepoPicker.addedRepo": "Adicionado {name}",

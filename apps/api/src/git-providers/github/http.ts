@@ -30,6 +30,8 @@ export interface GithubFetchInit {
   body?: unknown;
   /** Rate-limit telemetry label. */
   operation: string;
+  /** Overrides `GITHUB_TIMEOUT_MS` — archive downloads outlive a REST call. */
+  timeoutMs?: number;
 }
 
 /**
@@ -55,7 +57,7 @@ export async function githubFetch(
       method: init.method ?? "GET",
       headers,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+      signal: AbortSignal.timeout(init.timeoutMs ?? GITHUB_TIMEOUT_MS),
     });
   } catch (cause) {
     throw new GitProviderError({

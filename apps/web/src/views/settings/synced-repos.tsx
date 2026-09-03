@@ -155,11 +155,14 @@ function SyncedReposContent() {
 
   function handleCreate() {
     if (!pendingImport || !volumeName.trim()) return;
+    const source = pendingImport.repositoryId
+      ? { repositoryId: pendingImport.repositoryId }
+      : pendingImport.connectionId
+        ? { connectionId: pendingImport.connectionId }
+        : null;
+    if (!source) return;
     create.mutate(
-      {
-        connectionId: pendingImport.connectionId,
-        volume: volumeName.trim(),
-      },
+      { ...source, volume: volumeName.trim() },
       {
         onSuccess: (config) => {
           // The first sync runs in the background (see useCreateOrgRepoSync);

@@ -1554,8 +1554,13 @@ export interface OrgSite {
 export interface OrgRepoSyncTable {
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
-  /** Repo-scoped `mcp-github` connection the sync mints tokens from. */
-  connection_id: string;
+  /** Repo-scoped `mcp-github` connection the sync mints tokens from; null
+   *  once the sync is backed by a first-class `repository_id` instead. */
+  connection_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   repo_owner: string;
   repo_name: string;
   ref: ColumnType<string, string | undefined, string>;
@@ -1583,7 +1588,8 @@ export interface OrgRepoSyncTable {
 export interface OrgRepoSync {
   id: string;
   organizationId: string;
-  connectionId: string;
+  connectionId: string | null;
+  repositoryId: string | null;
   repoOwner: string;
   repoName: string;
   ref: string;

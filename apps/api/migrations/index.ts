@@ -200,6 +200,7 @@ import * as migration198taskboardexternalurl from "./198-task-board-external-url
 import * as migration199dropjiramirrorandorgcolumns from "./199-drop-jira-mirror-and-org-columns.ts";
 import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
 import * as migration201gitprovideraccountsandrepositories from "./201-git-provider-accounts-and-repositories.ts";
+import * as migration202orgreposyncrepository from "./202-org-repo-sync-repository.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -436,6 +437,7 @@ const migrations: Record<string, Migration> = {
   "200-jira-run-trigger": migration200jirarruntrigger,
   "201-git-provider-accounts-and-repositories":
     migration201gitprovideraccountsandrepositories,
+  "202-org-repo-sync-repository": migration202orgreposyncrepository,
 };
 
 export default migrations;

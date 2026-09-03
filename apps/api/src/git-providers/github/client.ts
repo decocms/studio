@@ -51,6 +51,9 @@ const MAX_PER_PAGE = 100;
 /** Raw-content media type for `GET /repos/{o}/{r}/contents/{path}`. */
 const RAW_CONTENT_ACCEPT = "application/vnd.github.raw+json";
 
+/** A whole-repo archive is a download, not a REST call — it needs room to stream. */
+const ARCHIVE_TIMEOUT_MS = 60_000;
+
 /** The fields of GitHub's repository object the mapping reads. */
 export interface GithubRepoJson {
   id: number;
@@ -119,6 +122,18 @@ export function mapGithubIdentity(json: GithubUserJson): GitIdentity {
 
 function encodePath(path: string): string {
   return path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+}
+
+/**
+ * Pure: API path of the tarball endpoint for `repo` at `ref`. Omitting `ref`
+ * leaves the endpoint on the repository's default branch. GitHub answers 302
+ * to a signed codeload URL; `fetch` follows it and drops the Authorization
+ * header cross-origin, which is what the signed URL expects.
+ */
+export function githubTarballPath(repo: RepoRef, ref?: string): string {
+  const { owner, name } = splitOwnerName(repo);
+  const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tarball`;
+  return ref ? `${base}/${encodeURIComponent(ref)}` : base;
 }
 
 export class GithubProviderClient implements GitProviderClient {
@@ -258,6 +273,32 @@ export class GithubProviderClient implements GitProviderClient {
     if (res.status === 404) return null;
     if (!res.ok) throw await githubFailure(res, operation);
     return res.text();
+  }
+
+  async archiveTarball(
+    repo: RepoRef,
+    ref?: string,
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const operation = "archive_tarball";
+    const url = `${this.apiBaseUrl}${githubTarballPath(repo, ref)}`;
+    const token = await this.tokenForRepo(repo);
+    let res = await githubFetch(url, {
+      operation,
+      token: token.token,
+      timeoutMs: ARCHIVE_TIMEOUT_MS,
+    });
+    if (res.status === 401) {
+      await res.body?.cancel().catch(() => {});
+      const refreshed = await this.tokenForRepo(repo, { forceRefresh: true });
+      res = await githubFetch(url, {
+        operation,
+        token: refreshed.token,
+        timeoutMs: ARCHIVE_TIMEOUT_MS,
+      });
+    }
+    if (res.status === 404) return null;
+    if (!res.ok) throw await githubFailure(res, operation);
+    return res.body;
   }
 
   async identity(): Promise<GitIdentity | null> {
