@@ -20,9 +20,12 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { ConnectPill } from "@/components/org-home/connect-pill";
 import { firstName, greetingSlot } from "@/components/org-home/greeting";
 import {
+  buildFeed,
   ProjectFeed,
   useOrgTasksSuspense,
 } from "@/components/org-home/project-feed";
+import { ProjectRoster } from "@/components/org-home/project-roster";
+import { buildProjectIndex } from "@/lib/project-index";
 import { useCapability } from "@/hooks/use-capability";
 import { scopableProjects } from "@/hooks/use-project-scope";
 import { authClient } from "@/lib/auth-client";
@@ -146,12 +149,22 @@ function OrgHomeBody({
     );
   }
 
+  /** The feed hides itself when the board has nothing to show — an org with
+   *  projects but no cards yet lands on its roster, not on an empty panel
+   *  captioned "nothing here yet". Measured on the UNFILTERED feed so that
+   *  narrowing to a project with no cards keeps the section (and its filter, to
+   *  get back out) rather than making the whole thing vanish under you. */
+  const hasActivity =
+    buildFeed(buildProjectIndex(agents), tasks, null).length > 0;
+
   return (
-    <ProjectFeed
-      projects={agents}
-      tasks={tasks}
-      action={canManageAgents && importButton("org_home")}
-    />
+    <div className="flex flex-col gap-12">
+      <ProjectRoster
+        projects={agents}
+        action={canManageAgents && importButton("org_home")}
+      />
+      {hasActivity && <ProjectFeed projects={agents} tasks={tasks} />}
+    </div>
   );
 }
 

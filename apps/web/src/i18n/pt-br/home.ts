@@ -12,6 +12,8 @@ export const home = {
   "home.orgHome.greetingAfternoonBare": "Boa tarde!",
   "home.orgHome.greetingEveningBare": "Boa noite!",
   "home.orgHome.searchPlaceholder": "Buscar projetos, chats e tarefas\u2026",
+  "home.projects.heading": "Projetos",
+  "home.projects.seeAll": "Ver todos",
   "home.projectFeed.heading": "Feed",
   "home.newTask.placeholder": "O que precisa ser feito neste projeto?",
   "home.newTask.submit": "Criar tarefa",
