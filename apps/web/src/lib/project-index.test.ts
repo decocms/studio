@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   buildProjectIndex,
+  entryForFilter,
   entryForTask,
   filterAfterCreate,
   NO_PROJECT_FILTER,
@@ -381,6 +382,33 @@ describe("taskMatchesProjectFilter", () => {
         ),
       ).toBe(true);
       expect(taskMatchesProjectFilter(task(), "vir_gone", empty)).toBe(true);
+    });
+
+    /**
+     * A `?repo=` link written before any of this existed carries whatever
+     * casing GitHub showed at the time, and `byId` is keyed on the folded
+     * form. Such a link must resolve to its BUCKET — so the chip names the
+     * project rather than echoing the URL back at the reader.
+     */
+    test("a differently-cased repo id resolves to its bucket", () => {
+      expect(entryForFilter("ACME/Alpha", index)?.title).toBe("Alpha");
+      expect(entryForFilter("Acme/Nothing", index)).toBeUndefined();
+      expect(projectFilterNarrows("ACME/Alpha", index)).toBe(true);
+      expect(
+        taskMatchesProjectFilter(
+          task({ repo: "acme/alpha" }),
+          "ACME/Alpha",
+          index,
+        ),
+      ).toBe(true);
+      /** And it gets the same widening a folded id gets — one rule, not two. */
+      expect(
+        taskMatchesProjectFilter(
+          task({ virtualMcpId: "vir_a" }),
+          "ACME/Alpha",
+          index,
+        ),
+      ).toBe(true);
     });
 
     /** A shared `?repo=` link naming a repository nothing carries: the raw

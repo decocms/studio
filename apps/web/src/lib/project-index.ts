@@ -253,6 +253,22 @@ export function projectForTask(
 }
 
 /**
+ * The bucket a filter value names, by id and then by repository.
+ *
+ * The second lookup is what makes a `?repo=` link written before this existed
+ * resolve to a BUCKET rather than to a bare string: those links carry whatever
+ * casing GitHub showed at the time, and `byId` is keyed on the folded form. A
+ * shouty `?repo=ACME/Monorepo` should read as the project that pins it, not as
+ * itself.
+ */
+export function entryForFilter(
+  filterId: string,
+  index: ProjectIndex,
+): ProjectIndexEntry | undefined {
+  return index.byId.get(filterId) ?? index.byRepo.get(normalizeRepo(filterId));
+}
+
+/**
  * Whether a card survives the board's project filter.
  *
  * The four branches, and why each is what it is:
@@ -283,7 +299,7 @@ export function taskMatchesProjectFilter(
   if (filterId === null) return true;
   if (filterId === NO_PROJECT_FILTER) return entryForTask(task, index) === null;
 
-  const entry = index.byId.get(filterId);
+  const entry = entryForFilter(filterId, index);
   if (!entry) {
     if (!filterId.includes("/")) return true;
     return normalizeRepo(task.repo) === normalizeRepo(filterId);
@@ -313,7 +329,7 @@ export function projectFilterNarrows(
 ): boolean {
   if (filterId === null) return false;
   if (filterId === NO_PROJECT_FILTER) return true;
-  return index.byId.has(filterId) || filterId.includes("/");
+  return !!entryForFilter(filterId, index) || filterId.includes("/");
 }
 
 /**

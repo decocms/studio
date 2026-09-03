@@ -63,6 +63,7 @@ import { AgentAvatar } from "@/components/agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { getInitials } from "@/lib/get-initials";
 import {
+  entryForFilter,
   NO_PROJECT_FILTER,
   projectFilterNarrows,
   taskMatchesProjectFilter,
@@ -752,7 +753,7 @@ function ProjectFilter({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const selected = value === null ? undefined : index.byId.get(value);
+  const selected = value === null ? undefined : entryForFilter(value, index);
   const narrows = projectFilterNarrows(value, index);
   const label = projectChipLabel(value, selected, narrows, t);
   const chipProject =
