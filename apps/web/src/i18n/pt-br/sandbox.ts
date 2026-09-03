@@ -462,17 +462,14 @@ export const sandbox = {
   "sandbox.preview.globalLoaders": "Loaders globais",
   "sandbox.preview.loaderBadge": "Loader",
   "sandbox.preview.loaderNoLongerExists": "Este loader não existe mais.",
-  "sandbox.preview.moreOptions": "Mais opções",
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",
   "sandbox.preview.noSearchResults":
     "Nenhum resultado corresponde à sua pesquisa.",
   "sandbox.preview.noServerRunning": "Nenhum servidor em execução",
-  "sandbox.preview.openInCursor": "Abrir no Cursor",
   "sandbox.preview.openInBrowser": "Abrir no navegador",
   "sandbox.preview.failedToOpenInBrowser":
     "Não foi possível abrir seu navegador",
   "sandbox.preview.openInNewTab": "Abrir em nova aba",
-  "sandbox.preview.openInVscode": "Abrir no VSCode",
   "sandbox.preview.pageAlreadyExists":
     'Uma página com o caminho "{path}" já existe.',
   "sandbox.preview.pageCreated": 'Página "{name}" criada',

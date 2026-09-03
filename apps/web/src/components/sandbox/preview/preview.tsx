@@ -9,14 +9,12 @@ import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
-import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 import {
   CursorClick01,
-  DotsHorizontal,
   LinkExternal01,
   ChevronDown,
   Database01,
@@ -31,7 +29,6 @@ import {
   Tablet01,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -39,16 +36,9 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import {
-  MainPanelHeaderEndPortal,
   MainPanelHeaderPortal,
   useMainPanelHeaderSlot,
 } from "@/layouts/agent-shell-layout/panel-header";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@decocms/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -108,7 +98,6 @@ import {
   type LastPreviewPage,
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
-import { ideDeepLink } from "../ide-deep-link";
 import {
   classifyParamKinds,
   collectPageLoaderResolveTypes,
@@ -132,7 +121,6 @@ import {
   type SavedRunnableEntry,
 } from "@/components/sandbox/content/runnable-catalog";
 import { track } from "@/lib/posthog-client";
-import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
 import { BlocksPanel } from "@/components/sandbox/blocks/blocks-panel";
 import {
@@ -151,11 +139,6 @@ import {
   type PreviewEditingMode,
   type PreviewEditorMode,
 } from "./editing-mode";
-
-const VSCODE_ICON_URL =
-  "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
-const CURSOR_ICON_URL =
-  "https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
@@ -420,19 +403,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
   const devServerReady = lifecyclePhase === "running";
-
-  const isDesktopSandbox = isDesktopApp && !!vmEntry;
-  const rawRepoDir = useSandboxRepoDir({
-    orgSlug: org.slug,
-    virtualMcpId: virtualMcpId ?? "",
-    branch: branch ?? "",
-    threadId: activeTaskId ?? null,
-    enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
-  });
-  // Guard the value, not just the query: React Query's staleTime=Infinity cache
-  // can retain a native repoDir when this shared UI is rendered on hosted web,
-  // whose daemon reports a container-internal path ("/app/repo").
-  const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
   // Live production URL of the linked site, persisted on the agent's
   // `metadata.previewServerUrl` at import time (deco.cx reports the real domain,
@@ -1795,39 +1765,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       </Tooltip>
     ) : null;
 
-  // Native-editor shortcuts sit right of the publish actions when available.
-  const moreMenu =
-    showPreviewToolbar && repoDir ? (
-      <div className="flex shrink-0 items-center">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={INSET_FOCUS_RING}
-              aria-label={t("sandbox.preview.moreOptions")}
-            >
-              <DotsHorizontal size={14} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem
-              onClick={() => window.open(ideDeepLink("vscode", repoDir))}
-            >
-              <img src={VSCODE_ICON_URL} alt="VSCode" width={14} height={14} />
-              {t("sandbox.preview.openInVscode")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => window.open(ideDeepLink("cursor", repoDir))}
-            >
-              <img src={CURSOR_ICON_URL} alt="Cursor" width={14} height={14} />
-              {t("sandbox.preview.openInCursor")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    ) : null;
-
   const canVisualEdit = display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
@@ -1928,41 +1865,34 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             />
           ) : null,
         )}
-      {headerSlot ? (
-        <>
-          {showPreviewToolbar && (
+      {headerSlot
+        ? showPreviewToolbar && (
             <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
-          )}
-          <MainPanelHeaderEndPortal>{moreMenu}</MainPanelHeaderEndPortal>
-        </>
-      ) : (
-        (showPreviewToolbar || moreMenu) && (
-          /* Declares the same container as PanelHeader: on this path (no
+          )
+        : showPreviewToolbar && (
+            /* Declares the same container as PanelHeader: on this path (no
              header slot — mobile) the controls render inline instead of
              portaling, so without it their container queries would find no
              container and every label would stay at full width.
 
              Three zones rather than the desktop's single left-packed group:
-             the view controls sit in the middle, the ⋯ menu holds the right,
-             and the left carries the Blocks toggle this layout alone needs
-             (see `mobileBlocksToggle`). The two side zones are `flex-1`
-             (equal basis) and the middle is content-sized,
+             the view controls sit in the middle, the left carries the Blocks
+             toggle this layout alone needs (see `mobileBlocksToggle`), and an
+             empty right spacer balances it. The two side zones are `flex-1`
+             (equal basis) while the middle is content-sized,
              so the page selector centres on the BAR wherever there is slack to
              divide — giving the middle the flex-1 instead would centre it
              between the side zones, not on the bar. */
-          <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
-            <div className="flex flex-1 items-center justify-start">
-              {mobileBlocksToggle}
+            <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
+              <div className="flex flex-1 items-center justify-start">
+                {mobileBlocksToggle}
+              </div>
+              <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
+                {urlGroup}
+              </div>
+              <div className="flex-1" />
             </div>
-            <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
-              {urlGroup}
-            </div>
-            <div className="flex flex-1 items-center justify-end">
-              {moreMenu}
-            </div>
-          </div>
-        )
-      )}
+          )}
 
       <div className="flex-1 overflow-hidden">
         {blocksFullWidth ? (
