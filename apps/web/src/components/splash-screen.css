@@ -40,7 +40,7 @@
 }
 
 .deco-splash__liquid-rise {
-  animation: deco-splash-liquid-rise 1.1s linear forwards;
+  animation: deco-splash-liquid-rise 5s linear forwards;
 }
 
 .deco-splash__wave-track {
@@ -72,18 +72,17 @@
 }
 
 /* Decelerating rise that reaches full coverage of the mark right at the end of
- * the animation, 1.1s, and no sooner. -54px is the smallest translateY that
+ * the 5s animation, and no sooner. -54px is the smallest translateY that
  * still guarantees full coverage across the whole wave cycle: the crest
  * oscillates ±5 around its center, so covering the mark's highest point
  * (the arrow tip, local y ~13) even at the crest's shallowest phase (local
  * y 63) needs translateY <= 13 - 63 = -50, plus a small margin for curve
  * imprecision. Overshooting further than that (the old -64px target) just
  * left the tail of the animation sitting fully filled with nothing left to
- * animate. A splash that unmounts fast (a warm boot) must not catch the
- * liquid mid-rise, so this completes well inside any real boot's fastest
- * case. Once full, `deco-splash__wave-track`'s own infinite animation keeps
- * the crest moving, so a slow boot reads as "topped up and idling", not
- * stuck. `linear` between stops so the curve is the curve, not re-eased. */
+ * animate. A warm boot may unmount while the liquid is still rising. Once
+ * full, `deco-splash__wave-track`'s own infinite animation keeps the crest
+ * moving, so a slow boot reads as "topped up and idling", not stuck. `linear`
+ * between stops so the curve is the curve, not re-eased. */
 @keyframes deco-splash-liquid-rise {
   0% {
     transform: translateY(55px);
