@@ -159,6 +159,19 @@ export const KEYS = {
     timeframe: string,
     orgId: string,
   ) => ["monitoring", "activity", connectionId, timeframe, orgId] as const,
+  connectionActivityErrors: (
+    connectionId: string,
+    timeframe: string,
+    orgId: string,
+  ) =>
+    [
+      "monitoring",
+      "activity",
+      "errors",
+      connectionId,
+      timeframe,
+      orgId,
+    ] as const,
 
   isMCPAuthenticated: (url: string, token: string | null) =>
     ["is-mcp-authenticated", url, token] as const,
