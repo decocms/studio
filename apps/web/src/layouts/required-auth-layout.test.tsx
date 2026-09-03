@@ -4,30 +4,19 @@ import { describe, expect, it, mock } from "bun:test";
 import { render } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
 
 /**
- * better-auth's session store has THREE states, and the third used to render
- * nothing at all: `SignedIn` needs data, `SignedOut` needs no-data AND settled,
- * so `isPending` with no data fell between them and blanked the page. That is
- * not a boot-only state — better-auth sets it on any post-boot refetch of a
- * session it does not have, including the one fired right after `signOut()`.
- *
- * The three components are stubbed with better-auth-ui's own conditions
- * (`dist/index.js`: SignedIn renders `if (data)`, SignedOut `if (!data &&
- * !isPending)`, AuthLoading `if (isPending)`), so the test asserts OUR
- * branching rather than re-testing the library.
+ * The session store has THREE states and this component wraps the whole shell,
+ * so each one is pinned here. Two were wrong in turn: with only signed-in and
+ * signed-out branches, `isPending` with no data matched neither and painted a
+ * blank page; adding better-auth-ui's `<AuthLoading>` as a third SIBLING then
+ * let a loader render alongside the app instead of instead of it.
  */
 const authState = {
   current: { data: null as unknown, isPending: false },
 };
-mock.module("@daveyplate/better-auth-ui", () => ({
-  SignedIn: ({ children }: { children: ReactNode }) =>
-    authState.current.data ? children : null,
-  SignedOut: ({ children }: { children: ReactNode }) =>
-    !authState.current.data && !authState.current.isPending ? children : null,
-  AuthLoading: ({ children }: { children: ReactNode }) =>
-    authState.current.isPending ? children : null,
+mock.module("@/lib/auth-client", () => ({
+  authClient: { useSession: () => authState.current },
 }));
 
 const navigatedTo: string[] = [];
@@ -41,6 +30,7 @@ mock.module("@tanstack/react-router", () => ({
 const { default: RequiredAuthLayout } = await import("./required-auth-layout");
 
 function renderLayout() {
+  navigatedTo.length = 0;
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -56,26 +46,30 @@ function renderLayout() {
 describe("RequiredAuthLayout", () => {
   it("renders the app when the session is present", () => {
     authState.current = { data: { user: { id: "u1" } }, isPending: false };
-    const { getByText } = renderLayout();
+    const { getByText, queryByRole } = renderLayout();
+
     expect(getByText("protected")).toBeInTheDocument();
+    // ...and ONLY the app: a loader beside it is the stray-spinner bug.
+    expect(queryByRole("status")).toBeNull();
+    expect(navigatedTo).toEqual([]);
   });
 
   it("redirects to /login when settled with no session", () => {
     authState.current = { data: null, isPending: false };
-    navigatedTo.length = 0;
     renderLayout();
+
     expect(navigatedTo).toEqual(["/login"]);
   });
 
-  /** The regression: neither branch matched, so the whole app went white. */
-  it("shows a loader — not a blank page — while a session refetch is pending", () => {
+  it("shows a full-height loader — not a blank page — while pending", () => {
     authState.current = { data: null, isPending: true };
-    navigatedTo.length = 0;
-    const { container, getByRole } = renderLayout();
+    const { container, getByRole, queryByText } = renderLayout();
 
     expect(getByRole("status")).toBeInTheDocument();
-    expect(container).not.toBeEmptyDOMElement();
-    // ...and it must not bounce the user to /login on a state that is not "out".
+    // It owns the viewport rather than sitting in a zero-height strip at the
+    // top, which is what a panel-shaped loader did in this (non-flex) slot.
+    expect(container.firstElementChild).toHaveClass("min-h-dvh");
+    expect(queryByText("protected")).toBeNull();
     expect(navigatedTo).toEqual([]);
   });
 });
