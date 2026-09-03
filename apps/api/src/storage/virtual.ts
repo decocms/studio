@@ -5,9 +5,6 @@
  * Virtual MCPs are stored as connections with connection_type = 'VIRTUAL'.
  * The aggregations (which child connections are included) are stored in
  * the connection_aggregations table.
- *
- * The aggregations (which child connections are included) are stored in
- * the connection_aggregations table.
  */
 
 import type { Kysely } from "kysely";
@@ -76,6 +73,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
           id,
           organization_id: organizationId,
           created_by: userId,
+          updated_by: userId,
           title: data.title,
           description: data.description ?? null,
           icon: data.icon ?? null,
