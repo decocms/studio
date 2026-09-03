@@ -41,7 +41,7 @@ export function CreateAgentDropdownContent({
         {t("common.createAgentDropdown.importFromGitHub")}
         {showBetaBadge && (
           <span className="ml-auto text-[10px] font-medium text-muted-foreground bg-muted rounded px-1 py-0.5">
-            Beta
+            {t("common.createAgentDropdown.beta")}
           </span>
         )}
       </DropdownMenuItem>
