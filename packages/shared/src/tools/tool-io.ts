@@ -644,6 +644,10 @@ export interface StudioToolIO {
     input: { url: string };
     output: { url: string; prNumber: number; taskBoardItemIds: string[] };
   };
+  TASK_BOARD_PREVIEW_PROBE: {
+    input: { url: string };
+    output: { available: boolean; status: number | null };
+  };
   TASK_BOARD_ITEM_RERUN: {
     input: { id: string };
     output: { status: string; supersededThreadIds: string[] };
@@ -2082,7 +2086,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -2303,7 +2307,6 @@ export interface StudioToolIO {
           | {
               [x: string]: unknown;
               instructions?: string | null | undefined;
-              enabled_plugins?: string[] | null | undefined;
               subAgents?: string[] | null | undefined;
               liveAgentId?: string | null | undefined;
               ui?:
@@ -2334,10 +2337,10 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
+                            | "manual"
                             | "off"
                             | "auto"
                             | "on"
-                            | "manual"
                             | null
                             | undefined;
                           sidebarViews?:
@@ -2480,6 +2483,7 @@ export interface StudioToolIO {
                 | undefined;
               draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
+              enabled_plugins?: string[] | null | undefined;
             }
           | null
           | undefined;
@@ -2533,7 +2537,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -2764,7 +2768,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -2986,7 +2990,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3172,7 +3176,6 @@ export interface StudioToolIO {
           | {
               [x: string]: unknown;
               instructions?: string | null | undefined;
-              enabled_plugins?: string[] | null | undefined;
               subAgents?: string[] | null | undefined;
               liveAgentId?: string | null | undefined;
               ui?:
@@ -3203,10 +3206,10 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
+                            | "manual"
                             | "off"
                             | "auto"
                             | "on"
-                            | "manual"
                             | null
                             | undefined;
                           sidebarViews?:
@@ -3349,6 +3352,7 @@ export interface StudioToolIO {
                 | undefined;
               draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
+              enabled_plugins?: string[] | null | undefined;
             }
           | null
           | undefined;
@@ -3410,7 +3414,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3630,7 +3634,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -4720,7 +4724,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"

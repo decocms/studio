@@ -267,6 +267,7 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_PROMPT_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_ITEM_PR_LINK",
+  "TASK_BOARD_PREVIEW_PROBE",
   "TASK_BOARD_ITEM_RERUN",
   "TASK_BOARD_RESOLVE_CONFLICT",
   "TASK_BOARD_REVIEW_DECISION",
@@ -1272,6 +1273,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_PREVIEW_PROBE",
+    description:
+      "Check whether a pull request's deploy preview URL is currently reachable",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_ITEM_RERUN",
     description:
       "Re-run a task with the Super Agent, failing any run still holding it open",
@@ -1474,6 +1481,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_ITEM_PR_LINK",
+      "TASK_BOARD_PREVIEW_PROBE",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",

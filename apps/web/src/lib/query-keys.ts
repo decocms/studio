@@ -46,6 +46,12 @@ export const KEYS = {
   taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-item-prs", itemId] as const,
 
+  // Liveness of one PR's deploy preview URL. Deliberately uncached (see
+  // use-preview-probe) — the key exists only to keep concurrent cards from
+  // probing the same URL twice.
+  previewProbe: (locator: ProjectLocator, url: string) =>
+    [locator, "preview-probe", url] as const,
+
   // A task's change timeline (created, status/assignee changes)
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,

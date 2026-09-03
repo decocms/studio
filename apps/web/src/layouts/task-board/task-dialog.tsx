@@ -108,6 +108,7 @@ import { summarizeTaskCost } from "./task-cost";
 import { prCardActions } from "./pr-card-actions";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
+import { usePreviewProbe } from "@/hooks/use-preview-probe";
 import {
   useTaskBoardActivity,
   type TaskBoardActivity,
@@ -1736,6 +1737,68 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
 }
 
 /**
+ * The "Open preview" button, enabled only once the preview URL actually answers.
+ *
+ * A preview deploy is regularly still building — or already torn down — while
+ * the PR still advertises its URL, so the plain link sent people to a 404. The
+ * status can only be read server-side (CORS makes a cross-origin response
+ * opaque to the browser), so this blocks on `usePreviewProbe` and offers the
+ * link only on a < 400.
+ */
+function PreviewButton({ url }: { url: string }) {
+  const t = useT();
+  const { data, isPending, isError } = usePreviewProbe(url);
+  const available = data?.available ?? false;
+
+  if (isPending) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        disabled
+      >
+        <Spinner className="size-[14px]" />
+        {t("taskBoard.taskDialog.previewLabel")}
+      </Button>
+    );
+  }
+
+  if (!available || isError) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        disabled
+        title={t("taskBoard.taskDialog.previewUnavailableTitle")}
+      >
+        <Globe01 size={14} />
+        {t("taskBoard.taskDialog.previewUnavailable")}
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      asChild
+      type="button"
+      variant="outline"
+      size="sm"
+      className="gap-1.5"
+    >
+      <a href={url} target="_blank" rel="noreferrer">
+        <Globe01 size={14} />
+        {t("taskBoard.taskDialog.previewLabel")}
+        <LinkExternal01 size={12} />
+      </a>
+    </Button>
+  );
+}
+
+/**
  * One PR card: identity + the `#123 ↗` GitHub link, an action row (Edit /
  * preview / ship), and an expandable checks footer that opens each CI check
  * with its GitHub output markdown (fetched for failing runs).
@@ -1826,21 +1889,7 @@ function PrCard({
               {t("taskBoard.taskDialog.openPreviewButton")}
             </Button>
           )}
-          {pr.previewUrl && (
-            <Button
-              asChild
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-            >
-              <a href={pr.previewUrl} target="_blank" rel="noreferrer">
-                <Globe01 size={14} />
-                {t("taskBoard.taskDialog.previewLabel")}
-                <LinkExternal01 size={12} />
-              </a>
-            </Button>
-          )}
+          {pr.previewUrl && <PreviewButton url={pr.previewUrl} />}
           {showShip && (
             <Button
               type="button"
