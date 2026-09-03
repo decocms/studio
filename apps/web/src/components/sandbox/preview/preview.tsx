@@ -1490,6 +1490,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               className="flex h-full shrink-0 items-center pl-1 pr-2"
               onClick={() => setPagesOpen((prev) => !prev)}
               aria-label={t("sandbox.preview.choosePage")}
+              aria-expanded={pagesOpen}
             >
               <ChevronDown
                 size={12}
