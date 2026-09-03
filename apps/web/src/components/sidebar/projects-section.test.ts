@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import type { TaskBoardItem } from "@/layouts/task-board/config";
+import { buildProjectIndex } from "@/lib/project-index";
 import { needsAttention, tasksNeedingMeByProject } from "./projects-section";
 
 const ME = "user_me";
@@ -97,7 +98,7 @@ const A = {
 describe("tasksNeedingMeByProject", () => {
   it("buckets by thread first, then by repo", () => {
     const out = tasksNeedingMeByProject(
-      [A],
+      buildProjectIndex([A]),
       [
         task("viaThread", { assigneeId: ME, virtualMcpId: "p_a" }),
         task("viaRepo", { assigneeId: ME, repo: "ACME/Alpha" }),
@@ -121,16 +122,61 @@ describe("tasksNeedingMeByProject", () => {
         updatedAt: `2026-01-0${i + 1}T00:00:00Z`,
       }),
     );
-    const out = tasksNeedingMeByProject([A], many, ME);
+    const out = tasksNeedingMeByProject(buildProjectIndex([A]), many, ME);
     expect(out.get("p_a")?.map((t) => t.id)).toEqual(["t4", "t3", "t2"]);
   });
 
   it("leaves a project out entirely when nothing needs me", () => {
     const out = tasksNeedingMeByProject(
-      [A],
+      buildProjectIndex([A]),
       [task("theirs", { assigneeId: "other", virtualMcpId: "p_a" })],
       ME,
     );
     expect(out.has("p_a")).toBe(false);
+  });
+
+  describe("two projects over one repository", () => {
+    const mono = (id: string, title: string) =>
+      ({
+        id,
+        title,
+        metadata: {
+          githubRepo: {
+            url: "https://github.com/acme/mono",
+            owner: "acme",
+            name: "mono",
+          },
+        },
+      }) as unknown as VirtualMCPEntity;
+    const M1 = mono("p_m1", "storefront");
+    const M2 = mono("p_m2", "checkout");
+
+    /** REGRESSION. The `Map<repo, project>` this replaced nudged exactly one
+     *  of the two, chosen by iteration order — a silence for the other. */
+    it("nudges both when nothing says which owes the answer", () => {
+      const out = tasksNeedingMeByProject(
+        buildProjectIndex([M1, M2]),
+        [task("shared", { assigneeId: ME, repo: "acme/mono" })],
+        ME,
+      );
+      expect(out.get("p_m1")?.map((t) => t.id)).toEqual(["shared"]);
+      expect(out.get("p_m2")?.map((t) => t.id)).toEqual(["shared"]);
+    });
+
+    it("nudges only the project a run identified", () => {
+      const out = tasksNeedingMeByProject(
+        buildProjectIndex([M1, M2]),
+        [
+          task("ran", {
+            assigneeId: ME,
+            repo: "acme/mono",
+            virtualMcpId: "p_m2",
+          }),
+        ],
+        ME,
+      );
+      expect(out.has("p_m1")).toBe(false);
+      expect(out.get("p_m2")?.map((t) => t.id)).toEqual(["ran"]);
+    });
   });
 });

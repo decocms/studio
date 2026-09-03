@@ -36,8 +36,11 @@ import { track } from "@/lib/posthog-client";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { Link } from "@tanstack/react-router";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { projectRepo } from "@/hooks/use-project-scope";
+import {
+  buildProjectIndex,
+  projectsForTask,
+  type ProjectIndex,
+} from "@/lib/project-index";
 import { SidebarNavRow } from "./nav-row";
 
 /** Nested rows one project shows before the board takes over. */
@@ -69,33 +72,30 @@ export function needsAttention(
 /**
  * Each project with the cards waiting on this person, newest first.
  *
- * Attribution mirrors the org home's feed: a run names the project it ran in,
- * and a card nobody has run yet carries its repo. Pure, and exported for its
- * test.
+ * Attribution is the shared project index — the same rule the org home's feed
+ * reads, where this used to keep a second copy of it. A run names the project
+ * it ran in; a card nobody has run yet carries its repo.
+ *
+ * A card on a repository two projects share is listed under BOTH, because
+ * nothing says which of them owes the answer. The `Map<repo, project>` this
+ * replaces resolved that by iteration order and put the nudge under one
+ * project at random — a silence for whoever was looking at the other.
+ *
+ * Pure, and exported for its test.
  */
 export function tasksNeedingMeByProject(
-  projects: VirtualMCPEntity[],
+  index: ProjectIndex,
   tasks: TaskBoardItem[],
   userId: string | undefined,
 ): Map<string, TaskBoardItem[]> {
-  const byId = new Map(projects.map((p) => [p.id, p] as const));
-  const byRepo = new Map<string, string>();
-  for (const project of projects) {
-    const repo = projectRepo(project);
-    if (repo) byRepo.set(repo.toLowerCase(), project.id);
-  }
-
   const out = new Map<string, TaskBoardItem[]>();
   for (const task of tasks) {
     if (!needsAttention(task, userId)) continue;
-    const viaThread = task.threads.find(
-      (thread) => thread.virtualMcpId && byId.has(thread.virtualMcpId),
-    )?.virtualMcpId;
-    const id = viaThread ?? byRepo.get(task.repo?.toLowerCase() ?? "");
-    if (!id) continue;
-    const bucket = out.get(id);
-    if (bucket) bucket.push(task);
-    else out.set(id, [task]);
+    for (const project of projectsForTask(task, index)) {
+      const bucket = out.get(project.id);
+      if (bucket) bucket.push(task);
+      else out.set(project.id, [task]);
+    }
   }
 
   for (const [id, bucket] of out) {
@@ -180,7 +180,7 @@ export function SidebarProjectsSection({
   if (scopeId || collapsed || projects.length === 0) return null;
 
   const byProject = tasksNeedingMeByProject(
-    projects,
+    buildProjectIndex(projects),
     data?.items ?? [],
     session?.user?.id,
   );

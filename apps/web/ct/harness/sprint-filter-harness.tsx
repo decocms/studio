@@ -5,6 +5,7 @@ import {
   TaskFiltersBar,
   type TaskFilters,
 } from "@/layouts/task-board/task-filters";
+import { buildProjectIndex } from "@/lib/project-index";
 
 /**
  * Fixed sprints, in the order the board is expected to offer them: what's
@@ -57,7 +58,7 @@ export function SprintFilterHarness() {
         filters={filters}
         members={[]}
         tags={[]}
-        repos={[]}
+        index={buildProjectIndex([])}
         sprints={SPRINTS}
         onChange={setFilters}
         onOpenBoardSettings={() => {}}

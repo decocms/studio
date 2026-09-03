@@ -13,7 +13,7 @@ const filters: TaskFilters = {
   priority: "high",
   due: "today",
   tags: ["tag-1", "tag-2"],
-  repo: "acme/site",
+  project: "acme/site",
   sprint: "sprint_abc",
 };
 
@@ -56,20 +56,43 @@ describe("board search params", () => {
 });
 
 /**
- * The scope used to seed `filters.repo`, which made the two indistinguishable
- * and — because the repo filter is exact-match — hid every repo-less card the
- * moment a project was picked. They are separate concepts now: these tests are
- * the inverted form of the ones that encoded the old behaviour.
+ * The ambient scope used to seed the board's own filter, which made the two
+ * indistinguishable and — because that filter is exact-match — hid every
+ * repo-less card the moment a project was picked. They are separate concepts
+ * now: these tests are the inverted form of the ones that encoded the old
+ * behaviour, and they still hold with the filter speaking projects.
  */
-describe("the project scope does not touch the repo filter", () => {
-  test("a scoped route leaves filters.repo null", () => {
-    expect(parseBoardSearch({}).filters.repo).toBeNull();
+describe("the ambient project scope does not touch the board's filter", () => {
+  test("a scoped route leaves filters.project null", () => {
+    expect(parseBoardSearch({}).filters.project).toBeNull();
   });
 
   test("an explicit ?repo= is still the only thing that sets it", () => {
-    expect(parseBoardSearch({ repo: "acme/other" }).filters.repo).toBe(
+    expect(parseBoardSearch({ repo: "acme/other" }).filters.project).toBe(
       "acme/other",
     );
+  });
+});
+
+/**
+ * The URL key stayed `repo` while its value domain widened to project index
+ * bucket ids. Both routes' `validateSearch` enumerate their params and strip
+ * anything else, and every `?repo=owner/name` link already shared has to keep
+ * working — so the key is a contract, and these two cases are it.
+ */
+describe("the ?repo= param carries a bucket id", () => {
+  test("a project's bucket id is written to ?repo=", () => {
+    expect(
+      boardSearchParams({ ...EMPTY_FILTERS, project: "acme/site" }, "board")
+        .repo,
+    ).toBe("acme/site");
+  });
+
+  test("a repo-less project's id round-trips through it too", () => {
+    expect(parseBoardSearch({ repo: "vir_x" }).filters.project).toBe("vir_x");
+    expect(
+      boardSearchParams({ ...EMPTY_FILTERS, project: "vir_x" }, "board").repo,
+    ).toBe("vir_x");
   });
 });
 

@@ -18,7 +18,7 @@ import {
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
 import { getDevAgentIds } from "@/lib/agent-capabilities";
-import { resolveGithubAttachment } from "@/lib/github-repo";
+import { projectRepo } from "@/lib/github-repo";
 
 /** The control renders from the FIRST project: with one there is nothing to
  *  switch between, but its workspace still has to be reachable. Gating this at
@@ -44,15 +44,6 @@ export function scopableProjects(
       !isDecopilot(project.id) &&
       !isStudioPackAgent(project.id),
   );
-}
-
-/** `owner/name` for a project, or null when it has no repository attached. */
-export function projectRepo(
-  project: VirtualMCPEntity | null | undefined,
-): string | null {
-  const attachment = resolveGithubAttachment(project);
-  if (attachment.status === "none") return null;
-  return `${attachment.repo.owner}/${attachment.repo.name}`;
 }
 
 export interface ProjectScope {

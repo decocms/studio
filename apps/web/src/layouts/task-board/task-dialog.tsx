@@ -132,6 +132,8 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections, useProjectContext } from "@/sdk";
+import { useProjectIndex } from "@/hooks/use-project-index";
+import { normalizeRepo, stampableEntries } from "@/lib/project-index";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -434,8 +436,12 @@ function TaskBoardItemEditor({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
-  // The org's repos (which site a task pertains to).
+  /** Which project this task pertains to, offered as the board offers it: one
+   *  list where a repository IS the project that pins it. Only buckets backed
+   *  by a repository can be stamped — `task_board_items.repo` is the whole
+   *  link, so a project pinning nothing has nothing for a card to point at. */
   const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
+  const projectEntries = stampableEntries(useProjectIndex([], repos));
 
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
@@ -452,6 +458,13 @@ function TaskBoardItemEditor({
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
+  /** The project name for the repository this card carries, falling back to
+   *  the repository itself for one no project has claimed. */
+  const selectedProject = repo
+    ? (projectEntries.find(
+        (entry) => normalizeRepo(entry.repo) === normalizeRepo(repo),
+      )?.title ?? repo)
+    : null;
   const taskType = form.type;
   const sprintIndex = useBoardSprintIndex();
   const cardSprint = item?.sprintId
@@ -1365,14 +1378,15 @@ function TaskBoardItemEditor({
             </PropertyGroup>
 
             <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which repo (site) this task pertains to — scopes it to a
-                  site's task pill in the task-based flow. */}
+              {/* Which project this task pertains to. The value persisted is
+                  still the repository — that is the only per-card link there
+                  is — but what you PICK is a project, named as you know it. */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     /* Hugs its label like every other property; the cap is
-                       what keeps a long repo name inside the column. */
+                       what keeps a long project name inside the column. */
                     className={cn(
                       PROPERTY_BUTTON,
                       "max-w-full",
@@ -1381,22 +1395,30 @@ function TaskBoardItemEditor({
                   >
                     <GitHubIcon className="size-4 shrink-0" />
                     <span className="min-w-0 truncate text-left">
-                      {repo ?? t("taskBoard.taskDialog.repoButton")}
+                      {selectedProject ??
+                        t("taskBoard.taskDialog.projectButton")}
                     </span>
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem onSelect={() => patch({ repo: null })}>
-                    {t("taskBoard.taskDialog.noRepo")}
+                    {t("taskBoard.taskDialog.noProject")}
                   </DropdownMenuItem>
-                  {repos.map((r) => (
+                  {projectEntries.map((entry) => (
                     <DropdownMenuItem
-                      key={r}
+                      key={entry.id}
                       className="gap-2"
-                      onSelect={() => patch({ repo: r })}
+                      onSelect={() => patch({ repo: entry.repo })}
                     >
                       <GitHubIcon className="size-4 shrink-0" />
-                      <span className="truncate">{r}</span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{entry.title}</span>
+                        {entry.title !== entry.repo && (
+                          <span className="truncate text-xs text-muted-foreground">
+                            {entry.repo}
+                          </span>
+                        )}
+                      </span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

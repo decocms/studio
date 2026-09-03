@@ -65,3 +65,21 @@ export function getActiveGithubRepo(
     ? attachment.repo
     : null;
 }
+
+/**
+ * `owner/name` for a project, or null when it has no repository attached.
+ *
+ * Lives here, beside `resolveGithubAttachment` whose answer it reads, so the
+ * project index (`lib/project-index.ts`) can join on it without importing a
+ * hook module. Deliberately non-null for `detached` and `public-clone` too: a
+ * project whose connection was deleted still owns its work, and hiding its
+ * cards is a worse answer than listing them under a project whose runs happen
+ * to be unable to boot.
+ */
+export function projectRepo(
+  virtualMcp: VirtualMCPEntity | null | undefined,
+): string | null {
+  const attachment = resolveGithubAttachment(virtualMcp);
+  if (attachment.status === "none") return null;
+  return `${attachment.repo.owner}/${attachment.repo.name}`;
+}
