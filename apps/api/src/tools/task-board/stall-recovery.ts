@@ -196,13 +196,14 @@ export async function recoverStalledTasks(
 ): Promise<void> {
   const organizationId = ctx.organization?.id;
   if (!organizationId) return;
+  const lanes = await boardLanes(ctx, organizationId);
 
   for (const item of items) {
     // First clear any never-started thread blocking this card's gate below.
     // Skipped for a card that isn't parked In Progress: In Review / Done cards
     // are not waiting on a run, and a card a human is actively working has no
     // stuck agent thread to reap.
-    if (item.status === "in_progress") {
+    if (item.status === lanes.progress) {
       try {
         const reaped = await failNeverStartedThreads(ctx, item);
         // `item.threads` is now stale for this card — the statuses the gate
@@ -247,7 +248,7 @@ export async function recoverStalledTasks(
           thread.threadId,
           organizationId,
           ctx.storage.organizationBilling,
-          await boardLanes(ctx, organizationId),
+          lanes,
         );
       } else {
         await nudgeThread(ctx, item, row);
