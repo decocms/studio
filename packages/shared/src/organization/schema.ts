@@ -7,13 +7,16 @@
 
 import { z } from "zod";
 
+// Bounds a single free-text field below, independent of the array/record size caps.
+const MAX_SETTINGS_STRING_LENGTH = 500;
+
 /**
  * Sidebar item schema - matches SidebarItem interface from storage/types.ts
  */
 export const SidebarItemSchema = z.object({
-  title: z.string(),
-  url: z.string(),
-  icon: z.string(),
+  title: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+  url: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+  icon: z.string().max(MAX_SETTINGS_STRING_LENGTH),
 });
 
 export type SidebarItem = z.infer<typeof SidebarItemSchema>;
@@ -26,12 +29,15 @@ export type SidebarItem = z.infer<typeof SidebarItemSchema>;
  */
 export const RegistryConfigSchema = z.object({
   registries: z
-    .record(z.string(), z.object({ enabled: z.boolean() }))
+    .record(
+      z.string().max(MAX_SETTINGS_STRING_LENGTH),
+      z.object({ enabled: z.boolean() }),
+    )
     .describe(
       "Per-registry enabled/disabled state. Key is connection ID. Absent registries are treated as enabled.",
     ),
   blockedMcps: z
-    .array(z.string())
+    .array(z.string().max(MAX_SETTINGS_STRING_LENGTH))
     .describe("List of MCP app_name or app_id values to hide from the store."),
 });
 
@@ -102,7 +108,7 @@ export type UserModelPreferences = z.infer<typeof UserModelPreferencesSchema>;
  */
 export const DefaultHomeAgentsConfigSchema = z.object({
   ids: z
-    .array(z.string())
+    .array(z.string().max(MAX_SETTINGS_STRING_LENGTH))
     .describe(
       "Ordered list of custom virtual MCP agent ids to show on the home view.",
     ),

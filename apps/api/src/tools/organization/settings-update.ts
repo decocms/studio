@@ -15,6 +15,7 @@ const MAX_BLOCKED_MCPS = 500;
 const MAX_DEFAULT_HOME_AGENTS = 100;
 const MAX_ENABLED_PLUGINS = 200;
 const MAX_REGISTRIES = 200;
+const MAX_STRING_LENGTH = 500;
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
@@ -30,18 +31,28 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   inputSchema: z.object({
     organizationId: z.string(),
     sidebar_items: z.array(SidebarItemSchema).max(MAX_SIDEBAR_ITEMS).optional(),
-    enabled_plugins: z.array(z.string()).max(MAX_ENABLED_PLUGINS).optional(),
+    enabled_plugins: z
+      .array(z.string().max(MAX_STRING_LENGTH))
+      .max(MAX_ENABLED_PLUGINS)
+      .optional(),
     registry_config: RegistryConfigSchema.extend({
       registries: z
-        .record(z.string(), z.object({ enabled: z.boolean() }))
+        .record(
+          z.string().max(MAX_STRING_LENGTH),
+          z.object({ enabled: z.boolean() }),
+        )
         .refine((r) => Object.keys(r).length <= MAX_REGISTRIES, {
           message: `registries must have at most ${MAX_REGISTRIES} entries`,
         }),
-      blockedMcps: z.array(z.string()).max(MAX_BLOCKED_MCPS),
+      blockedMcps: z
+        .array(z.string().max(MAX_STRING_LENGTH))
+        .max(MAX_BLOCKED_MCPS),
     }).optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.extend({
-      ids: z.array(z.string()).max(MAX_DEFAULT_HOME_AGENTS),
+      ids: z
+        .array(z.string().max(MAX_STRING_LENGTH))
+        .max(MAX_DEFAULT_HOME_AGENTS),
     }).optional(),
     // .strict() here (not on the shared OrgFlagsSchema) so a mistyped flag
     // name is rejected instead of silently stripped and merged as `{}` —
