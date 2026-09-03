@@ -453,6 +453,106 @@ test("VirtualMCPUpdateDataSchema rejects more than 200 enabled_plugins", () => {
   expect(result.success).toBe(false);
 });
 
+test("VirtualMCPEntitySchema rejects more than 200 enabled_plugins on read", () => {
+  const result = VirtualMCPEntitySchema.safeParse({
+    id: "x",
+    title: "x",
+    description: null,
+    icon: null,
+    created_at: "t",
+    updated_at: "t",
+    created_by: "u",
+    organization_id: "o",
+    status: "active",
+    pinned: false,
+    metadata: {
+      instructions: null,
+      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
+    },
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPEntitySchema rejects more than 200 subAgents", () => {
+  const result = VirtualMCPEntitySchema.safeParse({
+    id: "x",
+    title: "x",
+    description: null,
+    icon: null,
+    created_at: "t",
+    updated_at: "t",
+    created_by: "u",
+    organization_id: "o",
+    status: "active",
+    pinned: false,
+    metadata: {
+      instructions: null,
+      subAgents: Array.from({ length: 201 }, (_, i) => `agent-${i}`),
+    },
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPEntitySchema rejects more than 50 releases", () => {
+  const result = VirtualMCPEntitySchema.safeParse({
+    id: "x",
+    title: "x",
+    description: null,
+    icon: null,
+    created_at: "t",
+    updated_at: "t",
+    created_by: "u",
+    organization_id: "o",
+    status: "active",
+    pinned: false,
+    metadata: {
+      instructions: null,
+      releases: Array.from({ length: 51 }, (_, i) => ({
+        branch: `release-${i}`,
+        name: `Release ${i}`,
+        color: "#000000",
+      })),
+    },
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 100 knowledge files", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: [],
+    metadata: {
+      knowledge: Array.from({ length: 101 }, (_, i) => ({
+        id: `file-${i}`,
+        name: `Doc ${i}`,
+        volume: "lib",
+        path: `/doc${i}.md`,
+        url: `https://example.com/doc${i}.md`,
+        addedAt: new Date().toISOString(),
+      })),
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects more than 100 runtime env vars", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      runtime: {
+        env: Array.from({ length: 101 }, (_, i) => ({
+          key: `VAR_${i}`,
+          kind: "literal" as const,
+          value: `value${i}`,
+        })),
+      },
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
 test("SandboxRecord.startedWith is optional with nullable packageManager/port/path", () => {
   const a = SandboxRecordSchema.parse({ sandboxHandle: "v", previewUrl: null });
   expect(a.startedWith).toBeUndefined();

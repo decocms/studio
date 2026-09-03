@@ -52,6 +52,33 @@ const CONNECTIONS_MAX = 200;
  *  payload size, not a real agent config. */
 const ENABLED_PLUGINS_MAX = 200;
 
+/** Cap on how many sub-agent IDs this agent can delegate to. */
+const SUBAGENTS_MAX = 200;
+
+/** Cap on home tiles per agent. */
+const HOME_TILES_MAX = 20;
+
+/** Cap on home prompts (icebreakers) per agent. */
+const HOME_PROMPTS_MAX = 50;
+
+/** Cap on pinned tool views per agent. */
+const PINNED_VIEWS_MAX = 100;
+
+/** Cap on UI layout tabs per agent. */
+const TABS_MAX = 20;
+
+/** Cap on knowledge files attached to an agent. */
+const KNOWLEDGE_MAX = 100;
+
+/** Cap on releases (named branches) per agent. */
+const RELEASES_MAX = 50;
+
+/** Cap on runtime env vars injected per sandbox. */
+const RUNTIME_ENV_MAX = 100;
+
+/** Cap on git submodule credentials per sandbox. */
+const SUBMODULE_CREDENTIALS_MAX = 50;
+
 /**
  * Virtual MCP connection schema for input (Create/Update) - fields can be optional
  */
@@ -200,12 +227,13 @@ export const VirtualMcpUILayoutSchema = z.object({
    *  top-level metadata field. */
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
+    .max(10)
     .nullable()
     .optional()
     .describe(
       "Deprecated layout-scoped sidebar selections. Read only as a fallback when metadata.sidebarViews is absent.",
     ),
-  tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
+  tabs: z.array(VirtualMcpUILayoutTabSchema).max(TABS_MAX).optional(),
 });
 
 export type VirtualMcpUILayout = z.infer<typeof VirtualMcpUILayoutSchema>;
@@ -305,7 +333,11 @@ const VirtualMcpUISchema = z.object({
   bannerColor: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),
   themeColor: z.string().nullable().optional(),
-  pinnedViews: z.array(VirtualMcpPinnedViewSchema).nullable().optional(),
+  pinnedViews: z
+    .array(VirtualMcpPinnedViewSchema)
+    .max(PINNED_VIEWS_MAX)
+    .nullable()
+    .optional(),
   layout: VirtualMcpUILayoutSchema.nullable().optional(),
   /**
    * Legacy single-tile slot. Still honored by the home-next-actions
@@ -319,7 +351,11 @@ const VirtualMcpUISchema = z.object({
    * the org home board, rendered via MCPAppRenderer against the
    * resource's owning connection.
    */
-  homeTiles: z.array(VirtualMcpHomeTileSchema).nullable().optional(),
+  homeTiles: z
+    .array(VirtualMcpHomeTileSchema)
+    .max(HOME_TILES_MAX)
+    .nullable()
+    .optional(),
   /**
    * Curated list of prompt names to surface on the home board. When
    * absent / null, the BE falls back to listing every prompt the
@@ -327,7 +363,7 @@ const VirtualMcpUISchema = z.object({
    * array means "no prompts" — useful for an agent that only wants to
    * surface its UI tiles.
    */
-  homePrompts: z.array(z.string()).nullable().optional(),
+  homePrompts: z.array(z.string()).max(HOME_PROMPTS_MAX).nullable().optional(),
 });
 
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
@@ -441,6 +477,7 @@ const RuntimeMetadataSchema = z.object({
     ),
   env: z
     .array(RuntimeEnvEntrySchema)
+    .max(RUNTIME_ENV_MAX)
     .nullable()
     .optional()
     .describe(
@@ -448,6 +485,7 @@ const RuntimeMetadataSchema = z.object({
     ),
   submoduleCredentials: z
     .array(SubmoduleCredentialSchema)
+    .max(SUBMODULE_CREDENTIALS_MAX)
     .nullable()
     .optional()
     .describe(
@@ -675,6 +713,7 @@ export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
  */
 const knowledgeMetadataField = z
   .array(KnowledgeFileSchema)
+  .max(KNOWLEDGE_MAX)
   .nullable()
   .optional()
   .describe(
@@ -776,6 +815,7 @@ export type Release = z.infer<typeof ReleaseSchema>;
 
 const releasesMetadataField = z
   .array(ReleaseSchema)
+  .max(RELEASES_MAX)
   .nullable()
   .optional()
   .describe(
@@ -803,11 +843,13 @@ const VirtualMcpMetadataFields = {
     .describe("Instructions also used as system prompt"),
   enabled_plugins: z
     .array(z.string())
+    .max(ENABLED_PLUGINS_MAX)
     .nullable()
     .optional()
     .describe("List of enabled plugin IDs"),
   subAgents: z
     .array(z.string())
+    .max(SUBAGENTS_MAX)
     .nullable()
     .optional()
     .describe(
