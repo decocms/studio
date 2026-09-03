@@ -134,4 +134,18 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("rejects an oversized registries record on registry_config", () => {
+    // Regression: registries was the one sibling collection left uncapped.
+    const registries = Object.fromEntries(
+      Array.from({ length: 201 }, (_, i) => [`conn-${i}`, { enabled: true }]),
+    );
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        registry_config: { registries, blockedMcps: [] },
+      }).success,
+    ).toBe(false);
+  });
 });

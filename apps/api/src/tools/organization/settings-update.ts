@@ -14,6 +14,7 @@ const MAX_SIDEBAR_ITEMS = 50;
 const MAX_BLOCKED_MCPS = 500;
 const MAX_DEFAULT_HOME_AGENTS = 100;
 const MAX_ENABLED_PLUGINS = 200;
+const MAX_REGISTRIES = 200;
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
@@ -31,6 +32,11 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     sidebar_items: z.array(SidebarItemSchema).max(MAX_SIDEBAR_ITEMS).optional(),
     enabled_plugins: z.array(z.string()).max(MAX_ENABLED_PLUGINS).optional(),
     registry_config: RegistryConfigSchema.extend({
+      registries: z
+        .record(z.string(), z.object({ enabled: z.boolean() }))
+        .refine((r) => Object.keys(r).length <= MAX_REGISTRIES, {
+          message: `registries must have at most ${MAX_REGISTRIES} entries`,
+        }),
       blockedMcps: z.array(z.string()).max(MAX_BLOCKED_MCPS),
     }).optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
