@@ -41,19 +41,56 @@ export function findReusableNewChat(
   );
 }
 
-/** Thread to land on when *entering* an agent: a `hasBranch` agent resumes its last real thread (last branch worked on); else reuse the empty chat, then `undefined` (caller mints a fresh id). */
+export interface AgentEntryOpts {
+  /** Production ∪ named-release branches — the versions a thread can resume to. */
+  knownBranches?: ReadonlySet<string>;
+  /** Drafts mode never resumes an unnamed draft: a named version or production, else nothing (caller mints a fresh production thread). */
+  draftsMode?: boolean;
+}
+
+/**
+ * Thread to land on when *entering* an agent.
+ *
+ * A `hasBranch` agent's thread branch is only a *named version* (a release or
+ * production) if it was promoted — a fresh thread mints an unnamed auto-generated
+ * branch the drafts picker can only render as a "Rascunho". So we first prefer
+ * the last thread on one of `knownBranches`, restoring the version the user was
+ * editing.
+ *
+ * In `draftsMode` an unnamed draft is never editable: if no thread sits on a
+ * named version we return `undefined` so the caller mints a fresh thread on
+ * production. Otherwise (legacy branch/PR mode) we fall back to the raw last
+ * thread, then the empty chat, then `undefined`.
+ *
+ * A branchless agent (Super Agent) keeps reusing the empty chat, so re-entry
+ * doesn't pile up duplicate empty threads.
+ */
 export function findAgentEntryThread(
   threads: Task[],
   agentId: string,
   userId: string | undefined,
   expectedRuntime: ThreadRuntime | undefined,
   hasBranch: boolean,
+  opts?: AgentEntryOpts,
 ): Task | undefined {
-  if (hasBranch) {
-    return (
-      findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??
-      findReusableNewChat(threads, agentId, userId, expectedRuntime)
-    );
+  if (!hasBranch) {
+    return findReusableNewChat(threads, agentId, userId, expectedRuntime);
   }
-  return findReusableNewChat(threads, agentId, userId, expectedRuntime);
+  const known = opts?.knownBranches;
+  const onNamedVersion =
+    known && known.size > 0
+      ? (findLastThreadForAgent(
+          threads,
+          agentId,
+          userId,
+          expectedRuntime,
+          known,
+        ) ?? undefined)
+      : undefined;
+  if (opts?.draftsMode) return onNamedVersion;
+  return (
+    onNamedVersion ??
+    findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??
+    findReusableNewChat(threads, agentId, userId, expectedRuntime)
+  );
 }

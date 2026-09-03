@@ -62,6 +62,10 @@ import {
 } from "@/hooks/use-layout-state";
 import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
 import { getActiveGithubRepo } from "@/lib/github-repo";
+import {
+  draftsModeEnabled,
+  useBaseBranch,
+} from "@/components/thread/github/use-version-gate";
 import { useT } from "@/i18n/use-t.ts";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
@@ -572,12 +576,33 @@ function AgentInsetProvider() {
     threadManager.threads.subscribe,
     threadManager.threads.get,
   );
+  const threadsStatus = useSyncExternalStore(
+    threadManager.threadsStatus.subscribe,
+    threadManager.threadsStatus.get,
+  );
+
+  // Fetch entity (Suspense-based — resolved before render)
+  const entity = useVirtualMCP(virtualMcpId);
+
+  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const isDraftsMode = draftsModeEnabled(entity);
+  // Production + named releases: the versions entry can restore to (see findAgentEntryThread).
+  const baseBranch = useBaseBranch(entity, null);
+  const namedVersionBranches = new Set<string>([
+    baseBranch,
+    ...(entity?.metadata?.releases ?? []).map((r) => r.branch),
+  ]);
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
   // "Creating task…" state until the row is persisted. Without this the
   // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(routeThreadId, virtualMcpId);
+  const ensureState = useEnsureTask(
+    routeThreadId,
+    virtualMcpId,
+    // Drafts mode: a freshly minted thread lands on production, never an unnamed draft.
+    isDraftsMode ? baseBranch : undefined,
+  );
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
   // sandboxMap bound by load_repo after the panel snapshot) so the preview
@@ -587,9 +612,6 @@ function AgentInsetProvider() {
     ensureState.status === "ready" ? ensureState.task : null,
   );
 
-  // Fetch entity (Suspense-based — resolved before render)
-  const entity = useVirtualMCP(virtualMcpId);
-
   const layoutMetadata = entity?.metadata?.ui?.layout ?? null;
   const entityMetadata = layoutMetadata
     ? {
@@ -598,7 +620,6 @@ function AgentInsetProvider() {
       }
     : null;
 
-  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
   const layout = useWorkspaceLayoutState(entityMetadata, {
     virtualMcpId,
     isAgentRoute: true,
@@ -624,6 +645,21 @@ function AgentInsetProvider() {
    * Super Agent (no repo) keeps its lazy threadless composer.
    */
   if (routeThreadId === null && hasActiveGithubRepo) {
+    // Wait for the first thread page: resolving against an empty list would mint a fresh production thread and drop the user off their version.
+    if (threadsStatus.kind === "loading") {
+      return (
+        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
+          >
+            <Spinner className="size-4 mr-2" />
+            {t("agentShellLayout.agentShellLayout.creatingTask")}
+          </div>
+        </div>
+      );
+    }
     // Resume the last branch for this repo-backed agent, else its empty chat, else mint one.
     const threadId =
       findAgentEntryThread(
@@ -632,6 +668,7 @@ function AgentInsetProvider() {
         session?.user?.id,
         defaultThreadRuntime(entity.metadata),
         hasActiveGithubRepo,
+        { knownBranches: namedVersionBranches, draftsMode: isDraftsMode },
       )?.id ?? generatedThreadId;
     return (
       <Navigate

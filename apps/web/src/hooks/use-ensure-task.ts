@@ -44,7 +44,14 @@ type State =
   | { status: "ready"; task: Task | null }
   | { status: "error"; error: Error };
 
-export function useEnsureTask(id: string | null, virtualMcpId: string): State {
+export function useEnsureTask(
+  id: string | null,
+  virtualMcpId: string,
+  /** Branch to stamp when this hook has to CREATE the row (drafts mode lands a
+   *  fresh entry thread on production instead of an auto-minted unnamed draft).
+   *  Ignored for existing rows and overridden by an explicit parked intent. */
+  defaultBranch?: string,
+): State {
   const manager = useThreadManager();
   const { locator } = useProjectContext();
   const threads = useSyncExternalStore(
@@ -104,6 +111,8 @@ export function useEnsureTask(id: string | null, virtualMcpId: string): State {
       manager.create({
         id: taskId,
         virtual_mcp_id: virtualMcpId,
+        // Default branch first so an explicit parked intent still wins below.
+        ...(defaultBranch ? { branch: defaultBranch } : {}),
         // What the failed create asked for; the runtime it stamps is permanent.
         ...claimThreadIntent(sessionStorage, locator, taskId),
       }),

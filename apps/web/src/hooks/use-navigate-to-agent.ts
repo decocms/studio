@@ -20,6 +20,10 @@ import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import {
+  draftsModeEnabled,
+  useBaseBranch,
+} from "@/components/thread/github/use-version-gate";
+import {
   defaultThreadRuntime,
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
@@ -53,6 +57,8 @@ export function useNavigateToAgent() {
    *  re-rendered every sidebar row for a value nothing renders, and the
    *  snapshot a click needs is the one at the click. */
   const manager = useOptionalThreadManager();
+  /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
+  const baseBranch = useBaseBranch(undefined, null);
 
   /** The navigation proper, once the wanted runtime is known. */
   const go = (
@@ -72,6 +78,13 @@ export function useNavigateToAgent() {
       wantedRuntime ??
         (target ? defaultThreadRuntime(target.metadata) : undefined),
       !!(target && getActiveGithubRepo(target)),
+      {
+        knownBranches: new Set<string>([
+          baseBranch,
+          ...(target?.metadata?.releases ?? []).map((r) => r.branch),
+        ]),
+        draftsMode: draftsModeEnabled(target),
+      },
     );
     const taskId = entry?.id ?? crypto.randomUUID();
     /** Park the runtime for the create the route loader will run. Only for a
