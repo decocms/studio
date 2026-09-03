@@ -127,7 +127,7 @@ export const settings = {
   "settings.repositories.disconnected": "Account disconnected",
   "settings.repositories.tokenDialogTitle": "Connect GitLab with a token",
   "settings.repositories.tokenDialogDescription":
-    "Use a personal access token with the read_api and read_repository scopes. It is stored encrypted and never shown again.",
+    "Use a personal, project or group access token with the api scope — agents push branches and open merge requests with it. Stored encrypted and never shown again.",
   "settings.repositories.tokenHostLabel": "Host",
   "settings.repositories.tokenHostPlaceholder": "gitlab.com",
   "settings.repositories.tokenLabel": "Access token",

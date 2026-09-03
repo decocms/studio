@@ -14,6 +14,7 @@ import type { Kysely } from "kysely";
 import { cloneUrlFor, type RepoRef } from "@decocms/shared/git-providers";
 import type { CredentialVault } from "@/encryption/credential-vault";
 import {
+  canRefresh,
   getValidDownstreamAccessToken,
   type OAuthGrantStore,
 } from "@/oauth/token-refresh";
@@ -57,6 +58,16 @@ export function getGithubAppAuth(): GithubAppAuth | null {
   return appAuthSingleton;
 }
 
+/**
+ * A token source over a stored grant.
+ *
+ * `forceRefresh` is honoured only for a grant that can actually be refreshed.
+ * A personal or project access token has no refresh token and no expiry: for
+ * it, "force" would send `getValidDownstreamAccessToken` down its
+ * `expired_without_refresh` branch and yield null — which is how a caller that
+ * always asks for a fresh credential (SANDBOX_START, before baking one into a
+ * clone URL) would fail every long-lived token.
+ */
 function grantTokenSource(
   store: OAuthGrantStore,
   grantKey: string,
@@ -65,11 +76,13 @@ function grantTokenSource(
   return {
     kind,
     async get(opts?: TokenOptions) {
+      const stored = opts?.forceRefresh ? await store.get(grantKey) : null;
       const result = await getValidDownstreamAccessToken({
         connectionId: grantKey,
         tokenStorage: store,
         bufferMs: opts?.bufferMs,
-        force: opts?.forceRefresh,
+        force:
+          opts?.forceRefresh === true && stored !== null && canRefresh(stored),
       });
       if (!result.accessToken) return null;
       return { token: result.accessToken, kind, expiresAt: null };

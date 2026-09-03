@@ -132,7 +132,7 @@ export const settings = {
   "settings.repositories.disconnected": "Conta desconectada",
   "settings.repositories.tokenDialogTitle": "Conectar o GitLab com um token",
   "settings.repositories.tokenDialogDescription":
-    "Use um token de acesso pessoal com os escopos read_api e read_repository. Ele é guardado criptografado e não é exibido novamente.",
+    "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api — os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
   "settings.repositories.tokenHostLabel": "Host",
   "settings.repositories.tokenHostPlaceholder": "gitlab.com",
   "settings.repositories.tokenLabel": "Token de acesso",

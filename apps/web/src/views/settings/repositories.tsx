@@ -674,11 +674,9 @@ function AccountsSection({
 }
 
 function RepositoriesSection({
-  accounts,
   onAdd,
   onUnlink,
 }: {
-  accounts: GitAccount[];
   onAdd: () => void;
   onUnlink: (repository: Repository) => void;
 }) {
@@ -714,7 +712,7 @@ function RepositoriesSection({
               {t("settings.repositories.reposEmptyDescription")}
             </p>
           </div>
-          <Button size="sm" onClick={onAdd} disabled={accounts.length === 0}>
+          <Button size="sm" onClick={onAdd}>
             <Plus size={14} />
             {t("settings.repositories.addRepository")}
           </Button>
@@ -782,7 +780,6 @@ function RepositoriesContent() {
       />
 
       <RepositoriesSection
-        accounts={accounts.data ?? []}
         onAdd={() => setAddOpen(true)}
         onUnlink={setPendingRepository}
       />
