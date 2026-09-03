@@ -45,14 +45,9 @@ import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
-  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
-import {
-  resolveBlocksTabState,
-  toBlocksQueryState,
-} from "@/layouts/main-panel-tabs/blocks-tab-state";
 import {
   fillPathTemplate,
   normalizePagePath,
@@ -452,32 +447,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   });
   const decofile = decofileQuery.data;
   const meta = metaQuery.data;
-  // Same readiness classification the CMS panel itself uses. We only auto-open
-  // the CMS once this resolves to "content" (metadata loaded AND there is
-  // editable content) so the panel never opens onto a loading/empty/error card.
-  // Sticky per repo+branch; see `frameworkKnownMissing`.
-  const frameworkMissingKey = `${virtualMcpId}:${branch ?? ""}`;
-  // Remembered across renders as state (not a ref): the classification feeds the
-  // render, so it has to re-run when we learn the framework is absent. Storing
-  // the key rather than a boolean makes a repo/branch switch reset it for free.
-  const [frameworkMissingProvenFor, setFrameworkMissingProvenFor] = useState<
-    string | null
-  >(null);
-  const blocksState = resolveBlocksTabState({
-    lifecyclePhase,
-    decofile: toBlocksQueryState(decofileQuery),
-    meta: toBlocksQueryState(metaQuery),
-    hasEditableContent: hasEditableDecoContent(decofile, meta),
-    fastPreviewActive: fastPreviewEnabled,
-    frameworkKnownMissing: frameworkMissingProvenFor === frameworkMissingKey,
-  });
-  if (
-    blocksState.kind === "empty" &&
-    blocksState.reason === "framework-missing" &&
-    frameworkMissingProvenFor !== frameworkMissingKey
-  ) {
-    setFrameworkMissingProvenFor(frameworkMissingKey);
-  }
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
     : [];
@@ -1395,14 +1364,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const showPreviewToolbar =
     previewSurfaceActive && (daemonReady || display.mode === "production");
 
-  /** The page selector is for a CMS session on a proven deco site. A sandbox
-   *  session previews an arbitrary app with no decofile to navigate, so the
-   *  topbar shows the iframe's domain instead — see the toolbar below.
-   *  `showCmsPageSelector` keeps its veto so the selector never degrades into
-   *  listing a raw preview host. */
-  const pageSelectorVisible =
-    session.runtime === "cms" &&
-    showCmsPageSelector({ showPreviewToolbar, blocksState });
+  /** The page selector shares the exact project-level gate used by Content and
+   *  Blocks. Session runtime and metadata readiness do not change the topbar's
+   *  shape; the selector can expose setup/creation flows while data loads. */
+  const pageSelectorVisible = showCmsPageSelector({
+    showPreviewToolbar,
+    contentEditingEnabled,
+  });
 
   /** Refresh · what-the-frame-is-showing · open-in-new, kept as one block so
    *  desktop can put it in the header's centre slot and mobile in its own. The
@@ -1425,13 +1393,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       </Tooltip>
 
       {/* The topbar always names what the iframe is showing; only HOW differs
-          by runtime. A CMS session gets the page selector — page name, editable
-          `:param` segments, and the dropdown that also hosts "Create page". A
-          sandbox session is previewing an arbitrary app with no decofile to
-          navigate, so it gets the iframe's domain as plain text and nothing to
-          click. `showCmsPageSelector` still has the final say, so a CMS session on a
-          repo that proves it has no deco framework degrades to the label rather
-          than to a selector listing a raw preview host. */}
+          by the shared content-editing gate. Enabled projects get the page
+          selector — page name, editable `:param` segments, and the dropdown
+          that also hosts "Create page". Disabled projects get the iframe's
+          domain as plain text. */}
       {pageSelectorVisible ? (
         <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
           <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">

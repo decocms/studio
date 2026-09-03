@@ -77,11 +77,6 @@ export function BlocksPanel({
     : null;
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
-  // No `frameworkKnownMissing` here on purpose: the sticky bit exists to stop
-  // Preview's page selector flickering on transient read failures.
-  // This panel is already open, and showing the accurate "we couldn't read the
-  // decofile" card for a real failure is more useful than pinning it to the
-  // framework-missing card.
   const state = resolveBlocksTabState({
     lifecyclePhase: sandboxEvents.lifecycle.phase,
     decofile: toBlocksQueryState(decofile),
@@ -90,8 +85,14 @@ export function BlocksPanel({
     fastPreviewActive: useSessionRuntime(virtualMcpId).runtime === "cms",
   });
 
-  if (state.kind === "loading") return <PanelLoading />;
-  if (state.kind === "empty") return <BlocksEmptyState />;
+  const panel = (children: ReactNode) => (
+    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
+      {children}
+    </div>
+  );
+
+  if (state.kind === "loading") return panel(<PanelLoading />);
+  if (state.kind === "empty") return panel(<BlocksEmptyState />);
   if (state.kind === "error") {
     const retry = () => {
       if (state.source === "sandbox") {
@@ -100,21 +101,20 @@ export function BlocksPanel({
       }
       void Promise.all([decofile.refetch(), meta.refetch()]);
     };
-    return <BlocksErrorState source={state.source} onRetry={retry} />;
+    return panel(<BlocksErrorState source={state.source} onRetry={retry} />);
   }
 
   // On production the editor stays visible but read-only per widget.
-  const gateReadOnly = (children: ReactNode) => (
-    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
+  const gateReadOnly = (children: ReactNode) =>
+    panel(
       <ReadOnlyPane
         readOnly={readOnly}
         virtualMcpId={virtualMcpId}
         className="h-full min-h-0"
       >
         {children}
-      </ReadOnlyPane>
-    </div>
-  );
+      </ReadOnlyPane>,
+    );
 
   // Blocks edits whatever page its sibling Preview canvas is on. The shared
   // workspace target is published by Preview; when Preview hasn't run yet,
