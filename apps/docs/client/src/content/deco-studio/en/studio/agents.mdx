@@ -16,7 +16,7 @@ An agent has:
 - **The right tools** — only what it needs, attached from your [connections](/en/studio/connections)
 - **Detailed instructions** — how to behave, what to prioritize, what to avoid
 - **A thread history** — every past conversation with it, saved and resumable
-- **A layout** — what the user sees when they open the agent, plus any pinned views surfaced from its connected tools
+- **A layout** — the default main view, plus which available project and pinned MCP-app views appear in the sidebar
 - **An optional sandbox** — an isolated runtime where the agent can run code from a linked repo (its own MCP server, a dev server, etc.)
 - **Optional automations** — schedules or event triggers that run the agent unattended
 
@@ -24,18 +24,11 @@ You reach an agent from the home grid, the thread list in the sidebar, or the **
 
 ## The agent screen
 
-When you open an agent, the screen splits in two:
+When you open an agent, its durable navigation lives in the project section of the sidebar and the workspace can split in two:
 
+- **Sidebar — project views.** In **Layout**, choose whether Home, Reports, Tasks, Site Editor, Automations, and any available Assets, Hosting, E2E, Deco Analytics, Monitor, or pinned MCP-app view appears here. Selecting one opens it as the main view; these destinations do not also appear as top-level panel tabs.
 - **Left — chat.** Talk to the agent in natural language; it uses its attached tools to do the work. Your past messages and threads with this agent live here. Above the input are the **model-tier picker** (Fast, Smart, Thinking — see [AI Providers](/en/studio/ai-providers)) and the **runtime picker** (see [Where an agent runs](#where-an-agent-runs)).
-- **Right — a tabbed panel.** Which tabs appear depends on what the agent is:
-
-| Tab | When it appears |
-|---|---|
-| **Settings** | Whenever you can manage agents — name, description, icon, instructions, attached connections, files & skills, and **layout** (the default view, plus pinned views from tools that expose an interactive UI) |
-| **Automations** | Always — schedules and event triggers attached to this agent |
-| **Preview** | When the agent is backed by a clonable repo or site — a live preview of what it builds |
-| **Content** | When that repo exposes editable pages or sections — edit content inline |
-| **Review changes** | When the agent is linked to a GitHub repo **and has an open pull request** — review the branch and its diff |
+- **Right — main view.** This is the view selected from the sidebar or configured as the project's default. A view can still have its own contextual tabs — for example Preview, Content, and Code inside Site Editor — and temporary output from a chat can appear here without becoming permanent sidebar navigation.
 
 A Git-backed agent also shows a **branch selector** beside the runtime picker, and a **sandbox status** indicator while its environment boots.
 
@@ -43,7 +36,9 @@ Everything about a single agent lives on this one screen.
 
 ### Layout and pinned views
 
-Some connections expose more than tools — they ship an interactive UI (a dashboard, a form, a data explorer) alongside their MCP endpoint. In the agent's **Layout** settings, you can pin any of those views so they appear as top-level tabs inside the agent. This is how an agent turns into a small purpose-built app, not just a chat.
+The agent's **Layout** settings independently control its default main view and sidebar entries. Projects that have not saved sidebar preferences start with Home, Reports, Tasks, and Site Editor when those views are present; Automations and other available views start off until enabled. Studio only offers a built-in project view when that view is present for the project: source-backed views require a repository or template, Assets needs an associated asset store, and Hosting, E2E, Deco Analytics, and Monitor depend on the site's available services. A present view is available in the **Main view** selector whether or not its sidebar switch is enabled. The switch only adds or removes that durable entry from the project sidebar.
+
+Some connections expose more than tools — they ship an interactive UI (a dashboard, a form, a data explorer) alongside their MCP endpoint. You can pin any of those views in **Layout**. A pinned view follows the same model: it becomes a selectable project-sidebar entry and an eligible default main view. This is how an agent turns into a small purpose-built app, not just a chat.
 
 These views come from **MCP apps**.
 
@@ -54,7 +49,7 @@ An **MCP app** is the way to extend Studio today. It's a regular MCP server that
 - **Tools** — the actions an agent can take
 - **Views** — React UIs (a page, a panel, a dashboard) shipped as resources, linked to specific tools via `_meta.ui.resourceUri`
 
-When an MCP app is installed as a connection, Studio knows which views belong to which tools. Pin a view in the agent's Layout and it surfaces as a tab in the agent — clicking a relevant tool result, or opening the tab directly, loads the view inline. Two-way communication between the chat and the view is handled by Studio.
+When an MCP app is installed as a connection, Studio knows which views belong to which tools. Pin a view in the agent's Layout and it surfaces as a project-sidebar entry — clicking a relevant tool result, or selecting that entry, loads the view inline. Two-way communication between the chat and the view is handled by Studio.
 
 Authoring an MCP app uses the `@decocms/runtime` framework (React 19 + Tailwind + shadcn, built to a single HTML file with Vite). The reference template — including project structure, build setup, and examples of tools-with-views — lives at [github.com/decocms/mcp-app](https://github.com/decocms/mcp-app).
 

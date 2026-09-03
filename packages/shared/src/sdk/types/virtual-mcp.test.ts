@@ -4,7 +4,9 @@ import {
   SandboxMapSchema,
   VirtualMCPEntitySchema,
   VirtualMCPCreateDataSchema,
+  VirtualMcpSidebarViewSchema,
   VirtualMcpUILayoutSchema,
+  type VirtualMcpUILayout,
   VirtualMCPUpdateDataSchema,
   SandboxRecordSchema,
   parseBranchMap,
@@ -47,6 +49,7 @@ describe("withCmsMode", () => {
     const layout = {
       chatDefaultOpen: true,
       defaultMainView: { type: "site-editor" },
+      sidebarViews: ["assets", "cdn"],
       tabs: [
         {
           id: "analytics",
@@ -54,10 +57,11 @@ describe("withCmsMode", () => {
           view: { type: "ext-app" as const, appId: "app_abc" },
         },
       ],
-    };
+    } satisfies VirtualMcpUILayout;
     const next = withCmsMode(layout, "on");
     expect(next.chatDefaultOpen).toBe(true);
     expect(next.defaultMainView).toEqual({ type: "site-editor" });
+    expect(next.sidebarViews).toEqual(["assets", "cdn"]);
     expect(next.tabs).toEqual(layout.tabs);
   });
 
@@ -182,6 +186,148 @@ describe("VirtualMcpUILayoutSchema tabs", () => {
       ],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("VirtualMcpUILayoutSchema deprecated sidebarViews fallback", () => {
+  const sidebarViews = [
+    "overview",
+    "reports",
+    "board",
+    "site-editor",
+    "automations",
+    "assets",
+    "hosting",
+    "e2e",
+    "analytics",
+    "cdn",
+  ] as const;
+
+  it("round-trips every project sidebar view", () => {
+    const parsed = VirtualMcpUILayoutSchema.parse({
+      sidebarViews: [...sidebarViews],
+    });
+
+    expect(parsed.sidebarViews).toEqual([...sidebarViews]);
+    for (const view of sidebarViews) {
+      expect(VirtualMcpSidebarViewSchema.parse(view)).toBe(view);
+    }
+  });
+
+  it("accepts omitted, null, and empty values for existing projects", () => {
+    expect(VirtualMcpUILayoutSchema.parse({}).sidebarViews).toBeUndefined();
+    expect(
+      VirtualMcpUILayoutSchema.parse({ sidebarViews: null }).sidebarViews,
+    ).toBeNull();
+    expect(
+      VirtualMcpUILayoutSchema.parse({ sidebarViews: [] }).sidebarViews,
+    ).toEqual([]);
+  });
+
+  it("rejects unknown sidebar views", () => {
+    expect(
+      VirtualMcpUILayoutSchema.safeParse({
+        sidebarViews: ["assets", "unknown"],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("metadata.sidebarViews", () => {
+  const sidebarViews = [
+    "overview",
+    "reports",
+    "board",
+    "site-editor",
+    "automations",
+    "assets",
+    "hosting",
+    "e2e",
+    "analytics",
+    "cdn",
+  ] as const;
+
+  it("round-trips every project sidebar view on an entity", () => {
+    const parsed = VirtualMCPEntitySchema.parse({
+      id: "x",
+      title: "x",
+      description: null,
+      icon: null,
+      created_at: "t",
+      updated_at: "t",
+      created_by: "u",
+      organization_id: "o",
+      status: "active",
+      pinned: false,
+      metadata: {
+        instructions: null,
+        sidebarViews: [...sidebarViews],
+        sidebarViewsVersion: 1,
+      },
+      connections: [],
+    });
+
+    expect(parsed.metadata.sidebarViews).toEqual([...sidebarViews]);
+    expect(parsed.metadata.sidebarViewsVersion).toBe(1);
+    for (const view of sidebarViews) {
+      expect(VirtualMcpSidebarViewSchema.parse(view)).toBe(view);
+    }
+  });
+
+  it("round-trips through create and update inputs", () => {
+    const created = VirtualMCPCreateDataSchema.parse({
+      title: "x",
+      metadata: {
+        sidebarViews: ["overview", "site-editor", "assets", "analytics"],
+        sidebarViewsVersion: 1,
+      },
+      connections: [],
+    });
+    const updated = VirtualMCPUpdateDataSchema.parse({
+      metadata: {
+        sidebarViews: ["reports", "board", "automations", "hosting", "cdn"],
+        sidebarViewsVersion: 1,
+      },
+    });
+
+    expect(created.metadata?.sidebarViews).toEqual([
+      "overview",
+      "site-editor",
+      "assets",
+      "analytics",
+    ]);
+    expect(created.metadata?.sidebarViewsVersion).toBe(1);
+    expect(updated.metadata?.sidebarViews).toEqual([
+      "reports",
+      "board",
+      "automations",
+      "hosting",
+      "cdn",
+    ]);
+    expect(updated.metadata?.sidebarViewsVersion).toBe(1);
+  });
+
+  it("accepts null and empty values but rejects unknown views", () => {
+    expect(
+      VirtualMCPUpdateDataSchema.parse({
+        metadata: { sidebarViews: null },
+      }).metadata?.sidebarViews,
+    ).toBeNull();
+    expect(
+      VirtualMCPUpdateDataSchema.parse({
+        metadata: { sidebarViews: [] },
+      }).metadata?.sidebarViews,
+    ).toEqual([]);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: ["assets", "unknown"] },
+      }).success,
+    ).toBe(false);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: [], sidebarViewsVersion: 2 },
+      }).success,
+    ).toBe(false);
   });
 });
 

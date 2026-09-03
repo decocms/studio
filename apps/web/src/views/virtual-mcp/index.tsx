@@ -1,7 +1,10 @@
 import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import type {
+  VirtualMCPEntity,
+  VirtualMcpSidebarView,
+} from "@decocms/shared/sdk/types";
 import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
 import { useBaseBranch } from "@/components/thread/github/use-version-gate";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";
@@ -89,6 +92,21 @@ import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
 import { DraftsModeField } from "./drafts-mode-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
+import {
+  initialProjectSidebarFormFields,
+  isVirtualMcpCollectionQueryKey,
+  optimisticProjectSidebarViewsNeedSave,
+  projectSidebarFormFieldsForSave,
+  readCachedVirtualMcp,
+  useOptimisticProjectSidebarViewsActions,
+  writeAuthoritativeVirtualMcpCaches,
+} from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import {
+  effectiveProjectSidebarViews,
+  PROJECT_SIDEBAR_VIEWS_VERSION,
+  resolveProjectSidebarViews,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
+import { runSerializedTask } from "@/lib/serial-task-queue";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -96,6 +114,38 @@ type DialogState = {
   settingsDialogOpen: boolean;
   settingsConnectionId: string | null;
 };
+
+interface AuthoritativeSidebarState {
+  effectiveViews: VirtualMcpSidebarView[];
+  rawViews: VirtualMcpSidebarView[] | null | undefined;
+  version: typeof PROJECT_SIDEBAR_VIEWS_VERSION | undefined;
+}
+
+function authoritativeSidebarState(
+  virtualMcp: VirtualMCPEntity,
+): AuthoritativeSidebarState {
+  const rawViews = virtualMcp.metadata?.sidebarViews;
+  const version = virtualMcp.metadata?.sidebarViewsVersion;
+  return {
+    effectiveViews: [
+      ...effectiveProjectSidebarViews(
+        resolveProjectSidebarViews(virtualMcp.metadata),
+        version,
+      ),
+    ],
+    rawViews: rawViews === null ? null : rawViews ? [...rawViews] : undefined,
+    version,
+  };
+}
+
+function sameRawSidebarViews(
+  left: readonly VirtualMcpSidebarView[] | null | undefined,
+  right: readonly VirtualMcpSidebarView[] | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((view, index) => view === right[index]);
+}
 
 type DialogAction =
   | { type: "SET_SHARE_DIALOG_OPEN"; payload: boolean }
@@ -317,6 +367,14 @@ function VirtualMcpDetailViewWithData({
   const connectionActions = useConnectionActions();
   const queryClient = useQueryClient();
   const studio = useStudioTools();
+  const optimisticSidebarViews = useOptimisticProjectSidebarViewsActions(
+    virtualMcp.id,
+  );
+  const saveQueueKey = JSON.stringify([org.id, virtualMcp.id]);
+  const initialSidebarFormFields = initialProjectSidebarFormFields(
+    virtualMcp.metadata,
+    optimisticSidebarViews.snapshot(),
+  );
 
   // Form setup. Seed `metadata.previewServerUrl` through the dual-read
   // resolver so a project persisted under the legacy `productionUrl` key
@@ -328,6 +386,7 @@ function VirtualMcpDetailViewWithData({
       metadata: {
         ...omitSandboxMap(virtualMcp.metadata),
         previewServerUrl: resolvePreviewServerUrl(virtualMcp.metadata),
+        ...initialSidebarFormFields,
       },
     },
   });
@@ -439,8 +498,65 @@ function VirtualMcpDetailViewWithData({
       save: async () => flushEditSession(),
     });
 
-  const saveForm = async () => {
-    // form.formState is a Proxy over React state. When saveForm runs
+  const persistForm = async () => {
+    const optimisticSidebarViewsSnapshot = optimisticSidebarViews.snapshot();
+    const virtualMcpQueryFilter = {
+      predicate: (query: { queryKey: readonly unknown[] }) =>
+        isVirtualMcpCollectionQueryKey(query.queryKey, org.id),
+    };
+    const refreshVirtualMcpCaches = async () => {
+      await queryClient.invalidateQueries({
+        predicate: (query) =>
+          isVirtualMcpCollectionQueryKey(query.queryKey, org.id),
+        // A route change can unmount the item observer while its trailing save
+        // is completing. Failure recovery still needs an authoritative row.
+        refetchType: "all",
+      });
+      return readCachedVirtualMcp(queryClient, org.id, virtualMcp.id);
+    };
+    const reconcileFormSidebar = (
+      authoritative: AuthoritativeSidebarState | null,
+      fallbackViews: readonly VirtualMcpSidebarView[] | null,
+    ) => {
+      if (authoritative) {
+        if (
+          !sameRawSidebarViews(
+            form.getValues("metadata.sidebarViews"),
+            authoritative.rawViews,
+          )
+        ) {
+          form.setValue("metadata.sidebarViews", authoritative.rawViews, {
+            shouldDirty: false,
+          });
+        }
+        if (
+          form.getValues("metadata.sidebarViewsVersion") !==
+          authoritative.version
+        ) {
+          form.setValue("metadata.sidebarViewsVersion", authoritative.version, {
+            shouldDirty: false,
+          });
+        }
+        return;
+      }
+      if (fallbackViews === null) return;
+      // A failed refresh can still roll back to the last locally confirmed
+      // effective selection. Marking it as v1 preserves those exact semantics.
+      form.setValue("metadata.sidebarViews", [...fallbackViews], {
+        shouldDirty: false,
+      });
+      form.setValue(
+        "metadata.sidebarViewsVersion",
+        PROJECT_SIDEBAR_VIEWS_VERSION,
+        { shouldDirty: false },
+      );
+    };
+
+    const sidebarNeedsSave = optimisticProjectSidebarViewsNeedSave(
+      optimisticSidebarViewsSnapshot,
+    );
+
+    // form.formState is a Proxy over React state. When persistForm runs
     // synchronously after setValue (e.g. via flushAndSave), React hasn't
     // processed the batched state update yet and form.formState.dirtyFields
     // returns the previous render's snapshot — empty on the first edit — so
@@ -453,8 +569,19 @@ function VirtualMcpDetailViewWithData({
         }
       )._formState.dirtyFields,
     );
-    if (dirtyKeys.length === 0) return;
-    const instructionsDirty = dirtyKeys.includes("metadata");
+    if (dirtyKeys.length === 0 && !sidebarNeedsSave) {
+      // The optimistic revision returned to the last confirmed selection. It
+      // can be removed without a request, but must never acknowledge a value
+      // that merely matches an in-flight request's temporary RHF baseline.
+      await optimisticSidebarViews.settle({
+        snapshot: optimisticSidebarViewsSnapshot,
+        saved: true,
+        authoritativeViews: optimisticSidebarViewsSnapshot?.persistedViews,
+      });
+      return;
+    }
+    const savedFieldKeys = dirtyKeys.length > 0 ? dirtyKeys : ["metadata"];
+    const instructionsDirty = savedFieldKeys.includes("metadata");
 
     const formData = form.getValues();
     // Rebase the dirty baseline to the snapshot we're about to send so that
@@ -470,25 +597,83 @@ function VirtualMcpDetailViewWithData({
     const payload = stripIncompleteSubmoduleCredentials(
       stripIncompleteEnvEntries(formData),
     );
-    payload.metadata = omitSandboxMap(payload.metadata);
+    const cachedVirtualMcp = readCachedVirtualMcp(
+      queryClient,
+      org.id,
+      virtualMcp.id,
+    );
+    const sidebarFieldsForSave = projectSidebarFormFieldsForSave(
+      {
+        sidebarViews: payload.metadata?.sidebarViews,
+        sidebarViewsVersion: payload.metadata?.sidebarViewsVersion,
+      },
+      optimisticSidebarViewsSnapshot,
+      cachedVirtualMcp?.metadata,
+    );
+    payload.metadata = {
+      ...omitSandboxMap(payload.metadata),
+      ...sidebarFieldsForSave,
+    };
 
-    await actions.update.mutateAsync({
-      id: virtualMcp.id,
-      data: payload,
+    let savedVirtualMcp: VirtualMCPEntity;
+    try {
+      savedVirtualMcp = await actions.update.mutateAsync({
+        id: virtualMcp.id,
+        data: payload,
+      });
+    } catch (error) {
+      let authoritativeVirtualMcp: VirtualMCPEntity | null = null;
+      try {
+        authoritativeVirtualMcp = await refreshVirtualMcpCaches();
+      } catch {
+        // Keep the last locally confirmed value when the read-back fails too.
+      }
+      const authoritative = authoritativeVirtualMcp
+        ? authoritativeSidebarState(authoritativeVirtualMcp)
+        : null;
+      const settlement = await optimisticSidebarViews.settle({
+        snapshot: optimisticSidebarViewsSnapshot,
+        saved: false,
+        authoritativeViews: authoritative?.effectiveViews,
+      });
+      if (settlement.settledLatest) {
+        reconcileFormSidebar(authoritative, settlement.reconciledViews);
+      }
+      throw error;
+    }
+
+    // `useCollectionActions` starts one invalidation on success. Cancel that
+    // potentially stale read and seed every active item/list cache from the
+    // update response instead of starting a second invalidation.
+    await queryClient.cancelQueries(virtualMcpQueryFilter);
+    writeAuthoritativeVirtualMcpCaches(queryClient, org.id, savedVirtualMcp);
+    const authoritative = authoritativeSidebarState(savedVirtualMcp);
+    const settlement = await optimisticSidebarViews.settle({
+      snapshot: optimisticSidebarViewsSnapshot,
+      saved: true,
+      authoritativeViews: authoritative.effectiveViews,
     });
+    if (settlement.settledLatest) {
+      reconcileFormSidebar(authoritative, settlement.reconciledViews);
+    }
 
     // Accumulate into the current edit session and (re)schedule a flush
     // 30s after the last save.
     dispatchEditSession({
       type: "accumulate",
       now: Date.now(),
-      fields: dirtyKeys,
+      fields: savedFieldKeys,
       instructionsLength: instructionsDirty
         ? (formData.metadata?.instructions?.length ?? 0)
         : null,
     });
     scheduleSessionFlush();
   };
+
+  // Autosaves are full-record writes. Debouncing coalesces clicks that happen
+  // before a request starts; this FIFO also prevents a slower older request
+  // from completing after and overwriting a newer one.
+  const saveForm = () => runSerializedTask(saveQueueKey, persistForm);
 
   const { schedule: debouncedSave, flush: flushAndSave } = useDebouncedAutosave(
     { save: saveForm },

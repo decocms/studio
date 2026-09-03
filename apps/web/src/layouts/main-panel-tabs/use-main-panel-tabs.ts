@@ -10,7 +10,6 @@
  * independently; `useVirtualMCP` / `useSuspenseQuery` dedupe the reads.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { Globe01, Monitor01 } from "@untitledui/icons";
@@ -60,18 +59,18 @@ import {
   type SurfaceTabId,
 } from "./source-system-tabs";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { useFileConfigsQuery } from "@/hooks/use-file-configs";
-import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
-import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
-import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
+import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import {
-  useControlPlaneViews,
-  useReportsOnly,
-} from "@/hooks/use-organization-settings";
-import { usePublicConfig } from "@/hooks/use-public-config";
-import { KEYS } from "@/lib/query-keys";
+import { useReportsOnly } from "@/hooks/use-organization-settings";
+import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
+import { useProjectNativeViewPresence } from "./use-project-native-view-presence";
+import {
+  projectDefaultViewUnavailable,
+  projectMainViewPresence,
+  projectSidebarViewUnavailable,
+  resolveProjectMainViewContext,
+} from "./project-sidebar-views";
 
 export type AgentTabDef = {
   id: string;
@@ -94,18 +93,10 @@ export interface MainPanelTabs {
   activeTab: string;
   mainOpen: boolean;
   setActiveTab: (id: string) => void;
-  systemTabs: Array<{ id: string; title: string }>;
   layoutTabs: AgentTabDef[];
   expandedTools: ThreadExpandedTool[];
   automationTabParsed: AutomationTabParsed | null;
   tabs: Tab[];
-  /**
-   * The tab id of the configured default main view, when it is a landing view
-   * that should lead the bar (Overview / Preview / Content / a pinned view).
-   * `null` when the default is a trailing/anchored tab (Settings, Automations,
-   * git) or Chat — those keep their position rather than being promoted.
-   */
-  leadTabId: string | null;
 }
 
 export function useMainPanelTabs(ctx: {
@@ -135,32 +126,8 @@ export function useMainPanelTabs(ctx: {
   });
   const hasOpenPr = prQuery.data?.state === "open";
 
-  const entityUI =
-    (
-      entity?.metadata as {
-        ui?: {
-          pinnedViews?: Array<{
-            connectionId: string;
-            toolName: string;
-            label: string;
-            icon?: string | null;
-          }> | null;
-          layout?: {
-            tabs?: AgentTabDef[];
-            defaultMainView?: {
-              type: string;
-              id?: string;
-              toolName?: string;
-            } | null;
-            cms?: CmsMode | null;
-            cmsDefaultOpen?: boolean | null;
-          };
-        };
-      } | null
-    )?.ui ?? null;
-
-  const entityLayout = entityUI?.layout ?? null;
-  const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
+  const entityLayout = entity?.metadata.ui?.layout ?? null;
+  const layoutTabs: AgentTabDef[] = entityLayout?.tabs ?? [];
 
   // The ephemeral dev connection (`dev_<id>`) the agent's sandbox dev server is
   // served through. Its views are auto-detected from the dev server's own MCP
@@ -169,24 +136,18 @@ export function useMainPanelTabs(ctx: {
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const reportsOnly = useReportsOnly();
-  // Per-view product gate for the control-plane tabs (Hosting · E2E · Deco
-  // Analytics) while the surface rolls out: local dev / deco.cx staff / GA turn
-  // all three on; otherwise each view follows its own org flag. Layered ON TOP
-  // of the deployment/ownership gates below — not a replacement for them.
-  const controlPlaneViews = useControlPlaneViews();
-  // Per-site Hosting tab: only surfaces when the deployment wired the
-  // control-plane BFF proxy (public config `hostingEnabled`).
-  const hostingEnabled = usePublicConfig().hostingEnabled === true;
-  // Warehouse-wired prerequisite for the CDN Monitor tab (public config
-  // `monitorEnabled` = stats-lake ClickHouse creds set), independent of the
-  // control-plane. The product gate (deco.cx staff / MONITOR_GA / the org's
-  // `monitor_enabled` flag) is layered on top at the tab push via
-  // `controlPlaneViews.monitor`; ownership is enforced by `hostingOwned`.
-  // Local dev opens the tab even without warehouse creds so the shell can be
-  // validated; it then renders its own "warehouse not wired" state.
-  const monitorEnabled =
-    usePublicConfig().monitorEnabled === true ||
-    usePublicConfig().auth.localMode === true;
+  const { scopeId, project: scopedProject } = useProjectScope();
+  const mainViewContext = resolveProjectMainViewContext(
+    scopeId,
+    scopedProject,
+    entity,
+  );
+  const nativeViews = useProjectNativeViewPresence(mainViewContext.project);
+  const mainViewPresence = projectMainViewPresence(
+    mainViewContext.resolvedScopeId,
+    agentHasClonableSource(mainViewContext.project?.metadata),
+    nativeViews.presence,
+  );
   const connections = useConnections({ includeVirtual: true });
 
   /** The sandbox dev server's own MCP app supplies the auto-detected dev views
@@ -273,60 +234,13 @@ export function useMainPanelTabs(ctx: {
    *  disagreed. "This site has nothing yet" belongs in the view's empty state. */
   const cmsMode = resolveCmsMode(entityLayout);
 
-  /**
-   * Assets is a per-site tab: it shows whenever an S3 bucket is associated to
-   * this project's site slug (managed `deco-assets-<slug>` or a BYOB bucket).
-   * Resolved through `resolveAgentSiteSlug` so renaming the project doesn't
-   * move its tenancy. Uses the non-suspense configs query so the bar never
-   * blocks on the bucket list.
-   */
-  const siteSlug = resolveAgentSiteSlug(entity);
-  // Per-site ownership gate for the control-plane tabs (Hosting / E2E /
-  // Analytics). `hostingEnabled` only says the DEPLOYMENT wired the BFF; it does
-  // NOT say this org owns THIS site. Without the ownership probe the three tabs
-  // render for every site and then fail with 404 "Site not found in
-  // organization" (the BFF's own isolation guard). Probe the local access
-  // endpoint (no control-plane call) and only surface the tabs when the org owns
-  // the resolved slug. Undefined while loading → tabs stay hidden until settled,
-  // so an unowned site never flashes the tabs then drops them.
-  const hostingAccessQuery = useQuery({
-    queryKey: KEYS.hostingAccess(org.slug, siteSlug ?? ""),
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/${org.slug}/hosting/${encodeURIComponent(siteSlug ?? "")}/access`,
-      );
-      if (!res.ok) return { owned: false, canWrite: false };
-      return (await res.json()) as { owned: boolean; canWrite: boolean };
-    },
-    // The /access probe reads only `org_sites` (no control-plane), so it also
-    // gates the native CDN Monitor tab — fire it whenever EITHER the
-    // control-plane tabs or the CDN tab could surface.
-    enabled: (hostingEnabled || monitorEnabled) && !!siteSlug,
-    staleTime: 60_000,
-  });
-  const hostingOwned = hostingAccessQuery.data?.owned === true;
-  const fileConfigsQuery = useFileConfigsQuery();
-  const showAssetsTab = !!matchSiteSlugConfig(
-    fileConfigsQuery.data?.configs ?? [],
-    siteSlug,
-  );
-  // Don't bounce a deep-linked Assets view away before the first config load resolves.
-  const assetsTabPending = fileConfigsQuery.isPending;
-
-  // Per-view visibility for the control-plane (Hosting/E2E/Analytics) and
-  // Monitor tabs — the single source of truth for both the tab push below AND
-  // the deep-link normalization further down, so a `?main=hosting` URL can't
-  // mount a tab whose button is hidden. `hostingOwned` is false while the
-  // `/access` probe is in flight, so a deep-linked control-plane tab is kept
-  // until ownership settles (`hostingAccessPending`) rather than bounced early.
-  const hostingAccessPending = hostingAccessQuery.isPending;
-  const showHostingTab =
-    hostingEnabled && hostingOwned && controlPlaneViews.hosting;
-  const showE2eTab = hostingEnabled && hostingOwned && controlPlaneViews.e2e;
-  const showAnalyticsTab =
-    hostingEnabled && hostingOwned && controlPlaneViews.analytics;
-  const showCdnTab =
-    monitorEnabled && hostingOwned && controlPlaneViews.monitor;
+  // Availability is shared with Layout settings and the project sidebar so a
+  // view can never be configurable or navigable where its backing capability
+  // is absent. The pending states keep valid deep links stable during discovery.
+  const nativeViewPending = {
+    assets: nativeViews.assetsPending,
+    siteAccess: nativeViews.siteAccessPending,
+  };
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
@@ -352,47 +266,46 @@ export function useMainPanelTabs(ctx: {
           tabs: layoutTabs.map((t) => ({ id: t.id })),
         }
       : null;
-  // The agent's configured default main view — but never a hidden gated view.
-  // An agent whose default is a hosting/e2e/analytics/cdn the current user can't
-  // see would otherwise make every fallback below resolve to that same hidden
-  // id; drop to the base default ("settings", never gated) in that case.
-  //
-  // Gate on the default view's TYPE (the NATIVE control-plane view), not on the
-  // resolved id: an agent-declared ext-app whose id merely collides with
-  // "analytics"/"hosting"/etc. is not the native gated view and must still open.
-  // And, like `controlPlaneTabHidden` below, only drop once ownership is known
-  // (`!hostingAccessPending`) — `hostingOwned` is false while the probe is in
-  // flight, so without this guard the default (and `leadTabId`) would flip from
-  // "settings" back to the gated tab after load, reordering the bar.
-  const configuredDefaultTabId = resolveDefaultTabId(layoutForDefault);
-  const defaultViewType = effectiveDefaultMainView?.type;
-  const defaultTabHidden =
-    !hostingAccessPending &&
-    ((defaultViewType === "hosting" && !showHostingTab) ||
-      (defaultViewType === "e2e" && !showE2eTab) ||
-      (defaultViewType === "analytics" && !showAnalyticsTab) ||
-      (defaultViewType === "cdn" && !showCdnTab));
-  const visibleDefaultTabId = defaultTabHidden
-    ? resolveDefaultTabId(null)
-    : configuredDefaultTabId;
-  // A deep-linked control-plane / Monitor tab whose button is hidden (no BFF, no
-  // ownership, or the org isn't flagged in) falls back to the default view once
-  // ownership is known — mirroring git/content/assets — so a stale URL never
-  // mounts a tab that only 503/404s.
-  const controlPlaneTabHidden =
-    !hostingAccessPending &&
-    ((rawActiveTab === "hosting" && !showHostingTab) ||
-      (rawActiveTab === "e2e" && !showE2eTab) ||
-      (rawActiveTab === "analytics" && !showAnalyticsTab) ||
-      (rawActiveTab === "cdn" && !showCdnTab));
-  /** Resolved BEFORE the active tab, because what the surface offers is now the
-   *  whole answer to whether a named view survives (see setActiveTab). */
+  /** Resolve the Site Editor's available subviews before validating a stored
+   * default, so a retired Content/Code default cannot fall back to itself when
+   * that subview is no longer present. */
   const surfaceTabIds = resolveSurfaceTabs({
     hasSource: previewSource === "repo" || reportsOnly,
     runtime,
     cmsMode,
   });
   const showContent = surfaceTabIds.includes("content");
+  // The agent's configured default main view — but never a project view that is
+  // absent for this project. Such a default would make every fallback below
+  // resolve to the same unreachable id, so use the base default ("settings",
+  // never gated) instead.
+  //
+  // Gate on the default view's TYPE, not an ext-app's id: an agent-declared app
+  // whose id merely collides with "analytics"/"hosting"/etc. is not the native
+  // gated view and must still open. Preview is a retired spelling of Site
+  // Editor; Content and Code are subviews of that same source-backed surface.
+  // For resource-backed native views, only drop missing presence once
+  // discovery settles.
+  const configuredDefaultTabId = resolveDefaultTabId(layoutForDefault);
+  const defaultViewType = effectiveDefaultMainView?.type;
+  const defaultTabHidden = projectDefaultViewUnavailable(
+    defaultViewType,
+    mainViewPresence,
+    nativeViewPending,
+    surfaceTabIds,
+    runtimeResolved,
+  );
+  const visibleDefaultTabId = defaultTabHidden
+    ? resolveDefaultTabId(null)
+    : configuredDefaultTabId;
+  // A deep-linked project view whose backing capability is absent falls back
+  // to the default once discovery settles, so stale URLs cannot mount views
+  // that would only fail or show another tenant's site.
+  const projectViewHidden = projectSidebarViewUnavailable(
+    rawActiveTab,
+    mainViewPresence,
+    nativeViewPending,
+  );
   /** A bookmarked `code` / `code:<path>` URL on a session the surface offers no
    *  Code view for (a CMS session has no sandbox working tree) would otherwise
    *  keep the URL's tab active with no button for it, mounting CodeTab against
@@ -409,17 +322,15 @@ export function useMainPanelTabs(ctx: {
    *  already open (see `defaultPreviewEditingMode`), a mode of the view rather
    *  than a second address, so nothing here has to second-guess the URL. */
   const activeTab =
-    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+    !panelTabId && !routeDefaultMain && defaultTabHidden
       ? visibleDefaultTabId
-      : rawActiveTab === "content" && !showContent
+      : rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
         ? visibleDefaultTabId
-        : rawActiveTab === "assets" && !showAssetsTab && !assetsTabPending
+        : rawActiveTab === "content" && !showContent
           ? visibleDefaultTabId
-          : codeTabHidden
+          : codeTabHidden || projectViewHidden
             ? visibleDefaultTabId
-            : controlPlaneTabHidden
-              ? visibleDefaultTabId
-              : rawActiveTab;
+            : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
@@ -433,57 +344,11 @@ export function useMainPanelTabs(ctx: {
       : id === "content"
         ? t("common.mainPanelTabs.content")
         : t("common.mainPanelTabs.code");
-  const leadingSystemTabs: Array<{ id: string; title: string }> =
-    surfaceTabIds.map((id) => ({ id, title: surfaceTabTitle(id) }));
-
-  const systemTabs: Array<{ id: string; title: string }> = [];
-  if (showAssetsTab) {
-    systemTabs.push({
-      id: "assets",
-      title: t("common.mainPanelTabs.assets"),
-    });
-  }
-  // Hosting, E2E, and Deco Analytics are peers over the same control-plane
-  // connection, ordered Hosting · E2E · Deco Analytics — but each is gated by
-  // its own org flag (see useControlPlaneViews), so a client can get one without
-  // the others. All still require org ownership of the resolved site
-  // (`hostingOwned`), not just the deployment-wide `hostingEnabled`, so a site
-  // the org doesn't own never surfaces them (matching the BFF's per-site
-  // isolation guard).
-  if (showHostingTab) {
-    systemTabs.push({
-      id: "hosting",
-      title: t("common.mainPanelTabs.hosting"),
-    });
-  }
-  if (showE2eTab) {
-    systemTabs.push({
-      id: "e2e",
-      title: t("common.mainPanelTabs.e2e"),
-    });
-  }
-  if (showAnalyticsTab) {
-    systemTabs.push({
-      id: "analytics",
-      title: t("common.mainPanelTabs.analytics"),
-    });
-  }
-  // Native CDN Monitor tab — the first-class replacement for the old admin
-  // "Monitor" iframe. Gated on the warehouse being wired (`monitorEnabled`), org
-  // ownership of the site (`hostingOwned`), AND the per-view product gate
-  // (`controlPlaneViews.monitor`: local dev / deco.cx staff / MONITOR_GA / the
-  // org's `monitor_enabled` flag) so a client never sees it until deco.cx opts
-  // that org in. Independent of `hostingEnabled`: it reads the stats-lake
-  // warehouse directly, not the control-plane, so a deployment can offer CDN
-  // without hosting.
-  if (showCdnTab) {
-    systemTabs.push({
-      id: "cdn",
-      title: t("common.mainPanelTabs.cdn"),
-    });
-  }
+  // Review changes is contextual to the open PR, so it remains in the panel
+  // header. The five durable native views are navigated from the sidebar.
+  const contextualSystemTabs: Array<{ id: string; title: string }> = [];
   if (gitTabVisible) {
-    systemTabs.push({
+    contextualSystemTabs.push({
       id: "git",
       title: t("common.mainPanelTabs.reviewChanges"),
     });
@@ -609,19 +474,12 @@ export function useMainPanelTabs(ctx: {
       }))
     : [];
 
-  /** The bar carries the surface's own views, then the gated system views, then
-   *  the EPHEMERAL per-thread tabs — an open file, a deck, a library preview, an
-   *  app view, an expanded tool.
-   *
-   *  `systemTabs` is spread here and not left to the sidebar: the sidebar
-   *  re-homed Site Editor, Assets, pinned views and Automations, and NOTHING
-   *  else. Review changes (`git`), Hosting, E2E, Deco Analytics and CDN have no
-   *  row there and nothing in the app navigates to those panels, so dropping
-   *  them from the bar left them reachable only by hand-typing the URL. A view
-   *  appearing in both places is fine — Site Editor already does. */
+  /** The bar carries controls local to the active surface, contextual system
+   *  views, agent-declared tabs, and ephemeral per-thread views. Native and
+   *  pinned-app project navigation belongs to the sidebar. */
   const allTabs: Tab[] = [
     ...surfaceTabs,
-    ...systemTabs.map((t) => ({
+    ...contextualSystemTabs.map((t) => ({
       id: t.id,
       title: t.title,
       kind: "system" as const,
@@ -659,11 +517,8 @@ export function useMainPanelTabs(ctx: {
     })),
   ];
 
-  /** One button per id, first occurrence wins. An agent-declared tab is free to
-   *  reuse a native id ("assets", "hosting", …); without this the list carries
-   *  it twice — duplicate React keys in the bar and in the mobile select — and
-   *  the panel renders the native view anyway, so the native tab is the one to
-   *  keep. */
+  /** One button per id, first occurrence wins. Agent-declared ids are not
+   *  guaranteed unique and may collide with contextual or ephemeral tabs. */
   const seenTabIds = new Set<string>();
   const tabs: Tab[] = allTabs.filter((tab) => {
     if (seenTabIds.has(tab.id)) return false;
@@ -673,18 +528,6 @@ export function useMainPanelTabs(ctx: {
 
   const onReportAgent =
     ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
-
-  // The default main view leads the tab bar (see selectBarSlots) — but only
-  // when it's a genuine landing view. The anchored trailing tabs (Settings,
-  // Automations, git) and Chat keep their position rather than jumping to the
-  // front, so they're not promoted. Uses the visibility-filtered default so a
-  // hidden gated view never leads the bar.
-  const leadTabId =
-    visibleDefaultTabId === "settings" ||
-    visibleDefaultTabId === "automations" ||
-    visibleDefaultTabId === "git"
-      ? null
-      : visibleDefaultTabId;
 
   const setActiveTab = (id: string) => {
     // On a reports-only org sitting on any shell other than the Report Agent
@@ -713,11 +556,9 @@ export function useMainPanelTabs(ctx: {
     activeTab,
     mainOpen,
     setActiveTab,
-    systemTabs: [...leadingSystemTabs, ...systemTabs],
     layoutTabs,
     expandedTools,
     automationTabParsed,
     tabs,
-    leadTabId,
   };
 }

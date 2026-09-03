@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   NAV_DESTINATION_KEYS,
+  scopedProjectDestinationEnabled,
   scopedProjectLacksSource,
   SETTINGS_DESTINATION,
 } from "./nav-destinations";
@@ -85,5 +86,70 @@ describe("scopedProjectLacksSource", () => {
         metadata: { githubRepo: { url: "" } },
       }),
     ).toBe(true);
+  });
+});
+
+describe("scopedProjectDestinationEnabled", () => {
+  test("keeps org rows and unresolved project rows on the first frame", () => {
+    expect(scopedProjectDestinationEnabled(null, null, "overview")).toBe(true);
+    expect(scopedProjectDestinationEnabled("vir_1", null, "overview")).toBe(
+      true,
+    );
+  });
+
+  test("defaults existing projects to Home, Reports, and Tasks", () => {
+    const project = { metadata: {} };
+    expect(scopedProjectDestinationEnabled("vir_1", project, "overview")).toBe(
+      true,
+    );
+    expect(scopedProjectDestinationEnabled("vir_1", project, "reports")).toBe(
+      true,
+    );
+    expect(scopedProjectDestinationEnabled("vir_1", project, "board")).toBe(
+      true,
+    );
+  });
+
+  test("honors an explicit per-project selection", () => {
+    const project = {
+      metadata: {
+        sidebarViews: ["board"] as const,
+        sidebarViewsVersion: 1 as const,
+      },
+    };
+    expect(scopedProjectDestinationEnabled("vir_1", project, "overview")).toBe(
+      false,
+    );
+    expect(scopedProjectDestinationEnabled("vir_1", project, "reports")).toBe(
+      false,
+    );
+    expect(scopedProjectDestinationEnabled("vir_1", project, "board")).toBe(
+      true,
+    );
+  });
+
+  test("prefers an optimistic selection while a save is pending", () => {
+    const project = {
+      metadata: {
+        sidebarViews: ["overview"] as const,
+        sidebarViewsVersion: 1 as const,
+      },
+    };
+    expect(
+      scopedProjectDestinationEnabled("vir_1", project, "overview", ["board"]),
+    ).toBe(false);
+    expect(
+      scopedProjectDestinationEnabled("vir_1", project, "board", ["board"]),
+    ).toBe(true);
+  });
+
+  test("migrates native-only selections without dropping legacy core rows", () => {
+    const project = { metadata: { sidebarViews: ["assets"] as const } };
+    expect(scopedProjectDestinationEnabled("vir_1", project, "overview")).toBe(
+      true,
+    );
+    expect(scopedProjectDestinationEnabled("vir_1", project, "board")).toBe(
+      true,
+    );
   });
 });

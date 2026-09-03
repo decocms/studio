@@ -1,16 +1,11 @@
 /**
- * MainPanelTabsBar — the main panel's button row: the agent-independent
- * overlays (Library, Tasks) followed by the view tabs (Preview, Code, …).
- *
- * At most MAX_VISIBLE buttons show; the rest collapse into a stack popover.
- * Opening an item from the popover swaps it into the last visible slot and
- * persists that arrangement per agent (localStorage), so a button you promote
- * stays promoted across navigation — it doesn't fall back into the stack the
- * moment you switch away.
+ * MainPanelTabsBar — the main panel's button row for controls local to the
+ * current surface plus contextual and per-thread views. Durable project views
+ * live in the sidebar.
  *
  * Click routing: the Automations pill uses resolveAutomationsPillClickTarget
- * (list/detail collapse); overlays use their toggle; every other tab uses the
- * hook's setActiveTab (tab-as-toggle via resolveTabClickTarget).
+ * (list/detail collapse); every other tab uses the hook's setActiveTab
+ * (tab-as-toggle via resolveTabClickTarget).
  */
 
 import {
@@ -89,10 +84,10 @@ export function MainPanelTabsBar({
   }));
 
   /**
-   * Every tab shows. The bar now carries only the ephemeral, per-thread ones —
-   * the durable project views live in the sidebar — so there is nothing to
-   * collapse: the slotting, the persisted arrangement and the "More tabs"
-   * popover all existed to ration a bar that no longer competes for room.
+   * Every tab shows. Native and pinned-app project navigation moved to the
+   * sidebar, leaving surface controls, Review changes, agent-declared tabs,
+   * and ephemeral per-thread views here. The old slotting and "More tabs"
+   * popover no longer need to ration the row.
    *
    * The row still scrolls horizontally: a thread can open more file / deck /
    * app pills than a narrow panel fits, and the header clips its left group so

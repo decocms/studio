@@ -3,9 +3,9 @@
  *  no row for now; its page stays routable and is still reachable from the
  *  command palette.
  *
- *  The one thing read here is the SCOPED project, and only to answer whether it
- *  has a repo — see `scopedProjectLacksSource`. That read is non-blocking and
- *  fails open, so the first frame is unchanged. */
+ *  The one thing read here is the SCOPED project, to resolve its source and
+ *  sidebar preferences. That read is non-blocking and fails open, so the first
+ *  frame is unchanged. */
 
 import type { ReactNode } from "react";
 import type { LinkProps } from "@tanstack/react-router";
@@ -23,6 +23,13 @@ import {
 } from "@/hooks/use-destination-route";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  effectiveProjectSidebarViews,
+  resolveProjectSidebarViews,
+  type ProjectSidebarViewsMetadata,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
+import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import type { VirtualMcpSidebarView } from "@decocms/shared/sdk/types";
 
 interface NavDestination {
   key: NavDestinationKey;
@@ -81,41 +88,70 @@ export function scopedProjectLacksSource(
   return !agentHasClonableSource(project.metadata);
 }
 
-/** The destinations, in display order. Scope-bound in three ways: Library is
+/** Whether one of the project-aware destination rows survives sidebar
+ * customization. Like the source gate above, this fails open until a scoped
+ * project resolves so the non-blocking sidebar never disappears on cold load. */
+export function scopedProjectDestinationEnabled(
+  scopeId: string | null,
+  project: { metadata?: ProjectSidebarViewsMetadata | null } | null,
+  viewId: "overview" | "reports" | "board",
+  optimisticViews?: readonly VirtualMcpSidebarView[],
+): boolean {
+  if (!scopeId || !project) return true;
+  const hasOptimisticViews = optimisticViews !== undefined;
+  return effectiveProjectSidebarViews(
+    hasOptimisticViews
+      ? optimisticViews
+      : resolveProjectSidebarViews(project.metadata),
+    hasOptimisticViews ? 1 : project.metadata?.sidebarViewsVersion,
+  ).includes(viewId);
+}
+
+/** The destinations, in display order. Scope-bound in four ways: Library is
  *  org-only (it lists the ORG's files), Reports is project-only (a report is
  *  about one site), and Home / Reports / Tasks additionally require the scoped
- *  project to have a repo. The first two live in `routeExistsInScope`, not here
- *  — `useExitProjectScope` reads the same fact to decide whether clearing the
- *  scope can keep the page you are on; the third is `scopedProjectLacksSource`
- *  above. */
+ *  project to have a source and to select that row. The first two live in
+ *  `routeExistsInScope`, because `useExitProjectScope` reads the same fact when
+ *  clearing scope; the latter two are the pure gates above. */
 function useNavDestinations(): NavDestination[] {
   const t = useT();
   const { org } = useProjectContext();
   const leafPath = useLeafRoutePath();
   const scopeId = useScopeId();
   const { project } = useProjectScope();
+  const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
 
   const lacksSource = scopedProjectLacksSource(scopeId, project);
+  const destinationEnabled = (viewId: "overview" | "reports" | "board") =>
+    scopedProjectDestinationEnabled(
+      scopeId,
+      project,
+      viewId,
+      optimisticSidebarViews,
+    );
 
   /** Keyed, not ordered — NAV_DESTINATION_KEYS fixes the order below. The
    *  record is exhaustive over that constant, so a key added there without a
    *  row here (or a row here the constant does not list) fails to compile.
    *  `null` is a row this scope drops. */
   const rows: Record<NavDestinationKey, NavDestination | null> = {
-    overview: lacksSource
-      ? null
-      : {
-          key: "overview",
-          label: t("sidebar.navDestinations.home"),
-          icon: <Home02 size={16} />,
-          isActive:
-            leafPath === DESTINATION_ROUTE.home ||
-            leafPath === DESTINATION_ROUTE.orgIndex,
-          trackAs: "overview",
-          link: { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
-        },
+    overview:
+      lacksSource || !destinationEnabled("overview")
+        ? null
+        : {
+            key: "overview",
+            label: t("sidebar.navDestinations.home"),
+            icon: <Home02 size={16} />,
+            isActive:
+              leafPath === DESTINATION_ROUTE.home ||
+              leafPath === DESTINATION_ROUTE.orgIndex,
+            trackAs: "overview",
+            link: { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
+          },
     reports:
-      routeExistsInScope(DESTINATION_ROUTE.reports, scopeId) && !lacksSource
+      routeExistsInScope(DESTINATION_ROUTE.reports, scopeId) &&
+      !lacksSource &&
+      destinationEnabled("reports")
         ? {
             key: "reports",
             label: t("sidebar.navDestinations.reports"),
@@ -125,23 +161,24 @@ function useNavDestinations(): NavDestination[] {
             link: { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
           }
         : null,
-    board: lacksSource
-      ? null
-      : {
-          key: "board",
-          label: t("sidebar.navDestinations.tasks"),
-          icon: <Columns03 size={16} />,
-          isActive: leafPath === DESTINATION_ROUTE.tasks,
-          trackAs: "board",
-          dataTour: LAYOUT_TOUR_ANCHORS.tasks,
-          link: {
-            to: DESTINATION_ROUTE.tasks,
-            /** Explicitly cleared: params merge with the current match, so an open
-             *  card would otherwise keep its segment and this link would go
-             *  nowhere. Tasks means the lanes. */
-            params: { org: org.slug, taskKey: undefined },
+    board:
+      lacksSource || !destinationEnabled("board")
+        ? null
+        : {
+            key: "board",
+            label: t("sidebar.navDestinations.tasks"),
+            icon: <Columns03 size={16} />,
+            isActive: leafPath === DESTINATION_ROUTE.tasks,
+            trackAs: "board",
+            dataTour: LAYOUT_TOUR_ANCHORS.tasks,
+            link: {
+              to: DESTINATION_ROUTE.tasks,
+              /** Explicitly cleared: params merge with the current match, so an open
+               *  card would otherwise keep its segment and this link would go
+               *  nowhere. Tasks means the lanes. */
+              params: { org: org.slug, taskKey: undefined },
+            },
           },
-        },
     files: routeExistsInScope(DESTINATION_ROUTE.library, scopeId)
       ? {
           key: "files",

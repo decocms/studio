@@ -106,7 +106,7 @@ export const virtualMcp = {
   "virtualMcp.filesSection.uploadFile": "Upload file",
   "virtualMcp.layoutTabContent.noMainView": "No main view",
   "virtualMcp.layoutTabContent.addConnectionMessage":
-    "Add a connection above to configure pinned views.",
+    "Add a connection above to configure app views.",
   "virtualMcp.layoutTabContent.automations": "Automations",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "Chat is always shown when it is the default view",
@@ -116,9 +116,9 @@ export const virtualMcp = {
     "What users see when they first open this project.",
   "virtualMcp.layoutTabContent.noInteractiveTools":
     "None of the connected servers expose interactive tools.",
-  "virtualMcp.layoutTabContent.pinnedViews": "Pinned views",
-  "virtualMcp.layoutTabContent.pinnedViewsDescription":
-    "Surface interactive tools as top-level tabs in the project.",
+  "virtualMcp.layoutTabContent.sidebarViews": "Sidebar views",
+  "virtualMcp.layoutTabContent.sidebarViewsDescription":
+    "Choose which available views appear in this project's sidebar.",
   "virtualMcp.layoutTabContent.settings": "Settings",
   "virtualMcp.layoutTabContent.showChat": "Show chat",
   "virtualMcp.layoutTabContent.showChatDescription":

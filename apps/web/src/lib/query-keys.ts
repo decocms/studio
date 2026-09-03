@@ -207,6 +207,12 @@ export const KEYS = {
   virtualMcpLastUsed: (orgId: string, ids: string[]) =>
     ["virtual-mcp", "last-used", orgId, ids] as const,
 
+  // Client-only overlay while a project's debounced sidebar-layout save is
+  // pending. Kept separate from collection data so a background refetch cannot
+  // flash the last persisted layout over the user's newer switch selection.
+  optimisticProjectSidebarViews: (orgId: string, virtualMcpId: string) =>
+    ["virtual-mcp", "optimistic-sidebar-views", orgId, virtualMcpId] as const,
+
   githubBranches: (
     orgId: string,
     orgSlug: string,

@@ -2083,6 +2083,21 @@ export interface StudioToolIO {
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
                       cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      sidebarViews?:
+                        | (
+                            | "automations"
+                            | "overview"
+                            | "assets"
+                            | "reports"
+                            | "board"
+                            | "site-editor"
+                            | "hosting"
+                            | "e2e"
+                            | "analytics"
+                            | "cdn"
+                          )[]
+                        | null
+                        | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2126,6 +2141,22 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
+          sidebarViews?:
+            | (
+                | "automations"
+                | "overview"
+                | "assets"
+                | "reports"
+                | "board"
+                | "site-editor"
+                | "hosting"
+                | "e2e"
+                | "analytics"
+                | "cdn"
+              )[]
+            | null
+            | undefined;
+          sidebarViewsVersion?: 1 | undefined;
           githubRepo?:
             | {
                 url: string;
@@ -2309,6 +2340,21 @@ export interface StudioToolIO {
                             | "manual"
                             | null
                             | undefined;
+                          sidebarViews?:
+                            | (
+                                | "automations"
+                                | "overview"
+                                | "assets"
+                                | "reports"
+                                | "board"
+                                | "site-editor"
+                                | "hosting"
+                                | "e2e"
+                                | "analytics"
+                                | "cdn"
+                              )[]
+                            | null
+                            | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2352,6 +2398,22 @@ export interface StudioToolIO {
                   }
                 | null
                 | undefined;
+              sidebarViews?:
+                | (
+                    | "automations"
+                    | "overview"
+                    | "assets"
+                    | "reports"
+                    | "board"
+                    | "site-editor"
+                    | "hosting"
+                    | "e2e"
+                    | "analytics"
+                    | "cdn"
+                  )[]
+                | null
+                | undefined;
+              sidebarViewsVersion?: 1 | undefined;
               githubRepo?:
                 | {
                     url: string;
@@ -2472,6 +2534,21 @@ export interface StudioToolIO {
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
                       cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      sidebarViews?:
+                        | (
+                            | "automations"
+                            | "overview"
+                            | "assets"
+                            | "reports"
+                            | "board"
+                            | "site-editor"
+                            | "hosting"
+                            | "e2e"
+                            | "analytics"
+                            | "cdn"
+                          )[]
+                        | null
+                        | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2515,6 +2592,22 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
+          sidebarViews?:
+            | (
+                | "automations"
+                | "overview"
+                | "assets"
+                | "reports"
+                | "board"
+                | "site-editor"
+                | "hosting"
+                | "e2e"
+                | "analytics"
+                | "cdn"
+              )[]
+            | null
+            | undefined;
+          sidebarViewsVersion?: 1 | undefined;
           githubRepo?:
             | {
                 url: string;
@@ -2672,6 +2765,21 @@ export interface StudioToolIO {
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
                       cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      sidebarViews?:
+                        | (
+                            | "automations"
+                            | "overview"
+                            | "assets"
+                            | "reports"
+                            | "board"
+                            | "site-editor"
+                            | "hosting"
+                            | "e2e"
+                            | "analytics"
+                            | "cdn"
+                          )[]
+                        | null
+                        | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2715,6 +2823,22 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
+          sidebarViews?:
+            | (
+                | "automations"
+                | "overview"
+                | "assets"
+                | "reports"
+                | "board"
+                | "site-editor"
+                | "hosting"
+                | "e2e"
+                | "analytics"
+                | "cdn"
+              )[]
+            | null
+            | undefined;
+          sidebarViewsVersion?: 1 | undefined;
           githubRepo?:
             | {
                 url: string;
@@ -2863,6 +2987,21 @@ export interface StudioToolIO {
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
                       cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      sidebarViews?:
+                        | (
+                            | "automations"
+                            | "overview"
+                            | "assets"
+                            | "reports"
+                            | "board"
+                            | "site-editor"
+                            | "hosting"
+                            | "e2e"
+                            | "analytics"
+                            | "cdn"
+                          )[]
+                        | null
+                        | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2906,6 +3045,22 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
+          sidebarViews?:
+            | (
+                | "automations"
+                | "overview"
+                | "assets"
+                | "reports"
+                | "board"
+                | "site-editor"
+                | "hosting"
+                | "e2e"
+                | "analytics"
+                | "cdn"
+              )[]
+            | null
+            | undefined;
+          sidebarViewsVersion?: 1 | undefined;
           githubRepo?:
             | {
                 url: string;
@@ -3054,6 +3209,21 @@ export interface StudioToolIO {
                             | "manual"
                             | null
                             | undefined;
+                          sidebarViews?:
+                            | (
+                                | "automations"
+                                | "overview"
+                                | "assets"
+                                | "reports"
+                                | "board"
+                                | "site-editor"
+                                | "hosting"
+                                | "e2e"
+                                | "analytics"
+                                | "cdn"
+                              )[]
+                            | null
+                            | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -3097,6 +3267,22 @@ export interface StudioToolIO {
                   }
                 | null
                 | undefined;
+              sidebarViews?:
+                | (
+                    | "automations"
+                    | "overview"
+                    | "assets"
+                    | "reports"
+                    | "board"
+                    | "site-editor"
+                    | "hosting"
+                    | "e2e"
+                    | "analytics"
+                    | "cdn"
+                  )[]
+                | null
+                | undefined;
+              sidebarViewsVersion?: 1 | undefined;
               githubRepo?:
                 | {
                     url: string;
@@ -3225,6 +3411,21 @@ export interface StudioToolIO {
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
                       cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      sidebarViews?:
+                        | (
+                            | "automations"
+                            | "overview"
+                            | "assets"
+                            | "reports"
+                            | "board"
+                            | "site-editor"
+                            | "hosting"
+                            | "e2e"
+                            | "analytics"
+                            | "cdn"
+                          )[]
+                        | null
+                        | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3268,6 +3469,22 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
+          sidebarViews?:
+            | (
+                | "automations"
+                | "overview"
+                | "assets"
+                | "reports"
+                | "board"
+                | "site-editor"
+                | "hosting"
+                | "e2e"
+                | "analytics"
+                | "cdn"
+              )[]
+            | null
+            | undefined;
+          sidebarViewsVersion?: 1 | undefined;
           githubRepo?:
             | {
                 url: string;
@@ -3414,6 +3631,21 @@ export interface StudioToolIO {
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
                       cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      sidebarViews?:
+                        | (
+                            | "automations"
+                            | "overview"
+                            | "assets"
+                            | "reports"
+                            | "board"
+                            | "site-editor"
+                            | "hosting"
+                            | "e2e"
+                            | "analytics"
+                            | "cdn"
+                          )[]
+                        | null
+                        | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3457,6 +3689,22 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
+          sidebarViews?:
+            | (
+                | "automations"
+                | "overview"
+                | "assets"
+                | "reports"
+                | "board"
+                | "site-editor"
+                | "hosting"
+                | "e2e"
+                | "analytics"
+                | "cdn"
+              )[]
+            | null
+            | undefined;
+          sidebarViewsVersion?: 1 | undefined;
           githubRepo?:
             | {
                 url: string;
@@ -4473,6 +4721,21 @@ export interface StudioToolIO {
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
                       cms?: "off" | "auto" | "on" | "manual" | null | undefined;
+                      sidebarViews?:
+                        | (
+                            | "automations"
+                            | "overview"
+                            | "assets"
+                            | "reports"
+                            | "board"
+                            | "site-editor"
+                            | "hosting"
+                            | "e2e"
+                            | "analytics"
+                            | "cdn"
+                          )[]
+                        | null
+                        | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -4516,6 +4779,22 @@ export interface StudioToolIO {
               }
             | null
             | undefined;
+          sidebarViews?:
+            | (
+                | "automations"
+                | "overview"
+                | "assets"
+                | "reports"
+                | "board"
+                | "site-editor"
+                | "hosting"
+                | "e2e"
+                | "analytics"
+                | "cdn"
+              )[]
+            | null
+            | undefined;
+          sidebarViewsVersion?: 1 | undefined;
           githubRepo?:
             | {
                 url: string;
