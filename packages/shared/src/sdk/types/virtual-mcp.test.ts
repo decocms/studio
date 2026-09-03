@@ -218,6 +218,34 @@ test("VirtualMCPUpdateDataSchema accepts metadata.runtime", () => {
   expect(parsed.metadata?.runtime?.port).toBeNull();
 });
 
+test("VirtualMCPCreateDataSchema rejects a description over 500 chars", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    description: "a".repeat(501),
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 20 kickstart prompts", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: [],
+    prompts: Array.from({ length: 21 }, (_, i) => ({
+      title: `Prompt ${i}`,
+      text: "hi",
+    })),
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects a description over 500 chars", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    description: "a".repeat(501),
+  });
+  expect(result.success).toBe(false);
+});
+
 test("SandboxRecord.startedWith is optional with nullable packageManager/port/path", () => {
   const a = SandboxRecordSchema.parse({ sandboxHandle: "v", previewUrl: null });
   expect(a.startedWith).toBeUndefined();
