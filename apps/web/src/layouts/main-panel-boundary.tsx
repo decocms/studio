@@ -30,16 +30,26 @@
  */
 
 import { Suspense, type ReactNode } from "react";
+import { useT } from "@/i18n/use-t.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 
 /** The ONE loader below the line. */
 export function PanelLoading() {
+  const t = useT();
   return (
     <div
       data-testid="panel-loading"
       className="flex flex-1 h-full w-full items-center justify-center"
     >
-      <Spinner className="size-5 text-muted-foreground" />
+      {/* The Spinner is `aria-hidden` unless given a label, and this one is
+          held for at least `defaultPendingMinMs` on every route change — so
+          without the label a screen reader reads the region as empty rather
+          than busy. It is the app's only below-the-line loader; the cost of
+          naming it once is nothing next to that. */}
+      <Spinner
+        className="size-5 text-muted-foreground"
+        label={t("common.loading")}
+      />
     </div>
   );
 }

@@ -32,6 +32,7 @@ import {
   type TaskBoardItemType,
 } from "@/layouts/task-board/config";
 import { track } from "@/lib/posthog-client";
+import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { ComponentType, ReactNode } from "react";
@@ -127,16 +128,32 @@ export function NewTaskComposer() {
       source: "project_home_composer",
       withDescription: !!description.trim(),
     });
-    actions.create.mutate({
-      title: trimmed,
-      description: description.trim() || undefined,
-      status: status ?? undefined,
-      priority: priority ?? undefined,
-      type: type ?? undefined,
-      repo: repo ?? undefined,
-    });
-    reset();
-    titleRef.current?.focus();
+    /** Clear on success only. `mutate` is fire-and-forget, so resetting on the
+     *  next line threw away a title and a typed-out repro whenever the create
+     *  failed — no card, no message, nothing to paste back. */
+    actions.create.mutate(
+      {
+        title: trimmed,
+        description: description.trim() || undefined,
+        status: status ?? undefined,
+        priority: priority ?? undefined,
+        type: type ?? undefined,
+        repo: repo ?? undefined,
+      },
+      {
+        onSuccess: () => {
+          reset();
+          titleRef.current?.focus();
+        },
+        onError: (error) => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : t("home.newTask.createFailed"),
+          );
+        },
+      },
+    );
   };
 
   const lane = status ? laneHeader(status, t, columns) : null;

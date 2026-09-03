@@ -63,13 +63,22 @@ describe("credentialOrganizationFence", () => {
     ).toBe(DENY);
   });
 
-  /** A legacy key carrying no organization binding at all keeps its existing
-   *  route authorization rather than being denied outright. */
-  it("does not fence a key with no organization binding", () => {
+  /** INVERTED. A legacy key carrying no organization binding used to fall
+   *  through as `null` — unfenced — which on a route that answers across every
+   *  membership means a key minted for one org enumerating its owner's other
+   *  orgs. A key is a scoped credential; absence of a scope is not consent to
+   *  all of them. */
+  it("denies a key with no organization binding, rather than unfencing it", () => {
     expect(
       credentialOrganizationFence(
         ctx({ user: { id: "u1" }, apiKey: { id: "k1", metadata: {} } }),
       ),
-    ).toBeNull();
+    ).toBe(DENY);
+  });
+
+  /** A SESSION is the person, and this route is that person's own data across
+   *  their memberships — so no binding here means no fence, as before. */
+  it("leaves a session caller unfenced", () => {
+    expect(credentialOrganizationFence(ctx({ user: { id: "u1" } }))).toBeNull();
   });
 });

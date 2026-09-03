@@ -176,6 +176,7 @@ export const common = {
   "common.importFromDecoDialog.importing": "Importando...",
   "common.importFromDecoDialog.installGithubApp":
     'Instale o aplicativo GitHub na organização "{owner}" para importar este site. {installUrl}',
+  "common.loading": "Carregando",
   "common.importFromDecoDialog.loadingSites": "Carregando sites...",
   "common.importFromDecoDialog.noSitesFound":
     "Nenhum site encontrado para esta conta.",

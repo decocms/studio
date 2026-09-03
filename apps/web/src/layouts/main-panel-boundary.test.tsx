@@ -3,8 +3,21 @@ setupComponentTest();
 
 import { render } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "bun:test";
+import type { ReactNode } from "react";
 import { PanelLoading } from "./main-panel-boundary";
+
+/** It reads its accessible name through `useT`, which is TanStack-Query-backed
+ *  (the language preference is a query). In the app it only ever renders under
+ *  `RouterProvider`, which `providers.tsx` mounts inside the QueryClientProvider
+ *  — so the provider here is fidelity, not scaffolding. */
+function withQuery(ui: ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return <QueryClientProvider client={client}>{ui}</QueryClientProvider>;
+}
 
 /**
  * Replaces the separate `ShellRouteLoading` and `MainPanelLoading` tests: the
@@ -16,7 +29,7 @@ import { PanelLoading } from "./main-panel-boundary";
  */
 describe("PanelLoading", () => {
   it("centers the spinner in static flow, so it works at any depth", () => {
-    const { getByTestId } = render(<PanelLoading />);
+    const { getByTestId } = render(withQuery(<PanelLoading />));
 
     expect(getByTestId("panel-loading")).toHaveClass(
       "flex",
@@ -28,8 +41,17 @@ describe("PanelLoading", () => {
     );
   });
 
+  /** The Spinner is `aria-hidden` unless labelled, and this loader is held for
+   *  `defaultPendingMinMs` on every route change — unnamed, AT reads the region
+   *  as empty rather than busy. */
+  it("announces itself, rather than spinning silently", () => {
+    const { getByRole } = render(withQuery(<PanelLoading />));
+
+    expect(getByRole("status")).toHaveAccessibleName("Loading");
+  });
+
   it("does not position itself absolutely", () => {
-    const { getByTestId } = render(<PanelLoading />);
+    const { getByTestId } = render(withQuery(<PanelLoading />));
 
     expect(getByTestId("panel-loading")).not.toHaveClass("absolute");
     expect(getByTestId("panel-loading")).not.toHaveClass("inset-0");

@@ -11,7 +11,7 @@
  *  one cross-org endpoint, so it never mixes a server-filtered population with
  *  an unfiltered one and is how you reach another org's project by name. */
 
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useId, useState } from "react";
 import { Check, ChevronSelectorVertical, Plus } from "@untitledui/icons";
 import {
   Command,
@@ -76,19 +76,30 @@ interface RowMeta {
  *  Creation belongs beside the thing it creates: "+" next to Organizations
  *  makes an organization, "+" next to this org's projects makes a project. It
  *  is a real button rather than a list row, so it never competes with the rows
- *  for the highlight or for Enter. */
+ *  for the highlight or for Enter.
+ *
+ *  Rendered as a SIBLING of its `CommandGroup`, never through cmdk's `heading`
+ *  prop: cmdk puts that node inside `aria-hidden={true}` unconditionally, which
+ *  pruned these buttons from the accessibility tree while leaving them in the
+ *  tab order — and they are the only "New organization" and "New project"
+ *  controls in the shell. The group is named through `aria-labelledby` instead,
+ *  which works on a visible element. */
 function GroupHeading({
+  id,
   label,
   createLabel,
   onCreate,
 }: {
+  id: string;
   label: string;
   createLabel: string;
   onCreate: () => void;
 }) {
   return (
-    <span className="flex w-full items-center justify-between gap-2">
-      <span className="truncate">{label}</span>
+    <div className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-xs font-medium text-muted-foreground">
+      <span id={id} className="truncate">
+        {label}
+      </span>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -102,7 +113,7 @@ function GroupHeading({
         </TooltipTrigger>
         <TooltipContent side="right">{createLabel}</TooltipContent>
       </Tooltip>
-    </span>
+    </div>
   );
 }
 
@@ -158,6 +169,10 @@ function PickerContent({
   onCreateOrg: () => void;
 }) {
   const t = useT();
+  /** Stable ids so each group can be named by its VISIBLE header — see
+   *  `GroupHeading` on why the header cannot live in cmdk's `heading`. */
+  const projectsHeadingId = useId();
+  const orgsHeadingId = useId();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { scopeId, projects, setScope } = useProjectScope();
@@ -293,15 +308,13 @@ function PickerContent({
             {/* "Projects", not "{org} · current": the trigger this popover
                 hangs off already names the org, and the org is listed again
                 below — three copies of one word in a list nine words long. */}
-            <CommandGroup
-              heading={
-                <GroupHeading
-                  label={t("sidebar.picker.projectsHeading")}
-                  createLabel={t("sidebar.picker.newProject")}
-                  onCreate={createProject}
-                />
-              }
-            >
+            <GroupHeading
+              id={projectsHeadingId}
+              label={t("sidebar.picker.projectsHeading")}
+              createLabel={t("sidebar.picker.newProject")}
+              onCreate={createProject}
+            />
+            <CommandGroup aria-labelledby={projectsHeadingId}>
               <CommandItem
                 value={rowValue.allProjects}
                 className={ROW}
@@ -351,15 +364,13 @@ function PickerContent({
                 `allOrgs` always has at least the current org, so the group is
                 never empty in practice — but the heading must survive the one
                 frame where the org list has not resolved yet, too. */}
-            <CommandGroup
-              heading={
-                <GroupHeading
-                  label={t("sidebar.picker.orgsHeading")}
-                  createLabel={t("sidebar.picker.newOrganization")}
-                  onCreate={onCreateOrg}
-                />
-              }
-            >
+            <GroupHeading
+              id={orgsHeadingId}
+              label={t("sidebar.picker.orgsHeading")}
+              createLabel={t("sidebar.picker.newOrganization")}
+              onCreate={onCreateOrg}
+            />
+            <CommandGroup aria-labelledby={orgsHeadingId}>
               {invitations.map((invitation) => (
                 <InvitationRow
                   key={invitation.id}

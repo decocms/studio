@@ -87,6 +87,7 @@ export const home = {
   "home.newTask.submit": "Create task",
   "home.newTask.descriptionPlaceholder": "Add description\u2026",
   "home.newTask.heading": "New task",
+  "home.newTask.createFailed": "Couldn't create the task",
   "home.newTask.status": "Status",
   "home.newTask.priority": "Priority",
   "home.newTask.type": "Type",

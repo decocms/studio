@@ -293,7 +293,11 @@ export function ApiKeysSection() {
             {t("settings.apiKeys.loading")}
           </p>
         </Card>
-      ) : error ? (
+      ) : /* A failed REFETCH keeps `data`, so only surface the error when it
+             left us with nothing to show — otherwise a background 401 on
+             window focus replaces a loaded list (and its create path) with an
+             error card. */
+      error && apiKeys.length === 0 ? (
         <ErrorFallback error={error} />
       ) : apiKeys.length === 0 ? (
         <EmptyState onCreate={() => setCreateOpen(true)} />

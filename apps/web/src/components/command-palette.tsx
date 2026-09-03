@@ -206,6 +206,12 @@ export function CommandPalette({
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
       title={t("commandPalette.title")}
       description={t("commandPalette.description")}
+      /** GLOBAL_SEARCH already matched these rows — server-side, against the
+       *  task key and the message body. cmdk's own filter only sees the item
+       *  `value` (title + id), scores a hit like "ENG-42" at 0 and unmounts
+       *  it, so the server's answer renders as "No results". Same reason
+       *  `global-search-dialog.tsx` turns it off. */
+      shouldFilter={false}
     >
       <CommandInput
         placeholder={t("commandPalette.placeholder")}

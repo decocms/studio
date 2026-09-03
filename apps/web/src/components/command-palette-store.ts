@@ -26,6 +26,20 @@ export function openCommandPalette(): void {
   paletteOpen.set(true);
 }
 
+/**
+ * Force it shut.
+ *
+ * The shell registers the ⌘K listener ABOVE the gates that can return an
+ * access / archived / SSO screen instead of the shell, so the shortcut can set
+ * this flag on a screen that never mounts the palette — and only the palette's
+ * own `onOpenChange` writes `false`, so it latched: the next org you opened
+ * showed a command palette nobody asked for. Module scope means it outlived
+ * sign-out too.
+ */
+export function closeCommandPalette(): void {
+  paletteOpen.set(false);
+}
+
 /** `useState`-shaped read of the palette's open flag, for the shell that renders it. */
 export function useCommandPaletteOpen(): [boolean, (open: boolean) => void] {
   const open = useSyncExternalStore(paletteOpen.subscribe, paletteOpen.get);

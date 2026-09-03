@@ -4,6 +4,7 @@ import { FloatingReleaseCard } from "@/components/release-channel/floating-relea
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { CommandPalette } from "@/components/command-palette";
 import {
+  closeCommandPalette,
   openCommandPalette,
   useCommandPaletteOpen,
 } from "@/components/command-palette-store";
@@ -362,6 +363,7 @@ function ShellLayoutContent() {
   const orgId = activeOrg?.id;
   const orgSlug = activeOrg?.slug;
   const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
+  const ssoBlocked = !!ssoStatus?.ssoRequired && !ssoStatus.authenticated;
 
   // Warm the self-MCP connection in parallel with the rest of shell bootstrap,
   // so the home's useMCPClient resolves without waiting on a fresh connect()
@@ -376,6 +378,12 @@ function ShellLayoutContent() {
     }),
     enabled: !!orgId && !!orgSlug,
   });
+
+  /** Below this line the shell may return a gate screen instead of itself, and
+   *  none of them mount the palette — so drop any flag ⌘K set on the way in. */
+  if (!activeOrg || isOrgArchived(activeOrg) || ssoBlocked) {
+    closeCommandPalette();
+  }
 
   if (!activeOrg) {
     /** Not a member: figure out which screen to show (no-access / pending
@@ -395,7 +403,7 @@ function ShellLayoutContent() {
     return <ArchivedOrgScreen orgName={activeOrg.name} />;
   }
 
-  if (ssoStatus?.ssoRequired && !ssoStatus.authenticated) {
+  if (ssoBlocked) {
     return (
       <SsoRequiredScreen
         orgId={activeOrg.id}

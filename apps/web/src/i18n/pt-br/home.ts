@@ -90,6 +90,7 @@ export const home = {
   "home.newTask.submit": "Criar tarefa",
   "home.newTask.descriptionPlaceholder": "Adicionar descri\u00e7\u00e3o\u2026",
   "home.newTask.heading": "Nova tarefa",
+  "home.newTask.createFailed": "N\u00e3o foi poss\u00edvel criar a tarefa",
   "home.newTask.status": "Status",
   "home.newTask.priority": "Prioridade",
   "home.newTask.type": "Tipo",

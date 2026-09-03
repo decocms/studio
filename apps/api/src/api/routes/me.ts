@@ -63,8 +63,19 @@ export function credentialOrganizationFence(
 
   const token = ctx.auth?.tokenOrganizationId;
   if (binding.id && token && binding.id !== token) return DENY;
-  return binding.id ?? token ?? null;
+  const fence = binding.id ?? token ?? null;
+
+  /** An API key with no organization on it is NOT a licence to roam. This
+   *  route answers across every org the caller belongs to, which is right for
+   *  a session — that is the person's own data — but a key is a scoped
+   *  credential, and a legacy one minted before the binding existed would
+   *  otherwise enumerate every org its owner ever joined. Fail closed. */
+  if (fence === null && ctx.auth?.apiKey?.id) return DENY;
+  return fence;
 }
+
+/** Matches `GLOBAL_SEARCH`'s query cap. */
+const MAX_TERM_LENGTH = 256;
 
 /** Enough to draw a row and navigate to it. */
 interface ProjectSearchHit {
@@ -116,6 +127,13 @@ export const createMeRoutes = () => {
     const term = (c.req.query("q") ?? "").trim();
     if (!term) {
       return c.json({ items: [] as ProjectSearchHit[] });
+    }
+    /** Same cap as `GLOBAL_SEARCH`'s `InputSchema.query`, for the same reason:
+     *  `%term%` is un-indexable, this runs it across every member org, and the
+     *  refill loop re-runs it per page. Reject rather than truncate — a
+     *  silently shortened search answers a question nobody asked. */
+    if (term.length > MAX_TERM_LENGTH) {
+      return c.json({ error: "query too long" }, 400);
     }
 
     const requested = Number.parseInt(c.req.query("limit") ?? "", 10);
