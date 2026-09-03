@@ -34,7 +34,6 @@ import {
 import { track } from "@/lib/posthog-client";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { ComponentType, ReactNode } from "react";
 
 /** One attribute pill: a glyph, the value or its unset name, a menu. */
@@ -262,7 +261,7 @@ export function NewTaskComposer() {
               key={value}
               icon={PRIORITY_CONFIG[value].icon}
               iconClassName={PRIORITY_CONFIG[value].iconClassName}
-              label={t(PRIORITY_CONFIG[value].labelKey as TranslationKey)}
+              label={t(PRIORITY_CONFIG[value].labelKey)}
               selected={priority === value}
               onSelect={() => setPriority(priority === value ? null : value)}
             />
