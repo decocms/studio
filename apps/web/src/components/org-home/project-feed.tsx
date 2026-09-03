@@ -353,14 +353,10 @@ export function useOrgTasksSuspense(): TaskBoardItem[] {
 export function ProjectFeed({
   projects,
   tasks,
-  action,
   showFilter = true,
 }: {
   projects: VirtualMCPEntity[];
   tasks: TaskBoardItem[];
-  /** The page's own control for this section — today, "Import from GitHub".
-   *  Passed in rather than imported so the feed owns no creation path. */
-  action?: ReactNode;
   /** Off inside a project: the list is already one project, so a filter whose
    *  only option is the thing you are looking at is a control that cannot do
    *  anything. */
@@ -402,16 +398,13 @@ export function ProjectFeed({
         >
           {t("home.projectFeed.heading")}
         </h2>
-        <div className="flex items-center gap-2">
-          {showFilter && (
-            <ProjectFilter
-              index={index}
-              value={bucketId}
-              onChange={setBucketId}
-            />
-          )}
-          {action}
-        </div>
+        {showFilter && (
+          <ProjectFilter
+            index={index}
+            value={bucketId}
+            onChange={setBucketId}
+          />
+        )}
       </div>
       {entries.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">

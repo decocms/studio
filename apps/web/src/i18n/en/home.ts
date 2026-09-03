@@ -10,6 +10,8 @@ export const home = {
   "home.orgHome.greetingAfternoonBare": "Good afternoon!",
   "home.orgHome.greetingEveningBare": "Good evening!",
   "home.orgHome.searchPlaceholder": "Search projects, chats and tasks\u2026",
+  "home.projects.heading": "Projects",
+  "home.projects.seeAll": "See all",
   "home.projectFeed.heading": "Feed",
   "home.newTask.placeholder": "What needs doing in this project?",
   "home.newTask.submit": "Create task",
