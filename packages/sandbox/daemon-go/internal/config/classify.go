@@ -44,6 +44,13 @@ type Transition struct {
 // runtime-change > pm-change > port-change > env-change >
 // git-credential-refresh > no-op.
 func Classify(before, after *TenantConfig) Transition {
+	// Every other nil-config case here goes through a nil-safe accessor
+	// method; the after==nil, before==nil path is the one that reaches a
+	// bare field access (after.Env below), so normalize it up front instead
+	// of leaving that one arm to panic on a caller that passes nil.
+	if after == nil {
+		after = &TenantConfig{}
+	}
 	beforeHasUrl := before.HasCloneUrl()
 	afterHasUrl := after.HasCloneUrl()
 	beforeUrl := before.CloneUrl()
