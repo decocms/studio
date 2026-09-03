@@ -9,6 +9,7 @@ export function csvField(s: string | null | undefined): string {
     s.includes(",") ||
     s.includes('"') ||
     s.includes("\n") ||
+    s.includes("\r") ||
     s.includes(";")
   ) {
     return `"${s.replaceAll('"', '""')}"`;
