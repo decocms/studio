@@ -18,6 +18,7 @@ import {
 } from "../../core/studio-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
+import { isDevAssetsConnection, usesLocalObjectStorage } from "./dev-assets";
 import { ConnectionEntitySchema } from "./schema";
 
 const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
@@ -52,6 +53,16 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
 
     // Check authorization
     await ctx.access.check();
+
+    // The dev-assets connection is synthetic; findById() below can't see it.
+    if (
+      usesLocalObjectStorage() &&
+      isDevAssetsConnection(input.id, organization.id)
+    ) {
+      throw new Error(
+        "This connection is a fixed system connection and cannot be deleted",
+      );
+    }
 
     // Fetch connection before deleting to return the entity
     const connection = await ctx.storage.connections.findById(input.id);
