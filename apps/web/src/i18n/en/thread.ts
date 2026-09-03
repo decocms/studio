@@ -220,7 +220,6 @@ export const thread = {
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
   "thread.publishPopover.needsReviewGeneric":
     "These changes need a teammate's review before going live",
-  "thread.publishPopover.newPage": "New page",
   "thread.publishPopover.newPageSections": "New page with {count} sections",
   "thread.publishPopover.newPageSectionOne": "New page with 1 section",
   "thread.publishPopover.sectionsChanged": "{count} sections changed",
@@ -247,7 +246,6 @@ export const thread = {
   "thread.publishPopover.discardAll": "Discard all",
   "thread.publishPopover.discardAllConfirm":
     "Discard every change? This can't be undone.",
-  "thread.publishPopover.discardConfirm": "Discard {name}?",
   "thread.publishPopover.reviewNote": "Note for reviewers",
   "thread.publishPopover.reviewNotePlaceholder": "What changed and why…",
   "thread.publishPopover.reviewing": "Reviewing content…",

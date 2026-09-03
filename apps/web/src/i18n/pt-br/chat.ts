@@ -321,10 +321,8 @@ export const chat = {
   "chat.nativeTerminal.connectionFailed":
     "Não foi possível conectar ao agente de codificação. Reabra o chat e tente novamente.",
   "chat.nativeTerminal.emptyPrompt": "Escreva uma mensagem antes de enviar.",
-  "chat.nativeTerminal.exited": "O agente de codificação foi encerrado",
   "chat.nativeTerminal.exitedBeforeReady":
     "O agente de codificação parou antes de ficar pronto. Reabra o chat e tente novamente.",
-  "chat.nativeTerminal.failed": "Erro no terminal",
   "chat.nativeTerminal.promptFailed": "Não foi possível enviar a mensagem.",
   "chat.nativeTerminal.promptDeliveryUnknown":
     "Perdemos a conexão depois que sua mensagem foi enviada. Ela pode já estar em execução; confira o agente de codificação antes de enviar novamente.",
@@ -358,7 +356,6 @@ export const chat = {
     "{org} está pronto para projetos",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Conecte um provedor de IA para começar a conversar.",
-  "chat.noAiProviderEmptyState.useLabel": "Usar {label}",
   "chat.outputFileRow.download": "Baixar",
   "chat.outputFileRow.downloadFile": "Baixar {filename}",
   "chat.outputFileRow.open": "Abrir",
@@ -370,7 +367,6 @@ export const chat = {
   "chat.proposePlan.keepIterating": "Continuar iterando",
   "chat.proposePlan.letsGo": "Vamos lá",
   "chat.proposePlan.planReady": "Plano pronto",
-  "chat.proposePlan.preparingPlan": "Preparando plano...",
   "chat.proposePlan.rejected": "Rejeitado",
   "chat.proposePlan.viewPlan": "Ver plano",
   "chat.queueTray.queuedMessage": "{count} mensagem na fila",
@@ -533,15 +529,8 @@ export const chat = {
   "chat.webSearch.title": "Busca na web",
   "chat.mention.editPrompt": "Editar argumentos do prompt {name}",
   "chat.mention.noItemsFound": "Nenhum item encontrado",
-  "chat.modelPreferences.title": "Seus modelos",
-  "chat.modelPreferences.description":
-    "Escolha qual modelo cada nível usa para você. Isso altera apenas os seus chats — o padrão da organização permanece o mesmo.",
   "chat.modelPreferences.customizeModel": "Personalizar modelo de {tier}",
-  "chat.modelPreferences.pickModel": "Escolher modelo",
   "chat.modelPreferences.reset": "Redefinir",
-  "chat.modelPreferences.usingOrgDefault": "Usando o padrão da organização",
-  "chat.modelPreferences.orgDefaultIs": "Padrão da organização: {model}",
-  "chat.modelPreferences.autoPicked": "escolhido automaticamente",
   "chat.modelPreferences.loadFailed":
     "Não foi possível carregar suas escolhas de modelo. O que aparece abaixo pode não corresponder ao que seus chats usam.",
   "chat.todoStatus.completed": "concluído",

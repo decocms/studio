@@ -34,7 +34,6 @@ export const orgs = {
   "orgs.catalogItemCard.connected": "Connected",
   "orgs.catalogItemCard.continue": "Continue",
   "orgs.collectionDetail.goBackButton": "Go back",
-  "orgs.collectionDetail.loadingAriaLabel": "Loading",
   "orgs.collectionDetail.noComponentDefinedDescription":
     "No component for this collection was defined",
   "orgs.collectionDetail.noComponentDefinedTitle": "No component defined",

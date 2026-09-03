@@ -15,11 +15,8 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.somethingWentWrong":
     "Something went wrong. Try refreshing.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Task unavailable",
-  "agentShellLayout.libraryToggle.library": "Library",
-  "agentShellLayout.tasksToggle.tasks": "Tasks",
   "agentShellLayout.toggleButtons.hideChat": "Hide chat",
   "agentShellLayout.toggleButtons.hidePanel": "Hide panel",
   "agentShellLayout.toggleButtons.showChat": "Show chat",
   "agentShellLayout.toggleButtons.showPanel": "Show panel",
-  "agentShellLayout.toggleButtons.chat": "Chat",
 } as const;

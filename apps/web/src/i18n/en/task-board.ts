@@ -307,7 +307,6 @@ export const taskBoard = {
   "taskBoard.config.typeFeature": "Feature",
   "taskBoard.config.typeSecurity": "Security",
   "taskBoard.config.typeSpike": "Spike",
-  "taskBoard.taskBoard.typeLabel": "Type",
   "taskBoard.taskDialog.activityTypeFromTo": "changed type from {from} to {to}",
   "taskBoard.taskDialog.activityTypeSet": "set the type to {to}",
 } as const;

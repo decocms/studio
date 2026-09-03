@@ -312,10 +312,8 @@ export const chat = {
   "chat.nativeTerminal.connectionFailed":
     "We couldn't connect to the coding agent. Reopen the chat and try again.",
   "chat.nativeTerminal.emptyPrompt": "Write a message before sending.",
-  "chat.nativeTerminal.exited": "Coding agent exited",
   "chat.nativeTerminal.exitedBeforeReady":
     "The coding agent stopped before it was ready. Reopen the chat and try again.",
-  "chat.nativeTerminal.failed": "Terminal error",
   "chat.nativeTerminal.promptFailed":
     "We couldn't send your message. Try again.",
   "chat.nativeTerminal.promptDeliveryUnknown":
@@ -349,7 +347,6 @@ export const chat = {
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for projects",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Connect an AI provider to start chatting.",
-  "chat.noAiProviderEmptyState.useLabel": "Use {label}",
   "chat.outputFileRow.download": "Download",
   "chat.outputFileRow.downloadFile": "Download {filename}",
   "chat.outputFileRow.open": "Open",
@@ -361,7 +358,6 @@ export const chat = {
   "chat.proposePlan.keepIterating": "Keep iterating",
   "chat.proposePlan.letsGo": "Let's go",
   "chat.proposePlan.planReady": "Plan ready",
-  "chat.proposePlan.preparingPlan": "Preparing plan...",
   "chat.proposePlan.rejected": "Rejected",
   "chat.proposePlan.viewPlan": "View plan",
   "chat.queueTray.queuedMessage": "{count} queued message",
@@ -518,15 +514,8 @@ export const chat = {
   "chat.webSearch.title": "Web search",
   "chat.mention.editPrompt": "Edit {name} prompt arguments",
   "chat.mention.noItemsFound": "No items found",
-  "chat.modelPreferences.title": "Your models",
-  "chat.modelPreferences.description":
-    "Pick which model each tier uses for you. This only changes your chats — the organization default stays the same.",
   "chat.modelPreferences.customizeModel": "Customize {tier} model",
-  "chat.modelPreferences.pickModel": "Pick model",
   "chat.modelPreferences.reset": "Reset",
-  "chat.modelPreferences.usingOrgDefault": "Using organization default",
-  "chat.modelPreferences.orgDefaultIs": "Organization default: {model}",
-  "chat.modelPreferences.autoPicked": "auto-picked",
   "chat.modelPreferences.loadFailed":
     "Couldn't load your model choices. What you see below may not match what your chats use.",
   "chat.todoStatus.completed": "completed",

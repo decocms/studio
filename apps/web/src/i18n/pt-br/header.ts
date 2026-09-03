@@ -8,15 +8,7 @@ export const header = {
   "header.orgSwitcher.invitationDeclined": "Convite recusado",
   "header.orgSwitcher.invitedToJoin": "Convidado para entrar",
   "header.orgSwitcher.joined": "Entrou em {name}",
-  "header.orgSwitcher.noOrganizationsAvailable":
-    "Nenhuma organização disponível",
-  "header.orgSwitcher.noOrganizationsMatch":
-    'Nenhuma organização coincide com "{query}"',
-  "header.orgSwitcher.searchOrganizations": "Pesquisar organizações...",
   "header.orgSwitcher.unknownOrganization": "Organização desconhecida",
   "header.shellBreadcrumb.openAgentHome": "Abrir início de {name}",
   "header.shellBreadcrumb.superAgentDefaultName": "Super Agent",
-  "header.shellBreadcrumb.switchOrganization": "{name} — trocar organização",
-  "header.shellBreadcrumb.switchOrganizationPendingInvitation":
-    "{name} — trocar organização (convite pendente)",
 } satisfies Record<keyof typeof headerEn, string>;

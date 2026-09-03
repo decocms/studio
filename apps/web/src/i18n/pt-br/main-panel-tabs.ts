@@ -38,7 +38,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.deployments": "Implantações",
   "mainPanelTabs.hostingTab.env": "Variáveis de ambiente",
   "mainPanelTabs.hostingTab.redirects": "Redirecionamentos",
-  "mainPanelTabs.hostingTab.loading": "Carregando…",
   "mainPanelTabs.hostingTab.noDeployments": "Nenhuma implantação ainda.",
   "mainPanelTabs.hostingTab.noEnv": "Nenhuma variável de ambiente definida.",
   "mainPanelTabs.hostingTab.codeVarsHint":
@@ -54,11 +53,7 @@ export const mainPanelTabs = {
     "Falha ao carregar as variáveis de ambiente",
   "mainPanelTabs.hostingTab.redirectsError":
     "Falha ao carregar os redirecionamentos",
-  "mainPanelTabs.hostingTab.colId": "ID",
   "mainPanelTabs.hostingTab.colStatus": "Status",
-  "mainPanelTabs.hostingTab.colUrl": "URL",
-  "mainPanelTabs.hostingTab.colCreated": "Criado em",
-  "mainPanelTabs.hostingTab.colKey": "Chave",
   "mainPanelTabs.hostingTab.colValue": "Valor",
   "mainPanelTabs.hostingTab.colFrom": "De",
   "mainPanelTabs.hostingTab.colTo": "Para",
@@ -233,7 +228,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.statusPassed": "Aprovada",
   "mainPanelTabs.e2eTab.statusFailed": "Falhou",
   "mainPanelTabs.e2eTab.statusRunning": "Em execução",
-  "mainPanelTabs.e2eTab.checks": "{passed}/{total} verificações",
   "mainPanelTabs.e2eTab.noRuns": "Nenhuma execução E2E ainda.",
   "mainPanelTabs.e2eTab.runsError": "Falha ao carregar as execuções E2E",
   "mainPanelTabs.e2eTab.checksSection": "Checks",
@@ -266,14 +260,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.notConnectedTitle": "E2E ainda não conectado",
   "mainPanelTabs.e2eTab.notConnectedDescription":
     "As execuções E2E deste site aparecerão aqui quando a conexão com o control-plane estiver configurada.",
-  "mainPanelTabs.e2eTab.runE2e": "Executar E2E",
   "mainPanelTabs.e2eTab.running": "Enfileirando…",
-  "mainPanelTabs.e2eTab.runConfirmTitle": "Executar verificações E2E?",
-  "mainPanelTabs.e2eTab.runConfirmDescription":
-    "Enfileirar uma nova execução ponta a ponta para este site?",
   "mainPanelTabs.e2eTab.runConfirm": "Executar",
   "mainPanelTabs.e2eTab.cancel": "Cancelar",
-  "mainPanelTabs.e2eTab.toastE2eQueued": "Execução E2E enfileirada",
   "mainPanelTabs.e2eTab.runTest": "Executar teste",
   "mainPanelTabs.e2eTab.runTestTitle": "Executar um teste",
   "mainPanelTabs.e2eTab.runTestDescription":
@@ -292,14 +281,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.confirmDeleteRun":
     "A execução {runId} e seus artefatos serão removidos permanentemente.",
   "mainPanelTabs.e2eTab.toastRunDeleted": "Execução E2E excluída",
-  "mainPanelTabs.e2eTab.runDetail": "Detalhe da execução",
-  "mainPanelTabs.e2eTab.close": "Fechar",
   "mainPanelTabs.e2eTab.detailError": "Falha ao carregar o detalhe da execução",
   "mainPanelTabs.e2eTab.url": "URL",
   "mainPanelTabs.e2eTab.command": "Comando",
-  "mainPanelTabs.e2eTab.duration": "Duração",
-  "mainPanelTabs.e2eTab.totalDuration": "Duração total",
-  "mainPanelTabs.e2eTab.exitCode": "Código de saída",
   "mainPanelTabs.e2eTab.viewport": "Viewport",
   "mainPanelTabs.e2eTab.funnel": "Funil",
   "mainPanelTabs.e2eTab.steps": "Passos",
@@ -309,7 +293,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.console": "Console",
   "mainPanelTabs.e2eTab.network": "Rede",
   "mainPanelTabs.e2eTab.video": "Vídeo",
-  "mainPanelTabs.e2eTab.trace": "Trace",
   "mainPanelTabs.e2eTab.openTrace": "Abrir no Playwright Trace Viewer",
   "mainPanelTabs.e2eTab.downloadTrace": "Baixar .zip",
   "mainPanelTabs.e2eTab.noReport":
@@ -399,25 +382,13 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.saving": "Salvando…",
   "mainPanelTabs.analyticsTab.cancel": "Cancelar",
   // Uso
-  "mainPanelTabs.analyticsTab.usageTitle": "Uso",
-  "mainPanelTabs.analyticsTab.usageEmpty": "Nenhum evento coletado ainda.",
-  // Rastreamento (só uso — sem internals de entrega/faturamento)
   "mainPanelTabs.analyticsTab.installTitle": "Rastreamento",
   "mainPanelTabs.analyticsTab.installAuto":
     "As análises estão ativas neste site — são adicionadas automaticamente, nada pra colar.",
   "mainPanelTabs.analyticsTab.installTrackPrefix":
     "Envie eventos personalizados do seu código via ",
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
-  "mainPanelTabs.analyticsTab.dashboardTitle": "Painel",
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
-  "mainPanelTabs.analyticsTab.rangeLabel": "Período",
-  "mainPanelTabs.analyticsTab.range5m": "Últimos 5 minutos",
-  "mainPanelTabs.analyticsTab.range15m": "Últimos 15 minutos",
-  "mainPanelTabs.analyticsTab.range30m": "Últimos 30 minutos",
-  "mainPanelTabs.analyticsTab.range1h": "Última hora",
-  "mainPanelTabs.analyticsTab.range24h": "Últimas 24 horas",
-  "mainPanelTabs.analyticsTab.range7d": "Últimos 7 dias",
-  "mainPanelTabs.analyticsTab.range30d": "Últimos 30 dias",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
   "mainPanelTabs.analyticsTab.viewLive": "Tempo real",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
@@ -427,8 +398,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.viewVitals": "Web Vitals",
   "mainPanelTabs.analyticsTab.viewQuality": "Qualidade dos dados",
   "mainPanelTabs.analyticsTab.viewUsage": "Uso & limites",
-  "mainPanelTabs.analyticsTab.viewInstall": "Instalação",
-  // Títulos dos cards do painel + banner de uso/cota
   "mainPanelTabs.analyticsTab.cardTopSources": "Principais origens",
   "mainPanelTabs.analyticsTab.cardFunnel": "Funil",
   "mainPanelTabs.analyticsTab.cardLiveFeed": "Ao vivo",
@@ -440,9 +409,6 @@ export const mainPanelTabs = {
     "{count} aceitos no período selecionado. A cota é reiniciada a cada mês civil; o coletor descarta eventos assim que o site é marcado como acima do limite. O consumo do mês até agora e o estado de excedente estão no detalhe de hospedagem do site.",
   "mainPanelTabs.analyticsTab.dataLoadError":
     "Não foi possível carregar esta visão.",
-  "mainPanelTabs.analyticsTab.dataEmpty": "Sem dados para este período ainda.",
-  "mainPanelTabs.analyticsTab.panelEmpty": "Sem linhas.",
-  "mainPanelTabs.analyticsTab.dataNotConfiguredTitle": "Painel indisponível",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "A superfície de dados de analytics ainda não está ligada a este ambiente — a configuração abaixo continua funcionando.",
   // Registro por token (chave)
@@ -470,8 +436,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.installTokenNote":
     "O token é mostrado uma vez, no registro. Re-registre (desregistrar e habilitar por token) para gerar um novo.",
   "mainPanelTabs.analyticsTab.installSiteId": "Site ID (onde os eventos caem)",
-  "mainPanelTabs.analyticsTab.rotateToken": "Rotacionar token",
-  "mainPanelTabs.analyticsTab.rotating": "Rotacionando…",
   "mainPanelTabs.analyticsTab.toastTokenRotated": "Token rotacionado",
   "mainPanelTabs.analyticsTab.emptyLive":
     "Nenhum visitante nos últimos minutos.",
@@ -582,5 +546,4 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.connectGithubDescription":
     "Conecte um repositório do GitHub para construir e visualizar seu site aqui.",
   "mainPanelTabs.previewTab.noSourceToPreview": "Nenhuma fonte para visualizar",
-  "mainPanelTabs.tabOverflowMenu.moreTabs": "Mais abas",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;

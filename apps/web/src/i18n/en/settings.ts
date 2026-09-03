@@ -42,9 +42,6 @@ export const settings = {
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
   "settings.jira.loadingBoards": "Loading boards…",
-  "settings.jira.rolesLabel": "What each column means",
-  "settings.jira.rolesDescription":
-    "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
   "settings.boardColumns.title": "Board columns",
   "settings.boardColumns.description":
     "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
@@ -69,11 +66,6 @@ export const settings = {
     "Optional. The card's title and description always come with it, so this is the instruction, not the whole message.",
   "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
   "settings.boardColumns.saveFailed": "Could not save this column",
-  "settings.jira.roleNone": "Nothing special",
-  "settings.jira.roleQueued": "Where the agent gives up",
-  "settings.jira.roleInProgress": "Being worked on",
-  "settings.jira.roleInReview": "Under review",
-  "settings.jira.roleArchived": "Archive",
   "settings.jira.noColumnsYet":
     "No columns yet — they arrive with the next sync.",
   "settings.jira.mappingLabel": "Column mapping",
@@ -541,21 +533,6 @@ export const settings = {
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
-  "settings.sprints.title": "Sprints",
-  "settings.sprints.description":
-    "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
-  "settings.sprints.enabledTitle": "Enable sprints",
-  "settings.sprints.enabledDescription":
-    "Adds a sprint property to every task and a sprint filter to the board.",
-  "settings.sprints.cadenceTitle": "Cadence",
-  "settings.sprints.cadenceDescription":
-    "How long a sprint lasts, and the day sprint 1 started.",
-  "settings.sprints.cadenceCurrent":
-    "Sprint {number} is running now ({start} to {end}).",
-  "settings.sprints.weeksValue": "{count} weeks",
-  "settings.sprints.weeksValueOne": "1 week",
-  "settings.sprints.startDateLabel": "Sprint 1 start day",
-  "settings.sprints.updateError": "Couldn't update the sprint settings",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

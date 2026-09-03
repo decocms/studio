@@ -2,7 +2,6 @@ export const filePicker = {
   "filePicker.filePickerDialog.assetActions": "Asset actions",
   "filePicker.filePickerDialog.commonMediaTypes":
     "Common image, video, audio, and document types.",
-  "filePicker.filePickerDialog.configureABucket": "Configure a bucket",
   "filePicker.filePickerDialog.copied": "Copied",
   "filePicker.filePickerDialog.copyUrl": "Copy URL",
   "filePicker.filePickerDialog.description":

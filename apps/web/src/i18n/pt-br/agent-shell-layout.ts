@@ -18,11 +18,8 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.somethingWentWrong":
     "Algo deu errado. Tente atualizar.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Tarefa indisponível",
-  "agentShellLayout.libraryToggle.library": "Biblioteca",
-  "agentShellLayout.tasksToggle.tasks": "Tarefas",
   "agentShellLayout.toggleButtons.hideChat": "Ocultar chat",
   "agentShellLayout.toggleButtons.hidePanel": "Ocultar painel",
   "agentShellLayout.toggleButtons.showChat": "Mostrar chat",
   "agentShellLayout.toggleButtons.showPanel": "Mostrar painel",
-  "agentShellLayout.toggleButtons.chat": "Chat",
 } satisfies Record<keyof typeof agentShellLayoutEn, string>;

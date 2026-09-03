@@ -317,7 +317,6 @@ export const taskBoard = {
   "taskBoard.config.typeFeature": "Funcionalidade",
   "taskBoard.config.typeSecurity": "Segurança",
   "taskBoard.config.typeSpike": "Spike",
-  "taskBoard.taskBoard.typeLabel": "Tipo",
   "taskBoard.taskDialog.activityTypeFromTo": "mudou o tipo de {from} para {to}",
   "taskBoard.taskDialog.activityTypeSet": "definiu o tipo como {to}",
 } satisfies Record<keyof typeof taskBoardEn, string>;

@@ -603,8 +603,6 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
     "Sem a visão Conteúdo no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
-  "sandbox.cmsUnavailable.title":
-    "Este chat não consegue pré-visualizar seu site",
   "sandbox.cmsUnavailable.noPreviewServer":
     "É uma sessão de CMS, mas este projeto não tem servidor de preview configurado.",
   "sandbox.cmsUnavailable.noRepo":

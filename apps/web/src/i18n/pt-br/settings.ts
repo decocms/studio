@@ -44,9 +44,6 @@ export const settings = {
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
   "settings.jira.loadingBoards": "Carregando boards…",
-  "settings.jira.rolesLabel": "O que cada coluna significa",
-  "settings.jira.rolesDescription":
-    "As colunas do seu board vêm do Jira. Diga ao Studio qual delas é onde a revisão acontece, e qual arquiva um card — a maioria não significa nada pra ele, e tudo bem.",
   "settings.boardColumns.title": "Colunas do board",
   "settings.boardColumns.description":
     "As colunas são do seu tracker. Diga o que deve mover um card para cada uma, e quais delas devem colocar o agente para trabalhar.",
@@ -72,11 +69,6 @@ export const settings = {
   "settings.boardColumns.removeAriaLabel":
     "Parar de rodar o agente em {column}",
   "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",
-  "settings.jira.roleNone": "Nada em especial",
-  "settings.jira.roleQueued": "Pra onde volta se o agente desistir",
-  "settings.jira.roleInProgress": "Em progresso",
-  "settings.jira.roleInReview": "Em revisão",
-  "settings.jira.roleArchived": "Arquivo",
   "settings.jira.noColumnsYet":
     "Nenhuma coluna ainda — elas chegam na próxima sincronização.",
   "settings.jira.mappingLabel": "Mapeamento de colunas",
@@ -560,22 +552,6 @@ export const settings = {
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats em um agente importado de um reposit\u00f3rio do GitHub rodam dentro do sandbox desse agente, ao lado do checkout, em vez de rodarem no Decopilot. As respostas chegam de turno inteiro, e n\u00e3o palavra por palavra. S\u00f3 vale para chats novos \u2014 um chat existente mant\u00e9m o runtime em que come\u00e7ou.",
-  "settings.sprints.title": "Sprints",
-  "settings.sprints.description":
-    "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",
-  "settings.sprints.enabledTitle": "Ativar sprints",
-  "settings.sprints.enabledDescription":
-    "Adiciona uma propriedade de sprint em cada tarefa e um filtro de sprint no board.",
-  "settings.sprints.cadenceTitle": "Cad\u00eancia",
-  "settings.sprints.cadenceDescription":
-    "Quanto tempo dura uma sprint e o dia em que a sprint 1 come\u00e7ou.",
-  "settings.sprints.cadenceCurrent":
-    "A sprint {number} est\u00e1 em andamento ({start} a {end}).",
-  "settings.sprints.weeksValue": "{count} semanas",
-  "settings.sprints.weeksValueOne": "1 semana",
-  "settings.sprints.startDateLabel": "Dia inicial da sprint 1",
-  "settings.sprints.updateError":
-    "N\u00e3o foi poss\u00edvel atualizar as configura\u00e7\u00f5es de sprint",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
