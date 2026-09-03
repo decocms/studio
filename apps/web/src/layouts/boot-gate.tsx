@@ -58,12 +58,28 @@ import { router } from "@/router";
  * down: it is one listener for the life of the page, and dropping it would let
  * nanostores unmount the atom and take better-auth's session refresh manager
  * with it.
+ *
+ * It also FAILS OPEN. `isPending` only clears from better-auth's own
+ * success/error paths, and its fetch carries no timeout — so a request that
+ * opens a socket and is never answered (a captive portal, a black-holed proxy)
+ * left this promise unresolved forever. That mattered more here than at the
+ * five boundaries this replaced: they each failed open with the router already
+ * mounted, whereas this gate sits ABOVE `<RouterProvider>`, so the same hang
+ * meant an infinite splash with no route tree, no error boundary and `/login`
+ * unreachable. After the deadline the app mounts with the session still
+ * pending, which `RequiredAuthLayout` renders as a loader rather than a blank.
  */
+const SESSION_SETTLE_TIMEOUT_MS = 8_000;
+
 function sessionSettled(): Promise<void> {
   return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, SESSION_SETTLE_TIMEOUT_MS);
     authClient.$store.listen("session", (state: unknown) => {
       if (state && typeof state === "object" && "isPending" in state) {
-        if (!state.isPending) resolve();
+        if (!state.isPending) {
+          clearTimeout(timer);
+          resolve();
+        }
       }
     });
   });
