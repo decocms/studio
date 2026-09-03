@@ -22,14 +22,7 @@ function ProjectFeedForProject() {
   const { project } = useProjectScope();
   const tasks = useOrgTasksSuspense();
   if (!project) return null;
-  return (
-    <ProjectFeed
-      projects={[project]}
-      tasks={tasks}
-      showFilter={false}
-      includeOpen
-    />
-  );
+  return <ProjectFeed projects={[project]} tasks={tasks} showFilter={false} />;
 }
 
 export function OverviewTab() {

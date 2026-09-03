@@ -94,50 +94,35 @@ describe("buildFeed", () => {
     expect(feed).toEqual([]);
   });
 
-  /** The ORG home is a record of finished work, so it keeps the settled-only
-   *  rule. The PROJECT home is a working surface whose composer creates cards
-   *  in the intake lane, so it must carry them — a feed that could not show
-   *  what the composer above it just made is the bug this pair pins. */
-  const OPEN = ["todo", "in_progress", "in_review", "triage"];
+  /** INVERTED, twice over. The feed carried only `done` (plus delivery lanes
+   *  for orgs running them), which made the project home's composer create
+   *  cards its own feed could not show, and left an org mid-flight with an
+   *  empty home. The feed is the board's list view now — one rule on both
+   *  homes — so the only status that is still excluded is the deleted one. */
+  const LANES = [
+    "todo",
+    "in_progress",
+    "in_review",
+    "triage",
+    "done",
+    "merged",
+  ];
 
-  it("carries only settled work by default — the org home's rule", () => {
+  it("carries every lane, open or settled", () => {
     const feed = buildFeed(
       [A],
-      [
-        ...[...OPEN, "archived"].map((status, i) =>
-          task(status, `2026-03-0${i + 1}T00:00:00Z`, {
-            virtualMcpId: "p_a",
-            status,
-          }),
-        ),
-        task("done", "2026-01-01T00:00:00Z", { virtualMcpId: "p_a" }),
-      ],
+      LANES.map((status, i) =>
+        task(status, `2026-03-${String(i + 1).padStart(2, "0")}T00:00:00Z`, {
+          virtualMcpId: "p_a",
+          status,
+        }),
+      ),
       null,
     );
-    expect(ids(feed)).toEqual(["done"]);
+    expect(ids(feed).sort()).toEqual([...LANES].sort());
   });
 
-  it("carries open cards too when asked — the project home's rule", () => {
-    const feed = buildFeed(
-      [A],
-      [
-        ...OPEN.map((status, i) =>
-          task(status, `2026-03-0${i + 1}T00:00:00Z`, {
-            virtualMcpId: "p_a",
-            status,
-          }),
-        ),
-        task("done", "2026-01-01T00:00:00Z", { virtualMcpId: "p_a" }),
-      ],
-      null,
-      false,
-      true,
-    );
-    // Newest first, so the open cards lead and `done` (January) trails.
-    expect(ids(feed).sort()).toEqual([...OPEN, "done"].sort());
-  });
-
-  it("never carries archived work, even with open cards on", () => {
+  it("never carries archived work — deleted is not activity", () => {
     const feed = buildFeed(
       [A],
       [
@@ -151,21 +136,8 @@ describe("buildFeed", () => {
         }),
       ],
       null,
-      false,
-      true,
     );
     expect(ids(feed)).toEqual(["triage"]);
-  });
-
-  it("counts a delivery lane as settled only for an org that runs them", () => {
-    const shipped = [
-      task("merged", "2026-01-01T00:00:00Z", {
-        virtualMcpId: "p_a",
-        status: "merged",
-      }),
-    ];
-    expect(ids(buildFeed([A], shipped, null, false))).toEqual([]);
-    expect(ids(buildFeed([A], shipped, null, true))).toEqual(["merged"]);
   });
 
   it("caps the stack", () => {

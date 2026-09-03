@@ -47,8 +47,6 @@ import {
 } from "@/layouts/task-board/config";
 import { TaskAssigneeAvatar } from "@/components/task-assignee-avatar";
 import { useMembersQuery } from "@/hooks/use-members";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
-import { DELIVERY_LANES } from "@decocms/shared/task-board";
 import { taskRouteSegment } from "@/layouts/task-board/task-route";
 import { formatTimeAgo } from "@/lib/format-time";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -61,27 +59,6 @@ const MAX_CARDS = 20;
 
 /** Priorities worth a chip — the ones above the default. */
 const NOTABLE_PRIORITIES = new Set(["high", "urgent"]);
-
-/**
- * Work that REACHED A CONCLUSION — the only thing the feed carries.
- *
- * The feed and the sidebar's project list are complements, and the line
- * between them is tense. The sidebar is an inbox: open work waiting on you
- * (`needsAttention` in `sidebar/projects-section.tsx`). The feed is a record:
- * what the org finished, past tense, nothing to act on. A card that appears in
- * both is a card the feed cannot help you with — you would read it here and
- * still have to go there — so `in_review`, `in_progress` and `todo` belong to
- * the sidebar alone.
- *
- * The delivery lanes are terminal only for the orgs that RUN them: with the
- * flag off a card never stops in `merged`, so treating it as an ending would
- * be reading someone else's board. `archived` is excluded — deleted work is
- * not an accomplishment.
- */
-function isSettled(status: string, deliveryLanes: boolean): boolean {
-  if (status === "done") return true;
-  return deliveryLanes && (DELIVERY_LANES as string[]).includes(status);
-}
 
 export interface FeedEntry {
   task: TaskBoardItem;
@@ -115,6 +92,13 @@ function projectFor(
  * The stack, in render order: every attributable card newest first, optionally
  * narrowed to one project.
  *
+ * The feed is the board's list view, not a trophy cabinet — a card belongs here
+ * from the moment it exists, in whatever lane it is in. It carried only settled
+ * work once, which meant the composer on the project home created cards its own
+ * feed could not show, and an org whose team was mid-flight had an empty home
+ * until something shipped. `archived` is still excluded: deleted work is not
+ * activity.
+ *
  * Pure, and exported for its test — the ordering and the attribution rule ARE
  * the feature, and neither is something a screenshot can verify.
  */
@@ -122,12 +106,6 @@ export function buildFeed(
   projects: VirtualMCPEntity[],
   tasks: TaskBoardItem[],
   projectId: string | null,
-  deliveryLanes = false,
-  /** Carry open cards too, not just settled ones. The project home sets this:
-   *  its composer creates a card in the intake lane, and a feed that could not
-   *  show it left you typing into something that answered with nothing. The
-   *  ORG home stays settled-only — there it is a record of finished work. */
-  includeOpen = false,
 ): FeedEntry[] {
   const byId = new Map(projects.map((p) => [p.id, p] as const));
   const byRepo = new Map<string, VirtualMCPEntity>();
@@ -138,9 +116,10 @@ export function buildFeed(
 
   const entries: FeedEntry[] = [];
   for (const task of tasks) {
-    // Deleted work is never an entry, open or settled.
+    // Deleted work is never an entry. Everything else is: the feed IS the
+    // board's list view, newest activity first, so a card is here from the
+    // moment it exists rather than from the moment it ships.
     if (task.status === "archived") continue;
-    if (!includeOpen && !isSettled(task.status, deliveryLanes)) continue;
     const project = projectFor(task, byId, byRepo);
     if (!project) continue;
     if (projectId && project.id !== projectId) continue;
@@ -372,7 +351,6 @@ export function ProjectFeed({
   tasks,
   action,
   showFilter = true,
-  includeOpen = false,
 }: {
   projects: VirtualMCPEntity[];
   tasks: TaskBoardItem[];
@@ -383,19 +361,10 @@ export function ProjectFeed({
    *  only option is the thing you are looking at is a control that cannot do
    *  anything. */
   showFilter?: boolean;
-  /** See `buildFeed`. On inside a project, off on the org home. */
-  includeOpen?: boolean;
 }) {
   const t = useT();
   const [projectId, setProjectId] = useState<string | null>(null);
-  const deliveryLanes = useOrgFlag("delivery_lanes_enabled");
-  const entries = buildFeed(
-    projects,
-    tasks,
-    projectId,
-    deliveryLanes,
-    includeOpen,
-  );
+  const entries = buildFeed(projects, tasks, projectId);
   /** Non-blocking and resolved ONCE for the stack: an assignee is decoration on
    *  a card that is already legible without it, so the feed must not wait on
    *  the member list to paint. Until it lands, a human assignee simply has no
