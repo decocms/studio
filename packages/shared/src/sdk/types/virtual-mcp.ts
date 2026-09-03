@@ -45,6 +45,13 @@ const SELECTED_ITEMS_MAX = 500;
  *  hundreds of MCPs. */
 const CONNECTIONS_MAX = 200;
 
+/** Cap on how many plugin IDs `metadata.enabled_plugins` can carry on write —
+ *  same rationale as the sibling cap on organization_settings.enabled_plugins
+ *  (apps/api/src/tools/organization/settings-update.ts): the plugin registry
+ *  is a small, finite set, so an unbounded array here is attacker-controlled
+ *  payload size, not a real agent config. */
+const ENABLED_PLUGINS_MAX = 200;
+
 /**
  * Virtual MCP connection schema for input (Create/Update) - fields can be optional
  */
@@ -914,6 +921,14 @@ export const VirtualMCPCreateDataSchema = z.object({
   pinned: z.boolean().optional().default(false).describe("Pin to sidebar"),
   metadata: z
     .object(VirtualMcpMetadataFields)
+    .extend({
+      enabled_plugins: z
+        .array(z.string())
+        .max(ENABLED_PLUGINS_MAX)
+        .nullable()
+        .optional()
+        .describe("List of enabled plugin IDs"),
+    })
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {
@@ -960,6 +975,14 @@ export const VirtualMCPUpdateDataSchema = z.object({
   pinned: z.boolean().optional().describe("Pin/unpin from sidebar"),
   metadata: z
     .object(VirtualMcpMetadataFields)
+    .extend({
+      enabled_plugins: z
+        .array(z.string())
+        .max(ENABLED_PLUGINS_MAX)
+        .nullable()
+        .optional()
+        .describe("List of enabled plugin IDs"),
+    })
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {
