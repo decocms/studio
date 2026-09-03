@@ -159,6 +159,81 @@ describe("findAgentEntryThread", () => {
     ).toBeUndefined();
   });
 
+  const onRelease = task({
+    id: "release",
+    title: "Edit hero",
+    harness_id: "claude-code",
+    branch: "tavano-teste",
+    updated_at: "2026-02-01T00:00:00Z",
+  });
+  const newerUnnamedDraft = task({
+    id: "draft",
+    title: "Scratch",
+    harness_id: "claude-code",
+    branch: "tavano-unnamed",
+    updated_at: "2026-03-01T00:00:00Z",
+  });
+  const known = new Set(["main", "tavano-teste"]);
+
+  // Guards against re-entry landing on a newer unnamed draft (phantom "Rascunho") instead of the named release being edited.
+  it("prefers the last thread on a named version over a newer unnamed draft", () => {
+    expect(
+      findAgentEntryThread(
+        [onRelease, newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        { knownBranches: known },
+      )?.id,
+    ).toBe("release");
+  });
+
+  it("falls back to the raw last thread when none sits on a named version", () => {
+    expect(
+      findAgentEntryThread(
+        [newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        {
+          knownBranches: known,
+        },
+      )?.id,
+    ).toBe("draft");
+  });
+
+  // Drafts mode: an unnamed draft is never editable, so it is never auto-resumed.
+  it("drafts mode resumes the named version, ignoring a newer unnamed draft", () => {
+    expect(
+      findAgentEntryThread(
+        [onRelease, newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        { knownBranches: known, draftsMode: true },
+      )?.id,
+    ).toBe("release");
+  });
+
+  it("drafts mode returns undefined when nothing sits on a named version (caller mints on production)", () => {
+    expect(
+      findAgentEntryThread(
+        [newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        {
+          knownBranches: known,
+          draftsMode: true,
+        },
+      ),
+    ).toBeUndefined();
+  });
+
   it("never resumes a thread of the other runtime for a repo-backed agent", () => {
     const cmsReal = task({
       id: "cms-real",
