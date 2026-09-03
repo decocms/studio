@@ -448,7 +448,6 @@ export const sandbox = {
   "sandbox.preview.collapseTerminal": "Recolher terminal",
   "sandbox.preview.expandTerminal": "Expandir terminal",
   "sandbox.preview.resizeTerminal": "Redimensionar terminal",
-  "sandbox.preview.copyCurrentUrl": "Copiar URL atual",
   "sandbox.preview.createNewPage": "Criar nova página",
   "sandbox.preview.devServerPreviewTitle":
     "Visualização do servidor de desenvolvimento",
@@ -456,27 +455,21 @@ export const sandbox = {
   "sandbox.preview.deviceMobile": "Celular (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.editContent": "Editar conteúdo",
-  "sandbox.preview.editSeo": "Editar SEO",
   "sandbox.preview.enterToGo": "Enter para ir",
   "sandbox.preview.exitEditor": "Sair do editor",
-  "sandbox.preview.failedToCopyUrl": "Falha ao copiar URL",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
   "sandbox.preview.globalLoaders": "Loaders globais",
-  "sandbox.preview.invalidPageBlockKey": "Chave de bloco de página inválida",
   "sandbox.preview.loaderBadge": "Loader",
   "sandbox.preview.loaderNoLongerExists": "Este loader não existe mais.",
-  "sandbox.preview.moreOptions": "Mais opções",
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",
   "sandbox.preview.noSearchResults":
     "Nenhum resultado corresponde à sua pesquisa.",
   "sandbox.preview.noServerRunning": "Nenhum servidor em execução",
-  "sandbox.preview.openInCursor": "Abrir no Cursor",
   "sandbox.preview.openInBrowser": "Abrir no navegador",
   "sandbox.preview.failedToOpenInBrowser":
     "Não foi possível abrir seu navegador",
   "sandbox.preview.openInNewTab": "Abrir em nova aba",
-  "sandbox.preview.openInVscode": "Abrir no VSCode",
   "sandbox.preview.pageAlreadyExists":
     'Uma página com o caminho "{path}" já existe.',
   "sandbox.preview.pageCreated": 'Página "{name}" criada',
@@ -490,10 +483,7 @@ export const sandbox = {
     "Mostrando seu site publicado. Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
-  "sandbox.preview.urlCopiedToClipboard":
-    "URL copiada para a área de transferência",
   "sandbox.preview.valueForParam": "Valor de {label}",
-  "sandbox.preview.viewJson": "Visualizar JSON",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
   "sandbox.productBlocks.addProductsButton": "Adicionar produtos",
