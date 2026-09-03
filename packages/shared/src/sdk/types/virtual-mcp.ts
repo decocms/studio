@@ -871,6 +871,7 @@ export const VirtualMCPCreateDataSchema = z.object({
   title: z.string().min(1).max(255).describe("Name for the virtual MCP"),
   description: z
     .string()
+    .max(500)
     .nullable()
     .optional()
     .describe("Optional description"),
@@ -903,6 +904,7 @@ export const VirtualMCPCreateDataSchema = z.object({
     ),
   prompts: z
     .array(AgentKickstartPromptSchema)
+    .max(20)
     .optional()
     .describe(
       "Optional kickstart prompts to seed on the agent. Each becomes a clickable conversation starter (icebreaker) on the agent. Author them from the agent's role and the tools it will have so they're coherent and immediately useful.",
@@ -918,6 +920,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
   title: z.string().min(1).max(255).optional().describe("New name"),
   description: z
     .string()
+    .max(500)
     .nullable()
     .optional()
     .describe("New description (null to clear)"),
@@ -945,6 +948,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
     .describe("New connections (replaces existing)"),
   prompts: z
     .array(AgentKickstartPromptSchema)
+    .max(20)
     .optional()
     .describe(
       "Replace the agent's kickstart prompts with this full set. Omit to leave them unchanged; pass an empty array to remove all. Each becomes a clickable conversation starter (icebreaker).",
