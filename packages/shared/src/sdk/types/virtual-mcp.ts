@@ -867,6 +867,7 @@ const VirtualMcpMetadataFields = {
     .describe("UI customization settings"),
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
+    .max(10)
     .nullable()
     .optional()
     .describe(

@@ -329,6 +329,19 @@ describe("metadata.sidebarViews", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("caps the array at 10 entries", () => {
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: [...sidebarViews] },
+      }).success,
+    ).toBe(true);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: [...sidebarViews, "overview"] },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 test("metadata.runtime is typed and round-trips through parse", () => {
