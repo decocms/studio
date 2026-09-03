@@ -20,6 +20,7 @@ export const thread = {
   "thread.branchPicker.newVersion": "New draft",
   "thread.branchPicker.rename": "Rename",
   "thread.branchPicker.save": "Save",
+  "thread.branchPicker.saveError": "Couldn't save the version. Try again.",
   "thread.branchPicker.selectVersion": "Select a version",
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",

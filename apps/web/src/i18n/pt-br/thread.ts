@@ -22,6 +22,8 @@ export const thread = {
   "thread.branchPicker.newVersion": "Novo Rascunho",
   "thread.branchPicker.rename": "Renomear",
   "thread.branchPicker.save": "Salvar",
+  "thread.branchPicker.saveError":
+    "Não foi possível salvar a versão. Tente novamente.",
   "thread.branchPicker.selectVersion": "Selecione uma versão",
   "thread.branchPicker.newChatHint":
     "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",

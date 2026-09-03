@@ -53,6 +53,7 @@ import { generateBranchName } from "@decocms/shared/branch-name";
 import type { Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
+import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
@@ -142,15 +143,22 @@ export function BranchPicker({
     setOpen(false);
   };
 
+  // A failed release write reverts the row silently otherwise — surface it.
+  const reportReleaseError = (err: unknown) => {
+    toast.error(
+      err instanceof Error ? err.message : t("thread.branchPicker.saveError"),
+    );
+  };
+
   // Advanced: adopt an existing branch/PR head as a named draft, then switch.
   const adoptBranch = (branch: string, name: string) => {
     if (!releases.some((r) => r.branch === branch)) {
-      void createRelease({
+      createRelease({
         branch,
         name: name.trim() || branch,
         color: nextReleaseColor(releases.length),
         createdAt: new Date().toISOString(),
-      });
+      }).catch(reportReleaseError);
     }
     onChange(branch);
     setAdvanced(false);
@@ -159,7 +167,7 @@ export function BranchPicker({
 
   const create = () => {
     const branch = generateBranchName(userLabel);
-    void createRelease({
+    createRelease({
       branch,
       name: nextDraftName(
         releases,
@@ -167,7 +175,7 @@ export function BranchPicker({
       ),
       color: nextReleaseColor(releases.length),
       createdAt: new Date().toISOString(),
-    });
+    }).catch(reportReleaseError);
     (onCreateBranch ?? onChange)(branch);
     setOpen(false);
   };
@@ -185,7 +193,7 @@ export function BranchPicker({
 
   const saveRename = (branch: string) => {
     const next = editName.trim();
-    if (next) void renameRelease(branch, next);
+    if (next) renameRelease(branch, next).catch(reportReleaseError);
     setEditing(null);
     setEditName("");
   };
@@ -197,7 +205,7 @@ export function BranchPicker({
     // Land on production before the deleted draft vanishes from the list.
     if (r.branch === value && baseBranch) pick(baseBranch);
     else setOpen(false);
-    void deleteRelease(r.branch);
+    deleteRelease(r.branch).catch(reportReleaseError);
   };
 
   const popover = (
