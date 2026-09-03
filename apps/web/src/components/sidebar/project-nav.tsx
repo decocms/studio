@@ -1,27 +1,28 @@
-/** A project's DURABLE views, continuing the org-wide rows above them as one
- *  list. Renders ONLY in project context, off the resolved scope: an org has no
- *  Site Editor, and a fallback would put one project's rows under
- *  a header saying you are looking at the organization. The main panel's tab bar
- *  keeps the ephemeral per-thread views (an open file, a deck, a tool result),
- *  which mean nothing outside the thread that made them. Gating is COARSE on
- *  purpose — the sidebar sits above the agent shell and cannot see the sandbox,
- *  so rows gate on what a project row can know (a repo, a bucket) and each panel
- *  explains the rest in its own empty state. Review changes is absent by choice:
- *  its panel resolves only against an open PR, so the row would land on the
- *  preview more often than not, and it stays in the tab bar where its own gate
- *  governs it. */
+/** A project's durable views, continuing the org-wide rows above them as one
+ *  list. Renders only in project context: an organization has no Site Editor,
+ *  and falling back would put one project's rows under an organization header.
+ *  Configurable rows share their presence gates with Layout and additionally
+ *  require the project's sidebar selection. The main panel bar keeps
+ *  contextual and per-thread views, such as Review changes or an open file,
+ *  which do not belong in durable navigation. */
 
 import type { ReactNode } from "react";
-import { Grid01, Image01, Lightning01, Monitor01 } from "@untitledui/icons";
+import {
+  BarChartSquare02,
+  CheckDone01,
+  Globe02,
+  Grid01,
+  Image01,
+  Lightning01,
+  Monitor01,
+  Server01,
+} from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
-import { useFileConfigsQuery } from "@/hooks/use-file-configs";
-import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
-import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { keepAttachedPinnedViews } from "@/layouts/main-panel-tabs/attached-pinned-views";
 import {
@@ -34,6 +35,15 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { useLeafRoutePath } from "@/hooks/use-destination-route";
+import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
+import {
+  PROJECT_NATIVE_VIEW_IDS,
+  projectSidebarViewPresence,
+  resolveProjectSidebarViews,
+  selectedProjectSidebarViews,
+  type ProjectNativeViewId,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
+import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
 
 /** A project's curated app views. The metadata bag is `.loose()`, so this
  *  validates the shape rather than trusting it. */
@@ -74,21 +84,29 @@ interface ProjectView {
 export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { project } = useProjectScope();
-  const fileConfigs = useFileConfigsQuery();
   const navigateToAgent = useNavigateToAgent();
   const leafPath = useLeafRoutePath();
   const activeTabId = useActivePanelTabId();
+  const nativeViews = useProjectNativeViewPresence(project);
+  const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
 
   if (!project) return null;
 
-  const hasRepo = agentHasClonableSource(project.metadata);
-  const hasAssets = !!matchSiteSlugConfig(
-    fileConfigs.data?.configs ?? [],
-    resolveAgentSiteSlug(project),
+  const hasClonableSource = agentHasClonableSource(project.metadata);
+  const sidebarViews =
+    optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
+  const selectedViews = new Set(
+    selectedProjectSidebarViews(
+      sidebarViews,
+      projectSidebarViewPresence(hasClonableSource, nativeViews.presence),
+      optimisticSidebarViews !== undefined
+        ? 1
+        : project.metadata.sidebarViewsVersion,
+    ),
   );
 
   const views: ProjectView[] = [];
-  if (hasRepo) {
+  if (selectedViews.has("site-editor")) {
     /** One row for one surface. Preview, Content and Code are the same place
      *  seen three ways, so they are tabs on it rather than sibling rows, and
      *  the row stays runtime-agnostic: it lands on whatever session the project
@@ -104,21 +122,48 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       dataTour: LAYOUT_TOUR_ANCHORS.siteEditor,
     });
   }
-  if (hasAssets) {
-    views.push({
-      key: "assets",
+  const nativeViewRows: Record<
+    ProjectNativeViewId,
+    Pick<ProjectView, "label" | "icon">
+  > = {
+    assets: {
       label: t("common.mainPanelTabs.assets"),
       icon: <Image01 size={16} />,
-      panel: "assets",
-      isActive: (tabId) => tabId === "assets",
+    },
+    hosting: {
+      label: t("common.mainPanelTabs.hosting"),
+      icon: <Server01 size={16} />,
+    },
+    e2e: {
+      label: t("common.mainPanelTabs.e2e"),
+      icon: <CheckDone01 size={16} />,
+    },
+    analytics: {
+      label: t("common.mainPanelTabs.analytics"),
+      icon: <BarChartSquare02 size={16} />,
+    },
+    cdn: {
+      label: t("common.mainPanelTabs.cdn"),
+      icon: <Globe02 size={16} />,
+    },
+  };
+  for (const viewId of PROJECT_NATIVE_VIEW_IDS) {
+    if (!selectedViews.has(viewId)) continue;
+    const row = nativeViewRows[viewId];
+    views.push({
+      key: viewId,
+      label: row.label,
+      icon: row.icon,
+      panel: viewId,
+      isActive: (tabId) => tabId === viewId,
     });
   }
 
   /**
    * The project's pinned app views — the one pin mechanism with a real writer
-   * (Settings › Layout). Same two filters the tab bar applies: a pin whose
-   * connection is no longer aggregated has no toggle to turn it off, and
-   * `fetch_assets` is a retired admin view that the native Assets row replaced.
+   * (Settings › Layout). A pin whose connection is no longer aggregated has no
+   * toggle to turn it off, and `fetch_assets` is a retired admin view that the
+   * native Assets row replaced, so neither becomes a stale navigation row.
    *
    * The panel id carries its own payload (`app:<connection>:<tool>`), which
    * `panelLocationForTab` expands into the segment plus its search — so these
@@ -142,17 +187,19 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
         tabId === formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
     });
   }
-  views.push({
-    key: "automations",
-    label: t("sidebar.projectNav.automations"),
-    icon: <Lightning01 size={16} />,
-    panel: "automations",
-    /** The list and one automation's detail (`automation:<id>`) are the same
-     *  row. */
-    isActive: (tabId) =>
-      tabId === "automations" || parseAutomationTabId(tabId) !== null,
-    dataTour: LAYOUT_TOUR_ANCHORS.automations,
-  });
+  if (selectedViews.has("automations")) {
+    views.push({
+      key: "automations",
+      label: t("sidebar.projectNav.automations"),
+      icon: <Lightning01 size={16} />,
+      panel: "automations",
+      /** The list and one automation's detail (`automation:<id>`) are the same
+       *  row. */
+      isActive: (tabId) =>
+        tabId === "automations" || parseAutomationTabId(tabId) !== null,
+      dataTour: LAYOUT_TOUR_ANCHORS.automations,
+    });
+  }
 
   const onProject = leafPath === DESTINATION_ROUTE.agents;
 

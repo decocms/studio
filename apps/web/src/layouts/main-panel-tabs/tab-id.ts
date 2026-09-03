@@ -1,8 +1,10 @@
 /**
  * Pure helpers for the tab id — the app's ONE name for a main-panel view.
  *
- * Tab id grammar:
- *   - Fixed system: "settings" | "automations" | "site-editor" | "git"
+ * View id grammar:
+ *   - Fixed system/destination: "overview" | "settings" | "automations" |
+ *     "site-editor" | "content" | "code" | "assets" | "hosting" | "e2e" |
+ *     "analytics" | "cdn" | "git"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
  *   - Agent-declared: <agentTab.id> (from virtualMcp.metadata.ui.layout.tabs)
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
@@ -12,9 +14,9 @@
  *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
  *   - Ephemeral Library file preview: "library-file:<encoded browse path>"
  *
- * A tab id is internal: the tab bar, the per-thread layout memory and the bar's
- * order storage speak it, and `panel-route.ts` is the single boundary that
- * writes it into the URL as `/agents/{-$project}/{-$panel}` and reads it back.
+ * A view id is internal: the sidebar, panel bar, and per-thread layout memory
+ * speak it, and `panel-route.ts` is the single boundary that writes it into the
+ * URL as `/agents/{-$project}/{-$panel}` and reads it back.
  * There is no closed sentinel any more — whether the panel is open is
  * `?mainpanel`, a separate boolean, so a closed panel still remembers its view.
  *
@@ -321,7 +323,7 @@ export function resolveDefaultTabId(
   // unified "settings" tab.
   if (LEGACY_SETTINGS_TABS.has(type)) return "settings";
 
-  // A tab on the bar, or a destination an agent may land on.
+  // A fixed project view, or a destination an agent may land on.
   if (FIXED_SYSTEM_TAB_SET.has(type) || DESTINATION_MAIN_VIEWS.has(type)) {
     return type;
   }

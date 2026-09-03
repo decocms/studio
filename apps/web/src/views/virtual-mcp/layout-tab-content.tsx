@@ -30,8 +30,32 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useVirtualMCP } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
+import {
+  BarChartSquare02,
+  CheckDone01,
+  Columns03,
+  Globe02,
+  Home02,
+  Image01,
+  Lightning01,
+  Monitor01,
+  Server01,
+} from "@untitledui/icons";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import type { VirtualMcpFormReturn } from "./types";
+import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
+import {
+  availableProjectSidebarViews,
+  effectiveProjectSidebarViews,
+  projectSidebarViewPresence,
+  resolveProjectSidebarViews,
+  toggleProjectSidebarView,
+  type ProjectSidebarViewId,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
+import {
+  useOptimisticProjectSidebarViews,
+  useOptimisticProjectSidebarViewsActions,
+} from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
 
 /** The merged landing view: the surface Preview, Content and Code are tabs on. */
 const SITE_EDITOR_VIEW = "site-editor";
@@ -66,6 +90,19 @@ interface ConnectionWithTools {
   uiTools: UITool[];
 }
 
+function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
+  if (viewId === "overview") return <Home02 size={16} />;
+  if (viewId === "reports") return <BarChartSquare02 size={16} />;
+  if (viewId === "board") return <Columns03 size={16} />;
+  if (viewId === "site-editor") return <Monitor01 size={16} />;
+  if (viewId === "assets") return <Image01 size={16} />;
+  if (viewId === "hosting") return <Server01 size={16} />;
+  if (viewId === "e2e") return <CheckDone01 size={16} />;
+  if (viewId === "analytics") return <BarChartSquare02 size={16} />;
+  if (viewId === "cdn") return <Globe02 size={16} />;
+  return <Lightning01 size={16} />;
+}
+
 export function LayoutTabContent({
   virtualMcpId,
   form,
@@ -79,6 +116,10 @@ export function LayoutTabContent({
   const studio = useStudioTools();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
+  const nativeViews = useProjectNativeViewPresence(virtualMcp);
+  const optimisticSidebarViews =
+    useOptimisticProjectSidebarViewsActions(virtualMcpId);
+  const pendingSidebarViews = useOptimisticProjectSidebarViews(virtualMcpId);
 
   const connectionIds = (virtualMcp?.connections ?? [])
     .map((c) => c.connection_id)
@@ -147,6 +188,24 @@ export function LayoutTabContent({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  const formSidebarViews = effectiveProjectSidebarViews(
+    resolveProjectSidebarViews({
+      sidebarViews: form.watch("metadata.sidebarViews"),
+      ui: { layout: layoutMeta },
+    }),
+    form.watch("metadata.sidebarViewsVersion"),
+  );
+  // A Settings panel can remount while its previous instance is still saving.
+  // Pending edits and the item cache outlive that form, so they remain the
+  // switch authority instead of stale remounted defaults.
+  const sidebarViews =
+    pendingSidebarViews ??
+    (virtualMcp
+      ? effectiveProjectSidebarViews(
+          resolveProjectSidebarViews(virtualMcp.metadata),
+          virtualMcp.metadata.sidebarViewsVersion,
+        )
+      : formSidebarViews);
   /** No main view: the chat is the whole workspace, so its switch is forced on
    *  and locked. This was the old `chat` main view, which no longer exists. */
   // Convert the stored {type, id, toolName} object into the string composite
@@ -319,6 +378,26 @@ export function LayoutTabContent({
     flushAndSave();
   };
 
+  const handleSidebarViewChange = (
+    viewId: ProjectSidebarViewId,
+    enabled: boolean,
+  ) => {
+    const nextSidebarViews = toggleProjectSidebarView(
+      sidebarViews,
+      viewId,
+      enabled,
+      1,
+    );
+    form.setValue("metadata.sidebarViews", nextSidebarViews, {
+      shouldDirty: true,
+    });
+    form.setValue("metadata.sidebarViewsVersion", 1, { shouldDirty: true });
+    optimisticSidebarViews.stage(nextSidebarViews, sidebarViews);
+    // The parent form subscription coalesces rapid adjacent switch changes and
+    // flushes the latest value on unmount. Starting a full metadata write for
+    // every click would let out-of-order responses revert the newest choice.
+  };
+
   const noConnections = connectionIds.length === 0;
   const noInteractiveTools =
     connectionsWithTools && connectionsData.length === 0;
@@ -327,6 +406,21 @@ export function LayoutTabContent({
   // either a Start Website template or a connected GitHub repo — matching
   // the gating in `use-main-panel-tabs.ts`.
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
+  const availableSidebarViews = availableProjectSidebarViews(
+    projectSidebarViewPresence(hasClonableSource, nativeViews.presence),
+  );
+  const sidebarViewLabels: Record<ProjectSidebarViewId, string> = {
+    overview: t("sidebar.navDestinations.home"),
+    reports: t("sidebar.navDestinations.reports"),
+    board: t("sidebar.navDestinations.tasks"),
+    "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
+    assets: t("common.mainPanelTabs.assets"),
+    hosting: t("common.mainPanelTabs.hosting"),
+    e2e: t("common.mainPanelTabs.e2e"),
+    analytics: t("common.mainPanelTabs.analytics"),
+    cdn: t("common.mainPanelTabs.cdn"),
+    automations: t("virtualMcp.layoutTabContent.automations"),
+  };
 
   /**
    * Options in SIDEBAR order, so the list of places an agent can land reads the
@@ -334,19 +428,14 @@ export function LayoutTabContent({
    * (`NAV_DESTINATION_KEYS` — Home, Reports, Tasks; Library is org-only and
    * never an agent's view), then the project rows, then Settings last.
    */
-  const defaultMainOptions: { value: string; label: string }[] = [
-    { value: "overview", label: t("sidebar.navDestinations.home") },
-    { value: "reports", label: t("sidebar.navDestinations.reports") },
-    { value: "board", label: t("sidebar.navDestinations.tasks") },
-  ];
-  if (hasClonableSource) {
-    /** ONE option for one surface. Preview, Content and Code are tabs on the
-     *  Site Editor, so offering them as sibling landing views would contradict
-     *  the consolidation — and the CMS mode no longer gates anything here,
-     *  because `off` only removes a tab, never the surface itself. */
+  const defaultMainOptions: { value: string; label: string }[] = [];
+  for (const viewId of availableSidebarViews) {
+    // Pinned app rows sit before Automations in the actual sidebar, so append
+    // that final project row after the pinned-view loop below.
+    if (viewId === "automations") continue;
     defaultMainOptions.push({
-      value: SITE_EDITOR_VIEW,
-      label: t("virtualMcp.layoutTabContent.siteEditor"),
+      value: viewId,
+      label: sidebarViewLabels[viewId],
     });
   }
   for (const pv of pinnedViews) {
@@ -355,16 +444,22 @@ export function LayoutTabContent({
       label: pv.label || pv.toolName,
     });
   }
-  defaultMainOptions.push(
-    {
+  if (availableSidebarViews.includes("automations")) {
+    defaultMainOptions.push({
       value: "automations",
-      label: t("virtualMcp.layoutTabContent.automations"),
-    },
-    { value: "settings", label: t("virtualMcp.layoutTabContent.settings") },
-  );
+      label: sidebarViewLabels.automations,
+    });
+  }
+  defaultMainOptions.push({
+    value: "settings",
+    label: t("virtualMcp.layoutTabContent.settings"),
+  });
 
-  const hasPinnedContent =
-    connectionsData.length > 0 || noConnections || noInteractiveTools;
+  const hasSidebarContent =
+    availableSidebarViews.length > 0 ||
+    connectionsData.length > 0 ||
+    noConnections ||
+    noInteractiveTools;
 
   return (
     <div className="flex flex-col gap-3">
@@ -438,20 +533,56 @@ export function LayoutTabContent({
           </div>
         </CardContent>
 
-        {hasPinnedContent && (
+        {hasSidebarContent && (
           <>
             <div className="border-t border-border -mx-6" />
             <CardContent className="p-0 space-y-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5 min-w-0">
                   <Label className="font-normal text-foreground">
-                    {t("virtualMcp.layoutTabContent.pinnedViews")}
+                    {t("virtualMcp.layoutTabContent.sidebarViews")}
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    {t("virtualMcp.layoutTabContent.pinnedViewsDescription")}
+                    {t("virtualMcp.layoutTabContent.sidebarViewsDescription")}
                   </p>
                 </div>
               </div>
+              {availableSidebarViews.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  {availableSidebarViews.map((viewId) => {
+                    const switchId = `sidebar-view-${viewId}`;
+                    return (
+                      <div
+                        key={viewId}
+                        className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border"
+                      >
+                        <Label
+                          htmlFor={switchId}
+                          className="min-w-0 flex flex-1 items-center gap-2 font-normal text-foreground"
+                        >
+                          <SidebarViewIcon viewId={viewId} />
+                          <span className="truncate">
+                            {sidebarViewLabels[viewId]}
+                          </span>
+                        </Label>
+                        <Switch
+                          id={switchId}
+                          checked={sidebarViews.includes(viewId)}
+                          onCheckedChange={(enabled) =>
+                            handleSidebarViewChange(viewId, enabled)
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {availableSidebarViews.length > 0 &&
+                (noConnections ||
+                  noInteractiveTools ||
+                  connectionsData.length > 0) && (
+                  <div className="border-t border-border -mx-6" />
+                )}
               {noConnections && (
                 <p className="text-xs text-muted-foreground">
                   {t("virtualMcp.layoutTabContent.addConnectionMessage")}

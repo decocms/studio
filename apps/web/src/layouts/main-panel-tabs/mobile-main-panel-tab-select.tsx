@@ -44,11 +44,10 @@ const LIBRARY_ICON: TabIcon = { kind: "component", Component: Folder };
 
 /**
  * Mobile view selector. On mobile there's no side-by-side split, so a single
- * surface is visible at a time — this dropdown therefore holds *everything* the
- * desktop spreads across the toolbar: Chat, the agent's main views (Overview,
- * Preview, …), plus the agent-independent Tasks / Library overlays. Picking any
- * option swaps the single visible surface (chat closes the main panel; the rest
- * open the main panel on that view and close chat).
+ * surface is visible at a time. This dropdown mirrors the desktop panel bar —
+ * Chat, controls local to the current surface, contextual/per-thread views, and
+ * the Tasks / Library overlays. Durable project views stay in the responsive
+ * sidebar on both desktop and mobile.
  */
 export function MobileMainPanelTabSelect({
   virtualMcpId,

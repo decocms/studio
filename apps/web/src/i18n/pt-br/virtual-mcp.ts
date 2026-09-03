@@ -109,7 +109,7 @@ export const virtualMcp = {
   "virtualMcp.filesSection.uploadFile": "Enviar arquivo",
   "virtualMcp.layoutTabContent.noMainView": "Sem visão principal",
   "virtualMcp.layoutTabContent.addConnectionMessage":
-    "Adicione uma conexão acima para configurar visualizações fixadas.",
+    "Adicione uma conexão acima para configurar visualizações de apps.",
   "virtualMcp.layoutTabContent.automations": "Automações",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "O Chat sempre aparece quando é a visualização padrão",
@@ -119,9 +119,9 @@ export const virtualMcp = {
     "O que os usuários veem quando abrem este projeto pela primeira vez.",
   "virtualMcp.layoutTabContent.noInteractiveTools":
     "Nenhum dos servidores conectados expõe ferramentas interativas.",
-  "virtualMcp.layoutTabContent.pinnedViews": "Visualizações fixadas",
-  "virtualMcp.layoutTabContent.pinnedViewsDescription":
-    "Colocar ferramentas interativas como abas de nível superior no projeto.",
+  "virtualMcp.layoutTabContent.sidebarViews": "Visualizações da barra lateral",
+  "virtualMcp.layoutTabContent.sidebarViewsDescription":
+    "Escolha quais visualizações disponíveis aparecem na barra lateral deste projeto.",
   "virtualMcp.layoutTabContent.settings": "Configurações",
   "virtualMcp.layoutTabContent.showChat": "Mostrar chat",
   "virtualMcp.layoutTabContent.showChatDescription":

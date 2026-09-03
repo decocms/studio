@@ -88,9 +88,9 @@ const VirtualMcpPinnedViewSchema = z.object({
 export type VirtualMcpPinnedView = z.infer<typeof VirtualMcpPinnedViewSchema>;
 
 /**
- * A single tab declared by an agent in `metadata.ui.layout.tabs`. Rendered
- * after the fixed system tabs (Instructions / Connections / Layout / Env)
- * in the unified chat layout's right panel.
+ * A durable panel tab declared by an agent in `metadata.ui.layout.tabs`.
+ * Native project navigation is configured separately through
+ * `metadata.sidebarViews`.
  */
 export const VirtualMcpUILayoutTabSchema = z.object({
   id: z.string().describe("Stable id; used as React key and ?tab= value"),
@@ -104,6 +104,24 @@ export const VirtualMcpUILayoutTabSchema = z.object({
 });
 
 export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
+
+/** Project views that may be shown in the sidebar. Availability is resolved at
+ * runtime (for example, Site Editor requires source and Assets requires a file
+ * config); this persisted list only records the project's chosen entries. */
+export const VirtualMcpSidebarViewSchema = z.enum([
+  "overview",
+  "reports",
+  "board",
+  "site-editor",
+  "assets",
+  "hosting",
+  "e2e",
+  "analytics",
+  "cdn",
+  "automations",
+]);
+
+export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
 
 /** How an agent offers content editing. `on` (the default) offers the Site
  *  Editor's Content view and opens a CMS session on it; `off` offers it
@@ -142,9 +160,8 @@ export function normalizeCmsMode(
 }
 
 /**
- * Layout-specific settings stored under `metadata.ui.layout`. Controls which
- * main view opens by default and which additional right-panel tabs are
- * permanently available for the agent.
+ * Layout-specific settings stored under `metadata.ui.layout`. Controls the
+ * initial workspace and the project's configurable navigation surfaces.
  */
 export const VirtualMcpUILayoutSchema = z.object({
   defaultMainView: z
@@ -170,6 +187,16 @@ export const VirtualMcpUILayoutSchema = z.object({
     .optional()
     .describe(
       "How this agent offers content editing. Absent means on; the retired `manual` / `auto` read as on too.",
+    ),
+  /** @deprecated Read fallback for development data written before sidebar
+   *  selections moved to `metadata.sidebarViews`. New writes use the
+   *  top-level metadata field. */
+  sidebarViews: z
+    .array(VirtualMcpSidebarViewSchema)
+    .nullable()
+    .optional()
+    .describe(
+      "Deprecated layout-scoped sidebar selections. Read only as a fallback when metadata.sidebarViews is absent.",
     ),
   tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
 });
@@ -789,6 +816,19 @@ const VirtualMcpMetadataFields = {
   ui: VirtualMcpUISchema.nullable()
     .optional()
     .describe("UI customization settings"),
+  sidebarViews: z
+    .array(VirtualMcpSidebarViewSchema)
+    .nullable()
+    .optional()
+    .describe(
+      "Project views selected for the sidebar. Interpret as an exact list when sidebarViewsVersion is 1; unversioned values use legacy native-only semantics. Runtime presence gates still apply.",
+    ),
+  sidebarViewsVersion: z
+    .literal(1)
+    .optional()
+    .describe(
+      "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
+    ),
   githubRepo: GithubRepoSchema.nullable()
     .optional()
     .describe("Linked GitHub repository"),
