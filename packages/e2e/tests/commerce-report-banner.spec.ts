@@ -112,9 +112,9 @@ async function createCdConnection(
   });
 }
 
-/** A project to scope the home to. The banner reads the ORG's CD connection,
- *  so which project this is does not matter — only that one is in scope, which
- *  is what makes the home render the Overview rather than the roster. */
+/** A source-backed project to scope the home to. Project Home is presence-gated
+ *  on clonable source; the banner itself still reads the ORG's CD connection,
+ *  so which source-backed project this is does not matter. */
 async function createProject(
   request: APIRequestContext,
   orgSlug: string,
@@ -132,6 +132,13 @@ async function createProject(
         title: "Banner scope",
         status: "active",
         connections: [{ connection_id: connection.id }],
+        metadata: {
+          githubRepo: {
+            url: "https://github.com/example/commerce-report-banner",
+            owner: "example",
+            name: "commerce-report-banner",
+          },
+        },
       },
     },
   );
