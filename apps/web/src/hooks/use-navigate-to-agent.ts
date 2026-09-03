@@ -15,7 +15,6 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
-import { useBumpSidebarOrderRevision } from "@/components/sidebar/sidebar-agent-groups-context";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
@@ -50,7 +49,6 @@ export function useNavigateToAgent() {
    *  not a wrong answer; it means "ask again on click". */
   const cachedAgents = useVirtualMCPsNonBlocking();
   const { data: session } = authClient.useSession();
-  const bumpOrderRevision = useBumpSidebarOrderRevision();
   /** The open-thread list is read at CLICK time, off the store. Subscribing
    *  re-rendered every sidebar row for a value nothing renders, and the
    *  snapshot a click needs is the one at the click. */
@@ -62,7 +60,6 @@ export function useNavigateToAgent() {
     options: NavigateToAgentOptions | undefined,
     wantedRuntime: ThreadRuntime | undefined,
   ) => {
-    bumpOrderRevision();
     /** Resume the agent's ENTRY thread — its last branch for a repo-backed
      *  agent, otherwise its empty chat — and mint a fresh id only when there is
      *  none. `wantedRuntime` narrows which empty chat qualifies, so "open the
@@ -112,7 +109,6 @@ export function useNavigateToAgent() {
   };
 
   return (virtualMcpId: string, options?: NavigateToAgentOptions) => {
-    bumpOrderRevision();
     // Both of these answer without awaiting, in the click's own task.
     const cached = cachedAgents.find((a) => a.id === virtualMcpId);
     if (options?.runtime) {

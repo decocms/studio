@@ -53,10 +53,7 @@ import {
   agentHasClonableSource,
   getDevAgentIds,
 } from "@/lib/agent-capabilities";
-import {
-  useSidebarAgentGroupsEmpty,
-  useBumpSidebarOrderRevision,
-} from "./sidebar-agent-groups-context";
+import { useSidebarAgentGroupsEmpty } from "./sidebar-agent-groups-context";
 import { useT } from "@/i18n/use-t.ts";
 
 function CollectionSearchWrapper({
@@ -389,7 +386,6 @@ function PinAgentPopoverContent({
   const allAgents = useVirtualMCPs({ searchTerm: deferredSearch || undefined });
   const agents = allAgents ?? [];
   const { org } = useProjectContext();
-  const bumpOrderRevision = useBumpSidebarOrderRevision();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
 
@@ -440,7 +436,6 @@ function PinAgentPopoverContent({
       setSearch("");
       return;
     }
-    bumpOrderRevision();
     onClose();
     setSearch("");
     navigateToNewTask(agent.id);
