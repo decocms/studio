@@ -75,6 +75,11 @@ export interface Settings {
   /** Bearer for the gateway's /api/admin/* (top-up credits). Absent → the
    *  top-up tool falls back to the gateway's own checkout. */
   aiGatewayAdminToken: string | undefined;
+  /** One-time AI credit granted to every new org on signup, in cents (default
+   *  2500 = $25). 0 disables the grant. Only applied when the gateway admin is
+   *  configured (hosted deployments); self-hosted deployments can't reach the
+   *  admin API and skip it. */
+  signupGrantCents: number;
 
   // Stripe (per-org subscription + AI-credit top-ups). Absent → webhook
   // 503s, no checkout.

@@ -4,6 +4,10 @@ import {
   getWellKnownSelfConnection,
 } from "@decocms/shared/sdk";
 import { decoAiGatewayAdapter } from "@/ai-providers/adapters/deco-ai-gateway";
+import {
+  gatewayAdminConfigured,
+  grantGatewaySignupCredit,
+} from "@/billing/gateway-admin";
 import { getBaseUrl } from "@/core/server-constants";
 import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
@@ -187,6 +191,18 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
         });
       } catch (err) {
         console.error("Failed to auto-provision Deco AI Gateway key:", err);
+      }
+    }
+
+    // Idempotent at the gateway per `signup-credit:<orgId>`; fail-soft.
+    if (settings.signupGrantCents > 0 && gatewayAdminConfigured()) {
+      try {
+        await grantGatewaySignupCredit({
+          organizationId,
+          amountCents: settings.signupGrantCents,
+        });
+      } catch (err) {
+        console.error("Failed to grant signup AI credit:", err);
       }
     }
   } catch (err) {

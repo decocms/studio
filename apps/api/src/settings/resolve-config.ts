@@ -261,6 +261,13 @@ export function resolveConfig(
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),
     aiGatewayUrl: envVars.DECO_AI_GATEWAY_URL || "https://ai-site.deco.site",
     aiGatewayAdminToken: envVars.DECO_AI_GATEWAY_ADMIN_TOKEN,
+    // Capped at $1,000 (fat-finger guard); 0 disables the signup grant.
+    signupGrantCents: toNonNegativeIntegerOrDefault(
+      "DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS",
+      envVars.DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS,
+      2500,
+      100_000,
+    ),
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
