@@ -69,6 +69,23 @@ describe("extractConnectionData", () => {
     expect(data.oauth_config).toBeNull();
   });
 
+  // An unrecognized remote type must not mint an invalid connection_type enum value.
+  it("falls back to HTTP for an unrecognized remote type", () => {
+    const item: RegistryItem = {
+      ...packageOnlyItem,
+      server: {
+        ...packageOnlyItem.server,
+        remotes: [{ type: "graphql", url: "https://example.com/mcp" }],
+      },
+    };
+
+    const data = extractConnectionData(item, "org-1", "user-1", {
+      remoteIndex: 0,
+    });
+
+    expect(data.connection_type).toBe("HTTP");
+  });
+
   it("keeps a well-formed oauth_config", () => {
     const item: RegistryItem = {
       ...packageOnlyItem,
