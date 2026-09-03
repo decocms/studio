@@ -9,11 +9,14 @@
  * "starting" (the `computePreviewState` fallback for "no previewUrl") next to a
  * Stop button for something that will never boot.
  *
- * Sandbox sessions get it unconditionally: there is no show/hide toggle, so this
- * gate is the only thing standing between a session and its terminal.
+ * Which views get it is an allowlist, so a new view opts in.
  */
 
-import { OVERLAY_TABS } from "./tab-id";
+/** The Site Editor surface: the preview, and `?main=content` on that segment. */
+const SITE_EDITOR_TABS: ReadonlySet<string> = new Set([
+  "site-editor",
+  "content",
+]);
 
 export interface TerminalDrawerGateInput {
   /** The agent (or the thread, via `load_repo`) has a repo to clone. */
@@ -34,6 +37,7 @@ export function shouldShowTerminalDrawer(
   return (
     input.hasClonableSource &&
     !input.fastPreviewActive &&
-    !(input.mainTab !== null && OVERLAY_TABS.has(input.mainTab))
+    input.mainTab !== null &&
+    SITE_EDITOR_TABS.has(input.mainTab)
   );
 }
