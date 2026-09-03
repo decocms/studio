@@ -30,6 +30,7 @@ export const details = {
   "details.connectionActivity.errors": "Erros",
   "details.connectionActivity.noActivityInThisPeriod":
     "Nenhuma atividade neste período",
+  "details.connectionActivity.timeframe": "Período",
   "details.connectionActivity.toolCalls": "Chamadas de ferramenta",
   "details.connectionActivity.topErrors": "Principais erros",
   "details.connectionAgentsPanel.usedByAgents": "Usado por agentes",
