@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, type CSSProperties } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -12,13 +11,10 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
-import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 import {
-  Code01,
-  Copy01,
   CursorClick01,
   DotsHorizontal,
   LinkExternal01,
@@ -26,7 +22,6 @@ import {
   Database01,
   Globe02,
   LayoutAlt01,
-  CreditCardSearch,
   Plus,
   PuzzlePiece01,
   Monitor04,
@@ -52,7 +47,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
@@ -76,7 +70,6 @@ import {
   splitPathTemplate,
   validatePagePath,
 } from "@/components/sections-editor/page-path-utils";
-import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
 import {
   buildGlobalSectionPreviewUrl,
@@ -315,7 +308,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Desktop: the main panel header hosts the preview controls (single top bar).
   // Mobile / standalone (no header slot): render the toolbar inline below.
   const headerSlot = useMainPanelHeaderSlot();
-  const { openPanel } = usePanelNavigate();
   const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
   const inset = useInsetContext();
@@ -329,8 +321,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? (inset.entity.metadata?.ui?.layout ?? null)
       : null,
   );
-
-  const goToTab = (tabId: string) => openPanel(tabId);
 
   /** Singular: Visual and Blocks cannot both be active, while device size is
    *  independent and survives a switch. Which mode it STARTS in is the
@@ -1287,26 +1277,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
   };
 
-  const handleCopyUrl = async () => {
-    // The iframe's live location is cross-origin (sandbox preview domain), so
-    // reading `.location.href` throws — same reason the onLoad handler below
-    // guards the analogous `.pathname` read.
-    let liveUrl: string | null = null;
-    try {
-      liveUrl = previewIframeRef.current?.contentWindow?.location?.href ?? null;
-    } catch {
-      // Cross-origin — fall back below.
-    }
-    const url = liveUrl ?? iframeSrc ?? previewUrl;
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success(t("sandbox.preview.urlCopiedToClipboard"));
-    } catch {
-      toast.error(t("sandbox.preview.failedToCopyUrl"));
-    }
-  };
-
   const setPathParamValue = (name: string, value: string) => {
     if (!currentPageKey) return;
     const pageKey = currentPageKey;
@@ -1825,92 +1795,38 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       </Tooltip>
     ) : null;
 
-  // Overflow menu (⋯) — sits right of the publish actions; live-preview only.
-  const moreMenu = showPreviewToolbar ? (
-    <div className="flex shrink-0 items-center">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={INSET_FOCUS_RING}
-            aria-label={t("sandbox.preview.moreOptions")}
-          >
-            <DotsHorizontal size={14} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onClick={handleCopyUrl}>
-            <Copy01 size={14} />
-            {t("sandbox.preview.copyCurrentUrl")}
-          </DropdownMenuItem>
-          {decofile && meta && (
-            <>
-              <DropdownMenuSeparator />
-              {currentPageKey && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    workspace.editSeo({
-                      kind: "page",
-                      key: currentPageKey,
-                      path: currentPath,
-                    });
-                    activateEditingMode("blocks");
-                  }}
-                >
-                  <CreditCardSearch size={14} />
-                  {t("sandbox.preview.editSeo")}
-                </DropdownMenuItem>
-              )}
-              {currentPageKey && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    try {
-                      goToTab(
-                        formatCodeTabId(decoBlockFileViewPath(currentPageKey)),
-                      );
-                    } catch {
-                      toast.error(t("sandbox.preview.invalidPageBlockKey"));
-                    }
-                  }}
-                >
-                  <Code01 size={14} />
-                  {t("sandbox.preview.viewJson")}
-                </DropdownMenuItem>
-              )}
-            </>
-          )}
-          {repoDir && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => window.open(ideDeepLink("vscode", repoDir))}
-              >
-                <img
-                  src={VSCODE_ICON_URL}
-                  alt="VSCode"
-                  width={14}
-                  height={14}
-                />
-                {t("sandbox.preview.openInVscode")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => window.open(ideDeepLink("cursor", repoDir))}
-              >
-                <img
-                  src={CURSOR_ICON_URL}
-                  alt="Cursor"
-                  width={14}
-                  height={14}
-                />
-                {t("sandbox.preview.openInCursor")}
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  ) : null;
+  // Native-editor shortcuts sit right of the publish actions when available.
+  const moreMenu =
+    showPreviewToolbar && repoDir ? (
+      <div className="flex shrink-0 items-center">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={INSET_FOCUS_RING}
+              aria-label={t("sandbox.preview.moreOptions")}
+            >
+              <DotsHorizontal size={14} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              onClick={() => window.open(ideDeepLink("vscode", repoDir))}
+            >
+              <img src={VSCODE_ICON_URL} alt="VSCode" width={14} height={14} />
+              {t("sandbox.preview.openInVscode")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => window.open(ideDeepLink("cursor", repoDir))}
+            >
+              <img src={CURSOR_ICON_URL} alt="Cursor" width={14} height={14} />
+              {t("sandbox.preview.openInCursor")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    ) : null;
 
   const canVisualEdit = display.mode === "sandbox";
 
