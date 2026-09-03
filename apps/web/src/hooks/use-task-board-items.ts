@@ -89,6 +89,8 @@ export function taskBoardItemsQueryOptions(
 ) {
   return {
     queryKey: KEYS.taskBoardItems(locator),
+    // Backstop for a stream that died without an error; paused when unfocused.
+    refetchInterval: 60_000,
     queryFn: async (): Promise<TaskBoardData> => {
       const { items, sprints, columns } = await studio.call(
         "TASK_BOARD_ITEM_LIST",
@@ -99,17 +101,18 @@ export function taskBoardItemsQueryOptions(
   };
 }
 
-export function useTaskBoardItems() {
+/**
+ * The live path for `KEYS.taskBoardItems` — SSE upserts and the linked-thread
+ * status patch, both writing the shared cache and reading none of it. Query-less
+ * on purpose, so every reader of that key mounts the same liveness: the board,
+ * and the org/project feed that reads the key through `useSuspenseQuery`. The
+ * watch connection is shared per org, so a second mount adds a handler, not a
+ * second stream.
+ */
+export function useTaskBoardLiveSync(): void {
   const { org, locator } = useProjectContext();
-  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const queryKey = KEYS.taskBoardItems(locator);
-
-  const query = useQuery({
-    ...taskBoardItemsQueryOptions(locator, studio),
-    // Backstop for a stream that died without an error; paused when unfocused.
-    refetchInterval: 60_000,
-  });
 
   // Live Super Agent transitions (todo → in_progress → in_review). Upsert the
   // pushed item into the cached list so the board moves cards without polling.
@@ -185,6 +188,13 @@ export function useTaskBoardItems() {
       );
     },
   });
+}
+
+export function useTaskBoardItems() {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const query = useQuery(taskBoardItemsQueryOptions(locator, studio));
+  useTaskBoardLiveSync();
 
   return {
     items: query.data?.items ?? [],
