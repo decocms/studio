@@ -62,8 +62,7 @@ export interface AgentEntryOpts {
  * production. Otherwise (legacy branch/PR mode) we fall back to the raw last
  * thread, then the empty chat, then `undefined`.
  *
- * A branchless agent (Super Agent) keeps reusing the empty chat, so re-entry
- * doesn't pile up duplicate empty threads.
+ * A branchless agent resumes its last thread (empty or not), never piling up empty chats.
  */
 export function findAgentEntryThread(
   threads: Task[],
@@ -74,7 +73,10 @@ export function findAgentEntryThread(
   opts?: AgentEntryOpts,
 ): Task | undefined {
   if (!hasBranch) {
-    return findReusableNewChat(threads, agentId, userId, expectedRuntime);
+    return (
+      findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??
+      undefined
+    );
   }
   const known = opts?.knownBranches;
   const onNamedVersion =

@@ -82,7 +82,11 @@ import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
-import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
+import {
+  useRouteAgentId,
+  useRouteThreadId,
+  useRouteVirtualMcpId,
+} from "@/layouts/thread-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -565,6 +569,10 @@ function AgentInsetProvider() {
   const routeThreadId = useRouteThreadId();
   /** The agent is the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
   const virtualMcpId = useRouteVirtualMcpId();
+  /** Truthy only when the route names a SCOPED agent; `undefined` at org level
+   *  (where `virtualMcpId` falls back to the Super Agent). Gates the threadless
+   *  entry-thread resolver so the org home keeps its fresh composer. */
+  const routeAgentId = useRouteAgentId();
   /** A stable thread id to mint when a repo-backed editor arrives with none and
    *  the user has no idle empty chat to reuse, so a re-render before the URL
    *  catches up reuses it instead of looping through fresh ones. Generated once
@@ -639,13 +647,9 @@ function AgentInsetProvider() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  /**
-   * A repo-backed editor's branch is a thread field, so it must run on a thread;
-   * mint one into `?thread=` before mounting when the URL names none (#6667). The
-   * Super Agent (no repo) keeps its lazy threadless composer.
-   */
-  if (routeThreadId === null && hasActiveGithubRepo) {
-    // Wait for the first thread page: resolving against an empty list would mint a fresh production thread and drop the user off their version.
+  // Resolve a scoped agent's entry thread HERE, in project scope once loaded — useNavigateToAgent's cross-project manager can't see these threads (#6667); repo agents mint one if none resolves, branchless fall through to the lazy composer, org home (no routeAgentId) stays fresh.
+  if (routeThreadId === null && routeAgentId && entity) {
+    // Wait for the first thread page: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
     if (threadsStatus.kind === "loading") {
       return (
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
@@ -660,26 +664,29 @@ function AgentInsetProvider() {
         </div>
       );
     }
-    // Resume the last branch for this repo-backed agent, else its empty chat, else mint one.
-    const threadId =
-      findAgentEntryThread(
-        threads,
-        virtualMcpId,
-        session?.user?.id,
-        defaultThreadRuntime(entity.metadata),
-        hasActiveGithubRepo,
-        { knownBranches: namedVersionBranches, draftsMode: isDraftsMode },
-      )?.id ?? generatedThreadId;
-    return (
-      <Navigate
-        to="."
-        replace
-        search={(prev: Record<string, unknown>) => ({
-          ...prev,
-          thread: threadId,
-        })}
-      />
+    // Resume the last version/conversation for this agent; a repo editor mints a fresh thread when none resolves, a branchless agent falls through to its lazy composer.
+    const entry = findAgentEntryThread(
+      threads,
+      virtualMcpId,
+      session?.user?.id,
+      defaultThreadRuntime(entity.metadata),
+      hasActiveGithubRepo,
+      { knownBranches: namedVersionBranches, draftsMode: isDraftsMode },
     );
+    const threadId =
+      entry?.id ?? (hasActiveGithubRepo ? generatedThreadId : null);
+    if (threadId) {
+      return (
+        <Navigate
+          to="."
+          replace
+          search={(prev: Record<string, unknown>) => ({
+            ...prev,
+            thread: threadId,
+          })}
+        />
+      );
+    }
   }
 
   const chatVirtualMcpId = virtualMcpId;

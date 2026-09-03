@@ -140,11 +140,24 @@ describe("findAgentEntryThread", () => {
     ).toBe("last");
   });
 
-  it("keeps reusing the empty chat for a branchless agent", () => {
+  // Inverts the old always-reuse-empty behavior: re-entry now lands you back on your last conversation.
+  it("resumes the most-recent real thread for a branchless agent", () => {
     expect(
       findAgentEntryThread([empty, lastReal], "agent-1", USER, undefined, false)
         ?.id,
+    ).toBe("last");
+  });
+
+  it("reuses the empty chat for a branchless agent with no real thread", () => {
+    expect(
+      findAgentEntryThread([empty], "agent-1", USER, undefined, false)?.id,
     ).toBe("empty");
+  });
+
+  it("returns undefined for a branchless agent with no thread at all", () => {
+    expect(
+      findAgentEntryThread([], "agent-1", USER, undefined, false),
+    ).toBeUndefined();
   });
 
   it("falls back to the empty chat when a repo-backed agent has no real thread", () => {
