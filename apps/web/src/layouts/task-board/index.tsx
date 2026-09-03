@@ -1899,9 +1899,11 @@ function Lanes({
   if (overrides.size > 0 && !activeId) {
     const settled = [...overrides].filter(([id, placement]) => {
       const server = items.find((item) => item.id === id);
+      // A card gone from `items` (deleted, archived, filtered out) never matches again.
       return (
-        server?.status === placement.status &&
-        server.sortOrder === placement.sortOrder
+        !server ||
+        (server.status === placement.status &&
+          server.sortOrder === placement.sortOrder)
       );
     });
     if (settled.length > 0) {
