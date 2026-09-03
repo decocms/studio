@@ -134,6 +134,7 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections, useProjectContext } from "@/sdk";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import { normalizeRepo, stampableEntries } from "@/lib/project-index";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -458,13 +459,15 @@ function TaskBoardItemEditor({
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
-  /** The project name for the repository this card carries, falling back to
-   *  the repository itself for one no project has claimed. */
-  const selectedProject = repo
-    ? (projectEntries.find(
+  /** The bucket this card's repository belongs to, so the control shows the
+   *  PROJECT — its avatar and its name — rather than the string underneath.
+   *  Undefined for a repository the org no longer has, which still renders as
+   *  the raw `owner/name` the card carries rather than as unset. */
+  const selectedEntry = repo
+    ? projectEntries.find(
         (entry) => normalizeRepo(entry.repo) === normalizeRepo(repo),
-      )?.title ?? repo)
-    : null;
+      )
+    : undefined;
   const taskType = form.type;
   const sprintIndex = useBoardSprintIndex();
   const cardSprint = item?.sprintId
@@ -1393,9 +1396,13 @@ function TaskBoardItemEditor({
                       !repo && EMPTY_PROPERTY,
                     )}
                   >
-                    <GitHubIcon className="size-4 shrink-0" />
+                    <ProjectEntryIcon
+                      entry={selectedEntry}
+                      className="size-4"
+                    />
                     <span className="min-w-0 truncate text-left">
-                      {selectedProject ??
+                      {selectedEntry?.title ??
+                        repo ??
                         t("taskBoard.taskDialog.projectButton")}
                     </span>
                   </button>
@@ -1410,15 +1417,7 @@ function TaskBoardItemEditor({
                       className="gap-2"
                       onSelect={() => patch({ repo: entry.repo })}
                     >
-                      <GitHubIcon className="size-4 shrink-0" />
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{entry.title}</span>
-                        {entry.title !== entry.repo && (
-                          <span className="truncate text-xs text-muted-foreground">
-                            {entry.repo}
-                          </span>
-                        )}
-                      </span>
+                      <ProjectEntryRow entry={entry} />
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

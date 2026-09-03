@@ -59,8 +59,7 @@ import {
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { AgentAvatar } from "@/components/agent-icon";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { getInitials } from "@/lib/get-initials";
 import {
   entryForFilter,
@@ -651,9 +650,9 @@ function TagFilter({
   );
 }
 
-/** One bucket's row: the project you recognize, over the repository it pins.
- *  A bucket several projects share leads with the repository and names them
- *  underneath, because neither project's name is honest for the other's work. */
+/** One bucket's row. How it presents itself — project avatar and name, or the
+ *  repository's glyph when no single project names it — is
+ *  {@link ProjectEntryRow}'s to decide, shared with the task detail's picker. */
 function ProjectOption({
   entry,
   selected,
@@ -663,12 +662,6 @@ function ProjectOption({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const lead = entry.projects.length === 1 ? entry.projects[0] : undefined;
-  const subtitle = lead
-    ? entry.repo
-    : entry.projects.length > 1
-      ? entry.projects.map((p) => p.title).join(", ")
-      : null;
   return (
     <CommandItem
       /**
@@ -685,24 +678,7 @@ function ProjectOption({
       onSelect={onSelect}
       className="gap-2"
     >
-      {lead ? (
-        <AgentAvatar
-          icon={lead.icon}
-          name={lead.title}
-          size="2xs"
-          className="size-4 shrink-0"
-        />
-      ) : (
-        <GitHubIcon className="size-4 shrink-0" />
-      )}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate">{entry.title}</span>
-        {subtitle && (
-          <span className="truncate text-xs text-muted-foreground">
-            {subtitle}
-          </span>
-        )}
-      </span>
+      <ProjectEntryRow entry={entry} />
       {selected && <Check size={14} className="shrink-0 text-foreground" />}
     </CommandItem>
   );
@@ -756,8 +732,6 @@ function ProjectFilter({
   const selected = value === null ? undefined : entryForFilter(value, index);
   const narrows = projectFilterNarrows(value, index);
   const label = projectChipLabel(value, selected, narrows, t);
-  const chipProject =
-    selected?.projects.length === 1 ? selected.projects[0] : undefined;
   const select = (next: string | null) => {
     onChange(next);
     setOpen(false);
@@ -774,16 +748,12 @@ function ProjectFilter({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className={triggerClass}>
-          {chipProject ? (
-            <AgentAvatar
-              icon={chipProject.icon}
-              name={chipProject.title}
-              size="2xs"
-              className="size-3.5 shrink-0"
-            />
-          ) : (
-            <GitHubIcon className="size-3.5 shrink-0" />
-          )}
+          {/* The glyph follows the label: an unresolved bucket reads as unset,
+              so it must not wear a project's face either. */}
+          <ProjectEntryIcon
+            entry={narrows ? selected : undefined}
+            className="size-3.5"
+          />
           <span className="max-w-[12rem] truncate">{label}</span>
           <ChevronDown size={12} className={chevronClass} />
         </button>
