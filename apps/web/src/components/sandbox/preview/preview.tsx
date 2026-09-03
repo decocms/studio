@@ -35,6 +35,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import {
   MainPanelHeaderPortal,
   useMainPanelHeaderSlot,
@@ -111,7 +112,7 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsControls } from "./cms-controls";
+import { showCmsPageSelector } from "./cms-controls";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
@@ -135,10 +136,13 @@ import {
 } from "@/components/resizable";
 import {
   defaultPreviewEditingMode,
+  isBlocksEditingEnabled,
+  resolveEffectivePreviewEditingMode,
   togglePreviewEditorMode,
   type PreviewEditingMode,
   type PreviewEditorMode,
 } from "./editing-mode";
+import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
@@ -304,15 +308,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? (inset.entity.metadata?.ui?.layout ?? null)
       : null,
   );
+  const contentEditingEnabled = isContentEditingEnabled(cmsMode);
+  const blocksEditingEnabled = isBlocksEditingEnabled({
+    contentEditingEnabled,
+    isMobile,
+  });
 
   /** Singular: Visual and Blocks cannot both be active, while device size is
    *  independent and survives a switch. Which mode it STARTS in is the
-   *  session's — a CMS session opens with Blocks already split in (see
+   *  session's — a desktop CMS session opens with Blocks already split in (see
    *  `defaultPreviewEditingMode`). Derived once at mount: the shell renders
    *  this only after the thread and project resolve, so the runtime is already
    *  authoritative and nothing needs re-syncing. */
   const [editingMode, setEditingMode] = useState<PreviewEditingMode>(() =>
-    defaultPreviewEditingMode({ runtime: session.runtime, cmsMode }),
+    defaultPreviewEditingMode({ runtime: session.runtime, cmsMode, isMobile }),
   );
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
@@ -511,7 +520,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       section.resolveType.toLowerCase().includes(q)
     );
   });
-  const filteredGlobalLoaders = globalLoaders.filter((loader) => {
+  const visibleGlobalLoaders = blocksEditingEnabled ? globalLoaders : [];
+  const filteredGlobalLoaders = visibleGlobalLoaders.filter((loader) => {
     if (!pagesSearch) return true;
     const q = pagesSearch.toLowerCase();
     return (
@@ -709,6 +719,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production" &&
     fastPreviewEnabled &&
     inPlaceRenderEnabled &&
+    blocksEditingEnabled &&
     editingMode === "blocks";
   const pinnedDraftUrlRef = useRef<string | null>(null);
   if (!inPlaceRenderActive) {
@@ -1084,10 +1095,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // different origin we can't inject into. Blocks can stay open while the
   // sandbox restarts (or wakes) so its loading/error state remains actionable
   // and the panel keeps reading the committed snapshot.
-  const effectiveEditingMode: PreviewEditingMode =
-    display.mode !== "sandbox" && editingMode === "visual"
-      ? "preview"
-      : editingMode;
+  const effectiveEditingMode = resolveEffectivePreviewEditingMode({
+    editingMode,
+    sandboxDisplay: display.mode === "sandbox",
+    blocksEditingEnabled,
+  });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
@@ -1171,6 +1183,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const activateEditingMode = (mode: PreviewEditingMode) => {
+    if (mode === "blocks" && !blocksEditingEnabled) return;
     const previousMode = editingMode;
     if (!isMobile && mode !== previousMode) {
       if (mode === "blocks") blocksPanelRef.current?.resize("30%");
@@ -1318,6 +1331,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Loaders open full-width in the Blocks panel (form + Run), no canvas.
   const navigatePreviewToLoader = (loader: SavedRunnableEntry) => {
+    if (!blocksEditingEnabled) return;
     setActiveGlobalSection(null);
     setActiveLoaderKey(loader.key);
     setDirectPreviewUrl(null);
@@ -1388,11 +1402,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** The page selector is for a CMS session on a proven deco site. A sandbox
    *  session previews an arbitrary app with no decofile to navigate, so the
    *  topbar shows the iframe's domain instead — see the toolbar below.
-   *  `showCmsControls` keeps its veto so the selector never degrades into
+   *  `showCmsPageSelector` keeps its veto so the selector never degrades into
    *  listing a raw preview host. */
   const pageSelectorVisible =
     session.runtime === "cms" &&
-    showCmsControls({ showPreviewToolbar, blocksState });
+    showCmsPageSelector({ showPreviewToolbar, blocksState });
 
   /** Refresh · what-the-frame-is-showing · open-in-new, kept as one block so
    *  desktop can put it in the header's centre slot and mobile in its own. The
@@ -1419,7 +1433,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           `:param` segments, and the dropdown that also hosts "Create page". A
           sandbox session is previewing an arbitrary app with no decofile to
           navigate, so it gets the iframe's domain as plain text and nothing to
-          click. `showCmsControls` still has the final say, so a CMS session on a
+          click. `showCmsPageSelector` still has the final say, so a CMS session on a
           repo that proves it has no deco framework degrades to the label rather
           than to a selector listing a raw preview host. */}
       {pageSelectorVisible ? (
@@ -1582,7 +1596,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 <div className="px-4 py-5 text-center text-xs text-muted-foreground">
                   {pages.length === 0 &&
                   globalSections.length === 0 &&
-                  globalLoaders.length === 0
+                  visibleGlobalLoaders.length === 0
                     ? t("sandbox.preview.noPagesFound")
                     : t("sandbox.preview.noSearchResults")}
                 </div>
@@ -1725,46 +1739,66 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     </>
   ) : null;
 
-  // Desktop composition (portaled into the panel header's centre slot).
-  const urlControls = showPreviewToolbar ? (
-    <div className="flex min-w-0 items-center gap-0.5">{urlGroup}</div>
+  // Blocks and Content deliberately share one agent-level product gate. Blocks
+  // adds only its desktop layout constraint. Readiness is rendered inside
+  // BlocksPanel; it never delays or revokes the entry point after a transient
+  // decofile/meta read.
+  const blocksActive = effectiveEditingMode === "blocks";
+  const desktopBlocksToggle = blocksEditingEnabled ? (
+    <HeaderTabButton
+      title={t("sandbox.cmsSettings.title")}
+      tooltip={
+        blocksActive
+          ? t("sandbox.preview.exitEditor")
+          : t("sandbox.preview.editContent")
+      }
+      labelCollapse="sooner"
+      icon={{ kind: "component", Component: PuzzlePiece01 }}
+      active={blocksActive}
+      onClick={() => toggleEditingMode("blocks")}
+      testId="preview-blocks-toggle"
+    />
   ) : null;
 
-  /** Blocks ⇄ preview, MOBILE ONLY.
-   *
-   *  Desktop needs no such control: Blocks is a 30/70 split, so the frame is
-   *  on screen the whole time and there is nothing to come back from. A phone
-   *  has no room to split — `blocksFullWidth` gives Blocks the whole panel and
-   *  the frame disappears — so the flows that open Blocks without being asked
-   *  (a global loader, Edit SEO, a freshly created page) would otherwise strand
-   *  the session in the editor with no way back to what it renders. */
-  const mobileBlocksToggle =
-    isMobile &&
-    cmsMode !== "off" &&
-    showCmsControls({ showPreviewToolbar, blocksState }) ? (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <ToolbarIconButton
-            onClick={() => toggleEditingMode("blocks")}
-            aria-pressed={effectiveEditingMode === "blocks"}
-            aria-label={
-              effectiveEditingMode === "blocks"
-                ? t("sandbox.preview.exitEditor")
-                : t("sandbox.preview.editContent")
-            }
-            active={effectiveEditingMode === "blocks"}
-          >
-            <PuzzlePiece01 size={16} />
-          </ToolbarIconButton>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {effectiveEditingMode === "blocks"
-            ? t("sandbox.preview.exitEditor")
-            : t("sandbox.preview.editContent")}
-        </TooltipContent>
-      </Tooltip>
+  // Desktop composition (portaled into the panel header's centre slot): the
+  // Blocks action leads, followed by the iframe navigation controls once ready.
+  const urlControls =
+    desktopBlocksToggle || urlGroup ? (
+      <div className="flex min-w-0 items-center gap-0.5">
+        {desktopBlocksToggle}
+        {desktopBlocksToggle && urlGroup && (
+          <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+        )}
+        {urlGroup}
+      </div>
     ) : null;
 
+  /** Compact Blocks ⇄ Preview control for the inline (no header-slot) layout.
+   *  It uses the same gate as the desktop action and Content tab. */
+  const inlineBlocksToggle = blocksEditingEnabled ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          onClick={() => toggleEditingMode("blocks")}
+          aria-pressed={blocksActive}
+          aria-label={
+            blocksActive
+              ? t("sandbox.preview.exitEditor")
+              : t("sandbox.preview.editContent")
+          }
+          active={blocksActive}
+          data-testid="preview-blocks-toggle"
+        >
+          <PuzzlePiece01 size={16} />
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {blocksActive
+          ? t("sandbox.preview.exitEditor")
+          : t("sandbox.preview.editContent")}
+      </TooltipContent>
+    </Tooltip>
+  ) : null;
   const canVisualEdit = display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
@@ -1803,9 +1837,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               <TooltipTrigger asChild>
                 <ToolbarIconButton
                   onClick={() => toggleEditingMode("visual")}
-                  aria-pressed={editingMode === "visual"}
+                  aria-pressed={effectiveEditingMode === "visual"}
                   aria-label={t("sandbox.preview.visualEditor")}
-                  active={editingMode === "visual"}
+                  active={effectiveEditingMode === "visual"}
                   className="rounded-full"
                 >
                   <CursorClick01 size={16} />
@@ -1843,9 +1877,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     </div>
   ) : null;
 
-  // Full-width Blocks (no canvas): the mobile layout, or a loader (no canvas).
+  // A loader has no canvas, so its desktop Blocks form uses the whole panel.
   const blocksFullWidth =
-    (isMobile || !!activeLoaderKey) && effectiveEditingMode === "blocks";
+    !!activeLoaderKey && effectiveEditingMode === "blocks";
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -1866,26 +1900,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ) : null,
         )}
       {headerSlot
-        ? showPreviewToolbar && (
+        ? urlControls && (
             <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
           )
-        : showPreviewToolbar && (
-            /* Declares the same container as PanelHeader: on this path (no
-             header slot — mobile) the controls render inline instead of
-             portaling, so without it their container queries would find no
-             container and every label would stay at full width.
+        : (inlineBlocksToggle || urlGroup) && (
+            /* Declares the same container as PanelHeader: without a header slot
+             (mobile or a standalone desktop surface), the controls render
+             inline instead of portaling. Without it their container queries
+             would find no container and every label would stay at full width.
 
              Three zones rather than the desktop's single left-packed group:
-             the view controls sit in the middle, the left carries the Blocks
-             toggle this layout alone needs (see `mobileBlocksToggle`), and an
-             empty right spacer balances it. The two side zones are `flex-1`
-             (equal basis) while the middle is content-sized,
+             the view controls sit in the middle, the left carries the compact
+             Blocks toggle on standalone desktop (it remains empty on mobile),
+             and an empty right spacer balances it. The two side zones are
+             `flex-1` (equal basis) while the middle is content-sized,
              so the page selector centres on the BAR wherever there is slack to
              divide — giving the middle the flex-1 instead would centre it
              between the side zones, not on the bar. */
             <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
               <div className="flex flex-1 items-center justify-start">
-                {mobileBlocksToggle}
+                {inlineBlocksToggle}
               </div>
               <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
                 {urlGroup}
@@ -1912,7 +1946,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 />
               </div>
             )}
-            {isMobile && floatingPreviewControls}
           </div>
         ) : (
           <ResizablePanelGroup
@@ -2097,7 +2130,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                               if (
                                 display.mode === "production" &&
                                 !display.showWakingPill &&
-                                editingMode === "blocks"
+                                effectiveEditingMode === "blocks"
                               ) {
                                 injectCmsEditor();
                               }
@@ -2106,7 +2139,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             // This is the VM dev-server preview (sandboxed running app),
                             // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                             track("vm_preview_loaded", {
-                              view_mode: editingMode,
+                              view_mode: effectiveEditingMode,
                               vm_id: vmEntry?.sandboxHandle ?? null,
                               // Intentionally excluding the full previewUrl — it can contain
                               // ephemeral tokens / user data in the query string.
@@ -2149,8 +2182,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                                 // Cross-origin — can't read, keep current value
                               }
                             }
-                            if (editingMode === "visual") injectVisualEditor();
-                            if (editingMode === "blocks") injectCmsEditor();
+                            if (effectiveEditingMode === "visual") {
+                              injectVisualEditor();
+                            }
+                            if (effectiveEditingMode === "blocks") {
+                              injectCmsEditor();
+                            }
                           }}
                         />
                       </div>

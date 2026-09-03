@@ -566,10 +566,10 @@ export const sandbox = {
     "Whether this project offers a CMS.",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
-    "The Site Editor offers Content, and a CMS chat opens on it.",
+    "The Site Editor offers Content and desktop Blocks, and a CMS chat opens with Blocks active on desktop.",
   "sandbox.cmsSettings.contentEditing.off": "Disabled",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "No Content view in the Site Editor. The site still previews, and the project can still edit content.",
+    "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",
   "sandbox.cmsUnavailable.noRepo":

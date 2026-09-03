@@ -50,9 +50,9 @@ export interface BlocksTabStateInput {
    * reads (network blip, sandbox-proxy hiccup, dev-server restart caught
    * mid-cycle, non-404 non-2xx) must not be reclassified as a generic data
    * error. Without this, every failed refetch flipped the state to `error`,
-   * which `showCmsControls` treats as "capability unproven → keep controls",
-   * flashing the CMS toggle in and out on each retry cycle. Only a remount or a
-   * repo/branch change resets it.
+   * which `showCmsPageSelector` treats as "capability unproven → keep selector",
+   * flashing the page selector in and out on each retry cycle. Only a remount
+   * or a repo/branch change resets it.
    */
   frameworkKnownMissing?: boolean;
 }

@@ -9,6 +9,7 @@
 
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import type { CmsMode } from "@decocms/shared/sdk/types";
+import { isContentEditingEnabled } from "./content-editing-gate";
 
 /** A view of the Site Editor surface. */
 export type SurfaceTabId = "site-editor" | "content" | "code";
@@ -25,7 +26,7 @@ export function resolveSurfaceTabs(input: {
   const tabs: SurfaceTabId[] = ["site-editor"];
   /** The agent's own setting, not a fetch: `off` is the only thing that takes
    *  Content off the surface. */
-  if (input.cmsMode !== "off") tabs.push("content");
+  if (isContentEditingEnabled(input.cmsMode)) tabs.push("content");
   /** No sandbox, no working tree to browse. */
   if (input.runtime === "sandbox") tabs.push("code");
   return tabs;
