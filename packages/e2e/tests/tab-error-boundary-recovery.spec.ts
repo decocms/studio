@@ -4,8 +4,6 @@
  * MainPanelContent) so the new tab renders normally. The sandbox drawer
  * stays interactive throughout — it's a sibling of the boundary.
  *
- * See spec at docs/superpowers/specs/2026-06-03-sandbox-drawer-everywhere-design.md.
- *
  * Trigger: dev-only `window.__forceTabError = <activeTab>` hook in
  * apps/web/src/layouts/main-panel-tabs/index.tsx's TabBody.
  */
@@ -15,7 +13,7 @@ import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
 test.describe("tab error boundary recovers on tab switch", () => {
   // Helper: create a clonable agent + thread + return their ids. Mirrors the
-  // setup used in sandbox-drawer-everywhere.spec.ts so the drawer assertion
+  // setup used in sandbox-drawer-site-editor.spec.ts so the drawer assertion
   // in scenario B is meaningful (agentHasClonableSource must be true).
   async function setup({ page, orgSlug }: { page: Page; orgSlug: string }) {
     const api = page.context().request;
@@ -100,13 +98,15 @@ test.describe("tab error boundary recovers on tab switch", () => {
     const { page, orgSlug } = authedPage;
     const { agentId, threadId } = await setup({ page, orgSlug });
 
+    /** The Site Editor is the one tab the drawer renders under, so it is the
+     *  only one whose crash can prove the drawer outlives a dead tab body. */
     await page.addInitScript(() => {
       (window as unknown as { __forceTabError?: string }).__forceTabError =
-        "settings";
+        "site-editor";
     });
 
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=settings`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=preview`,
     );
 
     // Error UI is visible inside the boundary.
