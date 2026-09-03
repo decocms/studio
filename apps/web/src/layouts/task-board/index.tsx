@@ -1,7 +1,7 @@
 /**
  * Task board — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
- * Rendered as a main-panel overlay tab; there is no standalone route.
+ * Rendered by the route-owned Tasks page.
  */
 
 import { useRef, useState } from "react";
@@ -151,12 +151,7 @@ import {
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
-import {
-  taskMatchesScope,
-  useBoardSearch,
-  visibleSelection,
-} from "./filters-search";
-import { useProjectScope } from "@/hooks/use-project-scope";
+import { useBoardSearch, visibleSelection } from "./filters-search";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import { filterAfterCreate } from "@/lib/project-index";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -171,6 +166,7 @@ import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
 import type { TiptapDoc } from "@/components/chat/types";
 import { toast } from "sonner";
+import { Main } from "@/components/main";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
@@ -898,13 +894,6 @@ export function TaskBoardPage() {
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const { filters, setFilters, layout, setLayout } = useBoardSearch();
-  /** Ambient project scope — a filter over the org-wide board, never a
-   *  container. Null repo (or no scope) means the board stays org-wide. */
-  const {
-    repo: scopeRepo,
-    project: scopeProject,
-    setScope,
-  } = useProjectScope();
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
@@ -957,13 +946,14 @@ export function TaskBoardPage() {
    * the SSE-patched list on every render is what lets a thread or status
    * linked while the task is on screen flow straight in.
    *
-   * `strict: false` because the board also renders as an overlay view
-   * on destinations that have no such param, where it reads `undefined` and
-   * shows the lanes.
+   * The route's optional segment is absent on the board index, where this reads
+   * `undefined` and shows the lanes.
    */
-  const { taskKey: openTaskKey } = useParams({ strict: false }) as {
-    taskKey?: string;
-  };
+  const routeParams = useParams({ strict: false });
+  const openTaskKey =
+    "taskKey" in routeParams && typeof routeParams.taskKey === "string"
+      ? routeParams.taskKey
+      : undefined;
   const openItem = findTaskByKeyOrId(items, openTaskKey) ?? null;
   /** A deleted (or never-visible) card leaves the segment dangling; land on
    *  the board rather than an empty pane. */
@@ -1039,18 +1029,11 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  /**
-   * Scope first, then filters. The ambient scope keeps unclassified cards; the
-   * board's own project filter does not — two different questions, composed
-   * rather than conflated, exactly as #6801 left them.
-   */
-  const scopedItems = items.filter((item) => taskMatchesScope(item, scopeRepo));
-  const visibleItems = scopedItems.filter((item) =>
+  const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters, projectIndex),
   );
-  /** Bulk actions read the selection reconciled against what is on screen: the
-   *  scope switcher lives outside the board, so a scope change must not leave a
-   *  hidden card's id queued for a move, an assign — or a delete. */
+  /** Bulk actions operate only on cards that remain visible after a filter
+   * change, never on a stale hidden selection. */
   const selectedIds = visibleSelection(selection, visibleItems);
   // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
   const visibleListItems = visibleItems.filter(
@@ -1092,10 +1075,9 @@ export function TaskBoardPage() {
    * rather than replaced so browser back lands on the board the card was
    * clicked from.
    *
-   * Named as the tasks route rather than `"."` because the board also renders
-   * as an overlay view elsewhere, and a card has exactly one address
-   * wherever it was clicked. The board's filters ride along; anything the
-   * tasks route does not declare is dropped by its schema.
+   * Named as the tasks route rather than `"."` so a card has one explicit,
+   * durable address. The board's filters ride along; anything the tasks route
+   * does not declare is dropped by its schema.
    */
   const openTask = (item: TaskBoardItem) => {
     navigate({
@@ -1110,35 +1092,93 @@ export function TaskBoardPage() {
     setCreateStatus(null);
   };
 
+  const boardActions = (
+    <div className="flex items-center gap-2">
+      <div className="inline-flex rounded-lg bg-muted p-0.5">
+        <LayoutToggle
+          active={layout === "list"}
+          onClick={() => {
+            setLayout("list");
+            // Selection is a board-only concept (List has no way to see or
+            // change which cards are selected). Clear it when leaving.
+            clearSelection();
+          }}
+          icon={List}
+          label={t("common.taskBoard.listView")}
+        />
+        <LayoutToggle
+          active={layout === "board"}
+          onClick={() => setLayout("board")}
+          icon={Columns03}
+          label={t("common.taskBoard.boardView")}
+        />
+      </div>
+
+      <Button
+        size="sm"
+        onClick={openCreate}
+        aria-label={t("taskBoard.taskBoard.newTask")}
+      >
+        <Plus size={16} />
+        <span className="@max-sm/main-topbar:hidden">
+          {t("taskBoard.taskBoard.newTask")}
+        </span>
+      </Button>
+    </div>
+  );
+
+  const showBoardTopbarActions =
+    !openItem &&
+    !(isLoading && items.length === 0) &&
+    !staleTaskKey &&
+    !(canonicalKey && canonicalKey !== openTaskKey);
+  const topbarActions = showBoardTopbarActions ? boardActions : null;
+  const topbarContributions = (
+    <Main.Topbar.Right.Portal>{topbarActions}</Main.Topbar.Right.Portal>
+  );
+
   if (isLoading && items.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Spinner className="size-5 text-muted-foreground" />
-      </div>
+      <>
+        {topbarContributions}
+        <div className="flex flex-1 items-center justify-center">
+          <Spinner className="size-5 text-muted-foreground" />
+        </div>
+      </>
     );
   }
 
   if (staleTaskKey) {
     return (
-      <Navigate
-        to={DESTINATION_ROUTE.tasks}
-        params={{ org: org.slug, taskKey: undefined }}
-        search={(prev: Record<string, unknown>) => prev}
-        replace
-      />
+      <>
+        {topbarContributions}
+        <Navigate
+          to={DESTINATION_ROUTE.tasks}
+          params={{ org: org.slug, taskKey: undefined }}
+          search={(prev: Record<string, unknown>) => prev}
+          hash={true}
+          replace
+        />
+      </>
     );
   }
 
   if (canonicalKey && canonicalKey !== openTaskKey) {
     return (
-      <Navigate
-        to={DESTINATION_ROUTE.tasks}
-        params={{ org: org.slug, taskKey: canonicalKey }}
-        search={(prev: Record<string, unknown>) => prev}
-        replace
-      />
+      <>
+        {topbarContributions}
+        <Navigate
+          to={DESTINATION_ROUTE.tasks}
+          params={{ org: org.slug, taskKey: canonicalKey }}
+          search={(prev: Record<string, unknown>) => prev}
+          hash={true}
+          replace
+        />
+      </>
     );
   }
+
+  const showBodyToolbar = items.length > 0;
 
   /** The board itself — header, toolbar, lanes. Hoisted so wrapping it
    *  below does not reindent every line of it. */
@@ -1146,99 +1186,45 @@ export function TaskBoardPage() {
     <>
       {/* Header — capped + centered to the same width as the board content so
         they line up; content-capped, not scroll-capped. */}
-      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-xl font-medium text-foreground">
-            {t("taskBoard.taskBoard.tasksTitle")}
-          </h1>
-          {scopeProject && (
-            <button
-              type="button"
-              onClick={() => setScope(null)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent/50"
-              aria-label={t("taskBoard.scope.clear", {
-                name: scopeProject.title,
-              })}
-            >
-              <span className="truncate max-w-[16rem]">
-                {scopeProject.title}
-              </span>
-              <X size={12} className="text-muted-foreground" />
-            </button>
+      {showBodyToolbar && (
+        <div
+          className={cn(
+            "mx-auto flex w-full max-w-[1680px] flex-col gap-3 px-4 pt-4 sm:px-8 sm:pt-6",
           )}
-        </div>
-        {/* Only the case a person can act on. The counts that used to sit here
-            ("N routed here · N unassigned") narrated the scope filter's
-            fail-open in its own vocabulary — "routed" is the mechanism, and
-            "unassigned" means "no repo" here while it means "no assignee"
-            everywhere else in the product. */}
-        {scopeProject && !scopeRepo && (
-          <p className="-mt-2 text-xs text-muted-foreground">
-            {t("taskBoard.scope.noRepo")}
-          </p>
-        )}
-
-        {/* Commerce orgs: a persistent unlock CTA that self-hides once the
+        >
+          {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
 
-        {/* Toolbar — filters on the left (inline bar on desktop, a single
+          {/* Toolbar — filters on the left (inline bar on desktop, a single
           drawer button on mobile), view toggle + New task on the right. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {items.length > 0 && (
-            <>
-              <div className="sm:hidden">
-                <TaskFiltersDrawer
-                  filters={filters}
-                  members={members}
-                  tags={orgTags}
-                  index={projectIndex}
-                  onChange={handleFiltersChange}
-                  onOpenBoardSettings={openBoardSettings}
-                />
-              </div>
-              <div className="hidden sm:block">
-                <TaskFiltersBar
-                  filters={filters}
-                  members={members}
-                  tags={orgTags}
-                  index={projectIndex}
-                  onChange={handleFiltersChange}
-                  onOpenBoardSettings={openBoardSettings}
-                />
-              </div>
-            </>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
-            <div className="inline-flex rounded-lg bg-muted p-0.5">
-              <LayoutToggle
-                active={layout === "list"}
-                onClick={() => {
-                  setLayout("list");
-                  // Selection is a board-only concept (List has no way to see
-                  // or change which cards are selected) — leaving it wedges
-                  // the floating bulk-action bar on-screen, operating on a
-                  // selection the user can no longer see.
-                  clearSelection();
-                }}
-                icon={List}
-                label={t("common.taskBoard.listView")}
-              />
-              <LayoutToggle
-                active={layout === "board"}
-                onClick={() => setLayout("board")}
-                icon={Columns03}
-                label={t("common.taskBoard.boardView")}
-              />
-            </div>
-
-            <Button size="sm" onClick={openCreate}>
-              <Plus size={16} />
-              {t("taskBoard.taskBoard.newTask")}
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {items.length > 0 && (
+              <>
+                <div className="sm:hidden">
+                  <TaskFiltersDrawer
+                    filters={filters}
+                    members={members}
+                    tags={orgTags}
+                    index={projectIndex}
+                    onChange={handleFiltersChange}
+                    onOpenBoardSettings={openBoardSettings}
+                  />
+                </div>
+                <div className="hidden sm:block">
+                  <TaskFiltersBar
+                    filters={filters}
+                    members={members}
+                    tags={orgTags}
+                    index={projectIndex}
+                    onChange={handleFiltersChange}
+                    onOpenBoardSettings={openBoardSettings}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
@@ -1347,6 +1333,8 @@ export function TaskBoardPage() {
       ref={trackBoardOpenRef}
       className="relative flex min-h-0 flex-1 flex-col"
     >
+      {topbarContributions}
+
       {/* Hidden rather than unmounted while a task is open: lane scroll, the
           horizontal board scroll and dnd-kit's state all survive the trip into
           a card and back. `useFlipLanes` is told to stop measuring — a
@@ -1430,7 +1418,7 @@ export function TaskBoardPage() {
           onOpenPreview={(thread) => {
             if (!thread.virtualMcpId) return;
             setTaskId(thread.threadId, thread.virtualMcpId, {
-              panel: "site-editor",
+              view: "site-editor",
             });
           }}
         />
@@ -1774,7 +1762,7 @@ function LayoutToggle({
       )}
     >
       <Icon size={14} />
-      {label}
+      <span className="@max-sm/main-topbar:hidden">{label}</span>
     </button>
   );
 }

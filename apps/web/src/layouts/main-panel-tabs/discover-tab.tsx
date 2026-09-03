@@ -31,7 +31,7 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
-import { useProjectContext, useConnections } from "@/sdk";
+import { useConnections, useProjectContext } from "@/sdk";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { hasOwnConnection } from "@/lib/seeded-connections";
 import { getActiveGithubRepo } from "@/lib/github-repo";
@@ -112,11 +112,7 @@ function useSetupSteps(): SetupStep[] {
       icon: <Plus size={18} />,
       action: (
         <Button asChild variant="outline" size="sm">
-          <Link
-            to={DESTINATION_ROUTE.agents}
-            params={{ org: org.slug, panel: undefined }}
-            search={{ virtualmcpid: undefined }}
-          >
+          <Link to={DESTINATION_ROUTE.home} params={orgParams}>
             {t("discover.setup.projectAction")}
           </Link>
         </Button>
@@ -246,14 +242,9 @@ export function DiscoverTab() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 p-6 md:p-10">
-        <header className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold text-foreground">
-            {t("discover.title")}
-          </h1>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            {t("discover.subtitle")}
-          </p>
-        </header>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          {t("discover.subtitle")}
+        </p>
 
         <Band
           title={t("discover.setup.title")}

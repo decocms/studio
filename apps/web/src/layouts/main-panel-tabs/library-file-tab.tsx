@@ -1,6 +1,6 @@
 /**
  * LibraryFileTab — main-panel side preview of an org Library file referenced
- * from a chat message (`/agents/{-$project}/library-file?path=…`).
+ * from a chat message (`/agents/$agentId/library/file?path=…`).
  *
  * Thin adapter over the shared LibraryPreviewPanel — the SAME side panel the
  * desktop Library uses — with the "See in library" jump enabled since the

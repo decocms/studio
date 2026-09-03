@@ -1,6 +1,6 @@
 /**
- * CodeTab — standalone file-explorer main-panel tab (the `code` view, with the
- * open file in `?file=`).
+ * CodeTab — file-explorer body nested below the Site Editor, with the open file
+ * identified by the Code child route.
  *
  * Unlike Preview it needs no live dev-server iframe: it talks
  * to the sandbox daemon's FS endpoints directly, so it keeps working even when
@@ -17,7 +17,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useSandboxRepoDir } from "@/components/sandbox/hooks/use-sandbox-repo-dir";
@@ -38,12 +37,16 @@ const FileExplorer = lazy(() =>
   ),
 );
 
-export function CodeTab({ openPath }: { openPath: string | null }) {
+export function CodeTab({
+  virtualMcpId,
+  openPath,
+}: {
+  virtualMcpId: string;
+  openPath: string | null;
+}) {
   const t = useT();
-  const inset = useInsetContext();
   const { org } = useProjectContext();
   const { currentBranch: branch, taskId } = useChatTask();
-  const virtualMcpId = inset?.entity?.id ?? null;
   const isDesktopApp = useIsDesktopApp();
 
   const lifecycle = useSandboxLifecycle();
@@ -61,7 +64,7 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
   });
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
-  if (!virtualMcpId || !branch) {
+  if (!branch) {
     return (
       <EmptyState
         className="h-full"

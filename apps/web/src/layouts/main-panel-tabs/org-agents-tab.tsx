@@ -213,9 +213,9 @@ export function OrgAgentsTab() {
             {/* Greeting and search are one unit; the pill is a separate offer,
                 so the space between them is larger than the space within. */}
             <div className="flex w-full flex-col items-center gap-5">
-              <h1 className="text-3xl font-medium tracking-tight text-foreground">
+              <h2 className="text-3xl font-medium tracking-tight text-foreground">
                 {name ? t(greeting.named, { name }) : t(greeting.bare)}
-              </h1>
+              </h2>
               <HomeSearch />
             </div>
           </div>

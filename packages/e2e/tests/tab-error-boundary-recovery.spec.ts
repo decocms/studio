@@ -1,17 +1,20 @@
 /**
  * E2E: a render error in one main-panel tab no longer bricks the panel.
- * Switching tabs remounts the ErrorBoundary (keyed on activeTab inside
- * MainPanelContent) so the new tab renders normally. The sandbox drawer
- * stays interactive throughout — it's a sibling of the boundary.
+ * Switching routes remounts the route-owned ErrorBoundary (keyed on the
+ * active route tab) so the new route renders normally. The Site Editor's
+ * sandbox drawer stays interactive throughout — it's a sibling of the
+ * boundary.
  *
  * Trigger: dev-only `window.__forceTabError = <activeTab>` hook in
- * apps/web/src/layouts/main-panel-tabs/index.tsx's TabBody.
+ * apps/web/src/layouts/main-panel-test-error-trigger.tsx.
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
 test.describe("tab error boundary recovers on tab switch", () => {
+  test.describe.configure({ timeout: 120_000 });
+
   // Helper: create a clonable agent + thread + return their ids. Mirrors the
   // setup used in sandbox-drawer-site-editor.spec.ts so the drawer assertion
   // in scenario B is meaningful (agentHasClonableSource must be true).
@@ -72,23 +75,42 @@ test.describe("tab error boundary recovers on tab switch", () => {
 
     // Error boundary fallback is visible — matches the default fallback text
     // in apps/web/src/components/error-boundary.tsx.
-    await expect(page.getByText(/something went wrong/i)).toBeVisible({
-      timeout: 15_000,
+    const routeError = page
+      .getByTestId("main-panel")
+      .getByText(/something went wrong/i);
+    await expect(routeError).toBeVisible({
+      timeout: 60_000,
     });
 
-    // Switch to the preview tab — renders cleanly, no leftover error.
-    await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=preview`,
+    // Use the real in-app navigation controls: a second document load would
+    // remount every boundary and could pass without exercising route-keyed
+    // recovery at all.
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    await sidebar
+      .getByRole("button", { name: "Site Editor", exact: true })
+      .click({ timeout: 60_000 });
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor` &&
+        url.searchParams.get("virtualmcpid") === null &&
+        url.searchParams.get("main") === null,
+      { timeout: 60_000 },
     );
-    await expect(page.getByText(/something went wrong/i)).toBeHidden();
+    await expect(routeError).toBeHidden();
 
-    // Switch back to settings — error UI reappears (state was reset on
-    // remount via key={activeTab}, not memoized as healthy).
-    await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=settings`,
+    // Switch back through the same mounted shell. Settings throws again, which
+    // proves the boundary reset follows the active route in both directions.
+    await sidebar
+      .getByRole("button", { name: "Settings", exact: true })
+      .click({ timeout: 60_000 });
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}/settings` &&
+        url.searchParams.get("thread") === threadId,
+      { timeout: 60_000 },
     );
-    await expect(page.getByText(/something went wrong/i)).toBeVisible({
-      timeout: 15_000,
+    await expect(routeError).toBeVisible({
+      timeout: 60_000,
     });
   });
 
@@ -110,14 +132,18 @@ test.describe("tab error boundary recovers on tab switch", () => {
     );
 
     // Error UI is visible inside the boundary.
-    await expect(page.getByText(/something went wrong/i)).toBeVisible({
-      timeout: 15_000,
+    await expect(
+      page.getByTestId("main-panel").getByText(/something went wrong/i),
+    ).toBeVisible({
+      timeout: 60_000,
     });
 
     // Sandbox drawer's setup button is a sibling of the boundary, so it
     // stays mounted and interactive — the drawer chrome should still render
     // even though the tab body crashed.
-    const sandboxToolbarTab = page.getByRole("button", { name: /^sandbox$/i });
-    await expect(sandboxToolbarTab).toBeVisible({ timeout: 15_000 });
+    const sandboxToolbarTab = page
+      .getByTestId("main-panel")
+      .getByRole("button", { name: /^sandbox$/i });
+    await expect(sandboxToolbarTab).toBeVisible({ timeout: 60_000 });
   });
 });

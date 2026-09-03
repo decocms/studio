@@ -49,7 +49,7 @@ export function ProjectCard({
       {/* Overlay button — pins agent to sidebar and navigates */}
       <button
         type="button"
-        onClick={() => navigateToAgent(project.id, { panel: landingPanel })}
+        onClick={() => navigateToAgent(project.id, { view: landingPanel })}
         className="absolute inset-0 z-0"
         aria-label={project.title}
       />
@@ -75,7 +75,7 @@ export function ProjectCard({
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     onClick={() =>
-                      navigateToAgent(project.id, { panel: "settings" })
+                      navigateToAgent(project.id, { view: "settings" })
                     }
                   >
                     <Settings02 size={16} />

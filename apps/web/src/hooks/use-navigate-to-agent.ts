@@ -5,8 +5,10 @@
  * agent navigation with automatic personal sidebar membership.
  */
 
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
-import { panelLocationForTab } from "@/layouts/main-panel-tabs/panel-route";
+import {
+  navigateToTabLocation,
+  tabRouteLocation,
+} from "@/layouts/main-panel-tabs/tab-route";
 import {
   fetchVirtualMCPs,
   useProjectContext,
@@ -32,9 +34,8 @@ import { writeThreadIntent } from "@/lib/thread-intent";
 const NO_THREADS: Task[] = [];
 
 interface NavigateToAgentOptions {
-  /** Main-panel view to land on, as a tab id. Written as the chat route's
-   *  `{-$panel}` segment (plus its payload), never as search. */
-  panel?: string;
+  /** Main view to land on, as a tab id. Resolved to its owning route. */
+  view?: string;
   /** The runtime the landed-on session must be. A thread's runtime is stamped
    *  once at creation and immutable, so this both picks which empty chat can be
    *  reused and is parked as an intent for the create the route loader runs —
@@ -66,6 +67,19 @@ export function useNavigateToAgent() {
     options: NavigateToAgentOptions | undefined,
     wantedRuntime: ThreadRuntime | undefined,
   ) => {
+    const tabId = options?.view ?? "overview";
+    /** Organization destinations do not belong to an agent session. Navigate
+     * there without minting a thread whose identity the route cannot encode. */
+    if (tabRouteLocation(tabId).kind === "org-destination") {
+      navigateToTabLocation(navigate, {
+        tabId,
+        org: org.slug,
+        agentId: virtualMcpId,
+        replace: false,
+      });
+      return;
+    }
+
     /** Resume the agent's ENTRY thread — its last branch for a repo-backed
      *  agent, otherwise its empty chat — and mint a fresh id only when there is
      *  none. `wantedRuntime` narrows which empty chat qualifies, so "open the
@@ -111,35 +125,23 @@ export function useNavigateToAgent() {
         runtime: options.runtime,
       });
     }
-    /** No `taskId` → omit `thread` and let the shell resolver add it. */
-    const threadSearch = taskId ? { thread: taskId } : {};
-    const view = options?.panel ? panelLocationForTab(options.panel) : null;
-    /**
-     * An agent that names no view goes to Home, never to a bare `/agents` with
-     * no segment: that URL has a thread and a project but no view, so it opens
-     * the workspace on whatever the panel machinery happens to pick. Home is a
-     * real page and says so in the address.
-     */
-    if (!view?.panel) {
-      navigate({
-        to: DESTINATION_ROUTE.home,
-        params: { org: org.slug },
-        search: { virtualmcpid: virtualMcpId, ...threadSearch },
-      });
-      return;
-    }
-    navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: org.slug, panel: view.panel },
-      search: {
-        ...view.payload,
-        virtualmcpid: virtualMcpId,
-        ...threadSearch,
-      },
+    navigateToTabLocation(navigate, {
+      tabId,
+      org: org.slug,
+      agentId: virtualMcpId,
+      /** No `taskId` → omit `thread` and let the target project's shell
+       * resolve its own last branch/conversation. */
+      search: () => (taskId ? { thread: taskId } : {}),
+      replace: false,
     });
   };
 
   return (virtualMcpId: string, options?: NavigateToAgentOptions) => {
+    if (
+      tabRouteLocation(options?.view ?? "overview").kind === "org-destination"
+    ) {
+      return go(virtualMcpId, options, undefined);
+    }
     // Both of these answer without awaiting, in the click's own task.
     const cached = cachedAgents.find((a) => a.id === virtualMcpId);
     if (options?.runtime) {

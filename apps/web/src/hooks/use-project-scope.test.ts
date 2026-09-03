@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   MIN_PROJECTS_FOR_SWITCHER,
+  resolveProjectScopeId,
   scopableProjects,
 } from "./use-project-scope";
 
@@ -58,5 +59,36 @@ describe("MIN_PROJECTS_FOR_SWITCHER", () => {
    *  render from the first project. */
   test("is one, so a single-project org can still reach its workspace", () => {
     expect(MIN_PROJECTS_FOR_SWITCHER).toBe(1);
+  });
+});
+
+describe("resolveProjectScopeId", () => {
+  test("canonical path identity wins over the legacy search input", () => {
+    expect(
+      resolveProjectScopeId({
+        agentIdParam: "vir_path",
+        legacyVirtualMcpId: "vir_search",
+      }),
+    ).toBe("vir_path");
+  });
+
+  test("reads the retired search key only on the legacy thread route", () => {
+    expect(
+      resolveProjectScopeId({
+        legacyVirtualMcpId: "vir_legacy",
+        legacyThreadRoute: true,
+      }),
+    ).toBe("vir_legacy");
+  });
+
+  test("ignores stale query identity on canonical organization pages", () => {
+    expect(
+      resolveProjectScopeId({ legacyVirtualMcpId: "vir_stale" }),
+    ).toBeNull();
+  });
+
+  test("normalizes missing and blank identities to no scope", () => {
+    expect(resolveProjectScopeId({})).toBeNull();
+    expect(resolveProjectScopeId({ legacyVirtualMcpId: "  " })).toBeNull();
   });
 });

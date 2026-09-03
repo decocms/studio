@@ -20,7 +20,7 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@/sdk";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import { AGENT_ROUTE } from "@/hooks/use-destination-route";
 import { KEYS } from "@/lib/query-keys";
 import { unwrapToolResult } from "@/routes/commerce-onboarding/companions-core";
 import {
@@ -165,18 +165,13 @@ export function commerceReportNavTarget(
   connectionId: string,
 ) {
   return {
-    to: DESTINATION_ROUTE.agents,
+    to: AGENT_ROUTE.app,
     params: {
       org: org.slug,
-      panel: "app",
+      agentId: getCommerceDiscoveryAgentId(org.id),
+      connectionId,
+      toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
     },
-    /** The scope is SEARCH, not a param: `/$org/agents/{-$panel}` declares only
-     *  `org` and `panel`, so a `virtualmcpid` param is silently discarded and
-     *  the report opens on the Super Agent. */
-    search: {
-      virtualmcpid: getCommerceDiscoveryAgentId(org.id),
-      connection: connectionId,
-      tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-    },
+    search: {},
   } as const;
 }

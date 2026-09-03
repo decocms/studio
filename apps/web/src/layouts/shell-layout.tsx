@@ -47,6 +47,7 @@ import {
   usePanelNavigate,
 } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { readThreadLayout, saveThreadLayout } from "@/lib/thread-layout-memory";
+import { threadHasMessages } from "@/lib/thread-has-messages";
 import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
 import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
@@ -140,7 +141,7 @@ export function usePanelActions() {
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
-    opts?: { autosend?: boolean; panel?: string },
+    opts?: { autosend?: boolean; view?: string },
   ) => {
     const isSameThread = !!currentTaskId && currentTaskId === id;
     // Remember the layout of the thread we're leaving so returning to it
@@ -156,13 +157,19 @@ export function usePanelActions() {
     // session, or when re-selecting the current thread — then keep its URL).
     const savedLayout = isSameThread ? null : readThreadLayout(id);
     const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    const selectedThread = manager?.threads
+      .get()
+      .find((thread) => thread.id === id);
 
     const target = resolveTaskSwitchSearch({
       /** The source agent is the one the ROUTE names, never a search param a previous navigation left behind — a stale one misreports the agent we're switching AWAY from, and the carry-forward view rides on that comparison. */
-      prev: { virtualmcpid: routeAgentId, tabId: activeTabId },
-      virtualMcpId,
+      prev: { agentId: routeAgentId, tabId: activeTabId },
+      targetAgentId: virtualMcpId,
       decopilotId,
       savedLayout,
+      targetHasMessages: selectedThread
+        ? threadHasMessages(selectedThread)
+        : false,
       opts,
       autosendValue: AUTOSEND_QUERY_VALUE,
     });
@@ -170,7 +177,9 @@ export function usePanelActions() {
     return navigateThread(
       id,
       () => target.search,
-      /** A thread belongs to one agent, so switching to another project's thread moves the `{-$project}` segment with it — and the view it lands on moves with it too. */
+      /** A thread belongs to one agent, so switching to another project's
+       * thread moves to that agent's canonical route—and moves the requested
+       * view with it. */
       { virtualMcpId, view: { tabId: target.tabId } },
     );
   };
@@ -181,7 +190,7 @@ export function usePanelActions() {
    *
    * `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin the
    * thread to a specific agent regardless of the current URL. When omitted, the
-   * route answers — `useRouteVirtualMcpId` reads the `{-$project}` segment
+   * route answers — `useRouteVirtualMcpId` reads the canonical `$agentId`
    * first, so a new chat on a project belongs to that project.
    *
    * `branch` lets a "New chat on the branch I'm viewing" caller inherit the
@@ -195,7 +204,7 @@ export function usePanelActions() {
   const createNewTask = async (
     virtualMcpId?: string,
     branch?: string | null,
-    opts?: { panel?: string },
+    opts?: { view?: string },
   ) => {
     const newId = crypto.randomUUID();
     const targetVmcp = virtualMcpId ?? routeVirtualMcpId;

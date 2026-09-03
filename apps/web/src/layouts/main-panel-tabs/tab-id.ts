@@ -6,7 +6,8 @@
  *     "site-editor" | "content" | "code" | "assets" | "hosting" | "e2e" |
  *     "analytics" | "cdn" | "git"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
- *   - Agent-declared: <agentTab.id> (from virtualMcp.metadata.ui.layout.tabs)
+ *   - Agent-declared: "agent-view:<encoded agentTab.id>"
+ *     (from virtualMcp.metadata.ui.layout.tabs)
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
  *   - Pinned view: "app:<connectionId>:<toolName>" (from metadata.ui.pinnedViews)
  *   - Ephemeral automation: "automation:<id>"
@@ -15,8 +16,8 @@
  *   - Ephemeral Library file preview: "library-file:<encoded browse path>"
  *
  * A view id is internal: the sidebar, panel bar, and per-thread layout memory
- * speak it, and `panel-route.ts` is the single boundary that writes it into the
- * URL as `/agents/{-$project}/{-$panel}` and reads it back.
+ * speak it, and `tab-route.ts` is the single boundary that maps it to the
+ * canonical route tree and reads it back.
  * There is no closed sentinel any more — whether the panel is open is
  * `?mainpanel`, a separate boolean, so a closed panel still remembers its view.
  *
@@ -36,6 +37,34 @@ export interface EntityLayoutMetadata {
 
 export interface AutomationTabParsed {
   id: string;
+}
+
+export interface AgentViewTabParsed {
+  id: string;
+}
+
+/**
+ * Agent-declared ids are opaque and may equal any built-in id or prefix. Keep
+ * their provenance in the in-memory tab vocabulary so `reports`, `git`, and
+ * even `app:*` still route through `/views/$viewId` instead of being
+ * reinterpreted as framework-owned tabs.
+ */
+export function formatAgentViewTabId(id: string): string {
+  return `agent-view:${encodeURIComponent(id)}`;
+}
+
+export function parseAgentViewTabId(
+  tabId: string | undefined,
+): AgentViewTabParsed | null {
+  if (!tabId?.startsWith("agent-view:")) return null;
+  const encoded = tabId.slice("agent-view:".length);
+  if (!encoded) return null;
+  try {
+    const id = decodeURIComponent(encoded);
+    return id ? { id } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseAutomationTabId(
@@ -200,7 +229,7 @@ const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
  * and they only ever appear alongside a project (never as a lone
  * `/agents/<segment>` word), so they must be EXCLUDED from the global
  * known-panel-segment set — otherwise a project whose slug is one of these words
- * stops resolving as a project. See `panel-route.ts`.
+ * stops resolving as a project. See the legacy parser in `panel-route.ts`.
  */
 export const GATED_CONTROL_PLANE_TABS = new Set<string>([
   "hosting",
@@ -245,8 +274,8 @@ export function isPerThreadTab(tabId: string): boolean {
 
 /**
  * Tab ids that were RENAMED, mapped old → new. Both readers of an id the app
- * did not just mint — a `{-$panel}` URL segment (bookmarked, shared, or minted
- * by the legacy `?main=` translator) and a stored
+ * did not just mint — a canonical route reconstructed as a tab id, a value
+ * accepted by the legacy `?main=` translator, and a stored
  * `metadata.ui.layout.defaultMainView.type` (a DB row on every agent imported
  * before the rename) — go through {@link normalizePanelSegment}, so the old
  * name keeps resolving forever while nothing writes it again.
@@ -330,23 +359,30 @@ export function resolveDefaultTabId(
 
   if (type === "ext-app" || type === "ext-apps") {
     // Pinned view default: { type: "ext-apps", id: connectionId, toolName }.
-    // Round-trip as the composite pinned-view tab id so the pinned-view
-    // branch in MainPanelContent renders it without a metadata round-trip.
+    // Round-trip as the composite pinned-view tab id so the app route can
+    // reconstruct both path parameters without a metadata round-trip.
     if (def.id && def.toolName) {
       return formatPinnedViewTabId(def.id, def.toolName);
     }
     const declaredTabIds = metadata?.tabs?.map((t) => t.id) ?? [];
-    if (def.id && declaredTabIds.includes(def.id)) return def.id;
-    return declaredTabIds[0] ?? "settings";
+    if (def.id && declaredTabIds.includes(def.id)) {
+      return formatAgentViewTabId(def.id);
+    }
+    return declaredTabIds[0]
+      ? formatAgentViewTabId(declaredTabIds[0])
+      : "settings";
   }
 
-  return metadata?.tabs?.[0]?.id ?? "settings";
+  const firstDeclaredTabId = metadata?.tabs?.[0]?.id;
+  return firstDeclaredTabId
+    ? formatAgentViewTabId(firstDeclaredTabId)
+    : "settings";
 }
 
 /**
  * The view showing in the main panel, and whether the panel is open — the two
  * things `?main=` used to conflate, resolved from the two things that replaced
- * it: the `{-$panel}` path segment and the `?mainpanel` boolean.
+ * it: a canonical child route and the `?mainpanel` boolean.
  *
  * Precedence for the view: the segment, then the destination route's own
  * default (`board` on `/$org/tasks`), then the agent's `defaultMainView`.
@@ -354,7 +390,7 @@ export function resolveDefaultTabId(
  * named — by the path, by the route, or by an agent whose default is not chat.
  */
 export function resolveActiveTabAndOpen(ctx: {
-  /** The `{-$panel}` segment's tab id; `undefined` when it names no view. */
+  /** The matched route's tab id; `undefined` when it names no view. */
   panelTabId: string | undefined;
   /** `?mainpanel`, when the URL carries one. */
   mainPanelParam?: boolean;

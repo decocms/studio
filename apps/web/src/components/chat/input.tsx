@@ -346,14 +346,10 @@ function useHomeSubmit() {
       // Toast already surfaced by the store; navigate anyway — the route's
       // ensure-fallback will retry if the row is missing.
     }
-    const search: Record<string, string> = {
-      virtualmcpid: targetVmcp,
-      autosend: AUTOSEND_QUERY_VALUE,
-    };
     navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId: newId },
-      search,
+      to: "/$org/agents/$agentId",
+      params: { org: org.slug, agentId: targetVmcp },
+      search: { thread: newId, autosend: AUTOSEND_QUERY_VALUE },
     });
   };
 }

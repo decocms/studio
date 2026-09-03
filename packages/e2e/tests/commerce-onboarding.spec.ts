@@ -456,13 +456,14 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await reportCta.click();
 
-    // Agent and view are both path here; the view's param and layout stay search.
+    // Every resource identity is in the canonical path; layout stays search.
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${user.orgSlug}/agents/app` &&
-        url.searchParams.get("virtualmcpid") === virtualMcpId &&
-        url.searchParams.get("connection") === connectionId &&
-        url.searchParams.get("tool") === "get_my_diagnostic" &&
+        url.pathname ===
+          `/${user.orgSlug}/agents/${virtualMcpId}/apps/${connectionId}/get_my_diagnostic` &&
+        url.searchParams.get("virtualmcpid") === null &&
+        url.searchParams.get("connection") === null &&
+        url.searchParams.get("tool") === null &&
         url.searchParams.get("sidepanel") === "false",
       { timeout: 20_000 },
     );

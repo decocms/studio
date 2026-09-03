@@ -260,8 +260,8 @@ function BrowseAgentsEmptyHint({ children }: { children: ReactElement }) {
  * server picks the most-recently-touched sandboxMap entry for that vMCP.
  *
  * Both reads go through the route resolvers rather than the raw URL: the agent
- * is the `{-$project}` segment (`?virtualmcpid=` is legacy-only), and the
- * thread is `?thread=` everywhere except the legacy route's path param.
+ * is the canonical `$agentId` segment (`?virtualmcpid=` is legacy-only), and
+ * the thread is `?thread=` everywhere except the legacy route's path param.
  */
 function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
   const navigate = useNavigate();
@@ -287,9 +287,9 @@ function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
       // ensure-fallback can retry.
     }
     navigate({
-      to: "/$org/$taskId",
-      params: { org: orgSlug, taskId },
-      search: { virtualmcpid: clickedVirtualMcpId },
+      to: "/$org/agents/$agentId",
+      params: { org: orgSlug, agentId: clickedVirtualMcpId },
+      search: { thread: taskId },
     });
   };
 }

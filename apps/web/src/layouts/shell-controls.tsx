@@ -1,7 +1,6 @@
 /**
- * Shell-level controls shared between the main org shell and the settings
- * shell. Both render `Toolbar.Header` on top, a sidebar below on the left,
- * and a mobile sheet for the sidebar on small screens.
+ * Shell-level controls shared between the workspace and settings shells.
+ * Both render a persistent sidebar on desktop and this sheet on small screens.
  */
 
 import type { ReactNode } from "react";

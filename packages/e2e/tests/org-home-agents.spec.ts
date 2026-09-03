@@ -13,7 +13,7 @@
  * `plugins/ban-e2e-app-imports.js`).
  */
 
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
@@ -46,7 +46,29 @@ async function createAgent(
   return agent.item.id;
 }
 
+async function assertCanonicalNewProjectHome(
+  page: Page,
+  orgSlug: string,
+): Promise<void> {
+  await page.waitForURL(
+    (url) =>
+      url.pathname === `/${orgSlug}/home` &&
+      url.searchParams.get("virtualmcpid") === null,
+    { timeout: SHELL_TIMEOUT_MS },
+  );
+  const landed = new URL(page.url());
+  expect(landed.pathname).not.toContain("/agents/");
+  await expect(page.getByTestId("main-panel")).toBeVisible({
+    timeout: SHELL_TIMEOUT_MS,
+  });
+  await expect(
+    page.getByRole("button", { name: "Import from GitHub" }),
+  ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+}
+
 test.describe("org home — the agent roster", () => {
+  test.describe.configure({ timeout: 180_000 });
+
   test("lists the agents a person made and hides the Studio Pack managers", async ({
     authedPage: { page, orgSlug },
   }) => {
@@ -90,5 +112,74 @@ test.describe("org home — the agent roster", () => {
     await expect(
       page.getByRole("button", { name: "Import from GitHub" }),
     ).toBeVisible();
+  });
+
+  test("the command palette New project action opens organization Home", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    /** Exercise the populated-home branch too: the entry action and the
+     * import control are permanent affordances, not empty-state behavior. */
+    await createAgent(page.request, orgSlug, `Palette Agent ${orgSlug}`);
+    await page.goto(`/${orgSlug}/reports`);
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    const modifier = await page.evaluate(() =>
+      /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "Meta" : "Control",
+    );
+    await page.keyboard.press(`${modifier}+K`);
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await expect(palette).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await palette
+      .getByRole("option", { name: "New project", exact: true })
+      .click();
+
+    await assertCanonicalNewProjectHome(page, orgSlug);
+  });
+
+  test("the organization and project picker New project action opens organization Home", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const agentId = await createAgent(
+      page.request,
+      orgSlug,
+      `Picker Agent ${orgSlug}`,
+    );
+    await page.goto(`/${orgSlug}/agents/${agentId}/settings`);
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    await page
+      .getByRole("button", { name: /^Organization and project:/ })
+      .click();
+    await expect(
+      page.getByPlaceholder("Search organizations and projects…"),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await page
+      .getByRole("button", { name: "New project", exact: true })
+      .click();
+
+    await assertCanonicalNewProjectHome(page, orgSlug);
+  });
+
+  test("the Discover checklist Create project action opens organization Home", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    /** This fixture owns a fresh organization, so the project step is
+     * outstanding even though code-owned Studio Pack agents already exist. */
+    await page.goto(`/${orgSlug}/discover`);
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    const projectStep = page
+      .getByRole("listitem")
+      .filter({ hasText: "Create a project" });
+    await expect(projectStep).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await projectStep.getByRole("link", { name: "Create" }).click();
+
+    await assertCanonicalNewProjectHome(page, orgSlug);
   });
 });

@@ -27,41 +27,41 @@ describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => 
   test("carries a system tab forward within the same agent", () => {
     expect(
       resolve({
-        prev: { virtualmcpid: "repo-1", tabId: "git" },
-        virtualMcpId: "repo-1",
+        prev: { agentId: "repo-1", tabId: "git" },
+        targetAgentId: "repo-1",
       }),
-    ).toEqual({ tabId: "git", search: { virtualmcpid: "repo-1" } });
+    ).toEqual({ tabId: "git", search: {} });
   });
 
   test("drops per-thread tabs when carrying forward", () => {
     expect(
       resolve({
-        prev: { virtualmcpid: "repo-1", tabId: "file:abc" },
-        virtualMcpId: "repo-1",
+        prev: { agentId: "repo-1", tabId: "file:abc" },
+        targetAgentId: "repo-1",
       }),
-    ).toEqual({ tabId: undefined, search: { virtualmcpid: "repo-1" } });
+    ).toEqual({ tabId: undefined, search: {} });
   });
 
   test("agent switch drops the previous view", () => {
     expect(
       resolve({
-        prev: { virtualmcpid: "repo-1", tabId: "git" },
-        virtualMcpId: "repo-2",
+        prev: { agentId: "repo-1", tabId: "git" },
+        targetAgentId: "repo-2",
       }),
-    ).toEqual({ tabId: undefined, search: { virtualmcpid: "repo-2" } });
+    ).toEqual({ tabId: undefined, search: {} });
   });
 
   test("param-less Super Agent → repo agent counts as a switch", () => {
-    // prev has no virtualmcpid (Super Agent); target repo-1 differs → no carry.
+    // The route names no agent (Super Agent); target repo-1 differs → no carry.
     expect(
-      resolve({ prev: { tabId: "overview" }, virtualMcpId: "repo-1" }),
-    ).toEqual({ tabId: undefined, search: { virtualmcpid: "repo-1" } });
+      resolve({ prev: { tabId: "overview" }, targetAgentId: "repo-1" }),
+    ).toEqual({ tabId: undefined, search: {} });
   });
 
-  test("opts.panel is an explicit intent that wins", () => {
+  test("opts.view is an explicit intent that wins", () => {
     expect(
-      resolve({ prev: { virtualmcpid: "repo-1" }, opts: { panel: "preview" } }),
-    ).toEqual({ tabId: "preview", search: { virtualmcpid: "repo-1" } });
+      resolve({ prev: { agentId: "repo-1" }, opts: { view: "preview" } }),
+    ).toEqual({ tabId: "preview", search: {} });
   });
 
   test("opts.autosend appends the sentinel", () => {
@@ -71,13 +71,20 @@ describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => 
     });
   });
 
+  test("opens Chat when selecting a populated thread", () => {
+    expect(resolve({ targetHasMessages: true })).toEqual({
+      tabId: undefined,
+      search: { sidepanel: true },
+    });
+  });
+
   /** A `mainpanel` describes the thread being left, never the one being opened:
    *  the target's own default (or its memory) decides. */
   test("never carries the panel-visibility flag across a switch", () => {
     expect(
       resolve({
-        prev: { virtualmcpid: "repo-1", tabId: "git" },
-        virtualMcpId: "repo-1",
+        prev: { agentId: "repo-1", tabId: "git" },
+        targetAgentId: "repo-1",
       }).search,
     ).not.toHaveProperty("mainpanel", true);
   });
@@ -89,19 +96,19 @@ describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => 
     // of forcing chat open — this function has no access to that config itself.
     expect(
       resolve({
-        prev: { virtualmcpid: "repo-1", tabId: "git" },
-        virtualMcpId: "content-agent",
+        prev: { agentId: "repo-1", tabId: "git" },
+        targetAgentId: "content-agent",
       }),
-    ).toEqual({ tabId: undefined, search: { virtualmcpid: "content-agent" } });
+    ).toEqual({ tabId: undefined, search: {} });
   });
 });
 
 describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
   test("restores the target thread's saved view", () => {
     const savedLayout: ThreadLayout = { tab: "preview", sidepanel: true };
-    expect(resolve({ prev: { virtualmcpid: "repo-1" }, savedLayout })).toEqual({
+    expect(resolve({ prev: { agentId: "repo-1" }, savedLayout })).toEqual({
       tabId: "preview",
-      search: { virtualmcpid: "repo-1", sidepanel: true },
+      search: { sidepanel: true },
     });
   });
 
@@ -122,6 +129,14 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
     });
   });
 
+  test("a populated thread preserves explicit closed-panel memory", () => {
+    const savedLayout: ThreadLayout = { tab: "git", sidepanel: false };
+    expect(resolve({ savedLayout, targetHasMessages: true })).toEqual({
+      tabId: "git",
+      search: { sidepanel: false },
+    });
+  });
+
   test("restores a main panel the thread was left with collapsed", () => {
     const savedLayout: ThreadLayout = { tab: "preview", mainpanel: false };
     expect(resolve({ savedLayout })).toEqual({
@@ -135,11 +150,11 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
     const savedLayout: ThreadLayout = { tab: "preview" };
     expect(
       resolve({
-        prev: { virtualmcpid: "repo-1", tabId: "git" },
-        virtualMcpId: "repo-1",
+        prev: { agentId: "repo-1", tabId: "git" },
+        targetAgentId: "repo-1",
         savedLayout,
       }),
-    ).toEqual({ tabId: "preview", search: { virtualmcpid: "repo-1" } });
+    ).toEqual({ tabId: "preview", search: {} });
   });
 
   test("empty saved layout restores the default (no carry-forward)", () => {
@@ -147,17 +162,17 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
     // the source thread had a system tab open.
     expect(
       resolve({
-        prev: { virtualmcpid: "repo-1", tabId: "git" },
-        virtualMcpId: "repo-1",
+        prev: { agentId: "repo-1", tabId: "git" },
+        targetAgentId: "repo-1",
         savedLayout: {},
       }),
-    ).toEqual({ tabId: undefined, search: { virtualmcpid: "repo-1" } });
+    ).toEqual({ tabId: undefined, search: {} });
   });
 
-  test("opts.panel still beats saved layout", () => {
-    // opts.panel wins the view; sidepanel is omitted, so the agent default applies.
+  test("opts.view still beats saved layout", () => {
+    // opts.view wins the view; sidepanel is omitted, so the agent default applies.
     const savedLayout: ThreadLayout = { tab: "preview", sidepanel: false };
-    expect(resolve({ opts: { panel: "settings" }, savedLayout })).toEqual({
+    expect(resolve({ opts: { view: "settings" }, savedLayout })).toEqual({
       tabId: "settings",
       search: {},
     });

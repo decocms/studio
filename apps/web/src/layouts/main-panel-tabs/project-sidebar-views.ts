@@ -68,11 +68,11 @@ interface ProjectDefaultMainView {
 
 /** Resolve the entity whose capabilities govern a main-panel project view.
  *
- * Destination routes such as Tasks and Reports keep the org Super Agent as
- * their shell entity while `?virtualmcpid=` selects the project they display.
- * Agent routes instead name that project as both the shell and the scope. Use
- * the resolved scoped project in the former case, reuse the shell in the
- * latter, and fail open as org-level while a non-blocking scope is unresolved.
+ * Organization routes use the Super Agent as their shell entity and have no
+ * project scope. Agent routes name that project as both the shell and scope;
+ * resolve it from the non-blocking project list when possible, otherwise reuse
+ * the already loaded shell entity. Fail open as org-level while an unexpected
+ * non-blocking scope is unresolved.
  */
 export function resolveProjectMainViewContext<
   T extends { readonly id: string },
@@ -209,6 +209,24 @@ export function projectSidebarViewUnavailable(
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
+}
+
+/** Decide whether an already-matched project route must fall back to another
+ * view. Canonical Overview remains the agent root, and Site Editor Preview owns
+ * a useful connect-source empty state, even without source. This does not make
+ * either sidebar row or persisted default available: those keep using
+ * `projectSidebarViewUnavailable` directly. Content and Code have their own
+ * surface-capability guards in the tab-state resolver. */
+export function projectActiveViewUnavailable(
+  viewId: string | null | undefined,
+  presence: ProjectSidebarViewPresence,
+  pending: ProjectNativeViewPending,
+): boolean {
+  return (
+    viewId !== "overview" &&
+    viewId !== "site-editor" &&
+    projectSidebarViewUnavailable(viewId, presence, pending)
+  );
 }
 
 /** Validate a persisted built-in landing view, including retired Preview and

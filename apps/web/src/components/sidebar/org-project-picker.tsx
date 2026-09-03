@@ -1,8 +1,8 @@
 /** The one sidebar picker: organizations and projects in a single list. It
  *  merges two controls that were never the same kind of thing, so the design is
- *  about keeping them apart — picking a PROJECT writes `?virtualmcpid=` and
- *  stays put, while picking an ORGANIZATION changes the path, remounts the
- *  shell and drops the scope. A footer strip names the verb for the focused row
+ *  about keeping them apart — picking a PROJECT enters its canonical
+ *  `/agents/$agentId` workspace, while picking an ORGANIZATION enters its Home.
+ *  A footer strip names the verb for the focused row
  *  before Enter commits it, since those two live one arrow-key apart, and
  *  nothing is ever auto-selected: a scope nobody chose silently shortens lists.
  *  Two modes, deliberately not one — BROWSING (no term) lists this org's
@@ -205,46 +205,35 @@ function PickerContent({
   const { hits, isSearching, isStale, isError } = useProjectSearch(
     searching ? term : "",
   );
-  /** The settings tree is its own shell; the scope means nothing inside it. */
+  /** The settings tree is its own shell; selecting an agent leaves it. */
   const inSettings = useLeafRoutePath().startsWith("/$org/settings");
 
   const rows = new Map<string, RowMeta>();
 
-  /** Picking a project from the SETTINGS tree has to leave it. `setScope`
-   *  writes the param onto the current route, which in settings means landing
-   *  on `/$org/settings/...?virtualmcpid=` — a settings page wearing a scope
-   *  nothing there reads. The picker is the one scope control reachable from
-   *  inside settings, so this is where that has to be answered. */
   const scopeTo = (id: string | null) => {
     track("scope_set", { scoped: id !== null, fromSettings: inSettings });
-    if (inSettings) {
-      navigate({
-        to: "/$org",
-        params: { org: org.slug },
-        search: { virtualmcpid: id ?? undefined },
-      });
-    } else {
-      setScope(id);
-    }
+    setScope(id);
     onClose();
   };
 
   const travelTo = (slug: string, projectId?: string) => {
     track("org_project_travel", { scoped: !!projectId });
-    navigate({
-      to: "/$org",
-      params: { org: slug },
-      search: projectId ? { virtualmcpid: projectId } : {},
-    });
+    if (projectId) {
+      navigate({
+        to: "/$org/agents/$agentId",
+        params: { org: slug, agentId: projectId },
+      });
+    } else {
+      navigate({ to: "/$org/home", params: { org: slug } });
+    }
     onClose();
   };
 
   const createProject = () => {
     track("picker_new_project");
     navigate({
-      to: "/$org/agents/{-$panel}",
-      params: { org: org.slug, panel: undefined },
-      search: { virtualmcpid: undefined },
+      to: "/$org/home",
+      params: { org: org.slug },
     });
     onClose();
   };

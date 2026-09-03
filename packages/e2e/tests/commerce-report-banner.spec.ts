@@ -1,10 +1,9 @@
 /**
  * E2E: the Commerce Discovery report banner on the PROJECT home (Overview).
  *
- * Not the org home: that landing is the agent roster now, and the banner sits
- * with the project's own summary. Every test therefore scopes to a project
- * (`?virtualmcpid=`) before asserting — an unscoped home renders the roster and
- * would fail these for the wrong reason.
+ * Not the org home: that landing is the agent roster, and the banner sits with
+ * the project's own summary. Every test therefore visits the project's
+ * canonical `/agents/<agentId>` workspace before asserting.
  *
  * The banner reads run state live from the CD connection's own MCP
  * (`get_my_diagnostic`), so these specs stand up a controlled test MCP
@@ -16,7 +15,7 @@
  * Covered:
  *   1. Org without the CD connection → no banner, home intact.
  *   2. Completed diagnostic → "ready" banner; click navigates to the
- *      report app (the CD project's chat path, a fresh `?thread=` and a pinned main tab).
+ *      report app nested under the Commerce Discovery agent.
  *   3. Live run → "generating" banner.
  *   4. CD connection whose MCP is unreachable → no banner, home intact.
  */
@@ -33,6 +32,7 @@ import { expect, test } from "../fixtures/test";
 /** Wire contract: the org's well-known CD connection id
  *  (WellKnownOrgMCPId.COMMERCE_DISCOVERY) and the report tool name. */
 const cdConnectionId = (orgId: string) => `${orgId}_commerce-discovery`;
+const cdAgentId = (orgId: string) => `commerce-discovery_${orgId}`;
 const REPORT_TOOL = "get_my_diagnostic";
 
 const READY_TITLE = "Your report is ready";
@@ -150,7 +150,7 @@ async function waitForHome(
   orgSlug: string,
   projectId: string,
 ): Promise<void> {
-  await page.goto(`/${orgSlug}/home?virtualmcpid=${projectId}`);
+  await page.goto(`/${orgSlug}/agents/${projectId}`);
   /** The task composer belongs to the PROJECT home — an unscoped landing
    *  renders the org roster and its search instead, never this. */
   await page
@@ -214,14 +214,15 @@ test.describe("commerce report banner", () => {
       await expect(banner).toContainText("minha-loja.example");
 
       await banner.click();
-      // Agent and view are both path here; only the view's param stays search.
-      await expect(page).toHaveURL(
-        new RegExp(
-          `/${orgSlug}/agents/app\\?.*virtualmcpid=commerce-discovery_`,
-        ),
+      await page.waitForURL(
+        (url) =>
+          url.pathname ===
+            `/${orgSlug}/agents/${cdAgentId(orgId)}/apps/${cdConnectionId(orgId)}/${REPORT_TOOL}` &&
+          url.searchParams.get("virtualmcpid") === null &&
+          url.searchParams.get("connection") === null &&
+          url.searchParams.get("tool") === null,
         { timeout: 15_000 },
       );
-      expect(new URL(page.url()).searchParams.get("tool")).toBe(REPORT_TOOL);
     } finally {
       await mcp.stop();
     }

@@ -13,6 +13,7 @@ import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { AutomationListRow } from "./automation-list-row";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
@@ -41,40 +42,50 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const newButton = (
-    <Button size="sm" onClick={handleNew} disabled={create.isPending}>
+    <Button
+      size="sm"
+      onClick={handleNew}
+      disabled={create.isPending}
+      aria-label={t("automations.automationsList.newAutomation")}
+    >
       <Plus size={14} />
-      {t("automations.automationsList.newAutomation")}
+      <span className="@max-sm/main-topbar:hidden">
+        {t("automations.automationsList.newAutomation")}
+      </span>
     </Button>
   );
 
+  const searchInput =
+    automations.length > 0 ? (
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder={t("automations.automationsList.searchPlaceholder")}
+        className="w-[clamp(7rem,35cqw,23.4375rem)]"
+      />
+    ) : null;
+
   return (
     <Page>
+      {searchInput && (
+        <Main.Topbar.Center.Portal>
+          <div className="hidden md:block">{searchInput}</div>
+        </Main.Topbar.Center.Portal>
+      )}
+      {searchInput && (
+        <Main.Subheader.Portal>
+          <div className="w-full md:hidden [&>*]:w-full">{searchInput}</div>
+        </Main.Subheader.Portal>
+      )}
+      <Main.Topbar.Right.Portal>{newButton}</Main.Topbar.Right.Portal>
       <Page.Content>
-        <Page.Body>
-          <div className="flex flex-col gap-6">
-            <Page.Title>{t("automations.automationsList.title")}</Page.Title>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              {automations.length > 0 && (
-                <SearchInput
-                  value={search}
-                  onChange={setSearch}
-                  placeholder={t(
-                    "automations.automationsList.searchPlaceholder",
-                  )}
-                  className="w-full md:w-[375px]"
-                />
-              )}
-              {newButton}
-            </div>
-          </div>
-
+        <Page.Body className="pt-6 md:pt-8">
           {automations.length === 0 ? (
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 image={<Zap size={48} className="text-muted-foreground" />}
                 title={t("automations.automationsList.emptyTitle")}
                 description={t("automations.automationsList.emptyDescription")}
-                actions={newButton}
               />
             </div>
           ) : filtered.length === 0 ? (

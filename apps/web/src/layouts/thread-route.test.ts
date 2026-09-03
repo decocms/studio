@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  destinationForThreadOwner,
   resolveActiveAgentId,
-  resolveDestinationSwitch,
   resolveDestinationThreadSearch,
+  routeThreadMatchesAgent,
   resolveRouteAgentId,
   resolveRouteThreadId,
-  resolveThreadNavTarget,
 } from "./thread-route";
 
 const DECOPILOT = "decopilot_k8PB5";
@@ -45,94 +45,29 @@ describe("resolveRouteThreadId", () => {
   });
 });
 
-describe("resolveThreadNavTarget", () => {
-  /** `to: "."` re-interpolates the matched route's own params, so a destination stays put. */
-  test("a destination route keeps the thread in its own search", () => {
-    expect(
-      resolveThreadNavTarget({
-        threadInSearch: true,
-        orgSlug: "acme",
-        threadId: "thread-1",
-      }),
-    ).toEqual({ to: "." });
-  });
-
-  test("the legacy route keeps the thread in its path param", () => {
-    expect(
-      resolveThreadNavTarget({
-        threadInSearch: false,
-        orgSlug: "acme",
-        threadId: "thread-1",
-      }),
-    ).toEqual({
-      to: "/$org/$taskId",
-      params: { org: "acme", taskId: "thread-1" },
-    });
-  });
-
-  /** The settings tree carries no thread at all, so its sidebar must land on the legacy route. */
-  test("a route outside the agent shell lands on the legacy route", () => {
-    expect(
-      resolveThreadNavTarget({
-        threadInSearch: false,
-        orgSlug: "acme",
-        threadId: "new-thread",
-      }),
-    ).toEqual({
-      to: "/$org/$taskId",
-      params: { org: "acme", taskId: "new-thread" },
-    });
-  });
-
-  /**
-   * INVERTED from the old `navWith(currentTaskId || crypto.randomUUID())`:
-   * a panel action on a route naming no thread used to interpolate a fabricated
-   * id into `/$org/$taskId` and mint a thread row.
-   */
-  test("an empty thread id never resolves to the legacy route", () => {
-    expect(
-      resolveThreadNavTarget({
-        threadInSearch: false,
-        orgSlug: "acme",
-        threadId: "",
-      }),
-    ).toEqual({ to: "." });
-  });
-});
-
 describe("resolveRouteAgentId", () => {
-  /** THE BUG: "New chat" on a project's workspace made the thread on the Super
-   *  Agent, because nothing read the scope. The scope IS the agent — but only
-   *  on the agents route; the next test says why. */
-  test("the agents route reads its agent from ?virtualmcpid=", () => {
+  test("reads canonical agent identity from the path", () => {
     expect(
       resolveRouteAgentId({
-        virtualMcpIdSearch: "project-1",
-        onAgentsRoute: true,
+        agentIdParam: "project-1",
       }),
     ).toBe("project-1");
   });
 
-  /** THE GATE: the param is RETAINED across navigation, so a destination that
-   *  resolved it would let a leftover param turn `/$org/reports?virtualmcpid=`
-   *  into a project workspace. Reports/Tasks/Library still ignore it. */
-  test("an org-level destination ignores ?virtualmcpid=", () => {
+  test("canonical path identity wins over a conflicting legacy query", () => {
+    expect(
+      resolveRouteAgentId({
+        agentIdParam: "agent-from-path",
+        virtualMcpIdSearch: "stale-query-agent",
+        legacyRoute: true,
+      }),
+    ).toBe("agent-from-path");
+  });
+
+  test("an org-owned destination ignores stale query identity", () => {
     expect(
       resolveRouteAgentId({ virtualMcpIdSearch: "vir_x" }),
     ).toBeUndefined();
-  });
-
-  /** Home renders the SCOPED project's own overview (`HomeTab`), so it names
-   *  that agent too. Without this, `useNavigateToAgent`'s no-panel branch sent
-   *  a thread minted for the project to `/$org/home`, where it was created
-   *  against the Super Agent and chat dispatched there. */
-  test("home reads its agent from ?virtualmcpid=", () => {
-    expect(
-      resolveRouteAgentId({
-        virtualMcpIdSearch: "project-1",
-        onHomeRoute: true,
-      }),
-    ).toBe("project-1");
   });
 
   /** The legacy `/$org/$taskId` route has no panel segment and genuinely
@@ -148,14 +83,60 @@ describe("resolveRouteAgentId", () => {
 
   /** A blank value is not an agent. Reading it as one would send a project
    *  workspace to the Super Agent rather than leaving the scope unset. */
-  test("a blank scope reads as no agent", () => {
+  test("a blank legacy identity reads as no agent", () => {
     expect(
-      resolveRouteAgentId({ virtualMcpIdSearch: "", onAgentsRoute: true }),
+      resolveRouteAgentId({ virtualMcpIdSearch: "   ", legacyRoute: true }),
     ).toBeUndefined();
   });
 
   test("a route naming no agent anywhere answers undefined", () => {
     expect(resolveRouteAgentId({})).toBeUndefined();
+  });
+});
+
+describe("routeThreadMatchesAgent", () => {
+  test("accepts a thread owned by the route agent", () => {
+    expect(
+      routeThreadMatchesAgent({
+        routeAgentId: "agent-a",
+        threadAgentId: "agent-a",
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects a concrete cross-agent mismatch", () => {
+    expect(
+      routeThreadMatchesAgent({
+        routeAgentId: "agent-a",
+        threadAgentId: "agent-b",
+      }),
+    ).toBe(false);
+  });
+
+  test("tolerates legacy rows whose ownership is not yet available", () => {
+    expect(
+      routeThreadMatchesAgent({ routeAgentId: "agent-a", threadAgentId: null }),
+    ).toBe(true);
+    expect(routeThreadMatchesAgent({ routeAgentId: "agent-a" })).toBe(true);
+  });
+});
+
+describe("destinationForThreadOwner", () => {
+  test("regular agents own an explicit workspace path", () => {
+    expect(destinationForThreadOwner("vir_agent_a")).toEqual({
+      kind: "agent",
+      agentId: "vir_agent_a",
+    });
+  });
+
+  test("the Super Agent owns the organization Home default", () => {
+    expect(destinationForThreadOwner("decopilot_org_a")).toEqual({
+      kind: "home",
+    });
+  });
+
+  test("a malformed empty owner fails closed to Home", () => {
+    expect(destinationForThreadOwner("   ")).toEqual({ kind: "home" });
   });
 });
 
@@ -167,24 +148,17 @@ describe("resolveDestinationThreadSearch", () => {
         changes: { main: "preview" },
         threadId: "thread-2",
       }),
-    ).toEqual({ main: "preview", sidepanel: true, thread: "thread-2" });
+    ).toEqual({ sidepanel: true, thread: "thread-2" });
   });
 
-  /** INVERTED once the scope and the legacy agent param became one key: the
-   *  switch used to delete it unconditionally, which would now discard a filter
-   *  the person chose — and futilely, since retention re-adds it anyway. */
-  test("a scope the person chose survives a thread switch", () => {
+  test("retired query identity never survives a thread switch", () => {
     expect(
       resolveDestinationThreadSearch({
         prev: { virtualmcpid: DECOPILOT, sidepanel: true },
         changes: {},
         threadId: "thread-2",
       }),
-    ).toEqual({
-      virtualmcpid: DECOPILOT,
-      sidepanel: true,
-      thread: "thread-2",
-    });
+    ).toEqual({ sidepanel: true, thread: "thread-2" });
   });
 
   /** The half that must NOT invert: a switch never INTRODUCES a scope. The
@@ -228,75 +202,5 @@ describe("resolveActiveAgentId", () => {
   test("a route and a thread that name none answer null", () => {
     expect(resolveActiveAgentId({})).toBeNull();
     expect(resolveActiveAgentId({ threadVirtualMcpId: null })).toBeNull();
-  });
-});
-
-describe("resolveDestinationSwitch", () => {
-  /**
-   * The regression this closes: dropping `virtualmcpid` on a project route
-   * without moving the segment left `/agents/A` showing a thread that belongs to
-   * B — the workspace ran A's tools, sandbox and branch over B's conversation.
-   */
-  test("a thread from another project moves the segment", () => {
-    expect(
-      resolveDestinationSwitch({
-        currentProject: "project-a",
-        targetVirtualMcpId: "project-b",
-      }),
-    ).toEqual({ kind: "stay", project: "project-b" });
-  });
-
-  test("a switch that names no agent stays on this project", () => {
-    expect(resolveDestinationSwitch({ currentProject: "project-a" })).toEqual({
-      kind: "stay",
-      project: "project-a",
-    });
-  });
-
-  /** The Super Agent is not a project, so its threads drop the segment rather
-   *  than minting a `/agents/decopilot_…` segment for something that is not a
-   *  project at all. */
-  test("a Super Agent thread drops the segment", () => {
-    expect(
-      resolveDestinationSwitch({
-        currentProject: "project-a",
-        targetVirtualMcpId: DECOPILOT,
-        decopilotId: DECOPILOT,
-      }),
-    ).toEqual({ kind: "stay", project: undefined });
-  });
-
-  /**
-   * INVERTED: an org-level destination used to gain no segment and keep the
-   * agent in `?virtualmcpid=` instead — which is how opening a coding agent's
-   * chat from Reports left the whole report scoped to that agent. There is no
-   * segment to move on Home/Tasks/Reports/Library, so the switch leaves for the
-   * workspace the thread's agent owns.
-   */
-  test("an org-level destination relocates to the agent's workspace", () => {
-    expect(
-      resolveDestinationSwitch({ targetVirtualMcpId: "project-b" }),
-    ).toEqual({ kind: "relocate", project: "project-b" });
-  });
-
-  /** A bare `/$org/agents` has no segment either, and its threads belong to the
-   *  agent that owns them just the same. */
-  test("a bare agents route relocates as well", () => {
-    expect(
-      resolveDestinationSwitch({
-        targetVirtualMcpId: "project-b",
-        decopilotId: DECOPILOT,
-      }),
-    ).toEqual({ kind: "relocate", project: "project-b" });
-  });
-
-  /** A Super Agent thread already belongs on an org-level page, so it stays. */
-  test("a Super Agent thread stays on an org-level destination", () => {
-    expect(
-      resolveDestinationSwitch({
-        targetVirtualMcpId: DECOPILOT,
-        decopilotId: DECOPILOT,
-      }),
-    ).toEqual({ kind: "stay", project: undefined });
   });
 });

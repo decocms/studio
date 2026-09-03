@@ -29,7 +29,6 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   getCommerceDiscoveryAgentId,
-  getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   WellKnownOrgMCPId,
@@ -907,15 +906,14 @@ function CommerceSetupContent({
   // (mounted by the org shell when it sees `?connect=1`) takes over from here:
   // the user connects at least one data source over the blurred ORG HOME, then
   // the modal triggers the run and opens the report. We land on the Super Agent
-  // home thread (not `/$org`, which reports-only orgs bounce back here) so the
+  // Home surface (not `/$org`, which reports-only orgs bounce back here) so the
   // modal sits over real org content instead of a blank report.
   if (setupReady) {
     return (
       <Navigate
-        to="/$org/$taskId"
-        params={{ org: org.slug, taskId: crypto.randomUUID() }}
+        to="/$org/home"
+        params={{ org: org.slug }}
         search={{
-          virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
           connect: "1",
           siteUrl: currentSiteUrl || undefined,
         }}

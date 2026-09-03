@@ -9,7 +9,7 @@
  *
  * Starting it is exactly the onboarding hand-off, reused rather than
  * reimplemented: COMMERCE_DISCOVERY_SETUP claims the site, then we navigate to
- * the org home thread with `?connect=1`, which mounts the blocking
+ * the organization Home surface with `?connect=1`, which mounts the blocking
  * CommerceConnectModal — the step that asks for the data sources (GA4/GSC/VTEX/
  * GitHub), triggers COMMERCE_DISCOVERY_RUN and opens the report.
  *
@@ -36,7 +36,6 @@ import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
 import { MiniReportPage } from "@/components/home/mini-report-page";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
@@ -199,10 +198,9 @@ function StartDiagnostic({
     }
     // The connections step triggers the run and opens the report.
     navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: org.slug, panel: undefined },
+      to: DESTINATION_ROUTE.home,
+      params: { org: org.slug },
       search: {
-        virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
         connect: "1",
         siteUrl: normalized.value,
       },

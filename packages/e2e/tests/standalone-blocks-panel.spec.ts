@@ -81,12 +81,12 @@ test.describe("Blocks preview mode", () => {
     await page
       .getByRole("button", { name: "Site Editor", exact: true })
       .click();
-    /* The VIEW is the segment (`site-editor`, which `preview` normalises to);
-       the project rides in `?virtualmcpid=`. Assert both halves: a shrinking
-       path alone would also pass if the project scope had been dropped. */
-    await expect(page).toHaveURL(/\/agents\/site-editor/);
+    /* Agent identity and the Site Editor view are both structural route
+       segments; the compatibility-only query identity must be gone. */
     await expect(page).toHaveURL(
-      (url) => url.searchParams.get("virtualmcpid") === agentId,
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor` &&
+        !url.searchParams.has("virtualmcpid"),
     );
     await expect(contentTab).toBeVisible();
     await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
@@ -155,10 +155,10 @@ test.describe("Blocks preview mode", () => {
     await viewSelect.click();
     await page.getByRole("option", { name: "Preview" }).click();
     await expect(page).toHaveURL(/sidepanel=false/);
-    await expect(page).toHaveURL(/\/agents\/site-editor/);
-    // The project scope moved from the path into search — it must still be here.
     await expect(page).toHaveURL(
-      (url) => url.searchParams.get("virtualmcpid") === agentId,
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor` &&
+        !url.searchParams.has("virtualmcpid"),
     );
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);

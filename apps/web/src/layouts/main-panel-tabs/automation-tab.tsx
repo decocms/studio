@@ -17,6 +17,7 @@ import { usePanelNavigate } from "./use-panel-navigate";
 import { Suspense, useState } from "react";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
+import { automationMatchesRouteAgent } from "./automation-route";
 
 // Stat-card window options for the Runs tab. Anchored once at selection time so
 // the derived ISO range is stable across renders (avoids refetch loops).
@@ -92,18 +93,30 @@ function RunsTab({
   );
 }
 
-export function AutomationTab({ tabId }: { tabId: string }) {
+export function AutomationTab({
+  tabId,
+  routeAgentId,
+}: {
+  tabId: string;
+  routeAgentId: string;
+}) {
   const parsed = parseAutomationTabId(tabId);
   if (!parsed) return null;
 
   return (
     <Suspense fallback={<PanelLoading />}>
-      <AutomationTabInner id={parsed.id} />
+      <AutomationTabInner id={parsed.id} routeAgentId={routeAgentId} />
     </Suspense>
   );
 }
 
-function AutomationTabInner({ id }: { id: string }) {
+function AutomationTabInner({
+  id,
+  routeAgentId,
+}: {
+  id: string;
+  routeAgentId: string;
+}) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
   const { data: automation, isLoading } = useAutomation(id);
@@ -115,7 +128,10 @@ function AutomationTabInner({ id }: { id: string }) {
     return <PanelLoading />;
   }
 
-  if (!automation) {
+  if (
+    !automation ||
+    !automationMatchesRouteAgent(automation.virtual_mcp_id, routeAgentId)
+  ) {
     return (
       <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
         {t("mainPanelTabs.automationTab.automationNotFound")}

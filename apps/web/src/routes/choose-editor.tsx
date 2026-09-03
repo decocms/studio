@@ -15,8 +15,7 @@
 
 import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
-import { panelLocationForTab } from "@/layouts/main-panel-tabs/panel-route";
+import { AGENT_ROUTE } from "@/hooks/use-destination-route";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
@@ -56,10 +55,6 @@ function isDeadEnd(error: unknown): boolean {
   const status = (error as ResolveError | null)?.status;
   return typeof status === "number" && status >= 400 && status < 500;
 }
-
-/** Content's own address, from the one module that owns the URL grammar: the
- *  Site Editor segment plus the search that selects the Content view. */
-const CONTENT_PANEL = panelLocationForTab("content");
 
 /** The page/preview deep-link the storefront handed us, minus empty values. */
 function buildPageSearch(search: ChooseEditorSearch) {
@@ -147,13 +142,9 @@ function EditorRedirect({
 }) {
   return (
     <Navigate
-      to={DESTINATION_ROUTE.agents}
-      params={{ org: orgSlug, panel: CONTENT_PANEL.panel }}
-      search={{
-        ...pageSearch,
-        ...CONTENT_PANEL.payload,
-        virtualmcpid: projectId,
-      }}
+      to={AGENT_ROUTE.siteEditorContent}
+      params={{ org: orgSlug, agentId: projectId }}
+      search={pageSearch}
       replace
     />
   );
@@ -170,13 +161,9 @@ function EditorChooser({
   const navigate = useNavigate();
   const open = (match: EditorMatch) => {
     navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: match.orgSlug, panel: CONTENT_PANEL.panel },
-      search: {
-        ...pageSearch,
-        ...CONTENT_PANEL.payload,
-        virtualmcpid: match.project.id,
-      },
+      to: AGENT_ROUTE.siteEditorContent,
+      params: { org: match.orgSlug, agentId: match.project.id },
+      search: pageSearch,
     });
   };
   return (

@@ -1,7 +1,7 @@
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { WELL_KNOWN_STARTERS } from "@decocms/sandbox/shared";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -10,8 +10,10 @@ import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
 import { SandboxTerminal } from "./terminal";
 import {
   clampDrawerHeight,
+  drawerHeightForKey,
   DRAWER_MIN_HEIGHT,
   DRAWER_TOP_RESERVE,
+  resolveDrawerResizeMetrics,
 } from "./resize";
 
 export interface PreviewDrawerProps {
@@ -193,11 +195,61 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // the whole gesture to the handle, so pointerup/pointercancel are delivered
   // even when the cursor leaves the window (no sticky drag / stuck body cursor).
   const drawerRef = useRef<HTMLDivElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const [resizeMetrics, setResizeMetrics] = useState<{
+    height: number;
+    maxHeight: number;
+  } | null>(null);
+
+  // A route change can unmount the Site Editor in the middle of a captured
+  // pointer gesture. The detached handle will not reliably receive pointerup,
+  // so release document-wide interaction styles and listeners explicitly.
+  useLayoutEffect(
+    () => () => {
+      resizeCleanupRef.current?.();
+    },
+    [],
+  );
+
+  // The ARIA range needs the live pane bound, which CSS alone cannot expose.
+  // Observe only the parent pane—not the drawer—so pointer dragging remains an
+  // imperative, render-free path while window/layout resizes stay accurate.
+  useLayoutEffect(() => {
+    if (!props.open) {
+      resizeCleanupRef.current?.();
+      setResizeMetrics(null);
+      return;
+    }
+
+    const drawer = drawerRef.current;
+    const pane = drawer?.parentElement;
+    if (!drawer || !pane) return;
+
+    const measure = () => {
+      const paneHeight = pane.getBoundingClientRect().height;
+      const next = resolveDrawerResizeMetrics(
+        drawer.getBoundingClientRect().height,
+        paneHeight,
+      );
+      setResizeMetrics((current) =>
+        current?.height === next.height && current.maxHeight === next.maxHeight
+          ? current
+          : next,
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [props.open, props.height]);
+
   const handleResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!props.open) return;
+    if (!props.open || !e.isPrimary || e.button !== 0) return;
     const el = drawerRef.current;
     const pane = el?.parentElement;
     if (!el || !pane) return;
+    resizeCleanupRef.current?.();
     e.preventDefault();
     const handle = e.currentTarget;
     const { pointerId } = e;
@@ -206,6 +258,8 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     const startHeight = el.getBoundingClientRect().height;
     const paneHeight = pane.getBoundingClientRect().height;
     let nextHeight = startHeight;
+    const previousBodyUserSelect = document.body.style.userSelect;
+    const previousBodyCursor = document.body.style.cursor;
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
       // Dragging up (smaller clientY) grows the drawer; clamp so it stays
@@ -216,20 +270,52 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
       );
       el.style.height = `${nextHeight}px`;
     };
-    const finish = (ev: PointerEvent) => {
-      if (ev.pointerId !== pointerId) return;
+    const cleanup = () => {
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", finish);
       handle.removeEventListener("pointercancel", finish);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
+      handle.removeEventListener("lostpointercapture", finish);
+      if (handle.hasPointerCapture(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
+      document.body.style.userSelect = previousBodyUserSelect;
+      document.body.style.cursor = previousBodyCursor;
+      if (resizeCleanupRef.current === cleanup) {
+        resizeCleanupRef.current = null;
+      }
+    };
+    const finish = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      cleanup();
+      setResizeMetrics(resolveDrawerResizeMetrics(nextHeight, paneHeight));
       props.onHeightChange(nextHeight);
     };
     document.body.style.userSelect = "none";
     document.body.style.cursor = "row-resize";
+    resizeCleanupRef.current = cleanup;
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", finish);
     handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("lostpointercapture", finish);
+  };
+
+  const handleResizeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const drawer = drawerRef.current;
+    const pane = drawer?.parentElement;
+    if (!drawer || !pane) return;
+
+    const paneHeight = pane.getBoundingClientRect().height;
+    const nextHeight = drawerHeightForKey(
+      e.key,
+      drawer.getBoundingClientRect().height,
+      paneHeight,
+    );
+    if (nextHeight === null) return;
+
+    e.preventDefault();
+    drawer.style.height = `${nextHeight}px`;
+    setResizeMetrics(resolveDrawerResizeMetrics(nextHeight, paneHeight));
+    props.onHeightChange(nextHeight);
   };
 
   return (
@@ -238,6 +324,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
       className="flex shrink-0 flex-col"
       style={{
         height: props.open ? (props.height ?? "50%") : "auto",
+        minHeight: props.open ? DRAWER_MIN_HEIGHT : undefined,
         // Cap relative to the pane so a persisted px height from a taller
         // window can never swallow the tab body above when the window shrinks.
         // `max(MIN, …)` keeps the same floor as `clampDrawerHeight` so a pane
@@ -247,10 +334,13 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
           : undefined,
       }}
     >
-      {props.open && (
+      {props.open && resizeMetrics && (
         <ResizeHandle
           onPointerDown={handleResizeStart}
+          onKeyDown={handleResizeKeyDown}
           label={t("sandbox.preview.resizeTerminal")}
+          value={resizeMetrics.height}
+          max={resizeMetrics.maxHeight}
         />
       )}
       <DrawerToolbar
@@ -344,24 +434,34 @@ function DrawerBody({
  * the toolbar border; on hover the line highlights and the cursor turns into
  * `row-resize`. The actual resize math lives in `PreviewDrawer.handleResizeStart`.
  *
- * Pointer-only by design: keyboard resize (a focusable splitter with
- * arrow-key + `aria-valuenow`) is intentionally out of scope; the collapse
- * chevron in the toolbar remains the keyboard path to change the drawer size.
+ * It is also an ARIA range separator: ArrowUp/ArrowDown resize by one step and
+ * Home/End move to the bounds. The live px range mirrors pointer clamping.
  */
 function ResizeHandle({
   onPointerDown,
+  onKeyDown,
   label,
+  value,
+  max,
 }: {
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   label: string;
+  value: number;
+  max: number;
 }) {
   return (
     <div
       role="separator"
+      tabIndex={0}
       aria-orientation="horizontal"
       aria-label={label}
+      aria-valuemin={DRAWER_MIN_HEIGHT}
+      aria-valuemax={max}
+      aria-valuenow={value}
       onPointerDown={onPointerDown}
-      className="group relative -mb-px h-1.5 shrink-0 cursor-row-resize"
+      onKeyDown={onKeyDown}
+      className="group relative -mb-px h-1.5 shrink-0 touch-none cursor-row-resize select-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
     >
       <div className="absolute inset-x-0 bottom-0 h-px bg-transparent transition-colors group-hover:bg-primary" />
     </div>

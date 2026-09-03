@@ -9,8 +9,9 @@ import {
   effectiveProjectSidebarViews,
   isProjectNativeViewId,
   isProjectSidebarViewId,
-  projectMainViewPresence,
+  projectActiveViewUnavailable,
   projectDefaultViewUnavailable,
+  projectMainViewPresence,
   projectSidebarViewPresence,
   projectSidebarViewUnavailable,
   resolveProjectMainViewContext,
@@ -280,6 +281,21 @@ describe("project sidebar views", () => {
     expect(projectSidebarViewUnavailable("automations", none, pending)).toBe(
       false,
     );
+  });
+
+  test("keeps explicitly matched source-less landing routes active", () => {
+    const none = projectSidebarViewPresence(false, nativePresence([]));
+    const pending = { assets: false, siteAccess: false };
+
+    // Canonical Overview and Preview still render useful route-owned bodies,
+    // even though the same capability state hides their optional shortcuts.
+    for (const viewId of ["overview", "site-editor"]) {
+      expect(projectSidebarViewUnavailable(viewId, none, pending)).toBe(true);
+      expect(projectActiveViewUnavailable(viewId, none, pending)).toBe(false);
+    }
+
+    // Other source-backed views remain unavailable.
+    expect(projectActiveViewUnavailable("board", none, pending)).toBe(true);
   });
 
   test("rejects unavailable Site Editor and retired surface defaults", () => {

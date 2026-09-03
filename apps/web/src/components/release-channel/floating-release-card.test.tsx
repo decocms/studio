@@ -77,17 +77,27 @@ const routeRef = {
   current: {
     fullPath: "/$org/home",
     search: {} as Record<string, unknown>,
-    /** The `{-$panel}` segment. `undefined` names no view. */
-    panel: undefined as string | undefined,
+    params: {} as { agentId?: string },
+    staticData: {} as {
+      mainView?: string;
+      siteEditorView?: "preview" | "content" | "code";
+    },
   },
 };
 mock.module("@tanstack/react-router", () => ({
   ...tanstackRouter,
   useNavigate: () => navigateMock,
-  useParams: () => ({ org: "acme", panel: routeRef.current.panel }),
+  useParams: () => ({ org: "acme", ...routeRef.current.params }),
   useSearch: () => routeRef.current.search,
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
-    select({ matches: [{ fullPath: routeRef.current.fullPath }] }),
+    select({
+      matches: [
+        {
+          fullPath: routeRef.current.fullPath,
+          staticData: routeRef.current.staticData,
+        },
+      ],
+    }),
 }));
 
 /** Stubbed so the test never pulls driver.js (and its CSS) into the bun
@@ -115,7 +125,8 @@ describe("FloatingReleaseCard", () => {
     routeRef.current = {
       fullPath: "/$org/home",
       search: {},
-      panel: undefined,
+      params: {},
+      staticData: {},
     };
     sessionRef.current = {
       user: {
@@ -221,9 +232,10 @@ describe("FloatingReleaseCard", () => {
     // Scoped to a project, on the agents route with NO view named: project
     // surfaces, but not the Site Editor's.
     routeRef.current = {
-      fullPath: "/$org/agents/{-$panel}",
-      search: { virtualmcpid: "vir_1" },
-      panel: undefined,
+      fullPath: "/$org/agents/$agentId/",
+      search: {},
+      params: { agentId: "vir_1" },
+      staticData: { mainView: "overview" },
     };
     const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
 
@@ -246,9 +258,13 @@ describe("FloatingReleaseCard", () => {
       }),
     ];
     routeRef.current = {
-      fullPath: "/$org/agents/{-$panel}",
-      search: { virtualmcpid: "vir_1" },
-      panel: "site-editor",
+      fullPath: "/$org/agents/$agentId/site-editor/",
+      search: {},
+      params: { agentId: "vir_1" },
+      staticData: {
+        mainView: "site-editor",
+        siteEditorView: "preview",
+      },
     };
     const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
 

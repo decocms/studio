@@ -7,11 +7,13 @@
  *  which do not belong in durable navigation. */
 
 import type { ReactNode } from "react";
+import { type LinkProps, useParams } from "@tanstack/react-router";
 import {
   BarChartSquare02,
   CheckDone01,
   Globe02,
   Grid01,
+  Home02,
   Image01,
   Lightning01,
   Monitor01,
@@ -19,9 +21,12 @@ import {
 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
+import { AGENT_ROUTE } from "@/hooks/use-destination-route";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
-import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import {
+  useActivePanelTabId,
+  usePanelNavigate,
+} from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { keepAttachedPinnedViews } from "@/layouts/main-panel-tabs/attached-pinned-views";
@@ -30,11 +35,9 @@ import {
   parseAutomationTabId,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
-import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
-import { useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import {
   PROJECT_NATIVE_VIEW_IDS,
@@ -72,10 +75,10 @@ interface ProjectView {
   key: string;
   label: string;
   icon: ReactNode;
-  panel: string;
-  /** Tab ids this row owns — the RESOLVED id (`useActivePanelTabId`), not the
-   *  raw path segment: a pinned view is `app:<connection>:<tool>` in the URL's
-   *  search, and its segment is the bare word `app`, which matches nothing. */
+  tabId?: string;
+  link?: LinkProps;
+  /** Tab ids this row owns, reconstructed from the matched route and its typed
+   * params by `useActivePanelTabId`. */
   isActive: (tabId: string | undefined) => boolean;
   /** `data-tour` anchor, for the one row a product tour highlights. */
   dataTour?: string;
@@ -84,8 +87,8 @@ interface ProjectView {
 export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { project } = useProjectScope();
-  const navigateToAgent = useNavigateToAgent();
-  const leafPath = useLeafRoutePath();
+  const { openPanel } = usePanelNavigate();
+  const params = useParams({ strict: false });
   const activeTabId = useActivePanelTabId();
   const nativeViews = useProjectNativeViewPresence(project);
   const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
@@ -106,6 +109,18 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   );
 
   const views: ProjectView[] = [];
+  if (selectedViews.has("overview")) {
+    views.push({
+      key: "overview",
+      label: t("sidebar.navDestinations.home"),
+      icon: <Home02 size={16} />,
+      link: {
+        to: AGENT_ROUTE.root,
+        params: { org: params.org ?? "", agentId: project.id },
+      },
+      isActive: (tabId) => tabId === "overview",
+    });
+  }
   if (selectedViews.has("site-editor")) {
     /** One row for one surface. Preview, Content and Code are the same place
      *  seen three ways, so they are tabs on it rather than sibling rows, and
@@ -115,7 +130,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       key: "site-editor",
       label: t("sidebar.projectNav.siteEditor"),
       icon: <Monitor01 size={16} />,
-      panel: "site-editor",
+      tabId: "site-editor",
       /** Preview, Content and Code are three views of this one surface, so the
        *  row stays lit across all of them. */
       isActive: (tabId) => !!tabId && isSurfaceTab(tabId),
@@ -154,7 +169,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       key: viewId,
       label: row.label,
       icon: row.icon,
-      panel: viewId,
+      tabId: viewId,
       isActive: (tabId) => tabId === viewId,
     });
   }
@@ -165,9 +180,8 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
    * toggle to turn it off, and `fetch_assets` is a retired admin view that the
    * native Assets row replaced, so neither becomes a stale navigation row.
    *
-   * The panel id carries its own payload (`app:<connection>:<tool>`), which
-   * `panelLocationForTab` expands into the segment plus its search — so these
-   * need no special casing at the navigation call.
+   * The tab id carries its own payload (`app:<connection>:<tool>`), which the
+   * canonical tab-route mapper expands into typed path params.
    */
   for (const pinned of keepAttachedPinnedViews(
     pinnedViewsOf(project),
@@ -182,7 +196,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       ) : (
         <Grid01 size={16} />
       ),
-      panel: formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
+      tabId: formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
       isActive: (tabId) =>
         tabId === formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
     });
@@ -192,7 +206,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       key: "automations",
       label: t("sidebar.projectNav.automations"),
       icon: <Lightning01 size={16} />,
-      panel: "automations",
+      tabId: "automations",
       /** The list and one automation's detail (`automation:<id>`) are the same
        *  row. */
       isActive: (tabId) =>
@@ -201,7 +215,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     });
   }
 
-  const onProject = leafPath === DESTINATION_ROUTE.agents;
+  const onProject = params.agentId === project.id;
 
   return (
     <SidebarMenu className="gap-1">
@@ -212,14 +226,17 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
           label={view.label}
           dataTour={view.dataTour}
           isActive={onProject && view.isActive(activeTabId)}
-          /** No `link`, so this renders a button: these resolve a SESSION,
-           *  reusing an empty thread of the right runtime or minting one. The
-           *  destination id is not knowable at render time, so there is no
-           *  honest href to put here. The org-wide destinations above stay real
-           *  anchors. */
+          link={view.link}
+          /** Overview is a stable link. The remaining rows switch routes inside
+           * the already-mounted agent session, preserving its active chat. */
           onSelect={() => {
             track("project_nav_clicked", { surface: view.key });
-            navigateToAgent(project.id, { panel: view.panel });
+            if (view.tabId) {
+              openPanel(view.tabId, {
+                agentId: project.id,
+                replace: false,
+              });
+            }
             onNavigate?.();
           }}
         />

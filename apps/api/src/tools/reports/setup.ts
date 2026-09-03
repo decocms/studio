@@ -1,4 +1,4 @@
-import { agentPanelPath } from "@decocms/shared/organization-paths";
+import { agentAppPath } from "@decocms/shared/organization-paths";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   type ConnectionEntity,
@@ -120,20 +120,20 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
      * "diagnóstico completo" CTA must land on the report app view — NOT the
      * /commerce-onboarding page — so build the exact URL the app writes for
      * that view (`commerceReportNavTarget`, web/hooks/use-commerce-diagnostic):
-     * the agent is the project segment, `app` is the view, and the view's
-     * parameter is search. Both ids are deterministic per org, so the URL is
-     * fully known here at /upgrade time. No thread: the report is a view, and
+     * the agent, connection, and tool are canonical path segments. All three
+     * ids are deterministic per org, so the URL is fully known here at
+     * /upgrade time. No thread: the report is a view, and
      * no sidepanel param either — the vMCP's chatDefaultOpen selects Chat,
      * matching the onboarding button.
      */
     const claimContact = {
       email: ctx.auth.user?.email,
-      reportUrl: `${ctx.baseUrl}${agentPanelPath(
+      reportUrl: `${ctx.baseUrl}${agentAppPath(
         organization.slug ?? organization.id,
         {
-          projectId: virtualMcpId,
-          panel: "app",
-          search: { connection: connectionId, tool: REPORT_TOOL_NAME },
+          agentId: virtualMcpId,
+          connectionId,
+          toolName: REPORT_TOOL_NAME,
         },
       )}`,
     };

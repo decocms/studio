@@ -1,15 +1,8 @@
-/** The active project scope. A project is a FILTER, not a container: picking
- *  one narrows the destinations that say they narrow, and is ignored by the
- *  rest.
- *
- *  ONE CARRIER: `?virtualmcpid=`, and nothing else. It has to mean the same on
- *  Tasks and Library, which have no path segment to hold it — which is why the
- *  agents route gave its `{-$project}` segment up rather than the reverse.
- *
- *  Never auto-selected — a scope nobody chose silently shortens lists, which is
- *  what this param did before only two routes resolved it. */
+/** The agent workspace selected by the canonical route. Identity belongs in
+ * `/$org/agents/$agentId`; `?virtualmcpid=` is read only while a legacy URL is
+ * settling its compatibility redirect. */
 
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   isDecopilot,
@@ -60,6 +53,18 @@ export interface ProjectScope {
   setScope: (id: string | null) => void;
 }
 
+export function resolveProjectScopeId(input: {
+  agentIdParam?: string;
+  legacyVirtualMcpId?: string;
+  legacyThreadRoute?: boolean;
+}): string | null {
+  const canonical = input.agentIdParam?.trim();
+  if (canonical) return canonical;
+  if (!input.legacyThreadRoute) return null;
+  const legacy = input.legacyVirtualMcpId?.trim();
+  return legacy || null;
+}
+
 /** The scoped project's id, straight off the URL.
  *
  *  Split out of {@link useProjectScope} because that one also lists the org's
@@ -68,12 +73,22 @@ export interface ProjectScope {
  *  the sidebar's destination rows in particular promise to paint on the first
  *  frame without reading data. */
 export function useScopeId(): string | null {
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  return search.virtualmcpid ?? null;
+  const params = useParams({ strict: false });
+  const search = useSearch({ strict: false });
+  const legacyVirtualMcpId =
+    "virtualmcpid" in search && typeof search.virtualmcpid === "string"
+      ? search.virtualmcpid
+      : undefined;
+  return resolveProjectScopeId({
+    agentIdParam: params.agentId,
+    legacyVirtualMcpId,
+    legacyThreadRoute: params.taskId !== undefined,
+  });
 }
 
 export function useProjectScope(): ProjectScope {
   const navigate = useNavigate();
+  const params = useParams({ strict: false });
   const all = useVirtualMCPsNonBlocking();
 
   const projects = scopableProjects(all);
@@ -94,14 +109,22 @@ export function useProjectScope(): ProjectScope {
   const project =
     listed ?? scopableProjects(unlisted ? [unlisted] : [])[0] ?? null;
 
-  const setScope = (id: string | null) =>
+  const setScope = (id: string | null) => {
+    const org = params.org ?? "";
+    if (id) {
+      navigate({
+        to: "/$org/agents/$agentId",
+        params: { org, agentId: id },
+        search: { thread: undefined },
+      });
+      return;
+    }
     navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        virtualmcpid: id ?? undefined,
-      }),
+      to: "/$org/home",
+      params: { org },
+      search: { thread: undefined },
     });
+  };
 
   return {
     scopeId,

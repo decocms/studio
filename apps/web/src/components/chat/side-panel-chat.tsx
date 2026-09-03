@@ -34,7 +34,10 @@ function ChatSidePanelContent() {
   // provider nor the agent's icebreakers are ITS empty state. It has exactly
   // one: the "Start coding session" CTA the composer renders. Offering
   // "Create Agents" to a session that cannot run one is a dead end.
-  const showProviderEmptyState = needsRuntimeSetup && runtime !== "cms";
+  // Existing history stays readable if the org later loses its provider;
+  // setup replaces only the empty composer.
+  const showProviderEmptyState =
+    needsRuntimeSetup && runtime !== "cms" && isChatEmpty;
 
   if (showProviderEmptyState) {
     return (

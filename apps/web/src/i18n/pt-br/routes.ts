@@ -227,6 +227,8 @@ export const routes = {
   "routes.onboarding.step.extractingBrand": "Extraindo contexto de marca",
   "routes.onboarding.uploadOrgLogo": "Fazer upload do logotipo da organização",
   "routes.onboarding.welcomeTitle": "Bem-vindo ao deco",
+  "routes.projectAppView.toolUnavailable":
+    'A ferramenta "{toolName}" não foi encontrada ou não possui interface.',
   "routes.reports.failedToLoadReportAriaLabel":
     "Não foi possível carregar o relatório",
   "routes.reports.failedToLoadReportDescription":

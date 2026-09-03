@@ -83,12 +83,12 @@ test.describe("commerce-diagnostic share-invite", () => {
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body.invitee_status).toBe("new");
-    // Accept URL carries the invitation and a relative redirectTo that opens
-    // the report on the org home.
+    // Accept URL carries the invitation and a canonical relative report path.
     expect(body.accept_url).toContain("/auth/accept-invitation?invitationId=");
     const redirectTo = new URL(body.accept_url).searchParams.get("redirectTo");
-    expect(redirectTo?.startsWith(`/${owner.orgSlug}/`)).toBe(true);
-    expect(redirectTo).toContain("get_my_diagnostic");
+    expect(redirectTo).toBe(
+      `/${owner.orgSlug}/agents/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
+    );
 
     const invites = await pendingInvites(orgId!, invitee);
     expect(invites).toHaveLength(1);
@@ -123,7 +123,9 @@ test.describe("commerce-diagnostic share-invite", () => {
     expect(body.invitee_status).toBe("member");
     // The member skips the invite: the CTA is the report deep link itself.
     expect(body.accept_url).not.toContain("accept-invitation");
-    expect(body.accept_url).toContain(`/${owner.orgSlug}/`);
+    expect(body.accept_url).toContain(
+      `/${owner.orgSlug}/agents/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
+    );
     expect(await pendingInvites(orgId!, owner.email)).toHaveLength(0);
 
     await svc.dispose();

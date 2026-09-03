@@ -227,7 +227,7 @@ export function SidebarProjectsSection({
               onSelect={() => {
                 track("sidebar_project_clicked");
                 navigateToAgent(project.id, {
-                  panel: landingTabIdFor(project.metadata?.ui?.layout),
+                  view: landingTabIdFor(project.metadata?.ui?.layout),
                 });
                 onNavigate?.();
               }}

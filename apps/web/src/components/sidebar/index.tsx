@@ -45,12 +45,8 @@ function OrgSidebarHeaderMobile({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Cloudflare's "← Back to Domains", for a project.
- *  It renders on the RAW scope, not the resolved project. A `?virtualmcpid=`
- *  naming a project you cannot see — deleted, revoked, or just not loaded yet —
- *  otherwise hides the project rows AND Library AND this row, leaving a sidebar
- *  scoped to nothing with no way out of it. The param is retained across every
- *  navigation, so that state is permanent, not transient. */
+/** Cloudflare's "← Back to Domains", for an agent workspace. It reads the raw
+ * route identity so a deleted or inaccessible agent still has an exit. */
 function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const scopeId = useScopeId();
@@ -61,8 +57,7 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <SidebarBackRow
       label={t("sidebar.scope.allProjects")}
-      /** Not a link: where leaving lands depends on whether this route
-       *  RESOLVES the scope, which only `useExitProjectScope` knows. */
+      /** The shared exit action owns analytics and the canonical Home target. */
       onSelect={() => {
         exitToOrg();
         onNavigate?.();

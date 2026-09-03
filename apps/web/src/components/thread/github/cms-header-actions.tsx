@@ -8,7 +8,7 @@
  * agent, no chat — so it renders this component instead, driven by the
  * {@link selectCmsHeaderButton} state machine and a single split button.
  *
- * The branch happens at the mount point (`VirtualMcpHeaderInfo`) rather than
+ * The branch happens at the mount point (`SiteEditorLayout`) rather than
  * inside `HeaderActions`, so in Fast Preview the sandbox hooks never mount.
  */
 

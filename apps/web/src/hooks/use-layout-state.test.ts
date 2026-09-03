@@ -11,7 +11,7 @@ import {
 
 describe("resolveDefaultPanelState", () => {
   const absentSearch = {
-    panelNamed: false,
+    routeNamesView: false,
     sidePanelParamPresent: false,
   };
 
@@ -92,7 +92,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "content" },
           chatDefaultOpen: false,
         },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
         threadHasMessages: true,
@@ -119,7 +119,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "overview" },
           chatDefaultOpen: false,
         },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: true,
       }),
@@ -133,7 +133,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "settings" },
           chatDefaultOpen: true,
         },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
       }),
@@ -160,7 +160,7 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: true,
         routeDefaultMain: "board",
@@ -168,12 +168,36 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanelOpen: true, mainOpen: true });
   });
 
+  test("a populated thread reopens the chat on a route-owned agent page", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: { defaultMainView: { type: "chat" } },
+        ...absentSearch,
+        routeDefaultMain: "overview",
+        threadHasMessages: true,
+      }),
+    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+  });
+
+  test("sidepanel=false still hides a populated chat on a route-owned page", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: { defaultMainView: { type: "chat" } },
+        routeNamesView: false,
+        sidePanelParamPresent: true,
+        sidePanelParamValue: false,
+        routeDefaultMain: "overview",
+        threadHasMessages: true,
+      }),
+    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+  });
+
   test("?mainpanel=false on a route default leaves the chat as the last open panel", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
         mainPanelParam: false,
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: false,
         routeDefaultMain: "board",
       }),
@@ -182,13 +206,13 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanelOpen: true, mainOpen: false });
   });
 
-  /** INVERTED: this was `?main=<tab>`. The view is a path segment now, so what
-   *  opens the panel is the segment naming one — `panelNamed`. */
+  /** INVERTED: this was `?main=<tab>`. A canonical child route now names the
+   *  view, so matching one opens Main through `routeNamesView`. */
   test("a named view opens Main alongside a Chat default", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: true,
+        routeNamesView: true,
         sidePanelParamPresent: false,
       }),
     ).toEqual({ sidePanelOpen: true, mainOpen: true });
@@ -200,7 +224,7 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: true,
+        routeNamesView: true,
         mainPanelParam: false,
         sidePanelParamPresent: false,
       }),
@@ -211,7 +235,7 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: false,
+        routeNamesView: false,
         mainPanelParam: true,
         sidePanelParamPresent: false,
       }),
@@ -223,7 +247,7 @@ describe("resolveDefaultPanelState", () => {
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "settings" } },
         mainPanelParam: false,
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
       }),

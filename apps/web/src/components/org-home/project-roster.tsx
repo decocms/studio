@@ -35,7 +35,7 @@ function ProjectRosterItem({ project }: { project: VirtualMCPEntity }) {
       onClick={() => {
         track("org_home_project_clicked");
         navigateToAgent(project.id, {
-          panel: landingTabIdFor(project.metadata?.ui?.layout),
+          view: landingTabIdFor(project.metadata?.ui?.layout),
         });
       }}
       className="flex min-w-0 items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent/60"

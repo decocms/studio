@@ -1,83 +1,335 @@
 /**
- * Retires a legacy `?main=` — the one place it is read, for every route under
- * the agent shell.
- *
- * `?main=` was both the view and its visibility. The view is the chat route's
- * `{-$panel}` segment now and the visibility is `?mainpanel`, but the old param
- * is in bookmarks and in mail that is already delivered — the Commerce
- * Discovery completion mail and the share-invite `redirectTo` both mint
- * `?main=app:<connectionId>:<toolName>` (`apps/api/src/tools/reports/setup.ts`,
- * `apps/api/src/api/routes/commerce-diagnostic-share.ts`) — so it is accepted
- * as an INPUT forever and rewritten on entry.
- *
- * Mounted as a SIBLING of the workspace, like `<LegacyThreadRedirect />`: the
- * destination is another child of the same pathless `agentShellLayout`, so the
- * rewrite never tears the chat and its providers down. The legacy
- * `/$org/$taskId` is excluded because that route's own translator already emits
- * the new shape — two `<Navigate>`s for one URL would fight.
+ * Render-time compatibility for `?main=` and redundant query-carried agent
+ * identity. Retired panel paths are handled before render by the router's
+ * compatibility boundary. Every emitted URL is canonical.
  */
 
+import type { ReactNode } from "react";
 import { Navigate, useParams, useSearch } from "@tanstack/react-router";
 import {
-  type LegacyMainTranslation,
+  AGENT_ROUTE,
+  DESTINATION_ROUTE,
+  useLeafRoutePath,
+} from "@/hooks/use-destination-route";
+import {
+  type LegacyCanonicalTarget,
+  type LegacyThreadSearch,
+  resolveLegacyAgentId,
+  retireLegacyAgentSearch,
+  translateLegacyOrgDestinationAgentSearch,
   translateLegacyMainParam,
 } from "@/lib/legacy-route-translation";
+import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 
-export function LegacyMainRedirect() {
+/** One exhaustive, route-typed renderer shared by both legacy adapters. Route
+ * params remain checked against the canonical tree in every branch. */
+export function LegacyCanonicalNavigate({
+  target,
+}: {
+  target: LegacyCanonicalTarget;
+}) {
+  const { route, search } = target;
+
+  switch (route.to) {
+    case DESTINATION_ROUTE.home:
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.home}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case DESTINATION_ROUTE.tasks:
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.tasks}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case DESTINATION_ROUTE.reports:
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.reports}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case DESTINATION_ROUTE.library:
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.library}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case DESTINATION_ROUTE.discover:
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.discover}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.root:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.root}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.siteEditor:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.siteEditor}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.siteEditorContent:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.siteEditorContent}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.siteEditorCode:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.siteEditorCode}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.settings:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.settings}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.assets:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.assets}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.git:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.git}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.hosting:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.hosting}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.e2e:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.e2e}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.analytics:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.analytics}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.monitor:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.monitor}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.automations:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.automations}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.automation:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.automation}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.app:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.app}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.view:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.view}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.outputFile:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.outputFile}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.outputDeck:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.outputDeck}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.libraryFile:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.libraryFile}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case AGENT_ROUTE.connectSources:
+      return (
+        <Navigate
+          to={AGENT_ROUTE.connectSources}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+  }
+}
+
+export function LegacyMainRedirect({ children }: { children?: ReactNode }) {
   const params = useParams({ strict: false });
-  const search = useSearch({ strict: false }) as {
-    main?: string | 0;
-    virtualmcpid?: string;
-  };
+  const search: LegacyThreadSearch = useSearch({ strict: false });
+  const fallbackAgentId = useRouteVirtualMcpId();
+  const leafRoutePath = useLeafRoutePath();
 
   const org = params.org;
-  /** The legacy thread route translates its own `main`, path param and all. */
-  if (!org || params.taskId !== undefined) return null;
+  /** The legacy thread route translates its own path, identity and main view. */
+  if (!org || params.taskId !== undefined) return children ?? null;
 
-  const view: LegacyMainTranslation | null = translateLegacyMainParam(
-    search.main,
-    params.panel,
-  );
-  if (!view) return null;
+  const agentId = resolveLegacyAgentId({
+    agentIdParam: params.agentId,
+    virtualMcpIdSearch: search.virtualmcpid,
+    fallbackAgentId,
+  });
 
-  if (view.to === null) {
+  const translation =
+    (search.main !== undefined
+      ? translateLegacyMainParam({
+          org,
+          agentId,
+          main: search.main,
+          search,
+        })
+      : null) ??
+    translateLegacyOrgDestinationAgentSearch({
+      org,
+      routePath: leafRoutePath,
+      search,
+    });
+
+  if (translation?.kind === "same-route") {
+    return <Navigate to="." search={translation.search} hash={true} replace />;
+  }
+  if (translation?.kind === "canonical") {
+    return <LegacyCanonicalNavigate target={translation} />;
+  }
+
+  /** Canonical path identity wins over a redundant/stale legacy query. This
+   * cleanup deliberately stays on the current child route. A recognized old
+   * view segment resolves to another agent above and therefore cannot enter
+   * this branch. */
+  if (
+    params.agentId !== undefined &&
+    params.agentId === agentId &&
+    search.virtualmcpid !== undefined
+  ) {
     return (
       <Navigate
         to="."
-        search={(prev) => ({ ...prev, ...view.search })}
+        search={retireLegacyAgentSearch(search)}
+        hash={true}
         replace
       />
     );
   }
 
-  if (view.to === "/$org/agents/{-$panel}") {
-    return (
-      <Navigate
-        to="/$org/agents/{-$panel}"
-        params={{ org, panel: view.panel }}
-        search={(prev) => ({ ...prev, ...view.search })}
-        replace
-      />
-    );
-  }
-
-  if (view.to === "/$org/tasks/{-$taskKey}") {
-    return (
-      <Navigate
-        to="/$org/tasks/{-$taskKey}"
-        params={{ org, taskKey: params.taskKey }}
-        search={(prev) => ({ ...prev, ...view.search })}
-        replace
-      />
-    );
-  }
-
-  return (
-    <Navigate
-      to={view.to}
-      params={{ org }}
-      search={(prev) => ({ ...prev, ...view.search })}
-      replace
-    />
-  );
+  return children ?? null;
 }

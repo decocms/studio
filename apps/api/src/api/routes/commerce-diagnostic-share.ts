@@ -3,7 +3,7 @@ import {
   getCommerceDiscoveryAgentId,
   WellKnownOrgMCPId,
 } from "@decocms/shared/sdk";
-import { agentPanelPath } from "@decocms/shared/organization-paths";
+import { agentAppPath } from "@decocms/shared/organization-paths";
 import { Hono } from "hono";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -33,11 +33,11 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * The accept URL's `redirectTo` is the deep link that OPENS the diagnostic app
  * view — the exact shape `commerceReportNavTarget()`
  * (web/hooks/use-commerce-diagnostic.ts) and setup.ts's completion-email link
- * build: `/{slug}/agents/{agent}/app?connection={conn}&tool=get_my_diagnostic`,
- * where the project and the view are path segments and the view's parameter is
- * search. Mail sent before that grammar carried the same target as
- * `?main=app:{conn}:get_my_diagnostic`; the web app accepts that shape forever
- * (`web/layouts/legacy-main-redirect.tsx`), so delivered links keep working.
+ * build: `/{slug}/agents/{agent}/apps/{conn}/get_my_diagnostic`, where every
+ * identity is a path segment. Mail sent before that grammar carried the same
+ * target as `?main=app:{conn}:get_my_diagnostic`; the web app accepts that
+ * shape forever (`web/layouts/legacy-main-redirect.tsx`), so delivered links
+ * keep working.
  *
  * Branching by invitee (requirement: "invite to studio, or if already a user
  * only invite for the org"): an existing user who is already a member of this
@@ -60,13 +60,10 @@ export const shareInviteBodySchema = z.object({
  *  Relative (path + query) so it is a safe `redirectTo` (login.tsx rejects
  *  absolute/protocol-relative targets). Exported for unit tests. */
 export function diagnosticDeepLinkPath(orgSlug: string, orgId: string): string {
-  return agentPanelPath(orgSlug, {
-    projectId: getCommerceDiscoveryAgentId(orgId),
-    panel: "app",
-    search: {
-      connection: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
-      tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-    },
+  return agentAppPath(orgSlug, {
+    agentId: getCommerceDiscoveryAgentId(orgId),
+    connectionId: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
+    toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   });
 }
 

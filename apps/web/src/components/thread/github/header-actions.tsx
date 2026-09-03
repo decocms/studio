@@ -127,7 +127,7 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
  * "Submit for review", "Get latest" and "View on GitHub" in the dropdown.
  * The sandbox surface adds its agent states ("Fix checks", "Mark ready",
  * "Address feedback"), which dispatch chat prompts. Fast Preview swaps in
- * `CmsHeaderActions` at the mount point (`VirtualMcpHeaderInfo`), but this
+ * `CmsHeaderActions` at the mount point (`SiteEditorLayout`), but this
  * component keeps its Fast Preview fallbacks for branch metadata since the
  * `/git/*` routes answer from the GitHub API server-side either way.
  */
@@ -168,7 +168,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   /**
    * The "is there anything to review" check below. This surface only ever
-   * renders for a sandbox-backed session (`header-info` routes a CMS one to
+   * renders for a sandbox-backed session (`SiteEditorLayout` routes a CMS one to
    * `CmsHeaderActions`), so the status answers from a local `git status`:
    * while it reports nothing to review it re-asks every few seconds, because
    * that verdict disables the publish button and the agent's first edit must

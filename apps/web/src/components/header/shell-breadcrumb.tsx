@@ -122,7 +122,7 @@ export function AgentSwitcherCrumb({
 
   const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
   const decopilotId = decopilot.id;
-  /** Route-aware: the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
+  /** Route-aware: `$agentId` on canonical workspaces, with legacy fallback. */
   const activeAgentId = useRouteVirtualMcpId();
 
   // Open the picked agent directly. The Super Agent (Decopilot) is opened by
@@ -185,9 +185,8 @@ export function NewChatCrumb() {
   const { createNewTask } = usePanelActions();
 
   /**
-   * The scope of the page, not of the legacy grammar: on
-   * `/$org/agents/{-$project}` the project segment names the agent, so a new chat
-   * started there belongs to that project rather than to the Super Agent.
+   * The agent named by the canonical workspace route. A new chat started there
+   * belongs to that agent rather than to the Super Agent.
    */
   const activeAgentId = useRouteVirtualMcpId();
   const routeThreadId = useRouteThreadId();

@@ -148,13 +148,12 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
      *  report app view, not /commerce-onboarding; chatDefaultOpen selects Chat. */
     const reportUrl = (claimArg as unknown as { reportUrl?: string })
       .reportUrl!;
-    expect(reportUrl).toContain(
-      "https://studio.example.com/test-org/agents/app?",
+    expect(reportUrl).toBe(
+      `https://studio.example.com/test-org/agents/commerce-discovery_${ORG_ID}/apps/${ORG_ID}_commerce-discovery/get_my_diagnostic`,
     );
-    expect(reportUrl).toContain("virtualmcpid=commerce-discovery_");
-    expect(reportUrl).not.toContain("project=commerce-discovery_");
-    expect(reportUrl).toContain("tool=get_my_diagnostic");
-    expect(reportUrl).toContain("connection=");
+    expect(reportUrl).not.toContain("virtualmcpid=");
+    expect(reportUrl).not.toContain("connection=");
+    expect(reportUrl).not.toContain("tool=");
     expect(reportUrl).not.toContain("sidepanel=");
     expect(reportUrl).not.toContain("commerce-onboarding");
 

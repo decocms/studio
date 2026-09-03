@@ -1,0 +1,19 @@
+import { getRouteApi } from "@tanstack/react-router";
+import { LibraryFileTab } from "@/layouts/main-panel-tabs/library-file-tab";
+import { RouteNotFound } from "./route-not-found";
+import { AgentRouteMain } from "./agent-route-main";
+
+const route = getRouteApi(
+  "/shell/$org/org-shell/agent-shell/agents/$agentId/library/file",
+);
+
+export default function AgentLibraryFileRoute() {
+  const { path } = route.useSearch();
+  const title = path?.split("/").pop() ?? path;
+
+  return (
+    <AgentRouteMain title={title} contentClassName="overflow-hidden">
+      {path ? <LibraryFileTab path={path} /> : <RouteNotFound />}
+    </AgentRouteMain>
+  );
+}

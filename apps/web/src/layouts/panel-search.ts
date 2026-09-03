@@ -4,7 +4,7 @@
  *
  * `?sidepanel` and `?mainpanel` are symmetric booleans: is the chat panel open,
  * is the main panel open. Which VIEW the main panel shows is not here at all —
- * that is the `{-$panel}` path segment (see `main-panel-tabs/panel-route.ts`).
+ * that is the matched child route (see `main-panel-tabs/tab-route.ts`).
  * Splitting them is what lets a view be a path segment: `?main=0` used to mean
  * "closed", which no segment can express, and closing a panel had to forget
  * which view it was on.

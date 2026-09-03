@@ -13,11 +13,11 @@
  *                     controls, publish). Buttons relocate between the two
  *                     headers so nothing disappears when a panel is closed.
  *
- * Mobile layout (single shared header on top, owned by org-shell):
+ * Mobile layout (one visible surface at a time):
  *   Chat.Provider
  *   └── VmEventsBridge
  *       └── ActiveTaskRuntimeProvider
- *           └── MainPanelWithDrawer OR ActiveTaskBoundary (sheet-based)
+ *           └── route-owned Main (including its topbar) OR chat + its header
  */
 
 import {
@@ -43,14 +43,19 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { AlertCircle } from "@untitledui/icons";
-import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
+import { parseBranchMap, useProjectContext, useVirtualMCP } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { useThreadManager } from "@/components/chat/store/hooks";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
-import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
+import {
+  Navigate,
+  Outlet,
+  useNavigate,
+  useParams,
+} from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
@@ -67,10 +72,9 @@ import {
   useBaseBranch,
 } from "@/components/thread/github/use-version-gate";
 import { useT } from "@/i18n/use-t.ts";
-import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
-import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-drawer";
+import { MainPanelTabsProvider } from "@/layouts/main-panel-tabs/main-panel-tabs-context";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
@@ -81,12 +85,16 @@ import {
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
+import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
 import {
+  destinationForThreadOwner,
+  routeThreadMatchesAgent,
   useRouteAgentId,
   useRouteThreadId,
   useRouteVirtualMcpId,
 } from "@/layouts/thread-route";
+import { AGENT_ROUTE, DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -94,6 +102,9 @@ import { SidePanel } from "./side-panel";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
 import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard";
+import { WorkspaceProvider } from "./workspace-context";
+import { PanelHeader } from "./panel-header";
+import { SidebarTriggerButton } from "@/layouts/shell-controls";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -451,49 +462,48 @@ function VmEventsBridge({
 type TaskLayout = ReturnType<typeof useWorkspaceLayoutState>;
 
 function DesktopTaskWorkspace({
-  entity,
   virtualMcpId,
   layout,
   onNewTaskRef,
+  mainContent,
 }: {
-  entity: VirtualMCPEntity;
   virtualMcpId: string;
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
+  mainContent: ReactNode;
 }) {
   return (
-    <>
+    <WorkspaceProvider value={layout}>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
       />
-      {/* Panels each own a 48px header (tabs / toggles / publish). Everything
-          lives under SandboxEventsProvider — useMainPanelTabs gates Content on
-          lifecycle.phase === "running" + decofile. */}
+      {/* Chat and each routed Main surface own their respective topbars.
+          Everything lives under SandboxEventsProvider — useMainPanelTabs gates
+          Content on lifecycle.phase === "running" + decofile. */}
       <MainPanelBoundary>
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
           taskId={layout.threadId}
-          entity={entity}
           sidePanelOpen={layout.sidePanelOpen}
           mainOpen={layout.mainOpen}
-          toggleSidePanel={layout.toggleSidePanel}
           toggleMain={layout.toggleMain}
           chatContent={<ActiveTaskBoundary />}
+          mainContent={mainContent}
         />
       </MainPanelBoundary>
-    </>
+    </WorkspaceProvider>
   );
 }
 
 function MobileTaskWorkspace({
-  virtualMcpId,
   layout,
   onNewTaskRef,
+  mainContent,
 }: {
-  virtualMcpId: string;
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
+  mainContent: ReactNode;
 }) {
   const t = useT();
   const mobileSurface = resolveMobileSurface({
@@ -505,22 +515,19 @@ function MobileTaskWorkspace({
   });
 
   return (
-    <>
-      {/* No Chat/Tasks/Library toggles on mobile: there's no side-by-side split,
-          so one surface shows at a time and every destination (Chat, the main
-          views, Tasks, Library) lives in this single dropdown instead. */}
-      <Toolbar.Tabs>
-        <MobileMainPanelTabSelect
-          virtualMcpId={virtualMcpId}
-          taskId={layout.threadId}
-        />
-      </Toolbar.Tabs>
+    <WorkspaceProvider value={layout}>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
       />
       <MainPanelBoundary>
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+          {mobileSurface === "chat" && (
+            <PanelHeader className="border-b border-border/60 bg-background px-1.5">
+              <SidebarTriggerButton />
+              <MobileMainPanelTabSelect />
+            </PanelHeader>
+          )}
           {mobileSurface === "main" ? (
             <ErrorBoundary
               fallback={
@@ -534,10 +541,7 @@ function MobileTaskWorkspace({
             >
               <MainPanelBoundary>
                 <div data-testid="main-panel" className="h-full">
-                  <MainPanelWithDrawer
-                    taskId={layout.threadId}
-                    virtualMcpId={virtualMcpId}
-                  />
+                  {mainContent}
                 </div>
               </MainPanelBoundary>
             </ErrorBoundary>
@@ -546,7 +550,7 @@ function MobileTaskWorkspace({
           )}
         </div>
       </MainPanelBoundary>
-    </>
+    </WorkspaceProvider>
   );
 }
 
@@ -567,7 +571,8 @@ function AgentInsetProvider() {
   const orgSlug = params.org ?? "";
 
   const routeThreadId = useRouteThreadId();
-  /** The agent is the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
+  /** Canonical routes name the agent in `$agentId`; the legacy thread adapter
+   * reads `?virtualmcpid=` only until it redirects. */
   const virtualMcpId = useRouteVirtualMcpId();
   /** Truthy only when the route names a SCOPED agent; `undefined` at org level
    *  (where `virtualMcpId` falls back to the Super Agent). Gates the threadless
@@ -628,10 +633,7 @@ function AgentInsetProvider() {
       }
     : null;
 
-  const layout = useWorkspaceLayoutState(entityMetadata, {
-    virtualMcpId,
-    isAgentRoute: true,
-  });
+  const layout = useWorkspaceLayoutState(entityMetadata, virtualMcpId);
 
   const onNewTask = useRef<(() => void) | null>(null);
 
@@ -647,9 +649,60 @@ function AgentInsetProvider() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  // Resolve a scoped agent's entry thread HERE, in project scope once loaded — useNavigateToAgent's cross-project manager can't see these threads (#6667); repo agents mint one if none resolves, branchless fall through to the lazy composer, org home (no routeAgentId) stays fresh.
+  const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
+  const ensuredTaskAgentId = ensuredTask?.virtual_mcp_id;
+  if (
+    ensuredTask &&
+    ensuredTaskAgentId &&
+    !routeThreadMatchesAgent({
+      routeAgentId: virtualMcpId,
+      threadAgentId: ensuredTaskAgentId,
+    })
+  ) {
+    const destination = destinationForThreadOwner(ensuredTaskAgentId);
+
+    if (destination.kind === "home") {
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.home}
+          params={{ org: orgSlug }}
+          search={(prev) => ({
+            sidepanel: prev.sidepanel,
+            autosend: prev.autosend,
+            thread: ensuredTask.id,
+          })}
+          hash={true}
+          replace
+        />
+      );
+    }
+
+    return (
+      <Navigate
+        to={AGENT_ROUTE.root}
+        params={{ org: orgSlug, agentId: destination.agentId }}
+        search={(prev) => ({
+          sidepanel: prev.sidepanel,
+          autosend: prev.autosend,
+          thread: ensuredTask.id,
+        })}
+        hash={true}
+        replace
+      />
+    );
+  }
+
+  /**
+   * Resolve a scoped agent's entry thread here, after its own thread store has
+   * loaded. Cross-project callers cannot safely choose from their differently
+   * scoped store. Repo-backed projects mint when no reusable entry exists;
+   * branchless projects resume their last conversation and otherwise retain
+   * the lazy composer. Organization routes stay fresh because they name no
+   * `routeAgentId`.
+   */
   if (routeThreadId === null && routeAgentId && entity) {
-    // Wait for the first thread page: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
+    // Resolving against an empty first page would mint a fresh thread and drop
+    // the user off their last version or conversation.
     if (threadsStatus.kind === "loading") {
       return (
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
@@ -784,11 +837,16 @@ function AgentInsetProvider() {
                 threadId={layout.threadId}
               >
                 <MainPanelBoundary>
-                  <MobileTaskWorkspace
+                  <MainPanelTabsProvider
                     virtualMcpId={chatVirtualMcpId}
-                    layout={layout}
-                    onNewTaskRef={onNewTask}
-                  />
+                    taskId={layout.threadId}
+                  >
+                    <MobileTaskWorkspace
+                      layout={layout}
+                      onNewTaskRef={onNewTask}
+                      mainContent={<Outlet />}
+                    />
+                  </MainPanelTabsProvider>
                 </MainPanelBoundary>
               </ActiveTaskRuntimeProvider>
             </VmEventsBridge>
@@ -823,12 +881,17 @@ function AgentInsetProvider() {
               threadId={layout.threadId}
             >
               <MainPanelBoundary>
-                <DesktopTaskWorkspace
-                  entity={entity}
+                <MainPanelTabsProvider
                   virtualMcpId={virtualMcpId}
-                  layout={layout}
-                  onNewTaskRef={onNewTask}
-                />
+                  taskId={layout.threadId}
+                >
+                  <DesktopTaskWorkspace
+                    virtualMcpId={virtualMcpId}
+                    layout={layout}
+                    onNewTaskRef={onNewTask}
+                    mainContent={<Outlet />}
+                  />
+                </MainPanelTabsProvider>
               </MainPanelBoundary>
             </ActiveTaskRuntimeProvider>
           </VmEventsBridge>
@@ -839,24 +902,39 @@ function AgentInsetProvider() {
 }
 
 // ---------------------------------------------------------------------------
-// Default export — the per-task content for /$org/$taskId.
+// Default export — the workspace session boundary.
 //
-// Sidebar, toolbar shell, and ChatPrefsProvider live in `org-shell-layout`
-// (the parent route). This component just renders the per-task chrome inside
-// the flex-row Outlet on desktop, or directly inside SidebarInset on mobile.
+// The parent owns the organization shell; this route owns chat/runtime
+// providers and the responsive panel workspace for canonical destinations.
+// The legacy `/$org/$taskId` child exits through its compatibility redirect
+// before any of those providers mount.
 // ---------------------------------------------------------------------------
 
 export default function AgentShellLayout() {
+  const params = useParams({ strict: false });
+
+  if (params.taskId !== undefined) {
+    return (
+      <MainPanelBoundary>
+        <LegacyThreadRedirect />
+      </MainPanelBoundary>
+    );
+  }
+
   return (
     <MainPanelBoundary>
-      {/* Rewrites a legacy `/$org/$taskId` URL into the first-class shape,
-          without unmounting anything below it. */}
-      <LegacyThreadRedirect />
-      <LegacyMainRedirect />
-      <OrgFileOpenProvider>
-        <AgentInsetProvider />
-        <OrgFilePreviewMount />
-      </OrgFileOpenProvider>
+      {/* Compatibility resolves before task/runtime providers mount. Besides
+          avoiding work for a route that is leaving immediately, this prevents
+          a repo-backed agent from minting a thread while `?main=` is being
+          promoted to its canonical child route. */}
+      <LegacyAgentWorkspaceRedirect>
+        <LegacyMainRedirect>
+          <OrgFileOpenProvider>
+            <AgentInsetProvider />
+            <OrgFilePreviewMount />
+          </OrgFileOpenProvider>
+        </LegacyMainRedirect>
+      </LegacyAgentWorkspaceRedirect>
     </MainPanelBoundary>
   );
 }

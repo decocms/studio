@@ -61,11 +61,8 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
    * the whole screen at this point in onboarding — the nav has nowhere useful
    * to go yet.
    *
-   * The target's own `search` is SPREAD, not replaced: it carries
-   * `virtualmcpid`, and a bare object here dropped it — after which
-   * `retainSearchParams` refilled the key from whatever scope was in force (the
-   * org home's Super Agent), so the report opened on the wrong agent while
-   * looking like it had one.
+   * The target's params carry both the report agent and app identity. Its
+   * route-owned search is spread so the chat-panel override is additive.
    */
   const goToReport = () => {
     localStorage.setItem(

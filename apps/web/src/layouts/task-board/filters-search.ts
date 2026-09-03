@@ -36,9 +36,8 @@ type BoardSearch = {
 const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
-/** Anything unrecognized in the URL is dropped, not trusted. `filters.project`
- *  is an explicit exact-match choice; the ambient project scope is separate and
- *  inclusive — see `taskMatchesScope`. */
+/** Anything unrecognized in the URL is dropped, not trusted. The project
+ * filter is an explicit exact-match choice owned by the Tasks route. */
 export function parseBoardSearch(search: BoardSearch): {
   filters: TaskFilters;
   layout: Layout;
@@ -77,24 +76,10 @@ export function boardSearchParams(
   };
 }
 
-/** Whether a card survives the active project scope. INCLUSIVE: hides other
- *  projects' work, never unclassified work — `repo` is a routing hint, and is
- *  null on every reports-imported and Jira-synced card. Case-insensitive, as
- *  GitHub is. */
-export function taskMatchesScope(
-  item: { repo?: string | null },
-  scopeRepo: string | null,
-): boolean {
-  if (!scopeRepo) return true;
-  if (item.repo == null) return true;
-  return item.repo.toLowerCase() === scopeRepo.toLowerCase();
-}
-
 /**
  * The selection a bulk action is allowed to touch: only cards currently on
- * screen. The project scope is not the board's own control — it can change
- * under a live selection — so a stale id must never reach an update or a
- * delete for a card the user cannot see.
+ * screen. Filters can change under a live selection, so a stale id must never
+ * reach an update or a delete for a card the user cannot see.
  */
 export function visibleSelection(
   selection: ReadonlySet<string>,
