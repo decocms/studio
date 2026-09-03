@@ -23,8 +23,8 @@ import { useT } from "@/i18n/use-t.ts";
 
 /** The CMS mode select (`metadata.ui.layout.cms`) — whether this agent offers
  *  content editing at all. `off` removes the Site Editor's Content view from
- *  the switcher and from what a CMS session opens on. Only meaningful for
- *  agents with a clonable source, which the caller gates on. */
+ *  the switcher and its desktop Blocks panel. Only meaningful for agents with
+ *  a clonable source, which the caller gates on. */
 export interface ContentEditingFieldProps<T extends FieldValues> {
   control: Control<T>;
   /** Settings auto-save on change — persist immediately (blur-equivalent). */

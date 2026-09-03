@@ -318,10 +318,9 @@ export function useMainPanelTabs(ctx: {
     parseCodeTabId(rawActiveTab) !== null;
   /** The surface's own landing view is the preview, for every runtime — a URL
    *  that names no view lands there, and `?main=content` is the only thing that
-   *  opens Content. What a desktop CMS session gets on that preview is the
-   *  blocks editor already open (see `defaultPreviewEditingMode`), a mode of the
-   *  view rather than a second address, so nothing here has to second-guess the
-   *  URL. */
+   *  opens Content. On desktop, that preview includes Blocks whenever the same
+   *  product gate exposes Content; it remains a mode of the view rather than a
+   *  second address, so nothing here has to second-guess the URL. */
   const activeTab =
     !panelTabId && !routeDefaultMain && defaultTabHidden
       ? visibleDefaultTabId

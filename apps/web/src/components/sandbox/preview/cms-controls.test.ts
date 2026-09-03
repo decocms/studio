@@ -2,62 +2,29 @@ import { describe, expect, it } from "bun:test";
 import { showCmsPageSelector } from "./cms-controls";
 
 describe("showCmsPageSelector", () => {
-  it("shows it for a deco site (blocks resolved to content)", () => {
+  it("shows it whenever content editing and the preview toolbar are enabled", () => {
     expect(
       showCmsPageSelector({
         showPreviewToolbar: true,
-        blocksState: { kind: "content" },
+        contentEditingEnabled: true,
       }),
     ).toBe(true);
   });
 
-  it("hides it for a non-deco repo (decofile/meta 404 → framework missing)", () => {
+  it("hides it under the same disabled gate as Content and Blocks", () => {
     expect(
       showCmsPageSelector({
         showPreviewToolbar: true,
-        blocksState: { kind: "empty", reason: "framework-missing" },
+        contentEditingEnabled: false,
       }),
     ).toBe(false);
-  });
-
-  it("keeps it for a deco site whose decofile has no pages yet (Create page stays reachable)", () => {
-    expect(
-      showCmsPageSelector({
-        showPreviewToolbar: true,
-        blocksState: { kind: "empty", reason: "no-content" },
-      }),
-    ).toBe(true);
-  });
-
-  it("hides it while the reads are still in flight", () => {
-    expect(
-      showCmsPageSelector({
-        showPreviewToolbar: true,
-        blocksState: { kind: "loading" },
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps it when a read failed — absence is unproven, so don't revoke", () => {
-    expect(
-      showCmsPageSelector({
-        showPreviewToolbar: true,
-        blocksState: { kind: "error", source: "data" },
-      }),
-    ).toBe(true);
-    expect(
-      showCmsPageSelector({
-        showPreviewToolbar: true,
-        blocksState: { kind: "error", source: "sandbox" },
-      }),
-    ).toBe(true);
   });
 
   it("hides it when the toolbar itself is hidden", () => {
     expect(
       showCmsPageSelector({
         showPreviewToolbar: false,
-        blocksState: { kind: "empty", reason: "no-content" },
+        contentEditingEnabled: true,
       }),
     ).toBe(false);
   });

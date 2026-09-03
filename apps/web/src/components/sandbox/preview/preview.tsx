@@ -21,7 +21,6 @@ import {
   Globe02,
   LayoutAlt01,
   Plus,
-  PuzzlePiece01,
   Monitor04,
   SearchLg,
   Phone02,
@@ -35,7 +34,6 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import {
   MainPanelHeaderPortal,
   useMainPanelHeaderSlot,
@@ -47,14 +45,9 @@ import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
-  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
-import {
-  resolveBlocksTabState,
-  toBlocksQueryState,
-} from "@/layouts/main-panel-tabs/blocks-tab-state";
 import {
   fillPathTemplate,
   normalizePagePath,
@@ -138,9 +131,8 @@ import {
   defaultPreviewEditingMode,
   isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
-  togglePreviewEditorMode,
+  toggleVisualEditingMode,
   type PreviewEditingMode,
-  type PreviewEditorMode,
 } from "./editing-mode";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 
@@ -315,13 +307,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   });
 
   /** Singular: Visual and Blocks cannot both be active, while device size is
-   *  independent and survives a switch. Which mode it STARTS in is the
-   *  session's — a desktop CMS session opens with Blocks already split in (see
-   *  `defaultPreviewEditingMode`). Derived once at mount: the shell renders
-   *  this only after the thread and project resolve, so the runtime is already
-   *  authoritative and nothing needs re-syncing. */
+   *  independent and survives a switch. Blocks starts open whenever the shared
+   *  Content gate and desktop constraint allow it. */
   const [editingMode, setEditingMode] = useState<PreviewEditingMode>(() =>
-    defaultPreviewEditingMode({ runtime: session.runtime, cmsMode, isMobile }),
+    defaultPreviewEditingMode({ cmsMode, isMobile }),
   );
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
@@ -458,32 +447,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   });
   const decofile = decofileQuery.data;
   const meta = metaQuery.data;
-  // Same readiness classification the CMS panel itself uses. We only auto-open
-  // the CMS once this resolves to "content" (metadata loaded AND there is
-  // editable content) so the panel never opens onto a loading/empty/error card.
-  // Sticky per repo+branch; see `frameworkKnownMissing`.
-  const frameworkMissingKey = `${virtualMcpId}:${branch ?? ""}`;
-  // Remembered across renders as state (not a ref): the classification feeds the
-  // render, so it has to re-run when we learn the framework is absent. Storing
-  // the key rather than a boolean makes a repo/branch switch reset it for free.
-  const [frameworkMissingProvenFor, setFrameworkMissingProvenFor] = useState<
-    string | null
-  >(null);
-  const blocksState = resolveBlocksTabState({
-    lifecyclePhase,
-    decofile: toBlocksQueryState(decofileQuery),
-    meta: toBlocksQueryState(metaQuery),
-    hasEditableContent: hasEditableDecoContent(decofile, meta),
-    fastPreviewActive: fastPreviewEnabled,
-    frameworkKnownMissing: frameworkMissingProvenFor === frameworkMissingKey,
-  });
-  if (
-    blocksState.kind === "empty" &&
-    blocksState.reason === "framework-missing" &&
-    frameworkMissingProvenFor !== frameworkMissingKey
-  ) {
-    setFrameworkMissingProvenFor(frameworkMissingKey);
-  }
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
     : [];
@@ -1202,8 +1165,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     if (mode === "blocks") injectCmsEditor();
   };
 
-  const toggleEditingMode = (mode: PreviewEditorMode) => {
-    activateEditingMode(togglePreviewEditorMode(editingMode, mode));
+  const toggleVisualEditing = () => {
+    activateEditingMode(
+      toggleVisualEditingMode(editingMode, blocksEditingEnabled),
+    );
   };
 
   const handleRefresh = () => {
@@ -1399,14 +1364,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const showPreviewToolbar =
     previewSurfaceActive && (daemonReady || display.mode === "production");
 
-  /** The page selector is for a CMS session on a proven deco site. A sandbox
-   *  session previews an arbitrary app with no decofile to navigate, so the
-   *  topbar shows the iframe's domain instead — see the toolbar below.
-   *  `showCmsPageSelector` keeps its veto so the selector never degrades into
-   *  listing a raw preview host. */
-  const pageSelectorVisible =
-    session.runtime === "cms" &&
-    showCmsPageSelector({ showPreviewToolbar, blocksState });
+  /** The page selector shares the exact project-level gate used by Content and
+   *  Blocks. Session runtime and metadata readiness do not change the topbar's
+   *  shape; the selector can expose setup/creation flows while data loads. */
+  const pageSelectorVisible = showCmsPageSelector({
+    showPreviewToolbar,
+    contentEditingEnabled,
+  });
 
   /** Refresh · what-the-frame-is-showing · open-in-new, kept as one block so
    *  desktop can put it in the header's centre slot and mobile in its own. The
@@ -1429,13 +1393,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       </Tooltip>
 
       {/* The topbar always names what the iframe is showing; only HOW differs
-          by runtime. A CMS session gets the page selector — page name, editable
-          `:param` segments, and the dropdown that also hosts "Create page". A
-          sandbox session is previewing an arbitrary app with no decofile to
-          navigate, so it gets the iframe's domain as plain text and nothing to
-          click. `showCmsPageSelector` still has the final say, so a CMS session on a
-          repo that proves it has no deco framework degrades to the label rather
-          than to a selector listing a raw preview host. */}
+          by the shared content-editing gate. Enabled projects get the page
+          selector — page name, editable `:param` segments, and the dropdown
+          that also hosts "Create page". Disabled projects get the iframe's
+          domain as plain text. */}
       {pageSelectorVisible ? (
         <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
           <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
@@ -1739,65 +1700,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     </>
   ) : null;
 
-  // Blocks and Content deliberately share one agent-level product gate. Blocks
-  // adds only its desktop layout constraint. Readiness is rendered inside
-  // BlocksPanel; it never delays or revokes the entry point after a transient
-  // decofile/meta read.
-  const blocksActive = effectiveEditingMode === "blocks";
-  const desktopBlocksToggle = blocksEditingEnabled ? (
-    <HeaderTabButton
-      title={t("sandbox.cmsSettings.title")}
-      tooltip={
-        blocksActive
-          ? t("sandbox.preview.exitEditor")
-          : t("sandbox.preview.editContent")
-      }
-      labelCollapse="sooner"
-      icon={{ kind: "component", Component: PuzzlePiece01 }}
-      active={blocksActive}
-      onClick={() => toggleEditingMode("blocks")}
-      testId="preview-blocks-toggle"
-    />
-  ) : null;
-
-  // Desktop composition (portaled into the panel header's centre slot): the
-  // Blocks action leads, followed by the iframe navigation controls once ready.
-  const urlControls =
-    desktopBlocksToggle || urlGroup ? (
-      <div className="flex min-w-0 items-center gap-0.5">
-        {desktopBlocksToggle}
-        {desktopBlocksToggle && urlGroup && (
-          <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
-        )}
-        {urlGroup}
-      </div>
-    ) : null;
-
-  /** Compact Blocks ⇄ Preview control for the inline (no header-slot) layout.
-   *  It uses the same gate as the desktop action and Content tab. */
-  const inlineBlocksToggle = blocksEditingEnabled ? (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          onClick={() => toggleEditingMode("blocks")}
-          aria-pressed={blocksActive}
-          aria-label={
-            blocksActive
-              ? t("sandbox.preview.exitEditor")
-              : t("sandbox.preview.editContent")
-          }
-          active={blocksActive}
-          data-testid="preview-blocks-toggle"
-        >
-          <PuzzlePiece01 size={16} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {blocksActive
-          ? t("sandbox.preview.exitEditor")
-          : t("sandbox.preview.editContent")}
-      </TooltipContent>
-    </Tooltip>
+  // Desktop composition (portaled into the panel header's centre slot).
+  const urlControls = urlGroup ? (
+    <div className="flex min-w-0 items-center gap-0.5">{urlGroup}</div>
   ) : null;
   const canVisualEdit = display.mode === "sandbox";
 
@@ -1836,7 +1741,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <ToolbarIconButton
-                  onClick={() => toggleEditingMode("visual")}
+                  onClick={toggleVisualEditing}
                   aria-pressed={effectiveEditingMode === "visual"}
                   aria-label={t("sandbox.preview.visualEditor")}
                   active={effectiveEditingMode === "visual"}
@@ -1903,24 +1808,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         ? urlControls && (
             <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
           )
-        : (inlineBlocksToggle || urlGroup) && (
+        : urlGroup && (
             /* Declares the same container as PanelHeader: without a header slot
              (mobile or a standalone desktop surface), the controls render
              inline instead of portaling. Without it their container queries
              would find no container and every label would stay at full width.
 
-             Three zones rather than the desktop's single left-packed group:
-             the view controls sit in the middle, the left carries the compact
-             Blocks toggle on standalone desktop (it remains empty on mobile),
-             and an empty right spacer balances it. The two side zones are
-             `flex-1` (equal basis) while the middle is content-sized,
-             so the page selector centres on the BAR wherever there is slack to
-             divide — giving the middle the flex-1 instead would centre it
-             between the side zones, not on the bar. */
+             Equal empty side zones keep the content-sized URL group centered
+             on the bar wherever there is room. */
             <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
-              <div className="flex flex-1 items-center justify-start">
-                {inlineBlocksToggle}
-              </div>
+              <div className="flex-1" />
               <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
                 {urlGroup}
               </div>
