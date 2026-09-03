@@ -416,6 +416,7 @@ function VersionRow({
     <button
       type="button"
       disabled={disabled}
+      aria-pressed={selected}
       onClick={onSelect}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors",
@@ -464,6 +465,7 @@ function ReleaseRow({
         <TooltipTrigger asChild>
           <button
             type="button"
+            aria-pressed={selected}
             onClick={onSelect}
             className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
           >
