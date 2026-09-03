@@ -40,7 +40,7 @@
 }
 
 .deco-splash__liquid-rise {
-  animation: deco-splash-liquid-rise 20s linear forwards;
+  animation: deco-splash-liquid-rise 1.1s linear forwards;
 }
 
 .deco-splash__wave-track {
@@ -71,39 +71,37 @@
   }
 }
 
-/* Logarithmic rise over 20s: a third of the travel in the first second, then
- * asymptotic. It outlasts any real boot on purpose — the fill must never
- * arrive, because a bar that completes and then sits there reads as
- * finished-but-stuck. Stops sample ln(1+49t)/ln(50); even at 20s it holds at
- * -56px, short of the -64px that would fill the mark. `linear` between stops so
- * the curve is the curve, not re-eased. */
+/* Decelerating rise that reaches full coverage of the mark right at the end of
+ * the animation, 1.1s, and no sooner. -54px is the smallest translateY that
+ * still guarantees full coverage across the whole wave cycle: the crest
+ * oscillates ±5 around its center, so covering the mark's highest point
+ * (the arrow tip, local y ~13) even at the crest's shallowest phase (local
+ * y 63) needs translateY <= 13 - 63 = -50, plus a small margin for curve
+ * imprecision. Overshooting further than that (the old -64px target) just
+ * left the tail of the animation sitting fully filled with nothing left to
+ * animate. A splash that unmounts fast (a warm boot) must not catch the
+ * liquid mid-rise, so this completes well inside any real boot's fastest
+ * case. Once full, `deco-splash__wave-track`'s own infinite animation keeps
+ * the crest moving, so a slow boot reads as "topped up and idling", not
+ * stuck. `linear` between stops so the curve is the curve, not re-eased. */
 @keyframes deco-splash-liquid-rise {
   0% {
     transform: translateY(55px);
   }
-  1% {
-    transform: translateY(44px);
-  }
-  2.5% {
-    transform: translateY(32px);
-  }
-  5% {
-    transform: translateY(20px);
-  }
-  10% {
-    transform: translateY(5px);
+  8% {
+    transform: translateY(22px);
   }
   20% {
-    transform: translateY(-12px);
+    transform: translateY(0px);
   }
-  35% {
-    transform: translateY(-27px);
+  40% {
+    transform: translateY(-24px);
   }
-  55% {
+  65% {
     transform: translateY(-40px);
   }
   100% {
-    transform: translateY(-56px);
+    transform: translateY(-54px);
   }
 }
 
@@ -124,6 +122,6 @@
   }
 
   .deco-splash__liquid-rise {
-    transform: translateY(-50px);
+    transform: translateY(-54px);
   }
 }

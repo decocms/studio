@@ -37,7 +37,6 @@ import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { SidePanel } from "./side-panel";
 import { PanelCollapseToggle } from "./toggle-buttons";
 import {
-  MainPanelHeaderEndSlot,
   MainPanelHeaderProvider,
   MainPanelHeaderSlot,
   PanelHeader,
@@ -202,13 +201,11 @@ export function WorkspacePanelGroup({
           The portal target stays mounted so Preview keeps rendering into it
           instead of falling back to its inline toolbar.
 
-          384px is set by the group's measured floor: its min-content is 112px
-          (36 CMS + 28 refresh + 24 page chevron + 28 open-in-new-tab), and a
-          header that size leaves ~112-128px once the left group (66px — the
-          tab budget is down to one tab this narrow) and the actions (178px)
-          take their share. One breakpoint lower and the icons clip. Note the
-          query measures the CONTENT box, so with `px-1.5` this fires around
-          396px of rendered width — a ~16px margin above the floor, not on it.
+          384px leaves enough room for the selector after the left and right
+          groups take their share. One breakpoint lower and the icons clip.
+          Note the query measures the CONTENT box, so with `px-1.5` this fires
+          around 396px of rendered width — a small margin above the floor, not
+          on it.
 
           Deliberately far later than the old JS rule (~668px). The trade: the
           page NAME is gone from ~448px down — the selector is a bare chevron
@@ -220,15 +217,13 @@ export function WorkspacePanelGroup({
       {/* Right side. The wrapper is shrinkable so the branch selector inside it
           can yield BEFORE the centered address bar (which is `flex-1` — basis 0,
           so it shrinks last). The branch sits in its own `min-w-0` slot and
-          truncates first; the actions cluster stays `shrink-0` (Edit / Submit /
-          Publish / ⋯ never clip) and is what `rightRef` measures, so the tab
-          count budget is unaffected by the branch label's width. */}
+          truncates first; the actions cluster stays `shrink-0`, so its controls
+          never clip. */}
       <div className="flex min-w-0 shrink items-center justify-end gap-1">
         <div className="flex min-w-0 shrink items-center justify-end">
           {branchSelector}
         </div>
         <div className="flex shrink-0 items-center justify-end gap-1">
-          <MainPanelHeaderEndSlot />
           {publishActions}
           <PanelCollapseToggle
             side="right"

@@ -10,8 +10,6 @@
  *   - `MainPanelHeaderSlot` — the flexible middle region. Preview fills it with
  *     its Blocks toggle + page controls, so Preview needs no second toolbar
  *     (single top bar in CMS).
- *   - `MainPanelHeaderEndSlot` — the right-side action cluster (before publish).
- *     Preview drops its ⋯ menu here.
  *
  * When no provider is present (mobile, where the main panel is full-screen and
  * uses the shared header), `useMainPanelHeaderSlot` returns null and consumers
@@ -62,24 +60,14 @@ export function PanelHeader({
 type MainPanelHeaderCtx = {
   slotEl: HTMLDivElement | null;
   setSlotEl: (el: HTMLDivElement | null) => void;
-  endActionsEl: HTMLDivElement | null;
-  setEndActionsEl: (el: HTMLDivElement | null) => void;
 };
 
 const MainPanelHeaderContext = createContext<MainPanelHeaderCtx | null>(null);
 
 export function MainPanelHeaderProvider({ children }: { children: ReactNode }) {
   const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
-  const [endActionsEl, setEndActionsEl] = useState<HTMLDivElement | null>(null);
   return (
-    <MainPanelHeaderContext
-      value={{
-        slotEl,
-        setSlotEl,
-        endActionsEl,
-        setEndActionsEl,
-      }}
-    >
+    <MainPanelHeaderContext value={{ slotEl, setSlotEl }}>
       {children}
     </MainPanelHeaderContext>
   );
@@ -100,12 +88,6 @@ export function MainPanelHeaderSlot({ className }: { className?: string }) {
   );
 }
 
-/** Right-side portal target, before the publish actions (e.g. Preview's ⋯). */
-export function MainPanelHeaderEndSlot() {
-  const ctx = use(MainPanelHeaderContext);
-  return <div ref={ctx?.setEndActionsEl} className="contents" />;
-}
-
 /**
  * Portal `children` into the main panel header slot. Returns `null` when the
  * slot node isn't mounted yet; consumers that need an inline fallback should
@@ -115,17 +97,6 @@ export function MainPanelHeaderPortal({ children }: { children: ReactNode }) {
   const ctx = use(MainPanelHeaderContext);
   if (!ctx?.slotEl) return null;
   return createPortal(children, ctx.slotEl);
-}
-
-/** Portal `children` into the right-side actions slot (e.g. Preview's ⋯). */
-export function MainPanelHeaderEndPortal({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const ctx = use(MainPanelHeaderContext);
-  if (!ctx?.endActionsEl) return null;
-  return createPortal(children, ctx.endActionsEl);
 }
 
 /**

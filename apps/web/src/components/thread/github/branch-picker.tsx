@@ -190,6 +190,26 @@ export function BranchPicker({
     setEditName("");
   };
 
+  // Naming the current unlisted branch adopts it as a release (a named version).
+  const saveUnlistedName = () => {
+    const next = editName.trim();
+    if (next && value) {
+      void createRelease({
+        branch: value,
+        name: next,
+        color: nextReleaseColor(releases.length),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    setEditing(null);
+    setEditName("");
+  };
+
+  const cancelRename = () => {
+    setEditing(null);
+    setEditName("");
+  };
+
   const confirmDelete = () => {
     const r = pendingDelete;
     setPendingDelete(null);
@@ -291,43 +311,48 @@ export function BranchPicker({
               {(unlisted || releases.length > 0) && (
                 <div className="my-1 border-t" />
               )}
-              {unlisted && (
-                <VersionRow
-                  dot={releaseDotClass("orange")}
-                  label={t("thread.branchPicker.defaultVersionName")}
-                  branch={value}
-                  selected
-                  onSelect={() => value && pick(value)}
-                />
-              )}
+              {unlisted &&
+                value &&
+                (editing === value ? (
+                  <RenameInput
+                    value={editName}
+                    onChange={setEditName}
+                    onSave={saveUnlistedName}
+                    onCancel={cancelRename}
+                  />
+                ) : (
+                  <ReleaseRow
+                    dot={releaseDotClass("orange")}
+                    label={t("thread.branchPicker.defaultVersionName")}
+                    branch={value}
+                    selected
+                    onSelect={() => pick(value)}
+                    onRename={() => {
+                      setEditing(value);
+                      setEditName(
+                        nextDraftName(
+                          releases,
+                          t("thread.branchPicker.defaultVersionName"),
+                        ),
+                      );
+                    }}
+                  />
+                ))}
               {releases.map((r) =>
                 editing === r.branch ? (
-                  <div key={r.branch} className="flex items-center gap-1.5 p-1">
-                    <input
-                      // biome-ignore lint/a11y/noAutofocus: opened by an explicit click
-                      autoFocus
-                      aria-label={t("thread.branchPicker.rename")}
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void saveRename(r.branch);
-                        if (e.key === "Escape") {
-                          // Don't let Escape also close the popover behind it.
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEditing(null);
-                        }
-                      }}
-                      className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-                    />
-                    <Button size="sm" onClick={() => void saveRename(r.branch)}>
-                      {t("thread.branchPicker.save")}
-                    </Button>
-                  </div>
+                  <RenameInput
+                    key={r.branch}
+                    value={editName}
+                    onChange={setEditName}
+                    onSave={() => saveRename(r.branch)}
+                    onCancel={cancelRename}
+                  />
                 ) : (
                   <ReleaseRow
                     key={r.branch}
-                    release={r}
+                    dot={releaseDotClass(r.color)}
+                    label={r.name}
+                    branch={r.branch}
                     selected={r.branch === value}
                     onSelect={() => pick(r.branch)}
                     onRename={() => startRename(r)}
@@ -440,19 +465,63 @@ function VersionRow({
   );
 }
 
-/** A named release row: click to switch, with a ⋯ menu to rename or discard. */
+/** Inline name editor shared by rename (a release) and adopt (an unlisted branch). */
+function RenameInput({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-1.5 p-1">
+      <input
+        // biome-ignore lint/a11y/noAutofocus: opened by an explicit click
+        autoFocus
+        aria-label={t("thread.branchPicker.rename")}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSave();
+          if (e.key === "Escape") {
+            // Don't let Escape also close the popover behind it.
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          }
+        }}
+        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+      />
+      <Button size="sm" onClick={onSave}>
+        {t("thread.branchPicker.save")}
+      </Button>
+    </div>
+  );
+}
+
+/** A version row: click to switch, with a ⋯ menu to rename (always) and discard
+ *  (only a stored release — an unlisted branch has nothing to discard). */
 function ReleaseRow({
-  release,
+  dot,
+  label,
+  branch,
   selected,
   onSelect,
   onRename,
   onDelete,
 }: {
-  release: Release;
+  dot: string;
+  label: string;
+  branch: string;
   selected: boolean;
   onSelect: () => void;
   onRename: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   const t = useT();
   return (
@@ -470,17 +539,12 @@ function ReleaseRow({
             onClick={onSelect}
             className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
           >
-            <span
-              className={cn(
-                "h-2 w-2 shrink-0 rounded-full",
-                releaseDotClass(release.color),
-              )}
-            />
-            <span className="flex-1 truncate">{release.name}</span>
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
+            <span className="flex-1 truncate">{label}</span>
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="font-mono text-xs">
-          {t("thread.branchPicker.branchTooltip", { branch: release.branch })}
+          {t("thread.branchPicker.branchTooltip", { branch })}
         </TooltipContent>
       </Tooltip>
       <DropdownMenu>
@@ -499,13 +563,15 @@ function ReleaseRow({
             <Edit01 className="h-4 w-4" />
             {t("thread.branchPicker.rename")}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={onDelete}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash01 className="h-4 w-4" />
-            {t("thread.branchPicker.delete")}
-          </DropdownMenuItem>
+          {onDelete && (
+            <DropdownMenuItem
+              onSelect={onDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash01 className="h-4 w-4" />
+              {t("thread.branchPicker.delete")}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

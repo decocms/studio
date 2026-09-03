@@ -24,6 +24,10 @@ import {
   useVirtualMCPs,
 } from "@/sdk";
 import { getActiveGithubRepo } from "@/lib/github-repo";
+import {
+  draftsModeEnabled,
+  useBaseBranch,
+} from "@/components/thread/github/use-version-gate";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { AgentScopePicker } from "@/components/sidebar/agents-section";
@@ -113,6 +117,8 @@ export function AgentSwitcherCrumb({
   const { data: session } = authClient.useSession();
   const { setTaskId, createNewTask } = usePanelActions();
   const projectDefaultRuntime = useProjectDefaultRuntime();
+  /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
+  const baseBranch = useBaseBranch(undefined, null);
 
   const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
   const decopilotId = decopilot.id;
@@ -128,17 +134,26 @@ export function AgentSwitcherCrumb({
   const handlePickAgent = (id: string | null) => {
     const targetId = id ?? decopilotId;
     const target = (allAgents ?? []).find((a) => a.id === targetId);
+    const isDraftsMode = draftsModeEnabled(target);
     const existing = findAgentEntryThread(
       threads,
       targetId,
       session?.user?.id,
       projectDefaultRuntime(targetId),
       !!(target && getActiveGithubRepo(target)),
+      {
+        knownBranches: new Set<string>([
+          baseBranch,
+          ...(target?.metadata?.releases ?? []).map((r) => r.branch),
+        ]),
+        draftsMode: isDraftsMode,
+      },
     );
     if (existing) {
       setTaskId(existing.id, targetId);
     } else {
-      void createNewTask(targetId);
+      // Drafts mode mints a fresh thread on production, never an unnamed draft.
+      void createNewTask(targetId, isDraftsMode ? baseBranch : undefined);
     }
     onNavigate?.();
   };

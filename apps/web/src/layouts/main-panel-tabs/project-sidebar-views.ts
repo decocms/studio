@@ -60,6 +60,12 @@ export interface ProjectSidebarViewsMetadata {
   } | null;
 }
 
+interface ProjectDefaultMainView {
+  type: string;
+  id?: string;
+  toolName?: string;
+}
+
 /** Resolve the entity whose capabilities govern a main-panel project view.
  *
  * Destination routes such as Tasks and Reports keep the org Super Agent as
@@ -167,6 +173,24 @@ export function selectedProjectSidebarViews(
   return PROJECT_SIDEBAR_VIEW_IDS.filter(
     (viewId) => presence[viewId] && selected.has(viewId),
   );
+}
+
+/** Keep the landing view aligned with the sidebar rows that can reach it.
+ * Preview, Content and Code are all entry points into the Site Editor row. */
+export function defaultMainViewAfterSidebarToggle(
+  defaultMainView: ProjectDefaultMainView | null | undefined,
+  viewId: ProjectSidebarViewId,
+  enabled: boolean,
+): ProjectDefaultMainView | null | undefined {
+  if (enabled || !defaultMainView) return defaultMainView;
+
+  const defaultViewId =
+    defaultMainView.type === "preview" ||
+    defaultMainView.type === "content" ||
+    defaultMainView.type === "code"
+      ? "site-editor"
+      : defaultMainView.type;
+  return defaultViewId === viewId ? { type: "settings" } : defaultMainView;
 }
 
 export function availableProjectSidebarViews(

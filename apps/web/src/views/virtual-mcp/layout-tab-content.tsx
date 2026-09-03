@@ -46,9 +46,11 @@ import type { VirtualMcpFormReturn } from "./types";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import {
   availableProjectSidebarViews,
+  defaultMainViewAfterSidebarToggle,
   effectiveProjectSidebarViews,
   projectSidebarViewPresence,
   resolveProjectSidebarViews,
+  selectedProjectSidebarViews,
   toggleProjectSidebarView,
   type ProjectSidebarViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
@@ -295,7 +297,8 @@ export function LayoutTabContent({
     if (validPinned.length !== pinnedViews.length) {
       writePinned(validPinned);
 
-      // If the default view was an ext-app that got removed, reset to chat
+      // If the default view was an ext-app that got removed, use the permanent
+      // Settings view instead.
       if (
         currentDefaultMain?.type === "ext-apps" &&
         !validPinned.some(
@@ -304,7 +307,7 @@ export function LayoutTabContent({
             pv.toolName === currentDefaultMain.toolName,
         )
       ) {
-        writeLayout({ defaultMainView: null });
+        writeLayout({ defaultMainView: { type: "settings" } });
       }
     }
   }
@@ -318,10 +321,10 @@ export function LayoutTabContent({
         (v) => !(v.connectionId === connectionId && v.toolName === toolName),
       );
       writePinned(nextPinned);
-      // If the unpinned view was the default, reset to chat
+      // If the unpinned view was the default, use the permanent Settings view.
       const unpinnedKey = `ext-apps:${connectionId}:${toolName}`;
       if (defaultMainView === unpinnedKey) {
-        writeLayout({ defaultMainView: null });
+        writeLayout({ defaultMainView: { type: "settings" } });
       }
     } else {
       const toolTitle = connectionsData
@@ -393,6 +396,14 @@ export function LayoutTabContent({
     });
     form.setValue("metadata.sidebarViewsVersion", 1, { shouldDirty: true });
     optimisticSidebarViews.stage(nextSidebarViews, sidebarViews);
+    const nextDefaultMain = defaultMainViewAfterSidebarToggle(
+      currentDefaultMain,
+      viewId,
+      enabled,
+    );
+    if (nextDefaultMain !== currentDefaultMain) {
+      writeLayout({ defaultMainView: nextDefaultMain });
+    }
     // The parent form subscription coalesces rapid adjacent switch changes and
     // flushes the latest value on unmount. Starting a full metadata write for
     // every click would let out-of-order responses revert the newest choice.
@@ -406,8 +417,16 @@ export function LayoutTabContent({
   // either a Start Website template or a connected GitHub repo — matching
   // the gating in `use-main-panel-tabs.ts`.
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
-  const availableSidebarViews = availableProjectSidebarViews(
-    projectSidebarViewPresence(hasClonableSource, nativeViews.presence),
+  const sidebarViewPresence = projectSidebarViewPresence(
+    hasClonableSource,
+    nativeViews.presence,
+  );
+  const availableSidebarViews =
+    availableProjectSidebarViews(sidebarViewPresence);
+  const enabledSidebarViews = selectedProjectSidebarViews(
+    sidebarViews,
+    sidebarViewPresence,
+    1,
   );
   const sidebarViewLabels: Record<ProjectSidebarViewId, string> = {
     overview: t("sidebar.navDestinations.home"),
@@ -429,7 +448,7 @@ export function LayoutTabContent({
    * never an agent's view), then the project rows, then Settings last.
    */
   const defaultMainOptions: { value: string; label: string }[] = [];
-  for (const viewId of availableSidebarViews) {
+  for (const viewId of enabledSidebarViews) {
     // Pinned app rows sit before Automations in the actual sidebar, so append
     // that final project row after the pinned-view loop below.
     if (viewId === "automations") continue;
@@ -444,7 +463,7 @@ export function LayoutTabContent({
       label: pv.label || pv.toolName,
     });
   }
-  if (availableSidebarViews.includes("automations")) {
+  if (enabledSidebarViews.includes("automations")) {
     defaultMainOptions.push({
       value: "automations",
       label: sidebarViewLabels.automations,
