@@ -1,7 +1,12 @@
 import { useProjectContext } from "@/sdk";
+import type { TaskBoardItemPr } from "@/layouts/task-board/config";
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
+import {
+  readCachedTaskPrs,
+  writeCachedTaskPrs,
+} from "@/lib/task-board-prs-cache";
 
 /** Poll interval for a task's PRs while the dialog is open. The tool fetches
  *  live GitHub state — PR/checks status and the checks→QA hand-off it drives —
@@ -25,11 +30,26 @@ export function useTaskBoardItemPrs(itemId: string | undefined) {
     queryKey: KEYS.taskBoardItemPrs(locator, itemId ?? ""),
     enabled: !!itemId,
     refetchInterval: PRS_POLL_INTERVAL_MS,
-    queryFn: async () =>
-      (
-        await studio.call("TASK_BOARD_ITEM_PRS_GET", {
-          taskBoardItemId: itemId!,
-        })
-      ).prs,
+    // Seeded from localStorage so a cold page load paints the last known cards
+    // instead of a skeleton. `initialDataUpdatedAt` carries the real age, so
+    // React Query treats the seed as already stale and refetches on mount — the
+    // card shows a breathing border while it does (`isFetching` in PrCard).
+    // Both are FUNCTIONS: React Query only calls them when the key has no
+    // cached data, so the parse doesn't run on every render.
+    initialData: () =>
+      itemId
+        ? ((readCachedTaskPrs(locator, itemId)?.data as
+            | TaskBoardItemPr[]
+            | undefined) ?? undefined)
+        : undefined,
+    initialDataUpdatedAt: () =>
+      itemId ? readCachedTaskPrs(locator, itemId)?.updatedAt : undefined,
+    queryFn: async () => {
+      const { prs } = await studio.call("TASK_BOARD_ITEM_PRS_GET", {
+        taskBoardItemId: itemId!,
+      });
+      writeCachedTaskPrs(locator, itemId!, prs);
+      return prs;
+    },
   });
 }

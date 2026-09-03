@@ -1809,6 +1809,7 @@ function PreviewButton({ url }: { url: string }) {
  */
 function PrCard({
   pr,
+  revalidating,
   previewThread,
   reviewsReady,
   shipPending,
@@ -1818,6 +1819,8 @@ function PrCard({
   onOpenPreview,
 }: {
   pr: TaskBoardItemPr;
+  /** A live GitHub read is in flight behind the values shown. */
+  revalidating: boolean;
   previewThread?: TaskBoardItemThread;
   /** Task-level: In Review + every enabled reviewer approved. */
   reviewsReady: boolean;
@@ -1851,7 +1854,15 @@ function PrCard({
     : checksState;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow",
+        // Cards are seeded from localStorage, so what's on screen may be a
+        // minute (or a day) old. The breathing border says "these numbers are
+        // being checked" without blanking the card back to a skeleton.
+        revalidating && "revalidating-ring",
+      )}
+    >
       <div className="flex items-center gap-3">
         <GitHubIcon className="size-4 shrink-0 text-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
@@ -2039,7 +2050,11 @@ function LinksSection({
   onOpenPreview?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
-  const { data: prs, isLoading: prsLoading } = useTaskBoardItemPrs(item.id);
+  const {
+    data: prs,
+    isLoading: prsLoading,
+    isFetching: prsFetching,
+  } = useTaskBoardItemPrs(item.id);
   const { data: activity } = useTaskBoardActivity(item.id);
   const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
@@ -2099,6 +2114,7 @@ function LinksSection({
             <PrCard
               key={pr.url}
               pr={pr}
+              revalidating={prsFetching}
               previewThread={previewThread}
               reviewsReady={reviewsReady}
               shipPending={promote.isPending}

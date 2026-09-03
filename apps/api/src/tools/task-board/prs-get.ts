@@ -66,9 +66,61 @@ const prLabel = (pr: TaskBoardItemPrRef) =>
  * `callTool` RESOLVES (doesn't reject) on an upstream MCP error, so an `isError`
  * result is rethrown here — otherwise the cache would happily store GitHub's
  * "too many requests" as the PR's state and serve it for half an hour.
+ *
+ * Takes a `getClient` THUNK, not a client. The cache only calls `fetchLive` on a
+ * miss or a background revalidation, so on a warm card the client is never
+ * built — and building one is not free: the per-request pool bakes a fresh
+ * Studio token, which costs a `downstream_tokens` read plus an eager MCP
+ * `initialize` handshake (~80-120ms) before any tool call can go out. Handed a
+ * ready client instead, every poll paid that round-trip to then answer entirely
+ * from cache.
  */
+type GetPrClient = () => Promise<
+  Awaited<ReturnType<typeof clientFromConnection>>
+>;
+
+/**
+ * A GitHub MCP client for `conn`, opened AT MOST ONCE and only if a read
+ * actually misses the SWR cache.
+ *
+ * Opening one is not free: the per-request pool bakes a fresh Studio token, so
+ * it costs a `downstream_tokens` read plus an eager MCP `initialize` handshake
+ * (~80-120ms) before any tool call can go out. Every read below is cached, so a
+ * warm card would otherwise pay that round-trip only to answer from cache.
+ *
+ * `closeWhenIdle` closes once the cache's background revalidations settle — and
+ * does nothing at all when nothing was ever opened.
+ */
+function lazyPrClient(
+  conn: ConnectionEntity,
+  ctx: StudioContext,
+): { get: GetPrClient; closeWhenIdle: (pending: Promise<void>[]) => void } {
+  type PrClient = Awaited<ReturnType<typeof clientFromConnection>>;
+  let client: PrClient | null = null;
+  let promise: Promise<PrClient> | null = null;
+  return {
+    get: () => {
+      promise ??= clientFromConnection(conn, ctx, true).then((c) => {
+        client = c;
+        return c;
+      });
+      return promise;
+    },
+    // Do NOT await this — the whole point of serving a stale value is to return
+    // without waiting on GitHub. Closing eagerly (which this did) killed every
+    // revalidation the moment it started, so a cached entry could never
+    // refresh: a PR read before its deploy comment existed showed no preview
+    // and no checks until the entry aged out half an hour later.
+    closeWhenIdle: (pending) => {
+      void Promise.allSettled(pending).then(() =>
+        client?.close().catch(() => {}),
+      );
+    },
+  };
+}
+
 async function cachedPrRead(
-  client: Awaited<ReturnType<typeof clientFromConnection>>,
+  getClient: GetPrClient,
   connectionId: string,
   name: string,
   args: Record<string, unknown>,
@@ -83,7 +135,7 @@ async function cachedPrRead(
       fetchLive: () =>
         retry(
           async () => {
-            const result = await client.callTool(
+            const result = await (await getClient()).callTool(
               { name, arguments: args },
               undefined,
               {
@@ -110,8 +162,8 @@ async function cachedPrRead(
             isRetriable: (err) => !isRateLimitError(err),
           },
         ),
-      // A background revalidation runs on `client` AFTER this call returns the
-      // stale value — so the caller must keep the client open until it settles.
+      // A background revalidation calls `getClient` AFTER this returns the stale
+      // value — so the caller must keep the client open until it settles.
       onRevalidation: (promise) => pending.push(promise),
     });
     return toolResultJson(raw);
@@ -563,14 +615,14 @@ function isFailingRun(r: RawCheckRun): boolean {
 /** Fetch a check-run's output markdown via the github MCP `GET_CHECK_RUN` tool
  *  (the list tool omits `output`). Best-effort: null on any failure. */
 async function fetchCheckRunSummary(
-  client: Awaited<ReturnType<typeof clientFromConnection>>,
+  getClient: GetPrClient,
   connectionId: string,
   pr: TaskBoardItemPrRef,
   checkRunId: number,
   pending: Promise<void>[],
 ): Promise<string | null> {
   const obj = await cachedPrRead(
-    client,
+    getClient,
     connectionId,
     "GET_CHECK_RUN",
     { owner: pr.repoOwner, repo: pr.repoName, checkRunId },
@@ -714,7 +766,7 @@ export async function fetchPrConflict(
  *  differ in which they post to), merged into one checks summary, plus the deco
  *  deploy preview URL. Best-effort: any failure yields nulls. */
 async function fetchPrStatusExtras(
-  client: Awaited<ReturnType<typeof clientFromConnection>>,
+  getClient: GetPrClient,
   connectionId: string,
   pr: TaskBoardItemPrRef,
   pending: Promise<void>[],
@@ -726,7 +778,7 @@ async function fetchPrStatusExtras(
 }> {
   const read = (method: "get_status" | "get_check_runs" | "get_comments") =>
     cachedPrRead(
-      client,
+      getClient,
       connectionId,
       "pull_request_read",
       {
@@ -766,7 +818,7 @@ async function fetchPrStatusExtras(
     if (headSha) {
       previewUrl = extractPreviewUrlFromDeployment(
         await cachedPrRead(
-          client,
+          getClient,
           connectionId,
           "GET_PREVIEW_DEPLOYMENT",
           { owner: pr.repoOwner, repo: pr.repoName, sha: headSha },
@@ -788,7 +840,7 @@ async function fetchPrStatusExtras(
         summary:
           isFailingRun(r) && r.id != null
             ? await fetchCheckRunSummary(
-                client,
+                getClient,
                 connectionId,
                 pr,
                 r.id,
@@ -881,8 +933,8 @@ async function fetchPrLiveState(
     name: pr.repoName,
   });
   if (!conn) return NO_LIVE_STATE;
-  const client = await clientFromConnection(conn, ctx, true);
-  // Background revalidations started by the read cache below run on `client`,
+  const { get: getClient, closeWhenIdle } = lazyPrClient(conn, ctx);
+  // Background revalidations started by the read cache below run on the client,
   // so it may not be closed until they settle — see the `finally`.
   const pending: Promise<void>[] = [];
   try {
@@ -892,7 +944,7 @@ async function fetchPrLiveState(
     // wastes the extras, but that's rare here and best-effort.
     // One `get`, shared: it populates the PR fields and feeds the deployment preview its head sha (stable, unlike the flakier `get_status`).
     const prGet = cachedPrRead(
-      client,
+      getClient,
       conn.id,
       "pull_request_read",
       {
@@ -906,7 +958,7 @@ async function fetchPrLiveState(
     );
     const [obj, extras] = await Promise.all([
       prGet,
-      fetchPrStatusExtras(client, conn.id, pr, pending, prGet),
+      fetchPrStatusExtras(getClient, conn.id, pr, pending, prGet),
     ]);
     if (!obj) return NO_LIVE_STATE;
     const rawState = obj.state;
@@ -928,13 +980,7 @@ async function fetchPrLiveState(
   } catch {
     return NO_LIVE_STATE;
   } finally {
-    // Close only once the background revalidations are done, and do NOT await
-    // that here — the whole point of serving a stale value is to return without
-    // waiting on GitHub. Closing eagerly (which this did) killed every
-    // revalidation the moment it started, so a cached entry could never
-    // refresh: a PR read before its deploy comment existed showed no preview
-    // and no checks until the entry aged out half an hour later.
-    void Promise.allSettled(pending).then(() => client.close().catch(() => {}));
+    closeWhenIdle(pending);
   }
 }
 
@@ -959,11 +1005,11 @@ async function fetchPrGet(
     name: pr.repoName,
   });
   if (!conn) return null;
-  const client = await clientFromConnection(conn, ctx, true);
+  const { get: getClient, closeWhenIdle } = lazyPrClient(conn, ctx);
   const pending: Promise<void>[] = [];
   try {
     return await cachedPrRead(
-      client,
+      getClient,
       conn.id,
       "pull_request_read",
       {
@@ -978,7 +1024,7 @@ async function fetchPrGet(
   } catch {
     return null;
   } finally {
-    void Promise.allSettled(pending).then(() => client.close().catch(() => {}));
+    closeWhenIdle(pending);
   }
 }
 
