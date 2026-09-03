@@ -412,6 +412,7 @@ function VersionRow({
   disabled?: boolean;
   onSelect: () => void;
 }) {
+  const t = useT();
   const row = (
     <button
       type="button"
@@ -433,7 +434,7 @@ function VersionRow({
     <Tooltip>
       <TooltipTrigger asChild>{row}</TooltipTrigger>
       <TooltipContent side="bottom" className="font-mono text-xs">
-        {branch}
+        {t("thread.branchPicker.branchTooltip", { branch })}
       </TooltipContent>
     </Tooltip>
   );
@@ -479,7 +480,7 @@ function ReleaseRow({
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="font-mono text-xs">
-          {release.branch}
+          {t("thread.branchPicker.branchTooltip", { branch: release.branch })}
         </TooltipContent>
       </Tooltip>
       <DropdownMenu>
