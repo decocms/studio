@@ -158,10 +158,9 @@ export function extractConnectionData(
       ...(Object.keys(envVars).length > 0 && { envVars }),
     };
   } else if (selectedRemote) {
-    connectionType = (getConnectionTypeLabel(selectedRemote.type) || "HTTP") as
-      | "HTTP"
-      | "SSE"
-      | "Websocket";
+    // An unrecognized remote type uppercases to a bogus label — fall back to HTTP rather than mint an invalid connection_type.
+    const label = getConnectionTypeLabel(selectedRemote.type);
+    connectionType = label === "SSE" || label === "Websocket" ? label : "HTTP";
     connectionUrl = selectedRemote.url || "";
   } else {
     // Fallback
