@@ -5,6 +5,7 @@ import {
   DEFAULT_PROJECT_SIDEBAR_VIEWS,
   PROJECT_SIDEBAR_VIEW_IDS,
   availableProjectSidebarViews,
+  defaultMainViewAfterSidebarToggle,
   effectiveProjectSidebarViews,
   isProjectNativeViewId,
   isProjectSidebarViewId,
@@ -165,6 +166,32 @@ describe("project sidebar views", () => {
       "board",
       "site-editor",
     ]);
+  });
+
+  test("falls back to Settings when the disabled sidebar view owns the main view", () => {
+    expect(
+      defaultMainViewAfterSidebarToggle({ type: "assets" }, "assets", false),
+    ).toEqual({ type: "settings" });
+
+    for (const type of ["site-editor", "preview", "content", "code"]) {
+      expect(
+        defaultMainViewAfterSidebarToggle({ type }, "site-editor", false),
+      ).toEqual({ type: "settings" });
+    }
+  });
+
+  test("preserves the main view when enabling a row or disabling another row", () => {
+    const defaultMainView = { type: "ext-apps", id: "assets" };
+
+    expect(
+      defaultMainViewAfterSidebarToggle(defaultMainView, "assets", false),
+    ).toBe(defaultMainView);
+    expect(
+      defaultMainViewAfterSidebarToggle({ type: "reports" }, "reports", true),
+    ).toEqual({ type: "reports" });
+    expect(
+      defaultMainViewAfterSidebarToggle(null, "reports", false),
+    ).toBeNull();
   });
 
   test("prefers canonical sidebar views, including explicit null and empty", () => {
