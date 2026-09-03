@@ -22,11 +22,6 @@ import {
   setOrgRepoSyncRuntime,
 } from "@/file-storage/dbos-org-repo-sync";
 import {
-  registerJiraSyncWorkflow,
-  setJiraSyncRuntime,
-} from "@/jira/dbos-jira-sync";
-import { createJiraWebhookRoutes } from "./routes/jira-webhook";
-import {
   registerTaskBoardArchiveSweepWorkflow,
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
@@ -177,7 +172,6 @@ import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-event
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { TaskBoardStorage } from "../storage/task-board";
-import { boardLanesForDb } from "../tools/task-board/board-handler";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
@@ -205,10 +199,7 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import {
-  GITHUB_READS_QUEUE,
-  JIRA_PUSH_QUEUE,
-} from "../dispatch-queue/queue-names";
+import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -1158,7 +1149,6 @@ export async function createApp(options: CreateAppOptions = {}) {
         threadId,
         orgId,
         new OrganizationBillingStorage(database.db),
-        await boardLanesForDb(database.db, orgId),
       ),
   };
 
@@ -1402,13 +1392,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
   app.route("/api/_github", githubWebhookRoutes);
-  app.route(
-    "/api/_jira",
-    createJiraWebhookRoutes({
-      db: database.db,
-      encryptionKey: getSettings().encryptionKey,
-    }),
-  );
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
@@ -1557,12 +1540,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Per-org repo syncs: same DBOS-scheduled shape, work list from the DB.
   setOrgRepoSyncRuntime({ db: database.db });
 
-  // Per-org Jira pull syncs: same shape, credentials decrypted per run.
-  setJiraSyncRuntime({
-    db: database.db,
-    encryptionKey: getSettings().encryptionKey,
-  });
-
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
@@ -1650,7 +1627,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     projectorTaskBoard,
     automationContextFactory,
     projectorBilling,
-    database.db,
   );
   if (getSettings().taskBoardReviewSweeperEnabled) {
     taskBoardReviewSweeper.start();
@@ -1709,7 +1685,6 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
-          await boardLanesForDb(database.db, orgId),
         );
         // The headless reviewer trigger used to be called here and could never
         // work: this callback runs inside a DBOS step, and the dispatch bottoms
@@ -1744,7 +1719,6 @@ export async function createApp(options: CreateAppOptions = {}) {
           runId,
           orgId,
           projectorBilling,
-          await boardLanesForDb(database.db, orgId),
         );
         // No reviewer trigger here either — see completeRunIfNotCompleted above
         // for why it cannot live in a step. `TaskBoardReviewSweeper` owns it.
@@ -1840,7 +1814,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
-  registerJiraSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
@@ -2366,19 +2339,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
-    // Board→Jira comment pushes: org partitions at concurrency 1 = posting order.
-    await DBOS.registerQueue(JIRA_PUSH_QUEUE, {
-      partitionQueue: true,
-      concurrency: 1,
-    });
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.
     // Fires now run on the partitioned queue, so these rows are orphaned;
     // deleteQueue is a no-op once they're gone. Stale gate workflows still
     // ENQUEUED from a previous version are cancelled by the reconciler.
+    // `jira-push` carried the retired board→Jira mirror; its rows are orphaned
+    // the same way.
     await Promise.allSettled(
-      ["automations-gate", "automations-global"].map((q) =>
+      ["automations-gate", "automations-global", "jira-push"].map((q) =>
         DBOS.deleteQueue(q),
       ),
     );

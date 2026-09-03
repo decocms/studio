@@ -39,62 +39,16 @@ export const settings = {
   "settings.jira.cancel": "Cancelar",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
-    "Tudo o que o board abrange é espelhado, incluindo o backlog. Epics e sub-tasks não, e os cards mostram em qual sprint estão.",
+    "O board que o Studio acompanha — um card entrando em uma de suas colunas é o que dispara a integração.",
   "settings.jira.boardPlaceholder": "Selecione um board",
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
   "settings.jira.loadingBoards": "Carregando boards…",
-  "settings.boardColumns.title": "Colunas do board",
-  "settings.boardColumns.description":
-    "As colunas são do seu tracker. Diga o que deve mover um card para cada uma, e quais delas devem colocar o agente para trabalhar.",
-  "settings.boardColumns.fieldLabel": "Colunas",
-  "settings.boardColumns.fieldDescription":
-    "O Studio move o card para cá quando a coisa que você escolher acontecer. Rodar o agente é separado: é o que o card faz ao chegar.",
-  "settings.boardColumns.moveHereWhen": "Mover cards para cá quando",
-  "settings.boardColumns.whenNever": "Nada — eu movo os cards para cá na mão",
-  "settings.boardColumns.whenRunStarts":
-    "Um run começa nele, ou um pull request é aberto",
-  "settings.boardColumns.whenRunFinishes": "O run do agente termina",
-  "settings.boardColumns.whenMergedAndSettled":
-    "Os pull requests dele mergeiam e ele fica cinco dias sem ninguém mexer",
-  "settings.boardColumns.whenRunFailsOut":
-    "Um run falha sem tentativas restantes",
-  "settings.boardColumns.addAutomation":
-    "Rodar o agente nos cards que chegarem aqui",
-  "settings.boardColumns.automationOn": "O agente roda em todo card que chega",
-  "settings.boardColumns.promptPlaceholder":
-    "Revise o diff e deixe comentários…",
-  "settings.boardColumns.promptHelp":
-    "Opcional. O título e a descrição do card sempre vão junto, então isto é a instrução, não a mensagem inteira.",
-  "settings.boardColumns.removeAriaLabel":
-    "Parar de rodar o agente em {column}",
-  "settings.boardColumns.saveFailed": "Não foi possível salvar esta coluna",
-  "settings.jira.noColumnsYet":
-    "Nenhuma coluna ainda — elas chegam na próxima sincronização.",
-  "settings.jira.mappingLabel": "Mapeamento de colunas",
-  "settings.jira.mappingDescription":
-    "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",
-  "settings.jira.dontSync": "Não sincronizar",
-  "settings.jira.columnsFailed":
-    "Não foi possível carregar as colunas do board",
-  "settings.jira.enableLabel": "Sincronização ativa",
+  "settings.jira.enabledLabel": "Integração ativa",
+  "settings.jira.enabledDescription":
+    "Enquanto desativada, os cards que se movem no board são ignorados.",
   "settings.jira.enableRequirements":
-    "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
-  "settings.jira.lastSynced": "Última sincronização {ago}",
-  "settings.jira.waitingFirstSync": "Aguardando a próxima sincronização",
-  "settings.jira.resyncAll": "Resincronizar tudo",
-  "settings.jira.resyncAllTitle": "Reler o board inteiro?",
-  "settings.jira.resyncAllQueued":
-    "Releitura solicitada — a próxima sincronização vai começá-la.",
-  "settings.jira.resyncAllDescription":
-    'O "Sincronizar agora" só puxa issues alteradas desde a última execução. Esta opção marca todas as issues do board para serem relidas — é o que você quer depois de mudar o mapeamento de status, ou quando os cards estão errados. Ela começa na próxima sincronização agendada, não agora, pode se estender por várias execuções num board grande, e nunca delega um card para um agente.',
-  "settings.jira.syncNow": "Sincronizar agora",
-  "settings.jira.syncing": "Sincronizando…",
-  "settings.jira.syncDone":
-    "Sincronizado: {created} criados, {updated} atualizados, {archived} arquivados",
-  "settings.jira.unmappedWarning":
-    "Ainda sem mapeamento: {columns}. Issue que entra numa dessas colunas \u00e9 ignorada, e o card fica parado na lane que tinha antes \u2014 escolha uma lane, ou \u201cN\u00e3o sincronizar\u201d pra dizer que \u00e9 de prop\u00f3sito.",
-  "settings.jira.syncFailed": "Falha na sincronização",
+    "Escolha um board antes de ativar a integração",
   "settings.jira.saveFailed":
     "Não foi possível salvar as configurações do Jira",
   "settings.jira.createTokenLink": "Criar um API token",

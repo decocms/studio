@@ -61,14 +61,12 @@
  */
 
 import type { StudioContextFactory } from "@/automations/fire";
-import { boardLanesForDb } from "./board-handler";
-import type { Kysely } from "kysely";
-import type { Database } from "@/storage/types";
 import type { StudioContext } from "@/core/studio-context";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  LANES,
   reviewCycleStart,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
@@ -173,9 +171,6 @@ export class TaskBoardReviewSweeper {
     private readonly taskBoard: TaskBoardStorage,
     private readonly contextFactory: StudioContextFactory,
     private readonly billing: OrganizationBillingStorage,
-    /** Resolves each card's own board — the sweep spans orgs, so the lane a
-     *  status has to match is per row, not per tick. */
-    private readonly db: Kysely<Database>,
     private readonly options: TaskBoardReviewSweeperOptions = {},
   ) {}
 
@@ -237,7 +232,7 @@ export class TaskBoardReviewSweeper {
 
   /**
    * Fail task-linked threads whose run never started, headlessly and in BOTH
-   * lanes.
+   * LANES.
    *
    * `recoverStalledTasks` already did this, but only on `TASK_BOARD_ITEM_LIST`
    * (so never without a human opening the board) and only for cards parked In
@@ -289,12 +284,7 @@ export class TaskBoardReviewSweeper {
         console.warn(
           `[task-board-review-sweeper] reacting to an unhandled failure on ${id}`,
         );
-        await reactToFailedTaskRun(
-          this.taskBoard,
-          threadId,
-          organizationId,
-          await boardLanesForDb(this.db, organizationId),
-        );
+        await reactToFailedTaskRun(this.taskBoard, threadId, organizationId);
         await refundUnproductiveTaskClaims(
           this.taskBoard,
           this.billing,
@@ -336,10 +326,9 @@ export class TaskBoardReviewSweeper {
         const item = await this.taskBoard.getById(id, organizationId);
         // Re-read before spending a run: a human may have moved or reassigned
         // the card between the scan and here, and their move wins.
-        const lanes = await boardLanesForDb(this.db, organizationId);
         if (
           !item ||
-          item.status !== lanes.progress ||
+          item.status !== LANES.progress ||
           item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
         ) {
           continue;
@@ -387,7 +376,6 @@ export class TaskBoardReviewSweeper {
             organizationId,
             attempts,
             new Date(Date.now() + REARM_DELAY_MS),
-            (await boardLanesForDb(this.db, organizationId)).progress,
           )
           .catch((rearmErr) =>
             console.error(
@@ -412,14 +400,12 @@ export class TaskBoardReviewSweeper {
     reason: string,
   ): Promise<void> {
     try {
-      const lanes = await boardLanesForDb(this.db, organizationId);
       const item = await this.taskBoard.getById(id, organizationId);
-      if (!item || item.status !== lanes.progress) return;
+      if (!item || item.status !== LANES.progress) return;
       const returned = await this.taskBoard.returnToTodoAfterFailure(
         id,
         organizationId,
         item.updatedBy,
-        lanes,
       );
       if (!returned) return;
       await this.taskBoard
@@ -492,8 +478,7 @@ export class TaskBoardReviewSweeper {
     // Re-check against the fresh row: `listItemsPendingReview` scanned a
     // possibly-stale snapshot, and a human can bounce the card between that scan
     // and this reconcile.
-    const lanes = await boardLanesForDb(this.db, organizationId);
-    if (!inReviewPhase(item, lanes.review)) return false;
+    if (!inReviewPhase(item)) return false;
     // Everything below EXCEPT the merge retry needs the Super Agent to still own
     // the card — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own
     // `enqueueEnabledReviewers` call. A handed-off card burns no agent runs, but

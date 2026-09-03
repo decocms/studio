@@ -21,7 +21,11 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { DEFAULT_TASK_TYPE, DELIVERY_LANES } from "@decocms/shared/task-board";
+import {
+  DEFAULT_TASK_TYPE,
+  DELIVERY_LANES,
+  LANES,
+} from "@decocms/shared/task-board";
 import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
@@ -280,13 +284,7 @@ export class TaskBoardStorage {
       .limit(limit)
       .execute();
 
-    const items = rows.map((row) => this.itemFromDbRow(row));
-    /** Jira keys specifically, and not the other refs: `itemFromDbRow` hardcodes
-     *  `jiraIssueKey: null` because the link lives in its own table, and callers
-     *  derive a card's DISPLAY key from it. Without this a synced card is
-     *  reported and addressed as ACME-07 instead of the EX-333 everyone uses. */
-    if (items.length > 0) await this.attachJiraKeys(this.db, items);
-    return items;
+    return rows.map((row) => this.itemFromDbRow(row));
   }
 
   async getById(
@@ -311,10 +309,6 @@ export class TaskBoardStorage {
     title: string;
     description?: string | null;
     status?: string;
-    /** Set to the org id when the card's status names a row in
-     *  `task_board_columns`, which is what wakes the optional foreign key.
-     *  Null while the status is one of Studio's own lanes. */
-    boardColumnOrg?: string | null;
     priority?: TaskBoardItemPriority;
     type?: TaskBoardItemType;
     assigneeId?: string | null;
@@ -322,8 +316,6 @@ export class TaskBoardStorage {
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
     dueDate?: string | null;
-    /** Sprint the card belongs to (`TaskBoardSprint.id`); null/absent = backlog. */
-    sprintId?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
     /** Link to the card's issue in the tracker it came from. */
@@ -350,14 +342,12 @@ export class TaskBoardStorage {
           title: params.title,
           description: params.description ?? null,
           status,
-          board_column_org: params.boardColumnOrg ?? null,
           priority: params.priority ?? "medium",
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
           due_date: params.dueDate ?? null,
-          sprint_id: params.sprintId ?? null,
           external_key: params.externalKey ?? null,
           external_url: params.externalUrl ?? null,
           sort_order: sql<number>`(
@@ -399,17 +389,12 @@ export class TaskBoardStorage {
       title?: string;
       description?: string | null;
       status?: string;
-      /** Set to the org id when the card's status names a row in
-       *  `task_board_columns`, which is what wakes the optional foreign key.
-       *  Null while the status is one of Studio's own lanes. */
-      boardColumnOrg?: string | null;
       priority?: TaskBoardItemPriority;
       type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
       dueDate?: string | null;
-      sprintId?: string | null;
       externalUrl?: string | null;
       sortOrder?: number;
     },
@@ -433,12 +418,8 @@ export class TaskBoardStorage {
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
-        ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
         ...(data.externalUrl !== undefined
           ? { external_url: data.externalUrl }
-          : {}),
-        ...(data.boardColumnOrg !== undefined
-          ? { board_column_org: data.boardColumnOrg }
           : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
@@ -738,25 +719,7 @@ export class TaskBoardStorage {
       .where((eb) =>
         eb.or([
           eb("review_cycle_started_at", "is not", null),
-          // The card's OWN board's review column. A pre-filter across orgs
-          // cannot be handed one lane — every row may belong to a different
-          // board — so it reads the same rows the handler reads. An org on
-          // Studio's board has no rows here at all, which is why the literal
-          // stays beside it rather than being replaced by it.
-          eb("status", "=", "in_review"),
-          eb(
-            "status",
-            "in",
-            eb
-              .selectFrom("task_board_columns as c")
-              .select("c.key")
-              .whereRef(
-                "c.organization_id",
-                "=",
-                "task_board_items.organization_id",
-              )
-              .where("c.role", "=", "in_review"),
-          ),
+          eb("status", "=", LANES.review),
         ]),
       )
       .where("dismissed_at", "is", null);
@@ -982,17 +945,13 @@ export class TaskBoardStorage {
     organizationId: string,
     attempts: number,
     retryAt: Date,
-    /** This board's in-progress column. Null means the board has none, so
-     *  there is no card to schedule a retry for. */
-    progressLane: string | null,
   ): Promise<boolean> {
-    if (progressLane === null) return false;
     const rows = await this.db
       .updateTable("task_board_items")
       .set({ retry_at: retryAt, retry_attempts: attempts })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", progressLane)
+      .where("status", "=", LANES.progress)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -1010,16 +969,11 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     updatedBy: string,
-    /** Where the card is coming from and going to on THIS board. Either being
-     *  null means the board cannot express this move, so it does not happen —
-     *  the run's failure is still on the card's timeline either way. */
-    lanes: { progress: string | null; queue: string | null },
   ): Promise<TaskBoardItem | null> {
-    if (lanes.progress === null || lanes.queue === null) return null;
     const rows = await this.db
       .updateTable("task_board_items")
       .set({
-        status: lanes.queue,
+        status: LANES.queue,
         retry_at: null,
         retry_attempts: 0,
         updated_by: updatedBy,
@@ -1027,7 +981,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", lanes.progress)
+      .where("status", "=", LANES.progress)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -1419,7 +1373,6 @@ export class TaskBoardStorage {
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
     organizationId: string,
-    lanes: { progress: string | null; review: string | null },
   ): Promise<TaskBoardItem[]> {
     const moved: TaskBoardItem[] = [];
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
@@ -1463,7 +1416,6 @@ export class TaskBoardStorage {
         const opened = await this.openReviewCycleIfInProgress(
           taskId,
           organizationId,
-          lanes,
         );
         if (!opened) continue;
         moved.push(opened);
@@ -1511,14 +1463,10 @@ export class TaskBoardStorage {
   async openReviewCycleIfInProgress(
     id: string,
     organizationId: string,
-    lanes: { progress: string | null; review: string | null },
   ): Promise<TaskBoardItem | null> {
-    // No in-progress column: the review still happens, the card just stays put.
-    if (lanes.progress === null) return null;
-    const reviewLane = lanes.review;
     const row = await this.db
       .updateTable("task_board_items")
-      .set({ review_cycle_started_at: new Date(), status: lanes.progress })
+      .set({ review_cycle_started_at: new Date(), status: LANES.progress })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       // In Review is in here because the PR link can LOSE THE RACE to the
@@ -1540,15 +1488,11 @@ export class TaskBoardStorage {
       // statement — a separate flip could interleave with the sweeper's read.
       .where((eb) =>
         eb.or([
-          eb("status", "=", lanes.progress),
-          ...(reviewLane === null
-            ? []
-            : [
-                eb.and([
-                  eb("status", "=", reviewLane),
-                  eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
-                ]),
-              ]),
+          eb("status", "=", LANES.progress),
+          eb.and([
+            eb("status", "=", LANES.review),
+            eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
+          ]),
         ]),
       )
       .where("review_cycle_started_at", "is", null)
@@ -1672,9 +1616,8 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     by: string,
-    lanes: { review: string | null; progress: string | null },
   ): Promise<TaskBoardItem | null> {
-    return this.claimInReviewSuperAgentSlot(id, organizationId, by, lanes);
+    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
   }
 
   /**
@@ -1689,16 +1632,11 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     by: string,
-    /** The fence's two ends on THIS board. Either being null means the board
-     *  cannot express the claim, so nobody wins it — which reads to the caller
-     *  as "another trigger got there first", the same as losing the race. */
-    lanes: { review: string | null; progress: string | null },
   ): Promise<TaskBoardItem | null> {
-    if (lanes.review === null || lanes.progress === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
-        status: lanes.progress,
+        status: LANES.progress,
         // The claim exists to put the card back in the Super Agent's hands to
         // fix something, so the review that just ended is over. Cleared in the
         // SAME statement as the flip: a separate write could lose the race with
@@ -1710,7 +1648,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", lanes.review)
+      .where("status", "=", LANES.review)
       .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .returningAll()
       .executeTakeFirst();
@@ -1724,12 +1662,10 @@ export class TaskBoardStorage {
    * Atomically claim an unassigned To Do card for the Super Agent, returning
    * the updated item to the single winner and null to everyone else.
    *
-   * The Jira pull's auto-delegate is the caller, and it has three triggers that
-   * can overlap on the same issue: the 10-minute cron, a webhook wake-up (whose
-   * debounce is per-pod, so replicas don't coordinate), and a manual
-   * `JIRA_SYNC_RUN`. A read-then-write would let two of them each dispatch a
-   * paid Super Agent run on the same card — two threads, two PRs. Same atomic
-   * conditional-UPDATE pattern as `claimInReviewSuperAgentSlot`.
+   * A column rule's caller can fire more than once for one card — a drag and a
+   * re-fired event overlapping — and a read-then-write would let two of them
+   * each dispatch a paid Super Agent run on the same card: two threads, two
+   * PRs. Same atomic conditional-UPDATE pattern as `claimInReviewSuperAgentSlot`.
    */
   async claimUnassignedForSuperAgent(
     id: string,
@@ -1771,7 +1707,7 @@ export class TaskBoardStorage {
    * against: that decision is made from a card snapshot taken before an LLM
    * call, so by the time it lands a human may have dragged the card to Done or
    * a reviewer may have moved it on. Replaying the stale advance would drag a
-   * finished card back to In Progress — the very regression `canAdvance`
+   * finished card back to In Progress — the very regression `atOrBefore`
    * exists to prevent. Losing the race returns null and the caller leaves the
    * live card alone. One statement, so the status and the claim can't disagree.
    */
@@ -1859,7 +1795,6 @@ export class TaskBoardStorage {
       Promise.all([
         this.attachThreads(db, items, organizationId),
         this.attachTags(db, items),
-        this.attachJiraKeys(db, items),
         this.attachReviewVerdicts(db, items),
       ]),
     );
@@ -1987,32 +1922,6 @@ export class TaskBoardStorage {
 
   /** Populate each item's `tags`, name ascending. One batched query. Items are
    *  already org-scoped by the caller, so the join needs no org filter. */
-  /**
-   * Populate each item's `jiraIssueKey` — the key the issue wears in the
-   * tracker, which is what people say out loud about a synced card.
-   *
-   * One batched query, not a join on the item read: the link is one-to-one but
-   * lives in its own table, and every other ref on a card is attached here for
-   * the same reason. Cards Studio owns have no row and stay null.
-   */
-  private async attachJiraKeys(
-    db: Kysely<Database>,
-    items: TaskBoardItem[],
-  ): Promise<void> {
-    const ids = items.map((i) => i.id);
-
-    const rows = await db
-      .selectFrom("task_board_item_jira_links")
-      .select(["item_id as itemId", "jira_issue_key as jiraIssueKey"])
-      .where("item_id", "in", ids)
-      .execute();
-
-    const byItem = new Map(rows.map((row) => [row.itemId, row.jiraIssueKey]));
-    for (const item of items) {
-      item.jiraIssueKey = byItem.get(item.id) ?? null;
-    }
-  }
-
   private async attachTags(
     db: Kysely<Database>,
     items: TaskBoardItem[],
@@ -2490,7 +2399,6 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     repo: string | null;
     due_date: string | Date | null;
-    sprint_id?: string | null;
     external_url?: string | null;
     sort_order: number;
     key_seq: number;
@@ -2516,7 +2424,6 @@ export class TaskBoardStorage {
         row.due_date instanceof Date
           ? row.due_date.toISOString()
           : row.due_date,
-      sprintId: row.sprint_id ?? null,
       externalUrl: row.external_url ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
@@ -2526,7 +2433,6 @@ export class TaskBoardStorage {
           ? row.review_cycle_started_at.toISOString()
           : (row.review_cycle_started_at ?? null),
       // Populated by attachRefs for reads; null/empty for a fresh create.
-      jiraIssueKey: null,
       threads: [],
       tags: [],
       reviewVerdicts: [],

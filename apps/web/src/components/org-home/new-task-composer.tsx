@@ -15,12 +15,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
+import {
+  CANONICAL_COLUMN_KEYS,
+  type CanonicalColumnKey,
+} from "@decocms/shared/task-board";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { AgentAvatar } from "@/components/agent-icon";
-import {
-  useBoardColumns,
-  useTaskBoardItemActions,
-} from "@/hooks/use-task-board-items";
+import { useTaskBoardItemActions } from "@/hooks/use-task-board-items";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import {
   PRIORITIES,
@@ -103,13 +104,12 @@ export function NewTaskComposer() {
   const t = useT();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<CanonicalColumnKey | null>(null);
   const [priority, setPriority] = useState<TaskBoardItemPriority | null>(null);
   const [type, setType] = useState<TaskBoardItemType | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   const { repo, project } = useProjectScope();
-  const columns = useBoardColumns();
   const actions = useTaskBoardItemActions();
 
   const trimmed = title.trim();
@@ -156,7 +156,7 @@ export function NewTaskComposer() {
     );
   };
 
-  const lane = status ? laneHeader(status, t, columns) : null;
+  const lane = status ? laneHeader(status, t) : null;
   const LaneIcon = lane?.visual.icon;
   const priorityConfig = priority ? PRIORITY_CONFIG[priority] : null;
   const PriorityIcon = priorityConfig?.icon;
@@ -224,18 +224,16 @@ export function NewTaskComposer() {
             ) : null
           }
         >
-          {columns.map((column) => {
-            const header = laneHeader(column.key, t, columns);
+          {CANONICAL_COLUMN_KEYS.map((column) => {
+            const header = laneHeader(column, t);
             return (
               <OptionRow
-                key={column.key}
+                key={column}
                 icon={header.visual.icon}
                 iconClassName={header.visual.iconClassName}
                 label={header.label}
-                selected={status === column.key}
-                onSelect={() =>
-                  setStatus(status === column.key ? null : column.key)
-                }
+                selected={status === column}
+                onSelect={() => setStatus(status === column ? null : column)}
               />
             );
           })}

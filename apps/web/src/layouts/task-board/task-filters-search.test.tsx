@@ -42,7 +42,6 @@ describe("task filter options — searchable value matches the displayed label",
         members={[]}
         tags={[]}
         repos={[]}
-        sprints={[]}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -62,7 +61,6 @@ describe("task filter options — searchable value matches the displayed label",
         members={[]}
         tags={[]}
         repos={["acme/site"]}
-        sprints={[]}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -88,7 +86,6 @@ describe("search toggle — collapses when cleared externally", () => {
         members={[]}
         tags={[]}
         repos={[]}
-        sprints={[]}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -103,7 +100,6 @@ describe("search toggle — collapses when cleared externally", () => {
         members={[]}
         tags={[]}
         repos={[]}
-        sprints={[]}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -119,7 +115,6 @@ describe("search toggle — collapses when cleared externally", () => {
         members={[]}
         tags={[]}
         repos={[]}
-        sprints={[]}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,
@@ -134,7 +129,6 @@ describe("search toggle — collapses when cleared externally", () => {
         members={[]}
         tags={[]}
         repos={[]}
-        sprints={[]}
         onChange={() => {}}
         onOpenBoardSettings={() => {}}
       />,

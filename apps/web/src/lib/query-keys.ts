@@ -41,8 +41,6 @@ export const KEYS = {
     [locator, "task-board-items"] as const,
   /** The rules a board runs when a card lands in a column — not the
    *  event/cron automations, which key off `automations`. */
-  taskBoardColumnAutomations: (locator: ProjectLocator) =>
-    ["taskBoardColumnAutomations", locator] as const,
 
   // A task's linked pull requests (live state fetched from GitHub)
   taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>
@@ -514,8 +512,6 @@ export const KEYS = {
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
   jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,
-  jiraBoardColumns: (orgId: string, boardId: string) =>
-    ["jira-board-columns", orgId, boardId] as const,
   // Cross-volume recent-files feed (Library home). Separate root key so a
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.

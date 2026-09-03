@@ -177,9 +177,9 @@ export const GLOBAL_SEARCH = defineTool({
           title: task.title ?? "",
           created_at: toIso(task.createdAt),
           updated_at: toIso(task.updatedAt),
-          /** Derived, not stored — and a synced card wears its tracker's key. */
+          /** Derived, not stored. */
           key: organization.slug
-            ? taskKey(organization.slug, task.keySeq, task.jiraIssueKey)
+            ? taskKey(organization.slug, task.keySeq)
             : null,
           status: task.status ?? null,
           repo: task.repo ?? null,

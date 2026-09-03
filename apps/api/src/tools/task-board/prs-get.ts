@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { maybeEnqueueJiraRemoteLinkPush } from "@/jira/dbos-jira-sync";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
@@ -8,6 +7,7 @@ import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import {
+  LANES,
   shippedLane,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
@@ -15,7 +15,6 @@ import { retry, RetryError } from "@decocms/shared/std";
 import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { cardWorkLanded } from "./archive-merged";
-import { boardFor, boardLanes, shippedPatch } from "./board-handler";
 import { recordTaskActivity } from "./activity";
 import { inReviewPhase, movesForward } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -1210,11 +1209,11 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     // poll. Gated on assignee === Super Agent so it never fires for a human's
     // manual review; `enqueueEnabledReviewers` is itself idempotent per reviewer
     // per review cycle, so re-polling won't spawn duplicate reviewer runs.
-    const reviewLane = (await boardLanes(ctx, organizationId)).review;
+    const reviewLane = LANES.review;
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
     if (
       item &&
-      inReviewPhase(item, reviewLane) &&
+      inReviewPhase(item) &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       prReadyForReview(prs)
     ) {
@@ -1272,11 +1271,10 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
             organizationId,
           ))
         ) {
-          const board = await boardFor(ctx, organizationId);
           const updated = await ctx.storage.taskBoard.update(
             taskBoardItemId,
             organizationId,
-            shippedPatch(board, shipped),
+            { status: shipped },
             item.updatedBy,
           );
           // Every other path that moves a card to Done (the review-decision
@@ -1295,20 +1293,6 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       } catch (err) {
         console.error("[task-board] merged-PR reconcile failed", err);
       }
-    }
-
-    // The PR and its deploy preview as Jira web links. Here because this is
-    // where a preview URL is resolved anyway — the reviewer polls this tool
-    // while waiting for the deploy — so the push costs no extra GitHub call.
-    // Enqueue dedupes on the URLs, so repeated views are free.
-    for (const pr of prs) {
-      maybeEnqueueJiraRemoteLinkPush({
-        organizationId,
-        taskBoardItemId,
-        prUrl: pr.url,
-        prNumber: pr.number,
-        previewUrl: pr.previewUrl,
-      });
     }
 
     return { prs };

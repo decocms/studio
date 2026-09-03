@@ -14,15 +14,9 @@
  */
 
 import { generateObject } from "ai";
-import type { BoardColumn } from "@decocms/shared/task-board";
-import {
-  type BoardLanes,
-  boardCan,
-  boardFor,
-  canAdvance,
-} from "./board-handler";
+import { atOrBefore } from "./lanes";
 import { z } from "zod";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardStorage } from "@/storage/task-board";
@@ -137,28 +131,9 @@ export async function applyBoardDecision(
     decision: BoardDecision;
     /** The card set the decision was made against (this org's), for taskId validation. */
     openCards: TaskBoardItem[];
-    /** This org's board lanes. */
-    lanes: BoardLanes;
-    /** Its columns, in the board's own order — what decides whether a card has
-     *  already got past the lane a PR-open would move it to. */
-    columns: readonly BoardColumn[];
-    /** What a freshly-created card's `board_column_org` must carry — see
-     *  {@link BoardHandler.columnOwner}. Null wakes nothing; the org id wakes
-     *  the FK guard for a board whose lanes are the org's own columns. */
-    columnOwner: string | null;
   },
 ): Promise<TaskBoardItem | null> {
-  const {
-    orgId,
-    userId,
-    threadId,
-    pr,
-    decision,
-    openCards,
-    lanes,
-    columns,
-    columnOwner,
-  } = params;
+  const { orgId, userId, threadId, pr, decision, openCards } = params;
 
   const linkPr = (taskBoardItemId: string) =>
     storage.linkPr({
@@ -179,20 +154,10 @@ export async function applyBoardDecision(
   let item: TaskBoardItem | null;
   if (target) {
     // Enter the review phase only from an earlier lane; never regress a finished
-    // card — and only onto a lane this board HAS. A null `advanceTo` is
-    // "nowhere to advance to", and skips the claim and the review cycle with it.
-    const progressLane = lanes.progress;
-    // The LANE, not a boolean: `boardCan` narrows `progressLane` inside this
-    // expression, and a boolean would not carry that to the write below.
-    const advanceTo =
-      boardCan(
-        orgId,
-        "in_progress",
-        progressLane,
-        "moving a card when its PR opens",
-      ) && canAdvance(columns, target.status, progressLane)
-        ? progressLane
-        : null;
+    // card. A null `advanceTo` skips the claim and the review cycle with it.
+    const advanceTo = atOrBefore(target.status, LANES.progress)
+      ? LANES.progress
+      : null;
     // In Progress, not In Review: a reviewer is about to work on this PR, and
     // In Review is what the board says once it is a person's turn. The open
     // cycle below is what puts it on the reviewer's work list. The move also
@@ -210,7 +175,7 @@ export async function applyBoardDecision(
             userId,
           );
     if (advanced) {
-      await storage.openReviewCycleIfInProgress(target.id, orgId, lanes);
+      await storage.openReviewCycleIfInProgress(target.id, orgId);
     }
     // Lost the race (or nowhere to advance): link the PR onto the card as it
     // now stands rather than dropping the whole reaction.
@@ -220,16 +185,12 @@ export async function applyBoardDecision(
     item = await storage.create({
       organizationId: orgId,
       title: decision.title?.trim() || `PR #${pr.number}`,
-      // A card born mid-review with no in-progress column starts at intake —
-      // the one lane every board has.
-      status: lanes.progress ?? lanes.intake,
-      // Same `{ status, boardColumnOrg }` pairing `shippedPatch` enforces elsewhere.
-      boardColumnOrg: columnOwner,
+      status: LANES.progress,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
       by: userId,
     });
-    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId, lanes);
+    if (item) await storage.openReviewCycleIfInProgress(item.id, orgId);
   }
   if (!item) return null;
 
@@ -270,18 +231,9 @@ export async function reactToPrOpenedForBoard(
     const pr = extractPrFromValue(source);
     if (!pr) return;
 
-    // Resolved up front: an org-owned board's archive column isn't literally "archived".
-    const board = await boardFor(ctx, orgId);
-    const lanes = await board.lanes();
-
     const cards = await ctx.storage.taskBoard.list(orgId);
     const openCards = cards
-      .filter(
-        (t) =>
-          t.status !== "done" &&
-          t.status !== "archived" &&
-          t.status !== lanes.archive,
-      )
+      .filter((t) => t.status !== "done" && t.status !== LANES.archive)
       .slice(0, MAX_OPEN_CARDS_FOR_DECISION);
     const thread = await ctx.storage.threads.get(threadId);
 
@@ -295,9 +247,6 @@ export async function reactToPrOpenedForBoard(
     if (!decision) return;
 
     await applyBoardDecision(ctx.storage.taskBoard, {
-      lanes,
-      columns: await board.columns(),
-      columnOwner: board.columnOwner(),
       orgId,
       userId,
       threadId,

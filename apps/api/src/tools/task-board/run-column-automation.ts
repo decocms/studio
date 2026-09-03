@@ -1,26 +1,19 @@
 /**
  * "When a card lands in this column, run the agent."
  *
- * The rule lives on the column (`task_board_column_automations`), so this is
- * the same act however the card arrived: the Jira pull moving it, or a person
- * dragging it. Both funnel here so a column cannot mean one thing to the sync
- * and another to the board.
- *
- * The card's OWN column is the fence, not a fixed lane. A rule on any column
- * has to claim the card sitting in that column, or a rule on anything but the
- * queue lane could never win — which is exactly what the Jira path did before
- * this was shared.
+ * The rule lives on the column (`task_board_column_automations`). The card's
+ * OWN column is the fence, not a fixed lane: a rule on any column has to claim
+ * the card sitting in that column, or a rule on anything but the queue lane
+ * could never win.
  */
 
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { boardAutomationFor } from "./board-handler";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 
 export interface ColumnAutomationRun {
-  /** Who the card is delegated to and attributed to. The Jira pull runs as the
-   *  integration's creator; a person's drag runs as that person. */
+  /** Who the card is delegated to and attributed to. */
   assignedBy: string;
   /** Actor recorded on the write. Null for the machine. */
   actor: string;
@@ -46,7 +39,10 @@ export async function runColumnAutomation(
 ): Promise<TaskBoardItem> {
   if (item.assigneeId) return item;
   const orgId = item.organizationId;
-  const automation = await boardAutomationFor(ctx, orgId, item.status);
+  const automation = await ctx.storage.columnAutomations.get(
+    orgId,
+    item.status,
+  );
   if (!automation) return item;
 
   const delegated = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(

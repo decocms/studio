@@ -22,14 +22,6 @@ import {
 import { TaskBoardStorage } from "./task-board";
 
 /** Studio's own board, which is what these fixtures run on. */
-const CANON_LANES = {
-  intake: "triage",
-  queue: "todo",
-  progress: "in_progress",
-  review: "in_review",
-  archive: "archived",
-};
-
 const ORG = "org_retry_dismissed";
 const USER = "user_retry_dismissed";
 
@@ -74,7 +66,6 @@ describe("scheduleRunRetry / returnToTodoAfterFailure (real Postgres)", () => {
       ORG,
       1,
       new Date(Date.now() + 1000),
-      CANON_LANES.progress,
     );
 
     expect(scheduled).toBe(true);
@@ -96,7 +87,6 @@ describe("scheduleRunRetry / returnToTodoAfterFailure (real Postgres)", () => {
       ORG,
       1,
       new Date(Date.now() + 1000),
-      CANON_LANES.progress,
     );
 
     expect(scheduled).toBe(false);
@@ -114,7 +104,6 @@ describe("scheduleRunRetry / returnToTodoAfterFailure (real Postgres)", () => {
       task.id,
       ORG,
       USER,
-      CANON_LANES,
     );
 
     expect(returned?.status).toBe("todo");
@@ -134,7 +123,6 @@ describe("scheduleRunRetry / returnToTodoAfterFailure (real Postgres)", () => {
       task.id,
       ORG,
       USER,
-      CANON_LANES,
     );
 
     expect(returned).toBeNull();

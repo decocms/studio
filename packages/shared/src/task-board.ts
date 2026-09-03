@@ -208,31 +208,37 @@ export const CANONICAL_COLUMN_KEYS = [
 export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
 
 /**
- * A board column as every surface reads it.
+ * The columns Studio's lifecycle gives meanings to, by meaning.
  *
- * `key` is the value a card's `status` holds. `role` is what automation keys
- * on, and is nullable because a board mirrored from someone else's tracker
- * will have columns nobody assigned a meaning to — null has to mean "nothing
- * automatic happens here", not a guess.
+ * Named so the writers and SQL predicates that move cards say what they mean
+ * (`LANES.review`) rather than repeating the literal at each site.
  */
+export const LANES = {
+  /** Where a card is born. */
+  intake: "triage",
+  /** Queued for the agent to pick up — the claim's starting line. */
+  queue: "todo",
+  /** Being worked on. */
+  progress: "in_progress",
+  /** Waiting on review. */
+  review: "in_review",
+  /** Retired. */
+  archive: "archived",
+} as const satisfies Record<string, CanonicalColumnKey>;
+
+/** A board column as every surface reads it. `key` is the value a card's
+ *  `status` holds. */
 export interface BoardColumn {
   key: string;
   title: string;
   position: number;
-  role: string | null;
-  /**
-   * The tracker statuses this column groups, in the tracker's own order.
-   *
-   * A tracker's board column is a bucket of statuses, not a status. The pull
-   * does not care — an issue has one status, which sits in one column — but
-   * the push cannot move without this: "the card is in Em andamento" does not
-   * say which of that column's statuses the issue should become, and the
-   * answer is whichever its workflow can reach.
-   *
-   * Empty for a column Studio defines, which mirrors nothing.
-   */
-  trackerStatuses: string[];
 }
+
+/** The board's columns, left to right. `title` is the key: the client
+ *  translates it, being the only place that knows the reader's language. */
+export const CANONICAL_COLUMNS: BoardColumn[] = CANONICAL_COLUMN_KEYS.map(
+  (key, position) => ({ key, title: key, position }),
+);
 
 export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
 
