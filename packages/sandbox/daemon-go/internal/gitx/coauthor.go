@@ -37,6 +37,30 @@ func stripCoAuthorTrailers(message string) string {
 	return strings.TrimRight(strings.Join(kept, "\n"), " \t\r\n")
 }
 
+// CommitAttribution decides how a commit is attributed to the operator (the
+// human who triggered it — the thread owner / publisher). Git's committer stays
+// the configured bot identity; only the Author changes.
+//
+//   - operator has a valid name AND email → they become the git Author via
+//     `--author`, and the now-redundant Co-authored-by trailer is dropped
+//     (a commit authored by X should not also list X as a co-author).
+//   - otherwise → we cannot form a valid `--author`, so we fall back to the
+//     Co-authored-by trailer so attribution is never lost.
+//
+// Returns the (possibly rewritten) commit message and the extra `git commit`
+// args to splice in before `-m` (empty when there is no valid author).
+func CommitAttribution(message string, operator *CoAuthorIdentity) (msg string, authorArgs []string) {
+	var normalized *CoAuthorIdentity
+	if operator != nil {
+		normalized = NormalizeCoAuthorIdentity(operator.UserName, operator.UserEmail)
+	}
+	if normalized != nil && normalized.UserEmail != "" {
+		author := normalized.UserName + " <" + normalized.UserEmail + ">"
+		return stripCoAuthorTrailers(message), []string{"--author", author}
+	}
+	return AppendCoAuthorTrailer(message, operator), nil
+}
+
 func AppendCoAuthorTrailer(message string, operator *CoAuthorIdentity) string {
 	if operator == nil {
 		return message
