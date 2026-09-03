@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from "bun:test";
 import {
+  AgentKickstartPromptSchema,
   SandboxMapSchema,
   VirtualMCPEntitySchema,
   VirtualMCPCreateDataSchema,
@@ -12,6 +13,24 @@ import {
   resolveCmsMode,
   withCmsMode,
 } from "./virtual-mcp";
+
+describe("AgentKickstartPromptSchema", () => {
+  it("rejects a text longer than 4000 chars", () => {
+    const result = AgentKickstartPromptSchema.safeParse({
+      title: "Say hi",
+      text: "a".repeat(4001),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a text at the 4000 char boundary", () => {
+    const result = AgentKickstartPromptSchema.safeParse({
+      title: "Say hi",
+      text: "a".repeat(4000),
+    });
+    expect(result.success).toBe(true);
+  });
+});
 
 describe("withCmsMode", () => {
   it("writes the mode and drops the boolean it supersedes", () => {

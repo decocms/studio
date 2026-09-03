@@ -858,6 +858,7 @@ export const AgentKickstartPromptSchema = z.object({
   text: z
     .string()
     .min(1)
+    .max(4000)
     .describe("The message sent to the agent when the prompt is clicked"),
 });
 
