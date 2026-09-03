@@ -53,6 +53,28 @@ type RawAggregationRow = {
   created_at: Date | string;
 };
 
+/** One cross-organization search hit: enough to draw a row, no aggregations. */
+export interface CrossOrgProjectMatch {
+  id: string;
+  title: string;
+  icon: string | null;
+  metadata: Record<string, unknown> | null;
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  /** Raw `organization.metadata` JSON — carries the `archived` soft-delete
+   *  flag, which every other surface honours (`isOrgArchived`). */
+  organization_metadata: string | null;
+}
+
+/** Neutralise the wildcards a user can type. Without this a lone `%` matches
+ *  every project in every organization the caller belongs to — a search box
+ *  that dumps the account. Postgres LIKE treats backslash as the escape
+ *  character by default, so escaping it first keeps the other two honest. */
+export function escapeLikePattern(term: string): string {
+  return term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 export class VirtualMCPStorage implements VirtualMCPStoragePort {
   constructor(private db: Kysely<Database>) {}
 
@@ -133,12 +155,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     id: string,
     organizationId?: string,
   ): Promise<VirtualMCPEntity | null> {
-    // Handle Decopilot ID — Decopilot is a pure orchestrator with no
-    // aggregated tools. Every platform action goes through a Studio Pack
-    // manager (Agent / Automation / Connection / Store) via `subtask`, and
-    // every product action goes to a custom org agent the same way. The
-    // task-board tools are the exception — they're Super Agent built-ins.
-    // The model uses the <available-agents> catalog as its routing table.
+    // Handle Decopilot ID — Decopilot is a pure orchestrator with no aggregated tools.
     const decopilotOrgId = isDecopilot(id);
     if (decopilotOrgId) {
       const resolvedOrgId = organizationId ?? decopilotOrgId;
@@ -150,8 +167,6 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     }
 
     // Well-known guided-onboarding agent for the brand-context preset.
-    // System prompt lives in `metadata.instructions`; the matching
-    // built-in tool is injected by dispatchRun based on this id.
     const bcsOrgId = isBrandContextSetup(id);
     if (bcsOrgId) {
       const resolvedOrgId = organizationId ?? bcsOrgId;
@@ -195,6 +210,80 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     );
   }
 
+  /**
+   * Projects matching `term` across every organization the caller belongs
+   * to.
+   */
+  async searchAcrossMemberships(options: {
+    userId: string;
+    term: string;
+    limit: number;
+    /** Page offset. The caller drops rows it may not show (plumbing rows,
+     *  archived orgs, SSO-blocked orgs) and pages on to refill its page, so a
+     *  page full of hidden rows no longer truncates the answer. */
+    offset?: number;
+    /** Fence a credential-authenticated caller to one organization. Applied in
+     *  SQL, BEFORE `LIMIT`: filtering the page afterwards let another org's
+     *  more recent matches crowd out the fenced org's rows entirely. */
+    organizationId?: string | null;
+  }): Promise<CrossOrgProjectMatch[]> {
+    const { userId, term, limit, offset = 0, organizationId } = options;
+    const pattern = `%${escapeLikePattern(term)}%`;
+
+    let query = this.db
+      .selectFrom("connections")
+      .innerJoin("member", (join) =>
+        join
+          .onRef("member.organizationId", "=", "connections.organization_id")
+          .on("member.userId", "=", userId),
+      )
+      .innerJoin(
+        "organization",
+        "organization.id",
+        "connections.organization_id",
+      )
+      .where("connections.connection_type", "=", "VIRTUAL")
+      .where((eb) =>
+        eb.or([
+          eb("connections.title", "ilike", pattern),
+          eb("connections.description", "ilike", pattern),
+        ]),
+      );
+
+    if (organizationId) {
+      query = query.where("connections.organization_id", "=", organizationId);
+    }
+
+    const rows = await query
+      .select([
+        "connections.id as id",
+        "connections.title as title",
+        "connections.icon as icon",
+        "connections.metadata as metadata",
+        "connections.organization_id as organization_id",
+        "organization.name as organization_name",
+        "organization.slug as organization_slug",
+        "organization.metadata as organization_metadata",
+      ])
+      .orderBy("connections.updated_at", "desc")
+      .orderBy("connections.id", "asc")
+      .limit(limit)
+      .offset(offset)
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      icon: row.icon,
+      // `connections.metadata` is a TEXT column holding JSON, so the driver hands back a string: a consumer reading `metadata.liveAgentId` off the raw value always saw `undefined` and let dev-agent rows through.
+      metadata: this.parseJson<Record<string, unknown>>(row.metadata),
+      organization_id: row.organization_id,
+      organization_name: row.organization_name,
+      organization_slug: row.organization_slug,
+      organization_metadata: row.organization_metadata,
+    }));
+  }
+
   async list(
     organizationId: string,
     options?: { pinnedOnly?: boolean },
@@ -209,7 +298,14 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       query = query.where("pinned", "=", true);
     }
 
-    const rows = await query.execute();
+    /** Oldest first, id as the tiebreaker. Without an ORDER BY, Postgres
+     *  returns heap order, which an UPDATE reshuffles — so `items[0]` flapped
+     *  (it is the sidebar's display target) and `slice(offset, offset + limit)`
+     *  in the list tool could repeat one row across pages and skip another. */
+    const rows = await query
+      .orderBy("created_at", "asc")
+      .orderBy("id", "asc")
+      .execute();
 
     const virtualMcpIds = rows.map((r) => r.id);
 
@@ -426,9 +522,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
             .execute();
         }
 
-        // Clean up pinned views for removed connections after the transaction
-        // commits. If the new aggregation insert fails, the old dependencies
-        // remain intact and there is nothing to clean up.
+        // Clean up pinned views for removed connections after the transaction commits.
         const newIds = new Set(data.connections.map((c) => c.connection_id));
         for (const prevId of previousIds) {
           if (!newIds.has(prevId)) {
@@ -452,8 +546,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
 
   async delete(id: string): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
-      // Delete threads initiated with this agent. virtual_mcp_id has no DB FK,
-      // so there's no automatic cascade; thread_messages cascade via threads.id.
+      // Delete threads initiated with this agent.
       await trx
         .deleteFrom("threads")
         .where("virtual_mcp_id", "=", id)
@@ -566,9 +659,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       sandboxMap?: unknown;
     }>(row.metadata);
 
-    // Migration 091 rewrote every row to the canonical `sandboxMap` key with
-    // the strict 3-level shape; we still run it through `normalizeSandboxMap`
-    // to defend against per-row corruption without crashing the read path.
+    // Migration 091 rewrote every row to the canonical `sandboxMap` key with the strict 3-level shape;
     const { sandboxMap: rawSandboxMap, ...metadataRest } = rawMetadata ?? {};
     const normalizedSandboxMap =
       rawSandboxMap !== undefined
@@ -620,13 +711,8 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
 }
 
 /**
- * Wrap a (singleton) VirtualMCPStorage so `list` is memoized for the lifetime of
- * one request. A single MCP/decopilot request fans out to several independent
- * callers — management-tool resolution, decopilot prompt assembly — that each
- * re-read the org's virtual MCPs; without this they issue the same query 3+
- * times. Concurrent callers share the in-flight promise. Any write through this
- * wrapper clears the cache, so a mutate-then-read within the same request stays
- * correct.
+ * Wrap a (singleton) VirtualMCPStorage so `list` is memoized for the
+ * lifetime of one request.
  */
 export function createRequestCachedVirtualMcps(
   base: VirtualMCPStorage,

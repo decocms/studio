@@ -31,7 +31,6 @@ import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
 import { CreditsExhaustedBanner } from "./credits-exhausted-banner";
 import { CreditsEyebrow, NoCreditsEyebrow } from "./credits-eyebrow";
-import { DecoChatSkeleton } from "./skeleton";
 export type { VirtualMCPInfo } from "./select-virtual-mcp";
 export type { ChatMessage, ChatStatus } from "./types.ts";
 
@@ -335,7 +334,6 @@ export const Chat = Object.assign(ChatRoot, {
   Provider: ChatProvider,
   ActiveTaskProvider: ActiveTaskProvider,
   ThreadlessProvider: ThreadlessChatProvider,
-  Skeleton: DecoChatSkeleton,
   IceBreakers: IceBreakers,
   NoAiProviderEmptyState: NoAiProviderEmptyState,
   CreditsEmptyState: CreditsEmptyState,

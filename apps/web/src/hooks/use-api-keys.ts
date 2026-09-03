@@ -37,7 +37,10 @@ function unwrap<T>(result: ToolEnvelope<T>, fallbackMessage: string): T {
   return result.structuredContent;
 }
 
-export function useApiKeysList(): UseQueryResult<ApiKey[]> {
+export function useApiKeysList(options?: {
+  /** Skip the request entirely — for callers that may lack `api-keys:manage`. */
+  enabled?: boolean;
+}): UseQueryResult<ApiKey[]> {
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -55,6 +58,7 @@ export function useApiKeysList(): UseQueryResult<ApiKey[]> {
       return unwrap(result, "Failed to list API keys").items;
     },
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import {
   createRootRoute,
   createRoute,
@@ -8,8 +7,7 @@ import {
   redirect,
   retainSearchParams,
 } from "@tanstack/react-router";
-import { SplashScreen } from "@/components/splash-screen";
-import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 import {
   mainPanelSearchSchema,
   sidePanelSearchSchema,
@@ -23,16 +21,23 @@ import { listOrganizationsCached } from "@/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readLastLocation, saveLastLocation } from "@/lib/last-location";
 import { promoteLegacyTaskParam } from "@/lib/legacy-route-translation";
+import { isKnownPanelSegment } from "@/layouts/main-panel-tabs/panel-route";
 
 const rootRoute = createRootRoute({
-  // No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
-  // wraps `<RouterProvider>` in it instead, so router-level code can reach the
-  // providers too. Wrapping in both places would mount them twice.
+  /** No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
+   *  wraps `<RouterProvider>` in it instead, so router-level code can reach the
+   *  providers too. Wrapping in both places would mount them twice.
+   *
+   *  No `Suspense` of its own either: the app's ONE splash boundary is in
+   *  `providers/providers.tsx`, above `<RouterProvider>`, and a second boundary
+   *  here would mount a second `SplashScreen` the moment the first resolved —
+   *  see `layouts/boot-gate.tsx`. Every match already wraps its own component in
+   *  its `pendingComponent` (`PanelLoading` by default), so what reaches this
+   *  level is a suspension no route owns, and that belongs to the boot
+   *  boundary. */
   component: () => (
     <ChunkErrorBoundary>
-      <Suspense fallback={<SplashScreen />}>
-        <Outlet />
-      </Suspense>
+      <Outlet />
     </ChunkErrorBoundary>
   ),
 });
@@ -160,6 +165,19 @@ const adminLayoutWithChildren = adminLayout.addChildren([
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
 
+/**
+ * The authenticated wrapper. Everything the app shell itself needs — the auth
+ * wrapper, the active organization, the sidebar's chunk — resolves at or below
+ * this route, but the loader for that window is NOT here: `boot-gate.tsx` holds
+ * the app's one splash up through `router.load()`, so this match is already
+ * resolved on its first render and never goes pending during boot. That is what
+ * makes the splash a single mounted element instead of a relay.
+ *
+ * A `pendingComponent` here would therefore be a second splash, not a first
+ * one. It inherits `PanelLoading` instead, which is the right answer for the
+ * only way this match can still go pending: a post-boot re-resolution, with the
+ * shell already painted around it.
+ */
 const shellLayout = createRoute({
   getParentRoute: () => rootRoute,
   id: "shell",
@@ -290,6 +308,12 @@ const orgLayout = createRoute({
   beforeLoad: ({ params }) => {
     saveLastLocation({ org: params.org });
   },
+  /** The last route above the sidebar, and the one that mounts it. `boot-gate.tsx`
+   *  resolves this match before the router mounts, so it shows no loader during
+   *  boot; after boot `beforeLoad` is synchronous and the chunk is cached, so an
+   *  org switch resolves it well inside `defaultPendingMs`. Keep it that way —
+   *  an async loader here, or anything under `OrgLayout` that suspends, would
+   *  put a loading state back on top of a painted shell. */
   component: lazyRouteComponent(() => import("./layouts/org-layout.tsx")),
 });
 
@@ -300,6 +324,12 @@ const orgLayout = createRoute({
 const orgShellLayout = createRoute({
   getParentRoute: () => orgLayout,
   id: "org-shell",
+  /** The panel-area loader, NOT the app-wide `SplashScreen`. The sidebar is
+   *  `orgLayout`'s now, so this route's pending state covers only the inset —
+   *  without this, returning from the settings tree blanked the whole viewport
+   *  for as long as this chunk and its providers took, which is the same reason
+   *  `agentShellLayout` below sets it. */
+  pendingComponent: PanelLoading,
   component: lazyRouteComponent(
     () => import("./layouts/org-shell-layout/index.tsx"),
   ),
@@ -334,28 +364,31 @@ const workspaceLayoutSearchSchema = z.object({
   /** The open thread on a destination route. The legacy `/$org/$taskId` carries
    *  the same id in its path param instead, so nothing reads both. */
   thread: z.string().optional(),
+  /** The active project SCOPE — a filter, never a container. Declared here so
+   *  every destination inherits it and retained below so it survives
+   *  navigation; which routes RESOLVE it is answered once, in
+   *  `resolveRouteAgentId`. Only the sidebar picker writes it, never
+   *  automatically. See `hooks/use-project-scope.ts`. */
+  virtualmcpid: z.string().optional(),
 });
 
 const agentShellLayout = createRoute({
   getParentRoute: () => orgShellLayout,
   id: "agent-shell",
   validateSearch: workspaceLayoutSearchSchema,
-  /**
-   * Whether the chat panel is open follows you across the workspace: a
-   * navigation that names no `sidepanel` inherits the current one, so opening
-   * chat on one destination does not close it on the next.
+  /** `sidepanel` and `virtualmcpid` follow you across the workspace; both
+   *  describe the workspace rather than one page. NOT `main` (per-destination,
+   *  via `staticData.defaultMain`) and NOT `thread` (belongs to one project).
    *
-   * Deliberately only `sidepanel`. `main` is per-destination (each declares its
-   * own `staticData.defaultMain`, so carrying `board` onto `/library` would be
-   * wrong), and `thread` belongs to one project — retaining it would drag a
-   * conversation across a project switch.
-   */
-  search: { middlewares: [retainSearchParams(["sidepanel"])] },
+   *  Retention re-adds a key only when the next search OMITS it, so anything
+   *  that must DROP the scope has to write `virtualmcpid: undefined`
+   *  explicitly — deleting the key just invites it straight back. */
+  search: { middlewares: [retainSearchParams(["sidepanel", "virtualmcpid"])] },
   // Render the centered panel-area loader (matches the shell's own Suspense
   // fallbacks) while this route loads, instead of the full-screen SplashScreen.
   // The sidebar is already mounted by orgShellLayout, so the pending state
   // covers only the main panel region — no off-center left flash on nav.
-  pendingComponent: ShellRouteLoading,
+  pendingComponent: PanelLoading,
   component: lazyRouteComponent(
     () => import("./layouts/agent-shell-layout/index.tsx"),
   ),
@@ -432,14 +465,15 @@ const unifiedChatRoute = createRoute({
  * destination reads (board filters, the library path, the panel's own
  * parameter, the commerce hand-off) are declared on it.
  *
- * An optional segment (`{-$project}`/`{-$panel}` on agents, `{-$taskKey}` on
- * tasks) is ONE path param, not a pair of sibling routes: the param is
- * `string | undefined` and the segment simply vanishes when absent. The agents
- * route's project is the raw virtual-MCP id (`vir_*`, plus the synthetic
- * `decopilot_<orgId>` and `<orgId>_commerce-discovery`) — there is no slug and
- * no new schema. A bare `/$org/agents` means "all projects", for everyone: a
- * sidebar link may be scoped, a typed URL never is. A bare `/$org/tasks` is the
- * lanes.
+ * An optional segment (`{-$panel}` on agents, `{-$taskKey}` on tasks) is ONE
+ * path param, not a pair of sibling routes: the param is `string | undefined`
+ * and the segment simply vanishes when absent. The project is NOT a segment: it
+ * is `?virtualmcpid=`, carrying the raw virtual-MCP id (`vir_*`, plus the
+ * synthetic `decopilot_<orgId>` and `<orgId>_commerce-discovery`) — there is no
+ * slug and no new schema — because it has to mean the same thing on `/tasks`
+ * and `/library`, which have no segment to hold it. A bare `/$org/agents` with
+ * no scope means "all projects", for everyone: a sidebar link may be scoped, a
+ * typed URL never is. A bare `/$org/tasks` is the lanes.
  *
  * These routes sit under `agentShellLayout`, which renders no `<Outlet />` —
  * the page itself comes from the main-panel machinery, keyed on the resolved
@@ -460,7 +494,9 @@ const unifiedChatRoute = createRoute({
  * and `/$org` resolves into them. There is no flag and no alternate chrome.
  */
 
-/** Overview. */
+/** Home — the org's, or a scoped agent's. `staticData.defaultMain` sits above
+ *  the agent's own `defaultMainView`, so this one id has to serve both; which
+ *  face it wears is the SCOPE's answer, given in `HomeTab`. */
 const orgHomeRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/home",
@@ -473,25 +509,46 @@ const orgHomeRoute = createRoute({
   component: () => null,
 });
 
-/**
- * The agent workspace, and the view its main panel is showing.
- *
- * No project = the Super Agent (Decopilot); with one = that project's
- * workspace. The legacy `?virtualmcpid=` search param is the first segment.
- *
- * `{-$panel}` is the view: `/agents/vir_x/preview`. The eight fixed views are
- * plain words; the six kinds that carry a payload (a file path, a tool) put the
- * KIND in the segment and the payload in the search declared below — see
- * `main-panel-tabs/panel-route.ts`, which owns both directions of that grammar.
- * Whether the panel is OPEN is `?mainpanel`, so closing it keeps the view.
- *
- * Both segments are optional, so a lone `/agents/preview` (a view on the Super
- * Agent) matches as `project="preview"`. `resolveChatSegments` reads it back —
- * every consumer of these two params goes through it.
- */
+/** The agent workspace, and the view its main panel is showing. `{-$panel}` is
+ *  the view (`/agents/preview?virtualmcpid=vir_x`); payload-carrying kinds put the
+ *  KIND in the segment and the payload in the search below — a grammar
+ *  `main-panel-tabs/panel-route.ts` owns both directions of. The project is
+ *  `?virtualmcpid=`, NOT a segment: it has to mean the same thing on `/tasks` and
+ *  `/library`, which have no segment to hold it. One carrier, one meaning; no
+ *  project = the Super Agent. One optional segment removes the old
+ *  `/agents/preview` ambiguity from the ROUTER but not from the grammar — a
+ *  bookmarked `/agents/vir_x` is still told apart from a view name, which
+ *  `beforeLoad` does below. */
 const agentsRoute = createRoute({
   getParentRoute: () => agentShellLayout,
-  path: "/agents/{-$project}/{-$panel}",
+  path: "/agents/{-$panel}",
+  /**
+   * A lone segment that is NOT a known view is a project id from a bookmark or
+   * a link minted before the project moved to search. Move it and re-enter.
+   *
+   * `panel: undefined` is not optional: params MERGE with the current match, so
+   * without it the redirect target keeps `panel: "vir_x"`, re-matches this
+   * route, and `beforeLoad` fires forever — router-core has no redirect-count
+   * guard. `search: (prev) => …` and `hash: true` are likewise load-bearing:
+   * a `redirect` with no `search` key returns `{}` and silently drops the
+   * panel's payload (`connection`/`tool`), landing the report CTA on an empty
+   * app view with no error.
+   */
+  beforeLoad: ({ params, search }) => {
+    const segment = params.panel;
+    if (!segment || isKnownPanelSegment(segment)) return;
+    if ((search as { virtualmcpid?: string }).virtualmcpid) return;
+    throw redirect({
+      to: "/$org/agents/{-$panel}",
+      params: { org: params.org, panel: undefined },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        virtualmcpid: segment,
+      }),
+      hash: true,
+      replace: true,
+    });
+  },
   validateSearch: z.object({
     /** The active panel's parameter — at most one kind's keys are ever set. */
     file: z.string().optional(),
@@ -515,6 +572,32 @@ const agentsRoute = createRoute({
   component: () => null,
 });
 
+/** `/$org/agents/<project>/<panel>` — the shape from before the project moved
+ *  to search, when the route was briefly `/projects`. MOUNTED FOREVER, and not for
+ *  ordinary back-compat: `COMMERCE_DISCOVERY_SETUP` POSTs the report CTA to the
+ *  commerce-discovery service, which PERSISTS it per (org, site) and re-sends it
+ *  on every run, refreshing only when setup runs again — for a dormant org,
+ *  never. That URL lives in a database we do not own, and share invites carry
+ *  the same shape in mail we cannot recall. Two REQUIRED segments, so it never
+ *  competes with the optional-segment route above; `search`/`hash` are forwarded
+ *  explicitly because a bare `redirect` drops both. */
+const agentsLegacyProjectRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/agents/$project/$panel",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/agents/{-$panel}",
+      params: { org: params.org, panel: params.panel },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        virtualmcpid: params.project,
+      }),
+      hash: true,
+      replace: true,
+    });
+  },
+});
+
 /**
  * Task board, and the card a URL opens.
  *
@@ -523,9 +606,9 @@ const agentsRoute = createRoute({
  * segment is the lanes. The board's filters stay in search because a filter is
  * how this page is laid out, whereas a card is a thing you open.
  *
- * The segment took the slot the never-reachable `{-$project}` held. When
- * project scoping returns it comes back as `?project=`, which is the shape a
- * board-wide filter has.
+ * The segment took the slot the never-reachable `{-$project}` held. Project
+ * scoping is `?virtualmcpid=` instead — the shape a board-wide filter has, and
+ * the same key every other destination reads it from.
  */
 const tasksRoute = createRoute({
   getParentRoute: () => agentShellLayout,
@@ -588,6 +671,25 @@ const libraryRoute = createRoute({
 });
 
 /**
+ * Discover — the permanent, linkable home for what this org does NOT have yet:
+ * unfinished setup, capabilities not turned on, and the app catalog.
+ *
+ * It exists so a destination never has to be hidden to keep the sidebar honest.
+ * Hiding Reports until an org owned a diagnostic shipped once and was reverted,
+ * because it removed the only in-product way to ask for one (see
+ * `main-panel-tabs/reports-tab.tsx`). Withholding a shortcut must never
+ * withhold the purchase — so anything withheld is named here instead.
+ *
+ * Org-wide by definition: what you don't have isn't a property of one project.
+ */
+const discoverRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/discover",
+  staticData: { defaultMain: "discover" },
+  component: () => null,
+});
+
+/**
  * `/$org/members` — the Stripe return-URL shape. `orgSettingsPath` emits
  * `/$org/settings/members`, so this only has to keep the shorter link alive.
  */
@@ -624,7 +726,7 @@ const orgIndexRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/",
   validateSearch: orgIndexSearchSchema,
-  pendingComponent: ShellRouteLoading,
+  pendingComponent: PanelLoading,
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
 });
 
@@ -656,6 +758,10 @@ const taskKeyRoute = createRoute({
 const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
+  /** Panel-area loader, for the same reason as `orgShellLayout`: the sidebar
+   *  belongs to `orgLayout` and stays mounted across this crossing, so a
+   *  full-screen `SplashScreen` would blank a shell that is already painted. */
+  pendingComponent: PanelLoading,
   component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),
 });
 
@@ -962,9 +1068,11 @@ const agentShellWithChildren = agentShellLayout.addChildren([
   unifiedChatRoute,
   orgHomeRoute,
   agentsRoute,
+  agentsLegacyProjectRoute,
   tasksRoute,
   reportsRoute,
   libraryRoute,
+  discoverRoute,
 ]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([
@@ -1024,11 +1132,18 @@ function DefaultNotFoundComponent() {
 
 export const router = createRouter({
   routeTree,
-  // Show the splash (not a blank screen) while a route loader/beforeLoad is
-  // awaiting — e.g. the new-user org-list fetch. 200ms delay avoids a flash on
-  // instant (synchronous) redirects like the returning-user fast path.
-  defaultPendingComponent: SplashScreen,
+  /** The panel loader is the DEFAULT, and that is the point: a route that names
+   *  no `pendingComponent` degrades to a spinner inside the painted shell
+   *  instead of blanking the app. TanStack uses this for every match's Suspense
+   *  fallback as well as its pending state. No route opts into `SplashScreen`
+   *  any more — the splash belongs to the single boundary above the router
+   *  (`layouts/boot-gate.tsx`), and a route that named it would mount a second
+   *  copy of it. 200ms delay avoids a flash on instant (synchronous) redirects
+   *  like the returning-user fast path; 500ms minimum because a loader that
+   *  appears for 40ms reads as a glitch. */
+  defaultPendingComponent: PanelLoading,
   defaultPendingMs: 200,
+  defaultPendingMinMs: 500,
   defaultNotFoundComponent: DefaultNotFoundComponent,
 });
 

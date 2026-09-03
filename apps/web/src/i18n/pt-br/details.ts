@@ -33,7 +33,7 @@ export const details = {
   "details.connectionActivity.timeframe": "Período",
   "details.connectionActivity.toolCalls": "Chamadas de ferramenta",
   "details.connectionActivity.topErrors": "Principais erros",
-  "details.connectionAgentsPanel.usedByAgents": "Usado por agentes",
+  "details.connectionAgentsPanel.usedByAgents": "Usado por projetos",
   "details.connectionCapabilities.capabilities": "Capacidades",
   "details.connectionCapabilities.noCapabilitiesDiscovered":
     "Nenhuma capacidade descoberta ainda. A conexão ainda pode estar se conectando.",

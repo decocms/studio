@@ -28,10 +28,10 @@ import {
   useState,
   useSyncExternalStore,
   use,
-  Suspense,
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Chat, useChatTask } from "@/components/chat/index";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import {
@@ -42,7 +42,7 @@ import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
-import { AlertCircle, Loading01 } from "@untitledui/icons";
+import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
@@ -75,7 +75,7 @@ import {
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
-import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
 import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
@@ -135,9 +135,7 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
         </div>
       }
     >
-      <Suspense fallback={<Chat.Skeleton />}>
-        {children ?? defaultContent}
-      </Suspense>
+      <MainPanelBoundary>{children ?? defaultContent}</MainPanelBoundary>
     </ErrorBoundary>
   );
 }
@@ -464,7 +462,7 @@ function DesktopTaskWorkspace({
       {/* Panels each own a 48px header (tabs / toggles / publish). Everything
           lives under SandboxEventsProvider — useMainPanelTabs gates Content on
           lifecycle.phase === "running" + decofile. */}
-      <Suspense fallback={<Chat.Skeleton />}>
+      <MainPanelBoundary>
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
           taskId={layout.threadId}
@@ -475,7 +473,7 @@ function DesktopTaskWorkspace({
           toggleMain={layout.toggleMain}
           chatContent={<ActiveTaskBoundary />}
         />
-      </Suspense>
+      </MainPanelBoundary>
     </>
   );
 }
@@ -513,7 +511,7 @@ function MobileTaskWorkspace({
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
       />
-      <Suspense fallback={<Chat.Skeleton />}>
+      <MainPanelBoundary>
         <div className="flex-1 min-h-0 overflow-hidden">
           {mobileSurface === "main" ? (
             <ErrorBoundary
@@ -526,29 +524,20 @@ function MobileTaskWorkspace({
                 </div>
               }
             >
-              <Suspense
-                fallback={
-                  <div className="h-full flex items-center justify-center">
-                    <Loading01
-                      size={20}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                }
-              >
+              <MainPanelBoundary>
                 <div data-testid="main-panel" className="h-full">
                   <MainPanelWithDrawer
                     taskId={layout.threadId}
                     virtualMcpId={virtualMcpId}
                   />
                 </div>
-              </Suspense>
+              </MainPanelBoundary>
             </ErrorBoundary>
           ) : (
             <SidePanel chatContent={<ActiveTaskBoundary />} />
           )}
         </div>
-      </Suspense>
+      </MainPanelBoundary>
     </>
   );
 }
@@ -672,7 +661,7 @@ function AgentInsetProvider() {
             aria-live="polite"
             className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
           >
-            <Loading01 className="size-4 animate-spin mr-2" />
+            <Spinner className="size-4 mr-2" />
             {t("agentShellLayout.agentShellLayout.creatingTask")}
           </div>
         </div>
@@ -750,13 +739,13 @@ function AgentInsetProvider() {
                 key={layout.providerKey}
                 threadId={layout.threadId}
               >
-                <Suspense fallback={<Chat.Skeleton />}>
+                <MainPanelBoundary>
                   <MobileTaskWorkspace
                     virtualMcpId={chatVirtualMcpId}
                     layout={layout}
                     onNewTaskRef={onNewTask}
                   />
-                </Suspense>
+                </MainPanelBoundary>
               </ActiveTaskRuntimeProvider>
             </VmEventsBridge>
           </Chat.Provider>
@@ -789,14 +778,14 @@ function AgentInsetProvider() {
               key={layout.providerKey}
               threadId={layout.threadId}
             >
-              <Suspense fallback={<Chat.Skeleton />}>
+              <MainPanelBoundary>
                 <DesktopTaskWorkspace
                   entity={entity}
                   virtualMcpId={virtualMcpId}
                   layout={layout}
                   onNewTaskRef={onNewTask}
                 />
-              </Suspense>
+              </MainPanelBoundary>
             </ActiveTaskRuntimeProvider>
           </VmEventsBridge>
         </Chat.Provider>
@@ -815,7 +804,7 @@ function AgentInsetProvider() {
 
 export default function AgentShellLayout() {
   return (
-    <Suspense fallback={<ShellRouteLoading />}>
+    <MainPanelBoundary>
       {/* Rewrites a legacy `/$org/$taskId` URL into the first-class shape,
           without unmounting anything below it. */}
       <LegacyThreadRedirect />
@@ -824,6 +813,6 @@ export default function AgentShellLayout() {
         <AgentInsetProvider />
         <OrgFilePreviewMount />
       </OrgFileOpenProvider>
-    </Suspense>
+    </MainPanelBoundary>
   );
 }

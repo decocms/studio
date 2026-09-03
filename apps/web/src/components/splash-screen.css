@@ -1,0 +1,129 @@
+.deco-splash {
+  /* One lime, inherited by both halves of the liquid: the filled body and the
+   * crest stroked on top of it. They are the same paint, so they share one
+   * declaration. `--brand-green-light` is the deployment-customisable brand
+   * token; the literal is its stock value, and stays the effective one here
+   * because a deployment's overrides are injected by `ThemeProvider`, which
+   * lives *below* the Suspense boundary this splash is the fallback for. */
+  --deco-splash-lime: var(--brand-green-light, #d0ec1a);
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+}
+
+.deco-splash__entrance {
+  width: clamp(6.5rem, 12.5vw, 11rem);
+  animation: deco-splash-enter 220ms ease-out both;
+}
+
+.deco-splash__mark {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.deco-splash__air {
+  fill: color-mix(in oklch, var(--muted) 20%, transparent);
+}
+
+.deco-splash__outline {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: calc(var(--border-hairline) * 2);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(var(--shadow-xs));
+}
+
+.deco-splash__liquid-rise {
+  animation: deco-splash-liquid-rise 20s linear forwards;
+}
+
+.deco-splash__wave-track {
+  animation: deco-splash-wave 1.5s linear infinite;
+}
+
+.deco-splash__liquid {
+  fill: var(--deco-splash-lime);
+}
+
+/** The wave crest, stroked so the surface keeps its rounded top edge above the
+ *  filled body. It is the top of the liquid, not a rim around it, so it is the
+ *  same lime as the fill — a darker stroke here paints a band of another colour
+ *  1.35 units thick at the liquid/air boundary. */
+.deco-splash__liquid-surface {
+  fill: none;
+  stroke: var(--deco-splash-lime);
+  stroke-width: 1.35;
+  stroke-linecap: round;
+}
+
+@keyframes deco-splash-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Logarithmic rise over 20s: a third of the travel in the first second, then
+ * asymptotic. It outlasts any real boot on purpose — the fill must never
+ * arrive, because a bar that completes and then sits there reads as
+ * finished-but-stuck. Stops sample ln(1+49t)/ln(50); even at 20s it holds at
+ * -56px, short of the -64px that would fill the mark. `linear` between stops so
+ * the curve is the curve, not re-eased. */
+@keyframes deco-splash-liquid-rise {
+  0% {
+    transform: translateY(55px);
+  }
+  1% {
+    transform: translateY(44px);
+  }
+  2.5% {
+    transform: translateY(32px);
+  }
+  5% {
+    transform: translateY(20px);
+  }
+  10% {
+    transform: translateY(5px);
+  }
+  20% {
+    transform: translateY(-12px);
+  }
+  35% {
+    transform: translateY(-27px);
+  }
+  55% {
+    transform: translateY(-40px);
+  }
+  100% {
+    transform: translateY(-56px);
+  }
+}
+
+@keyframes deco-splash-wave {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deco-splash__entrance,
+  .deco-splash__liquid-rise,
+  .deco-splash__wave-track {
+    animation: none;
+  }
+
+  .deco-splash__liquid-rise {
+    transform: translateY(-50px);
+  }
+}

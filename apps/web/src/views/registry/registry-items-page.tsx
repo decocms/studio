@@ -1,4 +1,5 @@
 import { useDeferredValue, useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -30,7 +31,6 @@ import {
   DotsVertical,
   FilterLines,
   Globe01,
-  Loading01,
   SearchMd,
 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
@@ -395,7 +395,7 @@ export default function RegistryItemsPage() {
           <div className="min-h-[320px] rounded-xl border border-dashed border-border flex flex-col items-center justify-center gap-3 p-6 text-center">
             {itemsQuery.isLoading ? (
               <>
-                <Loading01 className="size-5 animate-spin text-muted-foreground" />
+                <Spinner className="size-5 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
                   {t("registry.registryItemsPage.loadingItems")}
                 </p>
@@ -573,7 +573,7 @@ export default function RegistryItemsPage() {
 
         {itemsQuery.isFetchingNextPage && (
           <div className="py-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loading01 className="size-4 animate-spin" />
+            <Spinner className="size-4" />
             {t("registry.registryItemsPage.loadingMoreItems")}
           </div>
         )}

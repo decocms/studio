@@ -17,12 +17,14 @@ export const mainPanelTabs = {
   "mainPanelTabs.blocksTabStates.errorStateTitle": "Blocks unavailable",
   "mainPanelTabs.blocksTabStates.retry": "Retry",
   "mainPanelTabs.blocksTabStates.setupContentEditing": "Set up content editing",
-  "mainPanelTabs.codeTab.noSandboxToBrowse": "No sandbox to browse.",
+  "mainPanelTabs.codeTab.noSandboxToBrowse": "No sandbox to browse",
+  "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
+    "Start a coding session on this project to browse its files.",
   "mainPanelTabs.codeTab.openInCursor": "Open in Cursor",
   "mainPanelTabs.codeTab.openInVscode": "Open in VSCode",
   "mainPanelTabs.contentTab.connectGithubDescription":
-    "Connect a GitHub repository from the Settings tab to enable Content.",
-  "mainPanelTabs.contentTab.noContentToEdit": "No content to edit.",
+    "Connect a GitHub repository to edit this site's content.",
+  "mainPanelTabs.contentTab.noContentToEdit": "No content to edit",
   "mainPanelTabs.fileTab.close": "Close",
   "mainPanelTabs.fileTab.download": "Download",
   "mainPanelTabs.fileTab.fileNotAvailable": "This file is no longer available.",
@@ -32,7 +34,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.deployments": "Deployments",
   "mainPanelTabs.hostingTab.env": "Environment variables",
   "mainPanelTabs.hostingTab.redirects": "Redirects",
-  "mainPanelTabs.hostingTab.loading": "Loading…",
   "mainPanelTabs.hostingTab.noDeployments": "No deployments yet.",
   "mainPanelTabs.hostingTab.noEnv": "No environment variables set.",
   "mainPanelTabs.hostingTab.codeVarsHint":
@@ -44,11 +45,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.deploymentsError": "Failed to load deployments",
   "mainPanelTabs.hostingTab.envError": "Failed to load environment variables",
   "mainPanelTabs.hostingTab.redirectsError": "Failed to load redirects",
-  "mainPanelTabs.hostingTab.colId": "ID",
   "mainPanelTabs.hostingTab.colStatus": "Status",
-  "mainPanelTabs.hostingTab.colUrl": "URL",
-  "mainPanelTabs.hostingTab.colCreated": "Created",
-  "mainPanelTabs.hostingTab.colKey": "Key",
   "mainPanelTabs.hostingTab.colValue": "Value",
   "mainPanelTabs.hostingTab.colFrom": "From",
   "mainPanelTabs.hostingTab.colTo": "To",
@@ -217,7 +214,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.statusPassed": "Passed",
   "mainPanelTabs.e2eTab.statusFailed": "Failed",
   "mainPanelTabs.e2eTab.statusRunning": "Running",
-  "mainPanelTabs.e2eTab.checks": "{passed}/{total} checks",
   "mainPanelTabs.e2eTab.noRuns": "No E2E runs yet.",
   "mainPanelTabs.e2eTab.runsError": "Failed to load E2E runs",
   "mainPanelTabs.e2eTab.checksSection": "Checks",
@@ -250,14 +246,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.notConnectedTitle": "E2E isn't connected yet",
   "mainPanelTabs.e2eTab.notConnectedDescription":
     "This site's E2E runs will appear here once the control-plane connection is configured.",
-  "mainPanelTabs.e2eTab.runE2e": "Run E2E",
   "mainPanelTabs.e2eTab.running": "Queuing…",
-  "mainPanelTabs.e2eTab.runConfirmTitle": "Run E2E checks?",
-  "mainPanelTabs.e2eTab.runConfirmDescription":
-    "Queue a new end-to-end run for this site?",
   "mainPanelTabs.e2eTab.runConfirm": "Run",
   "mainPanelTabs.e2eTab.cancel": "Cancel",
-  "mainPanelTabs.e2eTab.toastE2eQueued": "E2E run queued",
   "mainPanelTabs.e2eTab.runTest": "Run test",
   "mainPanelTabs.e2eTab.runTestTitle": "Run a test",
   "mainPanelTabs.e2eTab.runTestDescription":
@@ -276,14 +267,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.confirmDeleteRun":
     "Run {runId} and its artifacts will be permanently removed.",
   "mainPanelTabs.e2eTab.toastRunDeleted": "E2E run deleted",
-  "mainPanelTabs.e2eTab.runDetail": "Run detail",
-  "mainPanelTabs.e2eTab.close": "Close",
   "mainPanelTabs.e2eTab.detailError": "Failed to load run detail",
   "mainPanelTabs.e2eTab.url": "URL",
   "mainPanelTabs.e2eTab.command": "Command",
-  "mainPanelTabs.e2eTab.duration": "Duration",
-  "mainPanelTabs.e2eTab.totalDuration": "Total duration",
-  "mainPanelTabs.e2eTab.exitCode": "Exit code",
   "mainPanelTabs.e2eTab.viewport": "Viewport",
   "mainPanelTabs.e2eTab.funnel": "Funnel",
   "mainPanelTabs.e2eTab.steps": "Steps",
@@ -293,7 +279,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.console": "Console",
   "mainPanelTabs.e2eTab.network": "Network",
   "mainPanelTabs.e2eTab.video": "Video",
-  "mainPanelTabs.e2eTab.trace": "Trace",
   "mainPanelTabs.e2eTab.openTrace": "Open in Playwright Trace Viewer",
   "mainPanelTabs.e2eTab.downloadTrace": "Download .zip",
   "mainPanelTabs.e2eTab.noReport": "No detailed report for this run.",
@@ -379,25 +364,13 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.saving": "Saving…",
   "mainPanelTabs.analyticsTab.cancel": "Cancel",
   // Usage
-  "mainPanelTabs.analyticsTab.usageTitle": "Usage",
-  "mainPanelTabs.analyticsTab.usageEmpty": "No events collected yet.",
-  // Tracking (use-only — no delivery/billing internals)
   "mainPanelTabs.analyticsTab.installTitle": "Tracking",
   "mainPanelTabs.analyticsTab.installAuto":
     "Analytics is active for this site — it's added automatically, nothing to paste.",
   "mainPanelTabs.analyticsTab.installTrackPrefix":
     "Send custom events from your code via ",
   // Dashboard (tenant-scoped /data views), rendered as collapsible sections.
-  "mainPanelTabs.analyticsTab.dashboardTitle": "Dashboard",
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuration",
-  "mainPanelTabs.analyticsTab.rangeLabel": "Range",
-  "mainPanelTabs.analyticsTab.range5m": "Last 5 minutes",
-  "mainPanelTabs.analyticsTab.range15m": "Last 15 minutes",
-  "mainPanelTabs.analyticsTab.range30m": "Last 30 minutes",
-  "mainPanelTabs.analyticsTab.range1h": "Last hour",
-  "mainPanelTabs.analyticsTab.range24h": "Last 24 hours",
-  "mainPanelTabs.analyticsTab.range7d": "Last 7 days",
-  "mainPanelTabs.analyticsTab.range30d": "Last 30 days",
   "mainPanelTabs.analyticsTab.viewOverview": "Overview",
   "mainPanelTabs.analyticsTab.viewLive": "Realtime",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Pages & sources",
@@ -407,8 +380,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.viewVitals": "Web Vitals",
   "mainPanelTabs.analyticsTab.viewQuality": "Data quality",
   "mainPanelTabs.analyticsTab.viewUsage": "Usage & limits",
-  "mainPanelTabs.analyticsTab.viewInstall": "Install",
-  // Dashboard card titles + usage/quota banner
   "mainPanelTabs.analyticsTab.cardTopSources": "Top sources",
   "mainPanelTabs.analyticsTab.cardFunnel": "Funnel",
   "mainPanelTabs.analyticsTab.cardLiveFeed": "Live feed",
@@ -419,10 +390,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.acceptedInRange":
     "{count} accepted in the selected range. The cap resets each calendar month; the collector drops events once the site is flagged over. Month-to-date consumption and the over-quota state are on the site's hosting detail.",
   "mainPanelTabs.analyticsTab.dataLoadError": "Couldn't load this view.",
-  "mainPanelTabs.analyticsTab.dataEmpty": "No data for this range yet.",
-  "mainPanelTabs.analyticsTab.panelEmpty": "No rows.",
-  "mainPanelTabs.analyticsTab.dataNotConfiguredTitle":
-    "Dashboard isn't available",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "The analytics data surface isn't wired to this environment yet — configuration below still works.",
   // Token (key) registration
@@ -450,8 +417,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.installTokenNote":
     "Your token is shown once, at registration. Re-register (unregister then enable by token) to get a new one.",
   "mainPanelTabs.analyticsTab.installSiteId": "Site ID (where events land)",
-  "mainPanelTabs.analyticsTab.rotateToken": "Rotate token",
-  "mainPanelTabs.analyticsTab.rotating": "Rotating…",
   "mainPanelTabs.analyticsTab.toastTokenRotated": "Token rotated",
   "mainPanelTabs.analyticsTab.emptyLive":
     "No visitors in the last few minutes.",
@@ -561,5 +526,4 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.connectGithubDescription":
     "Connect a GitHub repository to build and preview your site here.",
   "mainPanelTabs.previewTab.noSourceToPreview": "No source to preview",
-  "mainPanelTabs.tabOverflowMenu.moreTabs": "More tabs",
 } as const;

@@ -75,17 +75,41 @@ export const VirtualMcpUILayoutTabSchema = z.object({
 
 export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
 
-/**
- * How an agent offers content editing:
- * - `off` — no CMS. The Content tab and the Preview toolbar's CMS toggle, the
- *   two entry points, are not rendered. A UI gate only: the decofile stays
- *   readable and the agent still edits content through its tools.
- * - `manual` — the default. Editors open the CMS from Preview when they want it.
- * - `auto` — Preview opens the CMS as soon as its metadata is ready to render.
- */
-export const CmsModeSchema = z.enum(["off", "manual", "auto"]);
+/** How an agent offers content editing. `on` (the default) offers the Site
+ *  Editor's Content view and opens a CMS session on it; `off` offers it
+ *  nowhere — a UI gate only, since the decofile stays readable and the agent
+ *  still edits content through its tools. */
+export const CmsModeSchema = z.enum(["on", "off"]);
 
 export type CmsMode = z.infer<typeof CmsModeSchema>;
+
+/** RETIRED CMS modes, mapped old → new — same job as `normalizePanelSegment`'s
+ *  rename map. `manual` and `auto` differed only in whether Preview popped the
+ *  CMS open itself, and Content is a URL now, so both collapsed into `on`. Both
+ *  are PERSISTED on real agents: without this map, dropping them from the enum
+ *  reads every one as `off` and silently takes their CMS away. */
+const RETIRED_CMS_MODES: ReadonlyMap<string, CmsMode> = new Map([
+  ["manual", "on"],
+  ["auto", "on"],
+]);
+
+/** The stored shapes `cms` can arrive in: the two live modes plus the retired
+ *  names above, which parse so a pre-collapse row still validates. */
+const StoredCmsModeSchema = z.enum(["on", "off", "manual", "auto"]);
+
+/**
+ * The canonical mode for a stored `cms` value, accepting the retired names in
+ * {@link RETIRED_CMS_MODES}. `null` when there is no value to normalise, so a
+ * caller can tell "not configured" from "configured off".
+ */
+export function normalizeCmsMode(
+  stored: string | null | undefined,
+): CmsMode | null {
+  if (!stored) return null;
+  const retired = RETIRED_CMS_MODES.get(stored);
+  if (retired) return retired;
+  return stored === "on" || stored === "off" ? stored : null;
+}
 
 /**
  * Layout-specific settings stored under `metadata.ui.layout`. Controls which
@@ -108,36 +132,29 @@ export const VirtualMcpUILayoutSchema = z.object({
    * unless the default view is Chat.
    */
   chatDefaultOpen: z.boolean().nullable().optional(),
-  /**
-   * @deprecated Superseded by `cms`. Still read as the fallback for agents
-   * configured before the tri-state existed — see `resolveCmsMode`. Writers
-   * set `cms` and null this out.
-   */
+  /** @deprecated Superseded by `cms` and read by nothing: it chose between two
+   *  modes that have collapsed into `on`, so carrying it reads as carrying
+   *  nothing. Kept so an untouched row still validates. */
   cmsDefaultOpen: z.boolean().nullable().optional(),
-  cms: CmsModeSchema.nullable()
+  cms: StoredCmsModeSchema.nullable()
     .optional()
     .describe(
-      "How this agent offers content editing. Absent falls back to cmsDefaultOpen.",
+      "How this agent offers content editing. Absent means on; the retired `manual` / `auto` read as on too.",
     ),
   tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
 });
 
 export type VirtualMcpUILayout = z.infer<typeof VirtualMcpUILayoutSchema>;
 
-/**
- * The CMS mode for an agent, resolving the legacy `cmsDefaultOpen` boolean the
- * tri-state replaced. Every reader goes through this: `layout.cms` alone is
- * wrong for agents configured before the enum, and reading both at a call site
- * is how the two drift apart.
- */
+/** The ONE place a stored value becomes a CMS mode the app can branch on —
+ *  every reader goes through it, because `layout.cms` alone reads a persisted
+ *  `manual`/`auto` as neither mode, silently stripping the CMS from an agent
+ *  that has one. Configuring nothing means `on`: `off` is a deliberate choice,
+ *  never a default. */
 export function resolveCmsMode(
-  layout:
-    | { cms?: CmsMode | null; cmsDefaultOpen?: boolean | null }
-    | null
-    | undefined,
+  layout: { cms?: string | null } | null | undefined,
 ): CmsMode {
-  if (layout?.cms) return layout.cms;
-  return layout?.cmsDefaultOpen ? "auto" : "manual";
+  return normalizeCmsMode(layout?.cms) ?? "on";
 }
 
 /**
@@ -157,7 +174,7 @@ export function withCmsMode(
     ...layout,
     cms: mode,
     cmsDefaultOpen: null,
-    ...(dropsContentView ? { defaultMainView: { type: "preview" } } : {}),
+    ...(dropsContentView ? { defaultMainView: { type: "site-editor" } } : {}),
   };
 }
 

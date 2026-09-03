@@ -32,6 +32,7 @@ import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import { notify } from "../notifications/notify";
+import { escapeLikePattern } from "./threads";
 
 /** Activity actions that also earn an inbox row and an email. */
 const NOTIFIED_ACTIONS = new Set<string>(NOTIFICATION_TYPES);
@@ -252,6 +253,39 @@ export class TaskBoardStorage {
 
     const items = rows.map((row) => this.itemFromDbRow(row));
     await this.attachRefs(items, organizationId);
+    return items;
+  }
+
+  /**
+   * Title search for the command palette, ordered most-recent-first.
+   *
+   * Deliberately NOT a parameter on `list()`: that one returns the whole board
+   * unpaginated and fires stall recovery as a side effect of the read, which is
+   * exactly wrong for a keystroke-driven query. Refs are not attached — the
+   * palette needs a title and an id, and hydrating threads/tags/PRs per
+   * keystroke would be pure waste.
+   */
+  async searchByTitle(
+    organizationId: string,
+    search: string,
+    limit: number,
+  ): Promise<TaskBoardItem[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("dismissed_at", "is", null)
+      .where("title", "ilike", `%${escapeLikePattern(search)}%`)
+      .orderBy("updated_at", "desc")
+      .limit(limit)
+      .execute();
+
+    const items = rows.map((row) => this.itemFromDbRow(row));
+    /** Jira keys specifically, and not the other refs: `itemFromDbRow` hardcodes
+     *  `jiraIssueKey: null` because the link lives in its own table, and callers
+     *  derive a card's DISPLAY key from it. Without this a synced card is
+     *  reported and addressed as ACME-07 instead of the EX-333 everyone uses. */
+    if (items.length > 0) await this.attachJiraKeys(this.db, items);
     return items;
   }
 

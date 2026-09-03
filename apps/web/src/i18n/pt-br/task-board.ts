@@ -46,6 +46,9 @@ export const taskBoard = {
     "Nenhuma tarefa corresponde a estes filtros.",
   "taskBoard.taskBoard.noTasksYet":
     "Nenhuma tarefa ainda. Comece uma com Nova tarefa.",
+  "taskBoard.scope.clear": "Limpar o escopo {name}",
+  "taskBoard.scope.noRepo":
+    "Este projeto não tem repositório, então nenhum card aponta para ele ainda.",
   "taskBoard.taskBoard.tasksTitle": "Tarefas",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
@@ -314,7 +317,6 @@ export const taskBoard = {
   "taskBoard.config.typeFeature": "Funcionalidade",
   "taskBoard.config.typeSecurity": "Segurança",
   "taskBoard.config.typeSpike": "Spike",
-  "taskBoard.taskBoard.typeLabel": "Tipo",
   "taskBoard.taskDialog.activityTypeFromTo": "mudou o tipo de {from} para {to}",
   "taskBoard.taskDialog.activityTypeSet": "definiu o tipo como {to}",
 } satisfies Record<keyof typeof taskBoardEn, string>;

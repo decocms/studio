@@ -445,10 +445,7 @@ export const sandbox = {
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":
     "Clique em qualquer elemento para perguntar à IA",
-  "sandbox.preview.cms": "CMS",
   "sandbox.preview.collapseTerminal": "Recolher terminal",
-  "sandbox.preview.editContent": "Editar conteúdo",
-  "sandbox.preview.exitEditor": "Sair do editor",
   "sandbox.preview.expandTerminal": "Expandir terminal",
   "sandbox.preview.resizeTerminal": "Redimensionar terminal",
   "sandbox.preview.copyCurrentUrl": "Copiar URL atual",
@@ -458,8 +455,10 @@ export const sandbox = {
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Celular (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
+  "sandbox.preview.editContent": "Editar conteúdo",
   "sandbox.preview.editSeo": "Editar SEO",
   "sandbox.preview.enterToGo": "Enter para ir",
+  "sandbox.preview.exitEditor": "Sair do editor",
   "sandbox.preview.failedToCopyUrl": "Falha ao copiar URL",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
@@ -597,18 +596,13 @@ export const sandbox = {
     "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em sites que têm a rota /live/previews.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
-    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
-  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Quem edita abre o CMS pelo preview quando precisa.",
-  "sandbox.cmsSettings.contentEditing.auto": "Automático",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "O preview abre o CMS assim que for possível editar o conteúdo.",
+    "Se este projeto oferece um CMS.",
+  "sandbox.cmsSettings.contentEditing.on": "Ativado",
+  "sandbox.cmsSettings.contentEditing.onDescription":
+    "O Editor do Site oferece Conteúdo, e um chat de CMS abre nele.",
   "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
-  "sandbox.cmsUnavailable.title":
-    "Este chat não consegue pré-visualizar seu site",
+    "Sem a visão Conteúdo no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
   "sandbox.cmsUnavailable.noPreviewServer":
     "É uma sessão de CMS, mas este projeto não tem servidor de preview configurado.",
   "sandbox.cmsUnavailable.noRepo":
@@ -625,7 +619,7 @@ export const sandbox = {
   "sandbox.repoRow.label": "Repositório",
   "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
   "sandbox.repoRow.tooltipContent":
-    "O repositório GitHub conectado para este agente. Gerencie em Conexões.",
+    "O repositório GitHub conectado para este projeto. Gerencie em Conexões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.backToList": "Voltar para a lista",
@@ -714,7 +708,7 @@ export const sandbox = {
     "A conexão do GitHub usada neste chat foi removida. Vincule o repositório novamente para iniciar o sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Vincular repositório",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
-    "O repositório GitHub deste agente não está autenticado. Reconecte em Conexões e tente novamente.",
+    "O repositório GitHub deste projeto não está autenticado. Reconecte em Conexões e tente novamente.",
   "sandbox.stateCard.reconnectGithub": "Reconectar GitHub",
   "sandbox.stateCard.resume": "Retomar",
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",

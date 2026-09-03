@@ -129,7 +129,7 @@ export function MobileMainPanelTabSelect({
     // panel on the current agent (mirrors setActiveTab in useMainPanelTabs).
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: value })) {
       openPanel(value, {
-        project: getCommerceDiscoveryAgentId(org.id),
+        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
         search: (prev) => ({ ...prev, thread: undefined, sidepanel: false }),
       });

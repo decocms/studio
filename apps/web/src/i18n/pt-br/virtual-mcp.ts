@@ -16,7 +16,7 @@ export const virtualMcp = {
   "virtualMcp.addConnectionDialog.searchConnectionsPlaceholder":
     "Pesquisar conexões...",
   "virtualMcp.addConnectionDialog.signInFailedDescription":
-    "Foi adicionada ao seu agente, mas sua configuração de login parece estar errada. Você pode tentar autenticar novamente mais tarde nas configurações da conexão. ({error})",
+    "Foi adicionada ao seu projeto, mas sua configuração de login parece estar errada. Você pode tentar autenticar novamente mais tarde nas configurações da conexão. ({error})",
   "virtualMcp.addConnectionDialog.signInFailedTitle":
     "Não foi possível fazer login nesta conexão",
   "virtualMcp.connectionDialogContent.add": "Adicionar",
@@ -89,7 +89,7 @@ export const virtualMcp = {
   "virtualMcp.dependencySelectionDialog.unexpectedError": "Erro inesperado",
   "virtualMcp.filesSection.add": "Adicionar",
   "virtualMcp.filesSection.description":
-    "Anexe arquivos e skills que o agente sempre pode consultar.",
+    "Anexe arquivos e skills que o projeto sempre pode consultar.",
   "virtualMcp.filesSection.failedUploadFile": "Falha ao enviar arquivo.",
   "virtualMcp.filesSection.fileTooLargeDescription":
     "Excede o limite de 25MB, não enviado: {names}",
@@ -107,43 +107,42 @@ export const virtualMcp = {
   "virtualMcp.filesSection.selectFileOrFolder": "Selecionar arquivo ou pasta",
   "virtualMcp.filesSection.selectSkill": "Selecionar skill",
   "virtualMcp.filesSection.uploadFile": "Enviar arquivo",
+  "virtualMcp.layoutTabContent.noMainView": "Sem visão principal",
   "virtualMcp.layoutTabContent.addConnectionMessage":
     "Adicione uma conexão acima para configurar visualizações fixadas.",
   "virtualMcp.layoutTabContent.automations": "Automações",
-  "virtualMcp.layoutTabContent.chat": "Chat",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "O Chat sempre aparece quando é a visualização padrão",
-  "virtualMcp.layoutTabContent.content": "Conteúdo",
   "virtualMcp.layoutTabContent.layout": "Layout",
   "virtualMcp.layoutTabContent.mainView": "Visualização principal",
   "virtualMcp.layoutTabContent.mainViewDescription":
-    "O que os usuários veem quando abrem este agente pela primeira vez.",
+    "O que os usuários veem quando abrem este projeto pela primeira vez.",
   "virtualMcp.layoutTabContent.noInteractiveTools":
     "Nenhum dos servidores conectados expõe ferramentas interativas.",
   "virtualMcp.layoutTabContent.pinnedViews": "Visualizações fixadas",
   "virtualMcp.layoutTabContent.pinnedViewsDescription":
-    "Colocar ferramentas interativas como abas de nível superior no agente.",
-  "virtualMcp.layoutTabContent.preview": "Visualização",
+    "Colocar ferramentas interativas como abas de nível superior no projeto.",
   "virtualMcp.layoutTabContent.settings": "Configurações",
   "virtualMcp.layoutTabContent.showChat": "Mostrar chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Exibir Chat no painel lateral junto com a visualização principal.",
-  "virtualMcp.subAgentsSection.addSubAgent": "Adicionar sub-agente",
-  "virtualMcp.subAgentsSection.anyAgent": "Qualquer agente",
+  "virtualMcp.layoutTabContent.siteEditor": "Editor do site",
+  "virtualMcp.subAgentsSection.addSubAgent": "Adicionar sub-projeto",
+  "virtualMcp.subAgentsSection.anyAgent": "Qualquer projeto",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":
-    "Pode delegar para qualquer agente na organização.",
+    "Pode delegar para qualquer projeto na organização.",
   "virtualMcp.subAgentsSection.canOnlyDelegateToItself":
-    "Pode delegar apenas para uma cópia fresca de si mesmo, nenhum outro agente.",
+    "Pode delegar apenas para uma cópia fresca de si mesmo, nenhum outro projeto.",
   "virtualMcp.subAgentsSection.emptyStateMessage":
-    "Nenhum sub-agente selecionado ainda. Adicione um — até então, este agente pode delegar apenas para si mesmo.",
-  "virtualMcp.subAgentsSection.noAgentsFound": "Nenhum agente encontrado.",
+    "Nenhum sub-projeto selecionado ainda. Adicione um — até então, este projeto pode delegar apenas para si mesmo.",
+  "virtualMcp.subAgentsSection.noAgentsFound": "Nenhum projeto encontrado.",
   "virtualMcp.subAgentsSection.onlyItself": "Apenas si mesmo",
-  "virtualMcp.subAgentsSection.searchPlaceholder": "Pesquisar agentes...",
-  "virtualMcp.subAgentsSection.specificAgents": "Agentes específicos",
-  "virtualMcp.subAgentsSection.title": "Sub-agentes",
+  "virtualMcp.subAgentsSection.searchPlaceholder": "Pesquisar projetos...",
+  "virtualMcp.subAgentsSection.specificAgents": "Projetos específicos",
+  "virtualMcp.subAgentsSection.title": "Sub-projetos",
   "virtualMcp.virtualMcp.addConnection": "Adicionar conexão",
   "virtualMcp.virtualMcp.agentDeleted": 'Excluído "{title}"',
-  "virtualMcp.virtualMcp.agentNamePlaceholder": "Nome do agente",
+  "virtualMcp.virtualMcp.agentNamePlaceholder": "Nome do projeto",
   "virtualMcp.virtualMcp.authenticationFailed":
     "Falha na autenticação: {error}",
   "virtualMcp.virtualMcp.authenticationSuccessful": "Autenticação bem-sucedida",
@@ -153,18 +152,18 @@ export const virtualMcp = {
   "virtualMcp.virtualMcp.connections": "Conexões",
   "virtualMcp.virtualMcp.created": "Criado em",
   "virtualMcp.virtualMcp.delete": "Excluir",
-  "virtualMcp.virtualMcp.deleteAgent": "Excluir agente",
-  "virtualMcp.virtualMcp.deleteAgentConfirm": "Excluir Agente?",
+  "virtualMcp.virtualMcp.deleteAgent": "Excluir projeto",
+  "virtualMcp.virtualMcp.deleteAgentConfirm": "Excluir Projeto?",
   "virtualMcp.virtualMcp.deleteAgentConfirmDescription":
     "Esta ação não pode ser desfeita. Isto excluirá permanentemente {title}.",
   "virtualMcp.virtualMcp.deleteAgentDescription":
-    "Exclua permanentemente este agente e todos os seus dados.",
+    "Exclua permanentemente este projeto e todos os seus dados.",
   "virtualMcp.virtualMcp.descriptionPlaceholder": "Adicionar uma descrição...",
   "virtualMcp.virtualMcp.failedToCreateInstance": "Falha ao criar instância",
   "virtualMcp.virtualMcp.fullscreen": "Tela cheia",
   "virtualMcp.virtualMcp.improve": "Melhorar",
   "virtualMcp.virtualMcp.instanceAlreadyAdded":
-    "Esta instância já foi adicionada ao agente",
+    "Esta instância já foi adicionada ao projeto",
   "virtualMcp.virtualMcp.instructions": "Instruções",
   "virtualMcp.virtualMcp.instructionsPlaceholder":
     "Defina como este agente deve se comportar, qual tom usar, qualquer restrição ou diretriz...",
@@ -206,7 +205,7 @@ Defina passo a passo como o agente deve tratar as solicitações.
     "Troca a picker de branch/PR por rascunhos nomeados: switcher de versões, produção somente leitura e publicar para produção.",
   "virtualMcp.virtualMcp.publishing": "Publicação",
   "virtualMcp.virtualMcp.publishingDescription":
-    "Controle quando as alterações deste agente podem ser publicadas diretamente, sem revisão por pull request.",
+    "Controle quando as alterações deste projeto podem ser publicadas diretamente, sem revisão por pull request.",
   "virtualMcp.virtualMcp.publishPolicySmart": "Revisão inteligente",
   "virtualMcp.virtualMcp.publishPolicySmartDescription":
     "A IA analisa cada alteração e só pede revisão quando o código parece arriscado (novos endpoints, mudanças grandes ou de backend). Ajustes de conteúdo e design são publicados diretamente.",
@@ -221,13 +220,13 @@ Defina passo a passo como o agente deve tratar as solicitações.
   "virtualMcp.virtualMcp.spaceNotFound": "Espaço não encontrado",
   "virtualMcp.virtualMcp.spaceNotFoundDescription":
     "Este espaço pode ter sido excluído ou você pode não ter acesso.",
-  "virtualMcp.virtualMcp.subAgents": "Sub-agentes",
-  "virtualMcp.virtualMcp.testAgent": "Testar Agente",
+  "virtualMcp.virtualMcp.subAgents": "Sub-projetos",
+  "virtualMcp.virtualMcp.testAgent": "Testar Projeto",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
-    "URL do agente copiada para a área de transferência",
+    "URL do projeto copiada para a área de transferência",
   "virtualMcp.virtualMcpShareModal.callFromYourApp": "Chamar do seu aplicativo",
   "virtualMcp.virtualMcpShareModal.callFromYourAppDescription":
-    "Crie uma chave de API de escopo para iniciar um chat, executar este agente e transmitir resultados de um sistema externo (por exemplo, um webhook de chatbot).",
+    "Crie uma chave de API de escopo para iniciar um chat, executar este projeto e transmitir resultados de um sistema externo (por exemplo, um webhook de chatbot).",
   "virtualMcp.virtualMcpShareModal.claudeCodeCommandCopied":
     "Comando do Claude Code copiado para a área de transferência",
   "virtualMcp.virtualMcpShareModal.commandCopied":
@@ -249,7 +248,7 @@ Defina passo a passo como o agente deve tratar as solicitações.
   "virtualMcp.virtualMcpShareModal.generateTypedClient":
     "Gerar cliente com tipos",
   "virtualMcp.virtualMcpShareModal.generateTypedClientDescription":
-    "Examina este agente e escreve um client.ts com tipos que você pode importar diretamente.",
+    "Examina este projeto e escreve um client.ts com tipos que você pode importar diretamente.",
   "virtualMcp.virtualMcpShareModal.generating": "Gerando…",
   "virtualMcp.virtualMcpShareModal.installOnClaudeCode":
     "Instalar no Claude Code",

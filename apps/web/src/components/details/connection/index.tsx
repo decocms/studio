@@ -1,4 +1,5 @@
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { recordToEnvVars } from "@/components/env-vars-editor";
@@ -48,7 +49,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Loading01, Trash01 } from "@untitledui/icons";
+import { Trash01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -811,10 +812,7 @@ export default function ConnectionInspectorView() {
       <Suspense
         fallback={
           <div className="flex h-full items-center justify-center bg-background">
-            <Loading01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner className="size-8 text-muted-foreground" />
           </div>
         }
       >

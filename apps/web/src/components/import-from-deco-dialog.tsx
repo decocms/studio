@@ -39,7 +39,6 @@ import { CollectionSearch } from "@/components/collections/collection-search.tsx
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 
 interface DecoSite {
   name: string;
@@ -286,7 +285,7 @@ export function ImportFromDecoDialog({
                   slug,
                   pinnedViews: null,
                   layout: {
-                    defaultMainView: { type: "preview" },
+                    defaultMainView: { type: "site-editor" },
                     chatDefaultOpen: false,
                   },
                 },
@@ -342,10 +341,6 @@ export function ImportFromDecoDialog({
       });
       toast.success(t("common.importFromDecoDialog.importSuccess", { slug }));
       handleClose(false);
-      localStorage.setItem(
-        LOCALSTORAGE_KEYS.sidebarOpen(),
-        JSON.stringify(false),
-      );
       navigateToAgent(virtualMcpId);
     },
     onError: (err) => {

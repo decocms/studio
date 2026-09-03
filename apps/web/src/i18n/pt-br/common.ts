@@ -85,11 +85,11 @@ export const common = {
     "Esta ação não pode ser desfeita. Isso excluirá permanentemente",
   "common.deleteConnectionDialogs.forceDeleteDescription": "A conexão",
   "common.deleteConnectionDialogs.forceDeleteTitle":
-    "Conexão Usada por Agentes",
+    "Conexão Usada por Projetos",
   "common.deleteConnectionDialogs.forceDeleteWarning":
-    "Excluir esta conexão a removerá desses agentes, o que pode impactar fluxos de trabalho existentes que dependem deles.",
+    "Excluir esta conexão a removerá desses projetos, o que pode impactar fluxos de trabalho existentes que dependem deles.",
   "common.deleteConnectionDialogs.isUsedByAgents":
-    "está sendo usada pelos seguintes agente(s):",
+    "está sendo usada pelos seguintes projeto(s):",
   "common.deleteConnectionDialogs.title": "Excluir Conexão?",
   "common.errorBoundary.newVersionAvailable": "Nova versão disponível",
   "common.errorBoundary.newVersionDeployed":
@@ -164,7 +164,7 @@ export const common = {
   "common.importFromDecoDialog.failedToConnectGithub":
     "Falha ao conectar GitHub",
   "common.importFromDecoDialog.failedToCreateAgent":
-    "Falha ao criar o agente importado",
+    "Falha ao criar o projeto importado",
   "common.importFromDecoDialog.failedToPrepareImport":
     "Falha ao preparar a importação da deco.cx",
   "common.importFromDecoDialog.githubNotConnected":
@@ -176,6 +176,7 @@ export const common = {
   "common.importFromDecoDialog.importing": "Importando...",
   "common.importFromDecoDialog.installGithubApp":
     'Instale o aplicativo GitHub na organização "{owner}" para importar este site. {installUrl}',
+  "common.loading": "Carregando",
   "common.importFromDecoDialog.loadingSites": "Carregando sites...",
   "common.importFromDecoDialog.noSitesFound":
     "Nenhum site encontrado para esta conta.",
@@ -268,11 +269,6 @@ export const common = {
   "common.tagMultiSelect.noTagsFound": "Nenhuma tag encontrada.",
   "common.tagMultiSelect.searchOrCreate": "Pesquisar ou criar...",
   "common.tagMultiSelect.selected": "Selecionado",
-  "common.toolInputForm.enterPlaceholder": "Digite {fieldKey}…",
-  "common.toolInputForm.false": "falso",
-  "common.toolInputForm.jsonPlaceholder": "Digite {fieldKey} como JSON…",
-  "common.toolInputForm.selectPlaceholder": "Selecione…",
-  "common.toolInputForm.true": "verdadeiro",
   "common.toolSetSelector.filterAll": "Todos",
   "common.toolSetSelector.filterSelected": "Selecionados",
   "common.toolSetSelector.filterUnselected": "Não selecionados",
@@ -286,22 +282,14 @@ export const common = {
   "common.toolSetSelector.searchPlaceholder": "Pesquisar servidores MCP...",
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
-  "common.useStartThreadFromPrompt.failedToStartChat":
-    "Falha ao iniciar o chat. Tente novamente.",
-  "common.useStartThreadFromPrompt.mcpClientNotAvailable":
-    "Cliente MCP não disponível",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
   "common.createAgentDropdown.importFromGitHub": "Importar do GitHub",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
-  "common.mainPanelTabs.overview": "Visão Geral",
   "common.mainPanelTabs.preview": "Visualização",
   "common.mainPanelTabs.code": "Código",
   "common.mainPanelTabs.content": "Conteúdo",
   "common.mainPanelTabs.assets": "Assets",
   "common.mainPanelTabs.reviewChanges": "Revisar alterações",
-  "common.mainPanelTabs.automations": "Automações",
-  "common.mainPanelTabs.settings": "Configurações",
-  "common.mainPanelTabs.report": "Relatório",
   "common.mainPanelTabs.hosting": "Hospedagem",
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.analytics": "Deco Analytics",

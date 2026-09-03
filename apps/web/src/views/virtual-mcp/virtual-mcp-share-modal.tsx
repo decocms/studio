@@ -1,4 +1,5 @@
 import { slugify } from "@decocms/shared/utils/slugify";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -14,7 +15,7 @@ import {
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useProjectContext } from "@/sdk";
 import type { VirtualMCPEntity } from "@/sdk";
-import { Check, Copy01, Key01, Loading01 } from "@untitledui/icons";
+import { Check, Copy01, Key01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
@@ -270,7 +271,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
             disabled={generating}
           >
             {generating ? (
-              <Loading01 size={14} className="animate-spin" />
+              <Spinner className="size-3.5" />
             ) : (
               <Key01 size={14} />
             )}
@@ -480,7 +481,7 @@ function ChatBridgeSectionInner({
             disabled={generating}
           >
             {generating ? (
-              <Loading01 size={14} className="animate-spin" />
+              <Spinner className="size-3.5" />
             ) : (
               <Key01 size={14} />
             )}

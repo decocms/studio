@@ -1,5 +1,5 @@
-import { Loading01 } from "@untitledui/icons";
 import type { UseQueryResult } from "@tanstack/react-query";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import { useT } from "@/i18n/use-t.ts";
@@ -19,7 +19,7 @@ export function ChangesTab({ diffQuery }: Props) {
   if (diffQuery.isLoading) {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-        <Loading01 className="h-4 w-4 animate-spin" />
+        <Spinner className="h-4 w-4" />
         <span className="text-sm">{t("thread.changesTab.loadingChanges")}</span>
       </div>
     );

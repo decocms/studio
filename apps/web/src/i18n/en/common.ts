@@ -82,11 +82,11 @@ export const common = {
     "This action cannot be undone. This will permanently delete",
   "common.deleteConnectionDialogs.forceDeleteDescription": "The connection",
   "common.deleteConnectionDialogs.forceDeleteTitle":
-    "Connection Used by Agents",
+    "Connection Used by Projects",
   "common.deleteConnectionDialogs.forceDeleteWarning":
-    "Deleting this connection will remove it from those agents, which may impact existing workflows that depend on them.",
+    "Deleting this connection will remove it from those projects, which may impact existing workflows that depend on them.",
   "common.deleteConnectionDialogs.isUsedByAgents":
-    "is currently used by the following agent(s):",
+    "is currently used by the following project(s):",
   "common.deleteConnectionDialogs.title": "Delete Connection?",
   "common.errorBoundary.newVersionAvailable": "New version available",
   "common.errorBoundary.newVersionDeployed":
@@ -159,7 +159,7 @@ export const common = {
   "common.importFromDecoDialog.failedToConnectGithub":
     "Failed to connect GitHub",
   "common.importFromDecoDialog.failedToCreateAgent":
-    "Failed to create the imported agent",
+    "Failed to create the imported project",
   "common.importFromDecoDialog.failedToPrepareImport":
     "Failed to prepare deco.cx import",
   "common.importFromDecoDialog.githubNotConnected":
@@ -171,6 +171,7 @@ export const common = {
   "common.importFromDecoDialog.importing": "Importing...",
   "common.importFromDecoDialog.installGithubApp":
     'Install the GitHub App on the "{owner}" organization to import this site. {installUrl}',
+  "common.loading": "Loading",
   "common.importFromDecoDialog.loadingSites": "Loading sites...",
   "common.importFromDecoDialog.noSitesFound":
     "No sites found for this account.",
@@ -259,11 +260,6 @@ export const common = {
   "common.tagMultiSelect.noTagsFound": "No tags found.",
   "common.tagMultiSelect.searchOrCreate": "Search or create...",
   "common.tagMultiSelect.selected": "Selected",
-  "common.toolInputForm.enterPlaceholder": "Enter {fieldKey}…",
-  "common.toolInputForm.false": "false",
-  "common.toolInputForm.jsonPlaceholder": "Enter {fieldKey} as JSON…",
-  "common.toolInputForm.selectPlaceholder": "Select…",
-  "common.toolInputForm.true": "true",
   "common.toolSetSelector.filterAll": "All",
   "common.toolSetSelector.filterSelected": "Selected",
   "common.toolSetSelector.filterUnselected": "Unselected",
@@ -276,22 +272,14 @@ export const common = {
   "common.toolSetSelector.searchPlaceholder": "Search MCP Servers...",
   "common.toolSetSelector.selectConnection":
     "Select a connection to view its tools",
-  "common.useStartThreadFromPrompt.failedToStartChat":
-    "Failed to start chat. Please try again.",
-  "common.useStartThreadFromPrompt.mcpClientNotAvailable":
-    "MCP client not available",
   "common.createAgentDropdown.createFromScratch": "Create from scratch",
   "common.createAgentDropdown.importFromGitHub": "Import from GitHub",
   "common.createAgentDropdown.importFromDeco": "Import from deco.cx",
-  "common.mainPanelTabs.overview": "Overview",
   "common.mainPanelTabs.preview": "Preview",
   "common.mainPanelTabs.code": "Code",
   "common.mainPanelTabs.content": "Content",
   "common.mainPanelTabs.assets": "Assets",
   "common.mainPanelTabs.reviewChanges": "Review changes",
-  "common.mainPanelTabs.automations": "Automations",
-  "common.mainPanelTabs.settings": "Settings",
-  "common.mainPanelTabs.report": "Report",
   "common.mainPanelTabs.hosting": "Hosting",
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.analytics": "Deco Analytics",

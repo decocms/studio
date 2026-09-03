@@ -4,6 +4,7 @@ import {
   type TriggerDefinition,
 } from "@/hooks/use-automations";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Select,
   SelectContent,
@@ -12,7 +13,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { useConnections } from "@/sdk";
-import { Loading01, XClose, Zap } from "@untitledui/icons";
+import { XClose, Zap } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -120,7 +121,7 @@ export function EventTriggerForm({
           <SelectTrigger className="w-full">
             {isLoadingTriggers ? (
               <span className="flex items-center gap-2 text-muted-foreground">
-                <Loading01 size={13} className="animate-spin" />
+                <Spinner className="size-[13px]" />
                 {t("automations.eventTriggerForm.loadingEvents")}
               </span>
             ) : (
@@ -213,7 +214,7 @@ export function EventTriggerForm({
           disabled={addTrigger.isPending}
         >
           {addTrigger.isPending ? (
-            <Loading01 size={13} className="animate-spin" />
+            <Spinner className="size-[13px]" />
           ) : (
             t("automations.eventTriggerForm.addTriggerButton")
           )}

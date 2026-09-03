@@ -9,7 +9,6 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { useRef } from "react";
 import { KEYS } from "@/lib/query-keys";
 import { callStudioTool, useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io";
@@ -53,7 +52,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
-  main_agent_id: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -66,7 +64,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   flags: null,
-  main_agent_id: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -150,7 +147,6 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "flags"
-    | "main_agent_id"
   >
 >;
 
@@ -382,31 +378,6 @@ export function useUpdateRegistryConfig() {
   };
 }
 
-/**
- * Returns a predicate that tells whether a given connectionId is an enabled
- * registry. Falls back to "Deco Store is the default" when no registry_config
- * is set.
- */
-export function useDefaultHomeAgents(): DefaultHomeAgentsConfig | null {
-  const { data } = useOrganizationSettings((s) => s.default_home_agents);
-  return data ?? null;
-}
-
-function useUpdateDefaultHomeAgents() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (
-      config: DefaultHomeAgentsConfig,
-      options?: OrgSettingsMutateOptions,
-    ) => mutation.mutate({ default_home_agents: config }, options),
-    mutateAsync: (
-      config: DefaultHomeAgentsConfig,
-      options?: OrgSettingsMutateOptions,
-    ) => mutation.mutateAsync({ default_home_agents: config }, options),
-  };
-}
-
 export interface HomeAgentsWriter {
   /** The freshest id list, read live from the cache (not a render snapshot). */
   currentIds: () => string[];
@@ -415,90 +386,6 @@ export interface HomeAgentsWriter {
    * next one, or `null` to skip (no-op guards like "already on home").
    */
   apply: (transform: (ids: string[]) => string[] | null) => Promise<void>;
-}
-
-/**
- * Serialized, optimistic writer for `default_home_agents`.
- *
- * Both the home board and the manage-home drawer mutate this same ordered list,
- * often via rapid clicks (add / remove / reorder). Three guarantees keep that
- * safe — and are why callers must go through here instead of touching the cache
- * and mutation directly:
- *  - each write derives its next id list from the *live* cache, never a
- *    render-time snapshot, so concurrent edits can't clobber each other;
- *  - writes run strictly in order (a per-instance promise chain), so two
- *    in-flight requests can't reach the server out of order and commit stale ids;
- *  - the cache is patched optimistically and rolled back if the write fails.
- */
-export function useHomeAgentsWriter(): HomeAgentsWriter {
-  const { org } = useProjectContext();
-  const update = useUpdateDefaultHomeAgents();
-  const queryClient = useQueryClient();
-  const chain = useRef<Promise<unknown>>(Promise.resolve());
-  const key = KEYS.organizationSettings(org.id);
-
-  const currentIds = (): string[] =>
-    queryClient.getQueryData<OrganizationSettings>(key)?.default_home_agents
-      ?.ids ?? [];
-
-  const apply = (
-    transform: (ids: string[]) => string[] | null,
-  ): Promise<void> => {
-    const run = chain.current.then(async () => {
-      const snapshot = queryClient.getQueryData<OrganizationSettings>(key);
-      const next = transform(snapshot?.default_home_agents?.ids ?? []);
-      if (next === null) return;
-      queryClient.setQueryData<OrganizationSettings | undefined>(key, (prev) =>
-        prev ? { ...prev, default_home_agents: { ids: next } } : prev,
-      );
-      try {
-        await update.mutateAsync({ ids: next });
-        await queryClient.refetchQueries({
-          queryKey: KEYS.homeNextActions(org.slug),
-          type: "active",
-        });
-      } catch (err) {
-        queryClient.setQueryData(key, snapshot);
-        throw err;
-      }
-    });
-    // Keep the chain alive even when a write rejects, so later writes still run.
-    chain.current = run.catch(() => {});
-    return run;
-  };
-
-  return { currentIds, apply };
-}
-
-/**
- * The org's "main agent" — the virtual MCP id the org lands on (`/$org`)
- * instead of the Super Agent, or null when unset. `isPending` lets the landing
- * resolver wait for the first read so it doesn't flash the Super Agent then
- * redirect. Once the shell prefetches org settings, reads resolve from cache.
- */
-export function useMainAgentId(): {
-  mainAgentId: string | null;
-  isPending: boolean;
-} {
-  const { data, isPending } = useOrganizationSettings(
-    (s) => s.main_agent_id ?? null,
-  );
-  return { mainAgentId: data ?? null, isPending };
-}
-
-/**
- * Writer for the org's main agent. Pass a virtual MCP id to set it, or null to
- * clear (fall back to the Super Agent). Org-scoped: applies to every member.
- */
-export function useSetMainAgent() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (id: string | null, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ main_agent_id: id }, options),
-    mutateAsync: (id: string | null, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ main_agent_id: id }, options),
-  };
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {

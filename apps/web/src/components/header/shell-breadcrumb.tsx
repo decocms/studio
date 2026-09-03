@@ -2,7 +2,6 @@
  * Org + agent navigation crumbs, used standalone so each can be placed
  * independently:
  *
- * - **{@link OrgSwitcherCrumb}** — the active organization's own icon *is* the
  *   switcher (Slack-style). Opens the org switcher popover. Lives in the desktop
  *   sidebar header and the mobile sidebar sheet.
  * - **{@link AgentSwitcherCrumb}** — the active agent (the org's Super Agent by
@@ -18,8 +17,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -29,14 +26,12 @@ import {
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
-import { OrgIcon, OrgSwitcherPopover } from "@/components/header/org-switcher";
 import { AgentScopePicker } from "@/components/sidebar/agents-section";
 import { useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
 import { authClient } from "@/lib/auth-client.ts";
-import { usePendingInvitations } from "@/hooks/use-pending-invitations";
 import { useT } from "@/i18n/use-t.ts";
 
 const crumbBtnClass =
@@ -98,73 +93,6 @@ function AgentCrumb({
         }
       />
     </div>
-  );
-}
-
-/**
- * Org switcher crumb — just the org icon button, standalone. Used in the
- * sidebar header; the agent crumb lives in the topbar.
- * The left padding aligns the icon's center with the sidebar trigger button
- * in the task list toolbar below it.
- */
-export function OrgSwitcherCrumb({ showName }: { showName?: boolean } = {}) {
-  const t = useT();
-  const { org } = useProjectContext();
-  const { state: sidebarState, isMobile } = useSidebar();
-  const hasPendingInvites = usePendingInvitations().invitations.length > 0;
-  const isSidebarCollapsed = sidebarState === "collapsed" || isMobile;
-
-  return (
-    <Tooltip>
-      <OrgSwitcherPopover
-        orgParam={org.slug}
-        trigger={
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={
-                hasPendingInvites
-                  ? t(
-                      "header.shellBreadcrumb.switchOrganizationPendingInvitation",
-                      { name: org.name },
-                    )
-                  : t("header.shellBreadcrumb.switchOrganization", {
-                      name: org.name,
-                    })
-              }
-              // pl-[5px] centers the 24px org icon on the same axis (x=25) as the
-              // collapsed rail centers it (the 50px icon-rail's midpoint), so the
-              // icon doesn't shift 1px when the sidebar collapses/expands.
-              className="flex items-center gap-1.5 shrink-0 rounded-lg pl-[5px] pr-1.5 py-1.5 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              <span className="relative inline-flex">
-                <OrgIcon org={org} size="sm" />
-                {hasPendingInvites && (
-                  <span
-                    className={cn(
-                      "absolute -right-1 size-2.5 rounded-full bg-destructive ring-2 ring-background",
-                      isSidebarCollapsed
-                        ? "-top-1"
-                        : "top-1/2 -translate-y-1/2",
-                    )}
-                  />
-                )}
-              </span>
-              {showName && (
-                <span className="truncate text-sm font-medium text-foreground max-w-[10rem]">
-                  {org.name}
-                </span>
-              )}
-              <ChevronDown
-                size={14}
-                className="shrink-0 text-muted-foreground opacity-70"
-              />
-            </button>
-          </TooltipTrigger>
-        }
-      />
-      <TooltipContent side="bottom">{org.name}</TooltipContent>
-    </Tooltip>
   );
 }
 

@@ -72,9 +72,19 @@ test.describe("Blocks preview mode", () => {
     await expect(legacyBlocksToggle).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
-    /* The view is a path segment now: `/agents/<project>/preview`. */
-    await expect(page).toHaveURL(/\/agents\/[^/?]+\/preview/);
+    /* The Site Editor is opened from the SIDEBAR. Preview / Content / Code are
+       a switcher WITHIN that surface, so they only render once you are on it —
+       there is no "Preview" button to press from Settings. */
+    await page
+      .getByRole("button", { name: "Site Editor", exact: true })
+      .click();
+    /* The VIEW is the segment (`site-editor`, which `preview` normalises to);
+       the project rides in `?virtualmcpid=`. Assert both halves: a shrinking
+       path alone would also pass if the project scope had been dropped. */
+    await expect(page).toHaveURL(/\/agents\/site-editor/);
+    await expect(page).toHaveURL(
+      (url) => url.searchParams.get("virtualmcpid") === agentId,
+    );
     await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
   });
@@ -112,7 +122,11 @@ test.describe("Blocks preview mode", () => {
     await viewSelect.click();
     await page.getByRole("option", { name: "Preview" }).click();
     await expect(page).toHaveURL(/sidepanel=false/);
-    await expect(page).toHaveURL(/\/agents\/[^/?]+\/preview/);
+    await expect(page).toHaveURL(/\/agents\/site-editor/);
+    // The project scope moved from the path into search — it must still be here.
+    await expect(page).toHaveURL(
+      (url) => url.searchParams.get("virtualmcpid") === agentId,
+    );
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });

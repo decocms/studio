@@ -429,10 +429,7 @@ export const sandbox = {
   "sandbox.preview.catchAllParamLabel": "path",
   "sandbox.preview.choosePage": "Choose page",
   "sandbox.preview.clickElementToAsk": "Click any element to ask the AI",
-  "sandbox.preview.cms": "CMS",
   "sandbox.preview.collapseTerminal": "Collapse terminal",
-  "sandbox.preview.editContent": "Edit content",
-  "sandbox.preview.exitEditor": "Exit editor",
   "sandbox.preview.expandTerminal": "Expand terminal",
   "sandbox.preview.resizeTerminal": "Resize terminal",
   "sandbox.preview.copyCurrentUrl": "Copy Current URL",
@@ -441,8 +438,10 @@ export const sandbox = {
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Mobile (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
+  "sandbox.preview.editContent": "Edit content",
   "sandbox.preview.editSeo": "Edit SEO",
   "sandbox.preview.enterToGo": "Enter to go",
+  "sandbox.preview.exitEditor": "Exit editor",
   "sandbox.preview.failedToCopyUrl": "Failed to copy URL",
   "sandbox.preview.failedToCreatePage": "Failed to create page",
   "sandbox.preview.globalComponents": "Global components",
@@ -573,17 +572,13 @@ export const sandbox = {
     "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.cmsSettings.contentEditing.description":
-    "Whether this agent offers a CMS, and where the preview lands when it does.",
-  "sandbox.cmsSettings.contentEditing.manual": "Enabled",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Editors open the CMS from the preview when they need it.",
-  "sandbox.cmsSettings.contentEditing.auto": "Auto",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "The preview opens the CMS as soon as it can edit content.",
+    "Whether this project offers a CMS.",
+  "sandbox.cmsSettings.contentEditing.on": "Enabled",
+  "sandbox.cmsSettings.contentEditing.onDescription":
+    "The Site Editor offers Content, and a CMS chat opens on it.",
   "sandbox.cmsSettings.contentEditing.off": "Disabled",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "No CMS button in the preview and no Content tab. The site still previews, and the agent can still edit content.",
-  "sandbox.cmsUnavailable.title": "This chat can't preview your site",
+    "No Content view in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",
   "sandbox.cmsUnavailable.noRepo":
@@ -600,7 +595,7 @@ export const sandbox = {
   "sandbox.repoRow.label": "Repository",
   "sandbox.repoRow.noRepositoryConnected": "No repository connected",
   "sandbox.repoRow.tooltipContent":
-    "The connected GitHub repository for this agent. Manage in Connections.",
+    "The connected GitHub repository for this project. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.backToList": "Back to list",
@@ -685,7 +680,7 @@ export const sandbox = {
     "The GitHub connection this chat used was removed. Link the repository again to start the sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Link repository",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
-    "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
+    "This project's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
   "sandbox.stateCard.resume": "Resume",
   "sandbox.stateCard.suspendedHeadline": "Sandbox is paused",

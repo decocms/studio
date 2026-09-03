@@ -78,14 +78,19 @@ export function useBoardColumns(): TaskBoardData["columns"] {
   return data?.columns ?? [];
 }
 
-export function useTaskBoardItems() {
-  const { org, locator } = useProjectContext();
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  const queryKey = KEYS.taskBoardItems(locator);
-
-  const query = useQuery({
-    queryKey,
+/** The board list, as options rather than a hook, so a second reader can share
+ *  this query's CACHE without inheriting its live wiring. The org home reads it
+ *  with `useSuspenseQuery` (it needs the answer before it can choose a layout);
+ *  the board itself reads it below with the polling backstop and the SSE
+ *  upserts. Same key, one request, two reading styles. */
+export function taskBoardItemsQueryOptions(
+  locator: ReturnType<typeof useProjectContext>["locator"],
+  studio: ReturnType<typeof useStudioTools>,
+) {
+  return {
+    queryKey: KEYS.taskBoardItems(locator),
+    // Backstop for a stream that died without an error; paused when unfocused.
+    refetchInterval: 60_000,
     queryFn: async (): Promise<TaskBoardData> => {
       const { items, sprints, columns } = await studio.call(
         "TASK_BOARD_ITEM_LIST",
@@ -93,9 +98,21 @@ export function useTaskBoardItems() {
       );
       return { items, sprints, columns };
     },
-    // Backstop for a stream that died without an error; paused when unfocused.
-    refetchInterval: 60_000,
-  });
+  };
+}
+
+/**
+ * The live path for `KEYS.taskBoardItems` — SSE upserts and the linked-thread
+ * status patch, both writing the shared cache and reading none of it. Query-less
+ * on purpose, so every reader of that key mounts the same liveness: the board,
+ * and the org/project feed that reads the key through `useSuspenseQuery`. The
+ * watch connection is shared per org, so a second mount adds a handler, not a
+ * second stream.
+ */
+export function useTaskBoardLiveSync(): void {
+  const { org, locator } = useProjectContext();
+  const queryClient = useQueryClient();
+  const queryKey = KEYS.taskBoardItems(locator);
 
   // Live Super Agent transitions (todo → in_progress → in_review). Upsert the
   // pushed item into the cached list so the board moves cards without polling.
@@ -171,6 +188,13 @@ export function useTaskBoardItems() {
       );
     },
   });
+}
+
+export function useTaskBoardItems() {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const query = useQuery(taskBoardItemsQueryOptions(locator, studio));
+  useTaskBoardLiveSync();
 
   return {
     items: query.data?.items ?? [],

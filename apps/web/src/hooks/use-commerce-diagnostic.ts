@@ -163,10 +163,13 @@ export function commerceReportNavTarget(
     to: DESTINATION_ROUTE.agents,
     params: {
       org: org.slug,
-      project: getCommerceDiscoveryAgentId(org.id),
       panel: "app",
     },
+    /** The scope is SEARCH, not a param: `/$org/agents/{-$panel}` declares only
+     *  `org` and `panel`, so a `virtualmcpid` param is silently discarded and
+     *  the report opens on the Super Agent. */
     search: {
+      virtualmcpid: getCommerceDiscoveryAgentId(org.id),
       connection: connectionId,
       tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
     },

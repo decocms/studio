@@ -31,7 +31,7 @@ export const details = {
   "details.connectionActivity.timeframe": "Timeframe",
   "details.connectionActivity.toolCalls": "Tool calls",
   "details.connectionActivity.topErrors": "Top errors",
-  "details.connectionAgentsPanel.usedByAgents": "Used by agents",
+  "details.connectionAgentsPanel.usedByAgents": "Used by projects",
   "details.connectionCapabilities.capabilities": "Capabilities",
   "details.connectionCapabilities.noCapabilitiesDiscovered":
     "No capabilities discovered yet. The connection may still be connecting.",

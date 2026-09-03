@@ -7,14 +7,12 @@ export const settings = {
   "settings.nav.connect": "Connect",
   "settings.nav.aiProviders": "AI Providers",
   "settings.nav.secrets": "Secrets",
-  "settings.nav.apiKeys": "API Keys",
   "settings.nav.billing": "Billing & AI",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Synced repos",
   "settings.nav.storage": "Storage",
   "settings.nav.advanced": "Advanced",
   "settings.subnav.ariaLabel": "Settings sections",
-  "settings.subnav.clients": "Clients",
   "settings.subnav.infrastructure": "Infrastructure",
   "settings.nav.tasks": "Board",
   "settings.jira.sectionTitle": "Jira integration",
@@ -44,9 +42,6 @@ export const settings = {
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
   "settings.jira.loadingBoards": "Loading boards…",
-  "settings.jira.rolesLabel": "What each column means",
-  "settings.jira.rolesDescription":
-    "Your board's columns come from Jira. Tell Studio which of them is where review happens, and which retires a card — most columns mean nothing to it, and that is fine.",
   "settings.boardColumns.title": "Board columns",
   "settings.boardColumns.description":
     "Your tracker owns these columns. Say what should move a card into each one, and which of them should put the agent to work.",
@@ -71,11 +66,6 @@ export const settings = {
     "Optional. The card's title and description always come with it, so this is the instruction, not the whole message.",
   "settings.boardColumns.removeAriaLabel": "Stop running the agent in {column}",
   "settings.boardColumns.saveFailed": "Could not save this column",
-  "settings.jira.roleNone": "Nothing special",
-  "settings.jira.roleQueued": "Where the agent gives up",
-  "settings.jira.roleInProgress": "Being worked on",
-  "settings.jira.roleInReview": "Under review",
-  "settings.jira.roleArchived": "Archive",
   "settings.jira.noColumnsYet":
     "No columns yet — they arrive with the next sync.",
   "settings.jira.mappingLabel": "Column mapping",
@@ -142,7 +132,7 @@ export const settings = {
   "settings.syncedRepos.removed": "Sync removed",
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Agents",
+  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
   "settings.nav.store": "Store",
@@ -150,6 +140,7 @@ export const settings = {
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
   "settings.nav.profile": "Profile & Preferences",
+  "settings.nav.backToHome": "Back to home",
   "settings.nav.signOut": "Sign Out",
   "settings.profile.avatar": "Avatar",
   "settings.profile.displayName": "Display name",
@@ -188,7 +179,7 @@ export const settings = {
   "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Execute all without approval",
-  "settings.automations.browseAgentsButton": "Browse agents",
+  "settings.automations.browseAgentsButton": "Browse projects",
   "settings.automations.emptyDescription":
     "Automations are created per agent. Open an agent and add one from its Automations tab.",
   "settings.automations.emptyTitle": "No automations yet",
@@ -302,36 +293,27 @@ export const settings = {
     "Stores only a refresh endpoint + API key; short-lived credentials are fetched on demand and refreshed automatically.",
   "settings.buckets.temporarySessionOption":
     "Temporary session (STS, auto-refreshed)",
-  "settings.connectClients.activeKeys": "Active keys",
-  "settings.connectClients.activeKeysDescription":
-    "Keys you've generated for headless clients. Revoke any time.",
-  "settings.connectClients.apiKeyTab": "API key",
+  "settings.connectClients.anyOtherClientDescription":
+    "Any other MCP client: paste this endpoint into it to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
+  "settings.connectClients.apiKeyOption": "API key",
+  "settings.connectClients.connectAClient": "Connect a client",
   "settings.connectClients.copy": "Copy",
-  "settings.connectClients.createdAt": "Created {date}",
-  "settings.connectClients.customClientHint": "Wiring a custom client?",
   "settings.connectClients.doneHideKey": "Done, hide key",
-  "settings.connectClients.failedToLoadKeys": "Failed to load keys: {error}",
+  "settings.connectClients.generateKey": "Generate key",
   "settings.connectClients.generateKeyFor": "Generate key for {client}",
   "settings.connectClients.generatingKey": "Generating…",
   "settings.connectClients.headlessKeyHint":
     "For CI, Conductor, or headless agents that can't open a browser.",
+  "settings.connectClients.installMethod": "Installation method",
   "settings.connectClients.keyCreated": "Key created",
-  "settings.connectClients.keyRevoked": "Key revoked",
-  "settings.connectClients.loadingActiveKeys": "Loading active keys…",
-  "settings.connectClients.noConnectKeysYet":
-    "No connect keys minted yet. Generate one from a client tab above for headless setups.",
+  "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
     "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
   "settings.connectClients.oauthMetadataHint":
     "OAuth 2.1 Protected Resource Metadata is advertised on 401:",
-  "settings.connectClients.oauthTab": "OAuth",
-  "settings.connectClients.orgUnifiedMcp": "Your org's unified MCP",
-  "settings.connectClients.orgUnifiedMcpDescription":
-    "Plug this URL into any MCP client to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
+  "settings.connectClients.oauthOption": "OAuth",
+  "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect to clients",
-  "settings.connectClients.revoke": "Revoke",
-  "settings.connectClients.revokeConfirm":
-    'Revoke "{name}"? Any client still using this key will lose access.',
   "settings.connectClients.snippetOneTimeWarning":
     "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
@@ -511,16 +493,6 @@ export const settings = {
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
   "settings.orgGeneral.organization": "Organization",
-  "settings.mainAgent.title": "Main agent",
-  "settings.mainAgent.description":
-    "The agent this organization opens on. Every member lands here instead of the Super Agent.",
-  "settings.mainAgent.itemTitle": "Landing agent",
-  "settings.mainAgent.itemDescription":
-    "Pick the agent to open when entering this organization.",
-  "settings.mainAgent.superAgentOption": "Super Agent (default)",
-  "settings.mainAgent.setToast": '"{title}" is now the main agent',
-  "settings.mainAgent.resetToast": "Reset to the Super Agent",
-  "settings.mainAgent.errorToast": "Couldn't update the main agent",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
     "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
@@ -561,21 +533,6 @@ export const settings = {
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
-  "settings.sprints.title": "Sprints",
-  "settings.sprints.description":
-    "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
-  "settings.sprints.enabledTitle": "Enable sprints",
-  "settings.sprints.enabledDescription":
-    "Adds a sprint property to every task and a sprint filter to the board.",
-  "settings.sprints.cadenceTitle": "Cadence",
-  "settings.sprints.cadenceDescription":
-    "How long a sprint lasts, and the day sprint 1 started.",
-  "settings.sprints.cadenceCurrent":
-    "Sprint {number} is running now ({start} to {end}).",
-  "settings.sprints.weeksValue": "{count} weeks",
-  "settings.sprints.weeksValueOne": "1 week",
-  "settings.sprints.startDateLabel": "Sprint 1 start day",
-  "settings.sprints.updateError": "Couldn't update the sprint settings",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",
@@ -788,14 +745,16 @@ export const settings = {
   "settings.apiKeys.failedToDeleteKey": "Failed to delete API key",
   "settings.apiKeys.failedToLoadError": "Failed to load API keys: {error}",
   "settings.apiKeys.keyDeleted": 'API key "{name}" deleted',
-  "settings.apiKeys.keysCountPlural": "{count} keys",
-  "settings.apiKeys.keysCountSingular": "{count} key",
+  "settings.apiKeys.loading": "Loading API keys…",
   "settings.apiKeys.nameLabel": "Name",
   "settings.apiKeys.namePlaceholder": "My integration",
   "settings.apiKeys.newKey": "New key",
   "settings.apiKeys.newKeyDescription":
     "Give the key a name so you can recognize it later.",
   "settings.apiKeys.newKeyTitle": "New API key",
+  "settings.apiKeys.sectionDescription":
+    "Long-lived keys for scripts and clients that can't sign in through a browser.",
+  "settings.apiKeys.sectionTitle": "API keys",
   "settings.secrets.cancelButton": "Cancel",
   "settings.secrets.createButton": "Create secret",
   "settings.secrets.creatingButton": "Creating…",
