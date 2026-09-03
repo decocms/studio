@@ -12,7 +12,6 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { retry, RetryError } from "@decocms/shared/std";
-import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { cardWorkLanded } from "./archive-merged";
 import { recordTaskActivity } from "./activity";
@@ -44,52 +43,16 @@ export function isRateLimitError(err: unknown): boolean {
 }
 
 /**
- * Stale-while-revalidate cache for the PR reads on the POLLED paths — the task
- * dialog's 60s refresh and the review sweeper — which is where the GitHub 429s
- * came from. Each poll costs four `pull_request_read` calls per PR plus one
- * `GET_CHECK_RUN` per failing check, uncached: `clientFromConnection` (what this
- * file uses) bypasses the proxy's read cache entirely, so every viewer, every
- * poll, every replica hit GitHub live.
- *
- * SWR is what keeps the UI alive: past `revalidateAfterMs` a poll is served from
- * the entry it already has while ONE background call refreshes it (single-flight
- * — concurrent viewers of the same PR collapse into one), and a failed refresh
- * keeps serving the previous value until `maxStaleMs`. So a rate-limit window
- * shows the last known PR state instead of blanking the card to all-nulls.
- *
- * `maxStaleMs` is deliberately much longer than the poll: it only matters while
- * GitHub is refusing us, and half an hour of "the state as of when GitHub last
- * answered" beats an empty card that loses its checks, preview and ship button.
- *
- * Its own instance, not the shared `getMcpReadCache()`: that one is tuned for
- * proxied tool calls (30s/5min) and is settings-gated off in development, and
- * this path wants a longer stale window and to work the same everywhere.
- *
- * ponytail: per-pod, so N replicas still cost N fetches per window. Move it to
- * NATS KV if that's still too many.
- */
-const PR_READ_CACHE_ENTRY = {
-  /** Just under the dialog's 60s poll, so a poll refreshes rather than blocks. */
-  revalidateAfterMs: 55_000,
-  /** How long a rate-limit window may be papered over with the last good read. */
-  maxStaleMs: 30 * 60_000,
-  maxValueBytes: 512 * 1024,
-} as const;
-const prReadCache = new InMemoryMcpReadCache({
-  "tools/call": PR_READ_CACHE_ENTRY,
-  "resources/read": PR_READ_CACHE_ENTRY,
-  "prompts/get": PR_READ_CACHE_ENTRY,
-});
-
-/**
  * Drop this connection's cached PR reads. Call it after WRITING to GitHub
  * through the connection (a merge), so the next poll sees the new state instead
  * of serving the pre-merge one for the rest of the revalidate window — the card
  * only moves to Done once a poll observes `merged`, and a minute of "did my ship
  * button work?" is exactly the confusion this cache must not introduce.
  */
-export function invalidatePrReads(connectionId: string): void {
-  prReadCache.invalidate(connectionId);
+import { getPrReadCache } from "./pr-read-cache";
+
+export function invalidatePrReads(connectionId: string): Promise<void> {
+  return getPrReadCache().invalidate(connectionId);
 }
 
 /** `owner/repo#number`, for log lines. */
@@ -113,13 +76,10 @@ async function cachedPrRead(
   pending: Promise<void>[],
 ): Promise<Record<string, unknown> | null> {
   try {
-    const raw = await prReadCache.fetch({
-      type: "tools/call",
+    const raw = await getPrReadCache().fetch({
       connectionId,
-      // The GitHub installation is the connection's, not the caller's, so every
-      // org member reading the same PR shares one entry.
-      scope: { kind: "org" },
-      params: { name, arguments: args },
+      name,
+      args,
       fetchLive: () =>
         retry(
           async () => {

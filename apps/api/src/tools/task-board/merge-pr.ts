@@ -240,7 +240,10 @@ export async function mergeLinkedPr(
       const attempt = await attemptMerge(client, pr, mergeMethod);
       if (attempt.kind === "merged") {
         // Drop the polled read cache so the next poll sees `merged` → Done.
-        invalidatePrReads(conn.id);
+        // Awaited: the UI refetches as soon as this responds, and the KV delete
+        // is a round-trip — firing it and returning races the very poll it is
+        // meant to fix.
+        await invalidatePrReads(conn.id);
         return { merged: true };
       }
       // A 429 says nothing about the method; re-asking IS the burst — stop.

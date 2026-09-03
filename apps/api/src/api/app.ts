@@ -146,6 +146,10 @@ import {
   setSkillCatalogCache,
   type SkillCatalogCache,
 } from "../file-storage/skill-catalog-cache";
+import {
+  JetStreamKVPrReadCache,
+  setPrReadCache,
+} from "../tools/task-board/pr-read-cache";
 import { isMcpCacheEnabled } from "../mcp-clients/mcp-read-cache";
 import {
   startMcpCacheInvalidation,
@@ -985,6 +989,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   let mcpListCache: McpListCache | null;
   let skillCatalogCache: SkillCatalogCache | null;
+  let prReadCache: JetStreamKVPrReadCache | null;
   let connectionCircuitStore: ConnectionCircuitStore;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
@@ -1010,6 +1015,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Without NATS every read rebuilds the catalog — the behavior before the
     // cache existed.
     skillCatalogCache = null;
+    // Null here means `getPrReadCache()` serves its inert instance — the
+    // per-pod in-memory SWR cache, which is what this path had before.
+    prReadCache = null;
     connectionCircuitStore = new NoopConnectionCircuitStore();
     cancelBroadcast = {
       start: async () => {},
@@ -1086,6 +1094,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     scc.init().catch(() => {});
     skillCatalogCache = scc;
 
+    const prc = new JetStreamKVPrReadCache({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    prc.init().catch(() => {});
+    prReadCache = prc;
+
     const ccs = new JetStreamKVConnectionCircuitStore({
       getJetStream: () => natsProvider!.getJetStream(),
     });
@@ -1115,6 +1129,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       scc.init().catch((err: unknown) => {
         console.error("[SkillCatalogCache] Deferred init failed:", err);
       });
+      prc.init().catch((err: unknown) => {
+        console.error("[PrReadCache] Deferred init failed:", err);
+      });
       ccs.init().catch((err: unknown) => {
         console.error("[ConnectionCircuitStore] Deferred init failed:", err);
       });
@@ -1138,6 +1155,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
   setSkillCatalogCache(skillCatalogCache);
+  setPrReadCache(prReadCache);
   setConnectionCircuitStore(connectionCircuitStore);
 
   const threadStorage = new SqlThreadStorage(database.db);
@@ -1221,12 +1239,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     streamBuffer.teardown();
     mcpListCache?.teardown();
     skillCatalogCache?.teardown();
+    prReadCache?.teardown();
     modelListCache.teardown();
     providerKeyCache.teardown();
     teardownMcpCacheInvalidation();
     connectionCircuitStore.teardown();
     setMcpListCache(null);
     setSkillCatalogCache(null);
+    setPrReadCache(null);
     setConnectionCircuitStore(null);
   };
 
