@@ -114,6 +114,27 @@ describe("malformed 2xx bodies", () => {
   });
 });
 
+describe("retry timeout budget", () => {
+  it("gives each retry attempt its own AbortSignal instead of reusing an already-fired one", async () => {
+    let attempts = 0;
+    const { calls } = installFetch(() => {
+      attempts++;
+      if (attempts === 1) {
+        throw new DOMException("The operation timed out.", "AbortError");
+      }
+      return new Response(
+        JSON.stringify({ bootId: "b", transition: "t", config: {} }),
+        { status: 200 },
+      );
+    });
+    await postConfig("http://daemon:9000", "tok", { env: {} } as never);
+    expect(calls.length).toBe(2);
+    // A shared signal here would make the retry fail instantly instead.
+    expect(calls[0]!.init.signal).not.toBe(calls[1]!.init.signal);
+    expect(calls[1]!.init.signal?.aborted).toBe(false);
+  });
+});
+
 describe("proxyDaemonRequest", () => {
   it("injects Authorization: Bearer <token> header", async () => {
     const { calls } = installFetch(() => new Response("", { status: 204 }));

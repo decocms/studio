@@ -53,11 +53,18 @@ function isTransientError(err: unknown): boolean {
  * a daemon that sends headers and then stalls rejects the `.text()`, and a
  * `.text()` awaited outside this try is exactly the unlabelled DOMException
  * again. Every caller wants the body anyway.
+ *
+ * `timeoutMs` is applied via a *fresh* `AbortSignal.timeout()` on every
+ * attempt — not one built once by the caller and reused. A signal that has
+ * already fired stays fired, so reusing it across retries would make every
+ * attempt after the first one that times out fail instantly with the same
+ * stale AbortError instead of getting its own timeout window.
  */
 async function daemonRequest(
   url: string,
-  init: RequestInit,
+  init: Omit<RequestInit, "signal">,
   endpoint: string,
+  timeoutMs: number,
 ): Promise<{ status: number; ok: boolean; body: string }> {
   try {
     const retryOpts: RetryOptions = {
@@ -70,7 +77,10 @@ async function daemonRequest(
     };
 
     return await retry(async () => {
-      const res = await fetch(url, init);
+      const res = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
       return { status: res.status, ok: res.ok, body: await res.text() };
     }, retryOpts);
   } catch (err) {
@@ -217,9 +227,9 @@ async function configRequest(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(wire),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
     },
     "/_sandbox/config",
+    opts?.timeoutMs ?? CONFIG_TIMEOUT_MS,
   );
   if (!res.ok) {
     throw new ConfigRequestError(res.status, res.body);
@@ -243,9 +253,9 @@ export async function postSetupStep(
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
     },
     `/_sandbox/setup/${step}`,
+    CONFIG_TIMEOUT_MS,
   );
   if (!res.ok) {
     throw new Error(
@@ -275,9 +285,9 @@ export async function postOrgFsConfig(
         Authorization: `Bearer ${token}`,
       },
       body: configJson,
-      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
     },
     "/_sandbox/orgfs-config",
+    CONFIG_TIMEOUT_MS,
   );
   if (!res.ok) {
     throw new Error(
