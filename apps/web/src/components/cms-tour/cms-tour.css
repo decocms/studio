@@ -83,6 +83,16 @@
   text-shadow: none;
 }
 
+/* `all: unset` above (needed to reset driver.js's own inline button styles)
+   drops the browser's default focus outline with nothing replacing it, so
+   tabbing to Next/Back/Skip left no visible focus indicator. Match the
+   app's Button focus ring (--ring) instead of relying on driver.js's :focus
+   background tint, which our background-color overrides below also erase. */
+.cms-tour-popover .driver-popover-footer-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 /* Primary action — Next / Done. */
 .cms-tour-popover .driver-popover-next-btn {
   background-color: var(--primary);
