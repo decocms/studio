@@ -163,6 +163,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.prChecksPassing": "Checks passing",
   "taskBoard.taskDialog.prChecksPending": "Checks pending",
   "taskBoard.taskDialog.prChecksLabel": "Checks",
+  "taskBoard.taskDialog.prChecksScore": "{passed}/{total} successful checks",
   "taskBoard.taskDialog.prStateClosed": "Closed",
   "taskBoard.taskDialog.prStateDraft": "Draft",
   "taskBoard.taskDialog.prStateMerged": "Merged",

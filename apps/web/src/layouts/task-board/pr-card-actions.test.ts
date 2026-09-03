@@ -5,8 +5,12 @@
  * button whose merge would 405. The card must offer "Resolve conflict" there
  * instead.
  */
-import { describe, expect, it } from "bun:test";
-import { prCardActions } from "./pr-card-actions";
+import { describe, expect, it, test } from "bun:test";
+import {
+  collapsedChecksScore,
+  isSuccessfulCheck,
+  prCardActions,
+} from "./pr-card-actions";
 import type { TaskBoardItemPr } from "./config";
 
 function pr(overrides: Partial<TaskBoardItemPr> = {}): TaskBoardItemPr {
@@ -82,5 +86,58 @@ describe("prCardActions", () => {
     );
     expect(a.showResolveConflict).toBe(true);
     expect(a.showShip).toBe(false);
+  });
+});
+
+describe("collapsedChecksScore", () => {
+  const check = (
+    name: string,
+    conclusion: string | null,
+    status = "completed",
+  ) => ({ name, status, conclusion }) as TaskBoardItemPr["checks"][number];
+
+  const mixed = [
+    check("copilot", "success"),
+    check("Build", "success"),
+    check("Cypress", "failure"),
+    check("Gates", "failure"),
+  ];
+
+  test("collapsed and failing: counts the green checks, not the red ones", () => {
+    expect(collapsedChecksScore("failing", mixed, false)).toEqual({
+      passed: 2,
+      total: 4,
+    });
+  });
+
+  test("expanded: no score, so the red failing header comes back", () => {
+    expect(collapsedChecksScore("failing", mixed, true)).toBeNull();
+  });
+
+  test("not failing: no score", () => {
+    expect(collapsedChecksScore("passing", mixed, false)).toBeNull();
+    expect(collapsedChecksScore("pending", mixed, false)).toBeNull();
+    expect(collapsedChecksScore(null, mixed, false)).toBeNull();
+  });
+
+  test("failing with no check rows to count: no score", () => {
+    expect(collapsedChecksScore("failing", [], false)).toBeNull();
+  });
+
+  test("a still-running check is not counted as passed", () => {
+    const running = [
+      check("Build", "success"),
+      check("E2E", null, "in_progress"),
+    ];
+    expect(collapsedChecksScore("failing", running, false)).toEqual({
+      passed: 1,
+      total: 2,
+    });
+  });
+
+  test("neutral and skipped count as successful, matching their green icon", () => {
+    expect(isSuccessfulCheck(check("a", "neutral"))).toBe(true);
+    expect(isSuccessfulCheck(check("a", "skipped"))).toBe(true);
+    expect(isSuccessfulCheck(check("a", "timed_out"))).toBe(false);
   });
 });
