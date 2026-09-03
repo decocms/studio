@@ -1,13 +1,15 @@
 /**
- * Pure gate for the Preview toolbar's CMS affordances (the "CMS"/Edit toggle
- * and the page selector dropdown).
+ * Pure capability gate for the Preview toolbar's CMS page selector.
  *
- * Those two controls only mean anything for a repo that uses the deco framework
- * for sites: they edit and navigate decofile pages/global sections. Studio
- * itself — and any other plain app repo previewed on a coding agent — has no
- * decofile, so rendering them there is misleading (the selector degrades into
- * showing the raw preview host, e.g. "pedro-je4bq0tm-38bb…"). Those repos get
- * the plain browser controls (refresh + open in new tab) only.
+ * The selector only means anything for a repo that uses the deco framework for
+ * sites: it navigates decofile pages/global sections. Studio itself — and any
+ * other plain app repo previewed on a coding agent — has no decofile, so
+ * rendering it there is misleading (it degrades into showing the raw preview
+ * host, e.g. "pedro-je4bq0tm-38bb…"). Those repos get a plain label instead.
+ *
+ * This does NOT gate the Blocks form. Blocks and the Content panel share the
+ * agent's `cms !== "off"` product gate, with Blocks restricted to desktop;
+ * their own states explain missing or unreadable content after entry.
  *
  * The question is *framework presence*, NOT "is there content right now". So
  * the gate reads the one state that proves absence — `empty` with reason
@@ -28,7 +30,7 @@
 
 import type { BlocksTabState } from "@/layouts/main-panel-tabs/blocks-tab-state";
 
-export function showCmsControls(input: {
+export function showCmsPageSelector(input: {
   /** Toolbar itself is visible (an iframe surface is active). */
   showPreviewToolbar: boolean;
   blocksState: BlocksTabState;

@@ -78,7 +78,7 @@ export function BlocksPanel({
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   // No `frameworkKnownMissing` here on purpose: the sticky bit exists to stop
-  // the Preview toolbar's CMS controls flickering on transient read failures.
+  // Preview's page selector flickering on transient read failures.
   // This panel is already open, and showing the accurate "we couldn't read the
   // decofile" card for a real failure is more useful than pinning it to the
   // framework-missing card.

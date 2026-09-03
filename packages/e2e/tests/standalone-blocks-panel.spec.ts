@@ -4,6 +4,7 @@ import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 async function createClonableAgent(
   api: Parameters<typeof createHttpConnection>[0],
   orgSlug: string,
+  cmsMode: "on" | "off" = "on",
 ) {
   await callSelfMcpTool(api, orgSlug, "AI_PROVIDER_KEY_CREATE", {
     providerId: "anthropic",
@@ -32,6 +33,7 @@ async function createClonableAgent(
             name: "repo",
             connectionId: connection.id,
           },
+          ui: { layout: { cms: cmsMode } },
         },
       },
     },
@@ -48,7 +50,7 @@ async function createClonableAgent(
 test.describe("Blocks preview mode", () => {
   test.setTimeout(90_000);
 
-  test("desktop keeps Chat independent and removes Blocks from the workspace toolbar", async ({
+  test("desktop offers Blocks and Content under the same enabled gate", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -62,14 +64,17 @@ test.describe("Blocks preview mode", () => {
 
     const chat = page.getByTestId("chat-panel");
     const main = page.getByTestId("main-panel");
-    const legacyBlocksToggle = page.getByRole("button", {
-      name: "Blocks",
+    const blocksToggle = page.getByTestId("preview-blocks-toggle");
+    const contentTab = page.getByRole("button", {
+      name: "Content",
       exact: true,
     });
 
     await expect(chat).toBeVisible({ timeout: 30_000 });
     await expect(main).toBeVisible();
-    await expect(legacyBlocksToggle).toHaveCount(0);
+    // Both controls are local to the Site Editor surface.
+    await expect(blocksToggle).toHaveCount(0);
+    await expect(contentTab).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
     /* The Site Editor is opened from the SIDEBAR. Preview / Content / Code are
@@ -85,11 +90,41 @@ test.describe("Blocks preview mode", () => {
     await expect(page).toHaveURL(
       (url) => url.searchParams.get("virtualmcpid") === agentId,
     );
+    await expect(contentTab).toBeVisible();
+    await expect(blocksToggle).toBeVisible();
+    await expect(blocksToggle).toHaveAttribute("aria-label", "CMS");
+    await blocksToggle.click();
+    await expect(blocksToggle).toHaveAttribute("aria-pressed", "true");
     await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
   });
 
-  test("mobile renders one workspace surface at a time", async ({
+  test("CMS off removes both Blocks and Content", async ({ authedPage }) => {
+    const { page, orgSlug } = authedPage;
+    const { agentId, threadId } = await createClonableAgent(
+      page.context().request,
+      orgSlug,
+      "off",
+    );
+
+    await page.goto(
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=true&main=preview`,
+    );
+
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByRole("button", { name: "Preview", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Content", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
+  });
+
+  test("mobile renders one workspace surface at a time without Blocks", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -109,6 +144,8 @@ test.describe("Blocks preview mode", () => {
     await expect(viewSelect).toBeVisible({ timeout: 30_000 });
     // Preview is the single visible surface to start.
     await expect(page.getByTestId("main-panel")).toBeVisible();
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
     // Pick Chat: main closes, but the view stays in the path so Preview returns.
     await viewSelect.click();
@@ -128,6 +165,7 @@ test.describe("Blocks preview mode", () => {
       (url) => url.searchParams.get("virtualmcpid") === agentId,
     );
     await expect(page.getByTestId("main-panel")).toBeVisible();
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });
 });
