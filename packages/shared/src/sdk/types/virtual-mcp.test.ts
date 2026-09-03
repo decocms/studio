@@ -258,6 +258,28 @@ test("VirtualMCPCreateDataSchema rejects more than 20 kickstart prompts", () => 
   expect(result.success).toBe(false);
 });
 
+test("VirtualMCPCreateDataSchema rejects more than 200 connections", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: Array.from({ length: 201 }, (_, i) => ({
+      connection_id: `conn-${i}`,
+    })),
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects more than 500 selected_tools on a connection", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    connections: [
+      {
+        connection_id: "conn-1",
+        selected_tools: Array.from({ length: 501 }, (_, i) => `tool-${i}`),
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+});
+
 test("VirtualMCPUpdateDataSchema rejects a description over 500 chars", () => {
   const result = VirtualMCPUpdateDataSchema.safeParse({
     description: "a".repeat(501),
