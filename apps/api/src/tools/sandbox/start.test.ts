@@ -256,6 +256,14 @@ function makeCtx(overrides: {
         get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
       },
+      // No first-class repository row for this binding, so provisioning takes
+      // the legacy `mcp-github` clone path these tests cover. The Studio-owned
+      // credential path is covered by the e2e suite.
+      repositories: {
+        get: mock(async () => null),
+        findByRef: mock(async () => null),
+      },
+      gitProviderAccounts: { getUnscoped: mock(async () => null) },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),

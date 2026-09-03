@@ -317,3 +317,33 @@ func TestClassifySecondaryRepos(t *testing.T) {
 		t.Errorf("branch + repos change: got %q, want %q", got, KindBranchChange)
 	}
 }
+
+func TestCliEnvFromCloneUrl(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+		want map[string]string
+	}{
+		{"github", "https://x-access-token:tok-gh@github.com/acme/site.git", map[string]string{"GH_TOKEN": "tok-gh"}},
+		{"github enterprise", "https://x-access-token:tok@ghe.acme.com/acme/site.git", map[string]string{"GH_TOKEN": "tok", "GH_HOST": "ghe.acme.com"}},
+		{"gitlab", "https://oauth2:tok-gl@gitlab.com/group/sub/project.git", map[string]string{"GITLAB_TOKEN": "tok-gl", "GITLAB_HOST": "https://gitlab.com"}},
+		{"self-hosted gitlab with port", "https://oauth2:t@gitlab.acme.com:8443/g/p.git", map[string]string{"GITLAB_TOKEN": "t", "GITLAB_HOST": "https://gitlab.acme.com:8443"}},
+		{"anonymous", "https://github.com/acme/site.git", nil},
+		{"ssh", "git@github.com:acme/site.git", nil},
+		{"unknown username", "https://user:pw@example.com/a/b.git", nil},
+		{"empty", "", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := CliEnvFromCloneUrl(c.url)
+			if len(got) != len(c.want) {
+				t.Fatalf("CliEnvFromCloneUrl(%q) = %v, want %v", c.url, got, c.want)
+			}
+			for k, v := range c.want {
+				if got[k] != v {
+					t.Errorf("CliEnvFromCloneUrl(%q)[%s] = %q, want %q", c.url, k, got[k], v)
+				}
+			}
+		})
+	}
+}

@@ -76,12 +76,24 @@ import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
+import {
+  cloneInfoForRepository,
+  findRepositoryForLegacyBinding,
+  repositoryUsesStudioCredentials,
+} from "../../git-providers/credentials";
+import { GitProviderError } from "../../git-providers/types";
+import type { RepositoryRecord } from "../../storage/repositories";
+import {
+  encodeSandboxStartError,
+  SANDBOX_START_ERROR_CODES,
+} from "@decocms/shared/sandbox-start-errors";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
 type GithubRepo = {
   owner: string;
   name: string;
   connectionId?: string;
+  repositoryId?: string;
 };
 
 type GithubRepoMeta = {
@@ -447,6 +459,7 @@ async function provisionSandbox(
     | {
         cloneUrl: string;
         connectionId?: string;
+        repositoryId?: string;
         userName: string;
         userEmail: string;
         branch: string;
@@ -456,10 +469,25 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
+    // First-class repository with Studio-owned credentials (GitHub App or a
+    // GitLab account): mint through its provider account. Anything else — a
+    // legacy `mcp-github` binding, an anonymous public clone — keeps the path
+    // below unchanged.
+    const repository = await findRepositoryForLegacyBinding(
+      ctx.storage,
+      orgId,
+      githubRepo,
+    );
+    const studioRepository =
+      repository &&
+      (await repositoryUsesStudioCredentials(ctx.storage, repository))
+        ? repository
+        : null;
+
     // Legacy repo-scoped children may mint through their source connection here.
     // buildCloneInfo and detectRepoRuntime refresh OAuth-shaped tokens before
     // using them, including refreshable repo-scoped GitHub children.
-    if (githubRepo.connectionId) {
+    if (!studioRepository && githubRepo.connectionId) {
       await ensureGithubCloneToken({
         ctx,
         connectionId: githubRepo.connectionId,
@@ -484,15 +512,17 @@ async function provisionSandbox(
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
     // trade-off of linking a repo without a GitHub connection.
-    const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
-      ? await buildCloneInfo(
-          githubRepo.connectionId,
-          githubRepo.owner,
-          githubRepo.name,
-          ctx.db,
-          ctx.vault,
-        )
-      : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
+    const { cloneUrl, gitUserName, gitUserEmail } = studioRepository
+      ? await studioCloneInfo(ctx, studioRepository)
+      : githubRepo.connectionId
+        ? await buildCloneInfo(
+            githubRepo.connectionId,
+            githubRepo.owner,
+            githubRepo.name,
+            ctx.db,
+            ctx.vault,
+          )
+        : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
 
     // Lockfile probe only when metadata has no PM. Used to be client-side in
     // the repo picker, but that introduced a race — SANDBOX_START fired from the
@@ -501,7 +531,9 @@ async function provisionSandbox(
     // Running it here piggybacks on the same request so the baked workload
     // always matches the detected PM; the result is persisted so subsequent
     // starts skip the probe.
-    if (!packageManager) {
+    // The Studio-credential path skips the GitHub Contents probe: the daemon
+    // autodetects the package manager from the lockfile after clone.
+    if (!packageManager && !studioRepository) {
       const detected = githubRepo.connectionId
         ? await detectRepoRuntime(
             githubRepo.connectionId,
@@ -558,13 +590,17 @@ async function provisionSandbox(
     repoOpts = {
       cloneUrl,
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
-      ...(githubRepo.connectionId
-        ? { connectionId: githubRepo.connectionId }
-        : {}),
+      ...(studioRepository
+        ? { repositoryId: studioRepository.id }
+        : githubRepo.connectionId
+          ? { connectionId: githubRepo.connectionId }
+          : {}),
       userName: gitUserName,
       userEmail: gitUserEmail,
       branch: gitBranch,
-      displayName: `${githubRepo.owner}/${githubRepo.name}`,
+      displayName: studioRepository
+        ? studioRepository.path
+        : `${githubRepo.owner}/${githubRepo.name}`,
       // Always set, empty included — see buildConfigPayload: an absent field
       // means "keep current" to the daemon, which would make a revoked PAT
       // outlive its deletion.
@@ -908,5 +944,30 @@ async function waitForSchedulableCapacity(
       );
     }
     await sleep(CAPACITY_POLL_MS);
+  }
+}
+
+/**
+ * Clone credentials from a first-class repository, surfaced with the same
+ * typed error codes the legacy path emits so the client's reconnect / relink
+ * affordances keep working.
+ */
+async function studioCloneInfo(
+  ctx: StudioContext,
+  repository: RepositoryRecord,
+): Promise<{ cloneUrl: string; gitUserName: string; gitUserEmail: string }> {
+  try {
+    return await cloneInfoForRepository(ctx, repository, {
+      forceRefresh: true,
+    });
+  } catch (error) {
+    if (error instanceof GitProviderError) {
+      const code =
+        error.status === 404
+          ? SANDBOX_START_ERROR_CODES.githubConnectionMissing
+          : SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
+      throw new Error(encodeSandboxStartError(code, error.message));
+    }
+    throw error;
   }
 }

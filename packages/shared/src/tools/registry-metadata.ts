@@ -37,6 +37,7 @@ export type ToolCategory =
   | "Object Storage"
   | "Registry"
   | "GitHub"
+  | "Git"
   | "VM"
   | "Search"
   | "Task Board"
@@ -250,6 +251,16 @@ const ALL_TOOL_NAMES = [
   "GITHUB_SEARCH_BRANCHES",
   "GITHUB_PR_STATE",
   "GITHUB_LAST_PUBLISHED_PR",
+
+  // Git provider accounts + repositories (app-only)
+  "GIT_PROVIDER_CAPABILITIES",
+  "GIT_ACCOUNT_LIST",
+  "GIT_ACCOUNT_CONNECT_TOKEN",
+  "GIT_ACCOUNT_DELETE",
+  "REPOSITORY_LIST",
+  "REPOSITORY_SEARCH",
+  "REPOSITORY_LINK",
+  "REPOSITORY_DELETE",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -1200,6 +1211,48 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Read the most recently merged pull request into a base branch",
     category: "GitHub",
   },
+  // Git provider accounts + repositories
+  {
+    name: "GIT_PROVIDER_CAPABILITIES",
+    description:
+      "Which git providers this deployment can connect, with their connect URLs",
+    category: "Git",
+  },
+  {
+    name: "GIT_ACCOUNT_LIST",
+    description: "List the git provider accounts connected to the organization",
+    category: "Git",
+  },
+  {
+    name: "GIT_ACCOUNT_CONNECT_TOKEN",
+    description: "Connect a git provider account with an access token",
+    category: "Git",
+  },
+  {
+    name: "GIT_ACCOUNT_DELETE",
+    description: "Disconnect a git provider account",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LIST",
+    description: "List the repositories linked to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_SEARCH",
+    description: "Search the repositories an account can reach on its provider",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LINK",
+    description: "Link a repository to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_DELETE",
+    description: "Unlink a repository from the organization",
+    category: "Git",
+  },
   // Search tools
   {
     name: "GLOBAL_SEARCH",
@@ -1443,6 +1496,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "SANDBOX_START",
       "SANDBOX_DELETE",
       "GITHUB_SEARCH_BRANCHES",
+      // Repo picker reads: which accounts/repos exist and what can be connected
+      "GIT_PROVIDER_CAPABILITIES",
+      "GIT_ACCOUNT_LIST",
+      "REPOSITORY_LIST",
+      "REPOSITORY_SEARCH",
       // The PR panel's whole read side, for anyone who can open a preview
       "GITHUB_PR_STATE",
       "GITHUB_LAST_PUBLISHED_PR",
@@ -1954,6 +2012,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     "Object Storage": [],
     Registry: [],
     GitHub: [],
+    Git: [],
     VM: [],
     Search: [],
     "Task Board": [],

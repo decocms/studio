@@ -1101,9 +1101,11 @@ func main() {
 		// The tenant env Studio pushed on the config channel — the harness's model
 		// credential lives there, and it reaches the harness as its spawn
 		// environment, so it dies with the run.
-		// Plus GH_TOKEN, so the harness can open the pull request its prompt asks
-		// for: `git push` already works off the credentialed `origin`, but `gh`
-		// reads a token from the environment and there is none in the pod.
+		// Plus the provider CLI's token (GH_TOKEN for `gh`, GITLAB_TOKEN +
+		// GITLAB_HOST for `glab`), so the harness can open the pull/merge request
+		// its prompt asks for: `git push` already works off the credentialed
+		// `origin`, but the CLIs read a token from the environment and there is
+		// none in the pod.
 		//
 		// Read back from the clone URL rather than pushed separately, so it cannot
 		// drift from what the working tree pushes with, and it grants the harness
@@ -1113,9 +1115,9 @@ func main() {
 			if cfg == nil {
 				return nil
 			}
-			env := make(map[string]string, len(cfg.Env)+2)
-			if token := config.TokenFromCloneUrl(cfg.CloneUrl()); token != "" {
-				env["GH_TOKEN"] = token
+			env := make(map[string]string, len(cfg.Env)+3)
+			for k, v := range config.CliEnvFromCloneUrl(cfg.CloneUrl()) {
+				env[k] = v
 			}
 			// The org's prefetched skills, as a local plugin the harness loads by
 			// absolute path. Empty until a sync published something, so a pod with
@@ -1123,7 +1125,7 @@ func main() {
 			if dir := d.orgFsLinks.SkillPluginDir(); dir != "" {
 				env["CLAUDE_CODE_PLUGIN_DIRS"] = dir
 			}
-			// Tenant env last: an explicit GH_TOKEN from Studio wins.
+			// Tenant env last: an explicit provider token from Studio wins.
 			for k, v := range cfg.Env {
 				env[k] = v
 			}

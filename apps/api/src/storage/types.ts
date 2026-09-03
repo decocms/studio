@@ -1566,6 +1566,12 @@ export interface OrgRepoSyncTable {
     string
   >;
   volume: string;
+  /** First-class repository (migration 199); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   enabled: ColumnType<boolean, boolean | undefined, boolean>;
   last_synced_at: ColumnType<Date | null, never, Date | string | null>;
   last_sync_error: ColumnType<string | null, never, string | null>;
@@ -1634,6 +1640,12 @@ export interface TaskBoardItemTable {
   assignee_id: string | null;
   assigned_by: string | null;
   repo: string | null;
+  /** First-class repository (migration 199); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1776,6 +1788,8 @@ export interface TaskBoardItemPrTable {
   /** Source GitHub MCP connection, when the PR was opened via MCP. Null for
    *  bash-opened PRs — the live fetcher falls back to the org's shared conn. */
   connection_id: string | null;
+  /** First-class repository (migration 199); null until backfilled/linked. */
+  repository_id: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -2137,6 +2151,87 @@ export interface NotificationTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+// ============================================================================
+// Git providers (migration 199)
+// ============================================================================
+
+export type GitProviderKindColumn = "github" | "gitlab";
+export type GitAuthKindColumn = "github_app" | "oauth" | "token";
+export type GitAccountStatusColumn = "active" | "revoked";
+
+export interface GitProviderAccountTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  type: GitProviderKindColumn;
+  host: string;
+  auth_kind: GitAuthKindColumn;
+  external_account_id: string;
+  login: string;
+  avatar_url: string | null;
+  /** bigint: pg returns it as a string. */
+  installation_id: ColumnType<
+    string | number | null,
+    string | number | null | undefined,
+    string | number | null
+  >;
+  /** Legacy `mcp-github` connection whose grant a backfilled account borrows. */
+  credential_connection_id: string | null;
+  status: ColumnType<
+    GitAccountStatusColumn,
+    GitAccountStatusColumn | undefined,
+    GitAccountStatusColumn
+  >;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderAccountCredentialTable {
+  account_id: string;
+  access_token: string; // Encrypted
+  refresh_token: string | null; // Encrypted
+  scope: string | null;
+  expires_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  client_id: string | null;
+  client_secret: string | null; // Encrypted
+  token_endpoint: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderOAuthStateTable {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  provider: GitProviderKindColumn;
+  host: string;
+  return_to: string;
+  expires_at: ColumnType<Date, Date | string, never>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface RepositoryTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  account_id: string | null;
+  provider: GitProviderKindColumn;
+  host: string;
+  path: string;
+  external_id: string | null;
+  default_branch: string | null;
+  web_url: string;
+  visibility: "public" | "private" | "internal" | null;
+  /** Repo-scoped `mcp-github` child whose token still clones this repo. */
+  legacy_connection_id: string | null;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
@@ -2226,6 +2321,10 @@ export interface Database extends PrivateRegistryDatabase {
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
   org_repo_sync: OrgRepoSyncTable;
+  git_provider_accounts: GitProviderAccountTable;
+  git_provider_account_credentials: GitProviderAccountCredentialTable;
+  git_provider_oauth_states: GitProviderOAuthStateTable;
+  repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_prompts: TaskBoardPromptTable;

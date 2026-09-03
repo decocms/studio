@@ -18,6 +18,7 @@ import { createMonitorRoutes } from "./monitor";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createCredentialVaultRoutes } from "./credential-vault";
 import { createDownstreamTokenRoutes } from "./downstream-token";
+import { createGitProviderRoutes } from "./git-providers";
 import { createFileUploadRoutes } from "./file-uploads";
 import { createKVRoutes } from "./kv";
 import { createOrgFsRoutes } from "./org-fs";
@@ -90,6 +91,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
 
   // --- Routes that don't need extra middleware ---
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
+  app.route("/", createGitProviderRoutes()); // /api/:org/git-providers/:type/connect
   app.route("/", createCredentialVaultRoutes()); // /api/:org/vault/connections/:connectionId/access-token
   app.route("/", createTaskBoardImportRoutes()); // /api/:org/internal/task-board/import — service-token batch import
   app.route("/", createCommerceDiagnosticShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite

@@ -38,6 +38,19 @@ func CloneUrlHasCredentials(rawUrl string) bool {
 	return u.User.Username() != "" || hasPass
 }
 
+// RequiresCloneCredentials reports whether pushing to `originUrl` is bound to
+// fail for lack of a credential: an HTTPS remote with no userinfo. The pod has
+// no credential helper and no SSH key, so a bare HTTPS origin cannot push on
+// any provider — refusing here turns a raw `git push` auth failure into the
+// actionable message the UI knows how to render. SSH and credentialed URLs pass.
+func RequiresCloneCredentials(originUrl string) bool {
+	trimmed := strings.TrimSpace(originUrl)
+	if !strings.HasPrefix(strings.ToLower(trimmed), "https://") {
+		return false
+	}
+	return !CloneUrlHasCredentials(trimmed)
+}
+
 // SyncOriginRemote points `origin` at the credentialed clone URL.
 func SyncOriginRemote(repoDir, cloneUrl string) error {
 	if !CloneUrlHasCredentials(cloneUrl) {
@@ -381,9 +394,9 @@ func Publish(deps PublishDeps, message string) error {
 		}
 	} else {
 		originUrl, _ := tryReadGit(repoDir, []string{"remote", "get-url", "origin"})
-		if strings.Contains(originUrl, "github.com") && !CloneUrlHasCredentials(originUrl) {
+		if RequiresCloneCredentials(originUrl) {
 			return &GitError{
-				Msg:    "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
+				Msg:    "Pushing requires an authenticated clone URL. Connect the repository's git provider for this project and restart the sandbox.",
 				Status: -1,
 			}
 		}

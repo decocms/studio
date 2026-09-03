@@ -181,3 +181,37 @@ func TokenFromCloneUrl(rawUrl string) string {
 	token, _ := u.User.Password()
 	return token
 }
+
+// CliEnvFromCloneUrl returns the environment a provider CLI needs to act with
+// the credential baked into a clone URL, keyed off the userinfo username Studio
+// chose for the provider: `x-access-token` is GitHub (`gh` reads GH_TOKEN, plus
+// GH_HOST off github.com), `oauth2` is GitLab (`glab` reads GITLAB_TOKEN and
+// GITLAB_HOST). Empty for an SSH, anonymous or unrecognised URL.
+//
+// ⚠️ SECURITY: the values are credentials. Never log them.
+func CliEnvFromCloneUrl(rawUrl string) map[string]string {
+	u, err := url.Parse(rawUrl)
+	if err != nil || u.User == nil {
+		return nil
+	}
+	token, ok := u.User.Password()
+	if !ok || token == "" {
+		return nil
+	}
+	host := strings.ToLower(u.Host)
+	switch u.User.Username() {
+	case "x-access-token":
+		env := map[string]string{"GH_TOKEN": token}
+		if host != "" && host != "github.com" {
+			env["GH_HOST"] = host
+		}
+		return env
+	case "oauth2":
+		env := map[string]string{"GITLAB_TOKEN": token}
+		if host != "" {
+			env["GITLAB_HOST"] = "https://" + host
+		}
+		return env
+	}
+	return nil
+}

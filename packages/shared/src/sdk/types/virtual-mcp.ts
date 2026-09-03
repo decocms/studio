@@ -520,6 +520,12 @@ const GithubRepoSchema = z.object({
     .describe(
       "ID of the mcp-github connection used for authentication. Absent for public repos cloned without credentials.",
     ),
+  repositoryId: z
+    .string()
+    .optional()
+    .describe(
+      "First-class repository (REPOSITORY_LINK) backing this binding. When set, credentials come from the repository's git provider account rather than connectionId.",
+    ),
 });
 
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;

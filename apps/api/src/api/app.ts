@@ -121,6 +121,7 @@ import {
   registerJiraTriggerSweepWorkflow,
   setJiraTriggerSweepRuntime,
 } from "@/jira/dbos-jira-trigger-sweep";
+import { gitProviderCallbackRoutes } from "./routes/git-providers";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -1446,6 +1447,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
   app.route("/api/_github", githubWebhookRoutes);
+  // Git provider OAuth callbacks: the provider redirects here with code+state;
+  // the state (not the URL) says which org/user started the flow.
+  app.route("/api/_git", gitProviderCallbackRoutes);
+
   // Jira: the issue-event intake that starts runs, and the attachment grant
   // route those runs download through. Both authenticate by capability
   // (per-org secret, signed token), not by session.
