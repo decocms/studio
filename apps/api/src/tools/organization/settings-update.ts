@@ -13,6 +13,7 @@ import {
 const MAX_SIDEBAR_ITEMS = 50;
 const MAX_BLOCKED_MCPS = 500;
 const MAX_DEFAULT_HOME_AGENTS = 100;
+const MAX_ENABLED_PLUGINS = 200;
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
@@ -28,7 +29,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   inputSchema: z.object({
     organizationId: z.string(),
     sidebar_items: z.array(SidebarItemSchema).max(MAX_SIDEBAR_ITEMS).optional(),
-    enabled_plugins: z.array(z.string()).optional(),
+    enabled_plugins: z.array(z.string()).max(MAX_ENABLED_PLUGINS).optional(),
     registry_config: RegistryConfigSchema.extend({
       blockedMcps: z.array(z.string()).max(MAX_BLOCKED_MCPS),
     }).optional(),
