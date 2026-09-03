@@ -433,6 +433,26 @@ test("VirtualMCPUpdateDataSchema rejects a description over 500 chars", () => {
   expect(result.success).toBe(false);
 });
 
+test("VirtualMCPCreateDataSchema rejects more than 200 enabled_plugins", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: [],
+    metadata: {
+      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects more than 200 enabled_plugins", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
 test("SandboxRecord.startedWith is optional with nullable packageManager/port/path", () => {
   const a = SandboxRecordSchema.parse({ sandboxHandle: "v", previewUrl: null });
   expect(a.startedWith).toBeUndefined();
