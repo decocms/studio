@@ -8,6 +8,8 @@ import {
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
 import { useScopeId } from "@/hooks/use-project-scope";
+import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
+import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useReleaseSeenState } from "@/hooks/use-release-seen-state";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
@@ -56,8 +58,13 @@ export function FloatingReleaseCard() {
    *  cannot disagree with what is painted. */
   const scopeId = useScopeId();
   const leafPath = useLeafRoutePath();
+  const activeTab = useActivePanelTabId();
   const inProject = !!scopeId;
   const onOrgHome = leafPath === DESTINATION_ROUTE.home && !scopeId;
+  /** Preview, Content and Code are the one Site Editor surface, so the tab
+   *  bar and branch selector are on screen for all three — the same predicate
+   *  the sidebar row uses to stay lit. */
+  const onSiteEditor = inProject && !!activeTab && isSurfaceTab(activeTab);
   const { data: session } = authClient.useSession();
   const { isSeen, markSeen } = useReleaseSeenState();
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -80,7 +87,7 @@ export function FloatingReleaseCard() {
    *  imperative and owns its own lifecycle from here. */
   const startTour = () => {
     markSeen(candidate.id);
-    startLayoutTour(t, { onOrgHome, inProject });
+    startLayoutTour(t, { onOrgHome, inProject, onSiteEditor });
   };
 
   return (

@@ -28,6 +28,8 @@ import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-d
 import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "@/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
+import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
+import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useOptionalChatTask } from "@/components/chat/context";
 import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -130,10 +132,16 @@ export function WorkspacePanelGroup({
   // sandbox/preview runs on), shared by chat and preview alike. Renders null for
   // agents without a connected GitHub repo. Reads the branch from the task
   // context (this tree is inside Chat.ActiveTaskProvider).
+  //
+  // Site-editor only, for the same reason as the publish cluster it sits next
+  // to: the branch is the branch the surface is being edited on, and it said
+  // nothing useful beside a screen that edits no files.
   const currentBranch = useOptionalChatTask()?.currentBranch ?? null;
-  const branchSelector = (
-    <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
-  );
+  const activeTab = useActivePanelTabId();
+  const branchSelector =
+    activeTab && isSurfaceTab(activeTab) ? (
+      <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
+    ) : null;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs URL-derived visibility with the resizable panels' imperative layout API
   useEffect(() => {

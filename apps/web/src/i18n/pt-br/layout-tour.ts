@@ -16,9 +16,9 @@ export const layoutTour = {
     "Tema, idioma e o resto das suas configurações pessoais ficam atrás do seu nome, no rodapé da barra lateral.",
 
   // ---- Home da organização.
-  "layoutTour.agents.title": "Seus projetos, logo na home",
-  "layoutTour.agents.description":
-    "A home da organização abre nos projetos que seu time construiu — escolha um para ir direto ao trabalho dele, ou importe um repositório para adicionar outro.",
+  "layoutTour.projects.title": "Todo projeto, na barra lateral",
+  "layoutTour.projects.description":
+    "Todo projeto que seu time construiu está listado aqui — escolha um para ir direto ao trabalho dele, ou importe um repositório para adicionar outro.",
   "layoutTour.recentActivity.title": "Veja o que esteve rodando",
   "layoutTour.recentActivity.description":
     "As tarefas mais recentes em que seus projetos trabalharam, das mais novas para as mais antigas, para você continuar de onde o time parou.",

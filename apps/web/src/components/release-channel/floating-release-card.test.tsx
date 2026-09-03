@@ -74,12 +74,17 @@ mock.module("@/lib/auth-client", () => ({
  *  a test rather than silently yanking the reader to another page. */
 const navigateMock = mock(() => Promise.resolve());
 const routeRef = {
-  current: { fullPath: "/$org/home", search: {} as Record<string, unknown> },
+  current: {
+    fullPath: "/$org/home",
+    search: {} as Record<string, unknown>,
+    /** The `{-$panel}` segment. `undefined` names no view. */
+    panel: undefined as string | undefined,
+  },
 };
 mock.module("@tanstack/react-router", () => ({
   ...tanstackRouter,
   useNavigate: () => navigateMock,
-  useParams: () => ({ org: "acme" }),
+  useParams: () => ({ org: "acme", panel: routeRef.current.panel }),
   useSearch: () => routeRef.current.search,
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
     select({ matches: [{ fullPath: routeRef.current.fullPath }] }),
@@ -107,7 +112,11 @@ describe("FloatingReleaseCard", () => {
     releasesRef.current = [];
     navigateMock.mockClear();
     startLayoutTourMock.mockClear();
-    routeRef.current = { fullPath: "/$org/home", search: {} };
+    routeRef.current = {
+      fullPath: "/$org/home",
+      search: {},
+      panel: undefined,
+    };
     sessionRef.current = {
       user: {
         id: "user-1",
@@ -209,10 +218,12 @@ describe("FloatingReleaseCard", () => {
         cta: { label: "Take the tour", action: "start-tour" },
       }),
     ];
-    // Scoped to a project, on the agents route: project surfaces, not org home.
+    // Scoped to a project, on the agents route with NO view named: project
+    // surfaces, but not the Site Editor's.
     routeRef.current = {
       fullPath: "/$org/agents/{-$panel}",
       search: { virtualmcpid: "vir_1" },
+      panel: undefined,
     };
     const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
 
@@ -220,6 +231,32 @@ describe("FloatingReleaseCard", () => {
     expect(startLayoutTourMock).toHaveBeenCalledWith(expect.anything(), {
       onOrgHome: false,
       inProject: true,
+      onSiteEditor: false,
+    });
+  });
+
+  /** The tab bar and branch selector are mounted with the Site Editor, so the
+   *  tour is told about them only there — a project route that names another
+   *  view must not claim the surface. */
+  it("reports the Site Editor surface only when that view is open", () => {
+    releasesRef.current = [
+      makeRelease({
+        id: "fresh",
+        cta: { label: "Take the tour", action: "start-tour" },
+      }),
+    ];
+    routeRef.current = {
+      fullPath: "/$org/agents/{-$panel}",
+      search: { virtualmcpid: "vir_1" },
+      panel: "site-editor",
+    };
+    const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
+
+    fireEvent.click(getByRole("button", { name: "Take the tour" }));
+    expect(startLayoutTourMock).toHaveBeenCalledWith(expect.anything(), {
+      onOrgHome: false,
+      inProject: true,
+      onSiteEditor: true,
     });
   });
 

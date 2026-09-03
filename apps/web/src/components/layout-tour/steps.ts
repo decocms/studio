@@ -12,7 +12,7 @@ type AnchorName = keyof typeof LAYOUT_TOUR_ANCHORS;
  * exists somewhere, and are what lets the tour explain the screen the user is
  * ALREADY on instead of dragging them to the org home first.
  */
-export type StepScope = "shell" | "orgHome" | "project";
+export type StepScope = "shell" | "orgHome" | "project" | "siteEditor";
 
 /** Where the tour was started from. Both can be false (a settings or task
  *  route, say) — then only the `shell` steps run, which is the whole point of
@@ -20,6 +20,10 @@ export type StepScope = "shell" | "orgHome" | "project";
 export interface TourRoute {
   onOrgHome: boolean;
   inProject: boolean;
+  /** The Site Editor surface (Preview / Content / Code) is open. A strict
+   *  subset of `inProject`: the tab bar and the branch selector act on the
+   *  surface being edited, and are mounted with it. */
+  onSiteEditor: boolean;
 }
 
 export type StepDef = {
@@ -88,6 +92,16 @@ export const STEP_DEFS: StepDef[] = [
     side: "right",
   },
   {
+    /** SHELL, not orgHome: the project list is sidebar furniture now, present
+     *  on every route. It used to be the org home's panel content, which is why
+     *  this step sat at the end with the panel steps. */
+    scope: "shell",
+    anchor: "projects",
+    titleKey: "layoutTour.projects.title",
+    descKey: "layoutTour.projects.description",
+    side: "right",
+  },
+  {
     scope: "shell",
     anchor: "account",
     titleKey: "layoutTour.account.title",
@@ -95,25 +109,18 @@ export const STEP_DEFS: StepDef[] = [
     side: "right",
   },
   {
-    scope: "project",
+    scope: "siteEditor",
     anchor: "surfaceTabs",
     titleKey: "layoutTour.surfaceTabs.title",
     descKey: "layoutTour.surfaceTabs.description",
     side: "bottom",
   },
   {
-    scope: "project",
+    scope: "siteEditor",
     anchor: "branchPicker",
     titleKey: "layoutTour.branchPicker.title",
     descKey: "layoutTour.branchPicker.description",
     side: "bottom",
-  },
-  {
-    scope: "orgHome",
-    anchor: "agents",
-    titleKey: "layoutTour.agents.title",
-    descKey: "layoutTour.agents.description",
-    side: "top",
   },
   {
     scope: "orgHome",
@@ -132,7 +139,8 @@ export function stepsForRoute(route: TourRoute): StepDef[] {
     (step) =>
       step.scope === "shell" ||
       (step.scope === "orgHome" && route.onOrgHome) ||
-      (step.scope === "project" && route.inProject),
+      (step.scope === "project" && route.inProject) ||
+      (step.scope === "siteEditor" && route.onSiteEditor),
   );
 }
 

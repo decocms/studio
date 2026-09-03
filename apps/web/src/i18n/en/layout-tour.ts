@@ -13,10 +13,11 @@ export const layoutTour = {
   "layoutTour.account.description":
     "Theme, language and the rest of your personal settings live behind your name, at the bottom of the sidebar.",
 
+  "layoutTour.projects.title": "Every project, in the sidebar",
+  "layoutTour.projects.description":
+    "Every project your team built is listed here — pick one to go straight to its work, or import a repository to add another.",
+
   // ---- Org home.
-  "layoutTour.agents.title": "Your projects, right on the home",
-  "layoutTour.agents.description":
-    "The organization home opens on the projects your team built — pick one to go straight to its work, or import a repository to add another.",
   "layoutTour.recentActivity.title": "See what has been running",
   "layoutTour.recentActivity.description":
     "The latest tasks your projects worked on, newest first, so you can pick up where the team left off.",

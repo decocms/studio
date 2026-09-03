@@ -14,6 +14,7 @@
  * navigation that never needed to wait.
  */
 
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
@@ -185,7 +186,10 @@ export function SidebarProjectsSection({
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div
+      className="flex flex-col gap-1"
+      data-tour={LAYOUT_TOUR_ANCHORS.projects}
+    >
       {/* The gap above is what separates the org's map from the destinations
           it follows; the one below only sets the heading on its own list. */}
       <p className="px-2 pt-5 pb-0.5 text-xs font-medium text-muted-foreground/60">

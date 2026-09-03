@@ -94,12 +94,17 @@ describe("buildFeed", () => {
     expect(feed).toEqual([]);
   });
 
-  it("carries only settled work — open cards belong to the sidebar", () => {
-    const open = ["todo", "in_progress", "in_review", "triage", "archived"];
+  /** The ORG home is a record of finished work, so it keeps the settled-only
+   *  rule. The PROJECT home is a working surface whose composer creates cards
+   *  in the intake lane, so it must carry them — a feed that could not show
+   *  what the composer above it just made is the bug this pair pins. */
+  const OPEN = ["todo", "in_progress", "in_review", "triage"];
+
+  it("carries only settled work by default — the org home's rule", () => {
     const feed = buildFeed(
       [A],
       [
-        ...open.map((status, i) =>
+        ...[...OPEN, "archived"].map((status, i) =>
           task(status, `2026-03-0${i + 1}T00:00:00Z`, {
             virtualMcpId: "p_a",
             status,
@@ -110,6 +115,46 @@ describe("buildFeed", () => {
       null,
     );
     expect(ids(feed)).toEqual(["done"]);
+  });
+
+  it("carries open cards too when asked — the project home's rule", () => {
+    const feed = buildFeed(
+      [A],
+      [
+        ...OPEN.map((status, i) =>
+          task(status, `2026-03-0${i + 1}T00:00:00Z`, {
+            virtualMcpId: "p_a",
+            status,
+          }),
+        ),
+        task("done", "2026-01-01T00:00:00Z", { virtualMcpId: "p_a" }),
+      ],
+      null,
+      false,
+      true,
+    );
+    // Newest first, so the open cards lead and `done` (January) trails.
+    expect(ids(feed).sort()).toEqual([...OPEN, "done"].sort());
+  });
+
+  it("never carries archived work, even with open cards on", () => {
+    const feed = buildFeed(
+      [A],
+      [
+        task("archived", "2026-03-01T00:00:00Z", {
+          virtualMcpId: "p_a",
+          status: "archived",
+        }),
+        task("triage", "2026-03-02T00:00:00Z", {
+          virtualMcpId: "p_a",
+          status: "triage",
+        }),
+      ],
+      null,
+      false,
+      true,
+    );
+    expect(ids(feed)).toEqual(["triage"]);
   });
 
   it("counts a delivery lane as settled only for an org that runs them", () => {

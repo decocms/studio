@@ -123,6 +123,11 @@ export function buildFeed(
   tasks: TaskBoardItem[],
   projectId: string | null,
   deliveryLanes = false,
+  /** Carry open cards too, not just settled ones. The project home sets this:
+   *  its composer creates a card in the intake lane, and a feed that could not
+   *  show it left you typing into something that answered with nothing. The
+   *  ORG home stays settled-only — there it is a record of finished work. */
+  includeOpen = false,
 ): FeedEntry[] {
   const byId = new Map(projects.map((p) => [p.id, p] as const));
   const byRepo = new Map<string, VirtualMCPEntity>();
@@ -133,7 +138,9 @@ export function buildFeed(
 
   const entries: FeedEntry[] = [];
   for (const task of tasks) {
-    if (!isSettled(task.status, deliveryLanes)) continue;
+    // Deleted work is never an entry, open or settled.
+    if (task.status === "archived") continue;
+    if (!includeOpen && !isSettled(task.status, deliveryLanes)) continue;
     const project = projectFor(task, byId, byRepo);
     if (!project) continue;
     if (projectId && project.id !== projectId) continue;
@@ -365,6 +372,7 @@ export function ProjectFeed({
   tasks,
   action,
   showFilter = true,
+  includeOpen = false,
 }: {
   projects: VirtualMCPEntity[];
   tasks: TaskBoardItem[];
@@ -375,11 +383,19 @@ export function ProjectFeed({
    *  only option is the thing you are looking at is a control that cannot do
    *  anything. */
   showFilter?: boolean;
+  /** See `buildFeed`. On inside a project, off on the org home. */
+  includeOpen?: boolean;
 }) {
   const t = useT();
   const [projectId, setProjectId] = useState<string | null>(null);
   const deliveryLanes = useOrgFlag("delivery_lanes_enabled");
-  const entries = buildFeed(projects, tasks, projectId, deliveryLanes);
+  const entries = buildFeed(
+    projects,
+    tasks,
+    projectId,
+    deliveryLanes,
+    includeOpen,
+  );
   /** Non-blocking and resolved ONCE for the stack: an assignee is decoration on
    *  a card that is already legible without it, so the feed must not wait on
    *  the member list to paint. Until it lands, a human assignee simply has no
@@ -394,10 +410,7 @@ export function ProjectFeed({
       {/* The filter is where the roster went: a project with nothing on the
           board has no card, but it is still in this list, and picking it says
           so outright instead of leaving the project unreachable. */}
-      <div
-        className="flex items-center justify-between gap-3"
-        data-tour={LAYOUT_TOUR_ANCHORS.agents}
-      >
+      <div className="flex items-center justify-between gap-3">
         {/* A step ABOVE the card titles, not two: it is a heading, but the
             cards are the content and it must not out-shout them. */}
         <h2 className="text-lg font-medium text-foreground">

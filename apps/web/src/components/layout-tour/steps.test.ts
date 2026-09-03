@@ -5,9 +5,27 @@ import { LAYOUT_TOUR_ANCHORS, layoutTourAnchorSelector } from "./anchors";
 // A stub t() that echoes the key, so we can assert wiring without the real dict.
 const t = ((key: string) => key) as unknown as Parameters<typeof buildSteps>[0];
 
-const ORG_HOME: TourRoute = { onOrgHome: true, inProject: false };
-const PROJECT: TourRoute = { onOrgHome: false, inProject: true };
-const ELSEWHERE: TourRoute = { onOrgHome: false, inProject: false };
+const ORG_HOME: TourRoute = {
+  onOrgHome: true,
+  inProject: false,
+  onSiteEditor: false,
+};
+/** A project route that is NOT the Site Editor — its home, say. */
+const PROJECT: TourRoute = {
+  onOrgHome: false,
+  inProject: true,
+  onSiteEditor: false,
+};
+const SITE_EDITOR: TourRoute = {
+  onOrgHome: false,
+  inProject: true,
+  onSiteEditor: true,
+};
+const ELSEWHERE: TourRoute = {
+  onOrgHome: false,
+  inProject: false,
+  onSiteEditor: false,
+};
 
 describe("layout-tour steps", () => {
   /** The spotlight walks the screen: down the sidebar, then into the panel.
@@ -22,11 +40,11 @@ describe("layout-tour steps", () => {
       "siteEditor",
       "automations",
       "settings",
+      "projects",
       "account",
       // then the main panel
       "surfaceTabs",
       "branchPicker",
-      "agents",
       "recentActivity",
     ]);
   });
@@ -34,7 +52,7 @@ describe("layout-tour steps", () => {
   test("the shell steps are the ones that run everywhere", () => {
     expect(
       STEP_DEFS.filter((s) => s.scope === "shell").map((s) => s.anchor),
-    ).toEqual(["switcher", "nav", "tasks", "settings", "account"]);
+    ).toEqual(["switcher", "nav", "tasks", "settings", "projects", "account"]);
   });
 
   test("every step anchor is a real LAYOUT_TOUR_ANCHORS entry", () => {
@@ -59,13 +77,13 @@ describe("layout-tour steps", () => {
       "nav",
       "tasks",
       "settings",
+      "projects",
       "account",
     ]);
   });
 
   test("the org home adds its own steps and no project ones", () => {
     const anchors = stepsForRoute(ORG_HOME).map((s) => s.anchor);
-    expect(anchors).toContain("agents");
     expect(anchors).toContain("recentActivity");
     expect(anchors).not.toContain("siteEditor");
     expect(anchors).not.toContain("branchPicker");
@@ -75,6 +93,26 @@ describe("layout-tour steps", () => {
    *  destinations and Settings, and the account button stays last in the
    *  sidebar — then the panel. */
   test("a project walks the sidebar before the panel", () => {
+    const anchors = stepsForRoute(SITE_EDITOR).map((s) => s.anchor);
+    expect(anchors).toEqual([
+      "switcher",
+      "nav",
+      "tasks",
+      "siteEditor",
+      "automations",
+      "settings",
+      "projects",
+      "account",
+      "surfaceTabs",
+      "branchPicker",
+    ]);
+  });
+
+  /** The tab bar and the branch selector are mounted WITH the Site Editor, so
+   *  a project route that is not it (the project home, say) must not spotlight
+   *  controls that are not on screen — `skipMissingElement` would swallow them
+   *  silently, which is exactly the bug this asserts against. */
+  test("a project outside the Site Editor drops its two surface steps", () => {
     const anchors = stepsForRoute(PROJECT).map((s) => s.anchor);
     expect(anchors).toEqual([
       "switcher",
@@ -83,11 +121,11 @@ describe("layout-tour steps", () => {
       "siteEditor",
       "automations",
       "settings",
+      "projects",
       "account",
-      "surfaceTabs",
-      "branchPicker",
     ]);
-    expect(anchors).not.toContain("agents");
+    expect(anchors).not.toContain("surfaceTabs");
+    expect(anchors).not.toContain("branchPicker");
   });
 
   test("the org home ends on the panel, after the sidebar", () => {
@@ -96,8 +134,8 @@ describe("layout-tour steps", () => {
       "nav",
       "tasks",
       "settings",
+      "projects",
       "account",
-      "agents",
       "recentActivity",
     ]);
   });

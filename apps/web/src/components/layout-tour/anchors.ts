@@ -3,7 +3,7 @@
  *  a rename is a compile error rather than a step that silently vanishes — the
  *  tour runs with `skipMissingElement: true`, which would swallow it.
  *
- *  Anchors fall in two families, mirroring `StepScope` in `steps.ts`:
+ *  Anchors fall in families mirroring `StepScope` in `steps.ts`:
  *  the SHELL anchors are mounted on every workspace route, and the rest exist
  *  only where their surface does. A step is dropped unless BOTH its scope
  *  matches the current route and its anchor is actually on screen, so an anchor
@@ -19,21 +19,22 @@ export const LAYOUT_TOUR_ANCHORS = {
   nav: "tour-layout-nav",
   /** The Tasks destination row. */
   tasks: "tour-layout-tasks",
+  /** The sidebar's project list. The projects moved OUT of the org home and
+   *  into the sidebar, so the step that introduces them lives with the list. */
+  projects: "tour-layout-projects",
   /** The account button at the foot of the sidebar. */
   account: "tour-layout-account",
 
   // ---- Org home.
-  /** The org home's agents section. Deliberately mounted on BOTH the populated
-   *  section and the empty state, because "you have no agents yet" is exactly
-   *  when someone needs to be told where agents live and how to add one. Only
-   *  one of the two renders at a time. */
-  agents: "tour-layout-agents",
   /** The org home's activity column, absent when the board has no tasks. */
   recentActivity: "tour-layout-recent-activity",
 
   // ---- Project scope.
   /** The sidebar's Site Editor row. */
   siteEditor: "tour-layout-site-editor",
+
+  // ---- Site editor only. Both controls act on the surface being edited, so
+  //      they are mounted with it and their steps only run there.
   /** The main panel's tab bar, which carries Preview / Content / Code. */
   surfaceTabs: "tour-layout-surface-tabs",
   /** The branch selector, wherever it is currently mounted. */

@@ -17,7 +17,6 @@ import { EmptyState } from "@/components/empty-state.tsx";
 import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
 import { openCommandPalette } from "@/components/command-palette-store";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { ConnectPill } from "@/components/org-home/connect-pill";
 import { firstName, greetingSlot } from "@/components/org-home/greeting";
 import {
@@ -132,10 +131,7 @@ function OrgHomeBody({
 
   if (agents.length === 0) {
     return (
-      <div
-        className="flex items-center justify-center py-10"
-        data-tour={LAYOUT_TOUR_ANCHORS.agents}
-      >
+      <div className="flex items-center justify-center py-10">
         <EmptyState
           image={null}
           title={t("routes.agentsList.noAgentsYet")}
