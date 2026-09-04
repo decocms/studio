@@ -45,6 +45,9 @@ import {
   fetchGithubInstallations,
   GITHUB_APP_INSTALL_URL,
 } from "@/lib/github-installations";
+import { useGitAccounts } from "@/hooks/use-git-providers";
+import { serviceableAccounts } from "@/components/repository-picker";
+import { RepositoryPickerBridge } from "@/components/repository-picker-bridge";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import { provisionRepoScopedGithubConnection } from "@/lib/provision-repo-scoped-github-connection";
 
@@ -70,10 +73,38 @@ export interface GitHubImportPayload {
   /** Null in `mode="connection"` — no agent is created there. */
   virtualMcpId: string | null;
   repo: Repo;
-  connectionId: string;
+  /** The legacy repo-scoped connection. Null when the repo came from a
+   *  first-class git provider account, which has no per-repo connection. */
+  connectionId: string | null;
+  /** The first-class repository row, when the org picked through one. */
+  repositoryId?: string;
 }
 
-export function GitHubRepoPicker({
+export function GitHubRepoPicker(props: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title?: string;
+  onImportComplete?: (payload: GitHubImportPayload) => void;
+  /**
+   * "agent" (default): pick a repo → provision a repo-scoped connection + a new
+   * agent bound to it. "connection": provision an org-shared repo connection
+   * only (available to every agent), no agent.
+   */
+  mode?: "agent" | "connection";
+}) {
+  const accounts = useGitAccounts();
+  /**
+   * An org that has connected a git provider account picks through the
+   * first-class model; everything else keeps the legacy flow below. Held until
+   * the accounts query settles so the two pickers never swap mid-open.
+   */
+  if (!accounts.isPending && serviceableAccounts(accounts.data).length > 0) {
+    return <RepositoryPickerBridge {...props} />;
+  }
+  return <LegacyGitHubRepoPicker {...props} />;
+}
+
+function LegacyGitHubRepoPicker({
   open,
   onOpenChange,
   title,

@@ -43,6 +43,7 @@ import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
+import * as GitTools from "./git";
 import * as SearchTools from "./search";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
@@ -260,6 +261,16 @@ export const CORE_TOOLS = [
   GitHubTools.GITHUB_SEARCH_BRANCHES,
   GitHubTools.GITHUB_PR_STATE,
   GitHubTools.GITHUB_LAST_PUBLISHED_PR,
+
+  // Git provider accounts + first-class repositories (app-only)
+  GitTools.GIT_PROVIDER_CAPABILITIES,
+  GitTools.GIT_ACCOUNT_LIST,
+  GitTools.GIT_ACCOUNT_CONNECT_TOKEN,
+  GitTools.GIT_ACCOUNT_DELETE,
+  GitTools.REPOSITORY_LIST,
+  GitTools.REPOSITORY_SEARCH,
+  GitTools.REPOSITORY_LINK,
+  GitTools.REPOSITORY_DELETE,
 
   // Link tools
 

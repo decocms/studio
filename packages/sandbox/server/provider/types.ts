@@ -68,6 +68,12 @@ export interface EnsureRepo {
    * `cloneUrl` at first provision. Absent for anonymous/public clones.
    */
   connectionId?: string;
+  /**
+   * First-class repository backing `cloneUrl` (Studio-owned credentials).
+   * When set, re-minting goes through the repository's provider account and
+   * `connectionId` is absent. Absent for legacy and anonymous clones.
+   */
+  repositoryId?: string;
   userName: string;
   userEmail: string;
   branch?: string;

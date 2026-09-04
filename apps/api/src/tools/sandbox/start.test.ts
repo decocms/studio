@@ -256,6 +256,12 @@ function makeCtx(overrides: {
         get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
       },
+      // No repository row: these tests cover the legacy `mcp-github` path.
+      repositories: {
+        get: mock(async () => null),
+        findByRef: mock(async () => null),
+      },
+      gitProviderAccounts: { getUnscoped: mock(async () => null) },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),

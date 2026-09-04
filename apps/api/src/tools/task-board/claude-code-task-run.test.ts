@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { RepoChoice } from "@/git-providers/repo-choices";
 import {
   buildClaudeCodeTaskPrompt,
   pickSoleTaskRepo,
@@ -6,11 +7,13 @@ import {
 } from "./claude-code-task-run";
 
 const repo: TaskRepo = {
+  id: "conn_1",
   connectionId: "conn_1",
   owner: "acme",
   name: "web",
   installationId: 42,
   url: "https://github.com/acme/web",
+  provider: "github",
 };
 
 const task = {
@@ -137,78 +140,78 @@ describe("buildClaudeCodeTaskPrompt", () => {
 });
 
 /** An active repo-scoped `mcp-github` connection, as `connections.list` returns it. */
-const repoConn = (
+const choice = (
   id: string,
   owner: string,
   name: string,
-  extra?: Record<string, unknown>,
-) => ({
+  overrides?: Partial<RepoChoice>,
+): RepoChoice => ({
   id,
-  status: "active",
-  metadata: {
-    ...extra,
-    repoScope: { installationId: 42, owner, repo: name },
-  },
+  owner,
+  name,
+  label: `${owner}/${name} (github.com)`,
+  webUrl: `https://github.com/${owner}/${name}`,
+  provider: "github" as const,
+  repository: null,
+  connectionId: id,
+  installationId: 42,
+  ...overrides,
 });
 
 describe("pickSoleTaskRepo", () => {
-  test("no imported repo is not eligible", () => {
+  test("no clonable repo is not eligible", () => {
     expect(pickSoleTaskRepo([])).toBeNull();
-    // The bare org-level connection carries no repoScope.
-    expect(
-      pickSoleTaskRepo([{ id: "conn_0", status: "active", metadata: {} }]),
-    ).toBeNull();
   });
 
-  test("one repo, one connection", () => {
-    expect(pickSoleTaskRepo([repoConn("conn_1", "acme", "web")])).toEqual({
+  test("one repo, one legacy connection", () => {
+    expect(pickSoleTaskRepo([choice("conn_1", "acme", "web")])).toEqual({
+      id: "conn_1",
       connectionId: "conn_1",
       owner: "acme",
       name: "web",
       installationId: 42,
       url: "https://github.com/acme/web",
+      provider: "github",
     });
   });
 
-  // The regression: importing one repo leaves an org-shared connection AND a
-  // per-agent one behind. Counting connections read that as "ambiguous".
-  test("one repo behind two connections is still one repo, org-shared wins", () => {
-    const picked = pickSoleTaskRepo([
-      repoConn("conn_agent", "acme", "web"),
-      repoConn("conn_shared", "acme", "web", { orgShared: true }),
-    ]);
-    expect(picked?.connectionId).toBe("conn_shared");
+  /** A repository carries no connection and no installation, and its url is
+   *  the provider's — so a GitLab one is dispatchable, which it was not while
+   *  this read `mcp-github` connections. */
+  test("one repository is bound by repositoryId, on its own host", () => {
+    const repository = {
+      id: "repo_1",
+      host: "gitlab.acme.com",
+      path: "group/sub/project",
+    } as unknown as NonNullable<RepoChoice["repository"]>;
+    expect(
+      pickSoleTaskRepo([
+        choice("repo_1", "group/sub", "project", {
+          repository,
+          provider: "gitlab",
+          connectionId: null,
+          installationId: undefined,
+          webUrl: "https://gitlab.acme.com/group/sub/project",
+        }),
+      ]),
+    ).toEqual({
+      id: "repo_1",
+      repositoryId: "repo_1",
+      owner: "group/sub",
+      name: "project",
+      url: "https://gitlab.acme.com/group/sub/project",
+      provider: "gitlab",
+    });
   });
 
-  test("falls back to the per-agent connection when none is org-shared", () => {
-    const picked = pickSoleTaskRepo([repoConn("conn_agent", "acme", "web")]);
-    expect(picked?.connectionId).toBe("conn_agent");
-  });
-
-  test("owner/repo case does not split one repo into two", () => {
-    const picked = pickSoleTaskRepo([
-      repoConn("conn_1", "acme", "web"),
-      repoConn("conn_2", "Acme", "Web"),
-    ]);
-    expect(picked).not.toBeNull();
-  });
-
+  // Two repos to choose between is the `TASK_ADD_REPO` path, not a dispatch-time bind.
   test("two different repos stay ambiguous", () => {
     expect(
       pickSoleTaskRepo([
-        repoConn("conn_1", "acme", "web"),
-        repoConn("conn_2", "acme", "api"),
+        choice("conn_1", "acme", "web"),
+        choice("conn_2", "acme", "api"),
       ]),
     ).toBeNull();
-  });
-
-  test("an inactive connection does not count as an imported repo", () => {
-    const picked = pickSoleTaskRepo([
-      repoConn("conn_1", "acme", "web"),
-      { ...repoConn("conn_2", "acme", "api"), status: "inactive" },
-    ]);
-    expect(picked?.owner).toBe("acme");
-    expect(picked?.name).toBe("web");
   });
 });
 
@@ -234,12 +237,12 @@ describe("buildClaudeCodeTaskPrompt repo choices", () => {
   test("names the candidate repos so the run doesn't have to ask", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null, {
       repoChoices: [
-        { connectionId: "conn_1", repo: "acme/web" },
-        { connectionId: "conn_2", repo: "acme/api" },
+        { id: "conn_1", repo: "acme/web" },
+        { id: "repo_api", repo: "acme/api" },
       ],
     });
-    expect(prompt).toContain("acme/web (connectionId: conn_1)");
-    expect(prompt).toContain("acme/api (connectionId: conn_2)");
+    expect(prompt).toContain("acme/web (id: conn_1)");
+    expect(prompt).toContain("acme/api (id: repo_api)");
     expect(prompt).toContain("Start with the one the task is about");
   });
 
@@ -248,17 +251,63 @@ describe("buildClaudeCodeTaskPrompt repo choices", () => {
   test("says a second add accumulates instead of replacing", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null, {
       repoChoices: [
-        { connectionId: "conn_1", repo: "acme/web" },
-        { connectionId: "conn_2", repo: "acme/api" },
+        { id: "conn_1", repo: "acme/web" },
+        { id: "repo_api", repo: "acme/api" },
       ],
     });
     expect(prompt).not.toContain("take the first");
     expect(prompt).toContain("repositories accumulate");
-    expect(prompt).toContain("one pull request per repository");
+    expect(prompt).toContain("one change request per repository");
   });
 
   test("falls back to the listing call when no candidates were resolved", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null);
     expect(prompt).toContain("with no arguments to list them");
+  });
+});
+
+describe("the prompt speaks each checkout's own provider", () => {
+  const task = { id: "t1", title: "Fix it", description: null };
+  const gitlabRepo: TaskRepo = {
+    id: "repo_1",
+    repositoryId: "repo_1",
+    owner: "group/sub",
+    name: "project",
+    url: "https://gitlab.acme.com/group/sub/project",
+    provider: "gitlab",
+  };
+
+  /** The link instruction is the one that names a command to run, so it is
+   *  what must follow the checkout's provider. */
+  const linkLine = (prompt: string) =>
+    prompt.split("\n").find((l) => l.includes("TASK_BOARD_ITEM_PR_LINK")) ?? "";
+
+  test("a GitLab run is told to run glab, and called a merge request", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, gitlabRepo);
+    expect(prompt).toContain("hosted on GitLab, so `git` and `glab`");
+    expect(linkLine(prompt)).toContain("glab mr create");
+    expect(linkLine(prompt)).toContain("merge request");
+    expect(linkLine(prompt)).not.toContain("gh pr create");
+  });
+
+  test("a GitHub run keeps gh and pull-request wording", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo);
+    expect(prompt).toContain("hosted on GitHub, so `git` and `gh`");
+    expect(linkLine(prompt)).toContain("gh pr create");
+    expect(linkLine(prompt)).toContain("pull request");
+    expect(linkLine(prompt)).not.toContain("glab mr create");
+  });
+
+  /** `TASK_ADD_REPO` accumulates checkouts, and they can be on different
+   *  hosts — so the rule has to travel with every prompt, not just the
+   *  several-repos one. */
+  test("every prompt carries the per-checkout CLI rule", () => {
+    for (const r of [repo, gitlabRepo, null]) {
+      const prompt = buildClaudeCodeTaskPrompt(task, r);
+      expect(prompt).toContain(
+        "Each checkout is authenticated for ITS OWN host",
+      );
+      expect(prompt).toContain("`glab` inside a GitLab one");
+    }
   });
 });

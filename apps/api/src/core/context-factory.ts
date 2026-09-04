@@ -509,6 +509,10 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
+import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
+import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
+import { RepositoryStorage } from "@/storage/repositories";
+import { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-states";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
@@ -1403,6 +1407,13 @@ export async function createStudioContextFactory(
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
+    gitProviderAccounts: new GitProviderAccountStorage(config.db),
+    gitProviderAccountCredentials: new GitProviderAccountCredentialStorage(
+      config.db,
+      vault,
+    ),
+    gitProviderOAuthStates: new GitProviderOAuthStateStorage(config.db),
+    repositories: new RepositoryStorage(config.db),
     jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
     taskBoard: new TaskBoardStorage(config.db),
     columnAutomations: new ColumnAutomationStorage(config.db),

@@ -22,6 +22,7 @@ import {
   RECONNECT_ERROR,
 } from "../oauth/token-refresh";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
+import { DECOBOT_GIT_IDENTITY } from "./git-bot-identity";
 import {
   encodeSandboxStartError,
   SANDBOX_START_ERROR_CODES,
@@ -32,20 +33,6 @@ export interface GitHubCloneInfo {
   gitUserName: string;
   gitUserEmail: string;
 }
-
-/**
- * decobot (github.com/decobot, id 114028756) — deco's shared GitHub identity
- * for automated commits when the real author can't be resolved. Its noreply
- * commit-email format is deterministic from its public id+login (no private
- * email lookup or verification needed) and always resolves to a real,
- * verified GitHub account, which is required by GitHub App installation
- * tokens (see below) and by private-repo CI/CD collaboration checks (e.g.
- * Vercel) that reject commits whose author can't be matched to an account.
- */
-const DECOBOT_GIT_IDENTITY = {
-  name: "Deco Bot",
-  email: "114028756+decobot@users.noreply.github.com",
-} as const;
 
 /**
  * Public-repo clone (no token, no /user lookup). Anonymous HTTPS clone works
