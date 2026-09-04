@@ -23,6 +23,10 @@ import {
   listOrgRepoChoices,
   type RepoChoice,
 } from "@/git-providers/repo-choices";
+import {
+  type GitProviderKind,
+  providerCli,
+} from "@decocms/shared/git-providers";
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
@@ -45,6 +49,7 @@ export interface TaskRepo {
   owner: string;
   name: string;
   url: string;
+  provider: GitProviderKind;
   connectionId?: string;
   repositoryId?: string;
   installationId?: number;
@@ -69,6 +74,7 @@ export function pickSoleTaskRepo(choices: RepoChoice[]): TaskRepo | null {
     owner: chosen.owner,
     name: chosen.name,
     url: chosen.webUrl,
+    provider: chosen.provider,
     ...(chosen.connectionId ? { connectionId: chosen.connectionId } : {}),
     ...(chosen.repository ? { repositoryId: chosen.repository.id } : {}),
     ...(chosen.installationId !== undefined
@@ -160,14 +166,33 @@ export async function resolveTaskRepoChoice(
  * unambiguously — a model that starts by looking for files it was told exist
  * spends its first steps concluding the sandbox is broken.
  */
+/**
+ * Repositories in one run can come from different providers, so the CLI is a
+ * property of the checkout, not of the run. Stated as a rule rather than a
+ * command because the agent is the one who knows which directory it is in.
+ */
+const MIXED_PROVIDER_NOTE =
+  "Each checkout is authenticated for ITS OWN host: use `gh` inside a GitHub " +
+  "repository and `glab` inside a GitLab one (`glab mr create` is the " +
+  "counterpart of `gh pr create`). A run can hold both at once, so pick the " +
+  "one that matches the repository you are standing in — check its remote " +
+  "with `git remote get-url origin` if you are unsure.";
+
 export function buildClaudeCodeTaskPrompt(
   task: { id: string; title: string; description: string | null },
   repo: TaskRepo | null,
   opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): string {
   // prompt-region:start super-agent-sandbox
+  /**
+   * The primary checkout's vocabulary, used for the instructions that name a
+   * concrete command. A run can hold checkouts from BOTH providers at once
+   * (`TASK_ADD_REPO` accumulates them), so the rule tying a CLI to its own
+   * checkout is stated separately — see MIXED_PROVIDER_NOTE.
+   */
+  const cli = providerCli(repo?.provider ?? "github");
   const lines: string[] = [
-    "You've been assigned this task. Complete it and finish with a pull request if it makes sense (like a coding task) or is explicitly requested.",
+    `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`,
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
       "completion yourself. Make reasonable decisions and move on; do not stop " +
@@ -186,14 +211,14 @@ export function buildClaudeCodeTaskPrompt(
   lines.push(
     "",
     repo
-      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. \`git\` and the repository's CLI (\`gh\` for GitHub, \`glab\` for GitLab) are authenticated. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. It is hosted on ${repo.provider === "gitlab" ? "GitLab" : "GitHub"}, so \`git\` and \`${cli.cli}\` are authenticated there. ${SHALLOW_CHECKOUT_NOTE}`
       : [
           "Your working directory is EMPTY: this organization has several repositories, so " +
             "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
             "id of the repository this task is about. It clones that repository " +
             "into your working directory and waits for the checkout, so once it returns the " +
-            "repository is there on its own branch and `git` and the repository's CLI " +
-            "(`gh` for GitHub, `glab` for GitLab) are authenticated. " +
+            "repository is there on its own branch, with `git` and that " +
+            "repository's own CLI authenticated. " +
             "Do not read files or run `git` before it returns; there is nothing " +
             "there yet.",
           "",
@@ -204,9 +229,11 @@ export function buildClaudeCodeTaskPrompt(
               "another of them too, call `mcp__studio__TASK_ADD_REPO` again — repositories " +
               "accumulate, so a second call adds a checkout beside the first rather than " +
               "replacing it. Each lands in its own directory and keeps its own git remote, " +
-              "so open one pull request per repository you changed."
+              "so open one change request per repository you changed."
             : "Call `mcp__studio__TASK_ADD_REPO` with no arguments to list them.",
         ].join("\n"),
+    "",
+    MIXED_PROVIDER_NOTE,
     "",
   );
 
@@ -215,7 +242,7 @@ export function buildClaudeCodeTaskPrompt(
   if (opts?.resolveConflict && opts.pr) {
     lines.push(
       `Pull request #${opts.pr.number} (${opts.pr.url}) is approved but has a MERGE CONFLICT with its base branch.`,
-      `Check that branch out (\`gh pr checkout ${opts.pr.number}\`), merge or rebase the base branch into it, resolve the conflicts, and push to update the SAME pull request — do NOT open a new one. Resolve by preserving BOTH sides' intent; never blindly discard either side, and change only what the conflict requires.`,
+      `Check that branch out (\`${cli.checkoutCommand} ${opts.pr.number}\`), merge or rebase the base branch into it, resolve the conflicts, and push to update the SAME ${cli.changeRequest} — do NOT open a new one. Resolve by preserving BOTH sides' intent; never blindly discard either side, and change only what the conflict requires.`,
       "",
     );
   } else if (opts?.feedback) {
@@ -229,7 +256,7 @@ export function buildClaudeCodeTaskPrompt(
         : "A reviewer requested changes on your previous work:",
       opts.feedback,
       opts.pr
-        ? `Check that branch out (\`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, then push to update the SAME pull request — do NOT open a new one.`
+        ? `Check that branch out (\`${cli.checkoutCommand} ${opts.pr.number}\`) before editing, address the feedback, then push to update the SAME ${cli.changeRequest} — do NOT open a new one.`
         : "Address this feedback.",
       "",
     );
@@ -276,7 +303,7 @@ export function buildClaudeCodeTaskPrompt(
     // The ONLY reliable way the board learns the PR: Claude Code opens it inside
     // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
     // dispatched from the linked PR, so skipping this strands the card.
-    `- As soon as \`gh pr create\` prints the URL, call \`mcp__studio__TASK_BOARD_ITEM_PR_LINK\` with that url. Do this even if you also mention the PR in a comment — the reviewers are dispatched from the linked PR, not from your message.`,
+    `- As soon as \`${cli.createCommand}\` prints the URL, call \`mcp__studio__TASK_BOARD_ITEM_PR_LINK\` with that url. Do this even if you also mention the ${cli.changeRequest} in a comment — the reviewers are dispatched from the linked ${cli.changeRequest}, not from your message.`,
     // Deliberately NOT "then move it to In Review". Linking the PR is what
     // starts the review (`openReviewCycleIfInProgress`), and the card stays In
     // Progress until the reviewer decides — an agent is still working on it.

@@ -19,7 +19,10 @@ import { repositoryUsesStudioCredentials } from "@/git-providers/credentials";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import type { RepositoryRecord } from "@/storage/repositories";
 import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
-import { splitOwnerName } from "@decocms/shared/git-providers";
+import {
+  type GitProviderKind,
+  splitOwnerName,
+} from "@decocms/shared/git-providers";
 
 /**
  * One repository the agent may clone, from either model.
@@ -37,6 +40,8 @@ export interface RepoChoice {
   name: string;
   label: string;
   webUrl: string;
+  /** Chooses the CLI and the wording an agent's prompt has to use. */
+  provider: GitProviderKind;
   repository: RepositoryRecord | null;
   connectionId: string | null;
   installationId: number | undefined;
@@ -99,6 +104,7 @@ export function mergeRepoChoices(
       name,
       label: `${repository.path} (${repository.host})`,
       webUrl: repository.webUrl,
+      provider: repository.provider,
       repository,
       connectionId: null,
       installationId: undefined,
@@ -115,6 +121,7 @@ export function mergeRepoChoices(
       name: entry.repo,
       label: `${entry.owner}/${entry.repo} (github.com)`,
       webUrl: `https://github.com/${entry.owner}/${entry.repo}`,
+      provider: "github",
       repository: null,
       connectionId: entry.connectionId,
       installationId: entry.installationId,

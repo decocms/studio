@@ -13,6 +13,7 @@ const repo: TaskRepo = {
   name: "web",
   installationId: 42,
   url: "https://github.com/acme/web",
+  provider: "github",
 };
 
 const task = {
@@ -150,6 +151,7 @@ const choice = (
   name,
   label: `${owner}/${name} (github.com)`,
   webUrl: `https://github.com/${owner}/${name}`,
+  provider: "github" as const,
   repository: null,
   connectionId: id,
   installationId: 42,
@@ -169,6 +171,7 @@ describe("pickSoleTaskRepo", () => {
       name: "web",
       installationId: 42,
       url: "https://github.com/acme/web",
+      provider: "github",
     });
   });
 
@@ -185,6 +188,7 @@ describe("pickSoleTaskRepo", () => {
       pickSoleTaskRepo([
         choice("repo_1", "group/sub", "project", {
           repository,
+          provider: "gitlab",
           connectionId: null,
           installationId: undefined,
           webUrl: "https://gitlab.acme.com/group/sub/project",
@@ -196,6 +200,7 @@ describe("pickSoleTaskRepo", () => {
       owner: "group/sub",
       name: "project",
       url: "https://gitlab.acme.com/group/sub/project",
+      provider: "gitlab",
     });
   });
 
@@ -252,11 +257,57 @@ describe("buildClaudeCodeTaskPrompt repo choices", () => {
     });
     expect(prompt).not.toContain("take the first");
     expect(prompt).toContain("repositories accumulate");
-    expect(prompt).toContain("one pull request per repository");
+    expect(prompt).toContain("one change request per repository");
   });
 
   test("falls back to the listing call when no candidates were resolved", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null);
     expect(prompt).toContain("with no arguments to list them");
+  });
+});
+
+describe("the prompt speaks each checkout's own provider", () => {
+  const task = { id: "t1", title: "Fix it", description: null };
+  const gitlabRepo: TaskRepo = {
+    id: "repo_1",
+    repositoryId: "repo_1",
+    owner: "group/sub",
+    name: "project",
+    url: "https://gitlab.acme.com/group/sub/project",
+    provider: "gitlab",
+  };
+
+  /** The link instruction is the one that names a command to run, so it is
+   *  what must follow the checkout's provider. */
+  const linkLine = (prompt: string) =>
+    prompt.split("\n").find((l) => l.includes("TASK_BOARD_ITEM_PR_LINK")) ?? "";
+
+  test("a GitLab run is told to run glab, and called a merge request", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, gitlabRepo);
+    expect(prompt).toContain("hosted on GitLab, so `git` and `glab`");
+    expect(linkLine(prompt)).toContain("glab mr create");
+    expect(linkLine(prompt)).toContain("merge request");
+    expect(linkLine(prompt)).not.toContain("gh pr create");
+  });
+
+  test("a GitHub run keeps gh and pull-request wording", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo);
+    expect(prompt).toContain("hosted on GitHub, so `git` and `gh`");
+    expect(linkLine(prompt)).toContain("gh pr create");
+    expect(linkLine(prompt)).toContain("pull request");
+    expect(linkLine(prompt)).not.toContain("glab mr create");
+  });
+
+  /** `TASK_ADD_REPO` accumulates checkouts, and they can be on different
+   *  hosts — so the rule has to travel with every prompt, not just the
+   *  several-repos one. */
+  test("every prompt carries the per-checkout CLI rule", () => {
+    for (const r of [repo, gitlabRepo, null]) {
+      const prompt = buildClaudeCodeTaskPrompt(task, r);
+      expect(prompt).toContain(
+        "Each checkout is authenticated for ITS OWN host",
+      );
+      expect(prompt).toContain("`glab` inside a GitLab one");
+    }
   });
 });

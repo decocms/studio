@@ -35,6 +35,7 @@ const choice = (
   name: "web",
   label,
   webUrl: "https://github.com/acme/web",
+  provider: "github" as const,
   repository: null,
   connectionId: id,
   installationId: 1,
