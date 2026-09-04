@@ -29,12 +29,11 @@
  * to parse.
  */
 
-import {
-  parseRepoUrl,
-  repoRefFromOwnerName,
-} from "@decocms/shared/git-providers";
 import type { StudioContext } from "@/core/studio-context";
-import { changeRequestClientForOrigin } from "@/git-providers/change-requests";
+import {
+  changeRequestClientForTarget,
+  repoTargetForBinding,
+} from "@/git-providers";
 import type { TaskBoardItem } from "@/storage/types";
 import {
   getThreadGithubRepo,
@@ -104,18 +103,11 @@ export async function linkPrFromRunBranch(
         branch,
         await getThreadHeadRef(ctx, threadId),
       );
-      /**
-       * The URL is preferred over the `owner`/`name` pair because it carries
-       * the host, and therefore the provider; the pair is the fallback for a
-       * binding written before that was true, which is github.com by
-       * construction.
-       */
-      const client = await changeRequestClientForOrigin(ctx, orgId, {
-        repo:
-          parseRepoUrl(repo.url) ?? repoRefFromOwnerName(repo.owner, repo.name),
-        repositoryId: repo.repositoryId,
-        connectionId: repo.connectionId,
-      }).catch(() => null);
+      const client = await changeRequestClientForTarget(
+        ctx,
+        orgId,
+        repoTargetForBinding(repo),
+      ).catch(() => null);
       if (!client) {
         console.warn(
           `[task-board] no credential for ${repo.owner}/${repo.name} — ` +

@@ -384,9 +384,43 @@ let appAuthSingleton: GithubAppAuth | null | undefined;
 export function getGithubAppAuth(): GithubAppAuth | null {
   if (appAuthSingleton === undefined) {
     const config = readGithubAppConfig();
-    appAuthSingleton = config ? new GithubAppAuth(config) : null;
+    appAuthSingleton =
+      config && usableAppKey(config) ? new GithubAppAuth(config) : null;
   }
   return appAuthSingleton;
+}
+
+/**
+ * Whether the configured private key can actually sign — checked HERE, at the
+ * gate, rather than at the first mint.
+ *
+ * `readGithubAppConfig` only proves five environment variables are non-empty,
+ * and a PEM mangled on the way into a secret manager (the newlines eaten, the
+ * classic one) is a perfectly good non-empty string. Without this check that
+ * key still makes `getGithubAppAuth()` non-null, which makes every backfilled
+ * account `accountIsServable`, which takes every GitHub repository OFF its
+ * legacy connection and onto an App that cannot sign — turning a bad paste
+ * into an outage instead of a no-op.
+ *
+ * Answering null instead leaves the whole feature dormant and every org on the
+ * path it is already using, which is what a misconfiguration should cost.
+ *
+ * Exported for its test: the singleton above memoizes, so only the predicate
+ * can be exercised across more than one configuration in a process.
+ */
+export function usableAppKey(config: GithubAppConfig): boolean {
+  try {
+    createPrivateKey(config.privateKeyPem);
+    return true;
+  } catch (cause) {
+    console.error(
+      "[git-providers] GITHUB_APP_PRIVATE_KEY is not a usable private key — " +
+        "the GitHub App stays disabled and orgs keep their existing " +
+        "connections. Check that newlines survived the secret store.",
+      cause,
+    );
+    return false;
+  }
 }
 
 /**

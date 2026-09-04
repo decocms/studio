@@ -175,19 +175,34 @@ export async function contentClientForTarget(
   return contentClientWithToken(resolved.ref, token);
 }
 
+/**
+ * A legacy `metadata.githubRepo` binding, as a target.
+ *
+ * The URL is preferred over the `owner`/`name` pair because it carries the
+ * host, and therefore the provider; the pair is the fallback for a binding
+ * written before that was true, which is github.com by construction.
+ */
+export function repoTargetForBinding(githubRepo: GithubRepo): RepoTarget {
+  return {
+    repositoryId: githubRepo.repositoryId,
+    ref:
+      parseRepoUrl(githubRepo.url) ??
+      repoRefFromOwnerName(githubRepo.owner, githubRepo.name),
+    connectionId: githubRepo.connectionId,
+  };
+}
+
 /** {@link contentClientForTarget} for a project's legacy `githubRepo` binding. */
 export function contentClientForProjectRepo(
   ctx: StudioContext,
   organizationId: string,
   githubRepo: GithubRepo,
 ): Promise<RepoContentClient> {
-  return contentClientForTarget(ctx, organizationId, {
-    repositoryId: githubRepo.repositoryId,
-    ref:
-      parseRepoUrl(githubRepo.url) ??
-      repoRefFromOwnerName(githubRepo.owner, githubRepo.name),
-    connectionId: githubRepo.connectionId,
-  });
+  return contentClientForTarget(
+    ctx,
+    organizationId,
+    repoTargetForBinding(githubRepo),
+  );
 }
 
 /** Where a change request's repository was recorded, however completely. */
