@@ -970,6 +970,26 @@ export function ActiveTaskProvider({
   // Delivery is at-most-once (NATS Core, no replay): a dropped event self-heals
   // because any LATER same-thread status event re-reconciles. Scoped to threads
   // that actually queued work (`isQueueDirty`) so normal threads are untouched.
+  // Shared by onTaskStatus and onReconnect: a dropped `/watch` connection can lose a status event, so a reconnect also re-checks the dirty queue.
+  const resyncDirtyQueue = () => {
+    const cb = cbRef.current;
+    if (!isQueueDirty(cb.taskId)) return;
+    void (async () => {
+      await refreshMessageQueue(cb.orgSlug, cb.taskId);
+      const applied = await conn.reconcileFromServer();
+      // The gate queue has drained — the last queued turn finished and its
+      // parts are committed (guaranteed by the ordering above), so the body
+      // is whole. Stop reconciling until the next time work is queued.
+      // Gate on `applied`: `reconcileFromServer` skips its apply while the
+      // next queued turn is already mid-stream (racing dequeue) — and by
+      // then the gate queue can look drained. The flag must survive the
+      // skip so that turn's own terminal event retries the reconcile.
+      if (applied && messageQueueStore(cb.taskId).get().length === 0) {
+        clearQueueDirty(cb.taskId);
+      }
+    })();
+  };
+
   useDecopilotEvents({
     orgSlug: org.slug,
     taskId,
@@ -983,22 +1003,9 @@ export function ActiveTaskProvider({
         if (stashed) conn.applyLocalMessage(stashed);
         void refreshMessageQueue(cb.orgSlug, cb.taskId); // authoritative re-sync
       }
-      if (!isQueueDirty(cb.taskId)) return;
-      void (async () => {
-        await refreshMessageQueue(cb.orgSlug, cb.taskId);
-        const applied = await conn.reconcileFromServer();
-        // The gate queue has drained — the last queued turn finished and its
-        // parts are committed (guaranteed by the ordering above), so the body
-        // is whole. Stop reconciling until the next time work is queued.
-        // Gate on `applied`: `reconcileFromServer` skips its apply while the
-        // next queued turn is already mid-stream (racing dequeue) — and by
-        // then the gate queue can look drained. The flag must survive the
-        // skip so that turn's own terminal event retries the reconcile.
-        if (applied && messageQueueStore(cb.taskId).get().length === 0) {
-          clearQueueDirty(cb.taskId);
-        }
-      })();
+      resyncDirtyQueue();
     },
+    onReconnect: resyncDirtyQueue,
   });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
