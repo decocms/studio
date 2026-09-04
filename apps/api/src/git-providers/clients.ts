@@ -39,6 +39,7 @@ import {
   repoCredentialForRepository,
   type RepoTarget,
   resolveRepoTarget,
+  type ResolvedRepoTarget,
   staticRepoCredential,
 } from "./credentials";
 import { GithubChangeRequestClient } from "./github/change-requests";
@@ -112,6 +113,34 @@ async function legacyGithubToken(
 }
 
 /**
+ * Why this repository cannot be read, in terms of what the reader has to do.
+ *
+ * The three cases are genuinely different and used to collapse into one:
+ * "reconnect the mcp-github integration" was raised even for a repository
+ * linked anonymously from a public URL, which has no integration to reconnect
+ * and never had one. A message that names an action the reader cannot take is
+ * worse than no message.
+ */
+function noCredential(resolved: ResolvedRepoTarget): GitProviderError {
+  const { ref, repository } = resolved;
+  const base = { provider: ref.provider, status: 401 } as const;
+  if (repository && !repository.accountId) {
+    return new GitProviderError({
+      ...base,
+      message: `${ref.path} is linked without an account — connect one in Settings → Repositories to read it`,
+    });
+  }
+  if (ref.provider !== "github") {
+    return new GitProviderError({
+      ...base,
+      message: `${ref.path} is not connected to this organization — link it in Settings → Repositories`,
+    });
+  }
+  // A GitHub connection was there to try, and its token could not be renewed.
+  return new GitProviderError({ ...base, message: RECONNECT_ERROR });
+}
+
+/**
  * Content client for a repository the caller names however it can — a
  * repository id, an identity, or a legacy connection. Shared by the decofile
  * routes, the sandbox-less `/git/*` compat handlers and the branch search so
@@ -142,16 +171,7 @@ export async function contentClientForTarget(
     resolved.ref,
     target.connectionId ?? null,
   );
-  if (!token) {
-    throw new GitProviderError({
-      provider: resolved.ref.provider,
-      status: 401,
-      message:
-        resolved.ref.provider === "github"
-          ? RECONNECT_ERROR
-          : `${resolved.ref.path} is not connected to this organization — link it in Settings → Repositories`,
-    });
-  }
+  if (!token) throw noCredential(resolved);
   return contentClientWithToken(resolved.ref, token);
 }
 
