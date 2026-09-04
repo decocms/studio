@@ -298,7 +298,7 @@ const MAX_BRAND_OVERVIEW_LENGTH = 5000;
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({
-  id: z.string().describe("Brand context ID"),
+  id: z.string().max(MAX_BRAND_STRING_LENGTH).describe("Brand context ID"),
   name: z.string().max(MAX_BRAND_STRING_LENGTH).describe("Company name"),
   domain: z
     .string()
