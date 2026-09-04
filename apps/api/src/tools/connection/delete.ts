@@ -18,6 +18,7 @@ import {
 } from "../../core/studio-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
+import { clearRefreshBackoff } from "../../oauth/token-refresh";
 import { isDevAssetsConnection, usesLocalObjectStorage } from "./dev-assets";
 import { ConnectionEntitySchema } from "./schema";
 
@@ -132,6 +133,9 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
 
     // Delete connection
     await ctx.storage.connections.delete(input.id);
+
+    // token-refresh's backoff map has no TTL and would leak this connectionId forever otherwise.
+    clearRefreshBackoff(input.id);
 
     // trigger_callback_tokens.connection_id has no FK either — same class of orphan.
     await ctx.storage.triggerCallbackTokens.deleteByConnection(

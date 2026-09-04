@@ -1,6 +1,12 @@
 import { describe, expect, it, mock } from "bun:test";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
-import { COLLECTION_CONNECTIONS_DELETE } from "./delete";
+
+const mockClearRefreshBackoff = mock((_connectionId?: string) => {});
+mock.module("../../oauth/token-refresh", () => ({
+  clearRefreshBackoff: mockClearRefreshBackoff,
+}));
+
+const { COLLECTION_CONNECTIONS_DELETE } = await import("./delete");
 
 function makeCtx(options: {
   referencedByThread: boolean;
@@ -79,6 +85,16 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
 
     expect(result.item.id).toBe("conn_repo");
     expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
+  });
+
+  it("clears the token-refresh backoff entry on delete", async () => {
+    // Regression: the backoff map has no TTL and would leak this connectionId forever otherwise.
+    mockClearRefreshBackoff.mockClear();
+    const { ctx } = makeCtx({ referencedByThread: false });
+
+    await COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx);
+
+    expect(mockClearRefreshBackoff).toHaveBeenCalledWith("conn_repo");
   });
 
   it("revokes the connection's trigger callback token on delete", async () => {
