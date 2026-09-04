@@ -263,11 +263,6 @@ function pageMatchScore(name: string, path: string, q: string): number {
  * Reload the iframe in place; falls back to reassigning `src` when the
  * iframe's live location is cross-origin (sandbox preview domain) and
  * `.reload()` throws.
-
-/**
- * Reload the iframe in place; falls back to reassigning `src` when the
- * iframe's live location is cross-origin (sandbox preview domain) and
- * `.reload()` throws.
  */
 function reloadIframeOrFallback(
   iframe: HTMLIFrameElement,
