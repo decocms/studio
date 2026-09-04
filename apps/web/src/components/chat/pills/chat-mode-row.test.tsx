@@ -69,7 +69,7 @@ const BRANCH_PILL_PROPS = {
   userId: "user-1",
   userLabel: "Test User",
   virtualMcpId: "vmcp-1",
-  connectionId: "conn-1",
+  target: { connectionId: "conn-1" },
   owner: "acme",
   repo: "monorepo",
   sandboxMap: undefined,

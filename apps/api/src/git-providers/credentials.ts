@@ -157,6 +157,75 @@ export function clientForAccount(
   }
 }
 
+/** A repository plus a token source that can read and push it. */
+export interface RepoCredential {
+  ref: RepoRef;
+  tokenSource: TokenSource;
+}
+
+/** The token kind an account's stored credential produces, before minting it. */
+function tokenKindOf(account: GitProviderAccountRecord): GitTokenKind {
+  if (account.authKind === "github_app") return "installation";
+  return grantKind(account.authKind);
+}
+
+/**
+ * A credential over an already-minted token — the legacy connection paths,
+ * where the token was produced before Studio knew which repository it was for.
+ */
+export function staticRepoCredential(
+  ref: RepoRef,
+  token: string,
+  kind: GitTokenKind = "installation",
+): RepoCredential {
+  return {
+    ref,
+    tokenSource: {
+      kind,
+      get: () => Promise.resolve({ token, kind, expiresAt: null }),
+    },
+  };
+}
+
+/**
+ * The credential for a first-class repository row, through its git provider
+ * account. Throws `GitProviderError` when the row is anonymous or its account
+ * is gone — every provider API call Studio makes for a repository is
+ * authenticated, even for a public one.
+ *
+ * Shared by every client factory (contents, change requests) so credential
+ * resolution cannot drift between them.
+ */
+export async function repoCredentialForRepository(
+  deps: GitProviderDeps,
+  repository: RepositoryRecord,
+): Promise<RepoCredential> {
+  const ref = repoRefOf(repository);
+  if (!repository.accountId) {
+    throw new GitProviderError({
+      provider: repository.provider,
+      status: 401,
+      message: `${repository.path} is linked without an account; link it again to read and write it`,
+    });
+  }
+  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
+    repository.accountId,
+  );
+  if (!account || account.organizationId !== repository.organizationId) {
+    throw new GitProviderError({
+      provider: repository.provider,
+      status: 404,
+      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
+    });
+  }
+  const client = clientForAccount(deps, account);
+  const kind = tokenKindOf(account);
+  return {
+    ref,
+    tokenSource: { kind, get: (opts) => client.tokenForRepo(ref, opts) },
+  };
+}
+
 export interface RepoCloneInfo {
   cloneUrl: string;
   gitUserName: string;
@@ -208,6 +277,61 @@ function anonymousCloneInfo(ref: RepoRef): RepoCloneInfo {
 }
 
 /** The storage ports these lookups need — satisfied by `ctx.storage`. */
+/**
+ * How a caller names the repository it wants a client for.
+ *
+ * Three fields because records were written at three different times: the
+ * repository id is what everything records now, the identity is what older
+ * rows carry, and the connection is the pre-repository world. Every client
+ * factory takes this shape so the ladder cannot differ between them.
+ */
+export interface RepoTarget {
+  /** The first-class repository row. Wins over `ref`. */
+  repositoryId?: string | null;
+  /** Identity, for records written before the id was captured. */
+  ref?: RepoRef | null;
+  /** The legacy `mcp-github` connection, when the record carries one. */
+  connectionId?: string | null;
+}
+
+export interface ResolvedRepoTarget {
+  ref: RepoRef;
+  /** The org's repository row for it, when there is one. */
+  repository: RepositoryRecord | null;
+  /** Whether that row's account is one Studio can mint credentials from. */
+  servable: boolean;
+}
+
+/**
+ * Resolve a target to a concrete repository, without minting anything.
+ *
+ * Null when the target names nothing this org has: neither an id it owns nor
+ * an identity — which is the caller's cue to report "connect this repository"
+ * rather than to guess. A row that exists but whose account Studio cannot
+ * serve still resolves, with `servable: false`, so the caller can fall back to
+ * the legacy connection path for it.
+ */
+export async function resolveRepoTarget(
+  storage: GitProviderStoragePorts,
+  organizationId: string,
+  target: RepoTarget,
+): Promise<ResolvedRepoTarget | null> {
+  const repository = target.repositoryId
+    ? await storage.repositories.get(target.repositoryId, organizationId)
+    : target.ref
+      ? await storage.repositories.findByRef(organizationId, target.ref)
+      : null;
+  const ref = repository ? repoRefOf(repository) : (target.ref ?? null);
+  if (!ref) return null;
+  return {
+    ref,
+    repository,
+    servable: repository
+      ? await repositoryUsesStudioCredentials(storage, repository)
+      : false,
+  };
+}
+
 export interface GitProviderStoragePorts {
   repositories: Pick<RepositoryStorage, "get" | "findByRef">;
   gitProviderAccounts: Pick<GitProviderAccountStorage, "getUnscoped">;

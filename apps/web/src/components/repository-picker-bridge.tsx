@@ -9,6 +9,11 @@
  * The created agent records `metadata.githubRepo.repositoryId`, which is what
  * `SANDBOX_START` resolves credentials from; `owner`/`name`/`url` stay for the
  * legacy readers and for display.
+ *
+ * Every project opens on Site Editor regardless of provider: reading the
+ * decofile and opening a change request both go through the provider
+ * interface now, so there is nothing left for the editor to be unable to do on
+ * a GitLab repository.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -94,16 +99,7 @@ export function RepositoryPickerBridge({
             ui: {
               pinnedViews: null,
               layout: {
-                /**
-                 * Site Editor reads the decofile over GitHub's Git Data API,
-                 * so a GitLab repository would land on a view that cannot
-                 * load. Those projects open on Chat — the coding agent, which
-                 * does work — until the editor speaks both providers.
-                 */
-                defaultMainView: {
-                  type:
-                    repository.provider === "github" ? "site-editor" : "chat",
-                },
+                defaultMainView: { type: "site-editor" },
                 chatDefaultOpen: true,
               },
             },

@@ -223,8 +223,11 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       organizationId: ORG,
       url: "https://github.com/acme/site/pull/3",
       prNumber: 3,
-      repoOwner: "acme",
-      repoName: "site",
+      repo: {
+        provider: "github",
+        host: "github.com",
+        path: "acme/site",
+      },
     });
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
     const after = await taskBoard.getById(task.id, ORG);
@@ -297,8 +300,11 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       organizationId: ORG,
       url: "https://github.com/acme/site/pull/7",
       prNumber: 7,
-      repoOwner: "acme",
-      repoName: "site",
+      repo: {
+        provider: "github",
+        host: "github.com",
+        path: "acme/site",
+      },
     });
 
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);

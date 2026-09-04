@@ -9,7 +9,7 @@
  * the honest answer, and the caller logs it.
  */
 import { describe, expect, it } from "bun:test";
-import { pickGithubConnection } from "./prs-get";
+import { pickGithubConnection } from "@/git-providers/change-requests/legacy";
 
 const scoped = (id: string, owner: string, repo: string) => ({
   id,

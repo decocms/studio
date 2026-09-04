@@ -15,108 +15,48 @@
 
 import type { GithubRepo } from "@decocms/shared/sdk/types";
 import {
+  parseRepoUrl,
   repoRefFromOwnerName,
   type RepoRef,
 } from "@decocms/shared/git-providers";
 import type { StudioContext } from "@/core/studio-context";
 import { githubConnectionAccessToken } from "@/oauth/github-mint";
 import { RECONNECT_ERROR } from "@/oauth/token-refresh";
-import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
-import { type RepositoryRecord, repoRefOf } from "@/storage/repositories";
 import {
-  clientForAccount,
-  findRepositoryForLegacyBinding,
-  type GitProviderDeps,
-  repositoryUsesStudioCredentials,
+  type RepoCredential,
+  repoCredentialForRepository,
+  type RepoTarget,
+  resolveRepoTarget,
+  staticRepoCredential,
 } from "../credentials";
-import {
-  type GitProviderClient,
-  GitProviderError,
-  type GitTokenKind,
-  type TokenSource,
-} from "../types";
+import { GitProviderError, type GitTokenKind } from "../types";
 import { GithubContentClient } from "./github";
 import { GitlabContentClient } from "./gitlab";
 import type { RepoContentClient } from "./types";
-
-/** The token kind an account's stored credential produces, before minting it. */
-function tokenKindOf(account: { authKind: string }): GitTokenKind {
-  if (account.authKind === "github_app") return "installation";
-  return account.authKind === "token" ? "token" : "oauth";
-}
-
-/** A token source over one repository's push/read credential. */
-function repoTokenSource(
-  client: GitProviderClient,
-  repo: RepoRef,
-  kind: GitTokenKind,
-): TokenSource {
-  return { kind, get: (opts) => client.tokenForRepo(repo, opts) };
-}
-
-/** A token source over an already-minted token — the legacy connection path. */
-function staticTokenSource(token: string, kind: GitTokenKind): TokenSource {
-  return { kind, get: () => Promise.resolve({ token, kind, expiresAt: null }) };
-}
 
 /**
  * Content client for a repository whose token the caller already holds — the
  * legacy connection paths, where the credential was minted before Studio knew
  * which repository it was for.
  */
-export function contentClientWithToken(
+function contentClientWithToken(
   repo: RepoRef,
   token: string,
   kind: GitTokenKind = "installation",
 ): RepoContentClient {
-  return contentClientFor(repo, staticTokenSource(token, kind));
+  return contentClientFor(staticRepoCredential(repo, token, kind));
 }
 
-function contentClientFor(
-  repo: RepoRef,
-  tokenSource: TokenSource,
-): RepoContentClient {
-  switch (repo.provider) {
+function contentClientFor({
+  ref,
+  tokenSource,
+}: RepoCredential): RepoContentClient {
+  switch (ref.provider) {
     case "github":
-      return new GithubContentClient({ repo, tokenSource });
+      return new GithubContentClient({ repo: ref, tokenSource });
     case "gitlab":
-      return new GitlabContentClient({ repo, tokenSource });
+      return new GitlabContentClient({ repo: ref, tokenSource });
   }
-}
-
-/**
- * Content client for a first-class repository row, credentialed through its
- * git provider account. Throws `GitProviderError` when the row is anonymous or
- * its account cannot produce a token — reading a repository's contents is
- * always authenticated here, even for a public one.
- */
-async function contentClientForRepository(
-  deps: GitProviderDeps,
-  repository: RepositoryRecord,
-): Promise<RepoContentClient> {
-  const ref = repoRefOf(repository);
-  if (!repository.accountId) {
-    throw new GitProviderError({
-      provider: repository.provider,
-      status: 401,
-      message: `${repository.path} is linked without an account; link it again to read and write its contents`,
-    });
-  }
-  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
-    repository.accountId,
-  );
-  if (!account || account.organizationId !== repository.organizationId) {
-    throw new GitProviderError({
-      provider: repository.provider,
-      status: 404,
-      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
-    });
-  }
-  const client = clientForAccount(deps, account);
-  return contentClientFor(
-    ref,
-    repoTokenSource(client, ref, tokenKindOf(account)),
-  );
 }
 
 /**
@@ -127,16 +67,20 @@ async function contentClientForRepository(
 async function contentClientForLegacyConnection(
   ctx: StudioContext,
   organizationId: string,
-  githubRepo: GithubRepo,
+  ref: RepoRef,
+  connectionId: string | null,
 ): Promise<RepoContentClient> {
   const missing = new GitProviderError({
-    provider: "github",
+    provider: ref.provider,
     status: 401,
-    message: "Project's GitHub connection is missing — reconnect GitHub",
+    message:
+      ref.provider === "github"
+        ? "Project's GitHub connection is missing — reconnect GitHub"
+        : `${ref.path} is not connected to this organization — link it in Settings → Repositories`,
   });
-  if (!githubRepo.connectionId) throw missing;
+  if (!connectionId || ref.provider !== "github") throw missing;
   const connection = await ctx.storage.connections.findById(
-    githubRepo.connectionId,
+    connectionId,
     organizationId,
   );
   if (!connection) throw missing;
@@ -148,32 +92,53 @@ async function contentClientForLegacyConnection(
       message: RECONNECT_ERROR,
     });
   }
-  return contentClientWithToken(
-    repoRefFromOwnerName(githubRepo.owner, githubRepo.name),
-    accessToken,
-  );
+  return contentClientWithToken(ref, accessToken);
 }
 
 /**
- * Content client for a project's linked repo, taking whichever credential path
- * the org is on. Shared by the decofile routes and the sandbox-less `/git/*`
- * compat handlers so credential resolution cannot drift between them.
+ * Content client for a repository the caller names however it can — a
+ * repository id, an identity, or a legacy connection. Shared by the decofile
+ * routes, the sandbox-less `/git/*` compat handlers and the branch search so
+ * credential resolution cannot drift between them.
  */
-export async function contentClientForProjectRepo(
+export async function contentClientForTarget(
+  ctx: StudioContext,
+  organizationId: string,
+  target: RepoTarget,
+): Promise<RepoContentClient> {
+  const resolved = await resolveRepoTarget(ctx.storage, organizationId, target);
+  if (!resolved) {
+    throw new GitProviderError({
+      provider: "github",
+      status: 404,
+      message:
+        "No repository for this project — link one in Settings → Repositories",
+    });
+  }
+  if (resolved.repository && resolved.servable) {
+    return contentClientFor(
+      await repoCredentialForRepository(ctx, resolved.repository),
+    );
+  }
+  return contentClientForLegacyConnection(
+    ctx,
+    organizationId,
+    resolved.ref,
+    target.connectionId ?? null,
+  );
+}
+
+/** {@link contentClientForTarget} for a project's legacy `githubRepo` binding. */
+export function contentClientForProjectRepo(
   ctx: StudioContext,
   organizationId: string,
   githubRepo: GithubRepo,
 ): Promise<RepoContentClient> {
-  const repository = await findRepositoryForLegacyBinding(
-    ctx.storage,
-    organizationId,
-    githubRepo,
-  );
-  if (
-    repository &&
-    (await repositoryUsesStudioCredentials(ctx.storage, repository))
-  ) {
-    return contentClientForRepository(ctx, repository);
-  }
-  return contentClientForLegacyConnection(ctx, organizationId, githubRepo);
+  return contentClientForTarget(ctx, organizationId, {
+    repositoryId: githubRepo.repositoryId,
+    ref:
+      parseRepoUrl(githubRepo.url) ??
+      repoRefFromOwnerName(githubRepo.owner, githubRepo.name),
+    connectionId: githubRepo.connectionId,
+  });
 }

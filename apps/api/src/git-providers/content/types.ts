@@ -92,6 +92,20 @@ export function repoRateLimitRetryAfterMs(
   return typeof e.retryAfterMs === "number" ? e.retryAfterMs : null;
 }
 
+/** A branch, as a picker lists it. `author` is null when the provider cannot
+ *  attribute the head commit to an account. */
+export interface BranchMatch {
+  name: string;
+  author: string | null;
+}
+
+export interface BranchPage {
+  branches: BranchMatch[];
+  totalCount: number;
+  /** Opaque, provider-owned; null when the listing is exhausted. */
+  nextCursor: string | null;
+}
+
 export interface RepoContentClient {
   readonly repo: RepoRef;
 
@@ -104,6 +118,29 @@ export interface RepoContentClient {
   getBranch(
     branch: string,
   ): Promise<{ sha: string; committedAt: string } | null>;
+  /**
+   * Branches whose name contains `query`, case-insensitively, filtered by the
+   * PROVIDER rather than locally — a repository with hundreds of branches
+   * makes a client-side grep over a paged listing useless, since the one you
+   * typed shows up several "load more" clicks later. An empty `query` browses
+   * from the start, which is why this one method serves both the picker's
+   * search and its paging.
+   *
+   * `totalCount` is the true number of matches, so a caller can say how many
+   * it is not showing. `nextCursor` is opaque and provider-owned (a GraphQL
+   * cursor, a page number) — pass it back verbatim for the next window, and
+   * null means there is no more.
+   *
+   * Alphabetical, not by recency: GitHub silently ignores a commit-date order
+   * for branch refs and answers alphabetically anyway, so sorting the
+   * truncated window would look ranked while omitting the actually-newest
+   * branch.
+   */
+  searchBranches(params: {
+    query: string;
+    limit: number;
+    cursor?: string | null;
+  }): Promise<BranchPage>;
   /**
    * Gzipped tar at `ref`, streamed — one request for every file, versus one
    * blob request per block. The body is never buffered here; the caller pipes
