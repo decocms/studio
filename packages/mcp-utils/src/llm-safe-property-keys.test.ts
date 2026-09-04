@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { llmSafeInputSchema } from "./mcp-tools";
+import { llmSafeInputSchema } from "./llm-safe-property-keys.ts";
 
 describe("llmSafeInputSchema", () => {
   it("passes safe schemas through untouched", () => {
