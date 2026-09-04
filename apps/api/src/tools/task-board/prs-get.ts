@@ -49,7 +49,27 @@ export function isRateLimitError(err: unknown): boolean {
  * only moves to Done once a poll observes `merged`, and a minute of "did my ship
  * button work?" is exactly the confusion this cache must not introduce.
  */
-import { getPrCardCache, getPrReadCache } from "./pr-cache";
+import {
+  getPrCardCache,
+  getPrReadCache,
+  PR_CARDS_CACHE,
+  PR_READS_CACHE,
+} from "./pr-cache";
+
+/** Hit window for a cached value that is still waiting on something — a deploy
+ *  with no published url, or a card with no preview while checks run. Zero, so
+ *  the next poll always revalidates (detached, off the request path) instead of
+ *  serving the not-ready answer for the full window. */
+const AWAITING_PREVIEW_REVALIDATE_MS = 0;
+
+/** A card that should keep refreshing: CI is still running and no preview URL
+ *  has been found yet. Once either settles the card caches normally. */
+export function isAwaitingPreview(card: {
+  previewUrl: string | null;
+  checksStatus: ChecksStatus;
+}): boolean {
+  return card.previewUrl === null && card.checksStatus === "pending";
+}
 
 export function invalidatePrReads(connectionId: string): Promise<void> {
   return getPrReadCache().invalidate(connectionId);
@@ -168,11 +188,13 @@ async function cachedPrRead(
   args: Record<string, unknown>,
   describe: string,
   pending: Promise<void>[],
+  revalidateAfterMs?: (stored: unknown) => number,
 ): Promise<Record<string, unknown> | null> {
   try {
     const raw = await getPrReadCache().fetch({
       namespace: connectionId,
       key: JSON.stringify({ name, args }),
+      revalidateAfterMs,
       fetchLive: () =>
         retry(
           async () => {
@@ -867,6 +889,16 @@ async function fetchPrStatusExtras(
           { owner: pr.repoOwner, repo: pr.repoName, sha: headSha },
           `${prLabel(pr)} (deployment preview)`,
           pending,
+          // An in-flight deploy answers "no environment url yet". Holding that
+          // for the full read window means the card keeps rebuilding from a
+          // stale not-ready answer even once GitHub has the url, so the preview
+          // shows up minutes after the deploy finished.
+          (stored) =>
+            extractPreviewUrlFromDeployment(
+              stored as Record<string, unknown> | null,
+            ) === null
+              ? AWAITING_PREVIEW_REVALIDATE_MS
+              : PR_READS_CACHE.revalidateAfterMs,
         ),
       );
     }
@@ -1265,6 +1297,15 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       namespace: organizationId,
       key: taskBoardItemId,
       fetchLive: assemble,
+      // A card whose deploy is still running has no preview yet. At the default
+      // window that card is a cache HIT for 30s, so the url can be a poll or
+      // two late even after the read above refreshes. Go stale immediately
+      // instead: the revalidation is detached, so this costs a background
+      // rebuild per poll on exactly the cards that are still missing something.
+      revalidateAfterMs: (cards) =>
+        cards.some(isAwaitingPreview)
+          ? AWAITING_PREVIEW_REVALIDATE_MS
+          : PR_CARDS_CACHE.revalidateAfterMs,
       placeholder: linked.map((pr) => ({
         url: pr.url,
         number: pr.number,

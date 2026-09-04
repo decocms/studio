@@ -12,6 +12,7 @@ import {
   extractPreviewUrlFromDeployment,
   headShaFromPrGet,
   headShaFromStatus,
+  isAwaitingPreview,
   isRateLimitError,
   extractPreviewUrlFromCheckRuns,
   extractPreviewUrlFromComments,
@@ -640,5 +641,30 @@ describe("previewMatchesHead", () => {
     };
     expect(previewMatchesHead([closed, merged, pr("passing")])).toBe(true);
     expect(previewMatchesHead([])).toBe(true);
+  });
+});
+
+describe("isAwaitingPreview", () => {
+  it("only a running-CI card with no preview keeps refreshing", () => {
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "pending" }),
+    ).toBe(true);
+    // Preview found — nothing left to wait for.
+    expect(
+      isAwaitingPreview({
+        previewUrl: "https://x.vtex.app",
+        checksStatus: "pending",
+      }),
+    ).toBe(false);
+    // CI settled without ever posting one; refreshing forever would not help.
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "passing" }),
+    ).toBe(false);
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "failing" }),
+    ).toBe(false);
+    expect(isAwaitingPreview({ previewUrl: null, checksStatus: null })).toBe(
+      false,
+    );
   });
 });
