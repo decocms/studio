@@ -314,6 +314,26 @@ function ThreadConversationPanelLoading() {
  */
 const LIVE_REFRESH_DEBOUNCE_MS = 400;
 
+/**
+ * Poll interval while the run is still going.
+ *
+ * Polling, not events alone, because `decopilot.step` is emitted ONLY by the
+ * hosted Decopilot path: `runRegistry.dispatch({ type: "STEP_DONE" })` lives in
+ * that harness's `streamText` `onStep` hook and has no sandbox-side twin. A
+ * claude-code run publishes its chunks straight through `ingestRun`, so the
+ * `/watch` pool carries only its RUN_STARTED and terminal `thread.status` (plus
+ * `finish`) — nothing per step. Subscribing alone would settle the transcript
+ * once the run ended and show nothing at all while the agent worked, which is
+ * the case worth fixing.
+ *
+ * A sandbox turn is tens to hundreds of whole-step chunks, not a token stream
+ * (see dispatch-run.ts), so a few seconds is proportionate to how fast this view
+ * can actually change. The events stay wired: on a hosted run they land the
+ * update sooner than the next tick, and `onReconnect` covers the pool's
+ * at-most-once gap.
+ */
+const LIVE_REFRESH_POLL_MS = 5_000;
+
 function useLiveThreadMessages(
   orgSlug: string,
   locator: string,
@@ -364,6 +384,7 @@ function ThreadConversationPanel({
   meta: boolean;
 }) {
   const { org } = useProjectContext();
+  const live = thread.status === "in_progress";
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useSuspenseInfiniteQuery({
       queryKey: KEYS.threadMessages(locator, thread.id),
@@ -391,14 +412,12 @@ function ThreadConversationPanel({
         return pages.length * MESSAGES_PAGE_SIZE;
       },
       staleTime: 60_000,
+      // Only an open sheet on a still-running thread polls: a settled thread is
+      // immutable, and a closed sheet is unmounted.
+      refetchInterval: live ? LIVE_REFRESH_POLL_MS : false,
     });
 
-  useLiveThreadMessages(
-    org.slug,
-    locator,
-    thread.id,
-    thread.status === "in_progress",
-  );
+  useLiveThreadMessages(org.slug, locator, thread.id, live);
 
   const allItems = data.pages.flatMap(
     (p: { items?: ThreadMessageEntity[] }) => p.items ?? [],
