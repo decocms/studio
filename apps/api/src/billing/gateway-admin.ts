@@ -5,6 +5,10 @@
 
 import { getSettings } from "../settings";
 
+/** Fat-finger cap on any signup/initial-credit grant ($1,000). Keep in sync
+ *  with the DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS cap in resolve-config.ts. */
+export const MAX_SIGNUP_GRANT_CENTS = 100_000;
+
 /** Whether this deployment can reach the gateway admin API at all
  *  (self-hosted deployments can't). */
 export function gatewayAdminConfigured(): boolean {
@@ -31,6 +35,38 @@ async function postGatewayAdmin(
     const text = await res.text().catch(() => "");
     throw new Error(`${label} failed (${res.status}): ${text}`);
   }
+}
+
+/**
+ * Grant the one-time signup credit to a new org's gateway ledger. Idempotent
+ * at the gateway per referenceId (unique ledger index): the deterministic
+ * `signup-credit:<orgId>` reference collapses any replay — a re-run of
+ * seedOrgDb, a retry — to a no-op, so the org is credited exactly once without
+ * Studio holding any local "already granted" state.
+ *
+ * Fail-soft is the CALLER's job: org creation must never fail on a grant error
+ * (see seedOrgDb), mirroring the auto-provision path.
+ */
+export async function grantGatewaySignupCredit(input: {
+  organizationId: string;
+  amountCents: number;
+}): Promise<void> {
+  if (!gatewayAdminConfigured()) {
+    // Config was removed mid-flight; throw so the fail-soft caller logs it.
+    throw new Error(
+      "gateway admin not configured — cannot grant signup credit",
+    );
+  }
+  await postGatewayAdmin(
+    "/api/admin/credits",
+    {
+      orgId: input.organizationId,
+      amountCents: input.amountCents,
+      description: "Studio signup credit",
+      referenceId: `signup-credit:${input.organizationId}`,
+    },
+    "gateway signup credit grant",
+  );
 }
 
 /**
