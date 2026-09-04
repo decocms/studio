@@ -289,9 +289,11 @@ describe("isTrustedPreviewHost", () => {
     expect(isTrustedPreviewHost("https://evilvercel.app/")).toBe(false);
   });
 
-  it("accepts VTEX preview subdomains but not other vtex.app hosts", () => {
+  it("accepts any vtex.app subdomain, not just *.preview.vtex.app", () => {
     expect(isTrustedPreviewHost("https://acme.preview.vtex.app/")).toBe(true);
-    expect(isTrustedPreviewHost("https://acme.vtex.app/")).toBe(false);
+    // FastStore WebOps publishes some deploys (e.g. a `staging` environment)
+    // straight on `<account>.vtex.app`; the narrower rule dropped those.
+    expect(isTrustedPreviewHost("https://acme.vtex.app/")).toBe(true);
     expect(isTrustedPreviewHost("https://preview.vtex.app.evil.com/")).toBe(
       false,
     );

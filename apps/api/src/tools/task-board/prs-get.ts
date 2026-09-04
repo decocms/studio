@@ -367,7 +367,7 @@ export function isTrustedPreviewHost(url: string): boolean {
     hostname.endsWith(".deco-cx.workers.dev") ||
     hostname.endsWith(".deco.site") ||
     hostname.endsWith(".vercel.app") ||
-    hostname.endsWith(".preview.vtex.app")
+    hostname.endsWith(".vtex.app")
   );
 }
 
