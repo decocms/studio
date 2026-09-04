@@ -27,12 +27,6 @@ type State struct {
 	Status      string
 	Port        int
 	HtmlSupport bool
-	// HTTPStatus is the status code of the last successful probe request, or 0
-	// when nothing answered. A dev server that answers every request with 5xx
-	// is reachable but useless — `Status` alone cannot tell those apart, and a
-	// warm-pool pod handed over with a half-built framework directory looks
-	// perfectly online without this.
-	HTTPStatus int
 }
 
 type Deps struct {
@@ -137,7 +131,7 @@ func (p *Prober) tick() {
 	}
 	if up {
 		p.consecutiveFailures = 0
-		next := State{Status: StatusOnline, Port: p.state.Port, HtmlSupport: isHtml, HTTPStatus: status}
+		next := State{Status: StatusOnline, Port: p.state.Port, HtmlSupport: isHtml}
 		prevStatus := p.state.Status
 		p.applyLocked(next)
 		if prevStatus == StatusBooting && p.deps.OnLog != nil {
