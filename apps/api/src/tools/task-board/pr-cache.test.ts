@@ -104,6 +104,30 @@ describe("JetStreamKVPrCache", () => {
     await read();
     expect(calls).toBe(2);
   });
+
+  test("invalidate drops every key under the namespace, not just the first", async () => {
+    const clock = { now: 0 };
+    const cache = await cacheAt(clock);
+    let calls = 0;
+    const read = (number: number) =>
+      cache.fetch({
+        namespace: "conn_1",
+        key: JSON.stringify({ name: "pull_request_read", number }),
+        fetchLive: async () => ({ n: ++calls }),
+        onRevalidation: () => {},
+      });
+
+    await read(1);
+    await read(2);
+    await read(3);
+    expect(calls).toBe(3);
+
+    await cache.invalidate("conn_1");
+    await read(1);
+    await read(2);
+    await read(3);
+    expect(calls).toBe(6);
+  });
 });
 
 describe("PR card cache config", () => {
