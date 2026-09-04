@@ -28,6 +28,10 @@
  */
 
 import type { IClient } from "./client-like.ts";
+import {
+  llmSafeInputSchema,
+  restoreOriginalKeys,
+} from "./llm-safe-property-keys.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sharedJsonSchemaValidator } from "./shared-schema-validator.ts";
 import type {
@@ -100,23 +104,64 @@ export function createServerFromClient(
   // doesn't perfectly match the downstream server's declared schema.
   // A proxy should pass through responses as-is — validation is the
   // responsibility of the originating server, not intermediaries.
+  //
+  // Property keys an upstream server is free to use (`{fieldName}`,
+  // `request.paymentDetails[0].id`, `"group "`) make Anthropic reject the
+  // ENTIRE request, so one such tool anywhere in the org silences every run of
+  // a client that forwards our listing verbatim (the Claude Code SDK does).
+  // Rename them here — the one place every MCP client reads through — and undo
+  // the renaming on the call, so upstream still sees its own key names.
+  const keyMaps = new Map<string, Map<string, string>>();
+  let listed = false;
+
+  /** Rewrite unsafe keys, remembering how to undo it per tool. */
+  const toSafeTools = (
+    tools: Awaited<ReturnType<IClient["listTools"]>>["tools"],
+  ) =>
+    tools.map(({ outputSchema: _, ...tool }) => {
+      const { schema, keyMap } = llmSafeInputSchema(tool.inputSchema);
+      if (keyMap.size === 0) {
+        keyMaps.delete(tool.name);
+        return tool;
+      }
+      keyMaps.set(tool.name, keyMap);
+      return { ...tool, inputSchema: schema as typeof tool.inputSchema };
+    });
+
   server.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
     const result = await client.listTools(request.params);
-    return {
-      ...result,
-      tools: result.tools.map(({ outputSchema: _, ...tool }) => tool),
-    };
+    const tools = toSafeTools(result.tools);
+    // Only an unpaginated listing describes every tool; a single page must not
+    // be mistaken for one when restoring a call's arguments.
+    listed ||= request.params?.cursor == null && result.nextCursor == null;
+    return { ...result, tools };
   });
 
-  server.server.setRequestHandler(CallToolRequestSchema, (request) =>
-    client.callTool(
-      request.params,
+  server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    // A client that calls without listing first has no map yet — build it once.
+    // `listTools` is cached upstream, so this costs a round-trip at most once
+    // per bridge.
+    if (!listed && request.params.arguments) {
+      const result = await client.listTools({});
+      toSafeTools(result.tools);
+      listed = result.nextCursor == null;
+    }
+    const keyMap = keyMaps.get(request.params.name);
+    const params =
+      keyMap && request.params.arguments
+        ? {
+            ...request.params,
+            arguments: restoreOriginalKeys(request.params.arguments, keyMap),
+          }
+        : request.params;
+    return client.callTool(
+      params,
       undefined,
       options?.toolCallTimeoutMs
         ? { timeout: options.toolCallTimeoutMs }
         : undefined,
-    ),
-  );
+    );
+  });
 
   // Resources handlers (only if capabilities include resources)
   if (capabilities?.resources) {
