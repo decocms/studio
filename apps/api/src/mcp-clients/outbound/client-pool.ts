@@ -78,7 +78,13 @@ export function createClientPool(): (<T extends Transport>(
         clientMap.delete(key);
       };
 
-      await client.connect(transport);
+      try {
+        await client.connect(transport);
+      } catch (err) {
+        // A transport.start() failure (unlike a failed initialize handshake) leaves the transport unclosed.
+        await transport.close?.().catch(() => {});
+        throw err;
+      }
       return client;
     })().catch((e) => {
       clientMap.delete(key);
