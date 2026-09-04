@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { RepoChoice } from "@/git-providers/repo-choices";
 import {
   buildDescription,
   createLoadRepoTool,
@@ -24,15 +25,36 @@ test("createLoadRepoTool is super-agent-only", async () => {
   ).rejects.toThrow(); // got past the gate, then hit the empty ctx
 });
 
-test("buildDescription lists each repo with its connectionId", () => {
+const choice = (
+  id: string,
+  label: string,
+  overrides?: Partial<RepoChoice>,
+): RepoChoice => ({
+  id,
+  owner: "acme",
+  name: "web",
+  label,
+  webUrl: "https://github.com/acme/web",
+  repository: null,
+  connectionId: id,
+  installationId: 1,
+  ...overrides,
+});
+
+test("buildDescription lists each repo with its opaque id", () => {
   const desc = buildDescription([
-    { connectionId: "conn_a", owner: "acme", repo: "web", installationId: 1 },
-    { connectionId: "conn_b", owner: "acme", repo: "api", installationId: 2 },
+    choice("conn_a", "acme/web (github.com)"),
+    choice("repo_b", "group/sub/api (gitlab.acme.com)", {
+      connectionId: null,
+      installationId: undefined,
+    }),
   ]);
-  expect(desc).toContain("acme/web (connectionId: conn_a)");
-  expect(desc).toContain("acme/api (connectionId: conn_b)");
-  // The model is told to pass a connectionId.
-  expect(desc).toContain("connectionId of the repo to load");
+  expect(desc).toContain("acme/web (github.com) (id: conn_a)");
+  expect(desc).toContain("group/sub/api (gitlab.acme.com) (id: repo_b)");
+  // The model is told to pass an id, and the copy is provider-neutral.
+  expect(desc).toContain("Pass the id of the repo to load");
+  expect(desc).not.toContain("GitHub");
+  expect(desc).not.toContain("connectionId");
 });
 
 const repoScope = (owner: string, repo: string) => ({

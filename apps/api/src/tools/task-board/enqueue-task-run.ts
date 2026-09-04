@@ -177,8 +177,15 @@ export async function enqueueAgentRunForTask(
             url: opts.repo.url,
             owner: opts.repo.owner,
             name: opts.repo.name,
-            installationId: opts.repo.installationId,
-            connectionId: opts.repo.connectionId,
+            ...(opts.repo.installationId !== undefined
+              ? { installationId: opts.repo.installationId }
+              : {}),
+            ...(opts.repo.connectionId
+              ? { connectionId: opts.repo.connectionId }
+              : {}),
+            ...(opts.repo.repositoryId
+              ? { repositoryId: opts.repo.repositoryId }
+              : {}),
           },
         }
       : {}),
@@ -192,7 +199,7 @@ export async function enqueueAgentRunForTask(
   const sandboxBranch = opts.pinnedRef
     ? opts.pinnedRef
     : opts.repo
-      ? threadBranch(thread.id, opts.repo.connectionId)
+      ? threadBranch(thread.id, opts.repo.id)
       : sandboxed
         ? threadBranch(thread.id)
         : null;

@@ -94,7 +94,16 @@ export function RepositoryPickerBridge({
             ui: {
               pinnedViews: null,
               layout: {
-                defaultMainView: { type: "site-editor" },
+                /**
+                 * Site Editor reads the decofile over GitHub's Git Data API,
+                 * so a GitLab repository would land on a view that cannot
+                 * load. Those projects open on Chat — the coding agent, which
+                 * does work — until the editor speaks both providers.
+                 */
+                defaultMainView: {
+                  type:
+                    repository.provider === "github" ? "site-editor" : "chat",
+                },
                 chatDefaultOpen: true,
               },
             },

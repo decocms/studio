@@ -28,14 +28,15 @@ import {
   requireOrganization,
   type StudioContext,
 } from "@/core/studio-context";
-import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import {
   cloneInfoForRepository,
   findRepositoryForLegacyBinding,
   repositoryUsesStudioCredentials,
 } from "@/git-providers/credentials";
-import type { RepositoryRecord } from "@/storage/repositories";
-import { splitOwnerName } from "@decocms/shared/git-providers";
+import {
+  listOrgRepoChoices,
+  type RepoChoice,
+} from "@/git-providers/repo-choices";
 import { pickGitBranch } from "@/sandbox/head-ref";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import {
@@ -276,98 +277,6 @@ const CLI_AUTH_LINES = [
   "fi",
 ];
 
-/**
- * One repository the agent may clone, from either model.
- *
- * `id` is what the agent passes back and is opaque to it: a repository id or,
- * for an org still on the legacy path, a connection id. `owner`/`name` stay
- * because every later consumer (thread metadata, PR extraction, the git sync)
- * still reads them; for a GitLab project nested in subgroups `owner` is the
- * whole namespace.
- */
-interface RepoChoice {
-  id: string;
-  owner: string;
-  name: string;
-  label: string;
-  webUrl: string;
-  repository: RepositoryRecord | null;
-  connectionId: string | null;
-  installationId: number | undefined;
-}
-
-/**
- * The clonable set an org is offered, from both models.
- *
- * First-class repositories come first and shadow a legacy connection for the
- * same repo, so an org part-way through the migration is offered each
- * repository once — through the credential Studio can actually mint today.
- * Pure, and exported for its test.
- */
-export function mergeRepoChoices(
-  repositories: RepositoryRecord[],
-  legacy: {
-    connectionId: string;
-    owner: string;
-    repo: string;
-    installationId: number;
-  }[],
-): RepoChoice[] {
-  const out: RepoChoice[] = [];
-  const seen = new Set<string>();
-
-  for (const repository of repositories) {
-    const { owner, name } = splitOwnerName(repository);
-    seen.add(`${repository.host}/${repository.path}`.toLowerCase());
-    out.push({
-      id: repository.id,
-      owner,
-      name,
-      label: `${repository.path} (${repository.host})`,
-      webUrl: repository.webUrl,
-      repository,
-      connectionId: null,
-      installationId: undefined,
-    });
-  }
-
-  for (const entry of legacy) {
-    const key = `github.com/${entry.owner}/${entry.repo}`.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      id: entry.connectionId,
-      owner: entry.owner,
-      name: entry.repo,
-      label: `${entry.owner}/${entry.repo} (github.com)`,
-      webUrl: `https://github.com/${entry.owner}/${entry.repo}`,
-      repository: null,
-      connectionId: entry.connectionId,
-      installationId: entry.installationId,
-    });
-  }
-  return out;
-}
-
-/** The org's clonable repos, looked up fresh each call (one can be linked
- *  while a run is in flight). */
-async function listOrgRepos(
-  ctx: StudioContext,
-  orgId: string,
-): Promise<RepoChoice[]> {
-  const linked = await ctx.storage.repositories.listByOrg(orgId);
-  const servable: RepositoryRecord[] = [];
-  for (const repository of linked) {
-    if (await repositoryUsesStudioCredentials(ctx.storage, repository)) {
-      servable.push(repository);
-    }
-  }
-  const { items } = await ctx.storage.connections.list(orgId, {
-    slug: "mcp-github",
-  });
-  return mergeRepoChoices(servable, selectLoadableRepos(items));
-}
-
 /** A fresh credentialed clone URL for a choice, from whichever model backs it. */
 async function cloneInfoForChoice(
   ctx: StudioContext,
@@ -509,7 +418,7 @@ export const TASK_ADD_REPO = defineTool({
     if (!userId) throw new Error("User ID required");
     const { threadId } = requireTaskRunContext();
 
-    const repos = await listOrgRepos(ctx, organization.id);
+    const repos = await listOrgRepoChoices(ctx, organization.id);
     const wanted = input.id ?? input.connectionId;
     const repo = wanted ? repos.find((r) => r.id === wanted) : undefined;
     if (!repo) {

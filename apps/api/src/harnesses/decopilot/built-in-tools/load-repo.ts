@@ -1,5 +1,6 @@
 /**
- * `load_repo` built-in — bind a GitHub repository to the current conversation.
+ * `load_repo` built-in — bind one of the org's repositories to the current
+ * conversation.
  *
  * Why thread-scoped: the Decopilot super-agent (the common caller) is a
  * SYNTHETIC virtual MCP — `virtualMcps.findById` returns an in-memory object
@@ -29,6 +30,10 @@ import { sleep } from "@decocms/shared/std";
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
+import {
+  listOrgRepoChoices,
+  type RepoChoice,
+} from "@/git-providers/repo-choices";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { isDecopilot } from "@decocms/shared/sdk";
 import {
@@ -87,16 +92,6 @@ export function selectLoadableRepos(
   return repos;
 }
 
-async function listOrgRepos(
-  ctx: StudioContext,
-  orgId: string,
-): Promise<RepoOption[]> {
-  const { items } = await ctx.storage.connections.list(orgId, {
-    slug: "mcp-github",
-  });
-  return selectLoadableRepos(items);
-}
-
 /**
  * Interpret the clone-probe stdout (`echo __CLONED__` HEAD marker + `ls -A`).
  * `cloned` requires actual working-tree entries — a HEAD ref (the `__CLONED__`
@@ -119,19 +114,17 @@ export function parseCloneProbe(stdout: string): {
   return { cloned, listing: cloned ? entries.join("\n") : "" };
 }
 
-export function buildDescription(repos: RepoOption[]): string {
+export function buildDescription(repos: RepoChoice[]): string {
   const base =
-    "Load a GitHub repository into this conversation's sandbox so the file " +
+    "Load a repository into this conversation's sandbox so the file " +
     "tools (read/write/edit/bash/grep/glob) and dev server operate on that " +
     "repo, and open its live Preview. Waits until the repo is cloned before " +
     "returning. Calling it again switches the repo. File tools operate on the " +
     "loaded repo from your NEXT message (this turn's tools are still bound to " +
     "the previous workspace), so after loading, prefer the file listing this " +
     "tool returns over re-running bash in the same turn.";
-  const list = repos
-    .map((r) => `- ${r.owner}/${r.repo} (connectionId: ${r.connectionId})`)
-    .join("\n");
-  return `${base}\n\nRepositories imported into this organization:\n${list}\n\nPass the connectionId of the repo to load.`;
+  const list = repos.map((r) => `- ${r.label} (id: ${r.id})`).join("\n");
+  return `${base}\n\nRepositories linked to this organization:\n${list}\n\nPass the id of the repo to load.`;
 }
 
 export async function createLoadRepoTool(opts: {
@@ -155,44 +148,71 @@ export async function createLoadRepoTool(opts: {
   // them re-point the thread at an arbitrary org repo mid-run isn't an override,
   // it's an escape from their configured scope.
   if (!isDecopilot(virtualMcpId)) return null;
-  const repos = await listOrgRepos(ctx, orgId);
+  const repos = await listOrgRepoChoices(ctx, orgId);
   // Nothing to switch between — don't expose the tool at all.
   if (repos.length === 0) return null;
-  const byConnId = new Map(repos.map((r) => [r.connectionId, r]));
+  const byId = new Map(repos.map((r) => [r.id, r]));
 
   return tool({
     description: buildDescription(repos),
     inputSchema: zodSchema(
       z.object({
+        id: z
+          .string()
+          .optional()
+          .describe(
+            "id of the repository to load (see the list in this tool's description).",
+          ),
         connectionId: z
           .string()
-          .describe(
-            "connectionId of the imported repository to load (see the list in this tool's description).",
-          ),
+          .optional()
+          .describe("Deprecated alias for `id`."),
       }),
     ),
-    execute: async ({ connectionId }: { connectionId: string }) => {
-      const repo = byConnId.get(connectionId);
+    execute: async ({
+      id,
+      connectionId,
+    }: {
+      id?: string;
+      connectionId?: string;
+    }) => {
+      /**
+       * One opaque id, either model behind it: a repository id, or — for an org
+       * still on the legacy path — a connection id. `connectionId` is the name
+       * this tool shipped with, so it stays accepted.
+       */
+      const wanted = id ?? connectionId;
+      const repo = wanted ? byId.get(wanted) : undefined;
       if (!repo) {
         return {
           success: false,
-          error: `No imported repository found for connectionId "${connectionId}". Available: ${
-            repos.map((r) => r.connectionId).join(", ") || "none"
+          error: `No linked repository found for id "${wanted ?? ""}". Available: ${
+            repos.map((r) => `${r.label} (id: ${r.id})`).join(", ") || "none"
           }.`,
         };
       }
 
-      // Branch is repo-specific (includes the connection id) so switching repos
-      // yields a distinct sandbox + previewUrl — that's what makes the preview
-      // UI react to a switch, and it sidesteps stale-checkout entirely (each
-      // repo gets its own sandbox; re-loading one adopts its existing sandbox).
-      const branch = threadBranch(threadId, repo.connectionId);
+      /**
+       * Branch is repo-specific (it carries the repo's id) so switching repos
+       * yields a distinct sandbox + previewUrl — that's what makes the preview
+       * UI react to a switch, and it sidesteps stale-checkout entirely (each
+       * repo gets its own sandbox; re-loading one adopts its existing sandbox).
+       */
+      const branch = threadBranch(threadId, repo.id);
+      /**
+       * What every later consumer reads. `SANDBOX_START` resolves the clone
+       * credential from `repositoryId` when it is there and from the legacy
+       * connection otherwise, so nothing is minted here.
+       */
       const githubRepo = {
-        url: `https://github.com/${repo.owner}/${repo.repo}`,
+        url: repo.webUrl,
         owner: repo.owner,
-        name: repo.repo,
-        installationId: repo.installationId,
-        connectionId: repo.connectionId,
+        name: repo.name,
+        ...(repo.installationId !== undefined
+          ? { installationId: repo.installationId }
+          : {}),
+        ...(repo.connectionId ? { connectionId: repo.connectionId } : {}),
+        ...(repo.repository ? { repositoryId: repo.repository.id } : {}),
       };
 
       // 1. Bind the repo to the thread (the only place it persists for the
@@ -298,17 +318,17 @@ export async function createLoadRepoTool(opts: {
 
       return {
         success: true,
-        repo: `${repo.owner}/${repo.repo}`,
+        repo: `${repo.owner}/${repo.name}`,
         previewUrl: entry.previewUrl ?? null,
         cloned,
         files: listing,
         message: !cloned
-          ? `Loaded ${repo.owner}/${repo.repo} and opened the Preview, but the clone did not finish within ${Math.round(
+          ? `Loaded ${repo.label} and opened the Preview, but the clone did not finish within ${Math.round(
               CLONE_TIMEOUT_MS / 1000,
             )}s. It may still be in progress — your file tools will use it next message.`
           : reboundThisTurn
-            ? `Loaded ${repo.owner}/${repo.repo} and opened the Preview. The repo is cloned and its dev server is booting. Your file tools (read/write/edit/bash/grep/glob) now operate on it — you can use it right away.`
-            : `Loaded ${repo.owner}/${repo.repo} and opened the Preview. The repo is cloned and its dev server is booting. Your file tools operate on it from your next message.`,
+            ? `Loaded ${repo.label} and opened the Preview. The repo is cloned and its dev server is booting. Your file tools (read/write/edit/bash/grep/glob) now operate on it — you can use it right away.`
+            : `Loaded ${repo.label} and opened the Preview. The repo is cloned and its dev server is booting. Your file tools operate on it from your next message.`,
       };
     },
   });
