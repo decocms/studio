@@ -92,18 +92,25 @@ export function resolveTenantPool(
     orgId: string | undefined;
     cloneUrl: string | undefined;
     /**
-     * A `harness-run` claim must never take a tenant pod. It doesn't want a dev
-     * server, and binding one is actively destructive: Studio posts `cloneOnly`
-     * + the thread branch, the daemon classifies `branch-change`, and its clone
-     * step stops the dev task — so a dispatch would consume a warm slot AND
-     * de-warm the pod it took. It gets its own pool instead (see
-     * `claimTemplateName`), which is exactly what an empty pod is for.
+     * Kept for `claimTemplateName` (a harness run still gets the roomier
+     * `-medium` template), but no longer excludes a run from the pool.
+     *
+     * It used to: a `harness-run` posts `cloneOnly`, and the daemon's clone
+     * step stops the dev task, so binding a warm pod consumed a slot AND
+     * de-warmed the pod it took. The destructive part there is `cloneOnly`,
+     * not the run — a pool pod matching the SAME org and repo is already
+     * cloned, installed and serving exactly what the run needs, so the fix is
+     * to stop sending `cloneOnly` when the claim lands on one (see
+     * `tenantPoolKeepsWorkload` in runner.ts) rather than to send the run to a
+     * cold pod and make it install from scratch inside its own turn.
+     *
+     * The isolation rule is unchanged: org AND repo must both match, so a run
+     * can only ever adopt a pod warmed for its own repo.
      */
     purpose?: SandboxPurpose;
   },
 ): TenantPool | null {
   const { orgId, cloneUrl } = claim;
-  if (claim.purpose === "harness-run") return null;
   if (!orgId || !cloneUrl) return null;
   const repoKey = repoKeyFromCloneUrl(cloneUrl);
   if (!repoKey) return null;
@@ -144,17 +151,23 @@ export function claimWarmPoolName(
  * that is where prod's 4Gi OOMKills happened, and a SandboxClaim cannot
  * override resources, so the ceiling can only come from another template.
  *
- * The returned name is also the warm pool's name (the chart names pool after
- * template), so it feeds `claimWarmPoolName`: naming the pool built from this
- * template is what lets the claim bind a warm pod at all. It is not what keeps
- * the ceiling right — operator v0.4.5 matches warm pods by template hash, so a
- * mismatched pool costs a warm bind (cold pod), never a wrong-size pod.
+ * A claim that matched a TENANT POOL also names `-medium`, because the chart
+ * now renders tenant pools from that template. This has to agree: operator
+ * v0.4.5 binds warm pods by template hash, so a claim naming a template the
+ * pool wasn't built from gets a cold pod and no error. That mismatch is
+ * precisely why task runs kept starting cold with warm tenant pods idle.
+ *
+ * The returned name is also the warm pool's name for the GENERIC pools (the
+ * chart names those after their template), so it feeds `claimWarmPoolName`.
  */
 export function claimTemplateName(
   purpose: SandboxPurpose | undefined,
   templateName: string,
+  tenantPool?: TenantPool | null,
 ): string {
-  return purpose === "harness-run" ? `${templateName}-medium` : templateName;
+  return purpose === "harness-run" || tenantPool
+    ? `${templateName}-medium`
+    : templateName;
 }
 
 /** Result of the last `-medium` template lookup, cached for `ttlMs`. */
@@ -179,6 +192,8 @@ export interface MediumTemplateProbe {
  */
 export async function resolveClaimTemplateName(args: {
   purpose: SandboxPurpose | undefined;
+  /** Set when the claim matched a tenant pool — see `claimTemplateName`. */
+  tenantPool?: TenantPool | null;
   templateName: string;
   probe: MediumTemplateProbe | null;
   now: number;
@@ -186,7 +201,11 @@ export async function resolveClaimTemplateName(args: {
   exists: (name: string) => Promise<boolean>;
   onAbsent?: (name: string) => void;
 }): Promise<{ name: string; probe: MediumTemplateProbe | null }> {
-  const wanted = claimTemplateName(args.purpose, args.templateName);
+  const wanted = claimTemplateName(
+    args.purpose,
+    args.templateName,
+    args.tenantPool,
+  );
   if (wanted === args.templateName) return { name: wanted, probe: args.probe };
   const fresh =
     args.probe !== null && args.now - args.probe.checkedAt < args.ttlMs

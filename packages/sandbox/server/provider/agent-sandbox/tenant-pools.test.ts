@@ -86,17 +86,23 @@ describe("resolveTenantPool", () => {
     ).toBe("tenant-acme-site");
   });
 
-  it("a harness-run claim never takes a tenant pod", () => {
-    // The Claude Code dispatch path. It wants no dev server, and binding a warm
-    // pod would stop the one already running on it.
+  it("a harness-run claim for the pool's own repo takes a tenant pod", () => {
+    // Inverted deliberately. This used to return null: a harness run posts
+    // `cloneOnly`, whose clone step stops the dev task, so binding a warm pod
+    // consumed a slot AND de-warmed the pod it took. The destructive part is
+    // `cloneOnly`, not the run — a pool pod for the SAME org and repo is
+    // already cloned, installed and serving exactly what the run needs. So the
+    // claim keeps the workload instead (runner drops `cloneOnly` for a
+    // tenant-pool claim), and every Electrolux task no longer starts cold with
+    // four warm pods idle beside it.
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
         cloneUrl: url,
         purpose: "harness-run",
-      }),
-    ).toBeNull();
-    // ...but an explicit `interactive` is a normal claim.
+      })?.name,
+    ).toBe("tenant-acme-site");
+    // An explicit `interactive` is unchanged.
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
@@ -104,6 +110,25 @@ describe("resolveTenantPool", () => {
         purpose: "interactive",
       })?.name,
     ).toBe("tenant-acme-site");
+  });
+
+  // The isolation rule is the thing that must NOT relax with it: a run may only
+  // ever adopt a pod warmed for its own org and its own repo.
+  it("still refuses another org's pool and another repo's pool", () => {
+    expect(
+      resolveTenantPool(POOLS, {
+        orgId: "org-other",
+        cloneUrl: url,
+        purpose: "harness-run",
+      }),
+    ).toBeNull();
+    expect(
+      resolveTenantPool(POOLS, {
+        orgId: "org-acme",
+        cloneUrl: "https://github.com/acme/other-repo.git",
+        purpose: "harness-run",
+      }),
+    ).toBeNull();
   });
 
   it("a user of another org never resolves this pool", () => {
@@ -318,5 +343,24 @@ describe("poolsMatchingPush", () => {
     expect(poolsMatchingPush(POOLS, "acme/other", "refs/heads/main")).toEqual(
       [],
     );
+  });
+});
+
+describe("claimTemplateName with a tenant pool", () => {
+  const pool = POOLS[0]!;
+
+  // The operator binds warm pods by TEMPLATE HASH, so a claim naming a template
+  // the pool's pods were not built from gets a cold pod and no error. The chart
+  // renders tenant pools from `-medium` (the template harness runs already
+  // claim), so both kinds must name it or the pool is unreachable — which is
+  // exactly how four warm pods sat idle while every task run started cold.
+  it("names -medium for a tenant-pool claim, whatever the purpose", () => {
+    expect(claimTemplateName("interactive", "sbx", pool)).toBe("sbx-medium");
+    expect(claimTemplateName("harness-run", "sbx", pool)).toBe("sbx-medium");
+  });
+
+  it("leaves a non-pool interactive claim on the default template", () => {
+    expect(claimTemplateName("interactive", "sbx", null)).toBe("sbx");
+    expect(claimTemplateName(undefined, "sbx")).toBe("sbx");
   });
 });

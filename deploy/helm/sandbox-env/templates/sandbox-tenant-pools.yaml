@@ -11,10 +11,19 @@
 # STUDIO_SANDBOX_TENANT_POOLS. Additive to the generic `warmPool` above — a
 # tenant pool does not replace it, and every path still works at size 0.
 #
-# Deliberately reuses the shared SandboxTemplate: a per-pool template exists
-# only to carry per-pool node placement (on-demand / do-not-disrupt), which
-# v1 doesn't do. Adding it means rendering a second full template, so it waits
-# for someone who needs it.
+# Reuses the shared `-medium` SandboxTemplate. Medium, not the default one,
+# because the operator binds warm pods by TEMPLATE HASH: a claim naming a
+# different template gets a cold pod, silently. Task-board runs (`harness-run`)
+# always claim `-medium` — that is where the 4Gi OOMKills were — so a tenant
+# pool on the default template could never serve the runs that most need it,
+# which is why every Electrolux task started cold with four warm pods idle.
+#
+# Interactive claims that match a tenant pool now also name `-medium`, so both
+# kinds agree on one template and one pool. Medium is the roomier of the two,
+# so that is a ceiling raise for them, not a cut.
+#
+# A per-pool template still doesn't exist: it would only carry per-pool node
+# placement (on-demand / do-not-disrupt), which v1 doesn't do.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxWarmPool
 metadata:
@@ -29,5 +38,5 @@ spec:
   updateStrategy:
     type: OnReplenish
   sandboxTemplateRef:
-    name: {{ include "sandbox-env.sandboxName" $ }}
+    name: {{ include "sandbox-env.sandboxName" $ }}-medium
 {{- end }}

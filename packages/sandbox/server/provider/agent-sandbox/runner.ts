@@ -1283,9 +1283,11 @@ export class AgentSandboxProvider {
    */
   private async resolveTemplateName(
     purpose: EnsureOptions["purpose"],
+    tenantPool: TenantPool | null,
   ): Promise<string> {
     const { name, probe } = await resolveClaimTemplateName({
       purpose,
+      tenantPool,
       templateName: this.sandboxTemplateName,
       probe: this.mediumTemplateProbe,
       now: Date.now(),
@@ -1381,11 +1383,19 @@ export class AgentSandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
+    // Resolved BEFORE the template, because a tenant-pool claim must name the
+    // template that pool's pods were built from — the operator binds warm pods
+    // by template hash and a mismatch silently yields a cold pod.
+    const pool = resolveTenantPool(this.tenantPools, {
+      orgId: opts.tenant?.orgId,
+      cloneUrl: opts.repo?.cloneUrl,
+      purpose: opts.purpose,
+    });
     const claim = this.buildClaim(
       handle,
       opts,
       { token, daemonBootId, workdir },
-      await this.resolveTemplateName(opts.purpose),
+      await this.resolveTemplateName(opts.purpose, pool),
     );
     try {
       await createSandboxClaim(this.kubeConfig, this.namespace, claim);
@@ -1548,6 +1558,18 @@ export class AgentSandboxProvider {
     };
   }
 
+  /** Whether these opts resolve to a tenant pool — see `workloadConfigPayload`. */
+  private claimTookTenantPool(opts: EnsureOptions | null): boolean {
+    if (!opts) return false;
+    return (
+      resolveTenantPool(this.tenantPools, {
+        orgId: opts.tenant?.orgId,
+        cloneUrl: opts.repo?.cloneUrl,
+        purpose: opts.purpose,
+      }) !== null
+    );
+  }
+
   /**
    * Daemon `/config` payload from ensure opts. Shared by fresh provision and
    * warm-pool re-bootstrap so a recreated pool pod re-clones the same workload.
@@ -1569,7 +1591,21 @@ export class AgentSandboxProvider {
       tenant: opts?.tenant ?? undefined,
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
       // previous claim's clone-only config gets it cleared on a normal one.
-      ...(opts ? { cloneOnly: opts.cloneOnly === true } : {}),
+      //
+      // A claim that landed on a TENANT pool never sends it. `cloneOnly` makes
+      // the daemon's clone step stop the dev task, which would de-warm the pod
+      // the run just took — the exact damage that used to justify keeping
+      // harness runs out of tenant pools altogether. A pool pod is already
+      // cloned, installed and serving THIS repo, so there is nothing for
+      // clone-only to save and everything for it to throw away. The pipeline
+      // still short-circuits install and start when the tree is unchanged, so
+      // adopting one costs a branch checkout, not a rebuild.
+      ...(opts
+        ? {
+            cloneOnly:
+              opts.cloneOnly === true && !this.claimTookTenantPool(opts),
+          }
+        : {}),
     });
   }
 
