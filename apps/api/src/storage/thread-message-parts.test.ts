@@ -122,4 +122,37 @@ describe("serializePayload", () => {
     expect(serializePayload(payload)).toBe(JSON.stringify(payload));
     expect(Date.now() - started).toBeLessThan(2_000);
   });
+  it("drops the bytes of an inline base64 image block", () => {
+    const payload = {
+      type: "tool-Read",
+      state: "output-available",
+      output: [
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: "iVBORw0KGgo".repeat(5000),
+          },
+        },
+      ],
+    };
+    const out = JSON.parse(serializePayload(payload));
+    expect(out.output[0]).toEqual({ type: "text", text: "[image omitted]" });
+  });
+
+  it("keeps an image block that only references storage", () => {
+    const payload = {
+      output: [{ type: "image", url: "studio-storage://org/thread/shot.png" }],
+    };
+    expect(serializePayload(payload)).toBe(JSON.stringify(payload));
+  });
+
+  it("redacts a base64 data URL embedded in text", () => {
+    const payload = {
+      output: `<img src="data:image/png;base64,${"A".repeat(400)}">`,
+    };
+    const out = JSON.parse(serializePayload(payload));
+    expect(out.output).toBe('<img src="[base64 data omitted]">');
+  });
 });

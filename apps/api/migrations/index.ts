@@ -200,6 +200,7 @@ import * as migration198taskboardexternalurl from "./198-task-board-external-url
 import * as migration199dropjiramirrorandorgcolumns from "./199-drop-jira-mirror-and-org-columns.ts";
 import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
 import * as migration201organizationnotices from "./201-organization-notices.ts";
+import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -435,6 +436,7 @@ const migrations: Record<string, Migration> = {
     migration199dropjiramirrorandorgcolumns,
   "200-jira-run-trigger": migration200jirarruntrigger,
   "201-organization-notices": migration201organizationnotices,
+  "202-redact-base64-thread-parts": migration202redactbase64threadparts,
 };
 
 export default migrations;
