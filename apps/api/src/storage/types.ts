@@ -21,6 +21,7 @@ import type {
   OrgFlags,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
+import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { ReviewerKind } from "@decocms/shared/task-board";
 import type { PrivateRegistryDatabase } from "./registry/types";
@@ -1548,6 +1549,50 @@ export interface OrgSite {
 }
 
 // ============================================================================
+// Organization Notices (deployment-admin billing warning / block)
+// ============================================================================
+
+export interface OrganizationNoticeTable {
+  id: string;
+  organization_id: string;
+  /** 'warn' renders a banner; 'block' replaces the org UI and gates writes. */
+  severity: string;
+  title: string;
+  message: string;
+  cta_label: string | null;
+  cta_url: string | null;
+  /** 'manual' (typed in the admin UI) or, later, an invoice sync's id. */
+  source: ColumnType<string, string | undefined, string>;
+  resolved_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  resolved_by: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrganizationNotice {
+  id: string;
+  organizationId: string;
+  severity: OrgNoticeSeverity;
+  title: string;
+  message: string;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  source: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+// ============================================================================
 // Org Repo Sync (per-org GitHub repo → org-fs volume mirror)
 // ============================================================================
 
@@ -2225,6 +2270,9 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+
+  // Deployment-admin billing warning / block pinned on an org
+  organization_notices: OrganizationNoticeTable;
   org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;

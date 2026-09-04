@@ -31,6 +31,8 @@ export const common = {
     "{orgName} foi deletada ou não está mais disponível.",
   "common.archivedOrgScreen.goHome": "Ir para home",
   "common.archivedOrgScreen.orgUnavailable": "Organização indisponível",
+  "common.blockedOrgScreen.goToBilling": "Ir para faturamento",
+  "common.blockedOrgScreen.switchOrg": "Trocar de organização",
   "common.authEntry.autoLoginFailed": "Falha no auto-login",
   "common.authEntry.autoLoginFailedWithError": "Falha no auto-login: {error}",
   "common.authEntry.browserOnlyCta": "Continuar no seu navegador",
