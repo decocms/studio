@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { CONNECTION_DECRYPT_DISABLE_THRESHOLD } from "../core/constants";
 import {
+  clearDecryptFailure,
   isDecryptDisabled,
   markDecryptDisabled,
   recordDecryptFailure,
@@ -48,5 +49,15 @@ describe("decrypt-failure-tracker", () => {
     recordDecryptFailure("conn_x");
     const y = recordDecryptFailure("conn_y");
     expect(y.consecutiveFailures).toBe(1);
+  });
+
+  it("clearDecryptFailure drops all tracked state for the connection", () => {
+    const id = "conn_deleted";
+    markDecryptDisabled(id);
+    expect(isDecryptDisabled(id)).toBe(true);
+    clearDecryptFailure(id);
+    expect(isDecryptDisabled(id)).toBe(false);
+    // A fresh connection reusing the id starts its own clean failure count.
+    expect(recordDecryptFailure(id).consecutiveFailures).toBe(1);
   });
 });
