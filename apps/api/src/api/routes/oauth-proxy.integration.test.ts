@@ -385,6 +385,40 @@ describe("MCP OAuth Proxy E2E", () => {
         client_secret_expires_at: 0,
       });
     });
+
+    test("rejects an oversized register body with 413 before parsing it", async () => {
+      const connectionId = "conn_oversized_register_body";
+      await database.db
+        .insertInto("connections")
+        .values({
+          id: connectionId,
+          organization_id: "org_test",
+          created_by: "test_user",
+          title: "Oversized register body",
+          connection_type: "HTTP",
+          connection_url: "https://mcp.invalid.example/mcp",
+          oauth_config: JSON.stringify({
+            authorizationEndpoint: "https://auth.example/authorize",
+            tokenEndpoint: "https://auth.example/token",
+            clientId: "static-client-id",
+            scopes: ["mcp:connect"],
+            grantType: "authorization_code",
+          }),
+          status: "active",
+          pinned: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .execute();
+
+      const res = await app.request(`/oauth-proxy/${connectionId}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ padding: "x".repeat(2 * 1024 * 1024) }),
+      });
+
+      expect(res.status).toBe(413);
+    });
   });
 
   // ===========================================================================

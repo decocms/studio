@@ -21,7 +21,10 @@ import { createDownstreamTokenRoutes } from "./downstream-token";
 import { createFileUploadRoutes } from "./file-uploads";
 import { createKVRoutes } from "./kv";
 import { createOrgFsRoutes } from "./org-fs";
-import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
+import {
+  createOrgScopedWellKnownProtectedResourceRoutes,
+  oauthProxyBodyLimit,
+} from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
@@ -169,6 +172,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   // OAuth proxy under the org-scoped prefix; resolveOrgFromPath has run, so
   // the handler can enforce cross-org access (connection.organization_id
   // must match the resolved org).
+  app.use("/oauth-proxy/:connectionId/*", oauthProxyBodyLimit);
   app.all("/oauth-proxy/:connectionId/*", deps.oauthProxyHandler);
 
   // SSE events: GET /watch streams.
