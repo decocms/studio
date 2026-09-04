@@ -652,6 +652,46 @@ warmPool:
 #   tenantPools:
 #     - name: tenant-acme-site-prod  # DNS label ending in -<envName>
 #       size: 2                      # keep this many warm pods ready
+#
+# Each entry may also carry an optional `autoscaling` block that renders a KEDA
+# ScaledObject against the pool's scale subresource (see
+# templates/sandbox-tenant-pool-keda.yaml). Off unless `enabled: true`, so the
+# chart still installs on clusters without KEDA. `size` stays the seeded /
+# Argo-reapplied replica count — when you turn this on, add the pool to the
+# Argo app's ignoreDifferences on SandboxWarmPool /spec/replicas, or every sync
+# reverts the scaler.
+#
+# There is no default trigger, on purpose. The operator's claim metric
+# (agent_sandbox_claim_creation_total) is labelled by `sandbox_template`, and
+# every tenant pool binds the ONE template this chart renders — copying the
+# generic pool's query would scale each tenant pool on the whole environment's
+# claim rate. Studio's own per-pool gauge is the signal that distinguishes them:
+#
+#   tenantPools:
+#     - name: tenant-acme-site-prod
+#       size: 2
+#       autoscaling:
+#         enabled: true
+#         minReplicaCount: 1
+#         maxReplicaCount: 8
+#         pollingInterval: 30
+#         cooldownPeriod: 300
+#         # Raw KEDA `triggers` entries, passed through verbatim.
+#         # Scale on state="bound" (a pod actually handed to a user), NOT
+#         # state="ready": `ready` counts "config posted", not "dev server
+#         # up", so it reads full while the pool is useless. The `+ 1` keeps
+#         # one spare warming ahead of the next claim — a pool holds a ready
+#         # pod only while size > claim rate x warm time.
+#         triggers:
+#           - type: prometheus
+#             metadata:
+#               serverAddress: https://vm-main.infra.deco.cx/prometheus
+#               query: sum(studio_sandbox_pool_pods{pool="tenant-acme-site-prod",state="bound"}) + 1
+#               threshold: "1"
+#               authModes: bearer
+#             authenticationRef:
+#               name: vm-main
+#               kind: ClusterTriggerAuthentication
 tenantPools: []
 
 # ── node placeholder / "balloon" (optional) ────────────────────────────

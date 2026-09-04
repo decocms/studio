@@ -1,0 +1,39 @@
+# Tenant warm pool with the optional KEDA ScaledObject turned on.
+#
+#   helm template sandbox-env deploy/helm/sandbox-env \
+#     -n agent-sandbox-system --set envName=ci \
+#     -f deploy/helm/sandbox-env/examples/values-tenant-pool-keda.yaml
+#
+# Needs KEDA in the cluster and a `vm-main` ClusterTriggerAuthentication
+# (infra_applications provisioning/keda/main). Also add the pool to the Argo
+# app's ignoreDifferences on SandboxWarmPool /spec/replicas, or every sync
+# reverts the scaler back to `size`.
+envName: ci
+
+tenantPools:
+  - name: tenant-acme-ci
+    # Seed / Argo-reapplied replica count. KEDA drives it after that.
+    size: 2
+    autoscaling:
+      enabled: true
+      # Never 0: a tenant pool at 0 guarantees a cold start (clone + install +
+      # dev boot, ~2.5min measured) for whoever claims next.
+      minReplicaCount: 1
+      maxReplicaCount: 8
+      pollingInterval: 30
+      cooldownPeriod: 300
+      triggers:
+        - type: prometheus
+          metadata:
+            serverAddress: https://vm-main.infra.deco.cx/prometheus
+            # state="bound" = pods actually handed to users, so this tracks
+            # concurrent demand. NOT state="ready", which counts "config
+            # posted" rather than "dev server up" and reads full while the
+            # pool is useless. `+ 1` keeps one spare warming ahead of the next
+            # claim: a pool holds a ready pod only while size > rate x warmTime.
+            query: sum(studio_sandbox_pool_pods{pool="tenant-acme-ci",state="bound"}) + 1
+            threshold: "1"
+            authModes: bearer
+          authenticationRef:
+            name: vm-main
+            kind: ClusterTriggerAuthentication

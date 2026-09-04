@@ -9,6 +9,13 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.17.0: tenantPools entries take an optional `autoscaling` block rendering a
+# KEDA ScaledObject on the pool's scale subresource. Off by default and no
+# default trigger ships: the operator's claim metric is labelled by
+# sandbox_template, which every tenant pool shares, so the scaling signal has
+# to be Studio's per-pool `studio_sandbox_pool_pods{pool,state}` gauge. Turning
+# it on also needs the pool covered by the Argo app's ignoreDifferences on
+# SandboxWarmPool /spec/replicas.
 # 0.16.2: renewals now land at idleTtlSeconds + `housekeeper.renewSlackSeconds`
 # (default 60) instead of exactly idleTtlSeconds, so the sweep's graceful reap
 # — HTTPRoute deleted before the pod drains — stays ahead of the operator's own
@@ -154,7 +161,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.16.37
+version: 0.17.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.60.8"
 kubeVersion: ">=1.30.0-0"
