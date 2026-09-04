@@ -92,11 +92,36 @@ func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
 		reason := fmt.Sprintf("dev script exited with code %d", *s.ExitCode)
 		o.chunk("\r\n[orchestrator] " + reason + "\r\n")
 		o.deps.SetStatus(events.DaemonStatus{State: "error", Reason: reason})
-		if o.deps.Lifecycle.Current().Phase != events.PhaseStartFailed {
-			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStartFailed, Error: reason})
+		// A server that reached `running` started fine — it died. That is a
+		// CRASH, and `crashed` is restartable, so devwatch respawns it. Calling
+		// it `start-failed` disarms the watchdog for the life of the pod
+		// (restartablePhase excludes it), and nothing else calls RestartDev, so
+		// the sandbox stays permanently dark while still reporting ready. The
+		// path that produced this in prod: something SIGTERMs dev, yarn reports
+		// the signal as exit code 1, and a pool pod serving 200 a moment ago
+		// latches start-failed and is then handed to a run with nothing on the
+		// dev port. `start-failed` stays correct for a server that never came
+		// up (still `starting`) — that is a real failure to start.
+		phase := o.deps.Lifecycle.Current().Phase
+		target := DevExitPhase(phase)
+		if phase != target {
+			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: target, Error: reason})
 		}
 	})
 	return o
+}
+
+// DevExitPhase is the lifecycle phase a non-zero, unintentional dev-script exit
+// moves to, given the phase it happened in. See the call site in OnTaskExit for
+// why `running` must not become `start-failed`.
+func DevExitPhase(current string) string {
+	// Already crashed and died again: stay crashed. devwatch owns the bound on
+	// repeated failures (MaxRestarts, then its own ActionGiveUp transition to
+	// start-failed) — latching here instead would disarm it after one retry.
+	if current == events.PhaseRunning || current == events.PhaseCrashed {
+		return events.PhaseCrashed
+	}
+	return events.PhaseStartFailed
 }
 
 func (o *Orchestrator) ResumeFrom(step Step) {
