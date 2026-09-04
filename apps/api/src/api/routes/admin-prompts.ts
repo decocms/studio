@@ -15,16 +15,17 @@
  *
  * Mounted by `admin.ts`, therefore already behind `requireDeploymentAdmin`.
  */
-import { repoRefFromOwnerName } from "@decocms/shared/git-providers";
+import {
+  repoRefFromOwnerName,
+  repoWebUrl,
+} from "@decocms/shared/git-providers";
 import { Hono } from "hono";
 import type { Env } from "@/api/hono-env";
-import { contentClientWithToken } from "@/git-providers/content";
+import { contentClientForProjectRepo } from "@/git-providers/content";
 import {
   type RepoContentClient,
   requireBranchHead,
 } from "@/git-providers/content/types";
-import { githubConnectionAccessToken } from "@/oauth/github-mint";
-import { resolveGithubConnection } from "@/tools/task-board/prs-get";
 import {
   extractPromptRegion,
   replacePromptRegion,
@@ -32,6 +33,10 @@ import {
 
 /** The repo the prompts live in — this one. */
 const PROMPT_REPO = { owner: "decocms", repo: "studio" } as const;
+const PROMPT_REPO_REF = repoRefFromOwnerName(
+  PROMPT_REPO.owner,
+  PROMPT_REPO.repo,
+);
 
 /**
  * The editable prompts, each addressed by the marker pair that fences it in its
@@ -124,27 +129,24 @@ async function clientForActor(
   // which is exactly what this route doesn't have — bind the resolved org so
   // both the lookup and the token agree on one scope.
   const orgCtx: Ctx = { ...ctx, organization: org };
-  const connection = await resolveGithubConnection(orgCtx, org.id, null, {
+  /**
+   * The same credential ladder every other repository read takes — a
+   * first-class `repositories` row for this repo when the org has one, else
+   * its legacy `mcp-github` connection.
+   */
+  const gh = await contentClientForProjectRepo(orgCtx, org.id, {
+    url: repoWebUrl(PROMPT_REPO_REF),
     owner: PROMPT_REPO.owner,
     name: PROMPT_REPO.repo,
-  });
-  if (!connection) {
+  }).catch((cause: unknown) => {
     throw new PromptEditorError(
-      "Connect GitHub in this organization to edit prompts",
+      cause instanceof Error
+        ? cause.message
+        : "Connect GitHub in this organization to edit prompts",
       400,
     );
-  }
-  const accessToken = await githubConnectionAccessToken(orgCtx, connection);
-  if (!accessToken) {
-    throw new PromptEditorError("Reconnect GitHub to edit prompts", 400);
-  }
-  return {
-    gh: contentClientWithToken(
-      repoRefFromOwnerName(PROMPT_REPO.owner, PROMPT_REPO.repo),
-      accessToken,
-    ),
-    org: { slug: org.slug, name: org.name },
-  };
+  });
+  return { gh, org: { slug: org.slug, name: org.name } };
 }
 
 /**

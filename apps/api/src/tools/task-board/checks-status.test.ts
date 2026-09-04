@@ -1,266 +1,252 @@
 /**
- * Pure mapping from a GitHub combined-status response to the three-value
- * `checksStatus` the board renders. No I/O — the live fetch and its failure
- * modes belong to e2e; this pins only the state translation.
+ * The card's own pure logic: which preview URL to trust, where to find it in
+ * what a provider reported, and when a provider's refusal is a rate limit.
+ *
+ * Provider-shaped mapping (a pull request's `mergeable_state`, a pipeline's
+ * status, a job's conclusion) is NOT here — it lives next to the
+ * implementation that owns that vocabulary, in
+ * `git-providers/change-requests/`. What is left is the part that is the same
+ * whoever answered.
  */
 import { describe, expect, it } from "bun:test";
+import { GitProviderError } from "@/git-providers/types";
 import {
-  checksFromMergeableState,
-  conflictFromPrGet,
-  previewMatchesHead,
-  extractPreviewUrl,
-  extractPreviewUrlFromDeployment,
-  headShaFromPrGet,
-  headShaFromStatus,
+  asHeadSha,
+  cardLifecycle,
   isRateLimitError,
-  extractPreviewUrlFromCheckRuns,
-  extractPreviewUrlFromComments,
   isTrustedPreviewHost,
-  mergeChecksStatus,
-  parseCheckRuns,
-  toCheckRunsStatus,
-  toChecksStatus,
+  previewMatchesHead,
+  previewUrlFromChecks,
+  previewUrlFromComments,
 } from "./prs-get";
 
-describe("toChecksStatus", () => {
-  it("maps success → passing", () => {
-    expect(toChecksStatus({ state: "success", total_count: 3 })).toBe(
-      "passing",
+/** A completed, successful CI run — the shape both providers map into. */
+const run = (
+  over: Partial<{
+    name: string;
+    summary: string | null;
+    url: string | null;
+    conclusion: string | null;
+    state: string;
+  }> = {},
+) =>
+  ({
+    id: "1",
+    name: "build",
+    state: "completed" as const,
+    conclusion: "success" as const,
+    url: null,
+    durationMs: null,
+    summary: null,
+    ...over,
+  }) as Parameters<typeof previewUrlFromChecks>[0][number];
+
+describe("previewUrlFromChecks", () => {
+  /**
+   * Real Workers Builds run (deco-sites/demo-storefront#93) — the bot's
+   * comment for this Worker carries NO preview link, only the run's own
+   * report does.
+   */
+  const workersRun = run({
+    name: "Workers Builds: demo-storefront",
+    summary:
+      "\nBuild ID: [85b63568-6bf1-45d6-9d3b-57a558dee041](https://dash.cloudflare.com/x)\n" +
+      "Script: [demo-storefront](https://dash.cloudflare.com/y)\n" +
+      "Version ID: 1fe1ee18-b8d0-46ea-bdf1-45cef0cd6e4d\n",
+  });
+
+  it("derives the version preview url from the Workers Builds report", () => {
+    expect(previewUrlFromChecks([workersRun])).toBe(
+      "https://1fe1ee18-demo-storefront.deco-cx.workers.dev",
     );
   });
 
-  it("maps failure and error → failing", () => {
-    expect(toChecksStatus({ state: "failure", total_count: 2 })).toBe(
-      "failing",
-    );
-    expect(toChecksStatus({ state: "error", total_count: 1 })).toBe("failing");
-  });
-
-  it("maps pending → pending", () => {
-    expect(toChecksStatus({ state: "pending", total_count: 1 })).toBe(
-      "pending",
-    );
-  });
-
-  it("treats a PR with no checks (total_count 0) as null, not pending", () => {
-    expect(toChecksStatus({ state: "pending", total_count: 0 })).toBeNull();
-  });
-
-  it("is null for a missing response or unknown state", () => {
-    expect(toChecksStatus(null)).toBeNull();
-    expect(toChecksStatus({ state: "weird", total_count: 1 })).toBeNull();
-  });
-});
-
-describe("conflictFromPrGet", () => {
-  it("maps an open PR with mergeable === false → conflict (true)", () => {
-    expect(conflictFromPrGet({ state: "open", mergeable: false })).toBe(true);
-  });
-
-  it("maps an open, mergeable PR → false", () => {
-    expect(conflictFromPrGet({ state: "open", mergeable: true })).toBe(false);
-  });
-
-  it("is null when GitHub hasn't computed mergeability yet (mergeable null/absent)", () => {
-    // GitHub computes `mergeable` asynchronously — it's null right after a push.
-    // An unknown must NEVER read as a conflict (the caller only acts on `true`).
-    expect(conflictFromPrGet({ state: "open", mergeable: null })).toBeNull();
-    expect(conflictFromPrGet({ state: "open" })).toBeNull();
-  });
-
-  it("treats a non-open PR as not-conflicting, never a conflict", () => {
-    // A merged/closed PR reports `mergeable: null` but must not read as a
-    // conflict (guards a just-merged PR from a spurious resolution run).
-    expect(conflictFromPrGet({ state: "closed", mergeable: null })).toBe(false);
-    expect(conflictFromPrGet({ state: "merged", mergeable: false })).toBe(
-      false,
-    );
-  });
-
-  it("is null for a missing response", () => {
-    expect(conflictFromPrGet(null)).toBeNull();
-  });
-
-  it("reads mergeable_state — github-mcp's MinimalPullRequest has no `mergeable`", () => {
-    expect(conflictFromPrGet({ state: "open", mergeable_state: "dirty" })).toBe(
-      true,
-    );
-    expect(conflictFromPrGet({ state: "open", mergeable_state: "clean" })).toBe(
-      false,
-    );
+  it("ignores runs that are not Workers Builds, or have no version yet", () => {
     expect(
-      conflictFromPrGet({ state: "open", mergeable_state: "blocked" }),
-    ).toBe(false);
-  });
-
-  it("is null when mergeable_state is unknown or empty — still computing", () => {
-    expect(
-      conflictFromPrGet({ state: "open", mergeable_state: "unknown" }),
-    ).toBeNull();
-    expect(
-      conflictFromPrGet({ state: "open", mergeable_state: "" }),
-    ).toBeNull();
-  });
-
-  it("prefers the boolean when a non-minimal response carries both", () => {
-    expect(
-      conflictFromPrGet({
-        state: "open",
-        mergeable: true,
-        mergeable_state: "dirty",
-      }),
-    ).toBe(false);
-  });
-});
-
-describe("extractPreviewUrl", () => {
-  it("lifts a deco preview URL from a status target_url (Deno + Tanstack hosts)", () => {
-    expect(
-      extractPreviewUrl({
-        statuses: [
-          {
-            context: "ci/lint",
-            state: "success",
-            target_url: "https://ci.example.com/1",
-          },
-          {
-            context: "deco/preview",
-            state: "success",
-            target_url: "https://envs-example--a1b2c3.decocdn.com/",
-          },
-        ],
-      }),
-    ).toBe("https://envs-example--a1b2c3.decocdn.com/");
-
-    expect(
-      extractPreviewUrl({
-        statuses: [
-          {
-            state: "success",
-            target_url:
-              "https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev/",
-          },
-        ],
-      }),
-    ).toBe(
-      "https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev/",
-    );
-  });
-
-  it("prefers a succeeded preview status over a pending one", () => {
-    expect(
-      extractPreviewUrl({
-        statuses: [
-          { state: "pending", target_url: "https://old--a.decocdn.com/" },
-          { state: "success", target_url: "https://new--b.decocdn.com/" },
-        ],
-      }),
-    ).toBe("https://new--b.decocdn.com/");
-  });
-
-  it("is null when no status points at a deco preview host", () => {
-    expect(extractPreviewUrl(null)).toBeNull();
-    expect(
-      extractPreviewUrl({
-        statuses: [
-          { state: "success", target_url: "https://ci.example.com/x" },
-        ],
-      }),
-    ).toBeNull();
-    expect(extractPreviewUrl({})).toBeNull();
-  });
-});
-
-describe("toCheckRunsStatus", () => {
-  it("maps GitHub Actions check-runs (a real failing 'Deco / QA' run)", () => {
-    expect(
-      toCheckRunsStatus({
-        check_runs: [
-          {
-            name: "Deco / QA / Purchase journey",
-            status: "completed",
-            conclusion: "failure",
-          },
-        ],
-      }),
-    ).toBe("failing");
-  });
-
-  it("is passing when all runs completed successfully (incl. neutral/skipped)", () => {
-    expect(
-      toCheckRunsStatus({
-        check_runs: [
-          { status: "completed", conclusion: "success" },
-          { status: "completed", conclusion: "skipped" },
-        ],
-      }),
-    ).toBe("passing");
-  });
-
-  it("is pending while any run is not completed", () => {
-    expect(
-      toCheckRunsStatus([
-        { status: "completed", conclusion: "success" },
-        { status: "in_progress", conclusion: null },
+      previewUrlFromChecks([
+        run({
+          name: "cubic · AI code reviewer",
+          summary: "Version ID: deadbeef-1",
+        }),
+        run({
+          name: "Workers Builds: demo-storefront",
+          summary: "Build queued",
+        }),
+        run({ name: "Workers Builds: demo-storefront" }),
       ]),
-    ).toBe("pending");
+    ).toBeNull();
+    expect(previewUrlFromChecks([])).toBeNull();
   });
 
-  it("is null with no check-runs", () => {
-    expect(toCheckRunsStatus({ check_runs: [] })).toBeNull();
-    expect(toCheckRunsStatus(null)).toBeNull();
+  it("rejects a worker name that would forge a host outside workers.dev", () => {
+    expect(
+      previewUrlFromChecks([
+        run({
+          name: "Workers Builds: evil.example.com/x",
+          summary: "Version ID: 1fe1ee18-b8d0",
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  /**
+   * The other shape: the run just LINKS the deploy. This is where a legacy
+   * commit status's target URL now arrives — both providers map a status and a
+   * check run into the same thing, which is what collapsed two separate reads
+   * into one.
+   */
+  it("lifts a trusted preview URL a run links to", () => {
+    expect(
+      previewUrlFromChecks([
+        run({ name: "ci", url: "https://github.com/acme/site/runs/1" }),
+        run({ name: "deploy", url: "https://envs-x--a1b2.decocdn.com" }),
+      ]),
+    ).toBe("https://envs-x--a1b2.decocdn.com");
+  });
+
+  it("prefers a succeeded run's link over an in-flight one", () => {
+    expect(
+      previewUrlFromChecks([
+        run({
+          name: "deploy",
+          state: "running",
+          conclusion: null,
+          url: "https://pending--a1b2.decocdn.com",
+        }),
+        run({ name: "deploy", url: "https://ready--c3d4.decocdn.com" }),
+      ]),
+    ).toBe("https://ready--c3d4.decocdn.com");
+  });
+
+  it("is null when no run points at a trusted preview host", () => {
+    expect(
+      previewUrlFromChecks([
+        run({ name: "ci", url: "https://evil.example.com/?x=.decocdn.com" }),
+      ]),
+    ).toBeNull();
   });
 });
 
-describe("parseCheckRuns", () => {
-  it("flattens a get_check_runs result to name/status/conclusion/detailsUrl", () => {
-    expect(
-      parseCheckRuns({
-        check_runs: [
-          {
-            id: 42,
-            name: "Deco / QA",
-            status: "completed",
-            conclusion: "failure",
-            html_url: "https://github.com/x/y/runs/42",
-          },
-        ],
-      }),
-    ).toEqual([
-      {
-        id: 42,
-        name: "Deco / QA",
-        status: "completed",
-        conclusion: "failure",
-        detailsUrl: "https://github.com/x/y/runs/42",
-      },
-    ]);
+describe("previewUrlFromComments", () => {
+  /**
+   * Real Cloudflare Workers bot comment (trimmed): both a commit and a branch
+   * preview — the branch one is what stays valid as the branch gets commits.
+   */
+  const cloudflareBody =
+    "## Deploying with Cloudflare Workers\n| Status | Preview URL |\n| - | - |\n" +
+    "| ✅ | <a href='https://1799fcb3-decocms-tanstack.deco-cx.workers.dev'>Commit Preview URL</a>" +
+    "<br><br><a href='https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev'>Branch Preview URL</a> |";
+  const decobotBody =
+    "**deco Deployment** · commit `1059e10`\n\n| Name | Preview |\n| - | - |\n" +
+    "| example | [Visit Preview](https://envs-example--a1b2c3.decocdn.com) |";
+  const vercelBody =
+    "| Project | Deployment | Actions | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n" +
+    "| [electrolux](https://vercel.com/deco13/electrolux) | [Ready](https://vercel.com/deco13/electrolux/GoTyhNUVcQSf7yKLG2yFtWjJ4sZA) | " +
+    "[Preview](https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app) | Aug 6, 2026 10:47pm |";
+
+  it("prefers the Cloudflare Branch Preview URL over the commit one", () => {
+    expect(previewUrlFromComments([{ body: cloudflareBody }])).toBe(
+      "https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev",
+    );
   });
 
-  it("accepts a raw array and tolerates missing fields", () => {
-    expect(parseCheckRuns([{ name: "lint" }])).toEqual([
-      {
-        id: null,
-        name: "lint",
-        status: "completed",
-        conclusion: null,
-        detailsUrl: null,
-      },
-    ]);
-    expect(parseCheckRuns(null)).toEqual([]);
+  it("lifts the deco.cx 'Visit Preview' markdown link", () => {
+    expect(previewUrlFromComments([{ body: decobotBody }])).toBe(
+      "https://envs-example--a1b2c3.decocdn.com",
+    );
+  });
+
+  it("lifts the Vercel bot's Preview link", () => {
+    expect(previewUrlFromComments([{ body: vercelBody }])).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+    );
+  });
+
+  it("is null with no preview comment", () => {
+    expect(previewUrlFromComments([])).toBeNull();
+    expect(previewUrlFromComments([{ body: "LGTM, nice work!" }])).toBeNull();
+  });
+
+  it("prefers the newest comment, so a stale re-deploy comment doesn't win", () => {
+    expect(
+      previewUrlFromComments([
+        {
+          body: "[Preview](https://electrolux-git-old-stale-deploy-deco13.vercel.app)",
+          createdAt: "2026-08-01T00:00:00Z",
+          updatedAt: "2026-08-01T00:00:00Z",
+        },
+        {
+          body: vercelBody,
+          createdAt: "2026-08-06T22:32:55Z",
+          updatedAt: "2026-08-06T22:32:55Z",
+        },
+      ]),
+    ).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+    );
+  });
+
+  /**
+   * Vercel and Cloudflare edit ONE sticky comment on each push, so
+   * `createdAt` stays frozen at the first post and only `updatedAt` moves. A
+   * human comment posted in between (with a coincidentally matching host)
+   * must not outrank the bot's freshly edited one.
+   */
+  it("ranks by updatedAt, so a sticky comment beats a later unrelated one", () => {
+    expect(
+      previewUrlFromComments([
+        {
+          body: vercelBody,
+          createdAt: "2026-08-01T00:00:00Z",
+          updatedAt: "2026-08-06T22:32:55Z",
+        },
+        {
+          body: "unrelated note, see https://some-other.vercel.app",
+          createdAt: "2026-08-03T00:00:00Z",
+          updatedAt: "2026-08-03T00:00:00Z",
+        },
+      ]),
+    ).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+    );
+  });
+
+  it("falls back to array order when no timestamp is usable", () => {
+    expect(
+      previewUrlFromComments([{ body: decobotBody }, { body: vercelBody }]),
+    ).toBe("https://envs-example--a1b2c3.decocdn.com");
   });
 });
 
-describe("mergeChecksStatus", () => {
-  it("takes the worst of the two (failing > pending > passing > null)", () => {
-    expect(mergeChecksStatus(null, "failing")).toBe("failing");
-    expect(mergeChecksStatus("passing", "pending")).toBe("pending");
-    expect(mergeChecksStatus("passing", null)).toBe("passing");
-    expect(mergeChecksStatus(null, null)).toBeNull();
-    // Seen in production: empty combined status (null) + failing check-run → failing.
-    expect(
-      mergeChecksStatus(toChecksStatus({ total_count: 0 }), "failing"),
-    ).toBe("failing");
+describe("asHeadSha", () => {
+  it("accepts a 7-to-40 char hex sha", () => {
+    expect(asHeadSha("1059e10")).toBe("1059e10");
+    expect(asHeadSha("a".repeat(40))).toBe("a".repeat(40));
+  });
+
+  /** Also what keeps a malformed value out of the deployment lookup. */
+  it("rejects anything else", () => {
+    expect(asHeadSha("main")).toBeNull();
+    expect(asHeadSha("12345")).toBeNull();
+    expect(asHeadSha("a".repeat(41))).toBeNull();
+    expect(asHeadSha(undefined)).toBeNull();
+    expect(asHeadSha(123)).toBeNull();
+  });
+});
+
+describe("cardLifecycle", () => {
+  /**
+   * `merged` alone cannot answer whether the work landed: a closed-unmerged
+   * change request and an open one both report false, and only the first is
+   * settled. So the card keeps both fields, derived from the one state.
+   */
+  it("splits the three provider states into the card's two fields", () => {
+    expect(cardLifecycle("open")).toEqual({ state: "open", merged: false });
+    expect(cardLifecycle("closed")).toEqual({
+      state: "closed",
+      merged: false,
+    });
+    expect(cardLifecycle("merged")).toEqual({ state: "closed", merged: true });
   });
 });
 
@@ -309,239 +295,6 @@ describe("isTrustedPreviewHost", () => {
   });
 });
 
-describe("extractPreviewUrlFromCheckRuns", () => {
-  // Real Workers Builds check-run shape (deco-sites/demo-storefront#93) — the
-  // bot's PR comment for this Worker carries NO preview link, only this does.
-  const workersRun = {
-    name: "Workers Builds: demo-storefront",
-    output: {
-      title: "Workers Builds: demo-storefront",
-      summary:
-        "\nBuild ID: [85b63568-6bf1-45d6-9d3b-57a558dee041](https://dash.cloudflare.com/x)\n" +
-        "Script: [demo-storefront](https://dash.cloudflare.com/y)\n" +
-        "Version ID: 1fe1ee18-b8d0-46ea-bdf1-45cef0cd6e4d\n",
-    },
-  };
-
-  it("derives the version preview url from the Workers Builds summary", () => {
-    expect(extractPreviewUrlFromCheckRuns({ check_runs: [workersRun] })).toBe(
-      "https://1fe1ee18-demo-storefront.deco-cx.workers.dev",
-    );
-    expect(extractPreviewUrlFromCheckRuns([workersRun])).toBe(
-      "https://1fe1ee18-demo-storefront.deco-cx.workers.dev",
-    );
-  });
-
-  it("ignores runs that are not Workers Builds, or have no version yet", () => {
-    expect(
-      extractPreviewUrlFromCheckRuns([
-        {
-          name: "cubic · AI code reviewer",
-          output: { summary: "Version ID: deadbeef-1" },
-        },
-        {
-          name: "Workers Builds: demo-storefront",
-          output: { summary: "Build queued" },
-        },
-        { name: "Workers Builds: demo-storefront" },
-      ]),
-    ).toBeNull();
-    expect(extractPreviewUrlFromCheckRuns(null)).toBeNull();
-    expect(extractPreviewUrlFromCheckRuns({})).toBeNull();
-  });
-
-  it("rejects a worker name that would forge a host outside workers.dev", () => {
-    expect(
-      extractPreviewUrlFromCheckRuns([
-        {
-          name: "Workers Builds: evil.example.com/x",
-          output: { summary: "Version ID: 1fe1ee18-b8d0" },
-        },
-      ]),
-    ).toBeNull();
-  });
-});
-
-describe("extractPreviewUrlFromComments", () => {
-  // Real Cloudflare Workers bot comment shape (trimmed): both a commit and a
-  // branch preview — the branch one is what we want.
-  const cloudflareBody =
-    "## Deploying with Cloudflare Workers\n| Status | Preview URL |\n| - | - |\n" +
-    "| ✅ | <a href='https://1799fcb3-decocms-tanstack.deco-cx.workers.dev'>Commit Preview URL</a>" +
-    "<br><br><a href='https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev'>Branch Preview URL</a> |";
-  // Real deco.cx `decobot` comment shape (trimmed).
-  const decobotBody =
-    "**deco Deployment** · commit `1059e10`\n\n| Name | Preview |\n| - | - |\n" +
-    "| example | [Visit Preview](https://envs-example--a1b2c3.decocdn.com) |";
-  // Real Vercel bot comment shape (trimmed, from deco-sites/electrolux#10).
-  const vercelBody =
-    "| Project | Deployment | Actions | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n" +
-    "| [electrolux](https://vercel.com/deco13/electrolux) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/deco13/electrolux/GoTyhNUVcQSf7yKLG2yFtWjJ4sZA) | " +
-    "[Preview](https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app) | Aug 6, 2026 10:47pm |";
-
-  it("prefers the Cloudflare Branch Preview URL over the commit one", () => {
-    expect(extractPreviewUrlFromComments([{ body: cloudflareBody }])).toBe(
-      "https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev",
-    );
-  });
-
-  it("lifts the deco.cx 'Visit Preview' markdown link", () => {
-    expect(extractPreviewUrlFromComments([{ body: decobotBody }])).toBe(
-      "https://envs-example--a1b2c3.decocdn.com",
-    );
-  });
-
-  it("lifts the Vercel bot's Preview link", () => {
-    expect(extractPreviewUrlFromComments([{ body: vercelBody }])).toBe(
-      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
-    );
-  });
-
-  it("accepts the { comments } and { items } wrapper shapes", () => {
-    expect(
-      extractPreviewUrlFromComments({ comments: [{ body: decobotBody }] }),
-    ).toBe("https://envs-example--a1b2c3.decocdn.com");
-    expect(
-      extractPreviewUrlFromComments({ items: [{ body: decobotBody }] }),
-    ).toBe("https://envs-example--a1b2c3.decocdn.com");
-  });
-
-  it("is null with no deco preview comment", () => {
-    expect(extractPreviewUrlFromComments([])).toBeNull();
-    expect(extractPreviewUrlFromComments(null)).toBeNull();
-    expect(
-      extractPreviewUrlFromComments([{ body: "LGTM, nice work!" }]),
-    ).toBeNull();
-  });
-
-  it("prefers the newest comment by updated_at over array order, so a stale re-deploy comment doesn't win", () => {
-    const staleVercelBody =
-      "[Preview](https://electrolux-git-old-stale-deploy-deco13.vercel.app)";
-    const fresh = extractPreviewUrlFromComments([
-      {
-        body: staleVercelBody,
-        created_at: "2026-08-01T00:00:00Z",
-        updated_at: "2026-08-01T00:00:00Z",
-      },
-      {
-        body: vercelBody,
-        created_at: "2026-08-06T22:32:55Z",
-        updated_at: "2026-08-06T22:32:55Z",
-      },
-    ]);
-    expect(fresh).toBe(
-      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
-    );
-  });
-
-  it("prefers a comment's updated_at over its created_at, so a sticky comment edited in place beats an unrelated later comment", () => {
-    // Vercel/Cloudflare edit a single sticky comment on each push — created_at
-    // stays frozen at the FIRST post, only updated_at moves forward. A human
-    // comment posted in between (with a coincidentally-matching host) must
-    // NOT outrank the bot's freshly-edited comment just because its
-    // created_at is later.
-    const stickyBotComment = {
-      body: vercelBody,
-      created_at: "2026-08-01T00:00:00Z", // first posted early in the PR
-      updated_at: "2026-08-06T22:32:55Z", // edited in place on the latest push
-    };
-    const laterUnrelatedComment = {
-      body: "unrelated review note, check https://some-other.vercel.app for reference",
-      created_at: "2026-08-03T00:00:00Z", // posted after the bot's first post...
-      updated_at: "2026-08-03T00:00:00Z", // ...but never edited again
-    };
-    expect(
-      extractPreviewUrlFromComments([stickyBotComment, laterUnrelatedComment]),
-    ).toBe(
-      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
-    );
-  });
-
-  it("falls back to created_at, then array order, when updated_at is missing", () => {
-    expect(
-      extractPreviewUrlFromComments([
-        { body: decobotBody },
-        { body: vercelBody },
-      ]),
-    ).toBe("https://envs-example--a1b2c3.decocdn.com");
-  });
-});
-
-describe("extractPreviewUrlFromDeployment", () => {
-  it("lifts a trusted environmentUrl from a GET_PREVIEW_DEPLOYMENT result", () => {
-    expect(
-      extractPreviewUrlFromDeployment({
-        environmentUrl: "https://sfj-b212cf4--torrafaststore.preview.vtex.app",
-        environment: "staging",
-        state: "success",
-        deploymentId: 42,
-      }),
-    ).toBe("https://sfj-b212cf4--torrafaststore.preview.vtex.app");
-  });
-
-  it("is null when no deployment has published a url yet (in-flight)", () => {
-    expect(
-      extractPreviewUrlFromDeployment({
-        environmentUrl: null,
-        environment: null,
-        state: null,
-        deploymentId: null,
-      }),
-    ).toBeNull();
-    expect(extractPreviewUrlFromDeployment(null)).toBeNull();
-    expect(extractPreviewUrlFromDeployment({})).toBeNull();
-  });
-
-  it("rejects an untrusted environmentUrl host", () => {
-    expect(
-      extractPreviewUrlFromDeployment({
-        environmentUrl:
-          "https://evil.example.com/torrafaststore.preview.vtex.app",
-      }),
-    ).toBeNull();
-  });
-});
-
-describe("headShaFromPrGet", () => {
-  it("reads head.sha from a pull_request_read get response", () => {
-    expect(
-      headShaFromPrGet({
-        state: "open",
-        head: { ref: "fix/x", sha: "f9f522ce9642cf7f2024e45b9ddc618a6f78bf8c" },
-      }),
-    ).toBe("f9f522ce9642cf7f2024e45b9ddc618a6f78bf8c");
-  });
-
-  it("is null when head/sha is absent or not a hex sha", () => {
-    expect(headShaFromPrGet(null)).toBeNull();
-    expect(headShaFromPrGet({})).toBeNull();
-    expect(headShaFromPrGet({ head: {} })).toBeNull();
-    expect(headShaFromPrGet({ head: { sha: 123 } })).toBeNull();
-    expect(headShaFromPrGet({ head: { sha: "not-a-sha" } })).toBeNull();
-    expect(headShaFromPrGet({ head: "nope" })).toBeNull();
-  });
-});
-
-describe("headShaFromStatus", () => {
-  it("reads the head sha from a combined-status response", () => {
-    expect(
-      headShaFromStatus({
-        state: "success",
-        sha: "f9f522ce9642cf7f2024e45b9ddc618a6f78bf8c",
-        total_count: 1,
-      }),
-    ).toBe("f9f522ce9642cf7f2024e45b9ddc618a6f78bf8c");
-  });
-
-  it("is null when the sha is absent or not a hex sha", () => {
-    expect(headShaFromStatus(null)).toBeNull();
-    expect(headShaFromStatus({})).toBeNull();
-    expect(headShaFromStatus({ sha: 123 })).toBeNull();
-    expect(headShaFromStatus({ sha: "not-a-sha" })).toBeNull();
-    expect(headShaFromStatus({ sha: "abc/../def" })).toBeNull();
-  });
-});
-
 describe("isRateLimitError", () => {
   // These are the exact strings the GitHub MCP surfaced in prod while the board
   // hammered it; retrying any of them is what kept the limit shut.
@@ -585,23 +338,26 @@ describe("isRateLimitError", () => {
       ),
     ).toBe(true);
   });
-});
-
-describe("checksFromMergeableState", () => {
-  it("maps the two unambiguous values", () => {
-    expect(checksFromMergeableState("clean")).toBe("passing");
-    expect(checksFromMergeableState("unstable")).toBe("failing");
-  });
-
-  it("is null for everything that says nothing about checks", () => {
-    // `blocked` is the load-bearing one: it also covers a missing required
-    // review, so reading it as red would hold QA on a healthy deploy.
-    expect(checksFromMergeableState("blocked")).toBeNull();
-    expect(checksFromMergeableState("dirty")).toBeNull();
-    expect(checksFromMergeableState("behind")).toBeNull();
-    expect(checksFromMergeableState("unknown")).toBeNull();
-    expect(checksFromMergeableState(undefined)).toBeNull();
-    expect(checksFromMergeableState(null)).toBeNull();
+  /** A provider client says so outright, so no phrase matching is needed. */
+  it("recognises a typed provider rate-limit refusal", () => {
+    expect(
+      isRateLimitError(
+        new GitProviderError({
+          provider: "gitlab",
+          status: 429,
+          message: "GitLab API 429: Retry later",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isRateLimitError(
+        new GitProviderError({
+          provider: "gitlab",
+          status: 404,
+          message: "GitLab API 404: Not Found",
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

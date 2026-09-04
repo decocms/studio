@@ -7,7 +7,7 @@ import {
   unwrapRetryError,
 } from "./graphql";
 
-const LABEL = "branch search for acme/site";
+const LABEL = "change request for acme/site";
 
 describe("parseGraphqlBody", () => {
   it("parses a well-formed JSON body", () => {

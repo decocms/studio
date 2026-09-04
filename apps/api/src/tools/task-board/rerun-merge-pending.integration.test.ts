@@ -169,8 +169,11 @@ describe("refuseIfMergePending", () => {
       organizationId: ORG,
       url: "https://github.com/acme/widgets/pull/7",
       prNumber: 7,
-      repoOwner: "acme",
-      repoName: "widgets",
+      repo: {
+        provider: "github",
+        host: "github.com",
+        path: "acme/widgets",
+      },
     });
     // Cap already spent — so ONLY the unknown conflict signal keeps the refusal.
     for (let i = 0; i < 3; i++) {

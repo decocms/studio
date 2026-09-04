@@ -6,7 +6,12 @@ import {
   draftsModeEnabled,
   useBaseBranch,
 } from "../../thread/github/use-version-gate";
-import { getActiveGithubRepo } from "@/lib/github-repo";
+import {
+  getActiveGithubRepo,
+  hasRepoCredential,
+  repoTargetKey,
+  repoToolTarget,
+} from "@/lib/github-repo";
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
@@ -63,7 +68,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       "sandbox";
 
   const githubRepo = getActiveGithubRepo(virtualMcp);
-  const connectionId = githubRepo?.connectionId;
+  const repoTarget = repoToolTarget(githubRepo);
 
   const { data: session } = authClient.useSession();
   const userLabel = branchUserLabel(session?.user);
@@ -87,10 +92,10 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   };
 
   const branchPill =
-    githubRepo && connectionId ? (
+    githubRepo && hasRepoCredential(repoTarget) ? (
       <BranchPill
         // Remount per repo so the previous project's switcher state can't leak.
-        key={`${connectionId}:${githubRepo.owner}/${githubRepo.name}`}
+        key={`${repoTargetKey(repoTarget)}:${githubRepo.owner}/${githubRepo.name}`}
         draftsMode={draftsMode}
         userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
@@ -99,7 +104,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         orgId={org.id}
         orgSlug={org.slug}
         userId={userId}
-        connectionId={connectionId}
+        target={repoTarget}
         owner={githubRepo.owner}
         repo={githubRepo.name}
         sandboxMap={virtualMcp?.metadata?.sandboxMap}

@@ -6,6 +6,7 @@
  */
 
 import { sql, type Kysely } from "kysely";
+import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
 import { isReportsTask } from "../billing/task-quota";
 import type {
@@ -1306,19 +1307,32 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Link a GitHub PR to a task (idempotent per (task, url) — a run replay or a
-   * repeated PR tool call can't duplicate the row). `prNumber`/`repoOwner`/
-   * `repoName` are derived from the PR url at capture time.
+   * Link a change request to a task (idempotent per (task, url) — a run replay
+   * or a repeated tool call can't duplicate the row).
+   *
+   * Takes the `RepoRef` rather than an owner/name pair so BOTH derivations
+   * happen here, once: the legacy columns (a GitLab project in subgroups puts
+   * every namespace level in `repo_owner`) and `repository_id`, resolved from
+   * the org's repositories by identity. Doing the latter at the write means
+   * every caller — the provider tool hook, a bash-output scan, a
+   * human-supplied URL — records the credential without knowing it has to.
    */
   async linkPr(params: {
     taskBoardItemId: string;
     organizationId: string;
     url: string;
     prNumber: number;
-    repoOwner: string;
-    repoName: string;
+    repo: RepoRef;
     connectionId?: string | null;
   }): Promise<void> {
+    const { owner, name } = splitOwnerName(params.repo);
+    const repository = await this.db
+      .selectFrom("repositories")
+      .select("id")
+      .where("organization_id", "=", params.organizationId)
+      .where("host", "=", params.repo.host)
+      .where(sql<string>`lower(path)`, "=", params.repo.path.toLowerCase())
+      .executeTakeFirst();
     await this.db
       .insertInto("task_board_item_prs")
       .values({
@@ -1326,9 +1340,10 @@ export class TaskBoardStorage {
         organization_id: params.organizationId,
         url: params.url,
         pr_number: params.prNumber,
-        repo_owner: params.repoOwner,
-        repo_name: params.repoName,
+        repo_owner: owner,
+        repo_name: name,
         connection_id: params.connectionId ?? null,
+        repository_id: repository?.id ?? null,
       })
       .onConflict((oc) => oc.columns(["task_board_item_id", "url"]).doNothing())
       .execute();
@@ -1347,6 +1362,7 @@ export class TaskBoardStorage {
         "repo_owner as repoOwner",
         "repo_name as repoName",
         "connection_id as connectionId",
+        "repository_id as repositoryId",
         "created_at as createdAt",
       ])
       .where("task_board_item_id", "=", taskBoardItemId)
@@ -1359,6 +1375,7 @@ export class TaskBoardStorage {
       repoOwner: r.repoOwner,
       repoName: r.repoName,
       connectionId: r.connectionId ?? null,
+      repositoryId: r.repositoryId ?? null,
       createdAt:
         r.createdAt instanceof Date
           ? r.createdAt.toISOString()

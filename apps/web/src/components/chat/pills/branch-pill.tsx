@@ -1,4 +1,5 @@
 import type { SandboxMap } from "@/sdk";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { BranchPicker } from "../../thread/github/branch-picker";
 import { BranchPickerLegacy } from "../../thread/github/branch-picker-legacy";
 
@@ -19,7 +20,7 @@ interface Props {
   orgId: string;
   orgSlug: string;
   userId: string;
-  connectionId: string | null;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
@@ -41,7 +42,7 @@ export function BranchPill({
   orgId,
   orgSlug,
   userId,
-  connectionId,
+  target,
   owner,
   repo,
   sandboxMap,
@@ -56,7 +57,7 @@ export function BranchPill({
         orgId={orgId}
         orgSlug={orgSlug}
         userId={userId}
-        connectionId={connectionId}
+        target={target}
         owner={owner}
         repo={repo}
         sandboxMap={sandboxMap}
@@ -74,7 +75,7 @@ export function BranchPill({
       userId={userId}
       userLabel={userLabel}
       virtualMcpId={virtualMcpId}
-      connectionId={connectionId}
+      target={target}
       owner={owner}
       repo={repo}
       sandboxMap={sandboxMap}

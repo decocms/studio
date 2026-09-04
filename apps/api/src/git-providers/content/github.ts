@@ -12,19 +12,18 @@
  * local stub — tests must never reach api.github.com.
  */
 
-import {
-  apiBaseUrlFor,
-  type RepoRef,
-  splitOwnerName,
-} from "@decocms/shared/git-providers";
+import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 import {
   countGithubRateLimited,
   githubRetryAfterMs,
   isGithubRateLimited,
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
+import { githubGraphqlRequest } from "../github/graphql";
+import { githubApiBaseUrl } from "../github/http";
 import type { TokenSource } from "../types";
 import {
+  type BranchPage,
   type ChangeRequestInfo,
   type FileChange,
   type RepoContentClient,
@@ -44,12 +43,6 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 /** A whole-repo archive is a download, not a REST call — it needs room to stream. */
 const ARCHIVE_TIMEOUT_MS = 60_000;
-
-/** e2e seam: set GITHUB_API_BASE_URL to a local stub. Read per call site so a
- * long-lived process (dev server) and the test webServer agree on one value. */
-function githubApiBaseUrl(host: string): string {
-  return process.env.GITHUB_API_BASE_URL ?? apiBaseUrlFor("github", host);
-}
 
 /**
  * `default_branch` per repo, cached across requests — a client instance lives
@@ -138,6 +131,34 @@ function etagCachePut(url: string, etag: string, body: unknown): void {
     etagCacheDelete(oldest);
   }
 }
+
+/**
+ * Note `orderBy` is deliberately ALPHABETICAL — see `searchBranches` for why
+ * asking GitHub for recency here would be a lie.
+ */
+const BRANCH_SEARCH_QUERY = `
+query BranchSearch($owner: String!, $repo: String!, $query: String, $limit: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    refs(
+      refPrefix: "refs/heads/"
+      query: $query
+      first: $limit
+      after: $after
+      orderBy: { field: ALPHABETICAL, direction: ASC }
+    ) {
+      totalCount
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        name
+        target {
+          ... on Commit {
+            author { user { login } }
+          }
+        }
+      }
+    }
+  }
+}`;
 
 class GitHubApiError extends Error {
   constructor(
@@ -323,6 +344,7 @@ export class GithubContentClient implements RepoContentClient {
   private readonly apiBaseUrl: string;
   private readonly repoBase: string;
   private readonly owner: string;
+  private readonly name: string;
   private defaultBranch: string | null = null;
   /** commit sha -> its tree sha. A commit is immutable, and one request can
    * ask for the same commit's tree several times (compare + read + write). */
@@ -338,6 +360,7 @@ export class GithubContentClient implements RepoContentClient {
     this.apiBaseUrl = githubApiBaseUrl(options.repo.host);
     const { owner, name } = splitOwnerName(options.repo);
     this.owner = owner;
+    this.name = name;
     this.repoBase = `/repos/${owner}/${name}`;
   }
 
@@ -521,6 +544,80 @@ export class GithubContentClient implements RepoContentClient {
     return {
       sha: json.commit.sha,
       committedAt: json.commit.commit.committer.date,
+    };
+  }
+
+  /**
+   * GraphQL, not REST: `GET /repos/:o/:r/branches` takes no search, filter or
+   * sort parameter at all, so a picker on it can only page 100 at a time and
+   * grep locally. `repository.refs(query:)` filters by a case-insensitive
+   * substring of the ref name in one round trip ("upstream" finds
+   * `claude/fastpreview-upstream-authority`), which is what github.com's own
+   * branch dropdown uses, and reports the true `totalCount`.
+   */
+  async searchBranches(params: {
+    query: string;
+    limit: number;
+    cursor?: string | null;
+  }): Promise<BranchPage> {
+    const payload = await githubGraphqlRequest<{
+      repository?: {
+        refs?: {
+          totalCount?: number;
+          pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+          nodes?: Array<{
+            name?: string | null;
+            target?: {
+              author?: { user?: { login?: string | null } | null } | null;
+            } | null;
+          } | null> | null;
+        } | null;
+      } | null;
+    }>({
+      getToken: async (force) =>
+        (await this.tokenSource.get(force ? { forceRefresh: true } : undefined))
+          ?.token ?? null,
+      missingTokenMessage: `No usable GitHub token for ${this.repo.path}; reconnect the account`,
+      query: BRANCH_SEARCH_QUERY,
+      variables: {
+        owner: this.owner,
+        repo: this.name,
+        query: params.query,
+        limit: params.limit,
+        after: params.cursor ?? null,
+      },
+      label: `branch search on ${this.repo.path}`,
+      operation: "branch_search",
+    });
+    const repository = payload.repository;
+    if (!repository) {
+      throw new GitHubApiError(
+        404,
+        "GET",
+        this.repoBase,
+        `${this.repo.path} not found or not accessible by this credential`,
+      );
+    }
+    /**
+     * Every level is optional: a commit authored by an address with no GitHub
+     * account has `author.user === null`, as does a ref whose target does not
+     * resolve to a Commit.
+     */
+    const branches = (repository.refs?.nodes ?? []).flatMap((node) =>
+      typeof node?.name === "string"
+        ? [
+            {
+              name: node.name,
+              author: node.target?.author?.user?.login ?? null,
+            },
+          ]
+        : [],
+    );
+    const pageInfo = repository.refs?.pageInfo;
+    return {
+      branches,
+      totalCount: repository.refs?.totalCount ?? branches.length,
+      nextCursor: pageInfo?.hasNextPage ? (pageInfo.endCursor ?? null) : null,
     };
   }
 

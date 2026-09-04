@@ -114,7 +114,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMergeFailedRateLimited":
     "couldn't merge yet — GitHub is rate-limiting us. This retries automatically.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
-    "GitHub refused the merge: {detail}",
+    "the provider refused the merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedConflict":
+    "it conflicts with the base branch and could not be merged",
   "taskBoard.taskDialog.activityMergeFailedError":
     "couldn't merge the pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",

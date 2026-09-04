@@ -1,4 +1,5 @@
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
@@ -65,7 +66,8 @@ export interface PublishDialogProps {
   virtualMcpId: string;
   branch: string;
   baseBranch: string;
-  githubConnectionId: string;
+  /** Which repository this publishes to, and which credential writes it. */
+  repoTarget: RepoToolTarget;
   owner: string;
   repo: string;
   previewUrl?: string | null;
@@ -114,7 +116,7 @@ function PublishDialogBody({
   virtualMcpId,
   branch,
   baseBranch,
-  githubConnectionId,
+  repoTarget,
   owner,
   repo,
   previewUrl,
@@ -126,11 +128,6 @@ function PublishDialogBody({
   onPublished,
 }: PublishDialogProps) {
   const t = useT();
-  const githubClient = useMCPClient({
-    connectionId: githubConnectionId,
-    orgId,
-    orgSlug,
-  });
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
@@ -149,13 +146,6 @@ function PublishDialogBody({
   const coAuthor = coAuthorFromSessionUser(session?.user);
 
   const commitToOpenPr = openPullRequest?.state === "open";
-  // The branch's already-known open PR (from the header's polled PR state).
-  // Passed to openPullRequestForBranch so it reuses this PR instead of calling
-  // list_pull_requests to rediscover it.
-  const existingOpenPr =
-    openPullRequest?.state === "open"
-      ? { number: openPullRequest.number, htmlUrl: openPullRequest.htmlUrl }
-      : undefined;
   const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
   /** Side "Publish" button — direct publish to base, single green button. */
   const isPublishOnly = dialogIntent === "publish-only";
@@ -338,12 +328,11 @@ function PublishDialogBody({
     branch,
     threadId: sandboxRef.threadId,
     baseBranch,
-    githubClient,
+    target: repoTarget,
     owner,
     repo,
     headBranch: githubHeadBranch,
     coAuthor,
-    existingOpenPr,
     expectedHeadSha: headSha ?? undefined,
   };
 

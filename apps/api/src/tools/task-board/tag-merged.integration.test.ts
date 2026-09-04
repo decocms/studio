@@ -47,8 +47,11 @@ describe("merged-tag sweep", () => {
         organizationId: ORG,
         url: `https://github.com/acme/repo/pull/${item.id}`,
         prNumber: 1,
-        repoOwner: "acme",
-        repoName: "repo",
+        repo: {
+          provider: "github",
+          host: "github.com",
+          path: "acme/repo",
+        },
       });
     }
     return item.id;

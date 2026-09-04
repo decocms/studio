@@ -1,4 +1,4 @@
-import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -16,7 +16,7 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
-import { resolveGithubAttachment } from "@/lib/github-repo.ts";
+import { repoToolTarget, resolveGithubAttachment } from "@/lib/github-repo.ts";
 import {
   branchUserLabel,
   generateBranchName,
@@ -24,7 +24,11 @@ import {
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { squashMergePullRequest } from "./github-pr-api.ts";
+import {
+  ChangeRequestMergeRefused,
+  mergeRefusalText,
+  squashMergeChangeRequest,
+} from "./github-pr-api.ts";
 import { useReleases } from "./use-releases";
 import { draftsModeEnabled } from "./use-version-gate";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
@@ -154,12 +158,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
       ? attachment.repo
       : null;
 
-  const githubClient = useMCPClient({
-    connectionId: githubRepo?.connectionId ?? "",
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
   const {
     lifecycle: sseLifecycle,
     branch: sseBranchMeta,
@@ -207,7 +205,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -217,7 +215,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const checksQuery = useChecks({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -226,7 +224,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const reviewsQuery = usePrReviews({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -348,14 +346,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const handleSquashMerge = async (pullNumber: number) => {
-    if (!githubRepo?.connectionId || githubActionPending) return;
+    if (!githubRepo || githubActionPending) return;
     setGithubActionPending(true);
     try {
       const coAuthor = coAuthorFromSessionUser(session?.user);
-      await squashMergePullRequest(githubClient, {
-        owner: githubRepo.owner,
-        repo: githubRepo.name,
-        pullNumber,
+      await squashMergeChangeRequest(org.slug, repoToolTarget(githubRepo), {
+        number: pullNumber,
         coAuthor,
       });
       toast.success(
@@ -365,9 +361,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
       await switchToFreshBranch();
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t("thread.headerActions.failedToMergePullRequest"),
+        err instanceof ChangeRequestMergeRefused
+          ? (err.detail ?? mergeRefusalText(err.reason, t))
+          : err instanceof Error
+            ? err.message
+            : t("thread.headerActions.failedToMergePullRequest"),
       );
     } finally {
       setGithubActionPending(false);
@@ -460,7 +458,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           virtualMcpId={virtualMcpId}
           branch={sandboxRouteBranch}
           baseBranch={baseBranch}
-          githubConnectionId={githubRepo.connectionId ?? ""}
+          repoTarget={repoToolTarget(githubRepo)}
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}

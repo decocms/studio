@@ -16,24 +16,22 @@
  * (`resolveCopies`), merging without a merge request (`mergeBranches`), and
  * blob sizes in a tree listing (`listDecofileEntries`).
  *
- * The request plumbing mirrors `gitlab/client.ts` (bearer auth, 15s timeout,
- * 404 → null, every other non-2xx → `GitProviderError` with a rate-limit
- * hint). It is re-stated here rather than imported because that module's
- * `gitlabRequest` is module-private and GET-only; the write side needs POST,
- * PUT and DELETE. Hoisting both into a `gitlab/http.ts` (as `github/http.ts`
- * already does) is the obvious follow-up.
+ * The request plumbing (bearer auth, 15s timeout, 404 → null, every other
+ * non-2xx → `GitProviderError` with a rate-limit hint) is `gitlab/http.ts`,
+ * shared with the provider and change-request clients.
  */
 
-import { apiBaseUrlFor, type RepoRef } from "@decocms/shared/git-providers";
+import type { RepoRef } from "@decocms/shared/git-providers";
 import { retry, RetryError } from "@decocms/shared/std";
 import {
   encodeFilePath,
   encodeProjectPath,
-  gitlabRetryAfterMs,
   GitlabProviderClient,
 } from "../gitlab/client";
+import { gitlabApiBaseUrl, gitlabFailure } from "../gitlab/http";
 import { GitProviderError, type TokenSource } from "../types";
 import {
+  type BranchPage,
   type ChangeRequestInfo,
   type FileChange,
   type FileMode,
@@ -308,50 +306,6 @@ export async function pooledMap<T, R>(
   return out;
 }
 
-/**
- * The human-readable half of a GitLab error body. GitLab is inconsistent:
- * `{"message": "..."}` for most refusals, `{"message": ["..."]}` for merge
- * requests, `{"message": {"base": ["..."]}}` for model validation, and
- * `{"error": "..."}` for OAuth-ish failures. The conflict classifiers match on
- * this text, so flattening every shape is load-bearing, not cosmetic.
- */
-export function gitlabErrorMessage(bodyText: string): string {
-  const flatten = (value: unknown): string[] => {
-    if (typeof value === "string") return value.length > 0 ? [value] : [];
-    if (Array.isArray(value)) return value.flatMap(flatten);
-    if (value !== null && typeof value === "object") {
-      return Object.values(value).flatMap(flatten);
-    }
-    return [];
-  };
-  try {
-    const parsed: unknown = JSON.parse(bodyText);
-    if (parsed !== null && typeof parsed === "object") {
-      const record = parsed as Record<string, unknown>;
-      const parts = [
-        ...flatten(record.message),
-        ...flatten(record.error),
-        ...flatten(record.error_description),
-      ];
-      if (parts.length > 0) return parts.join("; ");
-    }
-  } catch {
-    // Not JSON: an HTML error page or an empty body. Fall through to the text.
-  }
-  return bodyText.slice(0, 300);
-}
-
-async function gitlabFailure(res: Response): Promise<GitProviderError> {
-  const text = await res.text().catch(() => "");
-  const detail = text ? gitlabErrorMessage(text) : res.statusText;
-  return new GitProviderError({
-    provider: "gitlab",
-    status: res.status,
-    message: `GitLab API ${res.status}: ${detail}`,
-    retryAfterMs: res.status === 429 ? gitlabRetryAfterMs(res.headers) : null,
-  });
-}
-
 interface CallInit {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
@@ -368,7 +322,7 @@ export class GitlabContentClient implements RepoContentClient {
 
   constructor(params: { repo: RepoRef; tokenSource: TokenSource }) {
     this.repo = params.repo;
-    this.apiBase = apiBaseUrlFor("gitlab", params.repo.host);
+    this.apiBase = gitlabApiBaseUrl(params.repo.host);
     this.projectBase = `/projects/${encodeProjectPath(params.repo.path)}`;
     this.provider = new GitlabProviderClient({
       host: params.repo.host,
@@ -415,6 +369,49 @@ export class GitlabContentClient implements RepoContentClient {
       });
     }
     return { sha: commit.id, committedAt: commit.committed_date };
+  }
+
+  /**
+   * GitLab filters branch names server-side with `search`, so this is one
+   * request. `x-total` carries the true match count for offset pagination;
+   * when GitLab omits it (a very large project, where it stops counting) the
+   * returned page's length is the honest lower bound.
+   *
+   * `author` is the head commit's author NAME, not an account login — GitLab's
+   * branch listing carries no user object. The neutral field is nullable and
+   * only ever displayed, so a name is the right answer rather than null.
+   */
+  async searchBranches(params: {
+    query: string;
+    limit: number;
+    cursor?: string | null;
+  }): Promise<BranchPage> {
+    // GitLab pages by number, so the opaque cursor IS the next page number.
+    const page = Number(params.cursor) || 1;
+    const res = await this.call(
+      `${this.projectBase}/repository/branches` +
+        `?search=${encodeURIComponent(params.query)}` +
+        `&per_page=${Math.min(params.limit, TREE_PAGE_SIZE)}&page=${page}`,
+    );
+    if (res === null) {
+      return { branches: [], totalCount: 0, nextCursor: null };
+    }
+    const rows = (await res.json()) as Array<{
+      name?: string;
+      commit?: { author_name?: string | null };
+    }>;
+    const branches = rows.flatMap((row) =>
+      typeof row.name === "string"
+        ? [{ name: row.name, author: row.commit?.author_name ?? null }]
+        : [],
+    );
+    const total = Number(res.headers.get("x-total"));
+    const nextPage = res.headers.get("x-next-page");
+    return {
+      branches,
+      totalCount: Number.isFinite(total) ? total : branches.length,
+      nextCursor: nextPage ? nextPage : null,
+    };
   }
 
   getArchive(ref: string): Promise<ReadableStream<Uint8Array> | null> {
