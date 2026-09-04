@@ -370,11 +370,16 @@ describe("MCP OAuth Proxy E2E", () => {
       const res = await app.request(`/oauth-proxy/${connectionId}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client_name: "probe", redirect_uris: [] }),
+        body: JSON.stringify({
+          client_name: "probe",
+          redirect_uris: ["https://studio.example/oauth/callback"],
+        }),
       });
 
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
+        client_name: "probe",
+        redirect_uris: ["https://studio.example/oauth/callback"],
         client_id: "static-client-id",
         client_secret: "static-client-secret",
         client_secret_expires_at: 0,
