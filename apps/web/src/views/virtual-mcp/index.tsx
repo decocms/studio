@@ -1,12 +1,16 @@
 import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import type {
   VirtualMCPEntity,
   VirtualMcpSidebarView,
 } from "@decocms/shared/sdk/types";
 import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
-import { useBaseBranch } from "@/components/thread/github/use-version-gate";
+import { authClient } from "@/lib/auth-client";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -430,12 +434,9 @@ function VirtualMcpDetailViewWithData({
   const [isImproving, setIsImproving] = useState(false);
   const { createNewTask, openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
-  // Enabling Draft & Releases mode lands the thread on production (the base).
+  // Enabling Draft & Releases mode moves the thread onto a fresh editable draft.
   const draftsTaskCtx = useOptionalChatTask();
-  const draftsBaseBranch = useBaseBranch(
-    virtualMcp,
-    draftsTaskCtx?.currentBranch ?? null,
-  );
+  const { data: draftsSession } = authClient.useSession();
 
   const handleImprovePrompt = async () => {
     if (isImproving) return;
@@ -1293,7 +1294,11 @@ function VirtualMcpDetailViewWithData({
                         control={form.control}
                         onCommit={flushAndSave}
                         onEnable={() =>
-                          draftsTaskCtx?.setCurrentTaskBranch(draftsBaseBranch)
+                          draftsTaskCtx?.setCurrentTaskBranch(
+                            generateBranchName(
+                              branchUserLabel(draftsSession?.user),
+                            ),
+                          )
                         }
                       />
                       {/* Blocks-form preference — nothing to tune with the CMS off. */}

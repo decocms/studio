@@ -579,6 +579,13 @@ function AgentInsetProvider() {
    *  per mount; only used by the redirect below. */
   const [generatedThreadId] = useState(() => crypto.randomUUID());
   const { data: session } = authClient.useSession();
+  /** Drafts-mode entry lands a fresh thread on an editable draft, never on
+   *  read-only production. Generated once per mount, like the thread id above. */
+  const [generatedDraftBranch] = useState(() =>
+    generateBranchName(
+      session?.user?.name || session?.user?.email?.split("@")[0],
+    ),
+  );
   const threadManager = useThreadManager();
   const threads = useSyncExternalStore(
     threadManager.threads.subscribe,
@@ -594,8 +601,8 @@ function AgentInsetProvider() {
 
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
   const isDraftsMode = draftsModeEnabled(entity);
-  // Production + named releases: the versions entry can restore to (see findAgentEntryThread).
   const baseBranch = useBaseBranch(entity, null);
+  // Legacy resume set; drafts mode resumes any non-base draft (see findAgentEntryThread).
   const namedVersionBranches = new Set<string>([
     baseBranch,
     ...(entity?.metadata?.releases ?? []).map((r) => r.branch),
@@ -608,8 +615,8 @@ function AgentInsetProvider() {
   const ensureState = useEnsureTask(
     routeThreadId,
     virtualMcpId,
-    // Drafts mode: a freshly minted thread lands on production, never an unnamed draft.
-    isDraftsMode ? baseBranch : undefined,
+    // Drafts mode: a freshly minted thread lands on an editable draft, never production.
+    isDraftsMode ? generatedDraftBranch : undefined,
   );
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
@@ -671,7 +678,11 @@ function AgentInsetProvider() {
       session?.user?.id,
       defaultThreadRuntime(entity.metadata),
       hasActiveGithubRepo,
-      { knownBranches: namedVersionBranches, draftsMode: isDraftsMode },
+      {
+        knownBranches: namedVersionBranches,
+        draftsMode: isDraftsMode,
+        baseBranch,
+      },
     );
     const threadId =
       entry?.id ?? (hasActiveGithubRepo ? generatedThreadId : null);

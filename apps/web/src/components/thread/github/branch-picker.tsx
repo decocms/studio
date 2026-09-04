@@ -70,7 +70,8 @@ interface Props {
   userLabel: string | null | undefined;
   /** The current branch (a release's branch, or the base). */
   value: string | null | undefined;
-  /** The project's production branch — shown as "No ar" (Live). */
+  /** The project's production branch. Not listed (read-only); used only for the
+   *  current-version label and as the fallback when the active draft is deleted. */
   baseBranch?: string | null;
   /** Repo scope for the "Advanced" flow (adopt an existing branch/PR as a draft). */
   orgId: string;
@@ -93,10 +94,12 @@ interface Props {
   placement?: "chat" | "header";
 }
 
-/** Version switcher over {@link useReleases}: a pinned "No ar" (the published
- *  base) plus the curated list of named, color-coded releases, and an inline
- *  "Nova versão" create. It is NOT a branch list — only versions people named
- *  appear here; each is backed by a git branch under the hood. */
+/** Version switcher over {@link useReleases}: the curated list of named,
+ *  color-coded drafts (releases) plus an inline "New draft" create. It is NOT a
+ *  branch list — only versions people named appear here; each is backed by a git
+ *  branch under the hood. Production (the published base) is deliberately absent
+ *  from the list: it is read-only, so the picker only offers editable drafts.
+ *  It still surfaces as the trigger label when you happen to be on production. */
 export function BranchPicker({
   virtualMcpId,
   userLabel,
@@ -222,9 +225,13 @@ export function BranchPicker({
     const r = pendingDelete;
     setPendingDelete(null);
     if (!r) return;
-    // Land on production before the deleted draft vanishes from the list.
-    if (r.branch === value && baseBranch) pick(baseBranch);
-    else setOpen(false);
+    // Deleting the active draft: switch to a sibling draft, else read-only production.
+    if (r.branch === value) {
+      const sibling = releases.find((x) => x.branch !== r.branch);
+      if (sibling) pick(sibling.branch);
+      else if (baseBranch) pick(baseBranch);
+      else setOpen(false);
+    } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
   };
 
@@ -308,17 +315,6 @@ export function BranchPicker({
         ) : (
           <>
             <div className="flex flex-col">
-              <VersionRow
-                dot="bg-success"
-                label={t("thread.branchPicker.live")}
-                branch={baseBranch}
-                selected={isBase}
-                disabled={!baseBranch}
-                onSelect={() => baseBranch && pick(baseBranch)}
-              />
-              {(unlisted || releases.length > 0) && (
-                <div className="my-1 border-t" />
-              )}
               {unlisted &&
                 value &&
                 (editing === value ? (
@@ -369,7 +365,9 @@ export function BranchPicker({
                 ),
               )}
             </div>
-            <div className="my-1 border-t" />
+            {(unlisted || releases.length > 0) && (
+              <div className="my-1 border-t" />
+            )}
             <button
               type="button"
               onClick={() => void create()}
@@ -427,49 +425,6 @@ export function BranchPicker({
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-}
-
-function VersionRow({
-  dot,
-  label,
-  branch,
-  selected = false,
-  disabled = false,
-  onSelect,
-}: {
-  dot: string;
-  label: string;
-  branch?: string | null;
-  selected?: boolean;
-  disabled?: boolean;
-  onSelect: () => void;
-}) {
-  const t = useT();
-  const row = (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={cn(
-        "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors",
-        selected ? "bg-accent" : "hover:bg-accent/60",
-        disabled && "cursor-not-allowed opacity-50",
-      )}
-    >
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
-      <span className="flex-1 truncate">{label}</span>
-    </button>
-  );
-  if (!branch) return row;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{row}</TooltipTrigger>
-      <TooltipContent side="bottom" className="font-mono text-xs">
-        {t("thread.branchPicker.branchTooltip", { branch })}
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
