@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { TreeEntry } from "@/git-providers/content/types";
+import type { TreeEntry } from "@/git-providers";
 import {
   aliasPathsForKey,
   blockEntriesInTree,

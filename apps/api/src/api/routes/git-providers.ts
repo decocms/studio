@@ -26,11 +26,9 @@ import { Hono } from "hono";
 import { ContextFactory } from "@/core/context-factory";
 import type { StudioContext } from "@/core/studio-context";
 import { getPublicUrl } from "@/core/server-constants";
-import { getGithubAppAuth } from "@/git-providers/credentials";
-import {
-  readGithubAppConfig,
-  readGitlabOAuthConfig,
-} from "@/git-providers/env";
+import { getGithubAppAuth } from "@/git-providers/github/app-auth";
+import { readGithubAppConfig } from "@/git-providers/github/env";
+import { readGitlabOAuthConfig } from "@/git-providers/gitlab/env";
 import {
   exchangeGithubCode,
   githubAuthorizeUrl,

@@ -19,7 +19,7 @@ import type { OrgRepoSync } from "@/storage/types";
 import {
   clientForAccount,
   repositoryUsesStudioCredentials,
-} from "@/git-providers/credentials";
+} from "@/git-providers";
 import { repoRefOf } from "@/storage/repositories";
 import { ensureGithubCloneToken } from "@/shared/github-clone-info";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";

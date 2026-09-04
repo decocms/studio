@@ -80,7 +80,7 @@ import {
   cloneInfoForRepository,
   findRepositoryForLegacyBinding,
   repositoryUsesStudioCredentials,
-} from "../../git-providers/credentials";
+} from "@/git-providers";
 import { GitProviderError } from "../../git-providers/types";
 import type { RepositoryRecord } from "../../storage/repositories";
 import {

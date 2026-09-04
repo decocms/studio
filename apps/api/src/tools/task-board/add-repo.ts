@@ -32,7 +32,7 @@ import {
   cloneInfoForRepository,
   findRepositoryForLegacyBinding,
   repositoryUsesStudioCredentials,
-} from "@/git-providers/credentials";
+} from "@/git-providers";
 import {
   listOrgRepoChoices,
   type RepoChoice,

@@ -18,7 +18,7 @@ import {
   mapNotes,
   mapState,
   parseChangesCount,
-} from "./gitlab";
+} from "./change-requests";
 
 describe("mapState", () => {
   it("maps GitLab's four lifecycle values", () => {

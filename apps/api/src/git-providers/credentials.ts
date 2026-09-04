@@ -30,8 +30,7 @@ import {
   repoRefOf,
 } from "@/storage/repositories";
 import type { Database } from "@/storage/types";
-import { readGithubAppConfig } from "./env";
-import { GithubAppAuth } from "./github/app-auth";
+import { getGithubAppAuth } from "./github/app-auth";
 import { GithubProviderClient } from "./github/client";
 import { GitlabProviderClient } from "./gitlab/client";
 import {
@@ -45,17 +44,6 @@ import {
 export interface GitProviderDeps {
   db: Kysely<Database>;
   vault: CredentialVault;
-}
-
-let appAuthSingleton: GithubAppAuth | null | undefined;
-
-/** Process-wide GitHub App signer (its token cache lives inside); null when unconfigured. */
-export function getGithubAppAuth(): GithubAppAuth | null {
-  if (appAuthSingleton === undefined) {
-    const config = readGithubAppConfig();
-    appAuthSingleton = config ? new GithubAppAuth(config) : null;
-  }
-  return appAuthSingleton;
 }
 
 /**
@@ -335,29 +323,6 @@ export async function resolveRepoTarget(
 export interface GitProviderStoragePorts {
   repositories: Pick<RepositoryStorage, "get" | "findByRef">;
   gitProviderAccounts: Pick<GitProviderAccountStorage, "getUnscoped">;
-}
-
-/**
- * The repository row a legacy `metadata.githubRepo` binding refers to, if the
- * org has one — by explicit `repositoryId` when the binding carries it, else by
- * identity (`github.com/owner/name`). Null keeps the caller on the legacy path.
- */
-export async function findRepositoryForLegacyBinding(
-  storage: Pick<GitProviderStoragePorts, "repositories">,
-  organizationId: string,
-  binding: { owner: string; name: string; repositoryId?: string | null },
-): Promise<RepositoryRecord | null> {
-  if (binding.repositoryId) {
-    const byId = await storage.repositories.get(
-      binding.repositoryId,
-      organizationId,
-    );
-    if (byId) return byId;
-  }
-  return storage.repositories.findByRef(organizationId, {
-    host: "github.com",
-    path: `${binding.owner}/${binding.name}`,
-  });
 }
 
 /**

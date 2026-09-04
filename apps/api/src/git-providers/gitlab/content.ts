@@ -27,8 +27,8 @@ import {
   encodeFilePath,
   encodeProjectPath,
   GitlabProviderClient,
-} from "../gitlab/client";
-import { gitlabApiBaseUrl, gitlabFailure } from "../gitlab/http";
+} from "./client";
+import { gitlabApiBaseUrl, gitlabFailure } from "./http";
 import { GitProviderError, type TokenSource } from "../types";
 import {
   type BranchPage,
@@ -38,7 +38,7 @@ import {
   type RepoContentClient,
   RepoWriteConflict,
   type TreeEntry,
-} from "./types";
+} from "../content";
 
 /** Matches `gitlab/client.ts`: one REST call, not a download. */
 const REQUEST_TIMEOUT_MS = 15_000;

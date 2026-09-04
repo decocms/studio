@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { GitProviderError } from "../types";
 import {
   repoErrorStatus,
   repoRateLimitRetryAfterMs,
   RepoWriteConflict,
-} from "./types";
+} from "./content";
+import { GitProviderError } from "./types";
 
 describe("repoErrorStatus", () => {
   it("reads the status off either provider's error", () => {

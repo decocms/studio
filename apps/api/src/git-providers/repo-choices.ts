@@ -9,20 +9,28 @@
  * every GitHub one linked through the new model) invisible to an agent even
  * though Studio could mint for it.
  *
+ * Nothing here names a provider: the legacy half arrives already in `RepoRef`
+ * form from `github/legacy-connection.ts`, which is the only module that knows
+ * a connection can stand for a repository.
+ *
  * The unit every consumer passes around is a `RepoChoice`: an opaque id plus the
  * `owner`/`name`/`webUrl` the later consumers (thread metadata, PR extraction,
  * the git sync) already read.
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import { repositoryUsesStudioCredentials } from "@/git-providers/credentials";
-import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import type { RepositoryRecord } from "@/storage/repositories";
-import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
 import {
   type GitProviderKind,
+  repoIdentityKey,
+  repoWebUrl,
   splitOwnerName,
 } from "@decocms/shared/git-providers";
+import { repositoryUsesStudioCredentials } from "./credentials";
+import {
+  type LegacyRepoChoice,
+  listLegacyRepoChoices,
+} from "./github/legacy-connection";
 
 /**
  * One repository the agent may clone, from either model.
@@ -47,33 +55,6 @@ export interface RepoChoice {
   installationId: number | undefined;
 }
 
-/** The connection shape the legacy selection needs. */
-type RepoConnection = {
-  id: string;
-  status: string;
-  metadata: Record<string, unknown> | null;
-};
-
-/**
- * The org-shared `mcp-github` connections first, everything else after, order
- * otherwise preserved.
- *
- * Importing ONE repo routinely leaves two loadable connections behind — the
- * org-shared one and a per-agent one — and `mergeRepoChoices` keeps whichever it
- * sees first. The per-agent child is disposable (torn down with its agent), so
- * an org-shared sibling is the credential a run should be given; this is what
- * makes that the one that survives the dedup instead of whatever order storage
- * happened to return. Pure, and exported for its test.
- */
-export function orgSharedFirst<T extends RepoConnection>(
-  connections: T[],
-): T[] {
-  return [
-    ...connections.filter(isOrgSharedConnection),
-    ...connections.filter((c) => !isOrgSharedConnection(c)),
-  ];
-}
-
 /**
  * The clonable set an org is offered, from both models.
  *
@@ -85,19 +66,14 @@ export function orgSharedFirst<T extends RepoConnection>(
  */
 export function mergeRepoChoices(
   repositories: RepositoryRecord[],
-  legacy: {
-    connectionId: string;
-    owner: string;
-    repo: string;
-    installationId: number;
-  }[],
+  legacy: LegacyRepoChoice[],
 ): RepoChoice[] {
   const out: RepoChoice[] = [];
   const seen = new Set<string>();
 
   for (const repository of repositories) {
     const { owner, name } = splitOwnerName(repository);
-    seen.add(`${repository.host}/${repository.path}`.toLowerCase());
+    seen.add(repoIdentityKey(repository));
     out.push({
       id: repository.id,
       owner,
@@ -112,16 +88,16 @@ export function mergeRepoChoices(
   }
 
   for (const entry of legacy) {
-    const key = `github.com/${entry.owner}/${entry.repo}`.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(repoIdentityKey(entry.ref))) continue;
+    seen.add(repoIdentityKey(entry.ref));
+    const { owner, name } = splitOwnerName(entry.ref);
     out.push({
       id: entry.connectionId,
-      owner: entry.owner,
-      name: entry.repo,
-      label: `${entry.owner}/${entry.repo} (github.com)`,
-      webUrl: `https://github.com/${entry.owner}/${entry.repo}`,
-      provider: "github",
+      owner,
+      name,
+      label: `${entry.ref.path} (${entry.ref.host})`,
+      webUrl: repoWebUrl(entry.ref),
+      provider: entry.ref.provider,
       repository: null,
       connectionId: entry.connectionId,
       installationId: entry.installationId,
@@ -143,8 +119,5 @@ export async function listOrgRepoChoices(
       servable.push(repository);
     }
   }
-  const { items } = await ctx.storage.connections.list(orgId, {
-    slug: "mcp-github",
-  });
-  return mergeRepoChoices(servable, selectLoadableRepos(orgSharedFirst(items)));
+  return mergeRepoChoices(servable, await listLegacyRepoChoices(ctx, orgId));
 }

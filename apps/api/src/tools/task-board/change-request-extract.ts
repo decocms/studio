@@ -16,7 +16,7 @@ import {
   parseRepoUrl,
   repoRefFromOwnerName,
 } from "@decocms/shared/git-providers";
-import type { ChangeRequestOrigin } from "@/git-providers/change-requests";
+import type { ChangeRequestOrigin } from "@/git-providers";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 
 export type { ChangeRequestRef };

@@ -4,8 +4,8 @@ import {
   mapGithubPull,
   resolveEntriesAtPaths,
   treeWriteEntries,
-} from "./github";
-import type { TreeEntry } from "./types";
+} from "./content";
+import type { TreeEntry } from "../content";
 
 /** An in-memory repo tree, keyed by directory path ("" for root). */
 function fakeOps(dirs: Record<string, TreeEntry[]>) {

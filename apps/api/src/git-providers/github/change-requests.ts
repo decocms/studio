@@ -20,13 +20,13 @@ import {
   type RepoRef,
   splitOwnerName,
 } from "@decocms/shared/git-providers";
-import { githubGraphqlRequest } from "../github/graphql";
+import { githubGraphqlRequest } from "./graphql";
 import {
   githubApiBaseUrl,
   githubFailure,
   githubFetch,
   githubJson,
-} from "../github/http";
+} from "./http";
 import { GitProviderError, type TokenSource } from "../types";
 import {
   type ChangeRequest,
@@ -43,7 +43,7 @@ import {
   type MergeStrategy,
   type OpenChangeRequestParams,
   summarizeChecks,
-} from "./types";
+} from "../change-requests";
 
 /**
  * Merge methods to try in order, stopping at the first that succeeds. `merge`

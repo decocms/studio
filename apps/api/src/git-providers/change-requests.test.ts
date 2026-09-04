@@ -6,8 +6,8 @@
  * GitHub and GitLab.
  */
 import { describe, expect, it } from "bun:test";
-import type { CheckRun } from "./types";
-import { summarizeChecks } from "./types";
+import type { CheckRun } from "./change-requests";
+import { summarizeChecks } from "./change-requests";
 
 const run = (over: Partial<CheckRun> = {}): CheckRun => ({
   id: "1",
