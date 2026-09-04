@@ -40,6 +40,24 @@ const sandboxGoneCode = "sandbox_gone"
 // shorten it.
 var takeoverTimeout = 10 * time.Second
 
+// How long a dispatch for a run that is already live waits for the incumbent
+// connection to close before treating itself as a takeover.
+//
+// The daemon has no attach verb: reconnecting and starting a competing turn are
+// the SAME wire call (`POST /dispatch`), so the only signal separating them is
+// whether the previous connection is still open. That signal describes a
+// socket, not a worker. When KEDA scales in the worker holding a run, DBOS
+// recovers the workflow and re-dispatches within a second or two — routinely
+// faster than the dying pod's TCP close is observed here. The daemon then saw a
+// live client, called it a second writer, SIGKILLed a healthy harness and
+// re-ran the turn.
+//
+// There is no second writer in that case, only a slow-closing one. Waiting
+// briefly costs a re-dispatch nothing (it is about to stream anyway) and turns
+// the common case back into a reattach. A genuine double-dispatch still
+// supersedes — it just does so this much later.
+var supersedeGrace = 5 * time.Second
+
 // How long a run whose client vanished keeps running, waiting to be reattached.
 //
 // A Studio replica is disposable — a rollout, a KEDA scale-in or a node
@@ -321,6 +339,30 @@ func (reg *Registry) claimOrAttach(
 		slog.Info("dispatch reattach", "harness", sandboxHarnessID, "run_id", runId)
 		return prev, false, func() {}
 	}
+	if prev != nil {
+		// Live-looking incumbent: give its connection a moment to finish dying
+		// before concluding this is a competing writer. See `supersedeGrace`.
+		reg.mu.Unlock()
+		if waitForDetach(prev, supersedeGrace) {
+			slog.Info("dispatch reattach after incumbent hung up",
+				"harness", sandboxHarnessID, "run_id", runId)
+			return prev, false, func() {}
+		}
+		slog.Info("dispatch incumbent still attached; taking over",
+			"harness", sandboxHarnessID, "run_id", runId,
+			"waited_s", int(supersedeGrace.Seconds()))
+		reg.mu.Lock()
+		// Re-read: the wait is lock-free, so the map may have moved under it.
+		// A run that ENDED while we waited leaves nothing to displace, and one
+		// that was replaced is no longer ours to cancel.
+		if done, ok := reg.finishedRuns[runId]; ok {
+			reg.mu.Unlock()
+			return done, false, func() {}
+		}
+		if reg.activeRuns[runId] != prev {
+			prev = reg.activeRuns[runId]
+		}
+	}
 	created, cancel := newCancel()
 	created.cancel = cancel
 	reg.activeRuns[runId] = created
@@ -340,6 +382,33 @@ func (reg *Registry) claimOrAttach(
 			// means two harnesses may briefly share the checkout.
 			slog.Error("dispatch takeover timed out; previous run may still be writing",
 				"run_id", runId, "waited_s", int(takeoverTimeout.Seconds()))
+		}
+	}
+}
+
+// waitForDetach blocks until `entry` loses its client or finishes, up to
+// `limit`. Reports whether it can now be reattached to rather than displaced.
+//
+// Polled rather than signalled on purpose: detaching happens under the run's
+// own mutex from two places (a failed frame write, the handler returning), and
+// a condition variable there would put the notify inside the write path of
+// every frame. The wait is seconds long and happens once per re-dispatch.
+func waitForDetach(entry *activeRun, limit time.Duration) bool {
+	deadline := time.Now().Add(limit)
+	for {
+		if entry.isDetached() {
+			return true
+		}
+		select {
+		case <-entry.done:
+			// It finished while we waited. `attach` replays whatever it
+			// buffered and reports that the run is over, which is the correct
+			// outcome for a re-dispatch that arrived just too late.
+			return true
+		case <-time.After(50 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			return false
 		}
 	}
 }
