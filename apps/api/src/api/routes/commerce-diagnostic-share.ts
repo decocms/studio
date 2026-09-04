@@ -1,9 +1,8 @@
 import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  getCommerceDiscoveryAgentId,
+  getCommerceDiscoveryReportOwnerId,
   WellKnownOrgMCPId,
 } from "@decocms/shared/sdk";
-import { agentAppPath } from "@decocms/shared/organization-paths";
+import { projectReportsPath } from "@decocms/shared/organization-paths";
 import { Hono } from "hono";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -30,14 +29,11 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * invitation row directly (no generic email) and hand the caller the accept
  * URL; commerce-discovery sends the preview email with that URL as its CTA.
  *
- * The accept URL's `redirectTo` is the deep link that OPENS the diagnostic app
- * view — the exact shape `commerceReportNavTarget()`
- * (web/hooks/use-commerce-diagnostic.ts) and setup.ts's completion-email link
- * build: `/{slug}/projects/{agent}/apps/{conn}/get_my_diagnostic`, where every
- * identity is a path segment. Mail sent before that grammar carried the same
- * target as `?main=app:{conn}:get_my_diagnostic`; the web app accepts that
- * shape forever (`web/layouts/legacy-main-redirect.tsx`), so delivered links
- * keep working.
+ * The accept URL's `redirectTo` is the canonical Reports destination for the
+ * project persisted on the singleton report connection. Connections created
+ * before project ownership was recorded fall back to the well-known Commerce
+ * Discovery project, so old reports remain reachable without leaking them into
+ * whichever project happens to be open when the invite is accepted.
  *
  * Branching by invitee (requirement: "invite to studio, or if already a user
  * only invite for the org"): an existing user who is already a member of this
@@ -55,16 +51,20 @@ export const shareInviteBodySchema = z.object({
   invitee_email: z.string().trim().email().max(320),
 });
 
-/** Deep link that opens the org's commerce-diagnostic app view.
- *  Mirrors commerceReportNavTarget() and setup.ts's completion-email link.
- *  Relative (path + query) so it is a safe `redirectTo` (login.tsx rejects
- *  absolute/protocol-relative targets). Exported for unit tests. */
-export function diagnosticDeepLinkPath(orgSlug: string, orgId: string): string {
-  return agentAppPath(orgSlug, {
-    agentId: getCommerceDiscoveryAgentId(orgId),
-    connectionId: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
-    toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  });
+/**
+ * Deep link to the report connection's owning project. Relative so it is a safe
+ * `redirectTo` (login.tsx rejects absolute/protocol-relative targets).
+ * Exported for ownership/fallback unit tests.
+ */
+export function diagnosticDeepLinkPath(
+  orgSlug: string,
+  orgId: string,
+  persistedOwnerProjectId: unknown,
+): string {
+  return projectReportsPath(
+    orgSlug,
+    getCommerceDiscoveryReportOwnerId(orgId, persistedOwnerProjectId),
+  );
 }
 
 export const createCommerceDiagnosticShareRoutes = () => {
@@ -104,8 +104,15 @@ export const createCommerceDiagnosticShareRoutes = () => {
       return c.json({ error: "organization has no slug" }, 409);
     }
 
-    // Names no thread, like commerceReportNavTarget: the chat opens an empty composer.
-    const redirectPath = diagnosticDeepLinkPath(orgSlug, org.id);
+    const reportConnection = await ctx.storage.connections.findById(
+      WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
+      org.id,
+    );
+    const redirectPath = diagnosticDeepLinkPath(
+      orgSlug,
+      org.id,
+      reportConnection?.metadata?.projectId,
+    );
     const baseUrl = getBaseUrl();
     const absoluteRedirect = `${baseUrl}${redirectPath}`;
 

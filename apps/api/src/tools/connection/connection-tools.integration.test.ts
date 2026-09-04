@@ -89,6 +89,7 @@ describe("Connection Tools", () => {
       },
       storage: {
         connections: new ConnectionStorage(database.db, vault),
+        commerceDiscoveryReports: null as never,
         connectionCredentialVault: new ConnectionCredentialVaultStorage(
           database.db,
         ),

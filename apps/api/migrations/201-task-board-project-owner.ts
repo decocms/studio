@@ -7,7 +7,7 @@ import type { Kysely } from "kysely";
  * in the web client. New project-route cards carry the exact virtual MCP id,
  * so two projects that pin the same repository no longer share unrun tasks.
  *
- * There is deliberately no foreign key to `connections`: hidden development
+ * There is deliberately no foreign key to `virtual_mcps`: hidden development
  * projects can be replaced or deleted independently. Turning an owned row
  * into NULL via `ON DELETE SET NULL` would make it eligible for legacy
  * repository inference and leak it into a sibling project's board.

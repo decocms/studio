@@ -656,7 +656,8 @@ export class TaskBoardStorage {
 
   /**
    * Link an agent thread to a task (many-to-many). Idempotent — re-linking the
-   * same pair is a no-op, so a run replay can't duplicate the row.
+   * same pair is a no-op, so a run replay can't duplicate the row. Also a
+   * no-op unless both records belong to `organizationId`.
    */
   async linkThread(
     taskBoardItemId: string,
@@ -665,11 +666,24 @@ export class TaskBoardStorage {
   ): Promise<void> {
     await this.db
       .insertInto("task_board_item_threads")
-      .values({
-        task_board_item_id: taskBoardItemId,
-        thread_id: threadId,
-        organization_id: organizationId,
-      })
+      .columns(["task_board_item_id", "thread_id", "organization_id"])
+      .expression((eb) =>
+        eb
+          .selectFrom("task_board_items as item")
+          .innerJoin(
+            "threads as thread",
+            "thread.organization_id",
+            "item.organization_id",
+          )
+          .select([
+            "item.id as task_board_item_id",
+            "thread.id as thread_id",
+            "item.organization_id as organization_id",
+          ])
+          .where("item.id", "=", taskBoardItemId)
+          .where("item.organization_id", "=", organizationId)
+          .where("thread.id", "=", threadId),
+      )
       .onConflict((oc) =>
         oc.columns(["task_board_item_id", "thread_id"]).doNothing(),
       )
@@ -1905,6 +1919,7 @@ export class TaskBoardStorage {
           .as("hasMessages"),
       ])
       .where("link.organization_id", "=", organizationId)
+      .where("t.organization_id", "=", organizationId)
       .where("link.task_board_item_id", "in", ids)
       .orderBy("link.created_at", "desc")
       .execute();

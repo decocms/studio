@@ -152,6 +152,7 @@ import {
   TaskFiltersBar,
   TaskFiltersDrawer,
   resolveTaskBoardProjectScope,
+  resolveTaskBoardProjectAssignment,
   taskMatchesFilters,
   taskMatchesProjectScope,
   type TaskBoardProjectScope,
@@ -1500,8 +1501,15 @@ export function TaskBoardPage({
             const contentFields = isReportsTask(openItem)
               ? {}
               : { title, description, priority };
+            // A project route owns this dimension. Besides preventing a stale
+            // dialog value from moving a card elsewhere, this upgrades legacy
+            // owner-null cards as soon as they are edited in their project.
+            const scopedBoardFields = {
+              ...boardFields,
+              ...resolveTaskBoardProjectAssignment(boardFields, projectScope),
+            };
             actions.update.mutate(
-              { id: openItem.id, ...boardFields, ...contentFields },
+              { id: openItem.id, ...scopedBoardFields, ...contentFields },
               { onError: onDelegateError },
             );
           }}
@@ -1578,13 +1586,10 @@ export function TaskBoardPage({
             closeCreate();
             return;
           }
-          const scopedInput = projectScope
-            ? {
-                ...input,
-                virtualMcpId: projectScope.projectId,
-                repo: projectScope.repo,
-              }
-            : input;
+          const scopedInput = {
+            ...input,
+            ...resolveTaskBoardProjectAssignment(input, projectScope),
+          };
           actions.create.mutate(scopedInput);
           widenProjectFilterFor(scopedInput.repo ?? null);
           closeCreate();

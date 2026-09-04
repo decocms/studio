@@ -7,6 +7,7 @@ import {
   filterAfterCreate,
   NO_PROJECT_FILTER,
   normalizeRepo,
+  projectAssignmentOptions,
   projectFilterNarrows,
   projectForTask,
   projectsForTask,
@@ -598,8 +599,7 @@ describe("filterAfterCreate", () => {
 });
 
 describe("stampableEntries", () => {
-  /** `task_board_items.repo` is the only per-card link, so a project pinning
-   *  no repository has nothing a card can point at. */
+  /** A project pinning no repository has no execution source a card can carry. */
   test("offers only buckets a card can be stamped with", () => {
     const index = buildProjectIndex([ALPHA, BARE], ["acme/orphan"]);
     expect(stampableEntries(index).map((e) => e.id)).toEqual([
@@ -649,5 +649,86 @@ describe("stampableEntries", () => {
   test("offers a repository no project claims", () => {
     const index = buildProjectIndex([], ["acme/orphan"]);
     expect(stampableEntries(index).map((e) => e.id)).toEqual(["acme/orphan"]);
+  });
+});
+
+describe("projectAssignmentOptions", () => {
+  test("expands shared repositories into exact project assignments", () => {
+    const options = projectAssignmentOptions(
+      buildProjectIndex([MONO_1, MONO_2]),
+    );
+
+    expect(
+      options.map((option) => ({
+        key: option.key,
+        virtualMcpId: option.virtualMcpId,
+        repo: option.repo,
+        entryId: option.entry.id,
+        title: option.entry.title,
+        projectIds: option.entry.projects.map((project) => project.id),
+      })),
+    ).toEqual([
+      {
+        key: "project:vir_m1",
+        virtualMcpId: "vir_m1",
+        repo: "acme/mono",
+        entryId: "acme/mono",
+        title: "Storefront",
+        projectIds: ["vir_m1"],
+      },
+      {
+        key: "project:vir_m2",
+        virtualMcpId: "vir_m2",
+        repo: "acme/mono",
+        entryId: "acme/mono",
+        title: "Checkout",
+        projectIds: ["vir_m2"],
+      },
+    ]);
+  });
+
+  test("keeps a bare repository explicitly ownerless", () => {
+    const options = projectAssignmentOptions(
+      buildProjectIndex([ALPHA, BARE], ["acme/orphan"]),
+    );
+
+    expect(
+      options.map(({ key, virtualMcpId, repo }) => ({
+        key,
+        virtualMcpId,
+        repo,
+      })),
+    ).toEqual([
+      {
+        key: "project:vir_a",
+        virtualMcpId: "vir_a",
+        repo: "acme/alpha",
+      },
+      {
+        key: "repo:acme/orphan",
+        virtualMcpId: null,
+        repo: "acme/orphan",
+      },
+    ]);
+  });
+
+  test("does not offer a detached sibling through an active shared bucket", () => {
+    const detached = {
+      ...MONO_2,
+      metadata: {
+        githubRepo: {
+          url: "https://github.com/acme/mono",
+          owner: "acme",
+          name: "mono",
+          connectionId: "c_detached",
+        },
+      },
+      connections: [],
+    } as unknown as VirtualMCPEntity;
+    const options = projectAssignmentOptions(
+      buildProjectIndex([MONO_1, detached]),
+    );
+
+    expect(options.map((option) => option.virtualMcpId)).toEqual(["vir_m1"]);
   });
 });

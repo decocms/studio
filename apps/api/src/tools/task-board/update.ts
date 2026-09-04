@@ -269,12 +269,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
     }
 
-    // Link an existing chat thread to this task (the "New Chat" flow). Verify
-    // the task AND the thread both belong to this org before inserting the
-    // (idempotent) join row — attachThreads() joins task_board_item_threads
-    // to threads without an org filter, so an unchecked thread id would let
-    // a caller pull another org's thread (title, status, message content)
-    // into their own task board.
+    // Link an existing chat thread to this task (the "New Chat" flow). Both
+    // sides must belong to the active organization before storage sees them.
     if (input.linkThreadId) {
       const target = await ctx.storage.taskBoard.getById(
         input.id,
@@ -282,7 +278,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
       if (!target) throw new Error(`Task board item not found: ${input.id}`);
       const thread = await ctx.storage.threads.get(input.linkThreadId);
-      if (!thread) {
+      if (!thread || thread.organization_id !== organizationId) {
         throw new Error(`Thread not found: ${input.linkThreadId}`);
       }
       await ctx.storage.taskBoard.linkThread(

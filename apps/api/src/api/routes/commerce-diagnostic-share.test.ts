@@ -5,16 +5,23 @@ import {
 } from "./commerce-diagnostic-share";
 
 describe("diagnosticDeepLinkPath", () => {
-  it("builds the deep link that opens the diagnostic app view", () => {
-    const path = diagnosticDeepLinkPath("acme", "org_123");
-    expect(path).toBe(
-      "/acme/projects/commerce-discovery_org_123/apps/org_123_commerce-discovery/get_my_diagnostic",
+  it("builds the owning project's canonical Reports path", () => {
+    expect(diagnosticDeepLinkPath("acme", "org_123", " vir_owner ")).toBe(
+      "/acme/projects/vir_owner/reports",
     );
-    expect(path).not.toContain("?");
+  });
+
+  it("falls back to the well-known report project for legacy connections", () => {
+    expect(diagnosticDeepLinkPath("acme", "org_123", undefined)).toBe(
+      "/acme/projects/commerce-discovery_org_123/reports",
+    );
+    expect(diagnosticDeepLinkPath("acme", "org_123", "   ")).toBe(
+      "/acme/projects/commerce-discovery_org_123/reports",
+    );
   });
 
   it("is a relative path (never absolute/protocol-relative)", () => {
-    const path = diagnosticDeepLinkPath("acme", "org_123");
+    const path = diagnosticDeepLinkPath("acme", "org_123", "vir_owner");
     expect(path.startsWith("/")).toBe(true);
     expect(path.startsWith("//")).toBe(false);
   });

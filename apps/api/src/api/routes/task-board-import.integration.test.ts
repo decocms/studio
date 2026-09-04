@@ -73,6 +73,24 @@ async function insertReportConnection(
     .execute();
 }
 
+async function insertReportRun(
+  database: StudioDatabase,
+  organizationId: string,
+  runId: string,
+  projectId: string,
+  siteUrl = "https://shop.com",
+) {
+  await database.db
+    .insertInto("commerce_discovery_report_runs")
+    .values({
+      organization_id: organizationId,
+      run_id: runId,
+      site_url: siteUrl,
+      virtual_mcp_id: projectId,
+    })
+    .execute();
+}
+
 describe("Task Board Import Route", () => {
   let database: StudioDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
@@ -190,11 +208,23 @@ describe("Task Board Import Route", () => {
     );
   });
 
-  it("uses the report connection's project owner instead of the legacy fallback", async () => {
-    const projectId = "vir_report_owner";
-    await insertReportConnection(database, "org_board", projectId);
+  it("uses the originating run snapshot instead of mutable connection metadata", async () => {
+    const projectId = "vir_originating_report_owner";
+    const newerProjectId = "vir_newer_connection_owner";
+    await insertReportConnection(database, "org_board", newerProjectId);
+    await insertReportRun(
+      database,
+      "org_board",
+      "run_owned_snapshot",
+      projectId,
+    );
 
-    const res = await app.fetch(post("org_board", "svc-secret", BODY));
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        ...BODY,
+        source: { url: "shop.com", run_id: "run_owned_snapshot" },
+      }),
+    );
     expect(res.status).toBe(200);
 
     const owners = await database.db
@@ -204,6 +234,31 @@ describe("Task Board Import Route", () => {
       .execute();
     expect(owners).toHaveLength(BODY.items.length);
     expect(owners.every((row) => row.virtual_mcp_id === projectId)).toBe(true);
+  });
+
+  it("rejects a run snapshot used with another site before writing tasks", async () => {
+    await insertReportRun(
+      database,
+      "org_board",
+      "run_wrong_site",
+      "vir_report_owner",
+      "https://first.example",
+    );
+
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Must not land" }],
+        source: { url: "second.example", run_id: "run_wrong_site" },
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(
+      await database.db
+        .selectFrom("task_board_items")
+        .select("id")
+        .where("organization_id", "=", "org_board")
+        .execute(),
+    ).toEqual([]);
   });
 
   it("delegates a super-agent item: To Do, owner as the run principal", async () => {
@@ -295,6 +350,74 @@ describe("Task Board Import Route", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("serializes different runs creating the same finding for one project", async () => {
+    const projectId = "vir_concurrent_report_owner";
+    const key = "diag:shop.com:concurrent-finding";
+    await insertReportRun(database, "org_board", "run_concurrent_a", projectId);
+    await insertReportRun(database, "org_board", "run_concurrent_b", projectId);
+
+    // Hold each candidate insert long enough for a competing request to reach
+    // its dedup read. Without the owner-scoped transaction lock both reads see
+    // an empty set and both inserts commit.
+    await sql`drop trigger if exists task_board_import_test_pause on task_board_items`.execute(
+      database.db,
+    );
+    await sql`
+      create or replace function task_board_import_test_pause()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        perform pg_sleep(0.25);
+        return new;
+      end
+      $$
+    `.execute(database.db);
+    await sql`
+      create trigger task_board_import_test_pause
+      before insert on task_board_items
+      for each row execute function task_board_import_test_pause()
+    `.execute(database.db);
+
+    try {
+      const responseBodies = await Promise.all(
+        ["run_concurrent_a", "run_concurrent_b"].map(async (runId) => {
+          const response = await app.fetch(
+            post("org_board", "svc-secret", {
+              items: [{ title: "Concurrent finding", externalKey: key }],
+              source: { url: "shop.com", run_id: runId },
+            }),
+          );
+          expect(response.status).toBe(200);
+          return response.json();
+        }),
+      );
+
+      expect(responseBodies).toEqual(
+        expect.arrayContaining([
+          { created: 1, updated: 0, delegated: 0 },
+          { created: 0, updated: 1, delegated: 0 },
+        ]),
+      );
+      const rows = await database.db
+        .selectFrom("task_board_items")
+        .select(["id", "virtual_mcp_id"])
+        .where("organization_id", "=", "org_board")
+        .where("external_key", "=", key)
+        .execute();
+      expect(rows).toEqual([
+        { id: expect.any(String), virtual_mcp_id: projectId },
+      ]);
+    } finally {
+      await sql`drop trigger if exists task_board_import_test_pause on task_board_items`.execute(
+        database.db,
+      );
+      await sql`drop function if exists task_board_import_test_pause()`.execute(
+        database.db,
+      );
+    }
+  });
+
   it("an externalKey matching an open item refreshes it instead of duplicating", async () => {
     const key = "diag:shop.com:GEO-001";
     const projectId = "vir_backfilled_report_owner";
@@ -326,9 +449,8 @@ describe("Task Board Import Route", () => {
       .where("organization_id", "=", "org_board")
       .where("external_key", "=", key)
       .execute();
-    // The org later attaches its singleton report to a real project. The next
-    // refresh transfers the matching report finding to that configured owner.
-    await insertReportConnection(database, "org_board", projectId);
+    // A snapshotted run may claim an owner-null pre-migration row once.
+    await insertReportRun(database, "org_board", "run_2", projectId);
 
     // A month later the diagnostic re-runs, finds the same issue with fresh
     // evidence and a worse severity — the card is refreshed, not duplicated,
@@ -377,7 +499,12 @@ describe("Task Board Import Route", () => {
       virtualMcpId: siblingProjectId,
       by: "user_1",
     });
-    await insertReportConnection(database, "org_board", reportProjectId);
+    await insertReportRun(
+      database,
+      "org_board",
+      "run_title_collision",
+      reportProjectId,
+    );
 
     const res = await app.fetch(
       post("org_board", "svc-secret", {
@@ -408,6 +535,113 @@ describe("Task Board Import Route", () => {
       description: "Report evidence",
       created_by: "system",
       virtual_mcp_id: reportProjectId,
+    });
+  });
+
+  it("does not transfer an explicitly owned report finding to a sibling project", async () => {
+    const key = "diag:shop.com:shared-key";
+    const projectA = "vir_report_a";
+    const projectB = "vir_report_b";
+    const storage = new TaskBoardStorage(database.db);
+    const existing = await storage.create({
+      organizationId: "org_board",
+      title: "Project A finding",
+      description: "A evidence",
+      externalKey: key,
+      virtualMcpId: projectA,
+      by: "system",
+    });
+    await insertReportRun(database, "org_board", "run_project_b", projectB);
+
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Project B finding",
+            description: "B evidence",
+            externalKey: key,
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_project_b" },
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id", "description", "virtual_mcp_id"])
+      .where("organization_id", "=", "org_board")
+      .where("external_key", "=", key)
+      .execute();
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.id === existing.id)).toMatchObject({
+      description: "A evidence",
+      virtual_mcp_id: projectA,
+    });
+    expect(rows.find((row) => row.id !== existing.id)).toMatchObject({
+      description: "B evidence",
+      virtual_mcp_id: projectB,
+    });
+  });
+
+  it("refreshes a development-owned finding into its canonical live owner", async () => {
+    const key = "diag:shop.com:dev-live";
+    const developmentProject = "vir_report_dev";
+    const liveProject = "vir_report_live";
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: developmentProject,
+        organization_id: "org_board",
+        created_by: "user_1",
+        title: "Development report project",
+        connection_type: "VIRTUAL",
+        connection_url: `virtual://${developmentProject}`,
+        metadata: JSON.stringify({ liveAgentId: liveProject }),
+        status: "active",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+    const storage = new TaskBoardStorage(database.db);
+    const existing = await storage.create({
+      organizationId: "org_board",
+      title: "Development finding",
+      description: "Old evidence",
+      externalKey: key,
+      virtualMcpId: developmentProject,
+      by: "system",
+    });
+    await insertReportRun(database, "org_board", "run_live_owner", liveProject);
+
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Live finding",
+            description: "Fresh evidence",
+            externalKey: key,
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_live_owner" },
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      created: 0,
+      updated: 1,
+      delegated: 0,
+    });
+
+    const refreshed = await storage.getById(existing.id, "org_board");
+    expect(refreshed).toMatchObject({
+      description: "Fresh evidence",
+      virtualMcpId: liveProject,
     });
   });
 

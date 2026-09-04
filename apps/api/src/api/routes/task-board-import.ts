@@ -1,15 +1,14 @@
 import { TaskQuotaError } from "@/billing/task-quota";
 import { Hono } from "hono";
+import { sql } from "kysely";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import {
   nextTagColor,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
-import {
-  getCommerceDiscoveryReportOwnerId,
-  WellKnownOrgMCPId,
-} from "@decocms/shared/sdk";
+import { getCommerceDiscoveryReportOwnerId } from "@decocms/shared/sdk";
+import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
 import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
@@ -57,10 +56,9 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   deliberately not fuzzy, because two findings that differ by a few words are
  *   usually two findings, and wrongly merging them loses one silently.
  *   Both matches are restricted to report-generated rows (`created_by = system`,
- *   no Jira `source`). The report connection is singleton per org, so changing
- *   its configured project intentionally transfers matching open findings on
- *   the next import; an ordinary same-title task in a sibling project is never
- *   converted or moved.
+ *   no Jira `source`) owned by this originating report run. A NULL legacy owner
+ *   may be claimed once; a finding explicitly owned by a sibling project is
+ *   never transferred.
  *
  * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
  *
@@ -143,18 +141,42 @@ export const createTaskBoardImportRoutes = () => {
         400,
       );
     }
-    /** This endpoint is the Commerce Discovery diagnostic receiver. Setup
-     * persists the project selected for the singleton report connection;
-     * older connections have no owner metadata and intentionally fall back
-     * to the deterministic Commerce project. */
-    const reportConnection = await ctx.storage.connections.findById(
-      WellKnownOrgMCPId.COMMERCE_DISCOVERY(organizationId),
+    const runId = parsed.data.source?.run_id;
+    const runOwnership = runId
+      ? await ctx.storage.commerceDiscoveryReports.findRun(
+          organizationId,
+          runId,
+        )
+      : null;
+    if (runOwnership) {
+      const sourceSite = normalizeReportsSiteUrl(parsed.data.source!.url);
+      if (!sourceSite.ok || sourceSite.value !== runOwnership.siteUrl) {
+        return c.json({ error: "Report run does not match source site" }, 409);
+      }
+    }
+    // Pre-snapshot producers remain supported, but only through the
+    // deterministic well-known project. Never consult the mutable singleton
+    // connection here: it may already describe a newer report run.
+    const fallbackProjectId = getCommerceDiscoveryReportOwnerId(
       organizationId,
+      undefined,
     );
-    const virtualMcpId = getCommerceDiscoveryReportOwnerId(
-      organizationId,
-      reportConnection?.metadata?.projectId,
-    );
+    const virtualMcpId = runOwnership?.virtualMcpId ?? fallbackProjectId;
+    const equivalentOwnerIds = [virtualMcpId];
+    if (virtualMcpId !== fallbackProjectId) {
+      const developmentAliases = await ctx.db
+        .selectFrom("connections")
+        .select("id")
+        .where("organization_id", "=", organizationId)
+        .where("connection_type", "=", "VIRTUAL")
+        .where(
+          sql<string | null>`metadata::jsonb ->> 'liveAgentId'`,
+          "=",
+          virtualMcpId,
+        )
+        .execute();
+      equivalentOwnerIds.push(...developmentAliases.map((row) => row.id));
+    }
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     const autoAssignToSuperAgent =
       settings?.flags?.auto_assign_report_tasks_to_super_agent ?? false;
@@ -201,13 +223,24 @@ export const createTaskBoardImportRoutes = () => {
       ownerId = owner?.userId ?? null;
     }
 
-    const runId = parsed.data.source?.run_id;
-
     // One transaction: claim the run_id, then reconcile the batch. Losing the
     // claim means this exact import already ran (double-fire) — no-op. An
     // abort rolls the claim back with the items, so a failed import can be
     // retried under the same run_id.
     const outcome = await ctx.db.transaction().execute(async (trx) => {
+      // Row locks cannot protect an empty result set. Serialize finding
+      // reconciliation per canonical project owner so two different report
+      // runs cannot both observe a missing key/title and create duplicates.
+      // Imports for sibling projects use different keys and remain concurrent.
+      const findingLockKey = JSON.stringify([
+        "commerce-discovery-import",
+        organizationId,
+        virtualMcpId,
+      ]);
+      await sql`select pg_advisory_xact_lock(hashtextextended(${findingLockKey}, 0))`.execute(
+        trx,
+      );
+
       if (runId) {
         const claim = await trx
           .insertInto("task_board_import_runs")
@@ -238,10 +271,17 @@ export const createTaskBoardImportRoutes = () => {
           .where("source", "is", null)
           .where((eb) =>
             eb.or([
+              eb("virtual_mcp_id", "in", equivalentOwnerIds),
+              eb("virtual_mcp_id", "is", null),
+            ]),
+          )
+          .where((eb) =>
+            eb.or([
               eb("dismissed_at", "is not", null),
               eb("status", "!=", "done"),
             ]),
           )
+          .forUpdate()
           .execute();
         for (const row of rows) {
           const key = normalizeTitleKey(row.title);
@@ -259,6 +299,12 @@ export const createTaskBoardImportRoutes = () => {
           .where("organization_id", "=", organizationId)
           .where("created_by", "=", "system")
           .where("source", "is", null)
+          .where((eb) =>
+            eb.or([
+              eb("virtual_mcp_id", "in", equivalentOwnerIds),
+              eb("virtual_mcp_id", "is", null),
+            ]),
+          )
           .where("external_key", "in", keys)
           .where((eb) =>
             eb.or([
@@ -266,6 +312,7 @@ export const createTaskBoardImportRoutes = () => {
               eb("status", "!=", "done"),
             ]),
           )
+          .forUpdate()
           .execute();
         for (const row of rows) {
           if (!row.external_key) continue;

@@ -188,6 +188,94 @@ test.describe("task board project filter", () => {
     await expect(card(page, `${title} (copy)`)).toBeHidden();
   });
 
+  test("task editor persists the exact project inside a shared repository", async ({
+    authedPage,
+  }) => {
+    test.setTimeout(60_000);
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const { mono } = repoNames(orgSlug);
+    const projectA = (await seedProject(request, orgSlug, "Storefront", mono))
+      .item;
+    const projectB = (await seedProject(request, orgSlug, "Checkout", mono))
+      .item;
+    const title = `Exact owner ${orgSlug}`;
+
+    await openBoard(page, orgSlug);
+    const main = page.getByTestId("main-panel");
+    await main.getByRole("button", { name: "New task", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("Task title...").fill(title);
+    await dialog
+      .getByRole("button", { name: "Select project", exact: true })
+      .click();
+
+    const storefrontOption = page
+      .getByRole("menuitem")
+      .filter({ hasText: "Storefront" });
+    const checkoutOption = page
+      .getByRole("menuitem")
+      .filter({ hasText: "Checkout" });
+    await expect(storefrontOption).toHaveCount(1);
+    await expect(checkoutOption).toHaveCount(1);
+    await storefrontOption.click();
+    await dialog.getByRole("button", { name: "Create task" }).click();
+
+    await expect
+      .poll(async () => {
+        const item = (await listCards(request, orgSlug)).find(
+          (candidate) => candidate.title === title,
+        );
+        return item
+          ? { virtualMcpId: item.virtualMcpId, repo: item.repo }
+          : null;
+      })
+      .toEqual({ virtualMcpId: projectA.id, repo: mono });
+
+    await card(page, title).click();
+    const detail = page.getByTestId("task-detail");
+    await detail.getByRole("button", { name: /Storefront/ }).click();
+    await page.getByRole("menuitem").filter({ hasText: "Checkout" }).click();
+
+    await expect
+      .poll(async () => {
+        const item = (await listCards(request, orgSlug)).find(
+          (candidate) => candidate.title === title,
+        );
+        return item
+          ? { virtualMcpId: item.virtualMcpId, repo: item.repo }
+          : null;
+      })
+      .toEqual({ virtualMcpId: projectB.id, repo: mono });
+
+    await page.goto(`/${orgSlug}/projects/${projectB.id}/tasks`);
+    await expect(card(page, title)).toBeVisible();
+    await page.goto(`/${orgSlug}/projects/${projectA.id}/tasks`);
+    await expect(
+      page
+        .getByTestId("main-panel")
+        .getByRole("button", { name: "New task", exact: true }),
+    ).toBeVisible();
+    await expect(card(page, title)).toBeHidden();
+
+    await openBoard(page, orgSlug);
+    await expect(card(page, title)).toBeVisible();
+    await card(page, title).click();
+    const reopenedDetail = page.getByTestId("task-detail");
+    await reopenedDetail.getByRole("button", { name: /Checkout/ }).click();
+    await page.getByRole("menuitem", { name: "No project" }).click();
+    await expect
+      .poll(async () => {
+        const item = (await listCards(request, orgSlug)).find(
+          (candidate) => candidate.title === title,
+        );
+        return item
+          ? { virtualMcpId: item.virtualMcpId, repo: item.repo }
+          : null;
+      })
+      .toEqual({ virtualMcpId: null, repo: null });
+  });
+
   test("offers projects by name, merges a shared repository, and narrows the board", async ({
     authedPage,
   }) => {

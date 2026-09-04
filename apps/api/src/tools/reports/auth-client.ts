@@ -14,9 +14,16 @@ const DEFAULT_INTERNAL_API_URL = new URL(COMMERCE_DISCOVERY_MCP_URL).origin;
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
+const ExternalRunSchema = z.object({
+  id: z.union([z.string().min(1), z.number().finite()]),
+});
+
 const UpgradeResponseSchema = z.object({
   token: z.string().min(1),
+  run: ExternalRunSchema,
 });
+
+const RunResponseSchema = z.object({ run: ExternalRunSchema });
 
 const BindResponseSchema = z.object({
   binding: z
@@ -264,16 +271,24 @@ export async function fetchCommerceDiscoveryAuth(
     });
   }
 
-  const parsed = UpgradeResponseSchema.safeParse(
-    await parseJsonResponse(response),
-  );
+  const body = await parseJsonResponse(response);
+  const parsed = UpgradeResponseSchema.safeParse(body);
   if (!parsed.success) {
+    const tokenOnly = z.object({ token: z.string().min(1) }).safeParse(body);
+    if (tokenOnly.success) {
+      throw new Error(
+        "Commerce Discovery auth response did not include a run id.",
+      );
+    }
     throw new Error(
       "Commerce Discovery auth response did not include a token.",
     );
   }
 
-  return { authorizationToken: parsed.data.token };
+  return {
+    authorizationToken: parsed.data.token,
+    runId: String(parsed.data.run.id),
+  };
 }
 
 /**
@@ -365,7 +380,10 @@ export async function bindCommerceDiscoveryResource(
 export async function triggerCommerceDiscoveryRun(
   input: { siteUrl: string; orgId: string; githubRepo?: string },
   options: CommerceDiscoveryAuthOptions = {},
-): Promise<{ triggered: boolean; reason?: string }> {
+): Promise<
+  | { triggered: false; reason: "not_upgraded" }
+  | { triggered: true; runId: string }
+> {
   const baseUrl = resolveBaseUrl(options);
   const apiKey = resolveApiKey(options);
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -396,7 +414,13 @@ export async function triggerCommerceDiscoveryRun(
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response));
   }
-  return { triggered: true };
+  const parsed = RunResponseSchema.safeParse(await parseJsonResponse(response));
+  if (!parsed.success) {
+    throw new Error(
+      "Commerce Discovery run response did not include a run id.",
+    );
+  }
+  return { triggered: true, runId: String(parsed.data.run.id) };
 }
 
 /** A transient (5xx / 429) status from a status-check GET, carrying the

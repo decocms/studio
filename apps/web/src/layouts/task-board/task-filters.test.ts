@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   matchesTaskKey,
+  resolveTaskBoardProjectAssignment,
   resolveTaskBoardProjectScope,
   taskMatchesFilters,
   taskMatchesProjectScope,
@@ -36,6 +37,42 @@ const SIBLING = {
 } as unknown as VirtualMCPEntity;
 
 const SHARED_REPO_INDEX = buildProjectIndex([SITE, SIBLING]);
+
+describe("resolveTaskBoardProjectAssignment", () => {
+  const selected = {
+    title: "Task",
+    virtualMcpId: SIBLING.id,
+    repo: "acme/site",
+  };
+
+  test("keeps an org-level editor's exact project assignment", () => {
+    expect(resolveTaskBoardProjectAssignment(selected)).toBe(selected);
+  });
+
+  test("makes route ownership authoritative over stale editor values", () => {
+    expect(
+      resolveTaskBoardProjectAssignment(selected, {
+        projectId: SITE.id,
+        repo: "acme/canonical",
+      }),
+    ).toEqual({
+      virtualMcpId: SITE.id,
+      repo: "acme/canonical",
+    });
+  });
+
+  test("clears a stale execution repo for a repository-less route project", () => {
+    expect(
+      resolveTaskBoardProjectAssignment(selected, {
+        projectId: "vir_no_repo",
+        repo: null,
+      }),
+    ).toEqual({
+      virtualMcpId: "vir_no_repo",
+      repo: null,
+    });
+  });
+});
 
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {

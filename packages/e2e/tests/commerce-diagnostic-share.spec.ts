@@ -14,10 +14,11 @@
  * Kept in sync by hand with playwright.config.ts's `vaultServiceToken`.
  */
 
-import type { PlaywrightWorkerArgs } from "@playwright/test";
+import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
 import { type Client } from "pg";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { connectDevDb } from "../fixtures/db";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, getE2EAppOrigin, test } from "../fixtures/test";
 
 type Playwright = PlaywrightWorkerArgs["playwright"];
@@ -29,6 +30,29 @@ const ROUTE = (org: string) =>
 // Unique email domain per run keeps invitee addresses from colliding across
 // parallel workers (the one global namespace, per TESTING.md).
 const EMAIL_DOMAIN = `share-e2e-${Date.now()}.test`;
+
+async function createOwnedReportConnection(
+  request: APIRequestContext,
+  orgSlug: string,
+  orgId: string,
+): Promise<string> {
+  const project = await callSelfMcpTool<{ item: { id: string } }>(
+    request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    { data: { title: "Shared report owner", connections: [] } },
+  );
+  await callSelfMcpTool(request, orgSlug, "COLLECTION_CONNECTIONS_CREATE", {
+    data: {
+      id: `${orgId}_commerce-discovery`,
+      title: "Store Report",
+      connection_type: "HTTP",
+      connection_url: "http://127.0.0.1:1/unused",
+      metadata: { projectId: project.item.id },
+    },
+  });
+  return project.item.id;
+}
 
 test.describe("commerce-diagnostic share-invite", () => {
   let db: Client;
@@ -67,7 +91,7 @@ test.describe("commerce-diagnostic share-invite", () => {
     return rows[0]?.id;
   }
 
-  test("new invitee → pending invitation + accept URL that deep-links the report", async ({
+  test("legacy report → pending invitation + fallback Reports URL", async ({
     page,
     playwright,
   }) => {
@@ -83,11 +107,12 @@ test.describe("commerce-diagnostic share-invite", () => {
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body.invitee_status).toBe("new");
-    // Accept URL carries the invitation and a canonical relative report path.
+    // With no persisted connection owner, legacy reports retain the
+    // deterministic Commerce Discovery project as their destination.
     expect(body.accept_url).toContain("/auth/accept-invitation?invitationId=");
     const redirectTo = new URL(body.accept_url).searchParams.get("redirectTo");
     expect(redirectTo).toBe(
-      `/${owner.orgSlug}/projects/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
+      `/${owner.orgSlug}/projects/commerce-discovery_${orgId}/reports`,
     );
 
     const invites = await pendingInvites(orgId!, invitee);
@@ -113,6 +138,12 @@ test.describe("commerce-diagnostic share-invite", () => {
   }) => {
     const owner = await signUpViaApi(page.context().request);
     const orgId = await orgIdForSlug(owner.orgSlug);
+    if (!orgId) throw new Error("owner organization not found");
+    const projectId = await createOwnedReportConnection(
+      page.context().request,
+      owner.orgSlug,
+      orgId,
+    );
 
     const svc = await svcContext(playwright);
     const res = await svc.post(ROUTE(owner.orgSlug), {
@@ -124,8 +155,9 @@ test.describe("commerce-diagnostic share-invite", () => {
     // The member skips the invite: the CTA is the report deep link itself.
     expect(body.accept_url).not.toContain("accept-invitation");
     expect(body.accept_url).toContain(
-      `/${owner.orgSlug}/projects/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
+      `/${owner.orgSlug}/projects/${projectId}/reports`,
     );
+    expect(body.redirect_url).toBe(body.accept_url);
     expect(await pendingInvites(orgId!, owner.email)).toHaveLength(0);
 
     await svc.dispose();

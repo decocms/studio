@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { COLLECTION_THREADS_CREATE } from "./create";
 import { buildThreadTestContext, type ThreadTestEnv } from "./test-helpers";
 import { posthog } from "../../posthog";
+import { getWellKnownDecopilotVirtualMCP } from "@decocms/shared/sdk";
 
 describe("COLLECTION_THREADS_CREATE", () => {
   let env: ThreadTestEnv;
@@ -333,6 +334,23 @@ describe("COLLECTION_THREADS_CREATE", () => {
     await expect(
       COLLECTION_THREADS_CREATE.handler(
         { data: { virtual_mcp_id: foreignVmcp.id, title: "t" } },
+        env.ctx,
+      ),
+    ).rejects.toThrow(/Virtual MCP not found/i);
+  });
+
+  it("accepts only the current organization's exact synthetic virtual_mcp_id", async () => {
+    const ownId = getWellKnownDecopilotVirtualMCP(env.orgId).id;
+    const created = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: ownId, title: "own synthetic project" } },
+      env.ctx,
+    );
+    expect(created.item.virtual_mcp_id).toBe(ownId);
+
+    const foreignId = getWellKnownDecopilotVirtualMCP("org_foreign").id;
+    await expect(
+      COLLECTION_THREADS_CREATE.handler(
+        { data: { virtual_mcp_id: foreignId, title: "foreign synthetic" } },
         env.ctx,
       ),
     ).rejects.toThrow(/Virtual MCP not found/i);

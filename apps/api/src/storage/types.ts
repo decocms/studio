@@ -1760,6 +1760,15 @@ export interface TaskBoardImportRunTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** Immutable site/project ownership captured when a report run originates. */
+export interface CommerceDiscoveryReportRunTable {
+  organization_id: string;
+  run_id: string;
+  site_url: string;
+  virtual_mcp_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /** Join row: a task board item ↔ an agent thread (many-to-many). */
 export interface TaskBoardItemThreadTable {
   task_board_item_id: string;
@@ -2242,6 +2251,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
+  commerce_discovery_report_runs: CommerceDiscoveryReportRunTable;
 
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;

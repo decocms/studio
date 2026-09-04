@@ -27,7 +27,10 @@ import {
   fetchCommerceDiscoveryAuth,
   resolveCommerceDiscoveryMcpUrl,
 } from "./auth-client";
-import { isValidCommerceReportOwner } from "./ownership";
+import {
+  isValidCommerceReportOwner,
+  resolveCommerceReportOwnerId,
+} from "./ownership";
 
 const REPORT_TOOL_NAME =
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
@@ -66,20 +69,6 @@ const CommerceDiscoverySetupOutputSchema = z.object({
   }),
 });
 
-async function rereadConnectionOrThrow(
-  ctx: StudioContext,
-  connectionId: string,
-  organizationId: string,
-  error: unknown,
-): Promise<ConnectionEntity> {
-  const existing = await ctx.storage.connections.findById(
-    connectionId,
-    organizationId,
-  );
-  if (existing) return existing;
-  throw error;
-}
-
 async function rereadVirtualMcpOrThrow(
   ctx: StudioContext,
   virtualMcpId: string,
@@ -90,7 +79,9 @@ async function rereadVirtualMcpOrThrow(
     virtualMcpId,
     organizationId,
   );
-  if (existing) return existing;
+  if (isValidCommerceReportOwner(existing, virtualMcpId, organizationId)) {
+    return existing;
+  }
   throw error;
 }
 
@@ -126,150 +117,140 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
 
     const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id);
     const virtualMcpId = getCommerceDiscoveryAgentId(organization.id);
-    const reportOwnerProjectId = getCommerceDiscoveryReportOwnerId(
-      organization.id,
-      input.projectId,
-    );
-
-    // Keep the entity-level checks even when the storage adapter accepts an
-    // organization filter: an alias/synthetic lookup must resolve the exact
-    // requested project, and a foreign row must not claim this connection.
-    if (input.projectId !== undefined) {
-      const reportOwner = await ctx.storage.virtualMcps.findById(
-        reportOwnerProjectId,
-        organization.id,
-      );
-      if (
-        !isValidCommerceReportOwner(
-          reportOwner,
-          reportOwnerProjectId,
-          organization.id,
-        )
-      ) {
-        throw new Error("Project not found in organization");
-      }
-    }
-
-    // Commerce Discovery emails this URL when generation finishes. An
-    // in-product setup returns to its owning Reports route; public onboarding
-    // keeps the existing well-known report app destination.
-    const reportPath =
-      input.projectId !== undefined
-        ? projectReportsPath(
-            organization.slug ?? organization.id,
-            reportOwnerProjectId,
-          )
-        : agentAppPath(organization.slug ?? organization.id, {
-            agentId: virtualMcpId,
-            connectionId,
-            toolName: REPORT_TOOL_NAME,
-          });
-    const claimContact = {
-      email: ctx.auth.user?.email,
-      reportUrl: `${ctx.baseUrl}${reportPath}`,
-    };
-
-    let connection = await ctx.storage.connections.findById(
-      connectionId,
-      organization.id,
-    );
     const created = {
       connection: false,
       virtualMcp: false,
     };
 
-    // Claim the CURRENT site for this org, unconditionally, on every setup.
-    //
-    // The claim is Commerce Discovery's master-gated per-(org, site) upgrade —
-    // POST /api/v2/internal/diagnostics/:domain/upgrade — which sets the
-    // diagnostic to private, links the org, and mints a fresh report token.
-    // But the studio-side connection is keyed per ORG
-    // (WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id)), not per site.
-    //
-    // Previously the /upgrade was only called when the connection was missing
-    // (or missing its token). So selecting an EXISTING org whose connection
-    // already had a token skipped /upgrade entirely for the new site: the site
-    // was never claimed, and the subsequent /run returned 409 not_upgraded (no
-    // private run ever started). Decouple the two lifecycles: always claim the
-    // site here (upgrade is idempotent per (org, site)), then persist the
-    // freshly-minted token + siteUrl onto the per-org connection so it follows
-    // the site currently being onboarded and always holds the newest token.
-    //
-    // This also keeps us consistent with commerce-discovery#184, which revokes
-    // prior report tokens for the URL on each /upgrade — because we persist the
-    // token returned by THIS upgrade, the connection never holds a revoked one.
-    const auth = await fetchCommerceDiscoveryAuth({
-      siteUrl: normalized.value,
-      orgId: organization.id,
-      orgName: organization.name,
-      ...claimContact,
-    });
-
-    // The MCP URL must target the same instance as the internal API — in
-    // staging REPORTS_INTERNAL_API_URL (or the legacy CD env) overrides the host, so the
-    // CD connection must point there too, not at the hardcoded prod constant.
-    const mcpUrl = resolveCommerceDiscoveryMcpUrl();
-    const syncClaimedConnection = (current: ConnectionEntity) =>
-      ctx.storage.connections.update(current.id, {
-        connection_url: mcpUrl,
-        connection_token: auth.authorizationToken,
-        metadata: {
-          ...(current.metadata ?? {}),
-          siteUrl: normalized.value,
-          projectId: reportOwnerProjectId,
-        },
-      });
-
-    if (connection) {
-      console.log("[commerce-discovery] syncing connection to claimed site", {
-        orgId: organization.id,
-        siteUrl: normalized.value,
-        connectionId,
-      });
-      connection = await syncClaimedConnection(connection);
-    } else {
-      console.log("[commerce-discovery] creating connection", {
-        orgId: organization.id,
-        siteUrl: normalized.value,
-        connectionId,
-      });
-
-      try {
-        const base = getWellKnownCommerceDiscoveryConnection(
-          organization.id,
-          auth.authorizationToken,
-          mcpUrl,
-        );
-        connection = await ctx.storage.connections.create({
-          ...base,
-          // Persist the site so a returning session (arriving with no ?siteUrl
-          // param) can still recover it and trigger the run from "See full report".
-          metadata: {
-            ...(base.metadata ?? {}),
-            siteUrl: normalized.value,
-            projectId: reportOwnerProjectId,
-          },
-          organization_id: organization.id,
-          created_by: userId,
-        });
-        created.connection = true;
-      } catch (error) {
-        connection = await rereadConnectionOrThrow(
-          ctx,
+    const setup = await ctx.storage.commerceDiscoveryReports.withSetupLock(
+      organization.id,
+      async ({ connections, virtualMcps, reports }) => {
+        let connection = await connections.findById(
           connectionId,
           organization.id,
-          error,
         );
-        // Another setup won the create race. Its owner/site may differ, so this
-        // request still has to apply the claim it just completed.
-        connection = await syncClaimedConnection(connection);
-      }
-    }
+        const fallbackProjectId = getCommerceDiscoveryReportOwnerId(
+          organization.id,
+          undefined,
+        );
+        const persistedProjectId = getCommerceDiscoveryReportOwnerId(
+          organization.id,
+          connection?.metadata?.projectId,
+        );
+        // Omitting projectId is the public-onboarding path. It may initialize a
+        // new report to the well-known project, but it must not transfer an
+        // existing explicitly-owned report back to that fallback.
+        const selectedProjectId = input.projectId ?? persistedProjectId;
+        const reportOwnerProjectId = await resolveCommerceReportOwnerId(
+          virtualMcps,
+          selectedProjectId,
+          organization.id,
+          fallbackProjectId,
+        );
+
+        // Commerce Discovery emails this URL when generation finishes. Public
+        // onboarding keeps its established report-app destination; an explicit
+        // project setup returns to that project's Reports route.
+        const reportPath =
+          input.projectId !== undefined
+            ? projectReportsPath(
+                organization.slug ?? organization.id,
+                reportOwnerProjectId,
+              )
+            : agentAppPath(organization.slug ?? organization.id, {
+                agentId: virtualMcpId,
+                connectionId,
+                toolName: REPORT_TOOL_NAME,
+              });
+
+        // Clear the old credential before asking the upstream claim endpoint
+        // to revoke it. If the request succeeds but this process dies before
+        // the final write, Studio has no persisted credential rather than a
+        // credential Commerce Discovery has already revoked.
+        if (connection?.connection_token) {
+          connection = await connections.update(connection.id, {
+            connection_token: null,
+          });
+        }
+
+        const auth = await fetchCommerceDiscoveryAuth({
+          siteUrl: normalized.value,
+          orgId: organization.id,
+          orgName: organization.name,
+          email: ctx.auth.user?.email,
+          reportUrl: `${ctx.baseUrl}${reportPath}`,
+        });
+        // Publish immutable attribution before the mutable connection tuple.
+        // If the subsequent connection write fails, the already-started run
+        // can still import into the project that originated it.
+        await reports.recordRun({
+          organizationId: organization.id,
+          runId: auth.runId,
+          siteUrl: normalized.value,
+          virtualMcpId: reportOwnerProjectId,
+        });
+        const mcpUrl = resolveCommerceDiscoveryMcpUrl();
+        const syncClaimedConnection = (current: ConnectionEntity) =>
+          connections.update(current.id, {
+            connection_url: mcpUrl,
+            connection_token: auth.authorizationToken,
+            metadata: {
+              ...(current.metadata ?? {}),
+              siteUrl: normalized.value,
+              projectId: reportOwnerProjectId,
+            },
+          });
+
+        if (connection) {
+          console.log(
+            "[commerce-discovery] syncing connection to claimed site",
+            {
+              orgId: organization.id,
+              siteUrl: normalized.value,
+              connectionId,
+            },
+          );
+          connection = await syncClaimedConnection(connection);
+        } else {
+          console.log("[commerce-discovery] creating connection", {
+            orgId: organization.id,
+            siteUrl: normalized.value,
+            connectionId,
+          });
+          const base = getWellKnownCommerceDiscoveryConnection(
+            organization.id,
+            auth.authorizationToken,
+            mcpUrl,
+          );
+          connection = await connections.create({
+            ...base,
+            metadata: {
+              ...(base.metadata ?? {}),
+              siteUrl: normalized.value,
+              projectId: reportOwnerProjectId,
+            },
+            organization_id: organization.id,
+            created_by: userId,
+          });
+          created.connection = true;
+        }
+
+        return connection;
+      },
+    );
+    let connection = setup;
 
     let virtualMcp = await ctx.storage.virtualMcps.findById(
       virtualMcpId,
       organization.id,
     );
+
+    if (
+      virtualMcp &&
+      !isValidCommerceReportOwner(virtualMcp, virtualMcpId, organization.id)
+    ) {
+      throw new Error("Report project not found in organization");
+    }
 
     if (!virtualMcp) {
       console.log("[commerce-discovery] creating virtual MCP", {

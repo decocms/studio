@@ -1,6 +1,6 @@
 /**
- * Shared Commerce Discovery diagnostic read — the two-gate query the home
- * report banner and the task-board paywall banner both need.
+ * Shared Commerce Discovery diagnostic read — the two-gate query used by the
+ * project Home banner and Reports destination.
  *
  * Gate 1 (cheap, in-house): does this org even have the CD connection? Only orgs
  * that pass it ever open a client to the external CD MCP (gate 2) and read the
@@ -174,11 +174,13 @@ export function useCommerceDiagnostic(
   };
 }
 
-/** Navigate args that open the Commerce Discovery report app (where the unlock /
- *  checkout lives) as the report agent's `app` view. Shared by the home banner
- *  and the board paywall so the target stays identical. The report needs no
- *  thread of its own, so none is minted: the chat opens an empty composer. */
-export function commerceReportNavTarget(
+/**
+ * Public onboarding still hands off to the well-known Commerce Discovery app.
+ * In-product project surfaces use the owning project's canonical Reports route
+ * instead; keeping this helper onboarding-specific prevents those flows from
+ * accidentally discarding persisted report ownership.
+ */
+export function commerceOnboardingReportNavTarget(
   org: { id: string; slug: string },
   connectionId: string,
 ) {

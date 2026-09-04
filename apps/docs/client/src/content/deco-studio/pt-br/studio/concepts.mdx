@@ -29,21 +29,18 @@ Quando você abre o Studio, cai na **tela inicial**: um único campo de chat —
 A sidebar fixa à esquerda é a mesma em qualquer lugar que você vá:
 
 - **Home** — o campo de chat da tela inicial.
+- **Reports** — reports e diagnósticos de toda a organização.
+- **Tasks** — o task board da organização.
 - **Library** — um navegador de arquivos para o filesystem compartilhado da sua organização. Veja [Library](/pt-br/studio/library).
-- **Threads** — suas conversas recentes, agrupadas por agent (as do Decopilot ficam em "Decopilot"). Clique em uma para retomá-la; comece uma nova pela Home ou pelo botão **+** / "Browse agents".
 - **Settings** — abre a partir da parte de baixo da sidebar; tudo que não está atrelado a um único agent.
+- **Projetos** — abre Home, Reports, Tasks, Site Editor e outras views habilitadas de um projeto.
 
 ### O workspace do agent
 
 Abra um agent — ou inicie uma thread com ele — e a tela se divide em duas:
 
-- **Esquerda — chat.** Converse com o agent em linguagem natural; ele usa as tools anexadas para fazer o trabalho. As mensagens anteriores ficam aqui. Acima do campo de entrada ficam o **model picker** e o **runtime picker** (onde o agent roda — veja [Agents](/pt-br/studio/agents#onde-um-agent-roda)).
-- **Direita — um painel com abas.** Quais abas aparecem depende do agent:
-  - **Settings** — instruções, connections anexadas, files & skills (exibido se você pode gerenciar agents)
-  - **Automations** — schedules e gatilhos de eventos (sempre disponível)
-  - **Preview** — um preview ao vivo, para agents baseados em um repo ou site
-  - **Content** — edite páginas e seções, para agents baseados em conteúdo
-  - **Review changes** — review de branch e PR, para agents Git-native com um pull request aberto
+- **Esquerda — main view.** A sidebar do projeto seleciona destinos permanentes como Home, Reports, Tasks, Site Editor, Settings e Automations. O Site Editor é responsável pelas tabs contextuais Preview, Content e Code.
+- **Direita — chat.** Converse com o agent em linguagem natural; ele usa as tools anexadas para fazer o trabalho. As mensagens anteriores ficam aqui. Acima do campo de entrada ficam o **model picker** e o **runtime picker** (onde o agent roda — veja [Agents](/pt-br/studio/agents#onde-um-agent-roda)).
 
 Tudo que você precisa para usar, configurar e monitorar um único agent fica nessa mesma tela. Veja [Agents](/pt-br/studio/agents) para o detalhamento completo.
 

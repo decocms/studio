@@ -11,7 +11,7 @@ import {
   useOrgTasksSuspense,
 } from "@/components/org-home/project-feed";
 import { Main } from "@/components/main";
-import { useProjectScope } from "@/hooks/use-project-scope";
+import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
 
 /**
@@ -29,10 +29,11 @@ function ProjectFeedForProject() {
 
 export function OverviewTab() {
   const t = useT();
+  const projectId = useScopeId();
 
   return (
     <Main.Container width="reading" className="flex flex-col gap-8">
-      <CommerceReportBanner />
+      {projectId ? <CommerceReportBanner projectId={projectId} /> : null}
       <NewTaskComposer />
       <Suspense
         fallback={

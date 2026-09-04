@@ -117,6 +117,22 @@ export type TaskBoardProjectScope = Readonly<{
 }>;
 
 /**
+ * Apply the route-owned project identity to a task write.
+ *
+ * Org-level writes keep the editor's explicit assignment. A project route is
+ * authoritative and overwrites both fields as one pair, so a stale dialog or
+ * shared repository can never move a card outside the route that owns it.
+ */
+export function resolveTaskBoardProjectAssignment(
+  assignment: { virtualMcpId: string | null; repo: string | null },
+  scope?: TaskBoardProjectScope,
+): { virtualMcpId: string | null; repo: string | null } {
+  return scope
+    ? { virtualMcpId: scope.projectId, repo: scope.repo }
+    : assignment;
+}
+
+/**
  * Enrich a route's canonical project scope with hidden dev-agent identities.
  *
  * The pairing reference lives on the dev entity. Keeping the alias in the

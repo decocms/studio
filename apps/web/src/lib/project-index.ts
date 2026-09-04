@@ -422,3 +422,64 @@ export function stampableEntries(index: ProjectIndex): ProjectIndexEntry[] {
         )),
   );
 }
+
+/**
+ * One value the task editor can persist when its Project picker is changed.
+ *
+ * Project-backed options always carry the exact project id alongside the
+ * repository used for execution. A bare repository remains available for
+ * backwards compatibility, but is explicitly ownerless rather than pretending
+ * to name a project.
+ */
+export interface ProjectAssignmentOption {
+  /** Stable React/menu identity. Project ids and repository labels occupy
+   * separate namespaces so neither can collide with the other. */
+  key: string;
+  virtualMcpId: string | null;
+  repo: string;
+  /** A presentation-only, single-project entry for the shared row renderer. */
+  entry: ProjectIndexEntry;
+}
+
+/**
+ * Exact values for the task editor's Project picker.
+ *
+ * The board filter intentionally groups projects that share a repository: it
+ * filters a work bucket. Assignment is a different operation and must preserve
+ * identity, so a shared bucket expands to one option per project. This is also
+ * why detached projects are rejected individually rather than allowing an
+ * active sibling to make the whole bucket writable.
+ */
+export function projectAssignmentOptions(
+  index: ProjectIndex,
+): ProjectAssignmentOption[] {
+  const options: ProjectAssignmentOption[] = [];
+  for (const entry of stampableEntries(index)) {
+    const repo = entry.repo;
+    if (!repo) continue;
+    if (entry.projects.length === 0) {
+      options.push({
+        key: `repo:${normalizeRepo(repo)}`,
+        virtualMcpId: null,
+        repo,
+        entry,
+      });
+      continue;
+    }
+
+    for (const project of entry.projects) {
+      if (resolveGithubAttachment(project).status === "detached") continue;
+      options.push({
+        key: `project:${project.id}`,
+        virtualMcpId: project.id,
+        repo,
+        entry: {
+          ...entry,
+          title: project.title,
+          projects: [project],
+        },
+      });
+    }
+  }
+  return options;
+}

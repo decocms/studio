@@ -14,7 +14,7 @@ import {
   DialogPortal,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import { commerceReportNavTarget } from "@/hooks/use-commerce-diagnostic";
+import { commerceOnboardingReportNavTarget } from "@/hooks/use-commerce-diagnostic";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -91,7 +91,7 @@ export function CommerceConnectModal({
       });
       return;
     }
-    const target = commerceReportNavTarget(
+    const target = commerceOnboardingReportNavTarget(
       org,
       WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
     );
