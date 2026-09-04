@@ -22,11 +22,18 @@ import {
   CommandList,
 } from "@decocms/ui/components/command.tsx";
 import {
+  Drawer,
+  DrawerContent,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@decocms/ui/components/drawer.tsx";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
 import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import {
   Tooltip,
   TooltipContent,
@@ -165,9 +172,14 @@ function VerbStrip({
 function PickerContent({
   onClose,
   onCreateOrg,
+  className,
 }: {
   onClose: () => void;
   onCreateOrg: () => void;
+  /** The height rule, which is the one thing the two surfaces disagree on: a
+   *  popover is capped against the viewport, a drawer already has a height and
+   *  the list just fills it. */
+  className?: string;
 }) {
   const t = useT();
   /** Stable ids so each group can be named by its VISIBLE header — see
@@ -259,10 +271,7 @@ function PickerContent({
       shouldFilter={false}
       value={active}
       onValueChange={setActive}
-      /* The third term is what Radix measured between the trigger and the
-         viewport edge, so a picker opened low on a short screen ends where the
-         screen does instead of running off it. */
-      className="max-h-[min(560px,70dvh,var(--radix-popover-content-available-height,70dvh))]"
+      className={className}
     >
       <CommandInput
         value={search}
@@ -482,8 +491,13 @@ function SearchHitRow({
  *  24px, so nothing shifts when the selection changes kind. */
 export function OrgProjectPicker({
   collapsed = false,
+  onNavigate,
 }: {
   collapsed?: boolean;
+  /** Fired after a pick commits, so the mobile sheet can close itself and let
+   *  you see what you just chose. Creating an org deliberately does NOT fire
+   *  it: that dialog is mounted inside the sheet and would unmount with it. */
+  onNavigate?: () => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
@@ -491,6 +505,7 @@ export function OrgProjectPicker({
   const { invitations } = usePendingInvitations();
   const [open, setOpen] = useState(false);
   const [creatingOrg, setCreatingOrg] = useState(false);
+  const isMobile = useIsMobile();
 
   /** The rail shows a 24px mark and nothing else, so the tooltip carries the
    *  org a project belongs to — the one thing the mark cannot say. */
@@ -557,34 +572,63 @@ export function OrgProjectPicker({
     </button>
   );
 
+  /** The drawer already decided how tall it is, so the Command just fills it
+   *  and `min-h-0` lets the list inside do the scrolling. The popover has to
+   *  cap itself, and its third term is what Radix measured between the trigger
+   *  and the viewport edge — a picker opened low on a short screen ends where
+   *  the screen does instead of running off it. */
+  const heightClass = isMobile
+    ? "min-h-0 flex-1"
+    : "max-h-[min(560px,70dvh,var(--radix-popover-content-available-height,70dvh))]";
+
+  const content = (
+    <PickerContent
+      onClose={() => {
+        setOpen(false);
+        onNavigate?.();
+      }}
+      onCreateOrg={() => {
+        setOpen(false);
+        setCreatingOrg(true);
+      }}
+      className={heightClass}
+    />
+  );
+
   return (
     <>
-      {/* `modal`, and it is load-bearing on touch. On mobile the sidebar IS a
-          Radix dialog (the sheet), whose scroll lock cancels every wheel and
-          touchmove that lands outside the dialog's own subtree — and this
-          popover is portalled to the body, so the list clipped at its max
-          height and would not move under a finger. A modal popover brings its
-          own lock, only the innermost lock acts, and that one counts the list
-          as scrollable. Cheaper than teaching the sheet about its portals, and
-          it restores the menu semantics this control inherited from the
-          dropdown it replaced. */}
-      <Popover open={open} onOpenChange={setOpen} modal>
-        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-        <PopoverContent
-          side={collapsed ? "right" : "bottom"}
-          align="start"
-          className="w-[min(340px,calc(100vw-2rem))] p-0"
-        >
-          <PickerContent
-            onClose={() => setOpen(false)}
-            onCreateOrg={() => {
-              setOpen(false);
-              setCreatingOrg(true);
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-      {/* Sibling of the Popover, never inside its content: a dialog mounted in
+      {/* A drawer on mobile, a popover on the desktop it was drawn for. A
+          popover anchored to a control in the sidebar SHEET is the wrong shape
+          on a phone twice over: it hangs off a trigger a thumb is covering, and
+          being portalled outside the sheet it lands outside that dialog's
+          scroll lock, which cancels every touchmove over it — the list clipped
+          at its height and would not move under a finger. The drawer answers
+          both: it opens from the bottom edge where the thumb already is, and it
+          is its own modal layer, so the list scrolls. Same content either way —
+          only the surface changes. */}
+      {isMobile ? (
+        <Drawer open={open} onOpenChange={setOpen} direction="bottom">
+          <DrawerTrigger asChild>{trigger}</DrawerTrigger>
+          <DrawerContent className="flex max-h-[85dvh] flex-col p-0">
+            <DrawerTitle className="sr-only">
+              {t("sidebar.picker.title")}
+            </DrawerTitle>
+            {content}
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+          <PopoverContent
+            side={collapsed ? "right" : "bottom"}
+            align="start"
+            className="w-[min(340px,calc(100vw-2rem))] p-0"
+          >
+            {content}
+          </PopoverContent>
+        </Popover>
+      )}
+      {/* Sibling of the surface, never inside its content: a dialog mounted in
           there unmounts with the popover the moment it takes focus. */}
       <CreateOrganizationDialog
         open={creatingOrg}

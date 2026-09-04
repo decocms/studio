@@ -11,7 +11,6 @@
  *  HOW the slots are spaced lives in `SidebarShell` and only there. */
 
 import { ErrorBoundary } from "@/components/error-boundary";
-import { AgentSwitcherCrumb } from "@/components/header/shell-breadcrumb";
 import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useScopeId } from "@/hooks/use-project-scope";
@@ -30,20 +29,6 @@ import {
   SettingsVersion,
 } from "./settings-sidebar";
 import { SidebarShell } from "./shell";
-import { SidebarAgentGroupsProvider } from "./sidebar-agent-groups-context";
-
-/** The org sheet's header: the shared mobile strip, plus the agent switcher so
- *  the agent can be changed from the sheet. It is added HERE and not in the
- *  shared strip because it reads the thread manager, which the settings route
- *  tree does not mount. Picking anything closes the sheet (`onClose`) so the
- *  chosen chat is visible. */
-function OrgSidebarHeaderMobile({ onClose }: { onClose: () => void }) {
-  return (
-    <SidebarPickerHeaderMobile onClose={onClose}>
-      <AgentSwitcherCrumb onNavigate={onClose} />
-    </SidebarPickerHeaderMobile>
-  );
-}
 
 /** Cloudflare's "← Back to Domains", for a project.
  *  It renders on the RAW scope, not the resolved project. A `?virtualmcpid=`
@@ -102,27 +87,23 @@ export function StudioSidebar() {
   const inSettings = useInSettings();
 
   return (
-    <SidebarAgentGroupsProvider>
-      <SidebarShell
-        header={<SidebarPickerHeader />}
-        back={inSettings ? <SettingsBackRow /> : <ProjectBackRow />}
-        body={inSettings ? <SettingsNav /> : <OrgSidebarBody />}
-        footer={inSettings ? <SettingsVersion /> : <SidebarAccountFooter />}
-      />
-    </SidebarAgentGroupsProvider>
+    <SidebarShell
+      header={<SidebarPickerHeader />}
+      back={inSettings ? <SettingsBackRow /> : <ProjectBackRow />}
+      body={inSettings ? <SettingsNav /> : <OrgSidebarBody />}
+      footer={inSettings ? <SettingsVersion /> : <SidebarAccountFooter />}
+    />
   );
 }
 
 export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
   return (
-    <SidebarAgentGroupsProvider>
-      <SidebarShell
-        sheet
-        header={<OrgSidebarHeaderMobile onClose={onClose} />}
-        back={<ProjectBackRow onNavigate={onClose} />}
-        body={<OrgSidebarBody onNavigate={onClose} />}
-        footer={<SidebarAccountFooterMobile />}
-      />
-    </SidebarAgentGroupsProvider>
+    <SidebarShell
+      sheet
+      header={<SidebarPickerHeaderMobile onClose={onClose} />}
+      back={<ProjectBackRow onNavigate={onClose} />}
+      body={<OrgSidebarBody onNavigate={onClose} />}
+      footer={<SidebarAccountFooterMobile />}
+    />
   );
 }
