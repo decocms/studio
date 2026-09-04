@@ -25,6 +25,14 @@ export const virtualMcp = {
     "Construído e mantido pela Deco",
   "virtualMcp.connectionDialogContent.builtByOfficial":
     "Construído e mantido pelo fornecedor oficial",
+  "virtualMcp.connectionDialogContent.catalogPartiallyUnavailableDescription":
+    "As conexões disponíveis continuam visíveis. Tente novamente para restaurar os resultados ausentes.",
+  "virtualMcp.connectionDialogContent.catalogPartiallyUnavailableTitle":
+    "Alguns resultados do catálogo estão indisponíveis",
+  "virtualMcp.connectionDialogContent.catalogUnavailableDescription":
+    "Não foi possível carregar conexões de nenhum registro habilitado.",
+  "virtualMcp.connectionDialogContent.catalogUnavailableTitle":
+    "Catálogo indisponível",
   "virtualMcp.connectionDialogContent.connect": "Conectar",
   "virtualMcp.connectionDialogContent.connected": "Conectado",
   "virtualMcp.connectionDialogContent.customConnection":
@@ -35,7 +43,11 @@ export const virtualMcp = {
     "Nenhuma conexão ainda",
   "virtualMcp.connectionDialogContent.emptyStateSearchNoMatch":
     'Nenhuma conexão corresponde a "{search}"',
+  "virtualMcp.connectionDialogContent.loadingCatalog":
+    "Carregando catálogo de conexões",
   "virtualMcp.connectionDialogContent.madeByDeco": "Feito por Deco",
+  "virtualMcp.connectionDialogContent.retryCatalog":
+    "Tentar carregar o catálogo novamente",
   "virtualMcp.connectionDialogContent.sectionAllConnections":
     "Todas as conexões",
   "virtualMcp.connectionDialogContent.sectionVerified": "Verificado",
@@ -121,7 +133,7 @@ export const virtualMcp = {
     "Nenhum dos servidores conectados expõe ferramentas interativas.",
   "virtualMcp.layoutTabContent.sidebarViews": "Visualizações da barra lateral",
   "virtualMcp.layoutTabContent.sidebarViewsDescription":
-    "Escolha quais visualizações disponíveis aparecem na barra lateral deste projeto.",
+    "Escolha quais visualizações opcionais aparecem junto de Início, Relatórios e Tarefas.",
   "virtualMcp.layoutTabContent.settings": "Configurações",
   "virtualMcp.layoutTabContent.showChat": "Mostrar chat",
   "virtualMcp.layoutTabContent.showChatDescription":

@@ -1,9 +1,10 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { Suspense, lazy, useState } from "react";
+import { type RefObject, Suspense, lazy, useRef, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
+  ArrowLeft,
   CornerUpRight,
   File02,
   Globe02,
@@ -33,7 +34,12 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useT } from "@/i18n/use-t.ts";
+import { type TranslationKey, useT } from "@/i18n/use-t.ts";
+import { useElementWidth } from "@/hooks/use-element-width";
+import {
+  FOCUSABLE_HANDOFF_TARGET,
+  useFocusHandoffRef,
+} from "@/hooks/use-focus-handoff-ref";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import {
   draftsModeEnabled,
@@ -98,7 +104,6 @@ import {
   type CategoryRef,
   addCategoryToPost,
   BLOG_KINDS,
-  BLOG_SINGULAR,
   buildBlogBlock,
   emptyBlogPayload,
   generateBlogKey,
@@ -129,6 +134,79 @@ import {
   GroupHeader,
   groupSavedSectionsByResolveType,
 } from "./section-group-header";
+import {
+  collectionStartStage,
+  compactStageForCurrentView,
+  type CollectionId,
+  type CompactContentStage,
+  isCompactContentWorkspace,
+} from "./compact-workspace";
+
+const COLLECTION_SEARCH_KEYS = {
+  pages: "sandbox.contentBrowser.searchPages",
+  sections: "sandbox.contentBrowser.searchSections",
+  apps: "sandbox.contentBrowser.searchApps",
+  site: "sandbox.contentBrowser.searchSite",
+  seo: "sandbox.contentBrowser.searchSeo",
+  calendar: "sandbox.contentBrowser.searchCalendar",
+  "post-schedule": "sandbox.contentBrowser.searchPostSchedule",
+  loaders: "sandbox.contentBrowser.searchLoaders",
+  actions: "sandbox.contentBrowser.searchActions",
+  redirects: "sandbox.contentBrowser.searchRedirects",
+  posts: "sandbox.contentBrowser.searchPosts",
+  authors: "sandbox.contentBrowser.searchAuthors",
+  categories: "sandbox.contentBrowser.searchCategories",
+} satisfies Record<CollectionId, TranslationKey>;
+
+const BLOG_NOUN_KEYS = {
+  posts: "sandbox.contentBrowser.postNoun",
+  authors: "sandbox.contentBrowser.authorNoun",
+  categories: "sandbox.contentBrowser.categoryNoun",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const BLOG_CREATED_KEYS = {
+  posts: "sandbox.contentBrowser.createdPost",
+  authors: "sandbox.contentBrowser.createdAuthor",
+  categories: "sandbox.contentBrowser.createdCategory",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const CREATE_ITEM_KEYS: Partial<Record<CollectionId, TranslationKey>> = {
+  pages: "sandbox.contentBrowser.createPage",
+  redirects: "sandbox.contentBrowser.createRedirect",
+  posts: "sandbox.contentBrowser.createPost",
+  authors: "sandbox.contentBrowser.createAuthor",
+  categories: "sandbox.contentBrowser.createCategory",
+};
+
+const SELECT_TO_EDIT_KEYS: Partial<Record<CollectionId, TranslationKey>> = {
+  pages: "sandbox.contentBrowser.selectPageToEdit",
+  apps: "sandbox.contentBrowser.selectAppToEdit",
+  redirects: "sandbox.contentBrowser.selectRedirectToEdit",
+  posts: "sandbox.contentBrowser.selectPostToEdit",
+  authors: "sandbox.contentBrowser.selectAuthorToEdit",
+  categories: "sandbox.contentBrowser.selectCategoryToEdit",
+};
+
+const BLOG_EMPTY_LABEL_KEYS = {
+  posts: "sandbox.contentBrowser.noPostsYet",
+  authors: "sandbox.contentBrowser.noAuthorsYet",
+  categories: "sandbox.contentBrowser.noCategoriesYet",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const BLOG_EMPTY_HINT_KEYS = {
+  posts: "sandbox.contentBrowser.createFirstPostHint",
+  authors: "sandbox.contentBrowser.createFirstAuthorHint",
+  categories: "sandbox.contentBrowser.createFirstCategoryHint",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const DELETE_NOUN_KEYS = {
+  page: "sandbox.contentBrowser.pageNoun",
+  section: "sandbox.contentBrowser.sectionNoun",
+  redirect: "sandbox.contentBrowser.redirectNoun",
+} satisfies Record<
+  Exclude<NonNullable<DeleteTarget>["kind"], "blog" | "blog-bulk">,
+  TranslationKey
+>;
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -177,19 +255,6 @@ const PostCalendar = lazy(() =>
 const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
-
-export type CollectionId =
-  | "pages"
-  | "sections"
-  | "apps"
-  | "site"
-  | "seo"
-  | "calendar"
-  | "post-schedule"
-  | "loaders"
-  | "actions"
-  | "redirects"
-  | BlogKind;
 
 export type CollectionCounts = Record<
   | "pages"
@@ -250,6 +315,7 @@ export interface ContentBrowserProps {
 }
 
 export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
+  const t = useT();
   const inset = useInsetContext();
   const { currentBranch: branch } = useChatTask();
   const { org } = useProjectContext();
@@ -284,7 +350,11 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   }
 
   if (!virtualMcpId || !branch) {
-    return <EmptyMessage title="Waiting for sandbox context…" />;
+    return (
+      <EmptyMessage
+        title={t("sandbox.contentBrowser.waitingForSandboxContext")}
+      />
+    );
   }
 
   return (
@@ -305,6 +375,10 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
 
 const SCHEMA_POLL_INTERVAL_MS = 2000;
 const SCHEMA_POLL_MAX_ATTEMPTS = 15;
+
+function focusOnNextFrame(resolveTarget: () => HTMLElement | null): void {
+  requestAnimationFrame(() => resolveTarget()?.focus());
+}
 
 function liveMetaSchemaPollIntervalMs(
   query: Query<LiveMeta>,
@@ -352,6 +426,24 @@ function ContentBrowserReady({
   sandboxWarming: boolean;
 }) {
   const t = useT();
+  const [workspaceWidth, workspaceRef] = useElementWidth();
+  const compactWorkspace = isCompactContentWorkspace(workspaceWidth);
+  const [lastMeasuredCompactWorkspace, setLastMeasuredCompactWorkspace] =
+    useState<boolean | null>(null);
+  const [compactStage, setCompactStage] =
+    useState<CompactContentStage>("collections");
+  const collectionsStageRef = useRef<HTMLDivElement>(null);
+  const itemsStageRef = useRef<HTMLDivElement>(null);
+  const detailStageRef = useRef<HTMLDivElement>(null);
+  const itemSearchRef = useRef<HTMLInputElement>(null);
+  const detailBackRef = useRef<HTMLButtonElement>(null);
+  const detailBackHandoffRef = useFocusHandoffRef(
+    detailBackRef,
+    { ref: itemsStageRef, selector: '[aria-current="true"]' },
+    { ref: detailStageRef, selector: FOCUSABLE_HANDOFF_TARGET },
+    { ref: itemSearchRef },
+    { ref: collectionsStageRef, selector: '[aria-current="page"]' },
+  );
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const readOnlyVm = useVirtualMCP(virtualMcpId);
   const isOnProduction = useIsOnProduction(readOnlyVm, branch);
@@ -365,6 +457,19 @@ function ContentBrowserReady({
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
   const [selection, setSelection] = useState<Selection>(null);
+  if (
+    workspaceWidth >= 0 &&
+    lastMeasuredCompactWorkspace !== compactWorkspace
+  ) {
+    const reenteredCompactWorkspace =
+      lastMeasuredCompactWorkspace === false && compactWorkspace;
+    setLastMeasuredCompactWorkspace(compactWorkspace);
+    if (reenteredCompactWorkspace) {
+      setCompactStage(
+        compactStageForCurrentView(activeCollection, selection !== null),
+      );
+    }
+  }
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
@@ -383,6 +488,7 @@ function ContentBrowserReady({
     if (match) {
       setActiveCollection("pages");
       setSelection({ collection: "pages", key: match.key, path: match.path });
+      setCompactStage("detail");
     }
   }
   const [searchQuery, setSearchQuery] = useState("");
@@ -397,20 +503,51 @@ function ContentBrowserReady({
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
   );
-  // Category slug that pre-opens the bulk "Update category" panel (set when
-  // arriving from a category's "Add posts" / "Manage posts" action). While
-  // non-null the panel stays open even with zero posts selected.
+  // Category slug that preselects the bulk editor when arriving from a
+  // category's "Add posts" / "Manage posts" action.
   const [bulkCategorySeed, setBulkCategorySeed] = useState<string | null>(null);
+  const [bulkCategoryPanelOpen, setBulkCategoryPanelOpen] = useState(false);
+  const revealStage = (
+    stage: CompactContentStage,
+    resolveFocusTarget: () => HTMLElement | null,
+  ) => {
+    setCompactStage(stage);
+    if (compactWorkspace) focusOnNextFrame(resolveFocusTarget);
+  };
+  const showCollections = () => {
+    revealStage(
+      "collections",
+      () =>
+        collectionsStageRef.current?.querySelector<HTMLElement>(
+          '[aria-current="page"]',
+        ) ?? null,
+    );
+  };
+  const showItems = () => {
+    revealStage(
+      "items",
+      () =>
+        itemsStageRef.current?.querySelector<HTMLElement>(
+          '[aria-current="true"]',
+        ) ?? itemSearchRef.current,
+    );
+  };
+  const showDetail = () => {
+    revealStage("detail", () => detailBackRef.current);
+  };
   // Multi-select is implicit: selecting the first post (via the hover-revealed
-  // checkbox) enters "selection mode". Closing the panel (or applying) leaves
-  // it and drops the seed.
+  // checkbox) enters "selection mode". The editor opens only through the
+  // explicit toolbar action, so picking one post never hides the remaining
+  // rows. Closing the panel (or applying) leaves selection mode.
   const clearSelection = () => {
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
+    setBulkCategoryPanelOpen(false);
   };
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
+    showDetail();
   };
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
@@ -424,6 +561,7 @@ function ContentBrowserReady({
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
+    setBulkCategoryPanelOpen(false);
   }
 
   const {
@@ -516,7 +654,9 @@ function ContentBrowserReady({
   }
 
   if (dataMissing) {
-    return <EmptyMessage title="Could not load site data." />;
+    return (
+      <EmptyMessage title={t("sandbox.contentBrowser.couldNotLoadSiteData")} />
+    );
   }
 
   const pages = extractPages(decofile).sort((a, b) =>
@@ -551,11 +691,10 @@ function ContentBrowserReady({
     .filter((c) => c.slug)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // The bulk "Update category" panel shows while posts are selected, or while
-  // a category seed forces it open (arriving from the category editor).
-  const bulkPanelOpen =
-    activeCollection === "posts" &&
-    (selectedPostKeys.size > 0 || bulkCategorySeed !== null);
+  // The bulk editor is entered explicitly from the post selection toolbar.
+  // A category seed can mount it ahead of time while the post list remains the
+  // active compact stage, preserving both the seed and subsequent selection.
+  const bulkPanelOpen = activeCollection === "posts" && bulkCategoryPanelOpen;
   // Posts the panel will act on (selection order is irrelevant — list order
   // mirrors the decofile scan, same as the list pane).
   const selectedPostsMeta = bulkPanelOpen
@@ -575,8 +714,8 @@ function ContentBrowserReady({
     return (
       <EmptyMessage
         icon={AlertCircle}
-        title="No editable content"
-        description="This project doesn't expose any Deco pages, sections, apps, loaders, or actions."
+        title={t("sandbox.contentBrowser.noEditableContent")}
+        description={t("sandbox.contentBrowser.noEditableContentDescription")}
       />
     );
   }
@@ -616,10 +755,16 @@ function ContentBrowserReady({
         blockKey: page.key,
         data: { ...fullPageData, sections: updatedSections },
       });
-      toast.success(`Variant added to "${page.name}"`);
-      setSelection({ collection: "pages", key: page.key, path: page.path });
+      toast.success(
+        t("sandbox.contentBrowser.variantAdded", { name: page.name }),
+      );
+      selectItem({ collection: "pages", key: page.key, path: page.path });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not add variant");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.couldNotAddVariant"),
+      );
     }
   };
 
@@ -629,7 +774,7 @@ function ContentBrowserReady({
     setPageDialog({
       mode: "create",
       sourceKey: null,
-      initialName: "My new page",
+      initialName: t("sandbox.contentBrowser.defaultPageName"),
       initialPath: "/example",
     });
   };
@@ -669,20 +814,28 @@ function ContentBrowserReady({
           const template = decofile[values.templateKey] as
             | Record<string, unknown>
             | undefined;
-          if (!template) throw new Error("Selected template no longer exists.");
+          if (!template) {
+            throw new Error(
+              t("sandbox.contentBrowser.selectedTemplateNoLongerExists"),
+            );
+          }
           data = { ...template, name: values.name, path: values.path };
         } else {
           data = buildEmptyPage(values.name, values.path);
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Created "${values.name}"`);
-        setSelection({ collection: "pages", key, path: values.path });
+        toast.success(
+          t("sandbox.contentBrowser.createdPage", { name: values.name }),
+        );
+        selectItem({ collection: "pages", key, path: values.path });
       } else if (mode === "duplicate" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
           | undefined;
-        if (!source) throw new Error("Source page not found");
+        if (!source) {
+          throw new Error(t("sandbox.contentBrowser.sourcePageNotFound"));
+        }
         const { key, data } = buildDuplicatePage({
           source,
           pages,
@@ -690,20 +843,24 @@ function ContentBrowserReady({
           newPath: values.path,
         });
         await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Duplicated as "${values.name}"`);
-        setSelection({ collection: "pages", key, path: values.path });
+        toast.success(
+          t("sandbox.contentBrowser.duplicatedPageAs", { name: values.name }),
+        );
+        selectItem({ collection: "pages", key, path: values.path });
       } else if (mode === "rename" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
           | undefined;
-        if (!source) throw new Error("Page not found");
+        if (!source) {
+          throw new Error(t("sandbox.contentBrowser.pageNotFound"));
+        }
         const data: Record<string, unknown> = {
           ...source,
           name: values.name,
           path: values.path,
         };
         await saveBlock.mutateAsync({ blockKey: sourceKey, data });
-        toast.success("Page updated");
+        toast.success(t("sandbox.contentBrowser.pageUpdated"));
         if (selection?.collection === "pages" && selection.key === sourceKey) {
           setSelection({
             collection: "pages",
@@ -714,7 +871,11 @@ function ContentBrowserReady({
       }
       setPageDialog(null);
     } catch (err) {
-      setPageDialogError(err instanceof Error ? err.message : "Save failed");
+      setPageDialogError(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.saveFailed"),
+      );
     }
   };
 
@@ -731,7 +892,7 @@ function ContentBrowserReady({
         ? normalizePagePath(pageDialog.initialPath)
         : null;
     if (sourceNorm !== targetNorm && takenPaths.has(targetNorm)) {
-      return `A page with path "${path}" already exists.`;
+      return t("sandbox.contentBrowser.pagePathAlreadyExists", { path });
     }
     return null;
   };
@@ -752,7 +913,7 @@ function ContentBrowserReady({
     toast.success(
       t("sandbox.contentBrowser.createdSection", { name: blockId }),
     );
-    setSelection({ collection: "sections", key: blockId });
+    selectItem({ collection: "sections", key: blockId });
   };
 
   // Persist nested saved-block references created from within the section form.
@@ -774,7 +935,7 @@ function ContentBrowserReady({
       toast.success(
         t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
       );
-      setSelection({ collection: "sections", key: newKey });
+      selectItem({ collection: "sections", key: newKey });
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -825,11 +986,13 @@ function ContentBrowserReady({
     });
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success("Created redirect");
-      setSelection({ collection: "redirects", key });
+      toast.success(t("sandbox.contentBrowser.createdRedirect"));
+      selectItem({ collection: "redirects", key });
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not create redirect",
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.couldNotCreateRedirect"),
       );
     }
   };
@@ -840,10 +1003,14 @@ function ContentBrowserReady({
     const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success(`Created ${BLOG_SINGULAR[kind]}`);
-      setSelection({ collection: kind, key });
+      toast.success(t(BLOG_CREATED_KEYS[kind]));
+      selectItem({ collection: kind, key });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.couldNotCreate"),
+      );
     }
   };
 
@@ -856,8 +1023,7 @@ function ContentBrowserReady({
       toast.success(t("sandbox.postCalendar.createdScheduledPost"));
       setActiveCollection("posts");
       setPrevCollection("posts");
-      setSelection({ collection: "posts", key });
-      setOpenPageSeoKey(null);
+      selectItem({ collection: "posts", key });
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -894,24 +1060,30 @@ function ContentBrowserReady({
   const handleDuplicateBlog = async (entry: BlogEntry) => {
     const source = decofile[entry.key] as Record<string, unknown> | undefined;
     if (!source) {
-      toast.error("Record not found.");
+      toast.error(t("sandbox.contentBrowser.recordNotFound"));
       return;
     }
     const key = generateBlogKey(decofile, entry.kind);
     const labelKey = entry.kind === "posts" ? "title" : "name";
     const payload = {
       ...structuredClone(getBlogPayload(source, entry.kind)),
-      [labelKey]: `${entry.label} (copy)`,
+      [labelKey]: t("sandbox.contentBrowser.copyName", { name: entry.label }),
     };
     try {
       await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
       });
-      toast.success(`Duplicated "${entry.label}"`);
-      setSelection({ collection: entry.kind, key });
+      toast.success(
+        t("sandbox.contentBrowser.duplicatedItem", { name: entry.label }),
+      );
+      selectItem({ collection: entry.kind, key });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Duplicate failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.duplicateFailed"),
+      );
     }
   };
 
@@ -928,11 +1100,10 @@ function ContentBrowserReady({
     });
   };
 
-  // Land on the unfiltered posts list with the bulk "Update category" panel
-  // already open and the clicked category pre-selected (from the category
-  // editor's "Add posts" / "Manage posts" actions). Sync `prevCollection` here
-  // so the collection-change reset above doesn't immediately clear what we're
-  // setting.
+  // Land on the unfiltered posts list in selection mode with the clicked
+  // category pre-selected. The panel is mounted so its form state survives,
+  // but compact workspaces stay on the list until the explicit toolbar action.
+  // Sync `prevCollection` so the collection-change reset doesn't clear this.
   const handleManagePosts = (slug: string) => {
     setActiveCollection("posts");
     setPrevCollection("posts");
@@ -945,6 +1116,17 @@ function ContentBrowserReady({
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(slug || null);
+    setBulkCategoryPanelOpen(true);
+    setCompactStage("items");
+    if (compactWorkspace) {
+      focusOnNextFrame(() => itemSearchRef.current);
+    }
+  };
+
+  const openBulkCategoryEditor = () => {
+    if (selectedPostKeys.size === 0) return;
+    setBulkCategoryPanelOpen(true);
+    showDetail();
   };
 
   // Apply a pure category mutation to every selected post and persist
@@ -984,15 +1166,37 @@ function ContentBrowserReady({
     const total = selectedPostKeys.size;
     try {
       const changed = await applyBulkCategory(mode, category);
-      const verb = mode === "add" ? "Added to" : "Moved";
       const unchanged = total - changed;
+      const result =
+        mode === "add"
+          ? t(
+              changed === 1
+                ? "sandbox.contentBrowser.bulkAddedToOnePost"
+                : "sandbox.contentBrowser.bulkAddedToManyPosts",
+              { count: changed },
+            )
+          : t(
+              changed === 1
+                ? "sandbox.contentBrowser.bulkMovedOnePost"
+                : "sandbox.contentBrowser.bulkMovedManyPosts",
+              { count: changed },
+            );
       toast.success(
-        `${verb} ${changed} ${changed === 1 ? "post" : "posts"}` +
-          (unchanged > 0 ? ` (${unchanged} already set)` : ""),
+        unchanged > 0
+          ? t("sandbox.contentBrowser.bulkResultWithUnchanged", {
+              result,
+              count: unchanged,
+            })
+          : result,
       );
       clearSelection();
+      showItems();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Bulk update failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.bulkUpdateFailed"),
+      );
     }
   };
 
@@ -1005,9 +1209,12 @@ function ContentBrowserReady({
           await deleteBlock.mutateAsync({ blockKey: key });
         }
         toast.success(
-          `Deleted ${deleteTarget.count} ${
-            deleteTarget.count === 1 ? "post" : "posts"
-          }`,
+          t(
+            deleteTarget.count === 1
+              ? "sandbox.contentBrowser.deletedOnePost"
+              : "sandbox.contentBrowser.deletedManyPosts",
+            { count: deleteTarget.count },
+          ),
         );
         if (
           selection &&
@@ -1017,6 +1224,7 @@ function ContentBrowserReady({
           setSelection(null);
         }
         clearSelection();
+        showItems();
         setDeleteTarget(null);
         return;
       }
@@ -1050,48 +1258,129 @@ function ContentBrowserReady({
       } else {
         await deleteBlock.mutateAsync({ blockKey: key });
       }
-      toast.success(`Deleted "${label}"`);
+      toast.success(t("sandbox.contentBrowser.deletedItem", { name: label }));
       if (
         selection &&
         selection.collection !== "available-section" &&
         selection.key === key
       ) {
         setSelection(null);
+        showItems();
       }
       setDeleteTarget(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.deleteFailed"),
+      );
     }
   };
 
   // ------------------ Render ------------------
   // `saveBlock` too: a category delete rewrites its posts before unlinking it.
   const isDeleting = deleteBlock.isPending || saveBlock.isPending;
-  const deleteNoun =
-    deleteTarget?.kind === "blog"
-      ? BLOG_SINGULAR[deleteTarget.blogKind]
+  const deleteNoun = !deleteTarget
+    ? t("sandbox.contentBrowser.itemNoun")
+    : deleteTarget.kind === "blog"
+      ? t(BLOG_NOUN_KEYS[deleteTarget.blogKind])
+      : deleteTarget.kind === "blog-bulk"
+        ? t(
+            deleteTarget.count === 1
+              ? "sandbox.contentBrowser.onePostNoun"
+              : "sandbox.contentBrowser.manyPostsNoun",
+            { count: deleteTarget.count },
+          )
+        : t(DELETE_NOUN_KEYS[deleteTarget.kind]);
+  const deleteDescription =
+    deleteTarget?.kind === "section"
+      ? t("sandbox.contentBrowser.deleteSectionDescription", {
+          name: deleteTarget.label,
+        })
       : deleteTarget?.kind === "blog-bulk"
-        ? `${deleteTarget.count} ${deleteTarget.count === 1 ? "post" : "posts"}`
-        : (deleteTarget?.kind ?? "item");
+        ? t(
+            deleteTarget.count === 1
+              ? "sandbox.contentBrowser.deleteOnePostDescription"
+              : "sandbox.contentBrowser.deleteManyPostsDescription",
+            { count: deleteTarget.count },
+          )
+        : deleteTarget
+          ? t("sandbox.contentBrowser.deleteItemDescription", {
+              name: deleteTarget.label,
+            })
+          : null;
+  const collectionStage = collectionStartStage(activeCollection);
+  const collectionsStageClassName = compactWorkspace
+    ? compactStage === "collections"
+      ? "flex min-h-0 min-w-0 flex-1"
+      : "hidden"
+    : "contents";
+  const itemsStageClassName = compactWorkspace
+    ? compactStage === "items"
+      ? "flex min-h-0 min-w-0 flex-1"
+      : "hidden"
+    : "contents";
+  const detailStageClassName = compactWorkspace
+    ? compactStage === "detail"
+      ? "flex min-h-0 min-w-0 flex-1 flex-col"
+      : "hidden"
+    : "contents";
+  const detailBackLabel = t(
+    collectionStage === "detail"
+      ? "sandbox.contentBrowser.backToCollections"
+      : "sandbox.contentBrowser.backToItems",
+  );
   return (
-    <div className="flex h-full w-full">
-      <CollectionsSidebar
-        active={activeCollection}
-        counts={counts}
-        showBlog={showBlog}
-        onSelect={(id) => {
-          setActiveCollection(id);
-          setSelection(null);
-          setOpenPageSeoKey(null);
+    <div
+      ref={workspaceRef}
+      className="@container [container-name:cms-content] flex h-full min-w-0 w-full overflow-hidden"
+    >
+      <div
+        ref={collectionsStageRef}
+        data-content-stage="collections"
+        className={collectionsStageClassName}
+        onFocusCapture={() => {
+          if (!compactWorkspace) setCompactStage("collections");
         }}
-      />
-      {activeCollection !== "seo" &&
-        activeCollection !== "site" &&
-        activeCollection !== "calendar" &&
-        activeCollection !== "post-schedule" &&
-        activeCollection !== "loaders" &&
-        activeCollection !== "actions" && (
+      >
+        <CollectionsSidebar
+          active={activeCollection}
+          counts={counts}
+          showBlog={showBlog}
+          className={cn(compactWorkspace && "min-w-0 w-full border-r-0")}
+          onSelect={(id) => {
+            setActiveCollection(id);
+            if (id !== activeCollection) {
+              setSelection(null);
+              setOpenPageSeoKey(null);
+            }
+            const nextStage = collectionStartStage(id);
+            setCompactStage(nextStage);
+            if (!compactWorkspace) return;
+            focusOnNextFrame(() =>
+              nextStage === "items"
+                ? itemSearchRef.current
+                : detailBackRef.current,
+            );
+          }}
+        />
+      </div>
+      {collectionStage === "items" && (
+        <div
+          ref={itemsStageRef}
+          data-content-stage="items"
+          className={itemsStageClassName}
+          onFocusCapture={() => {
+            if (!compactWorkspace) setCompactStage("items");
+          }}
+        >
           <ItemList
+            compact={compactWorkspace}
+            className={cn(
+              compactWorkspace && "min-w-0 w-full flex-1 border-r-0",
+            )}
+            searchInputRef={itemSearchRef}
+            onBack={showCollections}
             activeCollection={activeCollection}
             pages={pages}
             redirects={redirects}
@@ -1125,7 +1414,11 @@ function ContentBrowserReady({
             onTogglePostSelect={togglePostSelection}
             onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
             onClearPostSelection={() => setSelectedPostKeys(new Set())}
-            onExitPostSelection={clearSelection}
+            onExitPostSelection={() => {
+              clearSelection();
+              showItems();
+            }}
+            onUpdatePostCategories={openBulkCategoryEditor}
             onBulkDeletePosts={() =>
               setDeleteTarget({
                 kind: "blog-bulk",
@@ -1156,7 +1449,7 @@ function ContentBrowserReady({
                 key: page.key,
                 path: page.path,
               } as const;
-              setSelection(target);
+              selectItem(target);
               setOpenPageSeoKey(page.key);
             }}
             onViewPageJson={(page) => setJsonPageKey(page.key)}
@@ -1182,237 +1475,262 @@ function ContentBrowserReady({
               })
             }
           />
-        )}
-      <ReadOnlyPane
-        readOnly={readOnly}
-        virtualMcpId={virtualMcpId}
-        className="flex-1 min-w-0"
+        </div>
+      )}
+      <div
+        ref={detailStageRef}
+        data-content-stage="detail"
+        className={detailStageClassName}
+        onFocusCapture={() => {
+          if (!compactWorkspace) setCompactStage("detail");
+        }}
       >
-        {activeCollection === "loaders" || activeCollection === "actions" ? (
-          <RunnableBlocksBrowser
-            orgSlug={orgSlug}
-            virtualMcpId={virtualMcpId}
-            branch={branch}
-            previewUrl={previewUrl}
-            meta={meta}
-            decofile={decofile}
-            kind={activeCollection}
-          />
-        ) : (
-          <Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center">
-                <Spinner className="size-5 text-muted-foreground" />
-              </div>
-            }
-          >
-            {activeCollection === "calendar" ? (
-              <VariantCalendar decofile={decofile} />
-            ) : activeCollection === "post-schedule" ? (
-              <PostCalendar
-                decofile={decofile}
-                support={blogSupport}
-                isCreating={saveBlock.isPending}
-                onCreate={(day) => void handleCreateScheduledPost(day)}
-                onReschedule={(key, day) => void handleReschedulePost(key, day)}
-                onSelect={(key) => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection({ collection: "posts", key });
-                  setOpenPageSeoKey(null);
-                }}
-              />
-            ) : activeCollection === "site" ? (
-              siteApp ? (
-                <AppEditor
-                  key={`site:${siteApp.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={siteApp.key}
-                  block={decofile[siteApp.key] as Record<string, unknown>}
+        {compactWorkspace && (
+          <div className="flex h-12 shrink-0 items-center border-b px-2">
+            <Button
+              ref={detailBackHandoffRef}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 min-w-0 gap-1.5 px-2"
+              onClick={
+                collectionStage === "detail" ? showCollections : showItems
+              }
+            >
+              <ArrowLeft size={14} className="shrink-0" />
+              <span className="truncate">{detailBackLabel}</span>
+            </Button>
+          </div>
+        )}
+        <ReadOnlyPane
+          readOnly={readOnly}
+          virtualMcpId={virtualMcpId}
+          className="flex-1 min-h-0 min-w-0"
+        >
+          {activeCollection === "loaders" || activeCollection === "actions" ? (
+            <RunnableBlocksBrowser
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              previewUrl={previewUrl}
+              meta={meta}
+              decofile={decofile}
+              kind={activeCollection}
+            />
+          ) : (
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center">
+                  <Spinner className="size-5 text-muted-foreground" />
+                </div>
+              }
+            >
+              {activeCollection === "calendar" ? (
+                <VariantCalendar decofile={decofile} />
+              ) : activeCollection === "post-schedule" ? (
+                <PostCalendar
                   decofile={decofile}
-                  meta={meta}
-                  title="Site"
-                  excludeFields={["seo"]}
-                  schemaPending={isAppSchemaLoading(siteApp.resolveType, [
-                    "seo",
-                  ])}
-                  previewBaseUrl={previewUrl}
-                />
-              ) : (
-                <EmptyMessage
-                  title="Site settings not found"
-                  description="This project doesn't have a site app block (site/apps/site.ts)."
-                />
-              )
-            ) : activeCollection === "seo" ? (
-              <SeoEditor
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                decofile={decofile}
-                meta={meta}
-                target={{ kind: "site" }}
-                previewBaseUrl={sitePreviewUrl}
-              />
-            ) : activeCollection === "sections" ? (
-              <SectionsRightPane
-                selection={
-                  selection?.collection === "sections" ||
-                  selection?.collection === "available-section"
-                    ? selection
-                    : null
-                }
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                previewUrl={previewUrl}
-                meta={meta}
-                decofile={decofile}
-                isCreating={saveBlock.isPending}
-                onCreateAvailable={handleCreateAvailableSection}
-                onSaveReferencedBlock={saveReferencedBlock}
-              />
-            ) : bulkPanelOpen ? (
-              // Posts selection mode: the bulk "Update category" panel takes
-              // over the right pane (rows toggle selection, not the editor).
-              // Keyed by seed so arriving from a category remounts the panel
-              // with that category pre-selected.
-              <BulkCategoryPanel
-                key={bulkCategorySeed ?? "selection"}
-                posts={selectedPostsMeta}
-                categories={bulkCategoryChoices}
-                initialSlug={bulkCategorySeed}
-                isPending={saveBlock.isPending}
-                onApply={(mode, category) =>
-                  void runBulkCategoryUpdate(mode, category)
-                }
-                onClose={clearSelection}
-              />
-            ) : selection && selection.collection !== "available-section" ? (
-              selection.collection === "apps" ? (
-                <AppEditor
-                  key={`app:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  previewBaseUrl={previewUrl}
-                  schemaPending={isAppSchemaLoading(
-                    typeof (decofile[selection.key] as Record<string, unknown>)
-                      ?.__resolveType === "string"
-                      ? String(
-                          (decofile[selection.key] as Record<string, unknown>)
-                            .__resolveType,
-                        )
-                      : undefined,
-                  )}
-                />
-              ) : selection.collection === "posts" ? (
-                <PostEditor
-                  key={`post:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  previewBaseUrl={sitePreviewUrl}
-                />
-              ) : selection.collection === "categories" ? (
-                <CategoryEditor
-                  key={`category:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  onManagePosts={handleManagePosts}
-                  onOpenPost={(key) => {
+                  support={blogSupport}
+                  isCreating={saveBlock.isPending}
+                  onCreate={(day) => void handleCreateScheduledPost(day)}
+                  onReschedule={(key, day) =>
+                    void handleReschedulePost(key, day)
+                  }
+                  onSelect={(key) => {
                     setActiveCollection("posts");
                     setPrevCollection("posts");
-                    setSelection({ collection: "posts", key });
-                    setOpenPageSeoKey(null);
+                    selectItem({ collection: "posts", key });
                   }}
+                />
+              ) : activeCollection === "site" ? (
+                siteApp ? (
+                  <AppEditor
+                    key={`site:${siteApp.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={siteApp.key}
+                    block={decofile[siteApp.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    title={t("sandbox.collectionsSidebar.site")}
+                    excludeFields={["seo"]}
+                    schemaPending={isAppSchemaLoading(siteApp.resolveType, [
+                      "seo",
+                    ])}
+                    previewBaseUrl={previewUrl}
+                  />
+                ) : (
+                  <EmptyMessage
+                    title={t("sandbox.contentBrowser.siteSettingsNotFound")}
+                    description={t(
+                      "sandbox.contentBrowser.siteSettingsNotFoundDescription",
+                    )}
+                  />
+                )
+              ) : activeCollection === "seo" ? (
+                <SeoEditor
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  decofile={decofile}
+                  meta={meta}
+                  target={{ kind: "site" }}
                   previewBaseUrl={sitePreviewUrl}
                 />
-              ) : selection.collection === "authors" ? (
-                <RecordEditor
-                  key={`authors:${selection.key}`}
+              ) : activeCollection === "sections" ? (
+                <SectionsRightPane
+                  selection={
+                    selection?.collection === "sections" ||
+                    selection?.collection === "available-section"
+                      ? selection
+                      : null
+                  }
                   orgSlug={orgSlug}
                   virtualMcpId={virtualMcpId}
                   branch={branch}
-                  kind="authors"
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
+                  previewUrl={previewUrl}
+                  meta={meta}
+                  decofile={decofile}
+                  isCreating={saveBlock.isPending}
+                  onCreateAvailable={handleCreateAvailableSection}
+                  onSaveReferencedBlock={saveReferencedBlock}
                 />
-              ) : selection.collection === "redirects" ? (
-                <RedirectEditor
-                  key={`redirect:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
+              ) : bulkPanelOpen ? (
+                // The explicit "Update category" action opens this editor.
+                // Keyed by seed so arriving from a category remounts the panel
+                // with that category pre-selected.
+                <BulkCategoryPanel
+                  key={bulkCategorySeed ?? "selection"}
+                  posts={selectedPostsMeta}
+                  categories={bulkCategoryChoices}
+                  initialSlug={bulkCategorySeed}
+                  isPending={saveBlock.isPending}
+                  onApply={(mode, category) =>
+                    void runBulkCategoryUpdate(mode, category)
+                  }
+                  onClose={() => {
+                    clearSelection();
+                    showItems();
+                  }}
                 />
+              ) : selection && selection.collection !== "available-section" ? (
+                selection.collection === "apps" ? (
+                  <AppEditor
+                    key={`app:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    previewBaseUrl={previewUrl}
+                    schemaPending={isAppSchemaLoading(
+                      typeof (
+                        decofile[selection.key] as Record<string, unknown>
+                      )?.__resolveType === "string"
+                        ? String(
+                            (decofile[selection.key] as Record<string, unknown>)
+                              .__resolveType,
+                          )
+                        : undefined,
+                    )}
+                  />
+                ) : selection.collection === "posts" ? (
+                  <PostEditor
+                    key={`post:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    previewBaseUrl={sitePreviewUrl}
+                  />
+                ) : selection.collection === "categories" ? (
+                  <CategoryEditor
+                    key={`category:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    onManagePosts={handleManagePosts}
+                    onOpenPost={(key) => {
+                      setActiveCollection("posts");
+                      setPrevCollection("posts");
+                      selectItem({ collection: "posts", key });
+                    }}
+                    previewBaseUrl={sitePreviewUrl}
+                  />
+                ) : selection.collection === "authors" ? (
+                  <RecordEditor
+                    key={`authors:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    kind="authors"
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                  />
+                ) : selection.collection === "redirects" ? (
+                  <RedirectEditor
+                    key={`redirect:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                  />
+                ) : (
+                  <SectionsEditor
+                    key={
+                      selection.collection === "pages"
+                        ? `page:${selection.key}`
+                        : `section:${selection.key}`
+                    }
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    previewReady
+                    previewUrl={previewUrl ?? undefined}
+                    currentPath={
+                      selection.collection === "pages" ? selection.path : "/"
+                    }
+                    activePageBlockKey={
+                      selection.collection === "pages" ? selection.key : null
+                    }
+                    activeGlobalBlockKey={
+                      selection.collection === "sections" ? selection.key : null
+                    }
+                    initialEditSeo={
+                      selection.collection === "pages" &&
+                      openPageSeoKey === selection.key
+                    }
+                    onExitSeo={() => setOpenPageSeoKey(null)}
+                  />
+                )
               ) : (
-                <SectionsEditor
-                  key={
-                    selection.collection === "pages"
-                      ? `page:${selection.key}`
-                      : `section:${selection.key}`
+                <EmptyMessage
+                  title={t(
+                    SELECT_TO_EDIT_KEYS[activeCollection] ??
+                      "sandbox.contentBrowser.selectItemToEdit",
+                  )}
+                  description={
+                    activeCollection === "apps"
+                      ? t("sandbox.contentBrowser.selectAppDescription")
+                      : t("sandbox.contentBrowser.selectItemDescription")
                   }
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  previewReady
-                  previewUrl={previewUrl ?? undefined}
-                  currentPath={
-                    selection.collection === "pages" ? selection.path : "/"
-                  }
-                  activePageBlockKey={
-                    selection.collection === "pages" ? selection.key : null
-                  }
-                  activeGlobalBlockKey={
-                    selection.collection === "sections" ? selection.key : null
-                  }
-                  initialEditSeo={
-                    selection.collection === "pages" &&
-                    openPageSeoKey === selection.key
-                  }
-                  onExitSeo={() => setOpenPageSeoKey(null)}
                 />
-              )
-            ) : (
-              <EmptyMessage
-                title={`Select ${
-                  isBlogKind(activeCollection)
-                    ? `a ${BLOG_SINGULAR[activeCollection]}`
-                    : activeCollection === "pages"
-                      ? "a page"
-                      : activeCollection === "apps"
-                        ? "an app"
-                        : activeCollection === "redirects"
-                          ? "a redirect"
-                          : "a section"
-                } to edit`}
-                description={
-                  activeCollection === "apps"
-                    ? "Browse all apps and select an installed one to edit its settings."
-                    : 'Pick an item from the list, or click "+" to create one.'
-                }
-              />
-            )}
-          </Suspense>
-        )}
-      </ReadOnlyPane>
+              )}
+            </Suspense>
+          )}
+        </ReadOnlyPane>
+      </div>
 
       {/* Page create/duplicate/rename dialog */}
       {pageDialog && (
@@ -1476,21 +1794,15 @@ function ContentBrowserReady({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{`Delete ${deleteNoun}?`}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.kind === "section"
-                ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
-                : deleteTarget?.kind === "blog-bulk"
-                  ? `${deleteTarget.count} ${
-                      deleteTarget.count === 1 ? "post" : "posts"
-                    } will be removed permanently. This can't be undone.`
-                  : deleteTarget
-                    ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
-                    : null}
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t("sandbox.contentBrowser.deleteTitle", { item: deleteNoun })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>
+              {t("sandbox.contentBrowser.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -1502,10 +1814,10 @@ function ContentBrowserReady({
               {isDeleting ? (
                 <>
                   <Spinner className="size-3.5" />
-                  Deleting…
+                  {t("sandbox.contentBrowser.deleting")}
                 </>
               ) : (
-                "Delete"
+                t("sandbox.contentBrowser.delete")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1516,6 +1828,10 @@ function ContentBrowserReady({
 }
 
 function ItemList({
+  compact,
+  className,
+  searchInputRef,
+  onBack,
   activeCollection,
   pages,
   redirects,
@@ -1541,6 +1857,7 @@ function ItemList({
   onSelectAllPosts,
   onClearPostSelection,
   onExitPostSelection,
+  onUpdatePostCategories,
   onBulkDeletePosts,
   selection,
   onSelect,
@@ -1558,6 +1875,10 @@ function ItemList({
   onDuplicateBlog,
   onDeleteBlog,
 }: {
+  compact: boolean;
+  className?: string;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  onBack: () => void;
   activeCollection: CollectionId;
   pages: PageEntry[];
   redirects: RedirectEntry[];
@@ -1586,6 +1907,7 @@ function ItemList({
   onClearPostSelection: () => void;
   /** Leave selection mode entirely (also closes the bulk panel). */
   onExitPostSelection: () => void;
+  onUpdatePostCategories: () => void;
   onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
@@ -1603,6 +1925,11 @@ function ItemList({
   onDuplicateBlog: (entry: BlogEntry) => void;
   onDeleteBlog: (entry: BlogEntry) => void;
 }) {
+  const compactBackRef = useRef<HTMLButtonElement>(null);
+  const compactBackHandoffRef = useFocusHandoffRef(compactBackRef, {
+    ref: searchInputRef,
+  });
+  const t = useT();
   const q = searchQuery.toLowerCase();
   const filteredPages = pages.filter(
     (p) =>
@@ -1733,19 +2060,42 @@ function ItemList({
     }
   };
 
-  const placeholder = `Search ${activeCollection}…`;
-  const createTooltip = isBlogKind(activeCollection)
-    ? `Create new ${BLOG_SINGULAR[activeCollection]}`
-    : activeCollection === "redirects"
-      ? "Create new redirect"
-      : "Create new page";
+  const placeholder = t(COLLECTION_SEARCH_KEYS[activeCollection]);
+  const createTooltip = t(
+    CREATE_ITEM_KEYS[activeCollection] ?? "sandbox.contentBrowser.createPage",
+  );
   // Sections are created by saving an available section, not via the "+".
   const showCreateButton =
     activeCollection !== "apps" && activeCollection !== "sections";
 
   return (
-    <div className="shrink-0 border-r flex flex-col min-h-0 w-[300px]">
+    <div
+      className={cn(
+        "shrink-0 border-r flex flex-col min-h-0 w-[300px]",
+        className,
+      )}
+    >
       <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
+        {compact && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                ref={compactBackHandoffRef}
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0"
+                onClick={onBack}
+                aria-label={t("sandbox.contentBrowser.backToCollections")}
+              >
+                <ArrowLeft size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t("sandbox.contentBrowser.backToCollections")}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <div className="flex flex-1 items-center gap-2 pl-1">
           <SearchLg
             size={14}
@@ -1753,12 +2103,13 @@ function ItemList({
             aria-hidden
           />
           <input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={placeholder}
             aria-label={placeholder}
-            className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
         {showCreateButton && (
@@ -1783,6 +2134,7 @@ function ItemList({
             count={selectionCount}
             allSelected={allVisibleSelected}
             onToggleSelectAll={toggleSelectAll}
+            onUpdateCategory={onUpdatePostCategories}
             onDelete={onBulkDeletePosts}
             onExit={onExitPostSelection}
           />
@@ -1809,8 +2161,8 @@ function ItemList({
             filteredPages.length === 0 ? (
               <ListEmpty
                 hasItems={pages.length > 0}
-                emptyLabel="No pages yet."
-                emptyHint='Click "+" to create your first page.'
+                emptyLabel={t("sandbox.contentBrowser.noPagesYet")}
+                emptyHint={t("sandbox.contentBrowser.createFirstPageHint")}
               />
             ) : (
               filteredPages.map((page) => {
@@ -1852,14 +2204,17 @@ function ItemList({
             filteredAvailableSections.length === 0 ? (
               <ListEmpty
                 hasItems={sections.length > 0 || availableSections.length > 0}
-                emptyLabel="No sections yet."
-                emptyHint="Save a section from a page, or start the preview dev server."
+                emptyLabel={t("sandbox.contentBrowser.noSectionsYet")}
+                emptyHint={t("sandbox.contentBrowser.noSectionsHint")}
               />
             ) : (
               <>
                 {savedSectionGroups.length > 0 && (
                   <>
-                    <GroupHeader icon={Globe02} label="Saved sections" />
+                    <GroupHeader
+                      icon={Globe02}
+                      label={t("sandbox.contentBrowser.savedSections")}
+                    />
                     {savedSectionGroups.map((group) => (
                       <div key={group.label} className="flex flex-col gap-1">
                         <div className="px-2.5 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -1903,7 +2258,7 @@ function ItemList({
                   <>
                     <GroupHeader
                       icon={LayoutAlt01}
-                      label="Available sections"
+                      label={t("sandbox.contentBrowser.availableSections")}
                       className={cn(savedSectionGroups.length > 0 && "mt-3")}
                     />
                     {filteredAvailableSections.map((section) => {
@@ -1943,8 +2298,8 @@ function ItemList({
             ) : filteredApps.length === 0 ? (
               <ListEmpty
                 hasItems={appCatalog.length > 0}
-                emptyLabel="No apps found."
-                emptyHint="Try a different search term."
+                emptyLabel={t("sandbox.contentBrowser.noAppsFound")}
+                emptyHint={t("sandbox.contentBrowser.tryDifferentSearch")}
               />
             ) : (
               filteredApps.map((entry) => {
@@ -1963,14 +2318,16 @@ function ItemList({
                     trailing={
                       entry.installed ? (
                         <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
-                          Installed
+                          {t("sandbox.contentBrowser.installed")}
                         </span>
                       ) : undefined
                     }
                     onClick={() => {
                       if (!entry.installed || !entry.blockKey) {
                         toast.message(
-                          `${entry.title} is not installed on this site.`,
+                          t("sandbox.contentBrowser.appNotInstalled", {
+                            name: entry.title,
+                          }),
                         );
                         return;
                       }
@@ -1984,16 +2341,18 @@ function ItemList({
             filteredRedirects.length === 0 ? (
               <ListEmpty
                 hasItems={redirects.length > 0}
-                emptyLabel="No redirects yet."
-                emptyHint='Click "+" to create your first redirect.'
+                emptyLabel={t("sandbox.contentBrowser.noRedirectsYet")}
+                emptyHint={t("sandbox.contentBrowser.createFirstRedirectHint")}
               />
             ) : (
               filteredRedirects.map((entry) => (
                 <ItemRow
                   key={entry.key}
                   icon={CornerUpRight}
-                  title={entry.from || "(no source)"}
-                  subtitle={`→ ${entry.to || "(no target)"}`}
+                  title={
+                    entry.from || t("sandbox.contentBrowser.noRedirectSource")
+                  }
+                  subtitle={`→ ${entry.to || t("sandbox.contentBrowser.noRedirectTarget")}`}
                   active={
                     selection?.collection === "redirects" &&
                     selection.key === entry.key
@@ -2012,8 +2371,8 @@ function ItemList({
             sortedPosts.length === 0 ? (
               <ListEmpty
                 hasItems={postsWithMeta.length > 0}
-                emptyLabel="No posts yet."
-                emptyHint='Click "+" to create your first post.'
+                emptyLabel={t("sandbox.contentBrowser.noPostsYet")}
+                emptyHint={t("sandbox.contentBrowser.createFirstPostHint")}
               />
             ) : (
               sortedPosts.map((post) => {
@@ -2028,9 +2387,11 @@ function ItemList({
                     key={post.key}
                     icon={File02}
                     title={post.title}
-                    subtitle={post.slug || "no slug"}
+                    subtitle={post.slug || t("sandbox.contentBrowser.noSlug")}
                     invalid={post.missing.length > 0}
-                    invalidReason={`Missing: ${post.missing.join(", ")}`}
+                    invalidReason={t("sandbox.contentBrowser.missingFields", {
+                      fields: post.missing.join(", "),
+                    })}
                     active={
                       selection?.collection === "posts" &&
                       selection.key === post.key
@@ -2057,12 +2418,16 @@ function ItemList({
           ) : filteredBlog.length === 0 ? (
             <ListEmpty
               hasItems={blogEntries.length > 0}
-              emptyLabel={`No ${activeCollection} yet.`}
-              emptyHint={`Click "+" to create your first ${
+              emptyLabel={t(
                 isBlogKind(activeCollection)
-                  ? BLOG_SINGULAR[activeCollection]
-                  : "item"
-              }.`}
+                  ? BLOG_EMPTY_LABEL_KEYS[activeCollection]
+                  : "sandbox.contentBrowser.noItemsYet",
+              )}
+              emptyHint={t(
+                isBlogKind(activeCollection)
+                  ? BLOG_EMPTY_HINT_KEYS[activeCollection]
+                  : "sandbox.contentBrowser.createFirstItemHint",
+              )}
             />
           ) : (
             filteredBlog.map((entry) => {

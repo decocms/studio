@@ -1,211 +1,612 @@
 /**
- * Legacy URL → first-class-navigation translation. Three rules live here, all
- * pure: `/$org/$taskId` (the old one-route workspace), `?task=` (the card's
- * address before it had a path of its own) and `?main=` (the view's).
+ * Pure compatibility adapters for URLs written before main views became
+ * route-owned pages.
  *
- * Every surface used to live on one thread route, and the sidebar's
- * destinations and the main panel's views were all `?main=<tabId>` overlays. A
- * destination is a real path segment now and so is the view, so the legacy
- * route (which stays mounted forever, for every bookmark and shared link ever
- * minted) translates itself on entry.
- *
- * The governing rule: **path = which page, search = how that page is laid out.**
- * So `virtualmcpid` becomes `?virtualmcpid=`, the thread id
- * moves from the path to `?thread=`, and `main` splits in two: the view it named
- * becomes the `{-$panel}` segment, and its `0` closed sentinel becomes
- * `?mainpanel=false`, which is layout and stays in search.
- *
- * This is a **pure** function of `(org, taskId, search)`: no fetch, no thread
- * lookup, no React. It can be pure because `threads.virtual_mcp_id` is NOT NULL
- * — one agent per thread — so `/$org/agents?thread=<id>` resolves its own project
- * from the row the chat route loads anyway. The translator never needs to know
- * which agent owns the thread, which is what keeps the redirect instant and
- * impossible to serve stale.
- *
- * The four destination-backed `main` values drop the project **deliberately**:
- * today `main=board` on a coding agent shows the ORG-WIDE board (see the
- * docblock at `components/sidebar/nav-destinations.tsx`), so carrying the
- * project forward would invent a filter the old URL never had.
- *
- * `main=connect-sources` is an overlay tab with no destination route of its own,
- * so it becomes a chat panel segment exactly like a per-agent view
- * (`preview` / `code` / `content` / …).
+ * Legacy URLs encoded agent identity in `?virtualmcpid=` and a view in either
+ * `?main=` or an `/agents/<panel>` segment. Canonical URLs encode both in the
+ * route tree: `/projects/$agentId/...`. These helpers are the one-way boundary
+ * between those grammars. They accept every unambiguous old shape, but every
+ * emitted target is canonical; an adapter never redirects through another
+ * legacy URL. An unmarked custom view named exactly like an agent-id namespace
+ * is syntactically indistinguishable from a canonical path with stale search,
+ * so canonical path identity wins that one retired collision.
  */
 
 import {
-  CONTENT_MAIN,
-  type DestinationPanel,
-  isDestinationPanel,
-  panelLocationForTab,
+  PROJECT_ROUTE,
+  DESTINATION_ROUTE,
+} from "@/hooks/use-destination-route";
+import {
+  isKnownPanelSegment,
+  tabIdForPanel,
 } from "@/layouts/main-panel-tabs/panel-route";
+import { GATED_CONTROL_PLANE_TABS } from "@/layouts/main-panel-tabs/tab-id";
+import {
+  type TabRouteTarget,
+  tabRouteTarget,
+} from "@/layouts/main-panel-tabs/tab-route";
+import {
+  isBrandContextSetup,
+  isCommerceDiscoveryAgentId,
+  isDecopilot,
+  isSiteDiagnostics,
+  isStudioPackAgent,
+} from "@/sdk";
 
-/** The legacy `/$org/$taskId` search params this translator reads. Every other
- *  key (`sidepanel`, `task`, `connect`, board filters, …) is carried through
- *  verbatim. */
+/** Search accepted from a legacy URL. Unknown keys are deliberately retained:
+ * they include shared layout state, board filters and feature deep links. */
 export interface LegacyThreadSearch {
-  /** Legacy agent selector. Carried through as `?virtualmcpid=`, the one
-   *  carrier of the project scope — it is search on the new routes too. */
   virtualmcpid?: string;
-  /** Active main-panel view, or the `0` closed sentinel. Retired into the
-   *  `{-$panel}` segment and `?mainpanel` by {@link translateLegacyMainParam}. */
   main?: string | 0;
   [key: string]: unknown;
 }
 
-/** Full paths of the destination routes this translator can land on. */
-export type LegacyThreadDestination =
-  | "/$org/agents/{-$panel}"
-  | "/$org/tasks/{-$taskKey}"
-  | "/$org/reports"
-  | "/$org/library"
-  | "/$org/home"
-  | "/$org/discover";
-
-/** Shaped for TanStack's `navigate()` / `<Navigate />`: `{ to, params, search }`. */
-export interface LegacyThreadTarget {
-  to: LegacyThreadDestination;
-  params: {
-    org: string;
-    project: string | undefined;
-    panel: string | undefined;
-  };
-  search: Record<string, unknown> & { thread: string };
-}
-
-/** `main` values that became their own destination route. The project segment
- *  is dropped for these — see the module docblock. */
-const DESTINATION_BY_PANEL: Readonly<
-  Record<DestinationPanel, LegacyThreadDestination>
-> = {
-  board: "/$org/tasks/{-$taskKey}",
-  files: "/$org/library",
-  reports: "/$org/reports",
-  overview: "/$org/home",
-  /** No legacy `?main=discover` was ever minted — Discover postdates the
-   *  overlay grammar. Mapped anyway so the record stays exhaustive. */
-  discover: "/$org/discover",
-};
-
-/**
- * What a legacy `?main=` becomes, for whichever route it arrived on. `null`
- * when there is nothing to translate.
- *
- * `to: null` means "the page you are already on": the closed sentinel is panel
- * visibility, which every page has, so it must not move anyone.
- */
-export interface LegacyMainTranslation {
-  to: LegacyThreadDestination | null;
-  /** The `{-$panel}` segment, when landing on the chat route. */
-  panel: string | undefined;
-  /** `main` cleared, plus the panel's payload and any `mainpanel`. Layered over
-   *  the rest of the search, so a stale payload key can never survive. */
+/** A canonical route plus the complete search object to write on it. Keeping
+ * the typed route separate from preserved search lets redirect components
+ * retain TanStack's route-param checking without casting a union. */
+export interface LegacyCanonicalTarget {
+  route: TabRouteTarget;
   search: Record<string, unknown>;
 }
 
-export function translateLegacyMainParam(
-  main: string | 0 | undefined,
-  /** The `{-$panel}` segment the URL already carries, when it has one. */
-  currentPanel?: string,
-): LegacyMainTranslation | null {
-  if (main === undefined) return null;
-  /**
-   * `main=content` is the ONE value that is not legacy: it is Content's own
-   * address on the Site Editor segment (see `CONTENT_MAIN`), so it is carried
-   * onto that segment rather than retired into one. Once the URL holds both
-   * halves there is nothing left to translate — without this the redirect
-   * would re-fire on the target it just produced. Every other `main=<tab>`
-   * falls through and translates exactly as it did before.
-   */
-  if (main === CONTENT_MAIN && currentPanel === "site-editor") return null;
-  const cleared = { main: undefined };
+/** Rename only the retired namespace in a raw, encoded pathname.
+ *
+ * Router splat params are decoded, so rebuilding a pathname from `_splat`
+ * corrupts valid segment data such as a tool name containing an encoded `/`.
+ * This operates on the browser pathname instead and leaves every encoded byte
+ * after the namespace untouched. `null` fails closed when the input is not the
+ * exact org-scoped legacy shape. */
+export function canonicalProjectPathFromLegacyAgents(
+  pathname: string,
+): string | null {
+  const match = /^(\/[^/]+)\/agents(?=\/|$)/.exec(pathname);
+  if (!match?.[1]) return null;
+  return `${match[1]}/projects${pathname.slice(match[0].length)}`;
+}
 
-  if (main === 0 || main === "0") {
-    return {
-      to: null,
-      panel: undefined,
-      search: { ...cleared, mainpanel: false },
-    };
-  }
+/** Whether a current or legacy project workspace has another path segment.
+ * Segment counting is deliberate: searching by substring is ambiguous when an
+ * organization itself is named `projects` or `agents`. */
+export function projectWorkspacePathHasChild(pathname: string): boolean {
+  const segments = pathname.split("/").filter(Boolean);
+  return (
+    (segments[1] === "projects" || segments[1] === "agents") &&
+    segments.length > 3
+  );
+}
 
-  const { panel, payload } = panelLocationForTab(main);
+/** `main=0` changes layout on the current route; every named view moves to a
+ * canonical route. */
+export type LegacyMainTranslation =
+  | { kind: "same-route"; search: Record<string, unknown> }
+  | ({ kind: "canonical" } & LegacyCanonicalTarget);
 
-  if (panel && isDestinationPanel(panel)) {
-    return {
-      to: DESTINATION_BY_PANEL[panel],
-      panel: undefined,
-      search: { ...cleared, ...payload },
-    };
-  }
+/** Old panel payloads are routing state, not shared search. Remove all of them
+ * before applying the canonical destination's own payload so stale state from
+ * another panel can never survive the migration. */
+const LEGACY_VIEW_SEARCH_KEYS: ReadonlySet<string> = new Set([
+  "main",
+  "virtualmcpid",
+  "file",
+  "key",
+  "deck",
+  "path",
+  "connection",
+  "tool",
+  "automation",
+]);
 
+const LEGACY_MAIN_SEARCH_KEY: ReadonlySet<string> = new Set(["main"]);
+const LEGACY_AGENT_SEARCH_KEY: ReadonlySet<string> = new Set(["virtualmcpid"]);
+
+function withoutKeys(
+  search: Readonly<Record<string, unknown>>,
+  keys: ReadonlySet<string>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(search).filter(([key]) => !keys.has(key)),
+  );
+}
+
+function canonicalSearch(
+  search: Readonly<Record<string, unknown>>,
+  route: TabRouteTarget,
+): Record<string, unknown> {
   return {
-    to: "/$org/agents/{-$panel}",
-    panel,
-    search: { ...cleared, ...payload },
+    ...withoutKeys(search, LEGACY_VIEW_SEARCH_KEYS),
+    ...route.search,
   };
 }
 
-export function translateLegacyThreadRoute(args: {
+/** Remove a redundant search-carried identity after a canonical agent path has
+ * won. Kept pure so the render-time adapter never mutates router search. */
+export function retireLegacyAgentSearch(
+  search: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  return withoutKeys(search, LEGACY_AGENT_SEARCH_KEY);
+}
+
+/**
+ * Retire search-carried identity that arrives on an organization destination.
+ * Home, Tasks, and Reports historically accepted a project in search, so keep
+ * that meaning by promoting them beneath the project's canonical path.
+ */
+export function translateLegacyOrgDestinationAgentSearch(args: {
   org: string;
-  taskId: string;
-  search?: LegacyThreadSearch | null;
-}): LegacyThreadTarget {
-  const { org, taskId } = args;
-  const { virtualmcpid, main, ...rest } = args.search ?? {};
+  routePath: string;
+  search: LegacyThreadSearch;
+}): LegacyMainTranslation | null {
+  if (args.search.virtualmcpid === undefined) return null;
 
-  const view = translateLegacyMainParam(main);
+  const agentId = normalizedAgentId(args.search.virtualmcpid);
+  if (agentId) {
+    const tabId =
+      args.routePath === DESTINATION_ROUTE.tasks
+        ? "board"
+        : args.routePath === DESTINATION_ROUTE.reports
+          ? "reports"
+          : null;
+    if (args.routePath === DESTINATION_ROUTE.home || tabId) {
+      const route = tabId
+        ? tabRouteTarget({ org: args.org, agentId, tabId })
+        : canonicalBaseRoute(args.org, agentId);
+      return {
+        kind: "canonical",
+        route,
+        search: canonicalSearch(args.search, route),
+      };
+    }
+  }
 
-  if (view && view.to && view.to !== "/$org/agents/{-$panel}") {
+  if (
+    args.routePath === DESTINATION_ROUTE.home ||
+    args.routePath === DESTINATION_ROUTE.tasks ||
+    args.routePath === DESTINATION_ROUTE.reports ||
+    args.routePath === DESTINATION_ROUTE.library
+  ) {
     return {
-      to: view.to,
-      params: { org, project: undefined, panel: undefined },
-      /** `virtualmcpid: undefined` is written, not omitted. The key is retained
-       *  across navigation, and retention re-adds a key the next search leaves
-       *  out — so dropping it by omission would hand the scope straight back on
-       *  a page that has no project. */
+      kind: "same-route",
+      search: retireLegacyAgentSearch(args.search),
+    };
+  }
+
+  return null;
+}
+
+function normalizedAgentId(agentId: string | undefined): string | undefined {
+  return agentId?.trim() || undefined;
+}
+
+/** Whether the first segment after `/agents/` belongs to the retired
+ * view-first grammar rather than naming a canonical agent. */
+function isLegacyAgentPanelSegment(segment: string | undefined): boolean {
+  return (
+    isKnownPanelSegment(segment) ||
+    (segment !== undefined && GATED_CONTROL_PLANE_TABS.has(segment))
+  );
+}
+
+/**
+ * Every persisted agent id is generated with `vir_`; the remaining valid
+ * shapes are centralized well-known ids. This discriminator preserves old
+ * view-first URLs whose view names are outside those namespaces while a
+ * canonical `/agents/vir_x?virtualmcpid=vir_stale` still lets path identity
+ * win. A custom view deliberately named like an agent id is irreducibly
+ * ambiguous in that retired unmarked URL shape; canonical path identity wins.
+ */
+export function isCanonicalAgentIdSegment(
+  segment: string | undefined,
+): boolean {
+  const id = normalizedAgentId(segment);
+  if (!id) return false;
+  return (
+    (id.startsWith("vir_") && id.length > "vir_".length) ||
+    isDecopilot(id) !== null ||
+    isBrandContextSetup(id) !== null ||
+    isSiteDiagnostics(id) !== null ||
+    isCommerceDiscoveryAgentId(id) !== null ||
+    isStudioPackAgent(id)
+  );
+}
+
+/** Resolve identity while both route grammars can still arrive. A canonical
+ * path is authoritative over a stale query. The only exception is a first
+ * segment that is itself a known legacy view (`/agents/code?...`), where that
+ * segment is the view and the old query still carries the agent. */
+export function resolveLegacyAgentId(input: {
+  agentIdParam?: string;
+  virtualMcpIdSearch?: string;
+  fallbackAgentId?: string;
+}): string | undefined {
+  const pathAgentId = normalizedAgentId(input.agentIdParam);
+  const pathNamesLegacyView = isLegacyAgentPanelSegment(pathAgentId);
+
+  if (pathAgentId && !pathNamesLegacyView) return pathAgentId;
+  return (
+    normalizedAgentId(input.virtualMcpIdSearch) ??
+    normalizedAgentId(input.fallbackAgentId)
+  );
+}
+
+/**
+ * Resolve the retired `/agents/<view>` grammar after the authenticated org
+ * shell has mounted. Keeping the Super Agent fallback here, rather than in a
+ * router loader, makes this adapter independent of a second organization-list
+ * request and lets every redirect preserve the original search and hash.
+ *
+ * `null` means the current path is canonical (or belongs to a canonical child),
+ * so callers must leave it alone. Every recognized legacy path returns a
+ * canonical target: a non-empty panel plus the mounted org's fallback identity
+ * is sufficient for {@link translateLegacyPanelRoute} to resolve every shape.
+ */
+export function translateLegacyAgentPath(args: {
+  pathname: string;
+  org: string;
+  pathAgentId?: string;
+  pathLegacyView?: string;
+  fallbackAgentId: string;
+  search: LegacyThreadSearch;
+}): LegacyCanonicalTarget | null {
+  const pathAgentId = args.pathAgentId;
+
+  if (pathAgentId && args.pathLegacyView) {
+    const translation = translateLegacyPanelRoute({
+      org: args.org,
+      agentId: pathAgentId,
+      panel: args.pathLegacyView,
+      source: "project-first",
+      search: args.search,
+    });
+    return translation?.kind === "canonical"
+      ? { route: translation.route, search: translation.search }
+      : null;
+  }
+
+  if (!pathAgentId || projectWorkspacePathHasChild(args.pathname)) return null;
+
+  const opaqueViewFirst =
+    args.search.virtualmcpid !== undefined &&
+    !isCanonicalAgentIdSegment(pathAgentId);
+  const isLegacyPath =
+    isLegacyAgentPanelSegment(pathAgentId) || opaqueViewFirst;
+  if (!isLegacyPath) return null;
+
+  const agentId = resolveLegacyAgentId({
+    agentIdParam: opaqueViewFirst ? undefined : pathAgentId,
+    virtualMcpIdSearch: args.search.virtualmcpid,
+    fallbackAgentId: args.fallbackAgentId,
+  });
+  const translation = translateLegacyPanelRoute({
+    org: args.org,
+    agentId,
+    panel: pathAgentId,
+    source: "view-first",
+    search: args.search,
+  });
+
+  return translation?.kind === "canonical"
+    ? { route: translation.route, search: translation.search }
+    : null;
+}
+
+/** Retired destination values. Tasks and Reports retain an explicit project's
+ * scope, while Library remains organization-owned. `main=overview` always
+ * opened org Home; it must not silently change meaning now that Project Home
+ * also exists. */
+function legacyDestinationTarget(
+  main: string,
+  org: string,
+  search: Readonly<Record<string, unknown>>,
+  agentId?: string,
+): TabRouteTarget | null {
+  const projectId = normalizedAgentId(agentId);
+  switch (main) {
+    case "board":
+      return projectId
+        ? tabRouteTarget({ org, agentId: projectId, tabId: "board" })
+        : {
+            to: DESTINATION_ROUTE.tasks,
+            params: { org, taskKey: undefined },
+            search: {},
+          };
+    case "files": {
+      const path = stringSearchValue(search.path);
+      return {
+        to: DESTINATION_ROUTE.library,
+        params: { org },
+        search: path ? { path } : {},
+      };
+    }
+    case "reports":
+      return projectId
+        ? tabRouteTarget({ org, agentId: projectId, tabId: "reports" })
+        : { to: DESTINATION_ROUTE.reports, params: { org }, search: {} };
+    case "overview":
+      return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
+    case "discover":
+      return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
+    default:
+      return null;
+  }
+}
+
+/** Map an old tab/panel vocabulary item directly to its canonical owner. */
+function canonicalRouteForLegacyTab(args: {
+  org: string;
+  agentId?: string;
+  tabId: string;
+  search: Readonly<Record<string, unknown>>;
+}): TabRouteTarget | null {
+  const destination = legacyDestinationTarget(
+    args.tabId,
+    args.org,
+    args.search,
+    args.agentId,
+  );
+  if (destination) return destination;
+
+  if (args.tabId === "chat") {
+    return canonicalBaseRoute(args.org, args.agentId);
+  }
+
+  const agentId = normalizedAgentId(args.agentId);
+  if (!agentId) return null;
+
+  /** These were parameterized panel kinds, never standalone tab ids. A
+   * truncated legacy link has no entity to open, so its safest canonical home
+   * is the owning agent rather than a fabricated `/views/app`-style route. */
+  if (
+    args.tabId === "app" ||
+    args.tabId === "file" ||
+    args.tabId === "deck" ||
+    args.tabId === "library-file" ||
+    args.tabId.trim() === ""
+  ) {
+    return {
+      to: PROJECT_ROUTE.root,
+      params: { org: args.org, agentId },
+      search: {},
+    };
+  }
+
+  return tabRouteTarget({ org: args.org, agentId, tabId: args.tabId });
+}
+
+function canonicalBaseRoute(org: string, agentId?: string): TabRouteTarget {
+  const normalized = normalizedAgentId(agentId);
+  return normalized
+    ? {
+        to: PROJECT_ROUTE.root,
+        params: { org, agentId: normalized },
+        search: {},
+      }
+    : {
+        to: DESTINATION_ROUTE.home,
+        params: { org },
+        search: {},
+      };
+}
+
+/**
+ * Translate a legacy `?main=` without an intermediate panel URL.
+ *
+ * `null` means there is no legacy input, or a named agent view arrived without
+ * enough identity to form a canonical URL. Callers mounted inside the app can
+ * supply the org's Decopilot id for that malformed/unscoped historical case.
+ */
+export function translateLegacyMainParam(args: {
+  org: string;
+  agentId?: string;
+  main: string | 0 | undefined;
+  search?: LegacyThreadSearch | null;
+}): LegacyMainTranslation | null {
+  const { main } = args;
+  if (main === undefined) return null;
+
+  const search = args.search ?? {};
+  if (main === 0 || main === "0") {
+    return {
+      kind: "same-route",
       search: {
-        ...rest,
-        ...view.search,
-        virtualmcpid: undefined,
-        thread: taskId,
+        ...withoutKeys(search, LEGACY_MAIN_SEARCH_KEY),
+        mainpanel: false,
       },
     };
   }
 
-  /** A blank agent id would interpolate into an empty segment, so it reads as
-   *  "no project" (the Super Agent), same as an absent one. */
-  const project = virtualmcpid?.trim() ? virtualmcpid : undefined;
+  /** `chat` was the retired "no main view" default, not an agent-declared
+   * view. Its canonical expression is the base page with chat visible. */
+  if (main === "chat") {
+    const route = canonicalBaseRoute(args.org, args.agentId);
+    return {
+      kind: "canonical",
+      route,
+      search: {
+        ...canonicalSearch(search, route),
+        sidepanel: true,
+        mainpanel: false,
+      },
+    };
+  }
+
+  const route = canonicalRouteForLegacyTab({
+    org: args.org,
+    agentId: args.agentId,
+    tabId: main,
+    search,
+  });
+  if (!route) return null;
 
   return {
-    to: "/$org/agents/{-$panel}",
-    params: { org, project, panel: view?.panel },
-    search: { ...rest, ...(view?.search ?? {}), thread: taskId },
+    kind: "canonical",
+    route,
+    search: canonicalSearch(search, route),
   };
 }
 
-/** What a legacy `?task=` becomes: the `{-$taskKey}` segment, and the rest of
- *  the search without it. `null` when there is no `task` to retire. */
+function stringSearchValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Translate the old `/agents/<panel>?virtualmcpid=<id>` (and the briefly
+ * shipped `/agents/<agent>/<panel>`) grammar directly to a canonical route.
+ * A legacy `?main=` wins when both forms are present, matching the old shell.
+ */
+export function translateLegacyPanelRoute(args: {
+  org: string;
+  agentId?: string;
+  panel?: string;
+  source?: "view-first" | "project-first";
+  search?: LegacyThreadSearch | null;
+}): LegacyMainTranslation | null {
+  const search = args.search ?? {};
+  if ((search.main === 0 || search.main === "0") && args.panel) {
+    const panelTarget = translateLegacyPanelRoute({
+      ...args,
+      search: withoutKeys(search, LEGACY_MAIN_SEARCH_KEY),
+    });
+    if (panelTarget?.kind !== "canonical") return panelTarget;
+    return {
+      ...panelTarget,
+      search: { ...panelTarget.search, mainpanel: false },
+    };
+  }
+  if (search.main !== undefined) {
+    return translateLegacyMainParam({
+      org: args.org,
+      agentId: args.agentId,
+      main: search.main,
+      search,
+    });
+  }
+
+  const agentId = normalizedAgentId(args.agentId);
+  const panel = args.panel;
+  if (!panel) {
+    const route = canonicalBaseRoute(args.org, agentId);
+    return {
+      kind: "canonical",
+      route,
+      search: canonicalSearch(search, route),
+    };
+  }
+
+  const tabId = tabIdForPanel(panel, {
+    file: stringSearchValue(search.file),
+    key: stringSearchValue(search.key),
+    deck: stringSearchValue(search.deck),
+    path: stringSearchValue(search.path),
+    connection: stringSearchValue(search.connection),
+    tool: stringSearchValue(search.tool),
+    automation: stringSearchValue(search.automation),
+  });
+  const route = tabId
+    ? args.source === "project-first" && tabId === "overview" && agentId
+      ? tabRouteTarget({ org: args.org, agentId, tabId })
+      : canonicalRouteForLegacyTab({ org: args.org, agentId, tabId, search })
+    : canonicalRouteForLegacyTab({
+        org: args.org,
+        agentId,
+        tabId: "",
+        search,
+      });
+  if (!route) return null;
+
+  return {
+    kind: "canonical",
+    route,
+    search:
+      tabId === "chat"
+        ? {
+            ...canonicalSearch(search, route),
+            sidepanel: true,
+            mainpanel: false,
+          }
+        : canonicalSearch(search, route),
+  };
+}
+
+/**
+ * Translate the forever-supported `/$org/$taskId` route.
+ *
+ * A base thread URL with agent identity lands at that agent's root; without
+ * it, it lands on org Home. A named `main` may override the root with its
+ * canonical owner. Org destinations need no agent; an agent-owned view uses
+ * the optional Super Agent fallback supplied by the mounted org shell, while
+ * the pure adapter still falls back to Home when no identity is available.
+ */
+export function translateLegacyThreadRoute(args: {
+  org: string;
+  taskId: string;
+  /** The org's Super Agent. Used only when an old URL names an agent-owned
+   * view but predates query-carried identity. */
+  fallbackAgentId?: string;
+  search?: LegacyThreadSearch | null;
+}): LegacyCanonicalTarget {
+  const search = args.search ?? {};
+  const agentId = normalizedAgentId(search.virtualmcpid);
+  const fallbackAgentId = normalizedAgentId(args.fallbackAgentId);
+  const main = search.main;
+
+  let route: TabRouteTarget;
+  if (main === "chat") {
+    route = canonicalBaseRoute(args.org, agentId);
+  } else if (main !== undefined && main !== 0 && main !== "0") {
+    const explicitTarget = canonicalRouteForLegacyTab({
+      org: args.org,
+      agentId,
+      tabId: main,
+      search,
+    });
+    const fallbackTarget =
+      !explicitTarget && main.trim().length > 0 && fallbackAgentId
+        ? canonicalRouteForLegacyTab({
+            org: args.org,
+            agentId: fallbackAgentId,
+            tabId: main,
+            search,
+          })
+        : null;
+    route =
+      explicitTarget ??
+      fallbackTarget ??
+      ({
+        to: DESTINATION_ROUTE.home,
+        params: { org: args.org },
+        search: {},
+      } satisfies TabRouteTarget);
+  } else {
+    route = canonicalBaseRoute(args.org, agentId);
+  }
+
+  return {
+    route,
+    search: {
+      ...canonicalSearch(search, route),
+      // The legacy path itself names a chat. Once promoted onto Home or a
+      // project's route-owned main surface, leaving this implicit would let
+      // that destination's default close Chat and hide the conversation the
+      // durable link was opened for. Preserve an explicit opt-out, but make a
+      // bare `/$org/$taskId` deterministic regardless of whether the thread is
+      // empty or its messages have loaded yet.
+      ...(main === undefined && search.sidepanel === undefined
+        ? { sidepanel: true }
+        : {}),
+      ...(main === 0 || main === "0" ? { mainpanel: false } : {}),
+      ...(main === "chat" ? { sidepanel: true, mainpanel: false } : {}),
+      thread: args.taskId,
+    },
+  };
+}
+
+/** What a legacy `?task=` becomes: the optional task-key segment and search
+ * without the retired echo. */
 export interface LegacyTaskTarget<T> {
   taskKey: string | undefined;
   search: T;
 }
 
-/**
- * `?task=<id>` was a card's address before the card had a path of its own. It
- * is accepted as a legacy INPUT exactly the way `sidepanel` accepts its
- * pre-boolean values: read once on entry, then rewritten to the shape the app
- * writes. Nothing writes it any more.
- *
- * It needs no lookup, because `findTaskByKeyOrId` resolves a raw id as
- * happily as a key — so the id it carries is already a valid segment.
- *
- * A `task` that is present but blank still returns a target, so the dead
- * `?task=` leaves the URL instead of sitting there unresolvable forever. An
- * explicit segment wins over it: the path is the address, `task` is the echo.
- *
- * This is the single place a legacy `?task=` is retired — `/$org/$taskId`
- * (above) and the `/$org` resolver both carry it through to `/$org/tasks`
- * rather than translating it themselves.
- */
 export function promoteLegacyTaskParam<T extends { task?: string }>(
   taskKey: string | undefined,
   search: T,

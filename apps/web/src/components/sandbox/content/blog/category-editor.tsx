@@ -210,11 +210,11 @@ export function CategoryEditor({
   return (
     <>
       <div className="flex h-full flex-col">
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-          <span className="truncate text-sm font-medium">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6 @max-sm/cms-content:px-3">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
             {str(category.name) || t("sandbox.categoryEditor.untitledCategory")}
           </span>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3 @max-sm/cms-content:gap-1.5">
             <SaveStatus isPending={save.isPending} isError={save.isError} />
             {previewUrl && (
               <Button
@@ -222,24 +222,27 @@ export function CategoryEditor({
                 variant="outline"
                 size="sm"
                 title={t("sandbox.categoryEditor.previewTooltip")}
+                aria-label={t("sandbox.categoryEditor.seeCategoryPreview")}
                 onClick={() =>
                   window.open(previewUrl, "_blank", "noopener,noreferrer")
                 }
               >
                 <LinkExternal01 size={14} />
-                {t("sandbox.categoryEditor.seeCategoryPreview")}
+                <span className="@max-sm/cms-content:hidden">
+                  {t("sandbox.categoryEditor.seeCategoryPreview")}
+                </span>
               </Button>
             )}
           </div>
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-4xl px-8 py-8">
+          <div className="mx-auto max-w-4xl px-8 py-8 @max-md/cms-content:px-4 @max-md/cms-content:py-5">
             <EditableText
               value={str(category.name)}
               onChange={(v) => setField("name", v)}
               placeholder={t("sandbox.categoryEditor.categoryNamePlaceholder")}
-              className="py-1 text-3xl font-bold text-foreground"
+              className="py-1 text-3xl font-bold text-foreground @max-sm/cms-content:text-2xl"
             />
 
             <div className="mt-4 space-y-2">

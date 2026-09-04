@@ -1,15 +1,11 @@
 import { LOCALSTORAGE_KEYS } from "./localstorage-keys";
 
 /**
- * Where the user last was, restored on cold app entry ("/"). Recorded on every
- * org-scoped navigation: `org` alone for an org home / non-thread route, plus
- * `taskId` + `virtualmcpid` once a thread is open. Single source of truth, so
- * it can never disagree with itself the way two separate keys could.
+ * The organization restored on cold app entry (`/`). Conversations and page
+ * layout intentionally do not resume in a fresh tab.
  */
 export interface LastLocation {
   org: string;
-  taskId?: string;
-  virtualmcpid?: string;
 }
 
 export function saveLastLocation(loc: LastLocation): void {
@@ -26,14 +22,7 @@ export function readLastLocation(): LastLocation | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<LastLocation>;
     if (typeof parsed?.org === "string") {
-      return {
-        org: parsed.org,
-        taskId: typeof parsed.taskId === "string" ? parsed.taskId : undefined,
-        virtualmcpid:
-          typeof parsed.virtualmcpid === "string"
-            ? parsed.virtualmcpid
-            : undefined,
-      };
+      return { org: parsed.org };
     }
   } catch {
     // corrupt value — treat as absent

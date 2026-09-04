@@ -1,18 +1,16 @@
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@decocms/ui/components/breadcrumb.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -132,7 +130,11 @@ import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
-import { entryForFilter, stampableEntries } from "@/lib/project-index";
+import {
+  entryForFilter,
+  normalizeRepo,
+  projectAssignmentOptions,
+} from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -150,6 +152,8 @@ import {
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
+import type { TaskBoardProjectScope } from "./task-filters";
+import { taskSharePath } from "./task-route";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -179,6 +183,9 @@ type TaskForm = {
   /** What kind of work this is. Always set — defaults to `chore`. */
   type: TaskBoardItemType;
   assigneeId: string | null;
+  /** Exact project ownership. Kept separate from `repo`, which identifies the
+   * execution source and is not unique when projects share a repository. */
+  virtualMcpId: string | null;
   repo: string | null;
   dueDate: Date | null;
   tagIds: string[];
@@ -364,11 +371,16 @@ interface TaskEditorProps {
   /** Dialog chrome only — a page is open by virtue of being mounted. */
   open?: boolean;
   onClose: () => void;
+  /** Restore focus to the board after page chrome is actually detached. */
+  onAfterPageUnmount?: () => void;
   /** Present in edit mode, prefills the form. */
   item?: TaskBoardItem;
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
+  /** Route-owned project scope. It stamps both exact ownership and execution
+   * repository, and removes the picker so edits cannot leave route scope. */
+  projectScope?: TaskBoardProjectScope;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -376,6 +388,7 @@ interface TaskEditorProps {
     priority: TaskBoardItemPriority;
     type: TaskBoardItemType;
     assigneeId: string | null;
+    virtualMcpId: string | null;
     repo: string | null;
     dueDate: string | null;
     tagIds: string[];
@@ -403,7 +416,7 @@ interface TaskEditorProps {
  * `dialog` is the create flow — a task with no id yet has no URL to live at,
  * so it stays a modal (the home page's "New task" opens the same one).
  * `page` is the edit flow: the board hands the panel over to it and the
- * breadcrumb, not a close button, is what leads back out.
+ * route-owned topbar breadcrumb, not a close button, is what leads back out.
  *
  * Everything between the header row and the footer is chrome-independent.
  */
@@ -411,8 +424,10 @@ function TaskBoardItemEditor({
   chrome,
   open = true,
   onClose,
+  onAfterPageUnmount,
   item,
   defaultStatus,
+  projectScope,
   onSubmit,
   onDelete,
   onClone,
@@ -425,6 +440,8 @@ function TaskBoardItemEditor({
 }: TaskEditorProps) {
   const t = useT();
   const { org } = useProjectContext();
+  /** The card's human key (`DECO-01`), the one identity a person can quote. */
+  const key = item ? taskKey(org.slug, item.keySeq) : null;
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
@@ -435,12 +452,11 @@ function TaskBoardItemEditor({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
-  /** Which project this task pertains to, offered as the board offers it: one
-   *  list where a repository IS the project that pins it. Narrowed to the
-   *  repositories the org can actually reach — see {@link stampableEntries}. */
+  /** Exact project assignments for the task editor. Unlike the board filter,
+   *  this list expands a shared-repository bucket into one row per project. */
   const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
   const projectIndex = useProjectIndex(NO_TASKS, repos);
-  const projectEntries = stampableEntries(projectIndex);
+  const projectAssignments = projectAssignmentOptions(projectIndex);
 
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
@@ -450,23 +466,53 @@ function TaskBoardItemEditor({
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    repo: item?.repo ?? null,
+    virtualMcpId: projectScope?.projectId ?? (item ? item.virtualMcpId : null),
+    repo: projectScope ? projectScope.repo : item ? (item.repo ?? null) : null,
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
-  const { title, description, status, priority, assigneeId, repo, dueDate } =
-    form;
+  const {
+    title,
+    description,
+    status,
+    priority,
+    assigneeId,
+    virtualMcpId,
+    repo,
+    dueDate,
+  } = form;
   /**
-   * The bucket this card's repository belongs to, so the control shows the
-   * PROJECT — its avatar and its name — rather than the string underneath.
+   * The exact project this card names. Hidden dev ids resolve to their visible
+   * live partner; legacy owner-null cards retain repository fallback display.
    *
-   * Resolved against the WHOLE index, not the stampable subset: a card already
-   * stamped for a repository whose connection has since gone still belongs to
-   * its project and should say so. The reachability gate decides what you can
-   * PICK, not what an existing value is called. Undefined only when nothing in
-   * the org names that repository, which renders as the raw `owner/name`.
+   * Resolution uses the whole index, not only writable options: a detached
+   * project's existing cards still say which project owns them even though the
+   * picker correctly refuses to assign new work there.
    */
-  const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
+  const ownerProject = virtualMcpId
+    ? projectIndex.projectById.get(virtualMcpId)
+    : undefined;
+  const ownerBucket = virtualMcpId
+    ? projectIndex.byProject.get(virtualMcpId)
+    : undefined;
+  const selectedAssignment = projectAssignments.find((assignment) =>
+    virtualMcpId
+      ? assignment.virtualMcpId === virtualMcpId ||
+        assignment.virtualMcpId === ownerProject?.id
+      : assignment.virtualMcpId === null &&
+        normalizeRepo(assignment.repo) === normalizeRepo(repo),
+  );
+  const selectedEntry =
+    selectedAssignment?.entry ??
+    (ownerProject && ownerBucket
+      ? {
+          ...ownerBucket,
+          title: ownerProject.title,
+          projects: [ownerProject],
+        }
+      : virtualMcpId === null && repo
+        ? entryForFilter(repo, projectIndex)
+        : undefined);
   const taskType = form.type;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -514,6 +560,7 @@ function TaskBoardItemEditor({
       priority: v.priority,
       type: v.type,
       assigneeId: v.assigneeId,
+      virtualMcpId: v.virtualMcpId,
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
       tagIds: v.tagIds,
@@ -566,44 +613,50 @@ function TaskBoardItemEditor({
    * link out of the board. (Create mode never schedules one: `patch` writes
    * nothing until the row exists.)
    */
-  const flushOnUnmount = (el: HTMLElement | null) => {
+  const [pageLifecycleRef] = useState(() => (el: HTMLDivElement | null) => {
     if (!el) return;
-    return () => flush();
-  };
+    // `flush` only reads the stable form/timer/submit refs, so the callback
+    // can keep one identity for the page's entire mounted lifetime. React 19
+    // runs callback-ref cleanup when the ref identity changes as well as on
+    // unmount; a per-render callback would therefore defeat the debounce.
+    const focusFrame = requestAnimationFrame(() => {
+      if (el.isConnected && el.getClientRects().length > 0) el.focus();
+    });
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      flush();
+      onAfterPageUnmount?.();
+    };
+  });
 
   /**
    * Esc leaves the page, the way it would dismiss the dialog. A dialog has a
    * layer to close; a page only has the way it was entered, so this walks the
-   * breadcrumb back to the board.
+   * route-owned breadcrumb back to the board.
    *
    * It defers to whatever is nearer the user first: an open layer (a menu,
    * popover or dialog, which dismisses on the same key) and a field being typed
    * in (where Esc reverts or blurs). Both mean the *next* Esc navigates.
    */
-  const escapeToClose = (el: HTMLElement | null) => {
-    if (!el) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (
-        document.querySelector(
-          '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
-        )
+  const escapeToClose = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (
+      document.querySelector(
+        '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
       )
-        return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          target instanceof HTMLInputElement ||
-          target instanceof HTMLTextAreaElement)
-      ) {
-        target.blur();
-        return;
-      }
-      close();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    )
+      return;
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.isContentEditable ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement)
+    ) {
+      target.blur();
+      return;
+    }
+    close();
   };
 
   const createAndSelectTag = async (name: string, color: string) => {
@@ -628,8 +681,6 @@ function TaskBoardItemEditor({
   const showRerun =
     item && onRerun && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
-  /** The card's human key (`DECO-01`), the one identity a person can quote. */
-  const key = item ? taskKey(org.slug, item.keySeq) : null;
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
@@ -645,31 +696,9 @@ function TaskBoardItemEditor({
   const header = (
     <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
       {chrome === "page" ? (
-        /* The page's way back out. The key doubles as the trail's leaf, so
-             there is no separate id chip in this chrome. */
-        <Breadcrumb className="-ml-2">
-          <BreadcrumbList className="text-[15px]">
-            <BreadcrumbItem>
-              {/* A button, not an anchor: leaving flushes a pending autosave
-                    and the board it returns to is a search-param away, not a
-                    document to link to. */}
-              <BreadcrumbLink
-                asChild
-                className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
-              >
-                <button type="button" onClick={close}>
-                  {t("taskBoard.taskDetail.breadcrumbTasks")}
-                </button>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage className="px-2 py-1">
-                {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+        /* The route-owned topbar carries Tasks › key. This spacer preserves
+           the action row without repeating a second breadcrumb landmark. */
+        <span />
       ) : /* Null only for a card written before the key backfill, which has
               no key to show. */
       key ? (
@@ -734,7 +763,11 @@ function TaskBoardItemEditor({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 copyLink(
-                  `${window.location.origin}/${org.slug}/tasks/${key ?? item.id}`,
+                  `${window.location.origin}${taskSharePath(
+                    org.slug,
+                    item,
+                    projectScope?.projectId,
+                  )}`,
                 );
                 toast.success(t("taskBoard.taskDialog.linkCopied"));
               }}
@@ -1359,46 +1392,55 @@ function TaskBoardItemEditor({
               </Popover>
             </PropertyGroup>
 
-            <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which project this task pertains to. The value persisted is
-                  still the repository — that is the only per-card link there
-                  is — but what you PICK is a project, named as you know it. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    /* Hugs its label like every other property; the cap is
-                       what keeps a long project name inside the column. */
-                    className={cn(
-                      PROPERTY_BUTTON,
-                      "max-w-full",
-                      !repo && EMPTY_PROPERTY,
-                    )}
-                  >
-                    <ProjectEntryIcon entry={selectedEntry} />
-                    <span className="min-w-0 truncate text-left">
-                      {selectedEntry?.title ??
-                        repo ??
-                        t("taskBoard.taskDialog.projectButton")}
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem onSelect={() => patch({ repo: null })}>
-                    {t("taskBoard.taskDialog.noProject")}
-                  </DropdownMenuItem>
-                  {projectEntries.map((entry) => (
-                    <DropdownMenuItem
-                      key={entry.id}
-                      className="gap-2"
-                      onSelect={() => patch({ repo: entry.repo })}
+            {!projectScope && (
+              <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
+                {/* Project identity and execution repository are persisted
+                    together. Shared-repository projects remain separate rows. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      /* Hugs its label like every other property; the cap is
+                         what keeps a long project name inside the column. */
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        "max-w-full",
+                        !virtualMcpId && !repo && EMPTY_PROPERTY,
+                      )}
                     >
-                      <ProjectEntryRow entry={entry} />
+                      <ProjectEntryIcon entry={selectedEntry} />
+                      <span className="min-w-0 truncate text-left">
+                        {selectedEntry?.title ??
+                          repo ??
+                          virtualMcpId ??
+                          t("taskBoard.taskDialog.projectButton")}
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64">
+                    <DropdownMenuItem
+                      onSelect={() => patch({ virtualMcpId: null, repo: null })}
+                    >
+                      {t("taskBoard.taskDialog.noProject")}
                     </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </PropertyGroup>
+                    {projectAssignments.map((assignment) => (
+                      <DropdownMenuItem
+                        key={assignment.key}
+                        className="gap-2"
+                        onSelect={() =>
+                          patch({
+                            virtualMcpId: assignment.virtualMcpId,
+                            repo: assignment.repo,
+                          })
+                        }
+                      >
+                        <ProjectEntryRow entry={assignment.entry} />
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </PropertyGroup>
+            )}
           </div>
         </div>
       </div>
@@ -1430,15 +1472,12 @@ function TaskBoardItemEditor({
   if (chrome === "page") {
     return (
       <div
-        ref={(el) => {
-          const stopEscape = escapeToClose(el);
-          const stopFlush = flushOnUnmount(el);
-          return () => {
-            stopEscape?.();
-            stopFlush?.();
-          };
-        }}
+        ref={pageLifecycleRef}
+        onKeyDown={escapeToClose}
         data-testid="task-detail"
+        role="region"
+        aria-label={key ? `${key}: ${title}` : title}
+        tabIndex={-1}
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
       >
         {body}
@@ -1469,7 +1508,7 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "onSubmit" | "isSaving"
+    "onClose" | "defaultStatus" | "projectScope" | "onSubmit" | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;
@@ -1477,7 +1516,8 @@ export function TaskBoardItemDialog(
 
 /**
  * A task rendered in place of the board, reached by clicking its card. The
- * breadcrumb in its header is what leads back out; see {@link TaskBoardItemEditor}.
+ * breadcrumb in the route topbar is what leads back out; see
+ * {@link TaskBoardItemEditor}.
  */
 export function TaskBoardItemDetail(
   props: Omit<TaskEditorProps, "chrome" | "open" | "defaultStatus"> & {

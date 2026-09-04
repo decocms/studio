@@ -163,11 +163,12 @@ export function SectionsEditor({
   /** Called when the user leaves inline SEO via the breadcrumb bar. */
   onExitSeo?: () => void;
   /**
-   * When provided, "View JSON" opens the page's block file in the host's file
-   * view (passing the decofile block key) instead of the built-in JSON modal.
-   * Hosts without a file surface (Content tab) omit this and get the modal.
+   * When provided, "View JSON" opens the page's block file in the host's JSON
+   * surface instead of the built-in modal. The trigger is passed so the host
+   * can restore focus after closing. Hosts without that surface (Content tab)
+   * omit this and get the modal.
    */
-  onViewJsonFile?: () => void;
+  onViewJsonFile?: (trigger: HTMLButtonElement) => void;
   /**
    * Called when the selected section variant changes so the host can force the
    * preview iframe to render that variant via `x-deco-matchers-override`.
@@ -2652,9 +2653,9 @@ export function SectionsEditor({
                   size="icon"
                   aria-label={t("sectionsEditor.sectionsEditor.viewJson")}
                   className="size-7 shrink-0"
-                  onClick={() =>
+                  onClick={(event) =>
                     onViewJsonFile && activePageKey
-                      ? onViewJsonFile()
+                      ? onViewJsonFile(event.currentTarget)
                       : setJsonOpen(true)
                   }
                 >

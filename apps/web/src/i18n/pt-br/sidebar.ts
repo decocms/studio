@@ -1,7 +1,6 @@
 import type { sidebar as sidebarEn } from "../en/sidebar.ts";
 
 export const sidebar = {
-  "sidebar.agentsSection.agents": "Projetos",
   "sidebar.archiveWorktreeDialog.cancel": "Cancelar",
   "sidebar.archiveWorktreeDialog.confirm": "Continuar",
   "sidebar.archiveWorktreeDialog.reclaimFailed":
@@ -11,18 +10,9 @@ export const sidebar = {
   "sidebar.archiveWorktreeDialog.stopsAndDeletesBefore":
     "Isso vai parar tudo o que está rodando em",
   "sidebar.archiveWorktreeDialog.title": "Arquivar este chat?",
-  "sidebar.agentsSection.browseAgents": "Procurar projetos",
   "sidebar.agentsSection.codeAgents": "Projetos de Código",
-  "sidebar.agentsSection.import": "Importar",
-  "sidebar.agentsSection.newAgent": "Novo projeto",
-  "sidebar.agentsSection.noAgentsFound": "Nenhum projeto encontrado",
-  "sidebar.agentsSection.searchAgents": "Procurar projetos...",
-  "sidebar.agentsSection.seeAllAgents": "Ver todos os projetos",
-  "sidebar.agentsSection.selectAnExistingAgent":
-    "Selecione um projeto existente",
   "sidebar.header.closeSidebar": "Fechar barra lateral",
   "sidebar.header.toggleSidebar": "Abrir ou fechar barra lateral",
-  "sidebar.navDestinations.discover": "Descobrir",
   "sidebar.navDestinations.home": "Início",
   "sidebar.navDestinations.library": "Biblioteca",
   "sidebar.navDestinations.reports": "Relatórios",
@@ -34,6 +24,7 @@ export const sidebar = {
   "sidebar.scope.allProjects": "Todos os projetos",
   "sidebar.picker.ariaLabel": "Organiza\u00e7\u00e3o e projeto: {name}",
   "sidebar.picker.projectInOrg": "{project} — {org}",
+  "sidebar.picker.projectFallback": "Projeto",
   "sidebar.picker.newOrganization": "Nova organização",
   "sidebar.picker.newProject": "Novo projeto",
   "sidebar.picker.noMatches": "Nada corresponde a \u201c{query}\u201d",

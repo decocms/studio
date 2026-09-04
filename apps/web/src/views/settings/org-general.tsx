@@ -1,26 +1,20 @@
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { OrganizationForm } from "@/components/settings/organization-form";
 import { CodeAgentsSettings } from "@/components/settings/review-settings";
 import { DomainSettings } from "@/components/settings/domain-settings";
 import { DeleteOrganizationSection } from "@/components/settings/delete-organization-section";
-import { SettingsPage } from "@/components/settings/settings-section";
-import { useT } from "@/i18n/use-t";
 
 export function OrgGeneralPage() {
-  const t = useT();
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <Page.Title>{t("settings.orgGeneral.organization")}</Page.Title>
-            <OrganizationForm />
-            <CodeAgentsSettings />
-            <DomainSettings />
-            <DeleteOrganizationSection />
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <div className="h-full overflow-y-auto">
+      <Main.Container width="standard">
+        <Main.Stack gap="spacious">
+          <OrganizationForm />
+          <CodeAgentsSettings />
+          <DomainSettings />
+          <DeleteOrganizationSection />
+        </Main.Stack>
+      </Main.Container>
+    </div>
   );
 }

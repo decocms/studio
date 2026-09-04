@@ -27,6 +27,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     type: "chore",
     assigneeId: null,
     assignedBy: null,
+    virtualMcpId: null,
     repo: null,
     dueDate: null,
     sortOrder: 0,
@@ -141,6 +142,7 @@ describe("updatesAnyField", () => {
       { priority: "high" },
       { type: "bug" },
       { assigneeId: "user_1" },
+      { virtualMcpId: "vir_project" },
       { repo: "owner/name" },
       { dueDate: "2026-01-01T00:00:00.000Z" },
       { sortOrder: 5 },
@@ -153,6 +155,7 @@ describe("updatesAnyField", () => {
 
   it("counts a field explicitly cleared to null", () => {
     expect(updatesAnyField({ assigneeId: null })).toBe(true);
+    expect(updatesAnyField({ virtualMcpId: null })).toBe(true);
     expect(updatesAnyField({ dueDate: null })).toBe(true);
   });
 

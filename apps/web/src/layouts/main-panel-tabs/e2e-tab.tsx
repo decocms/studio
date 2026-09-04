@@ -65,6 +65,7 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 import { E2eRunDetail, type E2eRunListItem } from "./e2e-run-detail.tsx";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
@@ -363,9 +364,15 @@ function RunTestButton({
 
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        aria-label={t("mainPanelTabs.e2eTab.runTest")}
+        onClick={() => setOpen(true)}
+      >
         <PlayCircle className="size-4" />
-        {t("mainPanelTabs.e2eTab.runTest")}
+        <span className="@max-sm/main-topbar:hidden">
+          {t("mainPanelTabs.e2eTab.runTest")}
+        </span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
@@ -776,146 +783,156 @@ export function E2eTab({ virtualMcpId }: { virtualMcpId: string }) {
   const runs = list<E2eRun>(runsQuery.data, "items");
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <CheckDone01 className="size-[18px] text-muted-foreground" />
-              <h2 className="text-base font-semibold text-foreground">
-                {t("mainPanelTabs.e2eTab.title")}
-              </h2>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t("mainPanelTabs.e2eTab.subtitle", { site: siteSlug })}
-            </p>
-          </div>
-          <RunTestButton base={base} orgSlug={org.slug} site={siteSlug} />
-        </div>
+    <>
+      <Main.Topbar.Right.Portal>
+        <RunTestButton base={base} orgSlug={org.slug} site={siteSlug} />
+      </Main.Topbar.Right.Portal>
+      <div className="h-full min-h-0 overflow-y-auto">
+        <Main.Container width="standard" className="flex flex-col gap-6">
+          <p className="text-sm text-muted-foreground">
+            {t("mainPanelTabs.e2eTab.subtitle", { site: siteSlug })}
+          </p>
 
-        <E2eHelp />
+          <E2eHelp />
 
-        <ChecksSection
+          <ChecksSection
+            base={base}
+            orgSlug={org.slug}
+            site={siteSlug}
+            enabled={enabled}
+          />
+
+          <Section title={t("mainPanelTabs.e2eTab.runs")} count={runs.length}>
+            {runsQuery.isLoading ? (
+              <RowsSkeleton cols={5} />
+            ) : runsQuery.error ? (
+              <Muted>{t("mainPanelTabs.e2eTab.runsError")}</Muted>
+            ) : runs.length === 0 ? (
+              <EmptyState
+                icon={<CheckDone01 className="size-5" />}
+                title={t("mainPanelTabs.e2eTab.noRuns")}
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("mainPanelTabs.e2eTab.colRun")}</TableHead>
+                    <TableHead>{t("mainPanelTabs.e2eTab.colStatus")}</TableHead>
+                    <TableHead>
+                      {t("mainPanelTabs.e2eTab.colCommand")}
+                    </TableHead>
+                    <TableHead>
+                      {t("mainPanelTabs.e2eTab.colStarted")}
+                    </TableHead>
+                    <TableHead>
+                      {t("mainPanelTabs.e2eTab.colSummary")}
+                    </TableHead>
+                    <TableHead className="w-[1%]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runs.map((r) => (
+                    <TableRow
+                      key={r.runId}
+                      className="cursor-pointer"
+                      onClick={() => setSelectedRun(r)}
+                    >
+                      <TableCell className="font-mono text-xs">
+                        <button
+                          type="button"
+                          aria-label={`${t("mainPanelTabs.e2eTab.colRun")} ${r.runId}`}
+                          className="rounded-sm font-mono text-xs outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedRun(r);
+                          }}
+                        >
+                          {r.runId}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(r.status)}>
+                          {statusLabel(r.status, t)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {r.summary?.command ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {timeAgo(r.startedAt)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                        {summaryLabel(r, t)}
+                      </TableCell>
+                      <TableCell className="text-right align-middle">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={t("mainPanelTabs.e2eTab.deleteRun")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(r);
+                          }}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash01 className="size-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Section>
+        </Main.Container>
+
+        {/* Rich run detail (right-side sheet) */}
+        <E2eRunDetail
           base={base}
           orgSlug={org.slug}
           site={siteSlug}
-          enabled={enabled}
+          run={selectedRun}
+          onOpenChange={(open) => {
+            if (!open) setSelectedRun(null);
+          }}
         />
 
-        <Section title={t("mainPanelTabs.e2eTab.runs")} count={runs.length}>
-          {runsQuery.isLoading ? (
-            <RowsSkeleton cols={5} />
-          ) : runsQuery.error ? (
-            <Muted>{t("mainPanelTabs.e2eTab.runsError")}</Muted>
-          ) : runs.length === 0 ? (
-            <EmptyState
-              icon={<CheckDone01 className="size-5" />}
-              title={t("mainPanelTabs.e2eTab.noRuns")}
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colRun")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colStatus")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colCommand")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colStarted")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colSummary")}</TableHead>
-                  <TableHead className="w-[1%]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.map((r) => (
-                  <TableRow
-                    key={r.runId}
-                    className="cursor-pointer"
-                    onClick={() => setSelectedRun(r)}
-                  >
-                    <TableCell className="font-mono text-xs">
-                      {r.runId}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant(r.status)}>
-                        {statusLabel(r.status, t)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {r.summary?.command ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {timeAgo(r.startedAt)}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                      {summaryLabel(r, t)}
-                    </TableCell>
-                    <TableCell className="text-right align-middle">
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={t("mainPanelTabs.e2eTab.deleteRun")}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteTarget(r);
-                        }}
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash01 className="size-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </Section>
+        {/* Delete run confirm */}
+        <AlertDialog
+          open={deleteTarget != null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteTarget(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("mainPanelTabs.e2eTab.confirmDeleteRunTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("mainPanelTabs.e2eTab.confirmDeleteRun", {
+                  runId: deleteTarget?.runId ?? "",
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteMutation.isPending}>
+                {t("mainPanelTabs.e2eTab.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (deleteTarget) deleteMutation.mutate(deleteTarget.runId);
+                }}
+                disabled={deleteMutation.isPending}
+              >
+                {t("mainPanelTabs.e2eTab.delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      {/* Rich run detail (right-side sheet) */}
-      <E2eRunDetail
-        base={base}
-        orgSlug={org.slug}
-        site={siteSlug}
-        run={selectedRun}
-        onOpenChange={(open) => {
-          if (!open) setSelectedRun(null);
-        }}
-      />
-
-      {/* Delete run confirm */}
-      <AlertDialog
-        open={deleteTarget != null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("mainPanelTabs.e2eTab.confirmDeleteRunTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("mainPanelTabs.e2eTab.confirmDeleteRun", {
-                runId: deleteTarget?.runId ?? "",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteMutation.isPending}>
-              {t("mainPanelTabs.e2eTab.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(e) => {
-                e.preventDefault();
-                if (deleteTarget) deleteMutation.mutate(deleteTarget.runId);
-              }}
-              disabled={deleteMutation.isPending}
-            >
-              {t("mainPanelTabs.e2eTab.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    </>
   );
 }

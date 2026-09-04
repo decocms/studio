@@ -13,17 +13,18 @@
  *   ?virtualmcpid           the agent, on the legacy `/$org/$taskId` alone
  *   ?thread                 the open thread on a destination route
  *
- * WHICH view the main panel shows is the `{-$panel}` path segment, not search —
- * see `main-panel-tabs/panel-route.ts`. So the two panel toggles here are pure
- * visibility: they navigate `to: "."` and never touch the path, which means a
- * closed panel still remembers its view and can never fabricate a thread id.
- * Only the two thread-changing actions go through `useThreadNavigate`, which
- * puts the id in the path on the legacy `/$org/$taskId` and in `?thread=`
- * everywhere else.
+ * WHICH view the main panel shows is the matched child route, not search — see
+ * `main-panel-tabs/tab-route.ts`. Panel visibility actions navigate `to: "."`
+ * and never touch the path, which means a closed panel still remembers its view
+ * and can never fabricate a thread id. Chat can be toggled; Main's shell action
+ * only restores a panel hidden by route or history state.
+ * Thread-changing actions go through `useThreadNavigate`, which writes the
+ * canonical route's `?thread=` layout state. The legacy `/$org/$taskId` shape
+ * is accepted only long enough for its compatibility redirect to settle.
  */
 
 import { useRef } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRouteThreadId, useThreadNavigate } from "@/layouts/thread-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
@@ -57,7 +58,7 @@ export interface WorkspaceLayoutState {
 }
 
 export interface WorkspaceLayoutActions {
-  toggleMain: () => void;
+  openMain: () => void;
   toggleSidePanel: () => void;
   createNewTask: () => void;
 }
@@ -66,8 +67,6 @@ export interface WorkspaceLayoutActions {
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
 
-export type WorkspacePanel = "side" | "main";
-
 export interface WorkspaceVisibility {
   sidePanelOpen: boolean;
   mainOpen: boolean;
@@ -75,7 +74,7 @@ export interface WorkspaceVisibility {
 
 export type WorkspacePanelAction =
   | { type: "toggleSidePanel" }
-  | { type: "toggleMain" }
+  | { type: "openMain" }
   | { type: "openSidePanel" };
 
 export type WorkspacePanelSearchUpdate = {
@@ -110,15 +109,8 @@ export function resolveWorkspaceThread(input: {
   };
 }
 
-export function canCloseWorkspacePanel(
-  panel: WorkspacePanel,
-  visibility: WorkspaceVisibility,
-): boolean {
-  const openPanelCount =
-    Number(visibility.sidePanelOpen) + Number(visibility.mainOpen);
-
-  if (openPanelCount <= 1) return false;
-  return panel === "side" ? visibility.sidePanelOpen : visibility.mainOpen;
+export function canCloseSidePanel(visibility: WorkspaceVisibility): boolean {
+  return visibility.sidePanelOpen && visibility.mainOpen;
 }
 
 function withWorkspaceFallback(
@@ -132,12 +124,12 @@ export function resolveDefaultPanelState(ctx: {
   entityMetadata: EntityLayoutMetadata | null;
   /** `?mainpanel`, when the URL carries one. */
   mainPanelParam?: boolean;
-  /** Whether the `{-$panel}` path segment names a view. */
-  panelNamed: boolean;
+  /** Whether the deepest matched route names a concrete main view. */
+  routeNamesView: boolean;
   sidePanelParamPresent: boolean;
   sidePanelParamValue?: boolean;
   /** The destination route's default view (e.g. `board` on `/$org/tasks`).
-   *  Wins over the agent's `defaultMainView`, loses to the path segment. */
+   *  Wins over the agent's `defaultMainView`. */
   routeDefaultMain?: string | null;
   /** The current thread already holds a conversation. Forces the chat panel
    *  open even when the agent opts out of it (`chatDefaultOpen: false`), so
@@ -151,18 +143,18 @@ export function resolveDefaultPanelState(ctx: {
   // The panel opens for any view the URL names — by path, by route, by agent.
   const mainOpen =
     ctx.mainPanelParam ??
-    (ctx.panelNamed || !!ctx.routeDefaultMain || !defaultIsChat);
+    (ctx.routeNamesView || !!ctx.routeDefaultMain || !defaultIsChat);
   /**
    * A destination route that names its own main view IS that view's page —
-   * going to Tasks shows Tasks — so the chat starts collapsed beside it.
-   * `/$org/agents` declares no `defaultMain`, which is exactly why chat keeps its
-   * panel open without needing an exception here.
+   * going to Tasks without a conversation shows Tasks alone. A populated
+   * thread takes precedence so following a chat back to any route never hides
+   * that conversation. An explicit `sidepanel` still wins below.
    */
-  const defaultSidePanelOpen = ctx.routeDefaultMain
-    ? false
-    : defaultIsChat ||
-      ctx.entityMetadata?.chatDefaultOpen === true ||
-      ctx.threadHasMessages === true;
+  const defaultSidePanelOpen = ctx.threadHasMessages
+    ? true
+    : ctx.routeDefaultMain
+      ? false
+      : defaultIsChat || ctx.entityMetadata?.chatDefaultOpen === true;
   const sidePanelOpen = ctx.sidePanelParamPresent
     ? ctx.sidePanelParamValue === true
     : defaultSidePanelOpen;
@@ -177,16 +169,12 @@ export function resolveWorkspacePanelAction(
   switch (action.type) {
     case "toggleSidePanel":
       if (visibility.sidePanelOpen) {
-        if (!canCloseWorkspacePanel("side", visibility)) return null;
+        if (!canCloseSidePanel(visibility)) return null;
         return { sidepanel: false };
       }
       return { sidepanel: true };
-    case "toggleMain":
-      if (visibility.mainOpen) {
-        if (!canCloseWorkspacePanel("main", visibility)) return null;
-        return { mainpanel: false };
-      }
-      return { mainpanel: true };
+    case "openMain":
+      return visibility.mainOpen ? null : { mainpanel: true };
     case "openSidePanel":
       return visibility.sidePanelOpen ? null : { sidepanel: true };
   }
@@ -245,23 +233,16 @@ type PanelSearchParams = {
   mainpanel?: boolean;
 };
 
-export interface WorkspaceLayoutStateRouteCtx {
-  virtualMcpId: string;
-  isAgentRoute: boolean;
-}
-
 export function useWorkspaceLayoutState(
   entityMetadata: EntityLayoutMetadata | null,
-  routeCtx: WorkspaceLayoutStateRouteCtx,
+  virtualMcpId: string,
 ): WorkspaceLayoutState & WorkspaceLayoutActions {
   const navigate = useNavigate();
   const navigateThread = useThreadNavigate();
   const search = useSearch({ strict: false }) satisfies PanelSearchParams;
-  const routeParamsRaw = useParams({ strict: false });
   const { create } = useThreadActions();
   const { threads } = useThreads();
 
-  const { virtualMcpId, isAgentRoute } = routeCtx;
   const routeDefaultMain = useRouteDefaultMain();
   const panelTabId = useActivePanelTabId();
 
@@ -280,21 +261,13 @@ export function useWorkspaceLayoutState(
   const { sidePanelOpen, mainOpen } = resolveDefaultPanelState({
     entityMetadata,
     mainPanelParam: search.mainpanel,
-    panelNamed: panelTabId !== undefined,
+    routeNamesView: panelTabId !== undefined,
     sidePanelParamPresent: search.sidepanel !== undefined,
     sidePanelParamValue: search.sidepanel,
     routeDefaultMain,
     threadHasMessages: currentThread ? threadHasMessages(currentThread) : false,
   });
   const visibility = { sidePanelOpen, mainOpen };
-
-  /** The legacy `/$org/$taskId` is the only route that records its agent in
-   *  search; every destination drops the key (`resolveDestinationThreadSearch`)
-   *  because there the agent is the `{-$project}` segment. */
-  const preserveVirtualMcp =
-    isAgentRoute && !routeParamsRaw.project
-      ? { virtualmcpid: virtualMcpId }
-      : {};
 
   /**
    * Panel state is search, never path: `to: "."` re-interpolates the matched
@@ -311,9 +284,9 @@ export function useWorkspaceLayoutState(
     });
   };
 
-  const toggleMain = () => {
+  const openMain = () => {
     const update = resolveWorkspacePanelAction(
-      { type: "toggleMain" },
+      { type: "openMain" },
       visibility,
     );
     if (update) navigateSearch(update, { replace: true });
@@ -346,7 +319,7 @@ export function useWorkspaceLayoutState(
     // Omit `sidepanel` so the agent-configured default (resolveDefaultPanelState
     // — honors chatDefaultOpen / defaultMainView) drives whether the chat opens,
     // instead of forcing it open on an agent that opts out of the chat panel.
-    navigateThread(newTaskId, () => ({ ...preserveVirtualMcp }));
+    navigateThread(newTaskId, () => ({}));
   };
 
   return {
@@ -355,7 +328,7 @@ export function useWorkspaceLayoutState(
     sidePanelOpen,
     mainOpen,
     sidePanelParamPresent: search.sidepanel !== undefined,
-    toggleMain,
+    openMain,
     toggleSidePanel,
     createNewTask,
   };

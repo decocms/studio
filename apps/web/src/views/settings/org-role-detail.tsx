@@ -48,12 +48,18 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Suspense, useDeferredValue, useState } from "react";
+import {
+  Suspense,
+  useDeferredValue,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
+import { MainBreadcrumb } from "@/components/main-breadcrumb";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { type TFunction, useT } from "@/i18n/use-t.ts";
 import {
@@ -63,6 +69,7 @@ import {
 } from "@/components/settings/settings-section";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
   ChevronRight,
   Lock01,
@@ -78,6 +85,41 @@ export type RoleEditorTarget =
   | { kind: "builtin"; role: "owner" | "admin" | "user" }
   | { kind: "custom"; role: OrganizationRole }
   | { kind: "new" };
+
+function roleEditorTitle(target: RoleEditorTarget, t: TFunction): string {
+  if (target.kind === "new") return t("settings.orgRoleDetail.newRole");
+  if (target.kind === "custom") return target.role.label;
+  if (target.role === "owner") return t("settings.roles.roleOwner");
+  if (target.role === "admin") return t("settings.roles.roleAdmin");
+  return t("settings.roles.roleUser");
+}
+
+function focusAdjacentRoleControl(
+  event: KeyboardEvent<HTMLDivElement>,
+  direction: "first" | "last" | "next" | "previous",
+): void {
+  const tabs = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      "button[aria-pressed]:not([disabled])",
+    ),
+  );
+  const currentIndex = tabs.findIndex((tab) => tab === event.target);
+  if (tabs.length === 0 || currentIndex < 0) return;
+
+  const targetIndex =
+    direction === "first"
+      ? 0
+      : direction === "last"
+        ? tabs.length - 1
+        : direction === "next"
+          ? (currentIndex + 1) % tabs.length
+          : (currentIndex - 1 + tabs.length) % tabs.length;
+  const target = tabs[targetIndex];
+  if (!target) return;
+
+  event.preventDefault();
+  target.focus();
+}
 
 // ============================================================================
 // Zod Schema
@@ -1244,6 +1286,7 @@ interface RoleDetailPageProps {
 }
 
 export function RoleDetailPage(props: RoleDetailPageProps) {
+  const t = useT();
   const { locator } = useProjectContext();
   const orgAuth = useOrgAuthClient();
   const connections = useConnections();
@@ -1253,23 +1296,36 @@ export function RoleDetailPage(props: RoleDetailPageProps) {
     queryFn: () => orgAuth.organization.listMembers(),
   });
 
-  if (membersPending || !connections) {
-    return (
-      <Page>
-        <div className="flex items-center justify-center h-full">
-          <Spinner className="size-8 text-muted-foreground" />
-        </div>
-      </Page>
+  const title = roleEditorTitle(props.target, t);
+  const content =
+    membersPending || !connections ? (
+      <div
+        role="status"
+        aria-label={t("common.loading")}
+        className="flex h-full items-center justify-center"
+      >
+        <Spinner className="size-8 text-muted-foreground" />
+      </div>
+    ) : (
+      <RoleDetailPageInner
+        {...props}
+        members={membersData?.data?.members ?? []}
+        connections={connections}
+      />
     );
-  }
 
-  const members: MemberLike[] = membersData?.data?.members ?? [];
   return (
-    <RoleDetailPageInner
-      {...props}
-      members={members}
-      connections={connections}
-    />
+    <>
+      <MainBreadcrumb.Parent.Portal
+        item={{
+          id: "settings:roles",
+          label: t("settings.roles.pageTitle"),
+          onSelect: props.onBack,
+        }}
+      />
+      <Main.Title.Portal>{title}</Main.Title.Portal>
+      {content}
+    </>
   );
 }
 
@@ -1445,13 +1501,6 @@ function RoleDetailPageInner({
 
   const showSaveActions = !isOwnerBuiltin;
 
-  const roleName =
-    target.kind === "builtin"
-      ? target.role.charAt(0).toUpperCase() + target.role.slice(1)
-      : target.kind === "custom"
-        ? target.role.label
-        : "";
-
   const tabs = [
     ...(!isOwnerBuiltin
       ? [
@@ -1484,115 +1533,166 @@ function RoleDetailPageInner({
     members: t("settings.orgRoleDetail.searchMembers"),
   };
 
+  const renderTabs = (placement: "desktop" | "compact") => (
+    <div
+      role="toolbar"
+      aria-orientation="horizontal"
+      data-slot="role-detail-tabs"
+      data-placement={placement}
+      aria-label={t("settings.orgRoleDetail.sectionsAriaLabel")}
+      onKeyDown={(event) => {
+        if (event.key === "Home") focusAdjacentRoleControl(event, "first");
+        if (event.key === "End") focusAdjacentRoleControl(event, "last");
+        if (event.key === "ArrowRight") focusAdjacentRoleControl(event, "next");
+        if (event.key === "ArrowLeft")
+          focusAdjacentRoleControl(event, "previous");
+      }}
+      className="inline-flex h-8 min-w-0 items-center gap-0.5 rounded-lg bg-muted p-0.5"
+    >
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          aria-pressed={activeTab === tab.id}
+          tabIndex={activeTab === tab.id ? 0 : -1}
+          onClick={() => handleTabChange(tab.id)}
+          className={cn(
+            "inline-flex h-full min-w-0 items-center justify-center whitespace-nowrap rounded-md border border-transparent px-2.5 text-xs font-medium transition-[color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+            activeTab === tab.id
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <Page>
-      <Page.Content
+    <>
+      <Main.Topbar.Center.Portal>
+        <div
+          data-responsive-focus-group="role-detail-tabs"
+          className="hidden min-w-0 md:block"
+        >
+          {renderTabs("desktop")}
+        </div>
+      </Main.Topbar.Center.Portal>
+      <Main.Toolbar.Portal visibility="compact">
+        <div
+          data-responsive-focus-group="role-detail-tabs"
+          className="min-w-0 flex-1 overflow-x-auto"
+        >
+          {renderTabs("compact")}
+        </div>
+      </Main.Toolbar.Portal>
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 items-center justify-between gap-3">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={searchPlaceholders[activeTab]}
+            className="min-w-0 flex-1 md:max-w-[375px]"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setSearchQuery("");
+                (event.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          {activeTab === "members" && (
+            <MembersAddButton
+              readOnly={target.kind === "builtin" && target.role === "owner"}
+              onOpen={() => setAddMemberDialogOpen(true)}
+            />
+          )}
+        </div>
+      </Main.Toolbar.Portal>
+      {showSaveActions && (
+        <Main.Topbar.Right.Portal>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onBack}
+            disabled={saveMutation.isPending}
+            aria-label={t("settings.orgRoleDetail.cancel")}
+          >
+            <X size={14} />
+            <span className="@max-sm/main-topbar:hidden">
+              {t("settings.orgRoleDetail.cancel")}
+            </span>
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSubmit}
+            disabled={saveMutation.isPending || !isFormValid || !isFormDirty}
+            aria-label={
+              saveMutation.isPending
+                ? t("settings.orgRoleDetail.saving")
+                : isNew
+                  ? t("settings.orgRoleDetail.createRole")
+                  : t("settings.orgRoleDetail.saveChanges")
+            }
+          >
+            {saveMutation.isPending ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <Check size={14} />
+            )}
+            <span className="@max-sm/main-topbar:hidden">
+              {saveMutation.isPending
+                ? t("settings.orgRoleDetail.saving")
+                : isNew
+                  ? t("settings.orgRoleDetail.createRole")
+                  : t("settings.orgRoleDetail.saveChanges")}
+            </span>
+          </Button>
+        </Main.Topbar.Right.Portal>
+      )}
+      <div
         className={cn(
-          "flex flex-col",
-          activeTab !== "org" && "overflow-hidden",
+          "flex h-full min-h-0 flex-col",
+          activeTab === "org" ? "overflow-y-auto" : "overflow-hidden",
         )}
       >
-        <div className="shrink-0 mx-auto w-full max-w-[1200px] px-4 md:px-10 pt-8 md:pt-12 pb-4">
-          <div className="flex flex-col gap-5">
-            <Page.Title
-              actions={
-                showSaveActions && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onBack}
-                      disabled={saveMutation.isPending}
-                    >
-                      {t("settings.orgRoleDetail.cancel")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSubmit}
-                      disabled={
-                        saveMutation.isPending || !isFormValid || !isFormDirty
-                      }
-                    >
-                      {saveMutation.isPending
-                        ? t("settings.orgRoleDetail.saving")
-                        : isNew
-                          ? t("settings.orgRoleDetail.createRole")
-                          : t("settings.orgRoleDetail.saveChanges")}
-                    </Button>
-                  </>
-                )
-              }
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div
-                  className={cn(
-                    "size-2.5 rounded-full shrink-0",
-                    target.kind === "builtin"
-                      ? getRoleDotColor(target.role, true)
-                      : getRoleColor(form.watch("role.label")),
-                  )}
-                />
-                {isOwnerBuiltin && (
-                  <Lock01
-                    size={16}
-                    className="text-muted-foreground shrink-0"
-                  />
+        <Main.Container width="wide" padding="compact" className="shrink-0">
+          <Main.Stack gap="compact">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div
+                aria-hidden="true"
+                className={cn(
+                  "size-2.5 shrink-0 rounded-full",
+                  target.kind === "builtin"
+                    ? getRoleDotColor(target.role, true)
+                    : getRoleColor(form.watch("role.label")),
                 )}
-                {isNew || target.kind === "custom" ? (
-                  <input
-                    {...form.register("role.label")}
-                    placeholder={t("settings.orgRoleDetail.roleName")}
-                    className="leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-64 placeholder:text-muted-foreground/50"
-                    autoFocus={isNew}
-                  />
-                ) : (
-                  <span className="truncate">{roleName}</span>
-                )}
-              </div>
-            </Page.Title>
-
-            <div className="flex items-center gap-2">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => handleTabChange(tab.id)}
-                  className={cn(
-                    "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex items-center",
-                    activeTab === tab.id
-                      ? "bg-accent border-border text-foreground"
-                      : "bg-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <SearchInput
-                value={searchQuery}
-                onChange={setSearchQuery}
-                placeholder={searchPlaceholders[activeTab] ?? "Search..."}
-                className="w-full md:w-[375px]"
               />
-              {activeTab === "members" && (
-                <MembersAddButton
-                  readOnly={
-                    target.kind === "builtin" && target.role === "owner"
-                  }
-                  onOpen={() => setAddMemberDialogOpen(true)}
+              {isNew || target.kind === "custom" ? (
+                <input
+                  {...form.register("role.label")}
+                  aria-label={t("settings.orgRoleDetail.roleName")}
+                  placeholder={t("settings.orgRoleDetail.roleName")}
+                  className="h-9 min-w-0 max-w-sm flex-1 rounded-md border border-input bg-background px-3 text-base font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20"
+                  autoFocus={isNew}
                 />
+              ) : (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 text-xs font-normal text-muted-foreground"
+                >
+                  {isOwnerBuiltin && <Lock01 size={12} aria-hidden="true" />}
+                  {t("settings.roles.builtIn")}
+                </Badge>
               )}
             </div>
-          </div>
-        </div>
+          </Main.Stack>
+        </Main.Container>
 
-        <div
-          className={cn(
-            "mx-auto w-full max-w-[1200px] px-4 md:px-10 pb-6",
-            activeTab !== "org" && "flex-1 min-h-0",
-          )}
+        <Main.Container
+          width="wide"
+          padding="compact"
+          className={cn("pt-0", activeTab !== "org" && "flex-1 min-h-0")}
         >
           <div
             className={cn(
@@ -1664,9 +1764,9 @@ function RoleDetailPageInner({
               />
             )}
           </div>
-        </div>
-      </Page.Content>
-    </Page>
+        </Main.Container>
+      </div>
+    </>
   );
 }
 

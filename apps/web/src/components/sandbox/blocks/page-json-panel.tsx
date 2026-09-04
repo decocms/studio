@@ -82,16 +82,21 @@ export function PageJsonPanel({
     save(pageKey, parsed as Record<string, unknown>);
   };
 
-  // Parent close paths flush through this so a debounce-window edit still saves.
+  // Explicit close paths flush before changing focus. The hook also flushes by
+  // default if another route or editor lifecycle unmounts this panel directly.
   useImperativeHandle(ref, () => ({ flush }));
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+    <div
+      data-slot="page-json-panel"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
+    >
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2.5">
         <div className="min-w-0 flex-1 truncate text-sm font-semibold">
           {t("sectionsEditor.pageJsonDialog.titleShort")}
         </div>
         <Button
+          autoFocus
           variant="ghost"
           size="icon"
           onClick={onClose}

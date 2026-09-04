@@ -1,7 +1,7 @@
 /**
  * The ⌘K palette — reach without a nav row.
  *
- * The sidebar is a fixed five-row spine on purpose, which only works if there
+ * The sidebar is a fixed destination spine, which only works if there
  * is another way to get to everything it does not list: individual projects,
  * settings pages, the catalog, a task by name. That is this.
  *
@@ -23,9 +23,7 @@ import { useDeferredValue, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChartSquare02,
   Columns03,
-  Compass03,
   Folder,
   Home02,
   MessageSquare01,
@@ -44,11 +42,16 @@ import {
 import { ProjectIcon } from "@/components/project-icon";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useProjectScope } from "@/hooks/use-project-scope";
+import {
+  canonicalThreadRouteTarget,
+  navigateToTabRouteTarget,
+} from "@/layouts/main-panel-tabs/tab-route";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import {
   KEYS,
   SELF_MCP_ALIAS_ID,
+  getWellKnownDecopilotVirtualMCP,
   useMCPClientNonBlocking,
   useProjectContext,
 } from "@/sdk";
@@ -117,6 +120,7 @@ export function CommandPalette({
   const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const { projects, hasProjects } = useProjectScope();
   const [term, setTerm] = useState("");
   const deferredTerm = useDeferredValue(term);
@@ -150,14 +154,18 @@ export function CommandPalette({
       });
       return;
     }
-    navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: org.slug, panel: undefined },
-      search: {
-        virtualmcpid: hit.virtual_mcp_id ?? undefined,
-        thread: hit.id,
+    navigateToTabRouteTarget(
+      navigate,
+      canonicalThreadRouteTarget({
+        org: org.slug,
+        agentId: hit.virtual_mcp_id ?? decopilotId,
+        superAgentId: decopilotId,
+      }),
+      {
+        search: () => ({ thread: hit.id }),
+        replace: false,
       },
-    });
+    );
   };
 
   const orgParams = { org: org.slug };
@@ -168,13 +176,6 @@ export function CommandPalette({
       label: t("sidebar.navDestinations.home"),
       icon: <Home02 />,
       to: DESTINATION_ROUTE.home,
-      params: orgParams,
-    },
-    {
-      key: "reports",
-      label: t("sidebar.navDestinations.reports"),
-      icon: <BarChartSquare02 />,
-      to: DESTINATION_ROUTE.reports,
       params: orgParams,
     },
     {
@@ -189,13 +190,6 @@ export function CommandPalette({
       label: t("sidebar.navDestinations.library"),
       icon: <Folder />,
       to: DESTINATION_ROUTE.library,
-      params: orgParams,
-    },
-    {
-      key: "discover",
-      label: t("sidebar.navDestinations.discover"),
-      icon: <Compass03 />,
-      to: DESTINATION_ROUTE.discover,
       params: orgParams,
     },
   ] as const;
@@ -256,9 +250,8 @@ export function CommandPalette({
                   go(
                     () =>
                       navigate({
-                        to: DESTINATION_ROUTE.agents,
-                        params: { org: org.slug, panel: undefined },
-                        search: { virtualmcpid: project.id },
+                        to: DESTINATION_ROUTE.projects,
+                        params: { org: org.slug, agentId: project.id },
                       }),
                     "project",
                   )
@@ -278,11 +271,8 @@ export function CommandPalette({
               go(
                 () =>
                   navigate({
-                    to: DESTINATION_ROUTE.agents,
-                    params: { org: org.slug, panel: undefined },
-                    /** "New project" is the Super Agent, so the scope is
-                     *  explicitly cleared rather than inherited. */
-                    search: { virtualmcpid: undefined },
+                    to: DESTINATION_ROUTE.home,
+                    params: orgParams,
                   }),
                 "new_project",
               )

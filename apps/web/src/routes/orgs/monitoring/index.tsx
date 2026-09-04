@@ -5,7 +5,7 @@
  */
 
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { RequireCapability } from "@/components/require-capability";
@@ -593,8 +593,6 @@ interface MonitoringDashboardContentProps {
   propertyFilters: PropertyFilter[];
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
-  onStreamingToggle: () => void;
-  onTabChange: (tab: "overview" | "audit" | "threads" | "automations") => void;
 }
 
 function MonitoringDashboardContent({
@@ -614,8 +612,6 @@ function MonitoringDashboardContent({
   propertyFilters,
   onUpdateFilters,
   onTimeRangeChange,
-  onStreamingToggle,
-  onTabChange,
 }: MonitoringDashboardContentProps) {
   const t = useT();
   const allConnections = useConnections();
@@ -722,64 +718,49 @@ function MonitoringDashboardContent({
     ...propertyApiParams,
   };
 
-  const tabs = [
-    { id: "overview" as const, label: t("orgs.monitoring.overview") },
-    { id: "audit" as const, label: t("orgs.monitoring.audit") },
-    { id: "threads" as const, label: t("orgs.monitoring.chats") },
-    { id: "automations" as const, label: t("orgs.monitoring.automations") },
-  ];
-
   return (
     <>
-      <Page.Body className="!pb-4">
-        <div className="flex flex-col gap-5">
-          <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
-          <div className="flex items-center justify-between gap-4">
-            <CollectionTabs
-              tabs={tabs}
-              activeTab={tab}
-              onTabChange={(tabId) =>
-                onTabChange(
-                  tabId as "overview" | "audit" | "threads" | "automations",
-                )
-              }
-            />
-            <div className="flex items-center gap-2">
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 flex-col gap-2 md:flex-row md:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            {(tab === "audit" || tab === "threads") && (
+              <SearchInput
+                value={searchQuery}
+                onChange={(value) => onUpdateFilters({ search: value })}
+                placeholder={
+                  tab === "threads"
+                    ? t("orgs.monitoring.searchByTitlePlaceholder")
+                    : t("orgs.monitoring.searchByToolPlaceholder")
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    onUpdateFilters({ search: "" });
+                    event.currentTarget.blur();
+                  }
+                }}
+                className="w-64 shrink-0 md:w-80"
+              />
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               {(tab === "overview" || tab === "audit") && (
-                <>
-                  <Button
-                    variant={isStreaming ? "secondary" : "outline"}
-                    className="gap-1.5"
-                    onClick={onStreamingToggle}
-                  >
-                    {isStreaming && (
-                      <span className="size-2 rounded-full bg-success animate-pulse" />
-                    )}
-                    <span>{t("orgs.monitoring.live")}</span>
-                    {isStreaming && (
-                      <span className="text-muted-foreground text-xs">3s</span>
-                    )}
-                  </Button>
-
-                  <FiltersPopover
-                    connectionIds={connectionIds}
-                    virtualMcpIds={virtualMcpIds}
-                    tool={tool}
-                    status={status}
-                    hideSystem={hideSystem}
-                    propertyFilters={propertyFilters}
-                    connectionOptions={connectionOptions}
-                    virtualMcpOptions={virtualMcpOptions}
-                    activeFiltersCount={activeFiltersCount}
-                    onUpdateFilters={onUpdateFilters}
-                    connectionSearchTerm={connectionSearch}
-                    onConnectionSearchChange={setConnectionSearch}
-                    memberOptions={memberOptions}
-                    llmUserIds={llmUserIds}
-                    onLlmUserIdsChange={setLlmUserIds}
-                    showMemberFilter={tab === "overview"}
-                  />
-                </>
+                <FiltersPopover
+                  connectionIds={connectionIds}
+                  virtualMcpIds={virtualMcpIds}
+                  tool={tool}
+                  status={status}
+                  hideSystem={hideSystem}
+                  propertyFilters={propertyFilters}
+                  connectionOptions={connectionOptions}
+                  virtualMcpOptions={virtualMcpOptions}
+                  activeFiltersCount={activeFiltersCount}
+                  onUpdateFilters={onUpdateFilters}
+                  connectionSearchTerm={connectionSearch}
+                  onConnectionSearchChange={setConnectionSearch}
+                  memberOptions={memberOptions}
+                  llmUserIds={llmUserIds}
+                  onLlmUserIdsChange={setLlmUserIds}
+                  showMemberFilter={tab === "overview"}
+                />
               )}
 
               {tab === "threads" && (
@@ -893,26 +874,8 @@ function MonitoringDashboardContent({
               />
             </div>
           </div>
-          {(tab === "audit" || tab === "threads") && (
-            <SearchInput
-              value={searchQuery}
-              onChange={(value) => onUpdateFilters({ search: value })}
-              placeholder={
-                tab === "threads"
-                  ? t("orgs.monitoring.searchByTitlePlaceholder")
-                  : t("orgs.monitoring.searchByToolPlaceholder")
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  onUpdateFilters({ search: "" });
-                  (event.target as HTMLInputElement).blur();
-                }
-              }}
-              className="w-full md:w-[375px]"
-            />
-          )}
         </div>
-      </Page.Body>
+      </Main.Toolbar.Portal>
 
       {tab === "automations" ? (
         <AutomationsTabContent dateRange={dateRange} />
@@ -1042,64 +1005,101 @@ export default function MonitoringDashboard() {
   if (validPropertyFilters.length > 0)
     activeFiltersCount += validPropertyFilters.length;
 
+  const activeTab = tab === "dashboards" ? "overview" : tab;
+  const monitoringTabs = [
+    { id: "overview", label: t("orgs.monitoring.overview") },
+    { id: "audit", label: t("orgs.monitoring.audit") },
+    { id: "threads", label: t("orgs.monitoring.chats") },
+    { id: "automations", label: t("orgs.monitoring.automations") },
+  ];
+  const changeTab = (
+    newTab: "overview" | "audit" | "threads" | "automations",
+  ) => {
+    if (newTab !== activeTab) {
+      track("monitoring_tab_changed", {
+        from_tab: activeTab,
+        to_tab: newTab,
+      });
+    }
+    updateFilters({ tab: newTab });
+  };
+  const handleTabChange = (tabId: string) => {
+    if (
+      tabId === "overview" ||
+      tabId === "audit" ||
+      tabId === "threads" ||
+      tabId === "automations"
+    ) {
+      changeTab(tabId);
+    }
+  };
+
   return (
-    <RequireCapability capability="monitoring:view" area="monitoring">
-      <Page>
+    <RequireCapability
+      capability="monitoring:view"
+      area={t("orgs.monitoring.permissionArea")}
+    >
+      <>
+        <Main.Topbar.Center.Portal>
+          <div className="hidden min-w-0 md:block">
+            <CollectionTabs
+              ariaLabel={t("orgs.monitoring.title")}
+              tabs={monitoringTabs}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+            />
+          </div>
+        </Main.Topbar.Center.Portal>
+        <Main.Toolbar.Portal visibility="compact">
+          <div className="min-w-0 overflow-x-auto">
+            <CollectionTabs
+              ariaLabel={t("orgs.monitoring.title")}
+              tabs={monitoringTabs}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+            />
+          </div>
+        </Main.Toolbar.Portal>
+        {(activeTab === "overview" || activeTab === "audit") && (
+          <Main.Topbar.Right.Portal>
+            <Button
+              size="sm"
+              variant={streaming ? "secondary" : "outline"}
+              aria-pressed={streaming}
+              className="gap-1.5"
+              onClick={() => {
+                track("monitoring_live_toggled", { enabled: !streaming });
+                updateFilters({ streaming: !streaming });
+              }}
+            >
+              {streaming ? (
+                <span className="size-2 rounded-full bg-success animate-pulse" />
+              ) : null}
+              <span>{t("orgs.monitoring.live")}</span>
+              {streaming ? (
+                <span className="text-xs text-muted-foreground">3s</span>
+              ) : null}
+            </Button>
+          </Main.Topbar.Right.Portal>
+        )}
         <ErrorBoundary
           fallback={
-            <>
-              <Page.Body className="!pb-3">
-                <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
-              </Page.Body>
-              <Page.Content>
-                <div className="flex-1 flex items-center justify-center h-full">
-                  <EmptyState
-                    title={t("orgs.monitoring.failedLoadTitle")}
-                    description={t("orgs.monitoring.failedLoadDescription")}
-                  />
-                </div>
-              </Page.Content>
-            </>
+            <div className="flex h-full flex-1 items-center justify-center">
+              <EmptyState
+                title={t("orgs.monitoring.failedLoadTitle")}
+                description={t("orgs.monitoring.failedLoadDescription")}
+              />
+            </div>
           }
         >
           <Suspense
             fallback={
               <>
-                <Page.Body className="!pb-3">
-                  <div className="flex flex-col gap-4">
-                    <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
-                    <CollectionTabs
-                      tabs={[
-                        {
-                          id: "overview",
-                          label: t("orgs.monitoring.overview"),
-                        },
-                        { id: "audit", label: t("orgs.monitoring.audit") },
-                        { id: "threads", label: t("orgs.monitoring.chats") },
-                        {
-                          id: "automations",
-                          label: t("orgs.monitoring.automations"),
-                        },
-                      ]}
-                      activeTab={tab}
-                      onTabChange={(tabId) =>
-                        updateFilters({
-                          tab: tabId as
-                            | "overview"
-                            | "audit"
-                            | "threads"
-                            | "automations",
-                        })
-                      }
-                    />
-                  </div>
-                </Page.Body>
-
-                {tab === "threads" ? (
+                {activeTab === "threads" ? (
                   <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
                     <MonitoringLogsTable.Skeleton />
                   </div>
-                ) : tab === "audit" ? (
+                ) : activeTab === "audit" ? (
                   <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
                     <MonitoringLogsTable.Skeleton />
                   </div>
@@ -1112,7 +1112,7 @@ export default function MonitoringDashboard() {
             }
           >
             <MonitoringDashboardContent
-              tab={tab}
+              tab={activeTab}
               dateRange={dateRange}
               displayDateRange={displayDateRange}
               connectionIds={connectionIds}
@@ -1134,23 +1134,10 @@ export default function MonitoringDashboard() {
                 });
                 handleTimeRangeChange(range);
               }}
-              onStreamingToggle={() => {
-                track("monitoring_live_toggled", { enabled: !streaming });
-                updateFilters({ streaming: !streaming });
-              }}
-              onTabChange={(newTab) => {
-                if (newTab !== tab) {
-                  track("monitoring_tab_changed", {
-                    from_tab: tab,
-                    to_tab: newTab,
-                  });
-                }
-                updateFilters({ tab: newTab });
-              }}
             />
           </Suspense>
         </ErrorBoundary>
-      </Page>
+      </>
     </RequireCapability>
   );
 }

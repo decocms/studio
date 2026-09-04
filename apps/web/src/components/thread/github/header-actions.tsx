@@ -127,7 +127,7 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
  * "Submit for review", "Get latest" and "View on GitHub" in the dropdown.
  * The sandbox surface adds its agent states ("Fix checks", "Mark ready",
  * "Address feedback"), which dispatch chat prompts. Fast Preview swaps in
- * `CmsHeaderActions` at the mount point (`VirtualMcpHeaderInfo`), but this
+ * `CmsHeaderActions` at the mount point (`SiteEditorLayout`), but this
  * component keeps its Fast Preview fallbacks for branch metadata since the
  * `/git/*` routes answer from the GitHub API server-side either way.
  */
@@ -168,7 +168,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   /**
    * The "is there anything to review" check below. This surface only ever
-   * renders for a sandbox-backed session (`header-info` routes a CMS one to
+   * renders for a sandbox-backed session (`SiteEditorLayout` routes a CMS one to
    * `CmsHeaderActions`), so the status answers from a local `git status`:
    * while it reports nothing to review it re-asks every few seconds, because
    * that verdict disables the publish button and the agent's first edit must
@@ -257,8 +257,16 @@ export function HeaderActions({ virtualMcpId }: Props) {
   if (attachment.status === "detached") {
     return (
       <WithTooltip label={t("thread.headerActions.githubConnectionRemoved")}>
-        <Button size="sm" variant="outline" disabled>
-          {t("thread.headerActions.reconnectGithub")}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled
+          aria-label={t("thread.headerActions.reconnectGithub")}
+        >
+          <GitHubIcon size={16} />
+          <span className="@max-3xl/panel-header:sr-only">
+            {t("thread.headerActions.reconnectGithub")}
+          </span>
         </Button>
       </WithTooltip>
     );
@@ -504,6 +512,14 @@ function HeaderButtonRenderer(props: {
     savingBlocksAction ||
     !action;
   const loading = Boolean(button.loading) || mergePending;
+  const statusIcon =
+    !action && !loading ? (
+      button.label === t("thread.headerActions.upToDate") ? (
+        <CheckCircle className="size-4" />
+      ) : (
+        <AlertTriangle className="size-4" />
+      )
+    ) : null;
   const tooltip = chatBlocksAction
     ? t("thread.headerActions.chatIsRunning")
     : savingBlocksAction
@@ -536,7 +552,10 @@ function HeaderButtonRenderer(props: {
       variant={button.variant}
       disabled={disabled}
       loading={loading}
-      {...(action && !loading ? { icon: actionIcon(action) } : {})}
+      {...(!loading && (action || statusIcon)
+        ? { icon: action ? actionIcon(action) : statusIcon }
+        : {})}
+      labelClassName="@max-3xl/panel-header:sr-only"
       {...(tooltip ? { tooltip } : {})}
       items={items}
       menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}

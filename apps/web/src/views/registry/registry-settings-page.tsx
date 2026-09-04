@@ -3,7 +3,6 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useProjectContext } from "@/sdk";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Card } from "@decocms/ui/components/card.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import {
   AlertDialog,
@@ -37,6 +36,7 @@ import {
   useRegistryItems,
 } from "@/hooks/registry/use-registry";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 import { ImageUpload } from "./image-upload";
 
 /**
@@ -198,379 +198,428 @@ export default function RegistrySettingsPage({
   };
 
   return (
-    <div className="h-full overflow-auto px-4 md:px-6 py-4">
-      <div className="grid grid-cols-1 gap-4 items-start xl:grid-cols-2">
-        <div className="grid gap-4 min-w-0 content-start">
-          <Card className="min-w-0 p-4 grid gap-4 content-start">
-            <div>
-              <h3 className="text-base font-semibold">
-                {t("registry.registrySettingsPage.registryIdentity")}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {t("registry.registrySettingsPage.configureNameIcon")}
-              </p>
-            </div>
+    <>
+      <div className="h-full overflow-auto">
+        <Main.Container width="wide" padding="compact">
+          <div className="grid grid-cols-1 items-start gap-4 @5xl:grid-cols-2">
+            <Main.Stack gap="compact" className="content-start">
+              <Main.Section className="gap-4 rounded-xl bg-card p-4 text-card-foreground card-shadow">
+                <Main.Section.Header>
+                  <div className="min-w-0">
+                    <Main.Section.Title>
+                      {t("registry.registrySettingsPage.registryIdentity")}
+                    </Main.Section.Title>
+                    <Main.Section.Description>
+                      {t("registry.registrySettingsPage.configureNameIcon")}
+                    </Main.Section.Description>
+                  </div>
+                </Main.Section.Header>
 
-            <div className="grid gap-1.5">
-              <Label htmlFor="identity-name">
-                {t("registry.registrySettingsPage.name")}
-              </Label>
-              <Input
-                id="identity-name"
-                value={nameDraft}
-                onChange={(event) => setNameDraft(event.target.value)}
-                onBlur={handleNameBlur}
-                disabled={disabled}
-                placeholder={t("registry.registrySettingsPage.namePlaceholder")}
-              />
-            </div>
-
-            <ImageUpload
-              value={iconDraft}
-              onChange={setIconDraft}
-              onBlur={() => {
-                const trimmed = iconDraft.trim();
-                if (trimmed === registryIcon) return;
-                updateConfig({ registryIcon: trimmed });
-              }}
-              onFileUpload={handleIconFileUpload}
-              isUploading={isUploadingIcon}
-            />
-          </Card>
-        </div>
-
-        <div className="grid gap-4 min-w-0 content-start">
-          <Card className="min-w-0 p-4 grid gap-3 content-start">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h3 className="text-base font-semibold">
-                  {t("registry.registrySettingsPage.publicRegistry")}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {t("registry.registrySettingsPage.publicRegistryDescription")}
-                </p>
-              </div>
-              <Badge variant="secondary">
-                {publicCount}{" "}
-                {publicCount === 1
-                  ? t("registry.registrySettingsPage.publicItem")
-                  : t("registry.registrySettingsPage.publicItems")}
-              </Badge>
-            </div>
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center gap-2 min-w-0">
-              <code className="text-xs font-mono break-all leading-5 min-w-0 flex-1 select-all">
-                {publicStoreUrl}
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 shrink-0"
-                onClick={() => handleCopyPublicUrl(publicStoreUrl)}
-              >
-                {copiedPublicUrl ? <Check size={14} /> : <Copy01 size={14} />}
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="min-w-0 p-4 grid gap-3 content-start">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h3 className="text-base font-semibold">
-                  {t("registry.registrySettingsPage.storeVisibility")}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {t(
-                    "registry.registrySettingsPage.storeVisibilityDescription",
-                  )}
-                </p>
-              </div>
-              <Switch
-                id="store-private-only"
-                checked={storePrivateOnly}
-                onCheckedChange={(checked) =>
-                  updateConfig({ storePrivateOnly: checked })
-                }
-                disabled={disabled}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("registry.registrySettingsPage.storeVisibilityHelp")}
-            </p>
-          </Card>
-
-          <Card className="min-w-0 p-4 grid gap-3 content-start">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h3 className="text-base font-semibold">
-                  {t("registry.registrySettingsPage.publishRequests")}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {t(
-                    "registry.registrySettingsPage.publishRequestsDescription",
-                  )}
-                </p>
-              </div>
-              <Switch
-                id="accept-publish-requests"
-                checked={acceptPublishRequests}
-                onCheckedChange={(checked) =>
-                  updateConfig({ acceptPublishRequests: checked })
-                }
-                disabled={disabled}
-              />
-            </div>
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center gap-2 min-w-0">
-              <code className="text-xs font-mono break-all leading-5 min-w-0 flex-1 select-all">
-                {publishRequestUrl}
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 shrink-0"
-                onClick={() => handleCopyPublishUrl(publishRequestUrl)}
-              >
-                {copiedPublishUrl ? <Check size={14} /> : <Copy01 size={14} />}
-              </Button>
-            </div>
-
-            {/* ── Require API Token ── */}
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
-              <div>
-                <Label className="text-sm font-medium">
-                  {t("registry.registrySettingsPage.requireApiToken")}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("registry.registrySettingsPage.requireApiTokenHelp")}
-                </p>
-              </div>
-              <Switch
-                id="require-api-token"
-                checked={requireApiToken}
-                onCheckedChange={(checked) =>
-                  updateConfig({ requireApiToken: checked })
-                }
-                disabled={disabled}
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
-              <div>
-                <Label className="text-sm font-medium">
-                  {t("registry.registrySettingsPage.rateLimit")}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("registry.registrySettingsPage.rateLimitHelp")}
-                </p>
-              </div>
-              <Switch
-                id="publish-rate-limit"
-                checked={rateLimitEnabled}
-                onCheckedChange={(checked) =>
-                  updateConfig({ rateLimitEnabled: checked })
-                }
-                disabled={disabled}
-              />
-            </div>
-            {rateLimitEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="rate-limit-max"
-                    className="text-sm font-medium"
-                  >
-                    {t("registry.registrySettingsPage.maxRequests")}
+                <div className="grid gap-1.5">
+                  <Label htmlFor="identity-name">
+                    {t("registry.registrySettingsPage.name")}
                   </Label>
                   <Input
-                    id="rate-limit-max"
-                    inputMode="numeric"
-                    min={1}
-                    type="number"
-                    value={rateLimitMaxDraft}
-                    onChange={(event) =>
-                      setRateLimitMaxDraft(event.target.value)
-                    }
-                    onBlur={handleRateLimitMaxBlur}
+                    id="identity-name"
+                    value={nameDraft}
+                    onChange={(event) => setNameDraft(event.target.value)}
+                    onBlur={handleNameBlur}
                     disabled={disabled}
                     placeholder={t(
-                      "registry.registrySettingsPage.maxRequestsPlaceholder",
+                      "registry.registrySettingsPage.namePlaceholder",
                     )}
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="rate-limit-window"
-                    className="text-sm font-medium"
+
+                <ImageUpload
+                  value={iconDraft}
+                  onChange={setIconDraft}
+                  onBlur={() => {
+                    const trimmed = iconDraft.trim();
+                    if (trimmed === registryIcon) return;
+                    updateConfig({ registryIcon: trimmed });
+                  }}
+                  onFileUpload={handleIconFileUpload}
+                  isUploading={isUploadingIcon}
+                />
+              </Main.Section>
+            </Main.Stack>
+
+            <Main.Stack gap="compact" className="content-start">
+              <Main.Section className="rounded-xl bg-card p-4 text-card-foreground card-shadow">
+                <Main.Section.Header>
+                  <div className="min-w-0">
+                    <Main.Section.Title>
+                      {t("registry.registrySettingsPage.publicRegistry")}
+                    </Main.Section.Title>
+                    <Main.Section.Description>
+                      {t(
+                        "registry.registrySettingsPage.publicRegistryDescription",
+                      )}
+                    </Main.Section.Description>
+                  </div>
+                  <Badge variant="secondary">
+                    {publicCount}{" "}
+                    {publicCount === 1
+                      ? t("registry.registrySettingsPage.publicItem")
+                      : t("registry.registrySettingsPage.publicItems")}
+                  </Badge>
+                </Main.Section.Header>
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center gap-2 min-w-0">
+                  <code className="text-xs font-mono break-all leading-5 min-w-0 flex-1 select-all">
+                    {publicStoreUrl}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t(
+                      "registry.registrySettingsPage.copyPublicRegistryUrl",
+                    )}
+                    className="h-7 w-7 p-0 shrink-0"
+                    onClick={() => handleCopyPublicUrl(publicStoreUrl)}
                   >
-                    {t("registry.registrySettingsPage.window")}
-                  </Label>
-                  <select
-                    id="rate-limit-window"
-                    className="h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
-                    value={rateLimitWindow}
-                    onChange={(event) =>
-                      updateConfig({
-                        rateLimitWindow: event.target.value as
-                          | "minute"
-                          | "hour",
-                      })
+                    {copiedPublicUrl ? (
+                      <Check size={14} />
+                    ) : (
+                      <Copy01 size={14} />
+                    )}
+                  </Button>
+                </div>
+              </Main.Section>
+
+              <Main.Section className="rounded-xl bg-card p-4 text-card-foreground card-shadow">
+                <Main.Section.Header>
+                  <div className="min-w-0">
+                    <Main.Section.Title>
+                      {t("registry.registrySettingsPage.storeVisibility")}
+                    </Main.Section.Title>
+                    <Main.Section.Description>
+                      {t(
+                        "registry.registrySettingsPage.storeVisibilityDescription",
+                      )}
+                    </Main.Section.Description>
+                  </div>
+                  <Switch
+                    id="store-private-only"
+                    aria-label={t(
+                      "registry.registrySettingsPage.storeVisibility",
+                    )}
+                    checked={storePrivateOnly}
+                    onCheckedChange={(checked) =>
+                      updateConfig({ storePrivateOnly: checked })
                     }
                     disabled={disabled}
-                  >
-                    <option value="minute">
-                      {t("registry.registrySettingsPage.perMinute")}
-                    </option>
-                    <option value="hour">
-                      {t("registry.registrySettingsPage.perHour")}
-                    </option>
-                  </select>
-                </div>
-              </div>
-            )}
+                  />
+                </Main.Section.Header>
+                <p className="text-xs text-muted-foreground">
+                  {t("registry.registrySettingsPage.storeVisibilityHelp")}
+                </p>
+              </Main.Section>
 
-            {/* ── API Keys (inline) ── */}
-            {acceptPublishRequests && requireApiToken && (
-              <>
-                <div className="flex items-center gap-2 pt-2 border-t border-border">
-                  <Key01 size={14} className="text-muted-foreground" />
-                  <span className="text-sm font-medium">
-                    {t("registry.registrySettingsPage.apiKeys")}
-                  </span>
-                </div>
-
-                {/* ── Revealed key fallback (while list refreshes) ── */}
-                {revealedKey && !hasRevealedKeyInList && (
-                  <div className="rounded-md border border-border bg-muted/20 px-3 py-2 grid gap-1.5">
-                    <span className="text-xs text-muted-foreground">
-                      {t("registry.registrySettingsPage.newKeyRefreshing")}
-                    </span>
-                    <Input
-                      readOnly
-                      value={revealedKey}
-                      className="h-8 text-xs font-mono bg-background"
-                    />
-                  </div>
-                )}
-
-                {/* ── Generate new key ── */}
-                <div className="flex items-end gap-2">
-                  <div className="grid gap-1.5 flex-1">
-                    <Label htmlFor="api-key-name" className="text-xs">
-                      {t("registry.registrySettingsPage.keyName")}
-                    </Label>
-                    <Input
-                      id="api-key-name"
-                      value={newKeyName}
-                      onChange={(e) => setNewKeyName(e.target.value)}
-                      placeholder={t(
-                        "registry.registrySettingsPage.keyNamePlaceholder",
+              <Main.Section className="rounded-xl bg-card p-4 text-card-foreground card-shadow">
+                <Main.Section.Header>
+                  <div className="min-w-0">
+                    <Main.Section.Title>
+                      {t("registry.registrySettingsPage.publishRequests")}
+                    </Main.Section.Title>
+                    <Main.Section.Description>
+                      {t(
+                        "registry.registrySettingsPage.publishRequestsDescription",
                       )}
-                      className="h-8 text-sm"
-                    />
+                    </Main.Section.Description>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5"
-                    disabled={!newKeyName.trim() || generateMutation.isPending}
-                    onClick={handleGenerateKey}
-                  >
-                    {generateMutation.isPending ? (
-                      <Spinner className="size-3.5" />
-                    ) : (
-                      <Plus size={14} />
+                  <Switch
+                    id="accept-publish-requests"
+                    aria-label={t(
+                      "registry.registrySettingsPage.publishRequests",
                     )}
-                    {t("registry.registrySettingsPage.generate")}
+                    checked={acceptPublishRequests}
+                    onCheckedChange={(checked) =>
+                      updateConfig({ acceptPublishRequests: checked })
+                    }
+                    disabled={disabled}
+                  />
+                </Main.Section.Header>
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center gap-2 min-w-0">
+                  <code className="text-xs font-mono break-all leading-5 min-w-0 flex-1 select-all">
+                    {publishRequestUrl}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t(
+                      "registry.registrySettingsPage.copyPublishRequestUrl",
+                    )}
+                    className="h-7 w-7 p-0 shrink-0"
+                    onClick={() => handleCopyPublishUrl(publishRequestUrl)}
+                  >
+                    {copiedPublishUrl ? (
+                      <Check size={14} />
+                    ) : (
+                      <Copy01 size={14} />
+                    )}
                   </Button>
                 </div>
 
-                {/* ── Key list ── */}
-                {(apiKeysQuery.data?.items?.length ?? 0) > 0 && (
-                  <div className="grid gap-2">
-                    {apiKeysQuery.data?.items?.map((apiKey) => (
-                      <div
-                        key={apiKey.id}
-                        className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2"
+                {/* ── Require API Token ── */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+                  <div>
+                    <Label
+                      htmlFor="require-api-token"
+                      className="text-sm font-medium"
+                    >
+                      {t("registry.registrySettingsPage.requireApiToken")}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("registry.registrySettingsPage.requireApiTokenHelp")}
+                    </p>
+                  </div>
+                  <Switch
+                    id="require-api-token"
+                    checked={requireApiToken}
+                    onCheckedChange={(checked) =>
+                      updateConfig({ requireApiToken: checked })
+                    }
+                    disabled={disabled}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+                  <div>
+                    <Label
+                      htmlFor="publish-rate-limit"
+                      className="text-sm font-medium"
+                    >
+                      {t("registry.registrySettingsPage.rateLimit")}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("registry.registrySettingsPage.rateLimitHelp")}
+                    </p>
+                  </div>
+                  <Switch
+                    id="publish-rate-limit"
+                    checked={rateLimitEnabled}
+                    onCheckedChange={(checked) =>
+                      updateConfig({ rateLimitEnabled: checked })
+                    }
+                    disabled={disabled}
+                  />
+                </div>
+                {rateLimitEnabled && (
+                  <div className="grid grid-cols-1 gap-2 @xl:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="rate-limit-max"
+                        className="text-sm font-medium"
                       >
-                        <div className="grid gap-1 min-w-0 flex-1">
-                          <span className="text-sm font-medium truncate leading-none">
-                            {apiKey.name}
-                          </span>
-                          {revealedKeyPrefix === apiKey.prefix ? (
-                            <Input
-                              readOnly
-                              value={
-                                showRevealedKey
-                                  ? (revealedKey ?? "")
-                                  : "••••••••••••••••••••••••••••••••••••••••••••••••••••"
-                              }
-                              className="h-8 text-xs font-mono bg-muted/20"
-                            />
-                          ) : (
-                            <Input
-                              readOnly
-                              value={`${apiKey.prefix}••••••••`}
-                              className="h-8 text-xs font-mono bg-muted/20 text-muted-foreground"
-                            />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {revealedKeyPrefix === apiKey.prefix && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() =>
-                                  setShowRevealedKey((prev) => !prev)
-                                }
-                              >
-                                {showRevealedKey ? (
-                                  <EyeOff size={14} />
-                                ) : (
-                                  <Eye size={14} />
-                                )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                disabled={!revealedKey}
-                                onClick={() =>
-                                  revealedKey &&
-                                  handleCopyRevealedKey(revealedKey)
-                                }
-                              >
-                                {copiedRevealedKey ? (
-                                  <Check size={14} />
-                                ) : (
-                                  <Copy01 size={14} />
-                                )}
-                              </Button>
-                            </>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                            disabled={revokeMutation.isPending}
-                            onClick={() =>
-                              setKeyToDelete({
-                                id: apiKey.id,
-                                name: apiKey.name,
-                              })
-                            }
-                          >
-                            <Trash01 size={14} />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                        {t("registry.registrySettingsPage.maxRequests")}
+                      </Label>
+                      <Input
+                        id="rate-limit-max"
+                        inputMode="numeric"
+                        min={1}
+                        type="number"
+                        value={rateLimitMaxDraft}
+                        onChange={(event) =>
+                          setRateLimitMaxDraft(event.target.value)
+                        }
+                        onBlur={handleRateLimitMaxBlur}
+                        disabled={disabled}
+                        placeholder={t(
+                          "registry.registrySettingsPage.maxRequestsPlaceholder",
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="rate-limit-window"
+                        className="text-sm font-medium"
+                      >
+                        {t("registry.registrySettingsPage.window")}
+                      </Label>
+                      <select
+                        id="rate-limit-window"
+                        className="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                        value={rateLimitWindow}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value === "minute" || value === "hour") {
+                            updateConfig({ rateLimitWindow: value });
+                          }
+                        }}
+                        disabled={disabled}
+                      >
+                        <option value="minute">
+                          {t("registry.registrySettingsPage.perMinute")}
+                        </option>
+                        <option value="hour">
+                          {t("registry.registrySettingsPage.perHour")}
+                        </option>
+                      </select>
+                    </div>
                   </div>
                 )}
-              </>
-            )}
-          </Card>
-        </div>
+
+                {/* ── API Keys (inline) ── */}
+                {acceptPublishRequests && requireApiToken && (
+                  <>
+                    <div className="flex items-center gap-2 pt-2 border-t border-border">
+                      <Key01 size={14} className="text-muted-foreground" />
+                      <span className="text-sm font-medium">
+                        {t("registry.registrySettingsPage.apiKeys")}
+                      </span>
+                    </div>
+
+                    {/* ── Revealed key fallback (while list refreshes) ── */}
+                    {revealedKey && !hasRevealedKeyInList && (
+                      <div className="rounded-md border border-border bg-muted/20 px-3 py-2 grid gap-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          {t("registry.registrySettingsPage.newKeyRefreshing")}
+                        </span>
+                        <Input
+                          readOnly
+                          value={revealedKey}
+                          className="h-8 text-xs font-mono bg-background"
+                        />
+                      </div>
+                    )}
+
+                    {/* ── Generate new key ── */}
+                    <div className="flex items-end gap-2">
+                      <div className="grid gap-1.5 flex-1">
+                        <Label htmlFor="api-key-name" className="text-xs">
+                          {t("registry.registrySettingsPage.keyName")}
+                        </Label>
+                        <Input
+                          id="api-key-name"
+                          value={newKeyName}
+                          onChange={(e) => setNewKeyName(e.target.value)}
+                          placeholder={t(
+                            "registry.registrySettingsPage.keyNamePlaceholder",
+                          )}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        disabled={
+                          !newKeyName.trim() || generateMutation.isPending
+                        }
+                        onClick={handleGenerateKey}
+                      >
+                        {generateMutation.isPending ? (
+                          <Spinner className="size-3.5" />
+                        ) : (
+                          <Plus size={14} />
+                        )}
+                        {t("registry.registrySettingsPage.generate")}
+                      </Button>
+                    </div>
+
+                    {/* ── Key list ── */}
+                    {(apiKeysQuery.data?.items?.length ?? 0) > 0 && (
+                      <div className="grid gap-2">
+                        {apiKeysQuery.data?.items?.map((apiKey) => (
+                          <div
+                            key={apiKey.id}
+                            className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2"
+                          >
+                            <div className="grid gap-1 min-w-0 flex-1">
+                              <span className="text-sm font-medium truncate leading-none">
+                                {apiKey.name}
+                              </span>
+                              {revealedKeyPrefix === apiKey.prefix ? (
+                                <Input
+                                  readOnly
+                                  value={
+                                    showRevealedKey
+                                      ? (revealedKey ?? "")
+                                      : "••••••••••••••••••••••••••••••••••••••••••••••••••••"
+                                  }
+                                  className="h-8 text-xs font-mono bg-muted/20"
+                                />
+                              ) : (
+                                <Input
+                                  readOnly
+                                  value={`${apiKey.prefix}••••••••`}
+                                  className="h-8 text-xs font-mono bg-muted/20 text-muted-foreground"
+                                />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {revealedKeyPrefix === apiKey.prefix && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label={t(
+                                      showRevealedKey
+                                        ? "registry.registrySettingsPage.hideApiKey"
+                                        : "registry.registrySettingsPage.showApiKey",
+                                    )}
+                                    className="h-8 w-8 p-0"
+                                    onClick={() =>
+                                      setShowRevealedKey((prev) => !prev)
+                                    }
+                                  >
+                                    {showRevealedKey ? (
+                                      <EyeOff size={14} />
+                                    ) : (
+                                      <Eye size={14} />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label={t(
+                                      "registry.registrySettingsPage.copyApiKey",
+                                    )}
+                                    className="h-8 w-8 p-0"
+                                    disabled={!revealedKey}
+                                    onClick={() =>
+                                      revealedKey &&
+                                      handleCopyRevealedKey(revealedKey)
+                                    }
+                                  >
+                                    {copiedRevealedKey ? (
+                                      <Check size={14} />
+                                    ) : (
+                                      <Copy01 size={14} />
+                                    )}
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t(
+                                  "registry.registrySettingsPage.revokeApiKeyAriaLabel",
+                                  { name: apiKey.name },
+                                )}
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                disabled={revokeMutation.isPending}
+                                onClick={() =>
+                                  setKeyToDelete({
+                                    id: apiKey.id,
+                                    name: apiKey.name,
+                                  })
+                                }
+                              >
+                                <Trash01 size={14} />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </Main.Section>
+            </Main.Stack>
+          </div>
+        </Main.Container>
       </div>
       <AlertDialog
         open={Boolean(keyToDelete)}
@@ -607,6 +656,6 @@ export default function RegistrySettingsPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

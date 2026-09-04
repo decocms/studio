@@ -49,7 +49,10 @@ describe("fetchCommerceDiscoveryAuth", () => {
       },
     );
 
-    expect(auth).toEqual({ authorizationToken: "dgn_test_token" });
+    expect(auth).toEqual({
+      authorizationToken: "dgn_test_token",
+      runId: "run_123",
+    });
     expect(captured).toEqual([
       {
         method: "POST",
@@ -171,6 +174,24 @@ describe("fetchCommerceDiscoveryAuth", () => {
     );
   });
 
+  test("rejects upgrade responses without a run id", async () => {
+    await expect(
+      fetchCommerceDiscoveryAuth(
+        {
+          siteUrl: "https://example.com",
+          orgId: "org_123",
+        },
+        {
+          baseUrl: "https://commerce.example.test",
+          apiKey: "master-key",
+          fetchImpl: async () => Response.json({ token: "dgn_test" }),
+        },
+      ),
+    ).rejects.toThrow(
+      "Commerce Discovery auth response did not include a run id.",
+    );
+  });
+
   test("rejects a non-JSON 200 body with the classified error, not a raw SyntaxError", async () => {
     await expect(
       fetchCommerceDiscoveryAuth(
@@ -258,13 +279,13 @@ describe("triggerCommerceDiscoveryRun", () => {
           return Response.json({
             url: "example.com",
             scope: "private",
-            run: {},
+            run: { id: "run_456" },
           });
         },
       },
     );
 
-    expect(out).toEqual({ triggered: true });
+    expect(out).toEqual({ triggered: true, runId: "run_456" });
     expect(captured).toEqual([
       {
         method: "POST",
@@ -291,7 +312,7 @@ describe("triggerCommerceDiscoveryRun", () => {
           return Response.json({
             url: "example.com",
             scope: "private",
-            run: {},
+            run: { id: 457 },
           });
         },
       },
@@ -300,6 +321,21 @@ describe("triggerCommerceDiscoveryRun", () => {
       org_id: "org_123",
       github_repo: "deco-sites/fila-store",
     });
+  });
+
+  test("rejects successful run responses without a run id", async () => {
+    await expect(
+      triggerCommerceDiscoveryRun(
+        { siteUrl: "https://example.com", orgId: "org_123" },
+        {
+          baseUrl: "https://commerce.example.test",
+          apiKey: "master-key",
+          fetchImpl: async () => Response.json({ run: {} }),
+        },
+      ),
+    ).rejects.toThrow(
+      "Commerce Discovery run response did not include a run id.",
+    );
   });
 
   test("treats a 409 (not upgraded yet) as a soft skip, not a throw", async () => {

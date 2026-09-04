@@ -29,6 +29,18 @@ export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
 
 export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 
+/** The project's navigation spine. These destinations exist for every project
+ * and are therefore never offered as optional Layout switches. */
+const STRUCTURAL_PROJECT_SIDEBAR_VIEW_IDS = [
+  "overview",
+  "reports",
+  "board",
+] as const satisfies readonly ProjectSidebarViewId[];
+
+function isStructuralProjectSidebarView(viewId: ProjectSidebarViewId): boolean {
+  return viewId === "overview" || viewId === "reports" || viewId === "board";
+}
+
 /** Native panels whose availability is discovered from project resources. */
 export const PROJECT_NATIVE_VIEW_IDS = [
   "assets",
@@ -49,7 +61,8 @@ export interface ProjectNativeViewPending {
 }
 
 export interface ProjectSidebarViewsMetadata {
-  /** Canonical location. With version 1, null or [] disables every row. */
+  /** Canonical location for optional rows. Home, Reports, and Tasks are
+   * structural and cannot be disabled even if an older value omits them. */
   sidebarViews?: readonly VirtualMcpSidebarView[] | null;
   sidebarViewsVersion?: typeof PROJECT_SIDEBAR_VIEWS_VERSION;
   /** Deprecated location, retained only while persisted agents migrate. */
@@ -68,33 +81,26 @@ interface ProjectDefaultMainView {
 
 /** Resolve the entity whose capabilities govern a main-panel project view.
  *
- * Destination routes such as Tasks and Reports keep the org Super Agent as
- * their shell entity while `?virtualmcpid=` selects the project they display.
- * Agent routes instead name that project as both the shell and the scope. Use
- * the resolved scoped project in the former case, reuse the shell in the
- * latter, and fail open as org-level while a non-blocking scope is unresolved.
+ * Organization routes use the Super Agent as their shell entity and have no
+ * project scope. Agent routes name that project as both the shell and scope;
+ * resolve it from the non-blocking project list when possible, otherwise reuse
+ * the already loaded shell entity. Fail open as org-level while an unexpected
+ * non-blocking scope is unresolved.
  */
-export function resolveProjectMainViewContext<
+export function resolveProjectMainViewProject<
   T extends { readonly id: string },
 >(
   scopeId: string | null,
   scopedProject: T | null | undefined,
   shellEntity: T | null | undefined,
-): { project: T | null; resolvedScopeId: string | null } {
-  if (!scopeId) {
-    return { project: shellEntity ?? null, resolvedScopeId: null };
-  }
+): T | null {
+  if (!scopeId) return shellEntity ?? null;
 
-  const project =
-    scopedProject?.id === scopeId
-      ? scopedProject
-      : shellEntity?.id === scopeId
-        ? shellEntity
-        : null;
-  return {
-    project,
-    resolvedScopeId: project ? scopeId : null,
-  };
+  return scopedProject?.id === scopeId
+    ? scopedProject
+    : shellEntity?.id === scopeId
+      ? shellEntity
+      : null;
 }
 
 /** Read the canonical setting, falling back only when it is truly absent. */
@@ -112,6 +118,9 @@ export function effectiveProjectSidebarViews(
   version?: number | null,
 ): readonly VirtualMcpSidebarView[] {
   const selected = new Set(sidebarViews ?? []);
+  for (const viewId of STRUCTURAL_PROJECT_SIDEBAR_VIEW_IDS) {
+    selected.add(viewId);
+  }
   if (version !== PROJECT_SIDEBAR_VIEWS_VERSION) {
     for (const viewId of DEFAULT_PROJECT_SIDEBAR_VIEWS) selected.add(viewId);
   }
@@ -137,9 +146,9 @@ export function projectSidebarViewPresence(
   native: ProjectNativeViewPresence,
 ): ProjectSidebarViewPresence {
   return {
-    overview: hasClonableSource,
-    reports: hasClonableSource,
-    board: hasClonableSource,
+    overview: true,
+    reports: true,
+    board: true,
     "site-editor": hasClonableSource,
     assets: native.assets,
     hosting: native.hosting,
@@ -148,19 +157,6 @@ export function projectSidebarViewPresence(
     cdn: native.cdn,
     automations: true,
   };
-}
-
-/** Main-panel routes also serve organization-level Home/Reports/Tasks. Those
- * destinations remain available without project scope; only their scoped form
- * inherits the project's source requirement. */
-export function projectMainViewPresence(
-  scopeId: string | null,
-  hasClonableSource: boolean,
-  native: ProjectNativeViewPresence,
-): ProjectSidebarViewPresence {
-  const presence = projectSidebarViewPresence(hasClonableSource, native);
-  if (scopeId) return presence;
-  return { ...presence, overview: true, reports: true, board: true };
 }
 
 /** Keep selected views in stable sidebar order and apply runtime presence. */
@@ -182,7 +178,9 @@ export function defaultMainViewAfterSidebarToggle(
   viewId: ProjectSidebarViewId,
   enabled: boolean,
 ): ProjectDefaultMainView | null | undefined {
-  if (enabled || !defaultMainView) return defaultMainView;
+  if (enabled || !defaultMainView || isStructuralProjectSidebarView(viewId)) {
+    return defaultMainView;
+  }
 
   const defaultViewId =
     defaultMainView.type === "preview" ||
@@ -196,7 +194,9 @@ export function defaultMainViewAfterSidebarToggle(
 export function availableProjectSidebarViews(
   presence: ProjectSidebarViewPresence,
 ): ProjectSidebarViewId[] {
-  return PROJECT_SIDEBAR_VIEW_IDS.filter((viewId) => presence[viewId]);
+  return PROJECT_SIDEBAR_VIEW_IDS.filter(
+    (viewId) => !isStructuralProjectSidebarView(viewId) && presence[viewId],
+  );
 }
 
 /** Reject an absent project view while keeping a native route stable during
@@ -209,6 +209,24 @@ export function projectSidebarViewUnavailable(
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
+}
+
+/** Decide whether an already-matched project route must fall back to another
+ * view. Canonical Overview remains the agent root, and Site Editor Preview owns
+ * a useful connect-source empty state, even without source. This does not make
+ * either sidebar row or persisted default available: those keep using
+ * `projectSidebarViewUnavailable` directly. Content and Code have their own
+ * surface-capability guards in the tab-state resolver. */
+export function projectActiveViewUnavailable(
+  viewId: string | null | undefined,
+  presence: ProjectSidebarViewPresence,
+  pending: ProjectNativeViewPending,
+): boolean {
+  return (
+    viewId !== "overview" &&
+    viewId !== "site-editor" &&
+    projectSidebarViewUnavailable(viewId, presence, pending)
+  );
 }
 
 /** Validate a persisted built-in landing view, including retired Preview and
@@ -240,6 +258,9 @@ export function toggleProjectSidebarView(
   version?: number | null,
 ): ProjectSidebarViewId[] {
   const selected = new Set(effectiveProjectSidebarViews(sidebarViews, version));
+  if (isStructuralProjectSidebarView(viewId)) {
+    return PROJECT_SIDEBAR_VIEW_IDS.filter((id) => selected.has(id));
+  }
   if (enabled) selected.add(viewId);
   else selected.delete(viewId);
   return PROJECT_SIDEBAR_VIEW_IDS.filter((id) => selected.has(id));

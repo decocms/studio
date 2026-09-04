@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
+import { Main } from "@/components/main";
 import { useT } from "@/i18n/use-t.ts";
 import { useAutomation, useAutomations } from "@/hooks/use-automations";
 import { AutomationRunsView } from "@/views/automations/automation-runs";
@@ -32,7 +33,11 @@ export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0 gap-5 pt-1">
+      <Main.Container
+        width="wide"
+        padding="compact"
+        className="flex min-h-0 flex-1 flex-col gap-5"
+      >
         {isLoading ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
             {t("orgs.automations.loading")}
@@ -79,7 +84,7 @@ export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
             )}
           </>
         )}
-      </div>
+      </Main.Container>
     </div>
   );
 }

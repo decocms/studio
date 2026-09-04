@@ -1,4 +1,5 @@
 export const mainPanelTabs = {
+  "mainPanelTabs.agentView.title": "View",
   "mainPanelTabs.automationTab.automationNotFound": "Automation not found",
   "mainPanelTabs.automationTab.backToList": "Back to list",
   "mainPanelTabs.automationTab.last24hours": "Last 24 hours",
@@ -25,10 +26,13 @@ export const mainPanelTabs = {
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Connect a GitHub repository to edit this site's content.",
   "mainPanelTabs.contentTab.noContentToEdit": "No content to edit",
+  "mainPanelTabs.deckTab.title": "Deck",
   "mainPanelTabs.fileTab.close": "Close",
   "mainPanelTabs.fileTab.download": "Download",
   "mainPanelTabs.fileTab.fileNotAvailable": "This file is no longer available.",
   "mainPanelTabs.fileTab.openInNewTab": "Open in new tab",
+  "mainPanelTabs.fileTab.title": "Output file",
+  "mainPanelTabs.libraryFileTab.title": "Library file",
   "mainPanelTabs.hostingTab.title": "Hosting",
   "mainPanelTabs.hostingTab.subtitle": "Infrastructure for {site}",
   "mainPanelTabs.hostingTab.deployments": "Deployments",
@@ -369,6 +373,16 @@ export const mainPanelTabs = {
     "Analytics is active for this site — it's added automatically, nothing to paste.",
   "mainPanelTabs.analyticsTab.installTrackPrefix":
     "Send custom events from your code via ",
+  "mainPanelTabs.analyticsTab.customEventsTitle":
+    "Send custom events from your code",
+  "mainPanelTabs.analyticsTab.customEventsDescription":
+    "Analytics is active automatically — pageviews are collected with no code. For custom events, call the public client API on",
+  "mainPanelTabs.analyticsTab.pageviewApiDescription":
+    "Record a pageview manually, such as after an SPA route change.",
+  "mainPanelTabs.analyticsTab.trackApiDescription":
+    "Record a custom event. Names accept lowercase letters, digits, and underscores up to 40 characters; properties are an optional flat object.",
+  "mainPanelTabs.analyticsTab.purchaseApiDescription":
+    "Record a purchase. The transaction ID deduplicates reloaded confirmation pages so a sale is not counted twice.",
   // Dashboard (tenant-scoped /data views), rendered as collapsible sections.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuration",
   "mainPanelTabs.analyticsTab.viewOverview": "Overview",

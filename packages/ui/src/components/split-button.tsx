@@ -51,6 +51,8 @@ export interface SplitButtonProps {
   /** Accessible name for the chevron trigger. Required: this package is i18n-free. */
   menuAriaLabel: string;
   className?: string;
+  /** Responsive visibility for the primary label; its accessible name remains. */
+  labelClassName?: string;
 }
 
 function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
@@ -98,6 +100,7 @@ export function SplitButton({
   items,
   menuAriaLabel,
   className,
+  labelClassName,
 }: SplitButtonProps) {
   const hasMenu = (items?.length ?? 0) > 0;
   /**
@@ -118,6 +121,7 @@ export function SplitButton({
       variant={variant}
       size={size}
       disabled={disabled}
+      aria-label={label}
       aria-busy={loading || undefined}
       // Loading dims nothing, so guard the handler against a double-fire.
       onClick={loading ? undefined : onClick}
@@ -127,7 +131,7 @@ export function SplitButton({
       )}
     >
       {loading ? <Spinner size="xs" /> : icon}
-      {label}
+      <span className={labelClassName}>{label}</span>
     </Button>
   );
 

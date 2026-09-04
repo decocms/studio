@@ -4,11 +4,9 @@
  * in every inline `<code>`/`<a>` leaf (which `MemoizedMarkdown` renders across
  * chat messages, file previews and PR tabs).
  *
- * Mounted by the agent shell, so it covers the chat and its main panel. On
- * surfaces WITHOUT a provider (e.g. the Library's own file/skill previews on
- * `/$org/files`, which has no main panel of its own) the context is null and
- * org-file references render as plain code — clickable only where the
- * navigation actually resolves.
+ * Mounted by the workspace session shell, so it covers Chat and every
+ * route-owned Main surface. Outside that shell the context is null and org-file
+ * references render as plain code.
  */
 
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
@@ -16,11 +14,12 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { createContext, type ReactNode } from "react";
 import { formatLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { useRouteThreadId } from "@/layouts/thread-route";
 
 export interface OrgFileOpenValue {
   /** Current org slug, for resolving `org/<slug>/…` references. */
   orgSlug: string | undefined;
-  /** Current thread id (URL taskId), for resolving `org/output|upload/…`
+  /** Current thread id (`?thread=` on canonical routes), for resolving `org/output|upload/…`
    *  references into their `<threadId>/` subtree of the shared volume. */
   threadId: string | undefined;
   /** Open a Library browse path ("<volume>/<path…>"). */
@@ -33,10 +32,10 @@ export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { openPanel } = usePanelNavigate();
-  const { org, taskId } = useParams({ strict: false }) as {
-    org?: string;
-    taskId?: string;
-  };
+  const params = useParams({ strict: false });
+  const org =
+    "org" in params && typeof params.org === "string" ? params.org : undefined;
+  const threadId = useRouteThreadId() ?? undefined;
 
   /**
    * Mirror the Library's panel/dialog split: desktop opens the file as the
@@ -54,10 +53,6 @@ export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
     }
     navigate({
       to: ".",
-      params: (prev: Record<string, unknown>) => ({
-        ...prev,
-        panel: undefined,
-      }),
       search: (prev: Record<string, unknown>) => ({
         ...prev,
         preview: browsePath,
@@ -66,9 +61,7 @@ export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <OrgFileOpenContext.Provider
-      value={{ orgSlug: org, threadId: taskId, open }}
-    >
+    <OrgFileOpenContext.Provider value={{ orgSlug: org, threadId, open }}>
       {children}
     </OrgFileOpenContext.Provider>
   );

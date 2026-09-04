@@ -6,7 +6,7 @@ import {
   useVirtualMCPs,
   useVirtualMCPsLastUsed,
 } from "@/sdk";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { ProjectCard } from "@/components/project-card";
 import { useCapability } from "@/hooks/use-capability";
 import { useIsDecoStaff } from "@/hooks/use-organization-settings";
@@ -75,153 +75,180 @@ export default function AgentsListPage() {
     }
   };
 
+  const searchInput =
+    search || filteredAgents.length > 0 ? (
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder={t("routes.agentsList.searchPlaceholder")}
+        className="w-[clamp(7rem,35cqw,23.4375rem)]"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setSearch("");
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+    ) : null;
+
+  const createButton = canManageAgents ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" aria-label={t("routes.agentsList.createAgent")}>
+          <Plus size={14} />
+          <span className="@max-sm/main-topbar:hidden">
+            {t("routes.agentsList.createAgent")}
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <CreateAgentDropdownContent
+        onCreateFromScratch={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "scratch",
+          });
+          createVirtualMCP();
+        }}
+        onImportGitHub={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "github",
+          });
+          setGithubPickerOpen(true);
+        }}
+        onImportDeco={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "deco",
+          });
+          setImportDecoOpen(true);
+        }}
+        isCreating={isCreating}
+        align="end"
+        showDecoImport={showDecoImport}
+      />
+    </DropdownMenu>
+  ) : null;
+
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <div className="flex flex-col gap-6">
-            <Page.Title>{t("routes.agentsList.title")}</Page.Title>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder={t("routes.agentsList.searchPlaceholder")}
-                className="w-full md:w-[375px]"
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setSearch("");
-                    (event.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
-              {canManageAgents && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm">
-                      <Plus size={14} />
-                      {t("routes.agentsList.createAgent")}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <CreateAgentDropdownContent
-                    onCreateFromScratch={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "scratch",
-                      });
-                      createVirtualMCP();
-                    }}
-                    onImportGitHub={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "github",
-                      });
-                      setGithubPickerOpen(true);
-                    }}
-                    onImportDeco={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "deco",
-                      });
-                      setImportDecoOpen(true);
-                    }}
-                    isCreating={isCreating}
-                    align="end"
-                    showDecoImport={showDecoImport}
-                  />
-                </DropdownMenu>
-              )}
-            </div>
+    <>
+      {searchInput && (
+        <Main.Topbar.Center.Portal>
+          <div
+            data-responsive-focus-group="projects-search"
+            className="hidden md:block"
+          >
+            {searchInput}
           </div>
+        </Main.Topbar.Center.Portal>
+      )}
+      {searchInput && (
+        <Main.Toolbar.Portal visibility="compact">
+          <div
+            data-responsive-focus-group="projects-search"
+            className="w-full md:hidden [&>*]:w-full"
+          >
+            {searchInput}
+          </div>
+        </Main.Toolbar.Portal>
+      )}
+      {createButton && (
+        <Main.Topbar.Right.Portal>{createButton}</Main.Topbar.Right.Portal>
+      )}
 
-          {filteredAgents.length === 0 && (
-            <div className="flex items-center justify-center py-20">
-              <EmptyState
-                image={
-                  <FolderClosed size={48} className="text-muted-foreground" />
-                }
-                title={
-                  search
-                    ? t("routes.agentsList.noAgentsFound")
-                    : t("routes.agentsList.noAgentsYet")
-                }
-                description={
-                  search
-                    ? t("routes.agentsList.noAgentsMatchSearch", { search })
-                    : canManageAgents
-                      ? t("routes.agentsList.createAgentToGetStarted")
-                      : t("routes.agentsList.askAdminToCreate")
-                }
-                actions={
-                  !search &&
-                  canManageAgents && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm">
-                          <Plus size={14} />
-                          {t("routes.agentsList.createAgent")}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <CreateAgentDropdownContent
-                        onCreateFromScratch={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "scratch",
-                          });
-                          createVirtualMCP();
-                        }}
-                        onImportGitHub={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "github",
-                          });
-                          setGithubPickerOpen(true);
-                        }}
-                        onImportDeco={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "deco",
-                          });
-                          setImportDecoOpen(true);
-                        }}
-                        isCreating={isCreating}
-                        align="center"
-                        showBetaBadge
-                        showDecoImport={showDecoImport}
-                      />
-                    </DropdownMenu>
-                  )
-                }
-              />
-            </div>
-          )}
-
-          {filteredAgents.length > 0 && (
-            <div className="mt-6 @container">
-              <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                {t("routes.agentsList.agentsHeading")}
-              </h3>
-              <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
-                {filteredAgents.map((agent) => (
-                  <ProjectCard
-                    key={agent.id}
-                    project={agent}
-                    lastUsedAt={lastUsedMap?.get(agent.id)?.last_used_at}
-                    onDeleteClick={
-                      canManageAgents
-                        ? () =>
-                            setDeleteTarget({
-                              id: agent.id,
-                              title: agent.title,
-                            })
-                        : undefined
-                    }
-                  />
-                ))}
+      <div className="h-full overflow-y-auto">
+        <Main.Container width="wide">
+          <Main.Stack>
+            {filteredAgents.length === 0 && (
+              <div className="flex min-h-56 items-center justify-center">
+                <EmptyState
+                  image={
+                    <FolderClosed size={48} className="text-muted-foreground" />
+                  }
+                  title={
+                    search
+                      ? t("routes.agentsList.noAgentsFound")
+                      : t("routes.agentsList.noAgentsYet")
+                  }
+                  description={
+                    search
+                      ? t("routes.agentsList.noAgentsMatchSearch", { search })
+                      : canManageAgents
+                        ? t("routes.agentsList.createAgentToGetStarted")
+                        : t("routes.agentsList.askAdminToCreate")
+                  }
+                  actions={
+                    !search &&
+                    canManageAgents && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm">
+                            <Plus size={14} />
+                            {t("routes.agentsList.createAgent")}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <CreateAgentDropdownContent
+                          onCreateFromScratch={() => {
+                            track("agent_create_clicked", {
+                              source: "agents_list_empty",
+                              method: "scratch",
+                            });
+                            createVirtualMCP();
+                          }}
+                          onImportGitHub={() => {
+                            track("agent_create_clicked", {
+                              source: "agents_list_empty",
+                              method: "github",
+                            });
+                            setGithubPickerOpen(true);
+                          }}
+                          onImportDeco={() => {
+                            track("agent_create_clicked", {
+                              source: "agents_list_empty",
+                              method: "deco",
+                            });
+                            setImportDecoOpen(true);
+                          }}
+                          isCreating={isCreating}
+                          align="center"
+                          showBetaBadge
+                          showDecoImport={showDecoImport}
+                        />
+                      </DropdownMenu>
+                    )
+                  }
+                />
               </div>
-            </div>
-          )}
-        </Page.Body>
-      </Page.Content>
+            )}
+
+            {filteredAgents.length > 0 && (
+              <Main.Section className="@container">
+                <Main.Section.Title className="text-muted-foreground">
+                  {t("routes.agentsList.agentsHeading")}
+                </Main.Section.Title>
+                <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
+                  {filteredAgents.map((agent) => (
+                    <ProjectCard
+                      key={agent.id}
+                      project={agent}
+                      lastUsedAt={lastUsedMap?.get(agent.id)?.last_used_at}
+                      onDeleteClick={
+                        canManageAgents
+                          ? () =>
+                              setDeleteTarget({
+                                id: agent.id,
+                                title: agent.title,
+                              })
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              </Main.Section>
+            )}
+          </Main.Stack>
+        </Main.Container>
+      </div>
 
       <GitHubRepoPicker
         open={githubPickerOpen}
@@ -261,6 +288,6 @@ export default function AgentsListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Page>
+    </>
   );
 }

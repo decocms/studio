@@ -48,6 +48,26 @@ async function openBoard(page: Page, orgSlug: string) {
 
 const detail = (page: Page) => page.getByTestId("task-detail");
 
+/** Follow the semantic parent whether the adaptive trail has room to show it
+ * directly or has moved it into the parent-pages overflow. */
+async function navigateToTasksFromBreadcrumb(page: Page) {
+  const breadcrumb = page.getByRole("navigation", {
+    name: "Breadcrumb",
+    exact: true,
+  });
+  const directLink = breadcrumb.getByRole("link", {
+    name: "Tasks",
+    exact: true,
+  });
+  if (await directLink.isVisible()) {
+    await directLink.click();
+    return;
+  }
+
+  await breadcrumb.getByRole("button", { name: "Show parent pages" }).click();
+  await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
+}
+
 /** A card's own URL: the board's path plus the human key it wears. */
 const cardUrl = (orgSlug: string) => new RegExp(`/${orgSlug}/tasks/[^/?#]+`);
 
@@ -58,19 +78,37 @@ test("clicking a card navigates to it and the breadcrumb comes back", async ({
   await seedCards(page.context().request, orgSlug, 2);
   await openBoard(page, orgSlug);
 
-  await page.locator('button:has-text("Card 1")').click();
+  const card = page.locator('button:has-text("Card 1")');
+  await card.focus();
+  await page.keyboard.press("Enter");
   await expect(detail(page)).toBeVisible();
   await expect(detail(page)).toContainText("Card 1");
+  await expect(detail(page)).toBeFocused();
+  await expect(
+    page.getByRole("region", { name: /^[A-Z]+-\d+: Card 1$/ }),
+  ).toBeFocused();
   // The address a shared link carries is a path segment now, never `?task=`.
   await expect(page).toHaveURL(cardUrl(orgSlug));
   await expect(page).not.toHaveURL(/[?&]task=/);
   // The lanes are out of view while the task holds the panel.
   await expect(page.locator('button:has-text("Card 0")')).toBeHidden();
 
-  await detail(page).getByRole("button", { name: "Tasks" }).click();
+  await expect(
+    page
+      .getByTestId("main-panel")
+      .locator('[data-slot="main-topbar-left"]')
+      .getByRole("heading", { level: 1 }),
+  ).toHaveText(/^[A-Z]+-\d+$/);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Breadcrumb", exact: true })
+      .locator('[aria-current="page"]'),
+  ).toHaveCount(0);
+  await navigateToTasksFromBreadcrumb(page);
   await expect(detail(page)).toHaveCount(0);
   await expect(page).not.toHaveURL(cardUrl(orgSlug));
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
+  await expect(card).toBeFocused();
 });
 
 test("browser back returns to the board", async ({ authedPage }) => {
@@ -104,7 +142,7 @@ test("closing a task does not leave it one Back away", async ({
   /* Leaving replaces the task's entry instead of stacking a second one: if it
      pushed, Back would re-open the task just closed, and a few open/close
      cycles would bury whatever the board was reached from. */
-  await detail(page).getByRole("button", { name: "Tasks" }).click();
+  await navigateToTasksFromBreadcrumb(page);
   await expect(detail(page)).toHaveCount(0);
   expect(await depth()).toBe(atBoard + 1);
 

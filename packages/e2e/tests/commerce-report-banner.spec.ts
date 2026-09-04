@@ -1,10 +1,9 @@
 /**
  * E2E: the Commerce Discovery report banner on the PROJECT home (Overview).
  *
- * Not the org home: that landing is the agent roster now, and the banner sits
- * with the project's own summary. Every test therefore scopes to a project
- * (`?virtualmcpid=`) before asserting — an unscoped home renders the roster and
- * would fail these for the wrong reason.
+ * Not the org home: that landing is the agent roster, and the banner sits with
+ * the project's own summary. Every test therefore visits the project's
+ * canonical `/projects/<agentId>` workspace before asserting.
  *
  * The banner reads run state live from the CD connection's own MCP
  * (`get_my_diagnostic`), so these specs stand up a controlled test MCP
@@ -15,10 +14,11 @@
  *
  * Covered:
  *   1. Org without the CD connection → no banner, home intact.
- *   2. Completed diagnostic → "ready" banner; click navigates to the
- *      report app (the CD project's chat path, a fresh `?thread=` and a pinned main tab).
+ *   2. Completed diagnostic → "ready" banner only on its owner project;
+ *      click navigates to that project's Reports destination.
  *   3. Live run → "generating" banner.
- *   4. CD connection whose MCP is unreachable → no banner, home intact.
+ *   4. Ownership transfers never leak a warmed diagnostic across projects.
+ *   5. CD connection whose MCP is unreachable → no banner, home intact.
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -100,6 +100,7 @@ async function createCdConnection(
   orgSlug: string,
   orgId: string,
   url: string,
+  projectId?: string,
 ): Promise<void> {
   await callSelfMcpTool(request, orgSlug, "COLLECTION_CONNECTIONS_CREATE", {
     data: {
@@ -107,14 +108,14 @@ async function createCdConnection(
       title: "Commerce Discovery (e2e)",
       connection_type: "HTTP",
       connection_url: url,
-      metadata: { siteUrl: SITE_URL },
+      metadata: { siteUrl: SITE_URL, ...(projectId ? { projectId } : {}) },
     },
   });
 }
 
 /** A source-backed project to scope the home to. Project Home is presence-gated
- *  on clonable source; the banner itself still reads the ORG's CD connection,
- *  so which source-backed project this is does not matter. */
+ *  on clonable source, and the banner additionally requires this project's id
+ *  to match the owner persisted on the report connection. */
 async function createProject(
   request: APIRequestContext,
   orgSlug: string,
@@ -150,7 +151,7 @@ async function waitForHome(
   orgSlug: string,
   projectId: string,
 ): Promise<void> {
-  await page.goto(`/${orgSlug}/home?virtualmcpid=${projectId}`);
+  await page.goto(`/${orgSlug}/projects/${projectId}`);
   /** The task composer belongs to the PROJECT home — an unscoped landing
    *  renders the org roster and its search instead, never this. */
   await page
@@ -189,7 +190,7 @@ test.describe("commerce report banner", () => {
     ).toBeVisible();
   });
 
-  test("completed diagnostic shows the ready banner and opens the report app", async ({
+  test("completed diagnostic shows on its owner and opens project Reports", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -203,7 +204,7 @@ test.describe("commerce report banner", () => {
       scanned_at: "2026-07-10T12:00:00.000Z",
     });
     try {
-      await createCdConnection(request, orgSlug, orgId, mcp.url);
+      await createCdConnection(request, orgSlug, orgId, mcp.url, projectId);
       await waitForHome(page, orgSlug, projectId);
 
       const banner = page.getByRole("button", {
@@ -214,14 +215,14 @@ test.describe("commerce report banner", () => {
       await expect(banner).toContainText("minha-loja.example");
 
       await banner.click();
-      // Agent and view are both path here; only the view's param stays search.
-      await expect(page).toHaveURL(
-        new RegExp(
-          `/${orgSlug}/agents/app\\?.*virtualmcpid=commerce-discovery_`,
-        ),
+      await page.waitForURL(
+        (url) =>
+          url.pathname === `/${orgSlug}/projects/${projectId}/reports` &&
+          url.searchParams.get("virtualmcpid") === null &&
+          url.searchParams.get("connection") === null &&
+          url.searchParams.get("tool") === null,
         { timeout: 15_000 },
       );
-      expect(new URL(page.url()).searchParams.get("tool")).toBe(REPORT_TOOL);
     } finally {
       await mcp.stop();
     }
@@ -240,11 +241,86 @@ test.describe("commerce report banner", () => {
       run_in_progress: true,
     });
     try {
-      await createCdConnection(request, orgSlug, orgId, mcp.url);
+      await createCdConnection(request, orgSlug, orgId, mcp.url, projectId);
       await waitForHome(page, orgSlug, projectId);
 
       await expect(
         page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+    } finally {
+      await mcp.stop();
+    }
+  });
+
+  test("project Reports isolates a warmed org diagnostic and follows ownership transfers", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const orgId = await findOrgId(request, orgSlug);
+    const projectOne = await createProject(request, orgSlug);
+    const projectTwo = await createProject(request, orgSlug);
+
+    const mcp = await startDiagnosticMcp({
+      url: SITE_URL,
+      scope: "private",
+      scanned_at: "2026-07-10T12:00:00.000Z",
+    });
+    try {
+      await createCdConnection(request, orgSlug, orgId, mcp.url, projectOne);
+
+      // The connection gate resolves on a sibling project, but ownership must
+      // prevent both the diagnostic request and banner from crossing scopes.
+      const siblingGateDone = page.waitForResponse(
+        (resp) => resp.url().includes("/tools/COLLECTION_CONNECTIONS_GET"),
+        { timeout: HOME_TIMEOUT_MS },
+      );
+      await waitForHome(page, orgSlug, projectTwo);
+      await siblingGateDone;
+      await expect(
+        page.getByRole("button", { name: new RegExp(READY_TITLE) }),
+      ).toHaveCount(0);
+
+      await page.goto(`/${orgSlug}/projects/${projectTwo}/reports`);
+      await expect(
+        page.getByRole("heading", { name: "No reports yet" }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+
+      await page.goto(`/${orgSlug}/projects/${projectOne}/reports`);
+      await expect(
+        page.getByText(`Tool "${REPORT_TOOL}" was not found or has no UI.`),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+
+      await callSelfMcpTool(request, orgSlug, "COLLECTION_CONNECTIONS_UPDATE", {
+        id: cdConnectionId(orgId),
+        data: { metadata: { siteUrl: SITE_URL, projectId: projectTwo } },
+      });
+
+      // A hard navigation models another browser observing the durable owner,
+      // independent of the mutation caller's in-memory query cache. The former
+      // owner's Home and Reports destination must now both be empty.
+      await waitForHome(page, orgSlug, projectOne);
+      const formerOwnerGateDone = page.waitForResponse(
+        (resp) => resp.url().includes("/tools/COLLECTION_CONNECTIONS_GET"),
+        { timeout: HOME_TIMEOUT_MS },
+      );
+      await page.reload();
+      await formerOwnerGateDone;
+      await expect(
+        page.getByRole("button", { name: new RegExp(READY_TITLE) }),
+      ).toHaveCount(0);
+      await page.goto(`/${orgSlug}/projects/${projectOne}/reports`);
+      await expect(
+        page.getByRole("heading", { name: "No reports yet" }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+
+      await waitForHome(page, orgSlug, projectTwo);
+      await expect(
+        page.getByRole("button", { name: new RegExp(READY_TITLE) }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+      await page.goto(`/${orgSlug}/projects/${projectTwo}/reports`);
+      await expect(
+        page.getByText(`Tool "${REPORT_TOOL}" was not found or has no UI.`),
       ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
     } finally {
       await mcp.stop();
@@ -265,6 +341,7 @@ test.describe("commerce report banner", () => {
       orgSlug,
       orgId,
       "http://127.0.0.1:9/dead",
+      projectId,
     );
     // Register before navigating — the failing CD probe fires after the
     // connection gate resolves and might complete before we await below.

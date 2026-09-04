@@ -321,6 +321,7 @@ import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 import type { OrganizationBillingStorage } from "../storage/organization-billing";
+import type { CommerceDiscoveryReportStorage } from "../storage/commerce-discovery-reports";
 
 // Better Auth instance type - flexible for testing
 // In production, this is the actual Better Auth instance
@@ -337,6 +338,7 @@ import type { OrganizationBillingStorage } from "../storage/organization-billing
  */
 export interface StudioStorage {
   connections: ConnectionStorage;
+  commerceDiscoveryReports: CommerceDiscoveryReportStorage;
   connectionCredentialVault: ConnectionCredentialVaultStorage;
   organizationSettings: OrganizationSettingsStorage;
   userModelPreferences: UserModelPreferencesStorage;

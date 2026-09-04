@@ -1,5 +1,5 @@
 export const settings = {
-  "settings.title": "Profile & Preferences",
+  "settings.common.documentation": "Documentation",
   "settings.nav.organization": "Organization",
   "settings.nav.build": "Build",
   "settings.nav.manage": "Manage",
@@ -150,13 +150,16 @@ export const settings = {
   "settings.automations.emptyDescription":
     "Automations are created per agent. Open an agent and add one from its Automations tab.",
   "settings.automations.emptyTitle": "No automations yet",
+  "settings.automations.errorDescription":
+    "We couldn't load this organization's automations.",
+  "settings.automations.errorTitle": "Couldn't load automations",
   "settings.automations.noResultsDescription":
     'No automations match "{search}"',
   "settings.automations.noResultsTitle": "No automations found",
-  "settings.automations.pageTitle": "Automations",
+  "settings.automations.retry": "Try again",
   "settings.automations.searchPlaceholder": "Search automations...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
+  "settings.skills.actionsLabel": "Actions for {name}",
   "settings.skills.importing": "Importing…",
   "settings.skills.importSuccess": 'Imported "{name}"',
   "settings.skills.importError": "Failed to import skill",
@@ -459,7 +462,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
-  "settings.orgGeneral.organization": "Organization",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
     "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
@@ -523,6 +525,7 @@ export const settings = {
   "settings.orgRoleDetail.membersUpdatedSuccessfully":
     "Members updated successfully!",
   "settings.orgRoleDetail.models": "Models",
+  "settings.orgRoleDetail.newRole": "New role",
   "settings.orgRoleDetail.noLlmConnectionsConfigured":
     "No LLM connections configured",
   "settings.orgRoleDetail.noMembers": "No members",
@@ -539,6 +542,7 @@ export const settings = {
   "settings.orgRoleDetail.roleCreatedSuccessfully":
     "Role created successfully!",
   "settings.orgRoleDetail.roleName": "Role name",
+  "settings.orgRoleDetail.sectionsAriaLabel": "Role settings",
   "settings.orgRoleDetail.roleNameIsRequired": "Role name is required",
   "settings.orgRoleDetail.roleUpdatedSuccessfully":
     "Role updated successfully!",
@@ -581,12 +585,12 @@ export const settings = {
   "settings.orgSso.enforceSsoLabel": "Enforce SSO",
   "settings.orgSso.enforcementDisabledSuccess": "SSO enforcement disabled",
   "settings.orgSso.enforcementEnabledSuccess": "SSO enforcement enabled",
+  "settings.orgSso.failedToLoad": "Couldn't load SSO settings",
   "settings.orgSso.issuerUrlDescription":
     "The OIDC issuer URL of your identity provider.",
   "settings.orgSso.issuerUrlLabel": "Issuer URL",
   "settings.orgSso.issuerUrlPlaceholder":
     "https://login.microsoftonline.com/{tenant}/v2.0",
-  "settings.orgSso.loading": "Loading...",
   "settings.orgSso.providerLabel": "Provider",
   "settings.orgSso.removeButton": "Remove",
   "settings.orgSso.removeConfirmation":
@@ -595,11 +599,11 @@ export const settings = {
   "settings.orgSso.requiredFieldsError":
     "Issuer, Client ID, and Domain are required",
   "settings.orgSso.saveSsoConfigError": "Failed to save SSO config",
+  "settings.orgSso.retry": "Try again",
   "settings.orgSso.savingButton": "Saving...",
   "settings.orgSso.scopesLabel": "Scopes",
   "settings.orgSso.scopesPlaceholder": "openid email profile",
   "settings.orgSso.sectionTitle": "Single Sign-On",
-  "settings.orgSso.securityTitle": "Security",
   "settings.orgSso.testSsoButton": "Test SSO",
   "settings.orgSso.toggleEnforcementError": "Failed to toggle SSO enforcement",
   "settings.orgSso.updateButton": "Update",
@@ -625,7 +629,6 @@ export const settings = {
   "settings.orgStore.nameLabel": "Name",
   "settings.orgStore.namePlaceholder": "e.g. Acme Corp Registry",
   "settings.orgStore.optional": "Optional",
-  "settings.orgStore.pageTitle": "Store",
   "settings.orgStore.privateMcpRegistry": "Private MCP registry",
   "settings.orgStore.privateRegistriesSection": "Private Registries",
   "settings.orgStore.privateRegistry": "Private Registry",
@@ -637,6 +640,8 @@ export const settings = {
     "https://registry.example.com/mcp",
   "settings.orgStore.remove": "Remove",
   "settings.orgStore.removeRegistry": "Remove this registry?",
+  "settings.orgStore.removeRegistryLabel": "Remove {name}",
+  "settings.orgStore.toggleRegistryLabel": "Enable or disable {name}",
   "settings.organizationForm.failedToReadImage": "Failed to read image",
   "settings.organizationForm.failedToUpdateOrg":
     "Failed to update organization",
@@ -663,6 +668,7 @@ export const settings = {
   "settings.providerKeyRow.keyDeleted": "Key deleted",
   "settings.roles.allConnections": "All connections",
   "settings.roles.basicAccess": "Basic access",
+  "settings.roles.actionsLabel": "Actions for {role}",
   "settings.roles.builtIn": "Built-in",
   "settings.roles.cancel": "Cancel",
   "settings.roles.columnMembers": "Members",
@@ -679,6 +685,7 @@ export const settings = {
   "settings.roles.deleteRoleTitle": "Delete Role",
   "settings.roles.deletedSuccessfully": "Role deleted successfully!",
   "settings.roles.failedToLoad": "Failed to load roles",
+  "settings.roles.failedToDelete": "Failed to delete role",
   "settings.roles.fullAccess": "Full access",
   "settings.roles.fullOrgAccess": "Full org access",
   "settings.roles.noPermissions": "No permissions",
@@ -732,6 +739,7 @@ export const settings = {
   "settings.secrets.emptyTitle": "No secrets yet",
   "settings.secrets.failedToCreateSecret": "Failed to create secret",
   "settings.secrets.failedToLoadError": "Failed to load secrets: {error}",
+  "settings.secrets.failedToLoadFallback": "Failed to load secrets",
   "settings.secrets.nameHelp":
     "Letters, digits, underscore, dot, hyphen. Case-insensitive within its scope.",
   "settings.secrets.nameLabel": "Name",

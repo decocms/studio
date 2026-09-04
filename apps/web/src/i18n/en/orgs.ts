@@ -67,6 +67,13 @@ export const orgs = {
   "orgs.connections.cancel": "Cancel",
   "orgs.connections.cannotConnectNoMethod":
     "This MCP Server cannot be connected: no connection method available",
+  "orgs.connections.catalogPartiallyUnavailableDescription":
+    "Available connections are still shown. Retry to restore the missing results.",
+  "orgs.connections.catalogPartiallyUnavailableTitle":
+    "Some catalog results are unavailable",
+  "orgs.connections.catalogUnavailableDescription":
+    "We couldn't load connections from any enabled registry.",
+  "orgs.connections.catalogUnavailableTitle": "Catalog unavailable",
   "orgs.connections.close": "Close",
   "orgs.connections.command": "Command *",
   "orgs.connections.commandPlaceholder": "node, bun, python...",
@@ -102,6 +109,7 @@ export const orgs = {
   "orgs.connections.filterRegistry": "Registry",
   "orgs.connections.filterStatus": "Status",
   "orgs.connections.filterType": "Type",
+  "orgs.connections.loadingCatalog": "Loading connection catalog",
   "orgs.connections.name": "Name *",
   "orgs.connections.namePlaceholder": "My Connection",
   "orgs.connections.noConnectionsFound": "No Connections found",
@@ -112,6 +120,7 @@ export const orgs = {
   "orgs.connections.npxPackage": "NPX Package",
   "orgs.connections.openGitHubPatSettings": "Open GitHub PAT settings",
   "orgs.connections.pageTitle": "Connections",
+  "orgs.connections.retryCatalog": "Retry catalog",
   "orgs.connections.saving": "Saving...",
   "orgs.connections.searchPlaceholder": "Search for a connection",
   "orgs.connections.sortDescription": "Description",
@@ -215,6 +224,7 @@ export const orgs = {
   "orgs.monitoring.switchToFormView": "Switch to form view",
   "orgs.monitoring.switchToRawText": "Switch to raw text",
   "orgs.monitoring.title": "Monitoring",
+  "orgs.monitoring.permissionArea": "monitoring",
   "orgs.monitoring.toolName": "Tool Name",
   "orgs.monitoring.valuePlaceholder": "Value",
   "orgs.overview.aiCalls": "AI Calls",

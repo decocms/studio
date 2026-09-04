@@ -3,6 +3,7 @@ import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
+import { Main } from "@/components/main";
 import { JoinRequestsSection } from "@/components/settings/join-requests-section";
 import { track } from "@/lib/posthog-client";
 import { formatDate } from "@/lib/format-time";
@@ -53,6 +54,7 @@ import {
   XClose,
   Shield01,
   Key01,
+  UserPlus01,
 } from "@untitledui/icons";
 import {
   Select,
@@ -746,11 +748,20 @@ function OrgMembersContent() {
   ];
 
   const ctaButton = (
-    <div className="flex items-center gap-2">
-      <InviteMemberDialog
-        trigger={<Button>{t("orgs.members.inviteMember")}</Button>}
-      />
-    </div>
+    <InviteMemberDialog
+      trigger={
+        <Button
+          size="sm"
+          aria-label={t("orgs.members.inviteMember")}
+          className="min-w-0"
+        >
+          <UserPlus01 size={16} aria-hidden="true" />
+          <span className="@max-sm/main-topbar:hidden">
+            {t("orgs.members.inviteMember")}
+          </span>
+        </Button>
+      }
+    />
   );
 
   // Build unified rows for table
@@ -768,6 +779,38 @@ function OrgMembersContent() {
 
   return (
     <>
+      <Main.Topbar.Right.Portal>{ctaButton}</Main.Topbar.Right.Portal>
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 items-center gap-2">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder={t("orgs.members.searchPlaceholder")}
+            className="min-w-0 flex-1 md:max-w-[375px]"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setSearch("");
+                (event.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          <div className="shrink-0">
+            <CollectionDisplayButton
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              sortKey={sortKey}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              sortOptions={[
+                { id: "member", label: t("orgs.members.sortName") },
+                { id: "role", label: t("orgs.members.sortRole") },
+                { id: "joined", label: t("orgs.members.sortJoined") },
+              ]}
+            />
+          </div>
+        </div>
+      </Main.Toolbar.Portal>
+
       {/* Cancel Invitation Dialog */}
       <AlertDialog
         open={!!invitationToCancel}
@@ -831,36 +874,7 @@ function OrgMembersContent() {
       </AlertDialog>
 
       <JoinRequestsSection />
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder={t("orgs.members.searchPlaceholder")}
-              className="w-full md:w-[375px]"
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setSearch("");
-                  (event.target as HTMLInputElement).blur();
-                }
-              }}
-            />
-            <CollectionDisplayButton
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              sortKey={sortKey}
-              sortDirection={sortDirection}
-              onSort={handleSort}
-              sortOptions={[
-                { id: "member", label: t("orgs.members.sortName") },
-                { id: "role", label: t("orgs.members.sortRole") },
-                { id: "joined", label: t("orgs.members.sortJoined") },
-              ]}
-            />
-          </div>
-          {ctaButton}
-        </div>
+      <div className="flex min-w-0 flex-col gap-6">
         {viewMode === "cards" ? (
           <div>
             {allRows.length === 0 ? (
@@ -956,7 +970,7 @@ function OrgMembersContent() {
                         />
                         <div className="flex flex-col gap-2">
                           <h3 className="text-base font-medium text-foreground truncate">
-                            {member.user?.name || "Unknown"}
+                            {member.user?.name || t("orgs.members.unknown")}
                           </h3>
                           <p className="text-sm text-muted-foreground truncate">
                             {member.user?.email}
@@ -985,6 +999,7 @@ function OrgMembersContent() {
           <CollectionTableWrapper
             columns={columns}
             data={allRows}
+            getRowId={(row) => `${row.type}:${row.data.id}`}
             isLoading={false}
             sortKey={sortKey}
             sortDirection={sortDirection}

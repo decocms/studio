@@ -10,13 +10,9 @@
 import type { LinkProps } from "@tanstack/react-router";
 import { Settings02 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
-import {
-  DESTINATION_ROUTE,
-  useActivePanelSegment,
-  useLeafRoutePath,
-} from "@/hooks/use-destination-route";
-import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
+import { PROJECT_ROUTE, useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useScopeId } from "@/hooks/use-project-scope";
+import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
@@ -28,9 +24,7 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { org } = useProjectContext();
   const scopeId = useScopeId();
-  const navigateToAgent = useNavigateToAgent();
   const leafPath = useLeafRoutePath();
-  const activePanel = useActivePanelSegment();
 
   /** EITHER settings surface highlights the one row: with a single control for
    *  both, "you are in settings" is the fact worth showing, and a target-only
@@ -40,7 +34,7 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
    *  sidebar, so this row is not rendered while it is open. */
   const isActive =
     leafPath.startsWith("/$org/settings") ||
-    (leafPath === DESTINATION_ROUTE.agents && activePanel === "settings");
+    leafPath === PROJECT_ROUTE.settings;
 
   /** One label for both targets. Which settings it opens is already said by
    *  the sidebar it sits in — a project's sidebar names the project at the top
@@ -48,13 +42,16 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
    *  different controls. */
   const label = t("sidebar.navDestinations.settings");
 
-  /** Unscoped this stays a real anchor, so middle-click and open-in-new-tab
-   *  keep working as they do for every other org-wide destination. Scoped there
-   *  is no `link` and the row is a button: a project's settings live in a panel
-   *  of a SESSION, and which session that is is not knowable at render time —
-   *  the same reason the project rows above are buttons. */
-  const link: LinkProps | undefined = scopeId
-    ? undefined
+  const link: LinkProps = scopeId
+    ? {
+        to: PROJECT_ROUTE.settings,
+        params: { org: org.slug, agentId: scopeId },
+        search: (previous) =>
+          resolvePanelNavigationSearch({
+            previous,
+            destination: "agent",
+          }),
+      }
     : { to: "/$org/settings", params: { org: org.slug } };
 
   return (
@@ -70,7 +67,6 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
             destination: SETTINGS_DESTINATION,
             target: scopeId ? "project" : "org",
           });
-          if (scopeId) navigateToAgent(scopeId, { panel: "settings" });
           onNavigate?.();
         }}
       />

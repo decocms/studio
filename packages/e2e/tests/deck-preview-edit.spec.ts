@@ -79,14 +79,18 @@ test.describe("deck preview tab", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=deck:${encodeURIComponent(DECK_PATH)}`,
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=deck:${encodeURIComponent(DECK_PATH)}&sidepanel=true`,
     );
 
-    // The deck pill labels the tab with the deck name. Generous timeout:
-    // first paint pays the Vite dev-server cold transform.
-    await expect(page.getByText("e2e-test").first()).toBeVisible({
-      timeout: 30_000,
-    });
+    // The route heading names the deck. Generous timeout: first paint pays the
+    // Vite dev-server cold transform.
+    await expect(
+      page.getByTestId("main-panel").getByRole("heading", {
+        name: "e2e-test",
+        exact: true,
+        level: 1,
+      }),
+    ).toBeVisible({ timeout: 30_000 });
 
     // The runtime renders inside the sandboxed iframe (Playwright pierces
     // the shadow DOM): slide 1 active, slide count in the rail.
@@ -111,7 +115,7 @@ test.describe("deck preview tab", () => {
     // group's drag state active forever. The library then kept
     // `pointer-events: none` on the panels, so the framed page still painted
     // but no longer accepted clicks or keyboard focus.
-    const resizeHandle = page.locator('[data-slot="resizable-handle"]').first();
+    const resizeHandle = page.getByTestId("workspace-panel-separator");
     const iframe = page.locator(`iframe[title="${DECK_PATH}"]`);
     const mainResizablePanel = page
       .getByTestId("main-panel")
@@ -131,9 +135,11 @@ test.describe("deck preview tab", () => {
     // Establish the drag while still over the parent document. v4 captures the
     // pointer on this first movement so the later iframe crossing cannot steal
     // the release event.
-    await page.mouse.move(resizeX - 4, resizeY);
+    await page.mouse.move(resizeX + 4, resizeY);
     await expect(mainResizablePanel).toHaveCSS("pointer-events", "none");
-    await page.mouse.move(iframeBox.x + 40, resizeY, { steps: 10 });
+    await page.mouse.move(iframeBox.x + iframeBox.width - 40, resizeY, {
+      steps: 10,
+    });
     await page.mouse.up();
     await expect(mainResizablePanel).toHaveCSS("pointer-events", "auto");
 

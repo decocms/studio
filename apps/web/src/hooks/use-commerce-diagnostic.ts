@@ -1,6 +1,6 @@
 /**
- * Shared Commerce Discovery diagnostic read — the two-gate query the home
- * report banner and the task-board paywall banner both need.
+ * Shared Commerce Discovery diagnostic read — the two-gate query used by the
+ * project Home banner and Reports destination.
  *
  * Gate 1 (cheap, in-house): does this org even have the CD connection? Only orgs
  * that pass it ever open a client to the external CD MCP (gate 2) and read the
@@ -13,6 +13,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import {
+  commerceDiscoveryReportBelongsToProject,
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getCommerceDiscoveryAgentId,
   mcpClientQueryOptions,
@@ -20,7 +21,7 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@/sdk";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { KEYS } from "@/lib/query-keys";
 import { unwrapToolResult } from "@/routes/commerce-onboarding/companions-core";
 import {
@@ -76,7 +77,9 @@ export interface UseCommerceDiagnosticResult {
   cdClient: CommerceDiscoveryClient | null;
 }
 
-export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
+export function useCommerceDiagnostic(
+  projectId?: string,
+): UseCommerceDiagnosticResult {
   const { org } = useProjectContext();
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
 
@@ -105,6 +108,16 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
     },
   });
   const connectionItem = connectionQuery.data?.item ?? null;
+  const connectionBelongsToProject =
+    connectionItem !== null &&
+    commerceDiscoveryReportBelongsToProject(
+      org.id,
+      connectionItem.metadata?.projectId,
+      projectId,
+    );
+  const ownedConnectionItem = connectionBelongsToProject
+    ? connectionItem
+    : null;
 
   // Gate 2: only orgs that passed gate 1 open a client to the CD MCP.
   const { data: cdClient, isError: cdClientIsError } = useQuery({
@@ -113,12 +126,15 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
       orgId: org.id,
       orgSlug: org.slug,
     }),
-    enabled: !!connectionItem,
+    enabled: !!ownedConnectionItem,
   });
+  // A disabled TanStack query may still surface data warmed by an org-level
+  // caller. Mask it explicitly; `enabled` controls fetching, not cache reads.
+  const ownedCdClient = ownedConnectionItem ? cdClient : undefined;
 
   const diagnosticQuery = useQuery({
-    queryKey: KEYS.commerceDiscoveryDiagnostic(org.id, connectionId),
-    enabled: !!cdClient,
+    queryKey: KEYS.commerceDiscoveryDiagnostic(org.id, connectionId, projectId),
+    enabled: !!ownedCdClient,
     retry: 1,
     refetchInterval: (query) =>
       query.state.status !== "error" &&
@@ -126,8 +142,8 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
         ? GENERATING_POLL_MS
         : false,
     queryFn: async () => {
-      if (!cdClient) throw new Error("cdClient not ready");
-      const result = await cdClient.callTool({
+      if (!ownedCdClient) throw new Error("cdClient not ready");
+      const result = await ownedCdClient.callTool({
         name: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
         arguments: {},
       });
@@ -138,45 +154,44 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
     },
   });
 
-  const siteUrl = connectionItem?.metadata?.siteUrl;
+  const siteUrl = ownedConnectionItem?.metadata?.siteUrl;
 
   return {
-    diagnostic: diagnosticQuery.data ?? null,
-    isSuccess: diagnosticQuery.isSuccess,
+    diagnostic: ownedConnectionItem ? (diagnosticQuery.data ?? null) : null,
+    isSuccess: ownedConnectionItem
+      ? diagnosticQuery.isSuccess
+      : connectionQuery.isSuccess,
     isLoading: isCommerceDiagnosticLoading({
       connectionQueryPending: connectionQuery.isPending,
-      hasConnection: !!connectionItem,
+      hasConnection: !!ownedConnectionItem,
       cdClientFailed: cdClientIsError,
       diagnosticQueryPending: diagnosticQuery.isPending,
     }),
     siteUrl: typeof siteUrl === "string" && siteUrl ? siteUrl : null,
     host: hostFromSiteUrl(siteUrl),
     connectionId,
-    cdClient: (cdClient as CommerceDiscoveryClient | undefined) ?? null,
+    cdClient: (ownedCdClient as CommerceDiscoveryClient | undefined) ?? null,
   };
 }
 
-/** Navigate args that open the Commerce Discovery report app (where the unlock /
- *  checkout lives) as the report agent's `app` view. Shared by the home banner
- *  and the board paywall so the target stays identical. The report needs no
- *  thread of its own, so none is minted: the chat opens an empty composer. */
-export function commerceReportNavTarget(
+/**
+ * Public onboarding still hands off to the well-known Commerce Discovery app.
+ * In-product project surfaces use the owning project's canonical Reports route
+ * instead; keeping this helper onboarding-specific prevents those flows from
+ * accidentally discarding persisted report ownership.
+ */
+export function commerceOnboardingReportNavTarget(
   org: { id: string; slug: string },
   connectionId: string,
 ) {
   return {
-    to: DESTINATION_ROUTE.agents,
+    to: PROJECT_ROUTE.app,
     params: {
       org: org.slug,
-      panel: "app",
+      agentId: getCommerceDiscoveryAgentId(org.id),
+      connectionId,
+      toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
     },
-    /** The scope is SEARCH, not a param: `/$org/agents/{-$panel}` declares only
-     *  `org` and `panel`, so a `virtualmcpid` param is silently discarded and
-     *  the report opens on the Super Agent. */
-    search: {
-      virtualmcpid: getCommerceDiscoveryAgentId(org.id),
-      connection: connectionId,
-      tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-    },
+    search: {},
   } as const;
 }

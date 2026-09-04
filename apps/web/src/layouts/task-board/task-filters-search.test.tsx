@@ -1,4 +1,5 @@
-import "../../../test/setup";
+import { setupComponentTest } from "../../../test/setup";
+setupComponentTest();
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,7 +7,11 @@ import { fireEvent, render as renderBare } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
 import { buildProjectIndex } from "@/lib/project-index";
-import { TaskFiltersBar, EMPTY_FILTERS } from "./task-filters";
+import {
+  TaskFiltersBar,
+  TaskFiltersDrawer,
+  EMPTY_FILTERS,
+} from "./task-filters";
 
 const EMPTY_INDEX = buildProjectIndex([]);
 /** A repository no project claims — the bucket is titled `owner/name`, which
@@ -77,6 +82,41 @@ describe("task filter options — searchable value matches the displayed label",
       const item = getByText(label).closest("[cmdk-item]");
       expect(item?.getAttribute("data-value")).toBe(label);
     }
+  });
+
+  test("a route-owned project scope hides its redundant project filter", () => {
+    const { queryByText } = render(
+      <TaskFiltersBar
+        filters={{ ...EMPTY_FILTERS, project: "acme/site" }}
+        members={[]}
+        tags={[]}
+        index={SITE_INDEX}
+        onChange={() => {}}
+        onOpenBoardSettings={() => {}}
+        showProjectFilter={false}
+      />,
+    );
+
+    expect(queryByText("acme/site")).toBeNull();
+    expect(queryByText("Limpar")).toBeNull();
+  });
+
+  test("mobile does not count the route-owned project as an active filter", () => {
+    const { getByRole } = render(
+      <TaskFiltersDrawer
+        filters={{ ...EMPTY_FILTERS, project: "acme/site" }}
+        members={[]}
+        tags={[]}
+        index={SITE_INDEX}
+        onChange={() => {}}
+        onOpenBoardSettings={() => {}}
+        showProjectFilter={false}
+      />,
+    );
+
+    expect(getByRole("button", { name: "Filtros" }).textContent).toBe(
+      "Filtros",
+    );
   });
 });
 

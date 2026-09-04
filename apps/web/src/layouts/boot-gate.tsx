@@ -14,10 +14,13 @@
  * A Suspense fallback is reused only while its boundary stays suspended, so the
  * fix is structural rather than cosmetic: ONE boundary, in
  * `providers/providers.tsx`, wrapping everything including `<RouterProvider>`,
- * and nothing below it renders anything splash-shaped. This gate is what keeps
- * that one boundary suspended for the whole boot — it reads a module-scope
- * promise with `use()`, so the router does not mount until the app is ready to
- * paint, and no router pending state can arm behind the splash's back.
+ * and nothing below it renders anything splash-shaped WHILE THIS GATE HOLDS.
+ * This gate is what keeps that one boundary suspended for the whole boot — it
+ * reads a module-scope promise with `use()`, so the router does not mount until
+ * the app is ready to paint, and no router pending state can arm behind the
+ * splash's back. The single exception is the fail-open path described below,
+ * which is the boot continuing after this gate gave up rather than a relay
+ * inside it.
  *
  * The promise waits on exactly two things, which between them cover all five
  * old sites:
@@ -67,7 +70,10 @@ import { router } from "@/router";
  * mounted, whereas this gate sits ABOVE `<RouterProvider>`, so the same hang
  * meant an infinite splash with no route tree, no error boundary and `/login`
  * unreachable. After the deadline the app mounts with the session still
- * pending, which `RequiredAuthLayout` renders as a loader rather than a blank.
+ * pending, which `RequiredAuthLayout` renders as the splash rather than a blank
+ * or a bare spinner: boot has not actually finished, so it should not look like
+ * it has. That is the one place below this gate allowed to render a splash, and
+ * it is reachable only here — see `layouts/required-auth-layout.tsx`.
  */
 const SESSION_SETTLE_TIMEOUT_MS = 8_000;
 

@@ -12,7 +12,7 @@
 import { Suspense, useState, type ReactNode } from "react";
 import { SearchLg } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
 import { openCommandPalette } from "@/components/command-palette-store";
@@ -79,7 +79,7 @@ function HomeSearch() {
       /* `card-shadow`, not a border: the ring IS the card's border in this
          system, drawn as a shadow so it can carry the drop under it. The
          width comes from the page's column now. */
-      className="card-shadow flex w-full items-center gap-2 rounded-xl bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent/60"
+      className="card-shadow flex w-full items-center gap-2 rounded-xl bg-card px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
     >
       <SearchLg className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
@@ -104,9 +104,13 @@ function HomeSearch() {
  *  Suspending the whole panel on the lists would hold back content that was
  *  never waiting on anything. */
 function OrgHomeBodyFallback() {
+  const t = useT();
   return (
     <div className="flex min-h-64 items-center justify-center">
-      <Spinner className="size-5 text-muted-foreground" />
+      <Spinner
+        className="size-5 text-muted-foreground"
+        label={t("common.loading")}
+      />
     </div>
   );
 }
@@ -199,47 +203,45 @@ export function OrgAgentsTab() {
   );
 
   return (
-    <Page>
-      <Page.Content>
-        {/* One reading column for the whole page: the search field was already
-            capped at 720px, so a full-width feed under it read as a second,
-            wider page stapled to the first. */}
-        <Page.Body
-          maxWidth="max-w-[720px]"
-          className="flex flex-col gap-12 pt-0 md:pt-0"
-        >
-          <div className="flex flex-col items-center gap-12 text-center">
-            <ConnectPill />
-            {/* Greeting and search are one unit; the pill is a separate offer,
-                so the space between them is larger than the space within. */}
-            <div className="flex w-full flex-col items-center gap-5">
-              <h1 className="text-3xl font-medium tracking-tight text-foreground">
-                {name ? t(greeting.named, { name }) : t(greeting.bare)}
-              </h1>
-              <HomeSearch />
-            </div>
+    <>
+      {/* One reading column for the whole page: the search field was already
+          capped at 720px, so a full-width feed under it read as a second,
+          wider page stapled to the first. */}
+      <Main.Container
+        width="reading"
+        className="flex flex-col gap-12 pt-0 md:pt-0"
+      >
+        <div className="flex flex-col items-center gap-12 text-center">
+          <ConnectPill />
+          {/* Greeting and search are one unit; the pill is a separate offer,
+              so the space between them is larger than the space within. */}
+          <div className="flex w-full flex-col items-center gap-5">
+            <h2 className="text-3xl font-medium tracking-tight text-foreground">
+              {name ? t(greeting.named, { name }) : t(greeting.bare)}
+            </h2>
+            <HomeSearch />
           </div>
+        </div>
 
-          {/* ONE boundary over both reads. The roster and the activity
-              column decide the layout together — with activity the roster
-              takes half the row, without it the full width — so resolving
-              them separately meant rendering "no activity" first and
-              re-laying-out when it arrived, which is a shift on every visit
-              to a board that has anything on it. The hero above paints
-              immediately either way; only the grid waits. */}
-          <Suspense fallback={<OrgHomeBodyFallback />}>
-            <OrgHomeBody
-              canManageAgents={canManageAgents}
-              importButton={importButton}
-            />
-          </Suspense>
-        </Page.Body>
-      </Page.Content>
+        {/* ONE boundary over both reads. The roster and the activity
+            column decide the layout together — with activity the roster
+            takes half the row, without it the full width — so resolving
+            them separately meant rendering "no activity" first and
+            re-laying-out when it arrived, which is a shift on every visit
+            to a board that has anything on it. The hero above paints
+            immediately either way; only the grid waits. */}
+        <Suspense fallback={<OrgHomeBodyFallback />}>
+          <OrgHomeBody
+            canManageAgents={canManageAgents}
+            importButton={importButton}
+          />
+        </Suspense>
+      </Main.Container>
 
       <GitHubRepoPicker
         open={githubPickerOpen}
         onOpenChange={setGithubPickerOpen}
       />
-    </Page>
+    </>
   );
 }

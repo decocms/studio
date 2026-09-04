@@ -1,12 +1,11 @@
 /**
- * Pure computation of what a thread switch lands on: the view (a tab id, which
- * the caller writes as the chat route's `{-$panel}` segment) and the
- * `?sidepanel`/`?mainpanel`/`?virtualmcpid` search that goes with it. Extracted
+ * Pure computation of what a thread switch lands on: a route-owned view (in
+ * the tab-id vocabulary) and the shared panel search that goes with it. Extracted
  * from `usePanelActions` (shell-layout) so the precedence rules are
  * unit-testable without a router.
  *
  * Precedence for the view:
- *   1. `opts.panel` — an explicit caller intent (e.g. home tile → pinned view).
+ *   1. `opts.view` — an explicit caller intent (e.g. home tile → pinned view).
  *   2. `savedLayout` — the target thread's own remembered layout (per-thread
  *      memory). Restores that thread's tabs, including per-thread views it owned.
  *   3. carry-forward — within the same agent, keep a system-level tab
@@ -38,14 +37,17 @@ import type { ThreadLayout } from "@/lib/thread-layout-memory";
 
 export interface ResolveTaskSwitchInput {
   /** The current (source) thread's agent and open view. */
-  prev: { virtualmcpid?: unknown; tabId?: string };
+  prev: { agentId?: string; tabId?: string };
   /** Target agent id, when the caller pins one. */
-  virtualMcpId?: string;
-  /** Well-known Decopilot agent id — the default when no `virtualmcpid`. */
+  targetAgentId?: string;
+  /** Well-known Decopilot agent id — the default when no agent is named. */
   decopilotId: string;
   /** The target thread's remembered layout, or null if none. */
   savedLayout: ThreadLayout | null;
-  opts?: { autosend?: boolean; panel?: string };
+  /** A populated conversation defaults Chat visible when it has no explicit
+   * remembered visibility of its own. */
+  targetHasMessages?: boolean;
+  opts?: { autosend?: boolean; view?: string };
   /** `?autosend` sentinel value, injected to avoid an import cycle. */
   autosendValue: string;
 }
@@ -60,23 +62,27 @@ export interface TaskSwitchTarget {
 export function resolveTaskSwitchSearch(
   input: ResolveTaskSwitchInput,
 ): TaskSwitchTarget {
-  const { prev, virtualMcpId, decopilotId, savedLayout, opts, autosendValue } =
-    input;
+  const {
+    prev,
+    targetAgentId,
+    decopilotId,
+    savedLayout,
+    targetHasMessages,
+    opts,
+    autosendValue,
+  } = input;
 
   /** Written even when empty: a `mainpanel` from the thread being left must
    *  not describe the one being opened. */
   const next: Record<string, unknown> = { mainpanel: undefined };
-  if (virtualMcpId) next.virtualmcpid = virtualMcpId;
-  else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
 
-  // The Super Agent (Decopilot) is the default when the URL carries no
-  // `virtualmcpid`, so treat an absent id as Decopilot on BOTH sides —
+  // The Super Agent (Decopilot) is the default when the route names no agent,
+  // so treat an absent id as Decopilot on BOTH sides —
   // otherwise switching FROM the param-less Super Agent TO a repo agent isn't
   // detected as a switch and wrongly carries the previous view forward.
-  const prevVmcp =
-    typeof prev.virtualmcpid === "string" ? prev.virtualmcpid : decopilotId;
-  const targetVmcp = virtualMcpId ?? prevVmcp;
-  const isAgentSwitch = targetVmcp !== prevVmcp;
+  const previousAgentId = prev.agentId ?? decopilotId;
+  const nextAgentId = targetAgentId ?? previousAgentId;
+  const isAgentSwitch = nextAgentId !== previousAgentId;
 
   /** Pin a panel value only when the target thread remembered one: leaving it
    *  undefined omits the key, so `resolveDefaultPanelState`'s agent-configured
@@ -84,13 +90,13 @@ export function resolveTaskSwitchSearch(
   let sidepanel: boolean | undefined;
   let tabId: string | undefined;
 
-  if (opts?.panel) {
+  if (opts?.view) {
     // Explicit intent wins outright — ignore saved/carried layout.
-    tabId = opts.panel;
+    tabId = opts.view;
   } else if (savedLayout) {
     // Restore the target thread's own layout. A remembered per-thread tab is
-    // valid here because it belongs to *this* thread; if it has since become
-    // stale, MainPanelContent falls back to Settings rather than crashing.
+    // valid here because it belongs to *this* thread; route capability guards
+    // send a stale native view to Settings without crashing the workspace.
     tabId = savedLayout.tab;
     if (savedLayout.sidepanel !== undefined) sidepanel = savedLayout.sidepanel;
     if (savedLayout.mainpanel !== undefined) {
@@ -101,6 +107,7 @@ export function resolveTaskSwitchSearch(
   }
 
   if (sidepanel !== undefined) next.sidepanel = sidepanel;
+  else if (targetHasMessages) next.sidepanel = true;
   if (opts?.autosend) next.autosend = autosendValue;
   return { tabId, search: next };
 }

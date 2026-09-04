@@ -349,6 +349,7 @@ export interface StudioToolIO {
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
@@ -374,6 +375,7 @@ export interface StudioToolIO {
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
+        virtualMcpId: string | null;
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -443,6 +445,7 @@ export interface StudioToolIO {
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
+        virtualMcpId: string | null;
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -511,6 +514,7 @@ export interface StudioToolIO {
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
@@ -538,6 +542,7 @@ export interface StudioToolIO {
         type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
+        virtualMcpId: string | null;
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -1952,7 +1957,7 @@ export interface StudioToolIO {
     output: { id: string; healthy: boolean; latencyMs: number };
   };
   COMMERCE_DISCOVERY_SETUP: {
-    input: { siteUrl: string };
+    input: { siteUrl: string; projectId?: string | undefined };
     output: {
       connection: {
         id: string;

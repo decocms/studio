@@ -99,11 +99,11 @@ export function RecordEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6 @max-sm/cms-content:px-3">
         <span className="text-sm font-medium">{t(TITLE[kind])}</span>
         <SaveStatus isPending={save.isPending} isError={save.isError} />
       </div>
-      <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
+      <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6 @max-sm/cms-content:px-4">
         <div className="mx-auto max-w-xl space-y-6">
           {FIELDS[kind].map((field) => (
             <div key={field.key} className="space-y-2">

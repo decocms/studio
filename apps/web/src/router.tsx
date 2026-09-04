@@ -20,8 +20,18 @@ import * as z from "zod";
 import { listOrganizationsCached } from "@/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readLastLocation, saveLastLocation } from "@/lib/last-location";
-import { promoteLegacyTaskParam } from "@/lib/legacy-route-translation";
-import { isKnownPanelSegment } from "@/layouts/main-panel-tabs/panel-route";
+import {
+  canonicalProjectPathFromLegacyAgents,
+  isCanonicalAgentIdSegment,
+  promoteLegacyTaskParam,
+} from "@/lib/legacy-route-translation";
+import {
+  legacyWorkspaceCompatibilitySearchSchema,
+  legacyWorkspaceCompatibilitySearchShape,
+  librarySearchShape,
+  siteEditorContentSearchShape,
+  taskBoardSearchShape,
+} from "@/lib/legacy-workspace-search";
 
 const rootRoute = createRootRoute({
   /** No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
@@ -303,8 +313,8 @@ const orgLayout = createRoute({
   getParentRoute: () => shellLayout,
   path: "/$org",
   // Record the org on every entry/switch (this re-runs whenever the $org param
-  // changes). Clears any prior taskId; the thread route re-adds it right after
-  // for /$org/$taskId, since this parent beforeLoad runs before the child's.
+  // changes). Cold entry deliberately restores only this organization, never a
+  // conversation or route-local workspace state.
   beforeLoad: ({ params }) => {
     saveLastLocation({ org: params.org });
   },
@@ -318,7 +328,7 @@ const orgLayout = createRoute({
 });
 
 // ============================================
-// ORG SHELL LAYOUT (pathless — sidebar + Toolbar + ChatPrefsProvider for / and /$taskId)
+// ORG SHELL LAYOUT (pathless — workspace providers + mobile sidebar)
 // ============================================
 
 const orgShellLayout = createRoute({
@@ -336,17 +346,17 @@ const orgShellLayout = createRoute({
 });
 
 // ============================================
-// AGENT SHELL LAYOUT (pathless — per-task chrome under orgShellLayout)
+// WORKSPACE SESSION SHELL (pathless — chat/runtime providers + panel state)
 // ============================================
 
 /**
- * Layout search, declared ONCE for every route under the agent shell.
+ * Layout search, declared ONCE for every route under the workspace shell.
  *
  * Path = which page. Search = how that page is laid out. `sidepanel`,
  * `mainpanel` and `thread` describe the layout, never the page, so they live
  * here on the pathless parent and no destination route re-declares them. The
- * two panel params are symmetric booleans — is this panel open — and WHICH view
- * the main panel shows is the agents route's `{-$panel}` segment, not search.
+ * two panel params are symmetric booleans—whether each panel is open—while the
+ * matched child route names the page rendered in Main.
  */
 const workspaceLayoutSearchSchema = z.object({
   /** Whether the chat side panel is open. Absent = the route/agent default,
@@ -364,11 +374,12 @@ const workspaceLayoutSearchSchema = z.object({
   /** The open thread on a destination route. The legacy `/$org/$taskId` carries
    *  the same id in its path param instead, so nothing reads both. */
   thread: z.string().optional(),
-  /** The active project SCOPE — a filter, never a container. Declared here so
-   *  every destination inherits it and retained below so it survives
-   *  navigation; which routes RESOLVE it is answered once, in
-   *  `resolveRouteAgentId`. Only the sidebar picker writes it, never
-   *  automatically. See `hooks/use-project-scope.ts`. */
+  /** Cross-route chat hand-offs owned by the workspace shell. */
+  autosend: z.string().optional(),
+  /** Mobile Library preview overlay opened from an in-chat file reference. */
+  preview: z.string().optional(),
+  /** LEGACY INPUT ONLY — canonical agent identity is `$agentId`. Kept on the
+   * shared schema so old thread/view links can be translated before removal. */
   virtualmcpid: z.string().optional(),
 });
 
@@ -376,14 +387,11 @@ const agentShellLayout = createRoute({
   getParentRoute: () => orgShellLayout,
   id: "agent-shell",
   validateSearch: workspaceLayoutSearchSchema,
-  /** `sidepanel` and `virtualmcpid` follow you across the workspace; both
-   *  describe the workspace rather than one page. NOT `main` (per-destination,
-   *  via `staticData.defaultMain`) and NOT `thread` (belongs to one project).
-   *
-   *  Retention re-adds a key only when the next search OMITS it, so anything
-   *  that must DROP the scope has to write `virtualmcpid: undefined`
-   *  explicitly — deleting the key just invites it straight back. */
-  search: { middlewares: [retainSearchParams(["sidepanel", "virtualmcpid"])] },
+  /** Chat visibility follows the person across workspace destinations. Agent
+   *  identity never does: canonical agent routes own it in `$agentId`, while
+   *  `virtualmcpid` remains an input/filter only on the legacy and org-level
+   *  routes that explicitly declare it. */
+  search: { middlewares: [retainSearchParams(["sidepanel"])] },
   // Render the centered panel-area loader (matches the shell's own Suspense
   // fallbacks) while this route loads, instead of the full-screen SplashScreen.
   // The sidebar is already mounted by orgShellLayout, so the pending state
@@ -398,203 +406,506 @@ const agentShellLayout = createRoute({
 // UNIFIED CHAT ROUTES (/$org/$taskId)
 // ============================================
 
-const unifiedChatSearchSchema = z.object({
-  virtualmcpid: z.string().optional(),
-  /** Open the Library file-preview overlay over the chat (browse-grammar path
-   *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */
-  preview: z.string().optional(),
-  /** Deep-links a task board card's modal open inside the `main=board`
-   *  overlay. */
-  task: z.string().optional(),
-  autosend: z.string().optional(),
-  /** Commerce onboarding hand-off: `"1"` mounts the blocking connections modal
-   *  over this report route until at least one data source is connected. Dropped
-   *  by the modal once the enriching run is triggered. */
-  connect: z.coerce.string().optional(),
-  /** Commerce onboarding hand-off: the claimed site the connect modal is for,
-   *  carried in the URL (same context as `/commerce-onboarding?siteUrl=…`) so the
-   *  modal is self-describing. Falls back to the connection's stored metadata. */
-  siteUrl: z.string().optional(),
-  /** Storefront "." deep-link: preselect a page in the content editor. Set by
-   *  `/choose-editor`; consumed by ContentBrowser. `contentPageId` is the CMS
-   *  page id; `contentPath`/`contentPathTemplate` are the concrete URL and its
-   *  route template (page.path in the decofile stores the template). */
-  contentPageId: z.string().optional(),
-  contentPath: z.string().optional(),
-  contentPathTemplate: z.string().optional(),
-  /** Task board view state (`main=board`) — persisted in the URL so a refresh
-   *  or a shared link keeps the layout and filters. See `filters-search.ts`. */
-  view: z.string().optional(),
-  q: z.string().optional(),
-  assignee: z.string().optional(),
-  priority: z.string().optional(),
-  due: z.string().optional(),
-  tags: z.string().optional(),
-  repo: z.string().optional(),
-});
+const unifiedChatSearchSchema = legacyWorkspaceCompatibilitySearchSchema.extend(
+  {
+    virtualmcpid: z.string().optional(),
+  },
+);
 
 const unifiedChatRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/$taskId",
   validateSearch: unifiedChatSearchSchema,
-  // Remember the open thread so cold entry ("/") can restore it. Preloading is
-  // off (defaultPreload unset), so this only fires on real navigation.
-  beforeLoad: ({ params, search }) => {
-    saveLastLocation({
-      org: params.org,
-      taskId: params.taskId,
-      virtualmcpid: search.virtualmcpid,
-    });
-  },
   component: () => null,
 });
 
 /**
- * DESTINATION ROUTES (`/$org/home`, `/agents`, `/tasks`, `/reports`, `/library`)
+ * WORKSPACE ROUTES
  *
  * ROUTE GRAMMAR — path = which page, search = how that page is laid out.
  *
- * A destination (Home, Agents, Tasks, Reports, Library) is a real path segment,
- * and so is the per-agent view the main panel shows — preview, code, content,
- * assets, git, settings, automations are `{-$panel}` on the agents route. Layout
- * is not: `sidepanel`, `mainpanel` and `thread` are declared once on
- * `agentShellLayout` and inherited by every destination below. That split is
- * what freed the view from search: `mainpanel` carries the visibility `main=0`
- * used to mean, so the path can carry the view alone. Only the extras a single
- * destination reads (board filters, the library path, the panel's own
- * parameter, the commerce hand-off) are declared on it.
+ * Organization pages are direct children (`home`, `tasks`, `reports`,
+ * `library`). Project identity is always the explicit
+ * `/projects/$agentId` boundary, and every project feature is a child below it.
+ * Site Editor owns a further nested Preview/Content/Code subtree so all three
+ * inherit its topbar and console drawer structurally.
  *
- * An optional segment (`{-$panel}` on agents, `{-$taskKey}` on tasks) is ONE
- * path param, not a pair of sibling routes: the param is `string | undefined`
- * and the segment simply vanishes when absent. The project is NOT a segment: it
- * is `?virtualmcpid=`, carrying the raw virtual-MCP id (`vir_*`, plus the
- * synthetic `decopilot_<orgId>` and `<orgId>_commerce-discovery`) — there is no
- * slug and no new schema — because it has to mean the same thing on `/tasks`
- * and `/library`, which have no segment to hold it. A bare `/$org/agents` with
- * no scope means "all projects", for everyone: a sidebar link may be scoped, a
- * typed URL never is. A bare `/$org/tasks` is the lanes.
+ * Every leaf renders its own component and composes the shared `Main`
+ * primitives. The workspace shell owns only cross-route providers and the
+ * resizable chat/main panels; it does not select a page body. `sidepanel`,
+ * `mainpanel`, and `thread` remain shared search because they describe that
+ * workspace layout. Feature payloads live on the leaf that consumes them.
  *
- * These routes sit under `agentShellLayout`, which renders no `<Outlet />` —
- * the page itself comes from the main-panel machinery, keyed on the resolved
- * `?main` tab. So a destination's whole job is to own its path, own its own
- * search extras, and declare its default `?main` via `staticData.defaultMain`
- * (see `useRouteDefaultMain`); an explicit `?main=` always wins over it. Their
- * components are therefore `() => null` — giving one a real component would
- * silently render nothing.
+ * Old `?main=` and `?virtualmcpid=` links are permanent inputs, never outputs.
+ * The pure legacy translator maps them directly to this tree before an invalid
+ * agent identity can mount. The catch-all below exists solely for the briefly
+ * shipped project-first grammar.
  *
  * RANKING INVARIANT: TanStack ranks statics above dynamics above optionals at
- * the same position, so `/$org/home`, `/$org/agents` and `/$org/tasks` beat the
+ * the same position, so `/$org/home`, `/$org/projects` and `/$org/tasks` beat the
  * `/$org/$taskId` sibling exactly as `/$org/settings` already does. But
  * `sortDynamic` returns 0 for two SAME-SHAPE dynamic siblings under one node,
  * and the winner then silently becomes registration order — so never register a
  * second `/$org/$something`.
  *
- * These destinations are unconditional: the sidebar links straight to them
- * and `/$org` resolves into them. There is no flag and no alternate chrome.
+ * Organization destinations are unconditional: the sidebar links straight to
+ * them and `/$org` resolves into Home. Product gates affect agent feature
+ * children, never the existence or meaning of organization paths.
  */
 
-/** Home — the org's, or a scoped agent's. `staticData.defaultMain` sits above
- *  the agent's own `defaultMainView`, so this one id has to serve both; which
- *  face it wears is the SCOPE's answer, given in `HomeTab`. */
+/** Home is organization-owned. Project identity always lives in the canonical
+ *  `/projects/$agentId` branch below. */
 const orgHomeRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/home",
-  staticData: { defaultMain: "overview" },
+  staticData: {
+    defaultMain: "overview",
+    mainView: "overview",
+    mainTitleKey: "sidebar.navDestinations.home",
+  },
   validateSearch: z.object({
     /** Commerce onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
   }),
-  component: () => null,
+  component: lazyRouteComponent(() => import("./routes/workspace/home.tsx")),
 });
 
-/** The agent workspace, and the view its main panel is showing. `{-$panel}` is
- *  the view (`/agents/preview?virtualmcpid=vir_x`); payload-carrying kinds put the
- *  KIND in the segment and the payload in the search below — a grammar
- *  `main-panel-tabs/panel-route.ts` owns both directions of. The project is
- *  `?virtualmcpid=`, NOT a segment: it has to mean the same thing on `/tasks` and
- *  `/library`, which have no segment to hold it. One carrier, one meaning; no
- *  project = the Super Agent. One optional segment removes the old
- *  `/agents/preview` ambiguity from the ROUTER but not from the grammar — a
- *  bookmarked `/agents/vir_x` is still told apart from a view name, which
- *  `beforeLoad` does below. */
-const agentsRoute = createRoute({
+/** Bare `/projects` promotes a search-carried legacy identity or lands on the
+ *  organization Home. It is an entry point, never a second project list. */
+const projectsIndexRoute = createRoute({
   getParentRoute: () => agentShellLayout,
-  path: "/agents/{-$panel}",
-  /**
-   * A lone segment that is NOT a known view is a project id from a bookmark or
-   * a link minted before the project moved to search. Move it and re-enter.
-   *
-   * `panel: undefined` is not optional: params MERGE with the current match, so
-   * without it the redirect target keeps `panel: "vir_x"`, re-matches this
-   * route, and `beforeLoad` fires forever — router-core has no redirect-count
-   * guard. `search: (prev) => …` and `hash: true` are likewise load-bearing:
-   * a `redirect` with no `search` key returns `{}` and silently drops the
-   * panel's payload (`connection`/`tool`), landing the report CTA on an empty
-   * app view with no error.
-   */
+  path: "/projects",
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   beforeLoad: ({ params, search }) => {
-    const segment = params.panel;
-    if (!segment || isKnownPanelSegment(segment)) return;
-    if ((search as { virtualmcpid?: string }).virtualmcpid) return;
+    const agentId = search.virtualmcpid?.trim();
+    if (!agentId) {
+      throw redirect({
+        to: "/$org/home",
+        params: { org: params.org },
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          virtualmcpid: undefined,
+        }),
+        hash: true,
+        replace: true,
+      });
+    }
     throw redirect({
-      to: "/$org/agents/{-$panel}",
-      params: { org: params.org, panel: undefined },
+      to: "/$org/projects/$agentId",
+      params: { org: params.org, agentId },
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        virtualmcpid: segment,
+        virtualmcpid: undefined,
       }),
       hash: true,
       replace: true,
     });
+  },
+});
+
+/** Canonical identity boundary for one project. Every feature is a real child
+ *  route and therefore owns both its composition and its URL. */
+const agentWorkspaceRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/projects/$agentId",
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  component: Outlet,
+});
+
+const agentOverviewRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/",
+  staticData: { defaultMain: "overview", mainView: "overview" },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-overview.tsx"),
+  ),
+});
+
+const projectTasksRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/tasks/{-$taskKey}",
+  staticData: {
+    defaultMain: "board",
+    mainView: "board",
+    mainTitleKey: "taskBoard.taskBoard.tasksTitle",
   },
   validateSearch: z.object({
-    /** The active panel's parameter — at most one kind's keys are ever set. */
-    file: z.string().optional(),
-    key: z.string().optional(),
-    deck: z.string().optional(),
-    path: z.string().optional(),
-    connection: z.string().optional(),
-    tool: z.string().optional(),
-    automation: z.string().optional(),
-    /** Library file-preview overlay ("<volume>/<path…>"), set by org-file refs. */
-    preview: z.string().optional(),
-    autosend: z.string().optional(),
-    /** Commerce onboarding hand-off (see `/$org/reports`). */
-    connect: z.coerce.string().optional(),
-    siteUrl: z.string().optional(),
-    /** Storefront "." deep-link: preselect a page in the content editor. */
-    contentPageId: z.string().optional(),
-    contentPath: z.string().optional(),
-    contentPathTemplate: z.string().optional(),
+    task: z.string().optional(),
+    ...taskBoardSearchShape,
   }),
-  component: () => null,
+  beforeLoad: ({ params, search }) => {
+    const promoted = promoteLegacyTaskParam(params.taskKey, search);
+    if (!promoted && search.repo === undefined) return;
+    throw redirect({
+      to: "/$org/projects/$agentId/tasks/{-$taskKey}",
+      params: {
+        org: params.org,
+        agentId: params.agentId,
+        taskKey: promoted?.taskKey ?? params.taskKey,
+      },
+      /** Project identity is structural here; a second, clearable project
+       * filter in search would make the URL lie about what the route can show. */
+      search: { ...(promoted?.search ?? search), repo: undefined },
+      hash: true,
+      replace: true,
+    });
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/project-tasks.tsx"),
+  ),
 });
 
-/** `/$org/agents/<project>/<panel>` — the shape from before the project moved
- *  to search, when the route was briefly `/projects`. MOUNTED FOREVER, and not for
- *  ordinary back-compat: `COMMERCE_DISCOVERY_SETUP` POSTs the report CTA to the
- *  commerce-discovery service, which PERSISTS it per (org, site) and re-sends it
- *  on every run, refreshing only when setup runs again — for a dormant org,
- *  never. That URL lives in a database we do not own, and share invites carry
- *  the same shape in mail we cannot recall. Two REQUIRED segments, so it never
- *  competes with the optional-segment route above; `search`/`hash` are forwarded
- *  explicitly because a bare `redirect` drops both. */
-const agentsLegacyProjectRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
-  path: "/agents/$project/$panel",
-  beforeLoad: ({ params }) => {
+const projectReportsRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/reports",
+  staticData: {
+    defaultMain: "reports",
+    mainView: "reports",
+    mainTitleKey: "sidebar.navDestinations.reports",
+  },
+  validateSearch: z.object({
+    connect: z.coerce.string().optional(),
+    siteUrl: z.string().optional(),
+  }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/project-reports.tsx"),
+  ),
+});
+
+const agentSiteEditorRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/site-editor",
+  staticData: {
+    defaultMain: "site-editor",
+    mainView: "site-editor",
+    mainTitleKey: "sidebar.projectNav.siteEditor",
+  },
+  validateSearch: z.object({
+    autosend: z.string().optional(),
+    ...siteEditorContentSearchShape,
+  }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-site-editor.tsx"),
+  ),
+});
+
+const agentSiteEditorIndexRoute = createRoute({
+  getParentRoute: () => agentSiteEditorRoute,
+  path: "/",
+  staticData: {
+    defaultMain: "site-editor",
+    mainView: "site-editor",
+    siteEditorView: "preview",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-site-editor-preview.tsx"),
+  ),
+});
+
+const agentSiteEditorContentRoute = createRoute({
+  getParentRoute: () => agentSiteEditorRoute,
+  path: "/content",
+  staticData: {
+    defaultMain: "content",
+    mainView: "content",
+    siteEditorView: "content",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-site-editor-content.tsx"),
+  ),
+});
+
+const agentSiteEditorCodeRoute = createRoute({
+  getParentRoute: () => agentSiteEditorRoute,
+  path: "/code",
+  staticData: {
+    defaultMain: "code",
+    mainView: "code",
+    siteEditorView: "code",
+  },
+  validateSearch: z.object({ file: z.string().optional() }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-site-editor-code.tsx"),
+  ),
+});
+
+const agentAutomationsRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/automations",
+  staticData: {
+    defaultMain: "automations",
+    mainView: "automations",
+    mainTitleKey: "automations.automationsList.title",
+  },
+  beforeLoad: ({ params, search }) => {
+    const automationId = search.automation;
+    if (!automationId) return;
     throw redirect({
-      to: "/$org/agents/{-$panel}",
-      params: { org: params.org, panel: params.panel },
+      to: "/$org/projects/$agentId/automations/$automationId",
+      params: { org: params.org, agentId: params.agentId, automationId },
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        virtualmcpid: params.project,
+        automation: undefined,
       }),
       hash: true,
       replace: true,
     });
   },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-automations.tsx"),
+  ),
+});
+
+const agentAutomationRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/automations/$automationId",
+  staticData: {
+    defaultMain: "automations",
+    mainView: "automation",
+    mainTitleKey: "automations.automationsList.title",
+  },
+  validateSearch: z.object({
+    automationView: z.enum(["settings", "runs"]).optional(),
+  }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-automation.tsx"),
+  ),
+});
+
+const agentSettingsRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/settings",
+  staticData: {
+    defaultMain: "settings",
+    mainView: "settings",
+    mainTitleKey: "sidebar.navDestinations.settings",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-settings.tsx"),
+  ),
+});
+
+const agentAssetsRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/assets",
+  staticData: {
+    defaultMain: "assets",
+    mainView: "assets",
+    mainTitleKey: "assets.browser.title",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-assets.tsx"),
+  ),
+});
+
+const agentGitRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/git",
+  staticData: {
+    defaultMain: "git",
+    mainView: "git",
+    mainTitleKey: "common.mainPanelTabs.reviewChanges",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-git.tsx"),
+  ),
+});
+
+const agentHostingRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/hosting",
+  staticData: {
+    defaultMain: "hosting",
+    mainView: "hosting",
+    mainTitleKey: "mainPanelTabs.hostingTab.title",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-hosting.tsx"),
+  ),
+});
+
+const agentE2eRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/e2e",
+  staticData: {
+    defaultMain: "e2e",
+    mainView: "e2e",
+    mainTitleKey: "mainPanelTabs.e2eTab.title",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-e2e.tsx"),
+  ),
+});
+
+const agentAnalyticsRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/analytics",
+  staticData: {
+    defaultMain: "analytics",
+    mainView: "analytics",
+    mainTitleKey: "mainPanelTabs.analyticsTab.title",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-analytics.tsx"),
+  ),
+});
+
+const agentMonitorRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  /** The stable tab id is `cdn`. Keeping that name in the canonical path also
+   * leaves the previously unambiguous project-first custom view `monitor`
+   * available to the compatibility catch-all below. */
+  path: "/cdn",
+  staticData: {
+    defaultMain: "cdn",
+    mainView: "cdn",
+    mainTitleKey: "mainPanelTabs.cdnTab.title",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-monitor.tsx"),
+  ),
+});
+
+const agentAppRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/apps/$connectionId/$toolName",
+  staticData: { defaultMain: "app", mainView: "app" },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-app.tsx"),
+  ),
+});
+
+const agentViewRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/views/$viewId",
+  staticData: {
+    defaultMain: "view",
+    mainView: "view",
+    mainTitleKey: "mainPanelTabs.agentView.title",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-view.tsx"),
+  ),
+});
+
+const agentOutputFileRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/outputs/file",
+  staticData: {
+    defaultMain: "file",
+    mainView: "file",
+    mainTitleKey: "mainPanelTabs.fileTab.title",
+  },
+  validateSearch: z.object({ key: z.string().optional() }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-file.tsx"),
+  ),
+});
+
+const agentOutputDeckRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/outputs/deck",
+  staticData: {
+    defaultMain: "deck",
+    mainView: "deck",
+    mainTitleKey: "mainPanelTabs.deckTab.title",
+  },
+  validateSearch: z.object({ path: z.string().optional() }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-deck.tsx"),
+  ),
+});
+
+const agentLibraryFileRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/library/file",
+  staticData: {
+    defaultMain: "library-file",
+    mainView: "library-file",
+    mainTitleKey: "mainPanelTabs.libraryFileTab.title",
+  },
+  validateSearch: z.object({ path: z.string().optional() }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-library-file.tsx"),
+  ),
+});
+
+const agentConnectSourcesRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/connect-sources",
+  staticData: {
+    defaultMain: "connect-sources",
+    mainView: "connect-sources",
+    mainTitleKey: "routes.commerceOnboarding.connectSourcesTab.title",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-connect-sources.tsx"),
+  ),
+});
+
+/** Compatibility leaf for the briefly shipped project-first grammar
+ *  (`/projects/<project>/<view>`). Static canonical children win route ranking;
+ *  the outer workspace adapter translates every remaining view directly to
+ *  its canonical route before agent/runtime providers mount. */
+const agentLegacyProjectViewRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/$legacyView",
+  component: () => null,
+});
+
+/** `/agents` was the previous canonical namespace. Keep it as a one-hop input
+ *  so shared links and browser history survive the terminology change; no
+ *  application navigation emits it. Nested paths are preserved verbatim and
+ *  then resolved by the canonical project tree's compatibility adapter. */
+const legacyAgentsIndexRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/agents",
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  beforeLoad: ({ params, search }) => {
+    const agentId = search.virtualmcpid?.trim();
+    throw redirect(
+      agentId
+        ? {
+            to: "/$org/projects/$agentId",
+            params: { org: params.org, agentId },
+            search: (previous: Record<string, unknown>) => previous,
+            hash: true,
+            replace: true,
+          }
+        : {
+            to: "/$org/projects",
+            params: { org: params.org },
+            search: (previous: Record<string, unknown>) => previous,
+            hash: true,
+            replace: true,
+          },
+    );
+  },
+});
+
+const legacyAgentsDeepRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/agents/$",
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  beforeLoad: ({ params, location }) => {
+    const firstSegment = params._splat?.split("/").find(Boolean);
+    if (!isCanonicalAgentIdSegment(firstSegment)) return;
+
+    const canonicalPathname = canonicalProjectPathFromLegacyAgents(
+      location.pathname,
+    );
+    if (!canonicalPathname) return;
+
+    const hash = location.hash ? `#${location.hash}` : "";
+    throw redirect({
+      href: `${canonicalPathname}${location.searchStr}${hash}`,
+      replace: true,
+    });
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/legacy-agents-deep.tsx"),
+  ),
 });
 
 /**
@@ -605,27 +916,25 @@ const agentsLegacyProjectRoute = createRoute({
  * segment is the lanes. The board's filters stay in search because a filter is
  * how this page is laid out, whereas a card is a thing you open.
  *
- * The segment took the slot the never-reachable `{-$project}` held. Project
- * scoping is `?virtualmcpid=` instead — the shape a board-wide filter has, and
- * the same key every other destination reads it from.
+ * Agent identity is deliberately absent: Tasks is organization-owned. Opening
+ * an agent's chat relocates to that agent's canonical workspace instead of
+ * smuggling identity into this route's search.
  */
 const tasksRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/tasks/{-$taskKey}",
-  staticData: { defaultMain: "board" },
+  staticData: {
+    defaultMain: "board",
+    mainView: "board",
+    mainTitleKey: "taskBoard.taskBoard.tasksTitle",
+  },
   validateSearch: z.object({
     /** LEGACY INPUT ONLY — the card is a path segment now. Still arrives from
      *  the `/$org` resolver and from `/$org/$taskId`; `beforeLoad` rewrites it
      *  to the path form. Nothing writes it. */
     task: z.string().optional(),
     /** Board view state, persisted in the URL. See `filters-search.ts`. */
-    view: z.string().optional(),
-    q: z.string().optional(),
-    assignee: z.string().optional(),
-    priority: z.string().optional(),
-    due: z.string().optional(),
-    tags: z.string().optional(),
-    repo: z.string().optional(),
+    ...taskBoardSearchShape,
   }),
   beforeLoad: ({ params, search }) => {
     const promoted = promoteLegacyTaskParam(params.taskKey, search);
@@ -634,57 +943,61 @@ const tasksRoute = createRoute({
       to: "/$org/tasks/{-$taskKey}",
       params: { org: params.org, taskKey: promoted.taskKey },
       search: promoted.search,
+      hash: true,
       replace: true,
     });
   },
-  component: () => null,
+  component: lazyRouteComponent(() => import("./routes/workspace/tasks.tsx")),
 });
 
 /** The org's Commerce Discovery report. Org-wide, so no project segment. */
 const reportsRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/reports",
-  staticData: { defaultMain: "reports" },
+  staticData: {
+    defaultMain: "reports",
+    mainView: "reports",
+    mainTitleKey: "sidebar.navDestinations.reports",
+  },
   validateSearch: z.object({
     /** `"1"` mounts the blocking connections modal until a data source is
      *  connected; `siteUrl` is the claimed site it is for. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
   }),
-  component: () => null,
+  component: lazyRouteComponent(() => import("./routes/workspace/reports.tsx")),
 });
 
 /** Library. Org-wide, so no project segment. */
 const libraryRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/library",
-  staticData: { defaultMain: "files" },
-  validateSearch: z.object({
-    path: z.string().optional(),
-    preview: z.string().optional(),
-    skill: z.string().optional(),
-    brand: z.string().optional(),
-  }),
-  component: () => null,
+  staticData: {
+    defaultMain: "files",
+    mainView: "files",
+    mainTitleKey: "sidebar.navDestinations.library",
+  },
+  validateSearch: z.object(librarySearchShape),
+  component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
-/**
- * Discover — the permanent, linkable home for what this org does NOT have yet:
- * unfinished setup, capabilities not turned on, and the app catalog.
- *
- * It exists so a destination never has to be hidden to keep the sidebar honest.
- * Hiding Reports until an org owned a diagnostic shipped once and was reverted,
- * because it removed the only in-product way to ask for one (see
- * `main-panel-tabs/reports-tab.tsx`). Withholding a shortcut must never
- * withhold the purchase — so anything withheld is named here instead.
- *
- * Org-wide by definition: what you don't have isn't a property of one project.
- */
-const discoverRoute = createRoute({
+/** Keep the retired path out of the dynamic `/$taskId` route. Durable links
+ * land on Home without preserving a stale search-carried agent identity. */
+const retiredDiscoverRedirectRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/discover",
-  staticData: { defaultMain: "discover" },
-  component: () => null,
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/home",
+      params: { org: params.org },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        virtualmcpid: undefined,
+      }),
+      hash: true,
+      replace: true,
+    });
+  },
 });
 
 /**
@@ -702,22 +1015,24 @@ const orgMembersRedirectRoute = createRoute({
   },
 });
 
-// Org index (`/$org`) resolves to the Super Agent's home thread — there's no
+// Org index (`/$org`) resolves to the Super Agent's Home surface — there's no
 // bespoke landing page anymore (see org-home). The `main` search param is kept
 // so a deep link into a side panel (e.g. "files" = the Library) survives the
 // redirect, mirroring the thread's main-panel tabs.
 const orgIndexSearchSchema = z.object({
-  main: z.string().optional(),
-  connect: z.coerce.string().optional(),
-  siteUrl: z.string().optional(),
-  /** LEGACY INPUT ONLY — a card to open, forwarded verbatim onto `/$org/tasks`,
-   *  which retires it into its path segment. Without it here a shared
-   *  `/$org?main=board&task=…` would drop the card on the redirect. */
-  task: z.string().optional(),
+  main: z.union([z.string(), z.literal(0)]).optional(),
+  /** LEGACY INPUT ONLY — the retired org resolver carried project identity in
+   * search before `/projects/$agentId` became canonical. */
+  virtualmcpid: z.string().optional(),
+  /** Preserve every route-owned payload until the canonical destination can
+   * reclaim it. TanStack validates this hop before OrgHome translates it. */
+  ...legacyWorkspaceCompatibilitySearchShape,
   /** Declared so the resolver can forward it: this route sits outside the agent
    *  shell that owns the layout search, and destinations open the chat
    *  collapsed, so `/$org?sidepanel=true` is the only way to land with it open. */
   sidepanel: sidePanelSearchSchema,
+  mainpanel: mainPanelSearchSchema,
+  thread: z.string().optional(),
 });
 
 const orgIndexRoute = createRoute({
@@ -744,6 +1059,8 @@ const taskKeyRoute = createRoute({
     throw redirect({
       to: "/$org/tasks/{-$taskKey}",
       params: { org: params.org, taskKey: params.taskKey },
+      search: (prev: Record<string, unknown>) => prev,
+      hash: true,
       replace: true,
     });
   },
@@ -756,6 +1073,9 @@ const taskKeyRoute = createRoute({
 const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
+  staticData: {
+    mainTitleKey: "sidebar.navDestinations.settings",
+  },
   /** Panel-area loader, for the same reason as `orgShellLayout`: the sidebar
    *  belongs to `orgLayout` and stays mounted across this crossing, so a
    *  full-screen `SplashScreen` would blank a shell that is already painted. */
@@ -776,6 +1096,7 @@ const settingsIndexRoute = createRoute({
 const connectionsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connections",
+  staticData: { mainTitleKey: "settings.nav.connections" },
   component: lazyRouteComponent(() => import("./routes/orgs/connections.tsx")),
   validateSearch: z.lazy(() =>
     z.object({
@@ -788,6 +1109,11 @@ const connectionsRoute = createRoute({
 const connectionDetailRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connections/$appSlug",
+  staticData: {
+    mainTitleKey: "settings.nav.connections",
+    mainTitleParam: "appSlug",
+    mainBreadcrumbParentKey: "settings.nav.connections",
+  },
   component: lazyRouteComponent(
     () => import("./routes/orgs/connection-detail.tsx"),
   ),
@@ -801,6 +1127,11 @@ const connectionDetailRoute = createRoute({
 const collectionDetailRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connections/$appSlug/$collectionName/$itemId",
+  staticData: {
+    mainTitleKey: "settings.nav.connections",
+    mainTitleParam: "itemId",
+    mainBreadcrumbParentKey: "settings.nav.connections",
+  },
   component: lazyRouteComponent(
     () => import("./routes/orgs/collection-detail.tsx"),
   ),
@@ -815,6 +1146,7 @@ const collectionDetailRoute = createRoute({
 const monitoringRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/monitor",
+  staticData: { mainTitleKey: "settings.nav.monitor" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/monitoring/index.tsx"),
   ),
@@ -842,6 +1174,7 @@ const monitoringRoute = createRoute({
 const settingsGeneralRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/general",
+  staticData: { mainTitleKey: "settings.nav.general" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/general.tsx"),
   ),
@@ -850,6 +1183,7 @@ const settingsGeneralRoute = createRoute({
 const settingsConnectRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connect",
+  staticData: { mainTitleKey: "settings.nav.connect" },
   pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/connect.tsx"),
@@ -859,6 +1193,7 @@ const settingsConnectRoute = createRoute({
 const settingsAiProvidersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/ai-providers",
+  staticData: { mainTitleKey: "settings.nav.aiProviders" },
   pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/ai-providers.tsx"),
@@ -880,6 +1215,7 @@ const settingsBillingRoute = createRoute({
 const settingsInfraBillingRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/infra-billing",
+  staticData: { mainTitleKey: "settings.subnav.infrastructure" },
   pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/infra-billing.tsx"),
@@ -889,6 +1225,7 @@ const settingsInfraBillingRoute = createRoute({
 const settingsSecretsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/secrets",
+  staticData: { mainTitleKey: "settings.nav.secrets" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/secrets.tsx"),
   ),
@@ -897,6 +1234,7 @@ const settingsSecretsRoute = createRoute({
 const settingsApiKeysRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/api-keys",
+  staticData: { mainTitleKey: "settings.apiKeys.sectionTitle" },
   pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/api-keys.tsx"),
@@ -906,6 +1244,7 @@ const settingsApiKeysRoute = createRoute({
 const settingsBucketsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/buckets",
+  staticData: { mainTitleKey: "settings.nav.buckets" },
   pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/buckets.tsx"),
@@ -915,6 +1254,7 @@ const settingsBucketsRoute = createRoute({
 const settingsSyncedReposRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/synced-repos",
+  staticData: { mainTitleKey: "settings.nav.syncedRepos" },
   pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/synced-repos.tsx"),
@@ -924,6 +1264,7 @@ const settingsSyncedReposRoute = createRoute({
 const settingsTaskBoardRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/task-board",
+  staticData: { mainTitleKey: "settings.nav.tasks" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/tasks.tsx"),
   ),
@@ -944,6 +1285,7 @@ const settingsTasksRoute = createRoute({
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
+  staticData: { mainTitleKey: "settings.nav.members" },
   pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/members.tsx"),
@@ -953,6 +1295,7 @@ const settingsMembersRoute = createRoute({
 const settingsRolesRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/roles",
+  staticData: { mainTitleKey: "settings.roles.pageTitle" },
   pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/roles.tsx"),
@@ -967,12 +1310,14 @@ const settingsRolesRoute = createRoute({
 const settingsSsoRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/sso",
+  staticData: { mainTitleKey: "settings.nav.security" },
   component: lazyRouteComponent(() => import("./routes/orgs/settings/sso.tsx")),
 });
 
 const settingsProfileRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/profile",
+  staticData: { mainTitleKey: "settings.nav.profile" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/profile.tsx"),
   ),
@@ -981,6 +1326,7 @@ const settingsProfileRoute = createRoute({
 const settingsStoreRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/store",
+  staticData: { mainTitleKey: "settings.nav.store" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/store.tsx"),
   ),
@@ -989,14 +1335,27 @@ const settingsStoreRoute = createRoute({
 const settingsRegistryRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/registry",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/registry.tsx"),
-  ),
+  staticData: { mainTitleKey: "settings.nav.store" },
+  validateSearch: z.object({
+    registryTab: z.enum(["items", "requests", "qa", "settings"]).optional(),
+  }),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/settings/store/registry",
+      params: { org: params.org },
+      search,
+      replace: true,
+    });
+  },
 });
 
 const settingsStoreRegistryRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/store/registry",
+  staticData: { mainTitleKey: "settings.nav.store" },
+  validateSearch: z.object({
+    registryTab: z.enum(["items", "requests", "qa", "settings"]).optional(),
+  }),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/store-registry.tsx"),
   ),
@@ -1010,12 +1369,14 @@ const settingsStoreRegistryRoute = createRoute({
 const settingsAgentsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/agents",
+  staticData: { mainTitleKey: "settings.nav.agents" },
   component: lazyRouteComponent(() => import("./routes/agents-list.tsx")),
 });
 
 const settingsAutomationsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/automations",
+  staticData: { mainTitleKey: "settings.nav.automations" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/automations.tsx"),
   ),
@@ -1024,6 +1385,7 @@ const settingsAutomationsRoute = createRoute({
 const settingsSkillsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/skills",
+  staticData: { mainTitleKey: "settings.nav.skills" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/skills.tsx"),
   ),
@@ -1062,15 +1424,46 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsRegistryRoute,
 ]);
 
+const agentSiteEditorWithChildren = agentSiteEditorRoute.addChildren([
+  agentSiteEditorIndexRoute,
+  agentSiteEditorContentRoute,
+  agentSiteEditorCodeRoute,
+]);
+
+const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
+  agentOverviewRoute,
+  projectTasksRoute,
+  projectReportsRoute,
+  agentSiteEditorWithChildren,
+  agentAutomationsRoute,
+  agentAutomationRoute,
+  agentSettingsRoute,
+  agentAssetsRoute,
+  agentGitRoute,
+  agentHostingRoute,
+  agentE2eRoute,
+  agentAnalyticsRoute,
+  agentMonitorRoute,
+  agentAppRoute,
+  agentViewRoute,
+  agentOutputFileRoute,
+  agentOutputDeckRoute,
+  agentLibraryFileRoute,
+  agentConnectSourcesRoute,
+  agentLegacyProjectViewRoute,
+]);
+
 const agentShellWithChildren = agentShellLayout.addChildren([
   unifiedChatRoute,
   orgHomeRoute,
-  agentsRoute,
-  agentsLegacyProjectRoute,
+  projectsIndexRoute,
+  agentWorkspaceWithChildren,
+  legacyAgentsIndexRoute,
+  legacyAgentsDeepRoute,
   tasksRoute,
   reportsRoute,
   libraryRoute,
-  discoverRoute,
+  retiredDiscoverRedirectRoute,
 ]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([

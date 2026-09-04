@@ -1,6 +1,6 @@
 /**
  * FileTab — main-panel preview of a file the thread produced
- * (`/agents/{-$project}/file?key=…`).
+ * (`/projects/$agentId/outputs/file?key=…`).
  *
  * The tab id only carries the output `key`; the file's URL/name/size are
  * resolved from the same `threadOutputs` query the chips and the

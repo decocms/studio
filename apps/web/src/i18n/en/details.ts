@@ -132,7 +132,7 @@ export const details = {
   "details.tool.connectionNotFound": "Connection not found",
   "details.tool.connectionNotFoundMessage":
     "This connection may have been deleted or you may not have access.",
-  "details.tool.connections": "Connections",
+  "details.tool.copyResult": "Copy result",
   "details.tool.copiedToClipboard": "Copied to clipboard",
   "details.tool.enter": "Enter {key}...",
   "details.tool.enterAsJson": "Enter {key} as JSON...",
@@ -143,6 +143,7 @@ export const details = {
   "details.tool.interactiveView": "Interactive view",
   "details.tool.jsonView": "JSON view",
   "details.tool.loadingApp": "Loading app...",
+  "details.tool.noDescription": "No description available",
   "details.tool.noParametersRequired": "No parameters required",
   "details.tool.parameters": "Parameters",
   "details.tool.rawJsonExample": 'e.g. { "foo": "bar" }',
@@ -151,4 +152,7 @@ export const details = {
   "details.tool.result": "Result",
   "details.tool.runToolToSeeResults": "Run the tool to see results",
   "details.tool.selectTrueOrFalse": "Select true or false...",
+  "details.tool.statusConnecting": "Connecting",
+  "details.tool.statusError": "Error",
+  "details.tool.statusReady": "Ready",
 } as const;

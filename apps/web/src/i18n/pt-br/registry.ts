@@ -1,6 +1,7 @@
 import type { registry as registryEn } from "../en/registry.ts";
 
 export const registry = {
+  "registry.registryLayout.permissionArea": "o registro",
   "registry.brokenMcpList.connStatus": "conn",
   "registry.brokenMcpList.connectionLabel": "Conexão",
   "registry.brokenMcpList.durationLabel": "Duração",
@@ -474,6 +475,7 @@ export const registry = {
   "registry.registryItemsPage.id": "ID",
   "registry.registryItemsPage.importCsv": "Importar CSV",
   "registry.registryItemsPage.importedItems": "Importados {count} itens",
+  "registry.registryItemsPage.itemCount": "{count} itens",
   "registry.registryItemsPage.items": "Itens",
   "registry.registryItemsPage.loadingItems": "Carregando itens...",
   "registry.registryItemsPage.loadingMoreItems": "Carregando mais itens...",
@@ -496,6 +498,7 @@ export const registry = {
     "Status verificado removido",
   "registry.registryItemsPage.searchPlaceholder":
     "Pesquisar por id, título, descrição ou nome do servidor",
+  "registry.registryItemsPage.searchFilter": "Busca: {search}",
   "registry.registryItemsPage.table": "Tabela",
   "registry.registryItemsPage.tableViewAriaLabel": "Visualização em tabela",
   "registry.registryItemsPage.tags": "Tags",
@@ -504,10 +507,12 @@ export const registry = {
     "Tente remover filtros ou alterar sua busca para encontrar MCPs correspondentes.",
   "registry.registryItemsPage.visibility": "Visibilidade",
   "registry.registryLayout.itemsTab": "Itens",
+  "registry.registryLayout.navigation": "Visões do registro",
   "registry.registryLayout.qaTab": "QA",
   "registry.registryLayout.requestsTab": "Solicitações",
   "registry.registryLayout.settingsTab": "Configurações",
   "registry.registryMonitorPage.brokenMcps": "MCPs com falha",
+  "registry.registryMonitorPage.navigation": "Visões de garantia de qualidade",
   "registry.registryMonitorPage.tabConfiguration": "Configuração",
   "registry.registryMonitorPage.tabConnections": "Conexões",
   "registry.registryMonitorPage.tabTests": "Testes",
@@ -540,8 +545,14 @@ export const registry = {
   "registry.registryRequestsPage.columnRequester": "Solicitante",
   "registry.registryRequestsPage.columnStatus": "Status",
   "registry.registryRequestsPage.columnTags": "Tags",
+  "registry.registryRequestsPage.failedApproveRequest":
+    "Falha ao aprovar solicitação",
+  "registry.registryRequestsPage.failedDeleteRequest":
+    "Falha ao excluir solicitação",
   "registry.registryRequestsPage.failedLoadRequests":
     "Falha ao carregar solicitações de publicação.",
+  "registry.registryRequestsPage.failedRejectRequest":
+    "Falha ao rejeitar solicitação",
   "registry.registryRequestsPage.itemAlreadyExists":
     "Um item com este ID já existe no registro. Delete ou renomeie primeiro.",
   "registry.registryRequestsPage.labelCategories": "Categorias",
@@ -578,12 +589,16 @@ export const registry = {
   "registry.registryRequestsPage.requestDeleted": "Solicitação deletada",
   "registry.registryRequestsPage.requestDetails": "Detalhes da solicitação",
   "registry.registryRequestsPage.requestRejected": "Solicitação rejeitada",
+  "registry.registryRequestsPage.requestCount": "{count} solicitações",
   "registry.registryRequestsPage.requestsToPublish":
     "Solicitações para Publicar",
   "registry.registryRequestsPage.reviewMetadataDescription":
     "Revise todos os metadados enviados pelo solicitante antes de aprovar.",
   "registry.registryRequestsPage.reviewerNotes": "Notas do revisor (opcional)",
   "registry.registryRequestsPage.selectAll": "Selecionar tudo",
+  "registry.registryRequestsPage.selectAllPendingAriaLabel":
+    "Selecionar todas as solicitações pendentes",
+  "registry.registryRequestsPage.selectRequestAriaLabel": "Selecionar {title}",
   "registry.registryRequestsPage.selected": "Selecionado",
   "registry.registryRequestsPage.selectedCount":
     "{selectedCount} selecionado(s)",
@@ -593,9 +608,12 @@ export const registry = {
     "Criado em (mais recentes primeiro)",
   "registry.registryRequestsPage.sortCreatedOldest":
     "Criado em (mais antigos primeiro)",
+  "registry.registryRequestsPage.sortAriaLabel": "Ordenar solicitações",
   "registry.registryRequestsPage.statusApproved": "Aprovado",
   "registry.registryRequestsPage.statusPending": "Pendente",
   "registry.registryRequestsPage.statusRejected": "Rejeitado",
+  "registry.registryRequestsPage.statusFilterAriaLabel":
+    "Filtrar solicitações por status",
   "registry.registryRequestsPage.unknownError": "Erro desconhecido",
   "registry.registryRequestsPage.visibilityForAll":
     "Visibilidade para todos os selecionados",
@@ -608,6 +626,11 @@ export const registry = {
   "registry.registrySettingsPage.cancel": "Cancelar",
   "registry.registrySettingsPage.configureNameIcon":
     "Configure o nome e o ícone exibidos no seletor de lojas.",
+  "registry.registrySettingsPage.copyApiKey": "Copiar chave de API",
+  "registry.registrySettingsPage.copyPublicRegistryUrl":
+    "Copiar URL pública do registro",
+  "registry.registrySettingsPage.copyPublishRequestUrl":
+    "Copiar URL da solicitação de publicação",
   "registry.registrySettingsPage.failedGenerateApiKey":
     "Falha ao gerar chave de API",
   "registry.registrySettingsPage.failedRevokeApiKey":
@@ -615,6 +638,7 @@ export const registry = {
   "registry.registrySettingsPage.failedUploadIcon":
     "Falha ao enviar ícone. Tente novamente.",
   "registry.registrySettingsPage.generate": "Gerar",
+  "registry.registrySettingsPage.hideApiKey": "Ocultar chave de API",
   "registry.registrySettingsPage.keyName": "Nome da chave",
   "registry.registrySettingsPage.keyNamePlaceholder": "ex: Pipeline CI/CD",
   "registry.registrySettingsPage.maxRequests": "Máximo de solicitações",
@@ -640,11 +664,14 @@ export const registry = {
   "registry.registrySettingsPage.requireApiToken": "Exigir Token de API",
   "registry.registrySettingsPage.requireApiTokenHelp":
     "Solicitações sem um token válido serão rejeitadas.",
+  "registry.registrySettingsPage.revokeApiKeyAriaLabel":
+    "Revogar chave de API {name}",
   "registry.registrySettingsPage.revokeApiKeyDescription":
-    'Esta ação não pode ser desfeita. A chave{keyName ? ` "{keyName}"` : ""} deixará de funcionar imediatamente.',
+    "Esta ação não pode ser desfeita. A chave “{keyName}” deixará de funcionar imediatamente.",
   "registry.registrySettingsPage.revokeApiKeyTitle": "Revogar chave de API?",
   "registry.registrySettingsPage.revokeKey": "Revogar chave",
   "registry.registrySettingsPage.revoking": "Revogando...",
+  "registry.registrySettingsPage.showApiKey": "Mostrar chave de API",
   "registry.registrySettingsPage.storeVisibility": "Visibilidade da Loja",
   "registry.registrySettingsPage.storeVisibilityDescription":
     "Escolha o que aparece quando os usuários navegam neste registro na Loja.",

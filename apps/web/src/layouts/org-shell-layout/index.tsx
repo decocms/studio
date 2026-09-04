@@ -1,13 +1,12 @@
 /**
  * Org Shell Layout
  *
- * Shared parent for `/$org/` (home) and `/$org/$taskId` (chat). Owns the
- * toolbar header, the sidebar row, and ChatPrefsProvider.
+ * Shared parent for org workspace routes. Owns thread/chat providers and the
+ * mobile sidebar sheet; each matched route owns its Main topbar and content.
  *
  * Shell shape (default):
  *   SidebarProvider
  *   └── app-shell-root (flex-col, h-dvh)
- *       ├── Toolbar.Header           — full-width, fixed left zone
  *       └── SidebarLayout            — body row
  *           ├── StudioSidebar (desktop only)
  *           ├── SidebarResizeHandle (desktop only)
@@ -26,17 +25,17 @@ import { CommerceConnectModal } from "@/routes/commerce-onboarding/commerce-conn
 import { StudioSidebarMobile } from "@/components/sidebar";
 import { ChatPrefsProvider } from "@/components/chat/context";
 import { ThreadManagerProvider } from "@/components/chat/store/hooks";
-import { Toolbar } from "@/layouts/agent-shell-layout/toolbar";
-import {
-  MobileSidebarSheet,
-  SidebarTriggerButton,
-} from "@/layouts/shell-controls";
+import { MobileSidebarSheet } from "@/layouts/shell-controls";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
+import { PROJECT_ROUTE, useLeafRoutePath } from "@/hooks/use-destination-route";
+import { useScopeId } from "@/hooks/use-project-scope";
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
+  const leafRoutePath = useLeafRoutePath();
+  const scopeId = useScopeId();
   // Commerce onboarding hands off here: after site setup it lands on the org
-  // home thread with `?connect=1`, which mounts the blocking connections modal
+  // Home surface with `?connect=1`, which mounts the blocking connections modal
   // over the (blurred) org home until at least one data source is connected.
   const { connect, siteUrl: connectSiteUrl } = useSearch({ strict: false }) as {
     connect?: string;
@@ -50,62 +49,41 @@ export default function OrgShellLayout() {
    * it still has a full org home to render behind the modal.
    */
   const showConnectModal = connect === "1";
-  // On desktop each panel owns its own 48px header (see WorkspacePanelGroup), so
-  // there is no shared top bar spanning the panels — only the mobile layout,
-  // which has no side-by-side split, keeps a single shared header on top.
-  const headerOnTop = isMobile;
-
-  // Single flex row. Like the desktop collapsed topbar, only the *agent* shows
-  // here (it flexes and truncates) — the org switcher lives in the sidebar
-  // sheet, reached via the hamburger. The linked-desktop indicator, toggles and
-  // view select stay shrink-0. The Center / Right portal targets ride along at
-  // the end (usually empty on mobile) so nothing spills onto a second row.
-  const mobileHeader = (
-    <Toolbar.Header className="grid-cols-1 px-1">
-      <div className="flex w-full min-w-0 items-center gap-1">
-        <SidebarTriggerButton />
-        <Toolbar.TogglesSlot />
-        <Toolbar.TabsSlot className="shrink-0" />
-        <Toolbar.CenterSlot />
-        <Toolbar.RightSlot />
-      </div>
-    </Toolbar.Header>
-  );
-
+  const reportProjectId =
+    leafRoutePath === PROJECT_ROUTE.reports
+      ? (scopeId ?? undefined)
+      : undefined;
   return (
     <ThreadManagerProvider>
-      <Toolbar.Provider>
-        <ChatPrefsProvider>
-          {/* The sidebar row belongs to `OrgLayout`; this is what goes INSIDE
-              its inset. Mobile keeps a shared top bar because it has no
-              side-by-side split; desktop panels own their own headers. */}
-          <div className="flex flex-col h-full min-h-0">
-            {headerOnTop && mobileHeader}
-            <div className="relative flex-1 min-h-0 flex flex-row">
-              <MainPanelBoundary>
-                <Outlet />
-              </MainPanelBoundary>
-            </div>
+      <ChatPrefsProvider>
+        <div className="flex flex-col h-full min-h-0">
+          <div className="relative flex-1 min-h-0 flex flex-row">
+            <MainPanelBoundary>
+              <Outlet />
+            </MainPanelBoundary>
           </div>
-          {isMobile && (
-            <MobileSidebarSheet
-              renderSidebar={({ onClose }) => (
-                <div className="flex h-full">
-                  <div
-                    className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
-                    data-state="expanded"
-                  >
-                    <StudioSidebarMobile onClose={onClose} />
-                  </div>
+        </div>
+        {isMobile && (
+          <MobileSidebarSheet
+            renderSidebar={({ onClose }) => (
+              <div className="flex h-full">
+                <div
+                  className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
+                  data-state="expanded"
+                >
+                  <StudioSidebarMobile onClose={onClose} />
                 </div>
-              )}
-            />
-          )}
-          {showConnectModal && (
-            <CommerceConnectModal siteUrl={connectSiteUrl} />
-          )}
-        </ChatPrefsProvider>
-      </Toolbar.Provider>
+              </div>
+            )}
+          />
+        )}
+        {showConnectModal && (
+          <CommerceConnectModal
+            siteUrl={connectSiteUrl}
+            projectId={reportProjectId}
+          />
+        )}
+      </ChatPrefsProvider>
     </ThreadManagerProvider>
   );
 }

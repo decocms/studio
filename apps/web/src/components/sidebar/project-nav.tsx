@@ -7,11 +7,14 @@
  *  which do not belong in durable navigation. */
 
 import type { ReactNode } from "react";
+import { type LinkProps, useParams } from "@tanstack/react-router";
 import {
   BarChartSquare02,
   CheckDone01,
+  Columns03,
   Globe02,
   Grid01,
+  Home02,
   Image01,
   Lightning01,
   Monitor01,
@@ -19,8 +22,8 @@ import {
 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
@@ -30,11 +33,9 @@ import {
   parseAutomationTabId,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
-import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
-import { useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import {
   PROJECT_NATIVE_VIEW_IDS,
@@ -44,6 +45,7 @@ import {
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 
 /** A project's curated app views. The metadata bag is `.loose()`, so this
  *  validates the shape rather than trusting it. */
@@ -72,10 +74,9 @@ interface ProjectView {
   key: string;
   label: string;
   icon: ReactNode;
-  panel: string;
-  /** Tab ids this row owns — the RESOLVED id (`useActivePanelTabId`), not the
-   *  raw path segment: a pinned view is `app:<connection>:<tool>` in the URL's
-   *  search, and its segment is the bare word `app`, which matches nothing. */
+  link: LinkProps;
+  /** Tab ids this row owns, reconstructed from the matched route and its typed
+   * params by `useActivePanelTabId`. */
   isActive: (tabId: string | undefined) => boolean;
   /** `data-tour` anchor, for the one row a product tour highlights. */
   dataTour?: string;
@@ -83,29 +84,85 @@ interface ProjectView {
 
 export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
-  const { project } = useProjectScope();
-  const navigateToAgent = useNavigateToAgent();
-  const leafPath = useLeafRoutePath();
+  const { project, scopeId } = useProjectScope();
+  const params = useParams({ strict: false });
   const activeTabId = useActivePanelTabId();
   const nativeViews = useProjectNativeViewPresence(project);
-  const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
+  const optimisticSidebarViews = useOptimisticProjectSidebarViews(scopeId);
 
-  if (!project) return null;
+  if (!scopeId) return null;
+  const projectParams = { org: params.org ?? "", agentId: scopeId };
+  const projectSearch = (previous: Record<string, unknown>) =>
+    resolvePanelNavigationSearch({
+      previous,
+      destination: "agent",
+    });
 
-  const hasClonableSource = agentHasClonableSource(project.metadata);
-  const sidebarViews =
-    optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
+  const hasClonableSource = project
+    ? agentHasClonableSource(project.metadata)
+    : false;
+  const sidebarViews = project
+    ? (optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata))
+    : [];
+  /** The URL is enough to paint the structural destinations immediately.
+   * Optional rows wait for the entity: treating an unresolved project as
+   * unversioned would flash compatibility defaults before an explicit saved
+   * layout loaded. */
   const selectedViews = new Set(
-    selectedProjectSidebarViews(
-      sidebarViews,
-      projectSidebarViewPresence(hasClonableSource, nativeViews.presence),
-      optimisticSidebarViews !== undefined
-        ? 1
-        : project.metadata.sidebarViewsVersion,
-    ),
+    project
+      ? selectedProjectSidebarViews(
+          sidebarViews,
+          projectSidebarViewPresence(hasClonableSource, nativeViews.presence),
+          optimisticSidebarViews !== undefined
+            ? 1
+            : project.metadata.sidebarViewsVersion,
+        )
+      : [],
   );
 
-  const views: ProjectView[] = [];
+  /** Home, Reports, and Tasks are the structural project spine, not
+   * configurable app views. They stay first even while the non-blocking project
+   * query is resolving. */
+  const views: ProjectView[] = [
+    {
+      key: "overview",
+      label: t("sidebar.navDestinations.home"),
+      icon: <Home02 size={16} />,
+      link: {
+        to: PROJECT_ROUTE.root,
+        params: projectParams,
+        search: projectSearch,
+      },
+      isActive: (tabId) => tabId === "overview",
+    },
+    {
+      key: "reports",
+      label: t("sidebar.navDestinations.reports"),
+      icon: <BarChartSquare02 size={16} />,
+      link: {
+        to: PROJECT_ROUTE.reports,
+        params: projectParams,
+        search: projectSearch,
+      },
+      isActive: (tabId) => tabId === "reports",
+    },
+    {
+      key: "board",
+      label: t("sidebar.navDestinations.tasks"),
+      icon: <Columns03 size={16} />,
+      link: {
+        to: PROJECT_ROUTE.tasks,
+        params: {
+          org: params.org ?? "",
+          agentId: scopeId,
+          taskKey: undefined,
+        },
+        search: projectSearch,
+      },
+      isActive: (tabId) => tabId === "board",
+      dataTour: LAYOUT_TOUR_ANCHORS.tasks,
+    },
+  ];
   if (selectedViews.has("site-editor")) {
     /** One row for one surface. Preview, Content and Code are the same place
      *  seen three ways, so they are tabs on it rather than sibling rows, and
@@ -115,7 +172,11 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       key: "site-editor",
       label: t("sidebar.projectNav.siteEditor"),
       icon: <Monitor01 size={16} />,
-      panel: "site-editor",
+      link: {
+        to: PROJECT_ROUTE.siteEditor,
+        params: projectParams,
+        search: projectSearch,
+      },
       /** Preview, Content and Code are three views of this one surface, so the
        *  row stays lit across all of them. */
       isActive: (tabId) => !!tabId && isSurfaceTab(tabId),
@@ -154,7 +215,11 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       key: viewId,
       label: row.label,
       icon: row.icon,
-      panel: viewId,
+      link: {
+        to: viewId === "cdn" ? PROJECT_ROUTE.monitor : PROJECT_ROUTE[viewId],
+        params: projectParams,
+        search: projectSearch,
+      },
       isActive: (tabId) => tabId === viewId,
     });
   }
@@ -165,13 +230,12 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
    * toggle to turn it off, and `fetch_assets` is a retired admin view that the
    * native Assets row replaced, so neither becomes a stale navigation row.
    *
-   * The panel id carries its own payload (`app:<connection>:<tool>`), which
-   * `panelLocationForTab` expands into the segment plus its search — so these
-   * need no special casing at the navigation call.
+   * The tab id carries its own payload (`app:<connection>:<tool>`), which the
+   * canonical tab-route mapper expands into typed path params.
    */
   for (const pinned of keepAttachedPinnedViews(
-    pinnedViewsOf(project),
-    (project.connections ?? []).map((c) => c.connection_id),
+    project ? pinnedViewsOf(project) : [],
+    (project?.connections ?? []).map((c) => c.connection_id),
   )) {
     if (pinned.toolName === "fetch_assets") continue;
     views.push({
@@ -182,7 +246,15 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       ) : (
         <Grid01 size={16} />
       ),
-      panel: formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
+      link: {
+        to: PROJECT_ROUTE.app,
+        params: {
+          ...projectParams,
+          connectionId: pinned.connectionId,
+          toolName: pinned.toolName,
+        },
+        search: projectSearch,
+      },
       isActive: (tabId) =>
         tabId === formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
     });
@@ -192,7 +264,11 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       key: "automations",
       label: t("sidebar.projectNav.automations"),
       icon: <Lightning01 size={16} />,
-      panel: "automations",
+      link: {
+        to: PROJECT_ROUTE.automations,
+        params: projectParams,
+        search: projectSearch,
+      },
       /** The list and one automation's detail (`automation:<id>`) are the same
        *  row. */
       isActive: (tabId) =>
@@ -201,7 +277,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     });
   }
 
-  const onProject = leafPath === DESTINATION_ROUTE.agents;
+  const onProject = params.agentId === scopeId;
 
   return (
     <SidebarMenu className="gap-1">
@@ -212,14 +288,12 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
           label={view.label}
           dataTour={view.dataTour}
           isActive={onProject && view.isActive(activeTabId)}
-          /** No `link`, so this renders a button: these resolve a SESSION,
-           *  reusing an empty thread of the right runtime or minting one. The
-           *  destination id is not knowable at render time, so there is no
-           *  honest href to put here. The org-wide destinations above stay real
-           *  anchors. */
+          link={view.link}
+          /** Project Home remains a real link; every row uses the same
+           * canonical project-search policy so the mounted session keeps its
+           * active chat. */
           onSelect={() => {
             track("project_nav_clicked", { surface: view.key });
-            navigateToAgent(project.id, { panel: view.panel });
             onNavigate?.();
           }}
         />

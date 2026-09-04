@@ -42,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
 import { FolderIcon } from "@/components/folder-icon";
@@ -151,10 +151,17 @@ function SkillCard({
             />
             {onDelete && (
               /* pointer-events-auto re-enables the dropdown */
-              <div className="relative z-10 pointer-events-auto transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+              <div className="pointer-events-auto relative z-10 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      aria-label={t("settings.skills.actionsLabel", {
+                        name: entry.name,
+                      })}
+                    >
                       <DotsVertical size={16} />
                     </Button>
                   </DropdownMenuTrigger>
@@ -376,49 +383,78 @@ export default function SettingsSkillsPage() {
       size="sm"
       disabled={importing}
       onClick={() => folderInputRef.current?.click()}
+      aria-label={
+        importing
+          ? t("settings.skills.importing")
+          : t("settings.skills.importButton")
+      }
     >
       <Upload01 size={14} />
-      {importing
-        ? t("settings.skills.importing")
-        : t("settings.skills.importButton")}
+      <span className="@max-sm/main-topbar:hidden">
+        {importing
+          ? t("settings.skills.importing")
+          : t("settings.skills.importButton")}
+      </span>
     </Button>
   );
 
-  return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          {/* Title, toolbar, chips and results are siblings of one gap-6
-              column — the Connections page's rhythm. */}
-          <div className="flex flex-col gap-6">
-            <Page.Title>{t("settings.skills.pageTitle")}</Page.Title>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder={t("settings.skills.searchPlaceholder")}
-                className="w-full md:w-[375px]"
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setSearch("");
-                    (event.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
-              {importButton}
-              <input
-                ref={folderInputRef}
-                type="file"
-                multiple
-                webkitdirectory=""
-                className="hidden"
-                onChange={(e) => void handleImport(e.target.files)}
-              />
-            </div>
+  const searchInput =
+    (catalog.data?.length ?? 0) > 0 &&
+    !catalog.isPending &&
+    !catalog.isError ? (
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder={t("settings.skills.searchPlaceholder")}
+        className="w-[clamp(7rem,35cqw,23.4375rem)]"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setSearch("");
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+    ) : null;
 
+  return (
+    <>
+      {searchInput && (
+        <Main.Topbar.Center.Portal>
+          <div
+            data-responsive-focus-group="settings-skills-search"
+            className="hidden md:block"
+          >
+            {searchInput}
+          </div>
+        </Main.Topbar.Center.Portal>
+      )}
+      {searchInput && (
+        <Main.Toolbar.Portal visibility="compact">
+          <div
+            data-responsive-focus-group="settings-skills-search"
+            className="w-full md:hidden [&>*]:w-full"
+          >
+            {searchInput}
+          </div>
+        </Main.Toolbar.Portal>
+      )}
+      <Main.Topbar.Right.Portal>{importButton}</Main.Topbar.Right.Portal>
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        webkitdirectory=""
+        className="hidden"
+        onChange={(e) => void handleImport(e.target.files)}
+      />
+
+      <div className="h-full overflow-y-auto">
+        <Main.Container width="wide">
+          <Main.Stack>
             {/* One origin means the chips can only say "All" — hide them. */}
             {tabs.length > 2 && (
               <CollectionTabs
+                ariaLabel={t("settings.nav.skills")}
                 tabs={tabs}
                 activeTab={activeSource}
                 onTabChange={setSource}
@@ -435,7 +471,7 @@ export default function SettingsSkillsPage() {
               </div>
             ) : catalog.isError ? (
               /* Never the empty state: "no skills yet" is a different fact. */
-              <div className="flex items-center justify-center py-20">
+              <div className="flex min-h-56 items-center justify-center">
                 <EmptyState
                   image={
                     <AlertTriangle
@@ -461,7 +497,7 @@ export default function SettingsSkillsPage() {
                 />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex items-center justify-center py-20">
+              <div className="flex min-h-56 items-center justify-center">
                 <EmptyState
                   image={<Zap size={48} className="text-muted-foreground" />}
                   title={
@@ -474,7 +510,6 @@ export default function SettingsSkillsPage() {
                       ? t("settings.skills.noResultsDescription", { search })
                       : t("settings.skills.emptyDescription")
                   }
-                  actions={!search && importButton}
                 />
               </div>
             ) : (
@@ -499,9 +534,9 @@ export default function SettingsSkillsPage() {
                 </SkillsGrid>
               </div>
             )}
-          </div>
-        </Page.Body>
-      </Page.Content>
+          </Main.Stack>
+        </Main.Container>
+      </div>
 
       {previewPath && (
         <SkillPreviewDialog
@@ -537,6 +572,6 @@ export default function SettingsSkillsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Page>
+    </>
   );
 }

@@ -27,8 +27,8 @@ You reach an agent from the home grid, the thread list in the sidebar, or the **
 When you open an agent, its durable navigation lives in the project section of the sidebar and the workspace can split in two:
 
 - **Sidebar — project views.** In **Layout**, choose whether Home, Reports, Tasks, Site Editor, Automations, and any available Assets, Hosting, E2E, Deco Analytics, Monitor, or pinned MCP-app view appears here. Selecting one opens it as the main view; these destinations do not also appear as top-level panel tabs.
-- **Left — chat.** Talk to the agent in natural language; it uses its attached tools to do the work. Your past messages and threads with this agent live here. Above the input are the **model-tier picker** (Fast, Smart, Thinking — see [AI Providers](/en/studio/ai-providers)) and the **runtime picker** (see [Where an agent runs](#where-an-agent-runs)).
-- **Right — main view.** This is the view selected from the sidebar or configured as the project's default. A view can still have its own contextual tabs — for example Preview, Content, and Code inside Site Editor — and temporary output from a chat can appear here without becoming permanent sidebar navigation.
+- **Left — main view.** This is the view selected from the sidebar or configured as the project's default. A view can still have its own contextual tabs — for example Preview, Content, and Code inside Site Editor — and temporary output from a chat can appear here without becoming permanent sidebar navigation.
+- **Right — chat.** Talk to the agent in natural language; it uses its attached tools to do the work. Your past messages and threads with this agent live here. Above the input are the **model-tier picker** (Fast, Smart, Thinking — see [AI Providers](/en/studio/ai-providers)) and the **runtime picker** (see [Where an agent runs](#where-an-agent-runs)).
 
 A Git-backed agent also shows a **branch selector** beside the runtime picker, and a **sandbox status** indicator while its environment boots.
 
@@ -59,7 +59,7 @@ In a future release, Studio will let you build simple views directly inside the 
 
 An agent can be backed by code. Link it to a GitHub repository in **Settings → Sandbox** and Studio will run the repo as an isolated dev environment scoped to that agent — typically the agent's own MCP server, but it can be any service the agent needs. The sandbox starts on demand, lives only as long as the agent needs it, and never leaks across agents.
 
-When the agent is running with a local code-editor runtime, **Open in VSCode** and **Open in Cursor** buttons appear directly in the tab bar for one-click access to the repo on your machine. In other runtime modes the same options are available in the tab bar's three-dot (⋯) menu.
+When the agent is running with a local code-editor runtime, **Open in VSCode** and **Open in Cursor** buttons appear in the Code view's topbar for one-click access to the repo on your machine.
 
 ## Where an agent runs
 
@@ -101,7 +101,7 @@ When two attached connections expose a tool with the same name, the one from the
 
 ## Attaching connections
 
-Connections live in **Settings → Connections** at the org level. Inside an agent's **Settings** tab, you choose which connections (and which specific tools from each) the agent can use. Pick narrow. An agent with three well-chosen tools behaves more predictably than one with thirty.
+Connections live in **Settings → Connections** at the org level. Inside a project's **Settings** destination, you choose which connections (and which specific tools from each) the agent can use. Pick narrow. An agent with three well-chosen tools behaves more predictably than one with thirty.
 
 ## Built-in agents
 

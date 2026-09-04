@@ -20,10 +20,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { ProjectIcon } from "@/components/project-icon";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { taskBoardItemsQueryOptions } from "@/hooks/use-task-board-items";
-import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
 import {
   isTaskBlocked,
   isTaskHandedToHuman,
@@ -36,6 +34,7 @@ import { track } from "@/lib/posthog-client";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { Link } from "@tanstack/react-router";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import {
   buildProjectIndex,
   projectsForTask,
@@ -130,11 +129,13 @@ export function tasksNeedingMeByProject(
 function TaskRow({
   task,
   orgSlug,
+  projectId,
   isLast,
   onNavigate,
 }: {
   task: TaskBoardItem;
   orgSlug: string;
+  projectId: string;
   isLast: boolean;
   onNavigate?: () => void;
 }) {
@@ -152,8 +153,12 @@ function TaskRow({
         />
       )}
       <Link
-        to="/$org/tasks/{-$taskKey}"
-        params={{ org: orgSlug, taskKey: taskRouteSegment(orgSlug, task) }}
+        to={PROJECT_ROUTE.tasks}
+        params={{
+          org: orgSlug,
+          agentId: projectId,
+          taskKey: taskRouteSegment(orgSlug, task),
+        }}
         onClick={() => {
           track("sidebar_attention_task_clicked", { status: task.status });
           onNavigate?.();
@@ -177,7 +182,6 @@ export function SidebarProjectsSection({
   const studio = useStudioTools();
   const { projects } = useProjectScope();
   const scopeId = useScopeId();
-  const navigateToAgent = useNavigateToAgent();
   const { data: session } = authClient.useSession();
 
   /** Non-blocking, and it shares the board's key — the same request the Tasks
@@ -221,14 +225,16 @@ export function SidebarProjectsSection({
               icon={<ProjectIcon icon={project.icon} name={project.title} />}
               label={project.title}
               isActive={project.id === scopeId}
-              /** A button, not a link: these resolve a SESSION, so the
-               *  destination id is not knowable at render time — the same
-               *  reason `ProjectNav`'s rows are buttons. */
+              /** Project selection is a durable place, not a request to resume
+               * a chat. The empty search deliberately prevents an unrelated
+               * organization-level thread from following into the project. */
+              link={{
+                to: PROJECT_ROUTE.root,
+                params: { org: org.slug, agentId: project.id },
+                search: {},
+              }}
               onSelect={() => {
                 track("sidebar_project_clicked");
-                navigateToAgent(project.id, {
-                  panel: landingTabIdFor(project.metadata?.ui?.layout),
-                });
                 onNavigate?.();
               }}
             >
@@ -239,6 +245,7 @@ export function SidebarProjectsSection({
                       key={task.id}
                       task={task}
                       orgSlug={org.slug}
+                      projectId={project.id}
                       isLast={index === tasks.length - 1}
                       onNavigate={onNavigate}
                     />

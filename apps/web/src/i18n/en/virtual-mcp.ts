@@ -23,6 +23,14 @@ export const virtualMcp = {
     "Built and maintained by Deco",
   "virtualMcp.connectionDialogContent.builtByOfficial":
     "Built and maintained by the official vendor",
+  "virtualMcp.connectionDialogContent.catalogPartiallyUnavailableDescription":
+    "Available connections are still shown. Retry to restore the missing results.",
+  "virtualMcp.connectionDialogContent.catalogPartiallyUnavailableTitle":
+    "Some catalog results are unavailable",
+  "virtualMcp.connectionDialogContent.catalogUnavailableDescription":
+    "We couldn't load connections from any enabled registry.",
+  "virtualMcp.connectionDialogContent.catalogUnavailableTitle":
+    "Catalog unavailable",
   "virtualMcp.connectionDialogContent.connect": "Connect",
   "virtualMcp.connectionDialogContent.connected": "Connected",
   "virtualMcp.connectionDialogContent.customConnection": "Custom Connection",
@@ -32,7 +40,10 @@ export const virtualMcp = {
     "No connections yet",
   "virtualMcp.connectionDialogContent.emptyStateSearchNoMatch":
     'No connections match "{search}"',
+  "virtualMcp.connectionDialogContent.loadingCatalog":
+    "Loading connection catalog",
   "virtualMcp.connectionDialogContent.madeByDeco": "Made by Deco",
+  "virtualMcp.connectionDialogContent.retryCatalog": "Retry catalog",
   "virtualMcp.connectionDialogContent.sectionAllConnections": "All connections",
   "virtualMcp.connectionDialogContent.sectionVerified": "Verified",
   "virtualMcp.connectionDialogContent.tabAll": "All",
@@ -118,7 +129,7 @@ export const virtualMcp = {
     "None of the connected servers expose interactive tools.",
   "virtualMcp.layoutTabContent.sidebarViews": "Sidebar views",
   "virtualMcp.layoutTabContent.sidebarViewsDescription":
-    "Choose which available views appear in this project's sidebar.",
+    "Choose which optional views appear alongside Home, Reports, and Tasks.",
   "virtualMcp.layoutTabContent.settings": "Settings",
   "virtualMcp.layoutTabContent.showChat": "Show chat",
   "virtualMcp.layoutTabContent.showChatDescription":

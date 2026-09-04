@@ -9,6 +9,8 @@ export const header = {
   "header.orgSwitcher.invitedToJoin": "Convidado para entrar",
   "header.orgSwitcher.joined": "Entrou em {name}",
   "header.orgSwitcher.unknownOrganization": "Organização desconhecida",
+  "header.mainBreadcrumb.ariaLabel": "Trilha de navegação",
+  "header.mainBreadcrumb.showParents": "Mostrar páginas anteriores",
   "header.shellBreadcrumb.openAgentHome": "Abrir início de {name}",
   "header.shellBreadcrumb.superAgentDefaultName": "Super Agent",
 } satisfies Record<keyof typeof headerEn, string>;

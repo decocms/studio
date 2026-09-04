@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useElementSize } from "./use-element-size";
 
 /**
  * Measures an element's content-box width and keeps it live via a
@@ -14,16 +14,6 @@ export function useElementWidth(): readonly [
   number,
   (node: HTMLElement | null) => void | (() => void),
 ] {
-  const [width, setWidth] = useState(-1);
-
-  const ref = (node: HTMLElement | null) => {
-    if (!node) return;
-    const measure = () => setWidth(node.clientWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  };
-
+  const [{ width }, ref] = useElementSize();
   return [width, ref] as const;
 }

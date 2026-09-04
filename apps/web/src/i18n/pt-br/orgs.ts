@@ -70,6 +70,13 @@ export const orgs = {
   "orgs.connections.cancel": "Cancelar",
   "orgs.connections.cannotConnectNoMethod":
     "Este Servidor MCP não pode ser conectado: nenhum método de conexão disponível",
+  "orgs.connections.catalogPartiallyUnavailableDescription":
+    "As conexões disponíveis continuam visíveis. Tente novamente para restaurar os resultados ausentes.",
+  "orgs.connections.catalogPartiallyUnavailableTitle":
+    "Alguns resultados do catálogo estão indisponíveis",
+  "orgs.connections.catalogUnavailableDescription":
+    "Não foi possível carregar conexões de nenhum registro habilitado.",
+  "orgs.connections.catalogUnavailableTitle": "Catálogo indisponível",
   "orgs.connections.close": "Fechar",
   "orgs.connections.command": "Comando *",
   "orgs.connections.commandPlaceholder": "node, bun, python...",
@@ -105,6 +112,7 @@ export const orgs = {
   "orgs.connections.filterRegistry": "Registro",
   "orgs.connections.filterStatus": "Status",
   "orgs.connections.filterType": "Tipo",
+  "orgs.connections.loadingCatalog": "Carregando catálogo de conexões",
   "orgs.connections.name": "Nome *",
   "orgs.connections.namePlaceholder": "Minha Conexão",
   "orgs.connections.noConnectionsFound": "Nenhuma conexão encontrada",
@@ -116,6 +124,7 @@ export const orgs = {
   "orgs.connections.openGitHubPatSettings":
     "Abrir configurações de PAT do GitHub",
   "orgs.connections.pageTitle": "Conexões",
+  "orgs.connections.retryCatalog": "Tentar carregar o catálogo novamente",
   "orgs.connections.saving": "Salvando...",
   "orgs.connections.searchPlaceholder": "Pesquisar uma conexão",
   "orgs.connections.sortDescription": "Descrição",
@@ -220,6 +229,7 @@ export const orgs = {
   "orgs.monitoring.switchToFormView": "Mudar para visualização de formulário",
   "orgs.monitoring.switchToRawText": "Mudar para texto bruto",
   "orgs.monitoring.title": "Monitoramento",
+  "orgs.monitoring.permissionArea": "monitoramento",
   "orgs.monitoring.toolName": "Nome da ferramenta",
   "orgs.monitoring.valuePlaceholder": "Valor",
   "orgs.overview.aiCalls": "Chamadas de IA",

@@ -15,6 +15,7 @@ import {
   useActiveOrganizations,
 } from "@/lib/auth-client";
 import { isPostHogInitialized, track } from "@/lib/posthog-client";
+import { refreshCommerceDiagnosticOwnership } from "@/lib/commerce-diagnostic-cache";
 import { reportAttributionFromSearch } from "@/routes/reports/track";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -29,7 +30,6 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   getCommerceDiscoveryAgentId,
-  getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   WellKnownOrgMCPId,
@@ -37,6 +37,7 @@ import {
 import {
   QueryErrorResetBoundary,
   useMutation,
+  useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
@@ -759,6 +760,7 @@ function CommerceSetupContent({
   initialSiteUrl?: string;
   sessionEmail?: string | null;
 }) {
+  const queryClient = useQueryClient();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -804,13 +806,17 @@ function CommerceSetupContent({
       return parseSelfToolResult<unknown>(result);
     },
     retry: false,
-    onSuccess: (_result, submittedSiteUrl) => {
+    onSuccess: async (_result, submittedSiteUrl) => {
       track("commerce_onboarding_setup_succeeded", {
         domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
         organization_id: org.id,
       });
       setInlineError(null);
-      void connectionQuery.refetch();
+      await refreshCommerceDiagnosticOwnership(
+        queryClient,
+        org.id,
+        connectionId,
+      );
       void virtualMcpQuery.refetch();
     },
     onError: (error, submittedSiteUrl) => {
@@ -907,15 +913,14 @@ function CommerceSetupContent({
   // (mounted by the org shell when it sees `?connect=1`) takes over from here:
   // the user connects at least one data source over the blurred ORG HOME, then
   // the modal triggers the run and opens the report. We land on the Super Agent
-  // home thread (not `/$org`, which reports-only orgs bounce back here) so the
+  // Home surface (not `/$org`, which reports-only orgs bounce back here) so the
   // modal sits over real org content instead of a blank report.
   if (setupReady) {
     return (
       <Navigate
-        to="/$org/$taskId"
-        params={{ org: org.slug, taskId: crypto.randomUUID() }}
+        to="/$org/home"
+        params={{ org: org.slug }}
         search={{
-          virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
           connect: "1",
           siteUrl: currentSiteUrl || undefined,
         }}

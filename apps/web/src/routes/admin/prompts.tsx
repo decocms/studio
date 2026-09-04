@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
+import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { adminFetch } from "@/lib/admin-fetch";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -84,41 +84,74 @@ export default function AdminPromptsPage() {
     },
   });
 
+  const titlePortal = (
+    <Main.Title.Portal>{t("admin.layout.promptsTab")}</Main.Title.Portal>
+  );
+
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="size-5 text-muted-foreground" />
-      </div>
+      <>
+        {titlePortal}
+        <PanelLoading />
+      </>
     );
   }
 
   if (isError || !selected) {
     return (
-      <EmptyState
-        title={t("admin.prompts.failedToLoadTitle")}
-        // The server's own message names the actual cause (no GitHub
-        // connection, a moved file, a rate limit); a canned string here sent
-        // the first person who hit this off debugging the wrong thing.
-        description={
-          error instanceof Error && error.message
-            ? error.message
-            : t("admin.prompts.failedToLoadDescription")
-        }
-        actions={
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            {t("admin.prompts.retry")}
-          </Button>
-        }
-      />
+      <>
+        {titlePortal}
+        <EmptyState
+          title={t("admin.prompts.failedToLoadTitle")}
+          // The server's own message names the actual cause (no GitHub
+          // connection, a moved file, a rate limit); a canned string here sent
+          // the first person who hit this off debugging the wrong thing.
+          description={
+            error instanceof Error && error.message
+              ? error.message
+              : t("admin.prompts.failedToLoadDescription")
+          }
+          actions={
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              {t("admin.prompts.retry")}
+            </Button>
+          }
+        />
+      </>
     );
   }
 
   const value = edits[selected.id] ?? selected.content ?? "";
 
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
+    <>
+      {titlePortal}
+      <Main.Toolbar.Portal>
+        <CollectionTabs
+          ariaLabel={t("admin.layout.promptsTab")}
+          tabs={prompts.map((prompt) => ({
+            id: prompt.id,
+            label: `${prompt.label}${editedIds.includes(prompt.id) ? " •" : ""}`,
+          }))}
+          activeTab={selected.id}
+          onTabChange={setSelectedId}
+        />
+      </Main.Toolbar.Portal>
+      <Main.Topbar.Right.Portal>
+        <Button
+          size="sm"
+          disabled={editedIds.length === 0 || pullRequest.isPending}
+          onClick={() => pullRequest.mutate()}
+        >
+          {pullRequest.isPending
+            ? t("admin.prompts.opening")
+            : t("admin.prompts.openPr", {
+                count: String(editedIds.length),
+              })}
+        </Button>
+      </Main.Topbar.Right.Portal>
+      <div className="h-full min-h-0 overflow-auto">
+        <Main.Container width="standard">
           <div className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
               {t("admin.prompts.description", {
@@ -127,25 +160,6 @@ export default function AdminPromptsPage() {
                 org: data?.org ?? "",
               })}
             </p>
-
-            <div className="flex flex-wrap gap-1">
-              {prompts.map((prompt) => (
-                <button
-                  type="button"
-                  key={prompt.id}
-                  onClick={() => setSelectedId(prompt.id)}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                    prompt.id === selected.id
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {prompt.label}
-                  {editedIds.includes(prompt.id) ? " •" : ""}
-                </button>
-              ))}
-            </div>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="prompt-source">{selected.path}</Label>
@@ -178,20 +192,10 @@ export default function AdminPromptsPage() {
                   placeholder={t("admin.prompts.prTitlePlaceholder")}
                 />
               </div>
-              <Button
-                disabled={editedIds.length === 0 || pullRequest.isPending}
-                onClick={() => pullRequest.mutate()}
-              >
-                {pullRequest.isPending
-                  ? t("admin.prompts.opening")
-                  : t("admin.prompts.openPr", {
-                      count: String(editedIds.length),
-                    })}
-              </Button>
             </div>
           </div>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+        </Main.Container>
+      </div>
+    </>
   );
 }

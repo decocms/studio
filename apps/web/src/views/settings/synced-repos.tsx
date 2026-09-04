@@ -33,6 +33,7 @@ import {
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { Main } from "@/components/main";
 import {
   type GitHubImportPayload,
   GitHubRepoPicker,
@@ -152,6 +153,19 @@ function SyncedReposContent() {
   const [pendingDelete, setPendingDelete] = useState<OrgRepoSyncConfig | null>(
     null,
   );
+  const createAction = (
+    <Button
+      onClick={() => setPickerOpen(true)}
+      size="sm"
+      disabled={syncs.isPending}
+      aria-label={t("settings.syncedRepos.addRepo")}
+    >
+      <Plus size={14} />
+      <span className="@max-sm/main-topbar:hidden">
+        {t("settings.syncedRepos.addRepo")}
+      </span>
+    </Button>
+  );
 
   function handleCreate() {
     if (!pendingImport || !volumeName.trim()) return;
@@ -193,11 +207,19 @@ function SyncedReposContent() {
     });
   }
 
-  if (syncs.isPending) return <Skeleton className="h-32 w-full" />;
+  if (syncs.isPending) {
+    return (
+      <>
+        <Main.Topbar.Right.Portal>{createAction}</Main.Topbar.Right.Portal>
+        <Skeleton className="h-32 w-full" />
+      </>
+    );
+  }
   const configs = syncs.data ?? [];
 
   return (
     <>
+      <Main.Topbar.Right.Portal>{createAction}</Main.Topbar.Right.Portal>
       <p className="text-sm text-muted-foreground">
         {t("settings.syncedRepos.pageDescription")}
       </p>
@@ -205,23 +227,15 @@ function SyncedReposContent() {
       {configs.length === 0 ? (
         <EmptyState onAdd={() => setPickerOpen(true)} />
       ) : (
-        <>
-          <div className="flex items-center justify-end">
-            <Button onClick={() => setPickerOpen(true)} size="sm">
-              <Plus size={14} />
-              {t("settings.syncedRepos.addRepo")}
-            </Button>
-          </div>
-          <section className="rounded-2xl border border-border/60 bg-background px-5 py-2">
-            {configs.map((c) => (
-              <SyncRow
-                key={c.id}
-                config={c}
-                onRemove={() => setPendingDelete(c)}
-              />
-            ))}
-          </section>
-        </>
+        <section className="rounded-2xl border border-border/60 bg-background px-5 py-2">
+          {configs.map((c) => (
+            <SyncRow
+              key={c.id}
+              config={c}
+              onRemove={() => setPendingDelete(c)}
+            />
+          ))}
+        </section>
       )}
 
       <GitHubRepoPicker

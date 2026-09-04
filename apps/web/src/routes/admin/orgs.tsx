@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
 import type { TableColumn } from "@/components/collections/collection-table.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
@@ -849,43 +849,47 @@ export default function AdminOrgsPage() {
   ];
 
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <div className="flex flex-col gap-6">
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder={t("admin.orgs.searchPlaceholder")}
-              className="w-full md:w-[375px]"
-            />
-            <CollectionTableWrapper
-              columns={columns}
-              data={orgs}
-              isLoading={isLoading}
-              emptyState={
-                isError ? (
-                  <EmptyState
-                    title={t("admin.orgs.failedLoadOrgs")}
-                    description={t("admin.orgs.failedLoadOrgsDescription")}
-                  />
-                ) : (
-                  <EmptyState
-                    title={t("admin.orgs.noOrgsFound")}
-                    description={
-                      debouncedSearch
-                        ? t("admin.orgs.noOrgsMatchSearch", {
-                            search: debouncedSearch,
-                          })
-                        : t("admin.orgs.noOrgsYet")
-                    }
-                  />
-                )
-              }
-            />
-          </div>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <>
+      <Main.Title.Portal>
+        {t("admin.layout.organizationsTab")}
+      </Main.Title.Portal>
+      <Main.Toolbar.Portal>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("admin.orgs.searchPlaceholder")}
+          className="w-full max-w-sm"
+        />
+      </Main.Toolbar.Portal>
+      <div className="h-full min-h-0 overflow-auto">
+        <Main.Container width="wide">
+          <CollectionTableWrapper
+            columns={columns}
+            data={orgs}
+            getRowId={(org) => org.id}
+            isLoading={isLoading}
+            emptyState={
+              isError ? (
+                <EmptyState
+                  title={t("admin.orgs.failedLoadOrgs")}
+                  description={t("admin.orgs.failedLoadOrgsDescription")}
+                />
+              ) : (
+                <EmptyState
+                  title={t("admin.orgs.noOrgsFound")}
+                  description={
+                    debouncedSearch
+                      ? t("admin.orgs.noOrgsMatchSearch", {
+                          search: debouncedSearch,
+                        })
+                      : t("admin.orgs.noOrgsYet")
+                  }
+                />
+              )
+            }
+          />
+        </Main.Container>
+      </div>
+    </>
   );
 }

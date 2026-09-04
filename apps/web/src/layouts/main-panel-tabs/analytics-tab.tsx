@@ -85,6 +85,7 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -1948,11 +1949,70 @@ function RegisteredView({
   const isLive = active === "live";
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Status + collecting labels on the left, range pills + a small Configure
-          button on the right — the dashboard is the focus; settings hide behind
-          the gear. */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <>
+      <Main.Topbar.Right.Portal>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={t("mainPanelTabs.analyticsTab.configSectionTitle")}
+          onClick={() => setConfigOpen(true)}
+        >
+          <Settings01 className="size-4" />
+          <span className="@max-sm/main-topbar:hidden">
+            {t("mainPanelTabs.analyticsTab.configSectionTitle")}
+          </span>
+        </Button>
+      </Main.Topbar.Right.Portal>
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 items-center gap-3 overflow-x-auto">
+          <div
+            role="group"
+            aria-label={t("mainPanelTabs.analyticsTab.title")}
+            className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border p-0.5"
+          >
+            {DATA_VIEWS.map((view) => (
+              <button
+                key={view.view}
+                type="button"
+                aria-pressed={active === view.view}
+                onClick={() => setActive(view.view)}
+                className={cn(
+                  "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  active === view.view
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t(view.labelKey)}
+              </button>
+            ))}
+          </div>
+          {!isLive && (
+            <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg border border-border p-0.5">
+              {RANGE_PILLS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  aria-pressed={range === item}
+                  onClick={() => setRange(item)}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-medium tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                    range === item
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Main.Toolbar.Portal>
+
+      <div className="flex flex-col gap-5">
+        {/* Status and collection context stay with the dashboard data. Route-level
+          view, range, and configuration controls live in Main chrome. */}
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={enabled ? "success" : "outline"}>
@@ -1986,136 +2046,83 @@ function RegisteredView({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Range pills — hidden on Realtime, which is always "now". */}
-          {!isLive && (
-            <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-              {RANGE_PILLS.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRange(r)}
-                  className={cn(
-                    "rounded-md px-2 py-1 text-xs font-medium tabular-nums transition-colors",
-                    range === r
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfigOpen(true)}
-          >
-            <Settings01 className="size-4" />
-            {t("mainPanelTabs.analyticsTab.configSectionTitle")}
-          </Button>
-        </div>
-      </div>
 
-      {/* Horizontal view tab bar — one view at a time, like the admin monitor. */}
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-border">
-        {DATA_VIEWS.map((v) => (
-          <button
-            key={v.view}
-            type="button"
-            onClick={() => setActive(v.view)}
-            className={cn(
-              "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              active === v.view
-                ? "border-[var(--chart-1)] text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t(v.labelKey)}
-          </button>
-        ))}
-      </div>
+        <ActiveView
+          key={active}
+          base={base}
+          orgSlug={orgSlug}
+          site={site}
+          view={active}
+          range={range}
+          quota={cfg.quota}
+        />
 
-      <ActiveView
-        key={active}
-        base={base}
-        orgSlug={orgSlug}
-        site={site}
-        view={active}
-        range={range}
-        quota={cfg.quota}
-      />
-
-      {/* A naturally-closed row documenting the client API, mirroring the admin
+        {/* A naturally-closed row documenting the client API, mirroring the admin
           UI's install text — collapsed by default so it doesn't crowd the data. */}
-      <details className="group rounded-xl border border-border bg-card">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/40">
-          <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
-          Send custom events from your code
-        </summary>
-        <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-sm text-muted-foreground">
-          <p>
-            Analytics is active automatically — pageviews are collected with no
-            code. For custom events, call the public client API on{" "}
-            <span className="font-mono text-foreground">window.__dq</span>:
-          </p>
-          <dl className="flex flex-col gap-2">
-            <div className="flex flex-col gap-0.5">
-              <dt className="font-mono text-xs text-foreground">pageview()</dt>
-              <dd className="text-xs">
-                Record a pageview manually (SPA route change).
-              </dd>
+        <details className="group rounded-xl border border-border bg-card">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/40">
+            <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+            {t("mainPanelTabs.analyticsTab.customEventsTitle")}
+          </summary>
+          <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-sm text-muted-foreground">
+            <p>
+              {t("mainPanelTabs.analyticsTab.customEventsDescription")}{" "}
+              <span className="font-mono text-foreground">window.__dq</span>:
+            </p>
+            <dl className="flex flex-col gap-2">
+              <div className="flex flex-col gap-0.5">
+                <dt className="font-mono text-xs text-foreground">
+                  pageview()
+                </dt>
+                <dd className="text-xs">
+                  {t("mainPanelTabs.analyticsTab.pageviewApiDescription")}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="font-mono text-xs text-foreground">
+                  track(name, props?)
+                </dt>
+                <dd className="text-xs">
+                  {t("mainPanelTabs.analyticsTab.trackApiDescription")}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="font-mono text-xs text-foreground">
+                  purchase(&#123; transactionId, value, currency, items, itemIds
+                  &#125;)
+                </dt>
+                <dd className="text-xs">
+                  {t("mainPanelTabs.analyticsTab.purchaseApiDescription")}
+                </dd>
+              </div>
+            </dl>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+              <code className="whitespace-pre-wrap break-all text-xs text-muted-foreground">
+                {
+                  'window.__dq.track("newsletter_signup", { plan: "pro" })\nwindow.__dq.purchase({ transactionId: "A123", value: 99.9, currency: "BRL" })'
+                }
+              </code>
             </div>
-            <div className="flex flex-col gap-0.5">
-              <dt className="font-mono text-xs text-foreground">
-                track(name, props?)
-              </dt>
-              <dd className="text-xs">
-                A custom event. <span className="font-mono">name</span> is
-                lowercase a–z, digits and underscore, up to 40 characters;{" "}
-                <span className="font-mono">props</span> is an optional flat
-                object.
-              </dd>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <dt className="font-mono text-xs text-foreground">
-                purchase(&#123; transactionId, value, currency, items, itemIds
-                &#125;)
-              </dt>
-              <dd className="text-xs">
-                A purchase. <span className="font-mono">transactionId</span>{" "}
-                dedupes a reloaded confirmation page so a sale isn't counted
-                twice.
-              </dd>
-            </div>
-          </dl>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-            <code className="whitespace-pre-wrap break-all text-xs text-muted-foreground">
-              {
-                'window.__dq.track("newsletter_signup", { plan: "pro" })\nwindow.__dq.purchase({ transactionId: "A123", value: 99.9, currency: "BRL" })'
-              }
-            </code>
           </div>
-        </div>
-      </details>
+        </details>
 
-      <Dialog open={configOpen} onOpenChange={setConfigOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {t("mainPanelTabs.analyticsTab.configSectionTitle")}
-            </DialogTitle>
-          </DialogHeader>
-          <ConfigurationPanel
-            base={base}
-            orgSlug={orgSlug}
-            site={site}
-            status={status}
-          />
-        </DialogContent>
-      </Dialog>
-    </div>
+        <Dialog open={configOpen} onOpenChange={setConfigOpen}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                {t("mainPanelTabs.analyticsTab.configSectionTitle")}
+              </DialogTitle>
+            </DialogHeader>
+            <ConfigurationPanel
+              base={base}
+              orgSlug={orgSlug}
+              site={site}
+              status={status}
+            />
+          </DialogContent>
+        </Dialog>
+      </div>
+    </>
   );
 }
 
@@ -2176,18 +2183,10 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <BarChartSquare02 className="size-[18px] text-muted-foreground" />
-            <h2 className="text-base font-semibold text-foreground">
-              {t("mainPanelTabs.analyticsTab.title")}
-            </h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t("mainPanelTabs.analyticsTab.subtitle", { site: siteSlug })}
-          </p>
-        </div>
+      <Main.Container width="wide" className="flex flex-col gap-6">
+        <p className="text-sm text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.subtitle", { site: siteSlug })}
+        </p>
 
         {registered && (
           <RegistrationResult
@@ -2243,7 +2242,7 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
             onRegistered={setRegistered}
           />
         )}
-      </div>
+      </Main.Container>
     </div>
   );
 }

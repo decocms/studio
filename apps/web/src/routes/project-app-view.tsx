@@ -2,7 +2,7 @@ import {
   getGatewayClientId,
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
-import { stripMcpServerPrefix } from "@/lib/tool-namespace";
+import { normalizeAppToolName } from "@/routes/app-tool-name";
 import {
   useProjectContext,
   useMCPClient,
@@ -28,6 +28,7 @@ import { resolveAppNavigateTarget } from "@/routes/project-app-navigate.ts";
 import { ConnectSourceDialog } from "@/routes/commerce-onboarding/connect-source-dialog.tsx";
 import { useState } from "react";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
+import { useT } from "@/i18n/use-t";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
@@ -147,6 +148,7 @@ export function AppViewContent({
   toolName: string;
   args?: Record<string, unknown>;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const lifecycle = useSandboxLifecycle();
   const isDesktopApp = useIsDesktopApp();
@@ -167,23 +169,23 @@ export function AppViewContent({
   });
   const { data: toolsResult } = useMCPToolsList({ client });
 
-  const decodedToolName = stripMcpServerPrefix(decodeURIComponent(toolName));
+  const normalizedToolName = normalizeAppToolName(toolName);
 
-  // Try exact match first. If that fails, the decoded name may be the original
+  // Try exact match first. If that fails, the normalized name may be the original
   // (un-namespaced) tool name while the tools list has gateway-namespaced names
   // (e.g. "render_html" vs "conn-abc_render_html"), or vice versa. Fall back to
   // matching by the base name with the gateway namespace stripped from both sides.
   const tool =
-    toolsResult.tools.find((t) => t.name === decodedToolName) ??
+    toolsResult.tools.find((t) => t.name === normalizedToolName) ??
     toolsResult.tools.find((t) => {
       const clientId = getGatewayClientId(t._meta);
       if (!clientId) return false;
-      // Case 1: decoded name is the base name, tool list has namespaced names
+      // Case 1: normalized name is the base name, tool list is namespaced
       const baseName = stripToolNamespace(t.name, clientId);
-      if (baseName === decodedToolName) return true;
-      // Case 2: decoded name has namespace prefix, tool list has base names
-      const decodedBase = stripToolNamespace(decodedToolName, clientId);
-      if (decodedBase !== decodedToolName && t.name === decodedBase)
+      if (baseName === normalizedToolName) return true;
+      // Case 2: normalized name has a namespace, tool list has base names
+      const normalizedBase = stripToolNamespace(normalizedToolName, clientId);
+      if (normalizedBase !== normalizedToolName && t.name === normalizedBase)
         return true;
       return false;
     });
@@ -194,7 +196,9 @@ export function AppViewContent({
     return (
       <div className="flex items-center justify-center h-full w-full">
         <p className="text-sm text-muted-foreground">
-          Tool &quot;{decodedToolName}&quot; not found or has no UI
+          {t("routes.projectAppView.toolUnavailable", {
+            toolName: normalizedToolName,
+          })}
         </p>
       </div>
     );

@@ -16,28 +16,36 @@ import {
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import type { CollectionCounts, CollectionId } from "./content-browser";
+import type { CollectionCounts } from "./content-browser";
+import type { CollectionId } from "./compact-workspace";
 
 export function CollectionsSidebar({
   active,
   counts,
   showBlog,
   onSelect,
+  className,
 }: {
   active: CollectionId;
   counts: CollectionCounts;
   showBlog: boolean;
   onSelect: (id: CollectionId) => void;
+  className?: string;
 }) {
   const t = useT();
   return (
-    <div className="w-[208px] shrink-0 border-r flex flex-col">
+    <div
+      className={cn(
+        "min-h-0 w-[208px] shrink-0 border-r flex flex-col",
+        className,
+      )}
+    >
       <div className="px-3 h-12 flex items-center border-b shrink-0">
         <span className="text-sm font-medium">
           {t("sandbox.collectionsSidebar.content")}
         </span>
       </div>
-      <nav className="flex flex-col p-1.5 gap-0.5">
+      <nav className="min-h-0 flex-1 overflow-y-auto flex flex-col p-1.5 gap-0.5">
         <CollectionRow
           id="pages"
           icon={LayoutAlt01}
@@ -170,6 +178,7 @@ function CollectionRow({
     <button
       type="button"
       onClick={() => onSelect(id)}
+      aria-current={active ? "page" : undefined}
       className={cn(
         "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
         active

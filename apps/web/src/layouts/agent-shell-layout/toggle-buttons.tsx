@@ -1,83 +1,60 @@
-import { LayoutRight, MessageCircle01 } from "@untitledui/icons";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { LayoutLeft, MessageCircle01 } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  panelButtonChrome,
-  ToolbarIconButton,
-} from "@/components/toolbar-icon-button";
+import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t";
 
+type PanelVisibilityToggleProps = {
+  onToggle: () => void;
+} & ({ panel: "chat"; open: boolean } | { panel: "main"; open: false });
+
 /**
- * A panel collapse control bracketing the workspace: the left one lives at
- * the start of the MAIN header and hides/shows the chat (chat-bubble icon),
- * the right one lives at the end of the CHAT header and hides/shows the main
- * panel (chevron-into-bar icon).
+ * An icon-only visibility control for workspace chrome. Chat can be toggled
+ * from Main; a hidden Main can be restored from Chat. Main intentionally has
+ * no matching hide button in its topbar.
  *
  * Deliberately a plain icon button, not a HeaderTabButton: these are chrome for
  * the panel itself, not one of its views, so they never take the tab's active
  * pill styling.
  */
-export function PanelCollapseToggle({
-  side,
+export function PanelVisibilityToggle({
+  panel,
   open,
-  disabled,
   onToggle,
-}: {
-  side: "left" | "right";
-  open: boolean;
-  /** True when collapsing would leave no panel showing at all. */
-  disabled?: boolean;
-  onToggle: () => void;
-}) {
+}: PanelVisibilityToggleProps) {
   const t = useT();
-  const label = open
-    ? side === "left"
-      ? t("agentShellLayout.toggleButtons.hideChat")
-      : t("agentShellLayout.toggleButtons.hidePanel")
-    : side === "left"
-      ? t("agentShellLayout.toggleButtons.showChat")
-      : t("agentShellLayout.toggleButtons.showPanel");
+  const label =
+    panel === "main"
+      ? t("agentShellLayout.toggleButtons.showPanel")
+      : open
+        ? t("agentShellLayout.toggleButtons.hideChat")
+        : t("agentShellLayout.toggleButtons.showChat");
   const onClick = () => {
     track("agent_toolbar_toggled", {
-      button: side === "left" ? "chat" : "main",
+      button: panel,
       next_state: open ? "closed" : "open",
     });
     onToggle();
   };
-
-  // The chat toggle spells out its label; the main-panel toggle stays icon-only.
-  if (side === "left") {
-    return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onClick}
-        className={cn(
-          "flex h-10 md:h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm disabled:opacity-40",
-          panelButtonChrome(),
-        )}
-      >
-        <MessageCircle01 size={16} />
-        {label}
-      </button>
-    );
-  }
+  const Icon = panel === "chat" ? MessageCircle01 : LayoutLeft;
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <ToolbarIconButton
           aria-label={label}
-          disabled={disabled}
+          aria-controls={
+            panel === "chat" ? "workspace-side-panel" : "workspace-main-panel"
+          }
+          aria-expanded={open}
           onClick={onClick}
-          className="size-7 rounded-md disabled:opacity-40"
+          className="size-7 rounded-md"
         >
-          <LayoutRight size={16} />
+          <Icon size={16} />
         </ToolbarIconButton>
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>

@@ -31,6 +31,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { Main } from "@/components/main";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type FileConfigInfo,
@@ -592,10 +593,23 @@ function FilesContent() {
   const [pendingDelete, setPendingDelete] = useState<FileConfigInfo | null>(
     null,
   );
+  const createAction = (
+    <Button
+      onClick={() => setCreateOpen(true)}
+      size="sm"
+      aria-label={t("settings.buckets.addBucket")}
+    >
+      <Plus size={14} />
+      <span className="@max-sm/main-topbar:hidden">
+        {t("settings.buckets.addBucket")}
+      </span>
+    </Button>
+  );
 
   if (configs.length === 0) {
     return (
       <>
+        <Main.Topbar.Right.Portal>{createAction}</Main.Topbar.Right.Portal>
         <EmptyState onCreate={() => setCreateOpen(true)} />
         <CreateFileConfigDialog
           open={createOpen}
@@ -607,15 +621,10 @@ function FilesContent() {
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("settings.buckets.bucketsConfigured", { count: configs.length })}
-        </p>
-        <Button onClick={() => setCreateOpen(true)} size="sm">
-          <Plus size={14} />
-          {t("settings.buckets.addBucket")}
-        </Button>
-      </div>
+      <Main.Topbar.Right.Portal>{createAction}</Main.Topbar.Right.Portal>
+      <p className="text-sm text-muted-foreground">
+        {t("settings.buckets.bucketsConfigured", { count: configs.length })}
+      </p>
 
       <section className="rounded-2xl border border-border/60 bg-background p-5">
         <div>

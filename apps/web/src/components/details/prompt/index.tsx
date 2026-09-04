@@ -1,10 +1,12 @@
 import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { Main } from "@/components/main";
 import {
   useCollectionActions,
   useCollectionItem,
   useMCPClient,
   useProjectContext,
+  type ConnectionEntity,
 } from "@/sdk";
 import {
   Form,
@@ -18,7 +20,6 @@ import { PromptSchema } from "@decocms/bindings/prompt";
 import { Suspense } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
-import { ViewActions, ViewLayout, ViewTabs } from "../layout";
 import { SaveActions } from "@/components/save-actions";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -39,13 +40,6 @@ function getFirstUserText(prompt: Prompt): string {
     return message.content.text ?? "";
   }
   return "";
-}
-
-function getConnectionIdFromPathname(): string | undefined {
-  const parts = window.location.pathname.split("/").filter(Boolean);
-  const mcpsIndex = parts.findIndex((p) => p === "mcps");
-  const connectionId = mcpsIndex >= 0 ? parts[mcpsIndex + 1] : undefined;
-  return connectionId ? decodeURIComponent(connectionId) : undefined;
 }
 
 function PromptEditForm({ form }: { form: PromptForm }) {
@@ -130,14 +124,15 @@ function PromptEditForm({ form }: { form: PromptForm }) {
 }
 
 function PromptDetailContent({
-  providerId,
+  connection,
   promptId,
 }: {
-  providerId: string;
+  connection: ConnectionEntity;
   promptId: string;
 }) {
   const t = useT();
   const { org } = useProjectContext();
+  const providerId = connection.id;
   const client = useMCPClient({
     connectionId: providerId || null,
     orgId: org.id,
@@ -209,53 +204,42 @@ function PromptDetailContent({
   }
 
   return (
-    <ViewLayout>
-      <ViewTabs>
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-foreground truncate">
-            {prompt.title}
-          </span>
-          {prompt.description ? (
-            <>
-              <span className="text-xs text-muted-foreground font-normal">
-                •
-              </span>
-              <span className="text-xs text-muted-foreground font-normal truncate min-w-0 max-w-[20ch]">
-                {prompt.description}
-              </span>
-            </>
-          ) : null}
+    <>
+      <Main.Title.Portal>
+        <span title={prompt.title}>{prompt.title}</span>
+      </Main.Title.Portal>
+      <Main.Topbar.Right.Portal>
+        <div className="flex items-center gap-1">
+          <SaveActions
+            onSave={() => void saveAndLock()}
+            onUndo={resetToInitial}
+            isDirty={form.formState.isDirty}
+            isSaving={isSaving}
+          />
         </div>
-      </ViewTabs>
+      </Main.Topbar.Right.Portal>
 
-      <ViewActions>
-        <SaveActions
-          onSave={() => void saveAndLock()}
-          onUndo={resetToInitial}
-          isDirty={form.formState.isDirty}
-          isSaving={isSaving}
-        />
-      </ViewActions>
-
-      <div className="h-full">
+      <div className="h-full min-h-0">
         <PromptEditForm form={form} />
       </div>
-    </ViewLayout>
+    </>
   );
 }
 
 export interface PromptDetailsViewProps {
+  appSlug: string;
+  connection: ConnectionEntity | null;
   itemId: string;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
 }
 
 export function PromptDetailsView({
+  connection,
   itemId,
 }: Omit<PromptDetailsViewProps, "onUpdate">) {
   const t = useT();
-  const connectionId = getConnectionIdFromPathname();
 
-  if (!connectionId) {
+  if (!connection) {
     return (
       <div className="flex h-full w-full bg-background">
         <EmptyState
@@ -269,7 +253,7 @@ export function PromptDetailsView({
   return (
     <ErrorBoundary>
       <Suspense fallback={null}>
-        <PromptDetailContent providerId={connectionId} promptId={itemId} />
+        <PromptDetailContent connection={connection} promptId={itemId} />
       </Suspense>
     </ErrorBoundary>
   );

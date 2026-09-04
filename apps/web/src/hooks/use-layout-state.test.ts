@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  canCloseWorkspacePanel,
+  canCloseSidePanel,
   computeWorkspacePanelSizes,
   mobileSurfaceSearch,
   resolveDefaultPanelState,
@@ -11,7 +11,7 @@ import {
 
 describe("resolveDefaultPanelState", () => {
   const absentSearch = {
-    panelNamed: false,
+    routeNamesView: false,
     sidePanelParamPresent: false,
   };
 
@@ -92,7 +92,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "content" },
           chatDefaultOpen: false,
         },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
         threadHasMessages: true,
@@ -119,7 +119,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "overview" },
           chatDefaultOpen: false,
         },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: true,
       }),
@@ -133,7 +133,7 @@ describe("resolveDefaultPanelState", () => {
           defaultMainView: { type: "settings" },
           chatDefaultOpen: true,
         },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
       }),
@@ -143,7 +143,7 @@ describe("resolveDefaultPanelState", () => {
   /**
    * INVERTED: a destination route used to open its main view AND the chat
    * beside it. Going to Tasks now shows Tasks alone — a route that names its
-   * own `defaultMain` collapses the side panel, and `/$org/agents` gets its open
+   * own `defaultMain` collapses the side panel, and `/$org/projects` gets its open
    * panel for free by declaring no `defaultMain` at all.
    */
   test("a route default opens Main alone, collapsing the chat", () => {
@@ -160,7 +160,7 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: true,
         routeDefaultMain: "board",
@@ -168,12 +168,36 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanelOpen: true, mainOpen: true });
   });
 
+  test("a populated thread reopens the chat on a route-owned agent page", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: { defaultMainView: { type: "chat" } },
+        ...absentSearch,
+        routeDefaultMain: "overview",
+        threadHasMessages: true,
+      }),
+    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+  });
+
+  test("sidepanel=false still hides a populated chat on a route-owned page", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: { defaultMainView: { type: "chat" } },
+        routeNamesView: false,
+        sidePanelParamPresent: true,
+        sidePanelParamValue: false,
+        routeDefaultMain: "overview",
+        threadHasMessages: true,
+      }),
+    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+  });
+
   test("?mainpanel=false on a route default leaves the chat as the last open panel", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
         mainPanelParam: false,
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: false,
         routeDefaultMain: "board",
       }),
@@ -182,13 +206,13 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanelOpen: true, mainOpen: false });
   });
 
-  /** INVERTED: this was `?main=<tab>`. The view is a path segment now, so what
-   *  opens the panel is the segment naming one — `panelNamed`. */
+  /** INVERTED: this was `?main=<tab>`. A canonical child route now names the
+   *  view, so matching one opens Main through `routeNamesView`. */
   test("a named view opens Main alongside a Chat default", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: true,
+        routeNamesView: true,
         sidePanelParamPresent: false,
       }),
     ).toEqual({ sidePanelOpen: true, mainOpen: true });
@@ -200,7 +224,7 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: true,
+        routeNamesView: true,
         mainPanelParam: false,
         sidePanelParamPresent: false,
       }),
@@ -211,7 +235,7 @@ describe("resolveDefaultPanelState", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        panelNamed: false,
+        routeNamesView: false,
         mainPanelParam: true,
         sidePanelParamPresent: false,
       }),
@@ -223,7 +247,7 @@ describe("resolveDefaultPanelState", () => {
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "settings" } },
         mainPanelParam: false,
-        panelNamed: false,
+        routeNamesView: false,
         sidePanelParamPresent: true,
         sidePanelParamValue: false,
       }),
@@ -231,22 +255,18 @@ describe("resolveDefaultPanelState", () => {
   });
 });
 
-describe("canCloseWorkspacePanel", () => {
-  test("allows closing either panel when both are open", () => {
+describe("canCloseSidePanel", () => {
+  test("allows closing Chat when Main remains open", () => {
     const visibility = { sidePanelOpen: true, mainOpen: true };
-    expect(canCloseWorkspacePanel("side", visibility)).toBe(true);
-    expect(canCloseWorkspacePanel("main", visibility)).toBe(true);
+    expect(canCloseSidePanel(visibility)).toBe(true);
   });
 
-  test("does not allow closing the final open panel", () => {
+  test("does not allow closing Chat when it is the final open panel", () => {
     expect(
-      canCloseWorkspacePanel("side", {
+      canCloseSidePanel({
         sidePanelOpen: true,
         mainOpen: false,
       }),
-    ).toBe(false);
-    expect(
-      canCloseWorkspacePanel("main", { sidePanelOpen: false, mainOpen: true }),
     ).toBe(false);
   });
 });
@@ -279,25 +299,19 @@ describe("resolveWorkspacePanelAction", () => {
     ).toBeNull();
   });
 
-  /** INVERTED: opening Main used to have to NAME a view (`main=<tabId>`), which
-   *  is why closing it erased one. Both directions are the boolean now. */
-  test("opens and closes Main with the final-panel guard", () => {
+  /** Opening Main used to have to NAME a view (`main=<tabId>`). The recovery
+   *  action now changes visibility only, so the route keeps owning the view. */
+  test("opens Main idempotently without changing its remembered view", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleMain" },
+        { type: "openMain" },
         { sidePanelOpen: true, mainOpen: false },
       ),
     ).toEqual({ mainpanel: true });
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleMain" },
+        { type: "openMain" },
         { sidePanelOpen: true, mainOpen: true },
-      ),
-    ).toEqual({ mainpanel: false });
-    expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleMain" },
-        { sidePanelOpen: false, mainOpen: true },
       ),
     ).toBeNull();
   });

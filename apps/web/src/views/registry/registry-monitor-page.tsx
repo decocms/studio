@@ -1,16 +1,40 @@
 import { useState } from "react";
 import { Badge } from "@decocms/ui/components/badge.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
+import { Main } from "@/components/main";
+import { useMonitorResults, useMonitorRun } from "@/hooks/registry/use-monitor";
 import { useT } from "@/i18n/use-t.ts";
+import type { TranslationKey } from "@/i18n/use-t.ts";
 import { BrokenMCPList } from "./broken-mcp-list";
 import { MonitorConfiguration } from "./monitor-configuration";
 import { MonitorConnectionsPanel } from "./monitor-connections-panel";
 import { MonitorDashboard } from "./monitor-dashboard";
 import { MonitorRunDetail } from "./monitor-run-detail";
 import { MonitorRunHistory } from "./monitor-run-history";
-import { useMonitorResults, useMonitorRun } from "@/hooks/registry/use-monitor";
 
 type MonitorSubTab = "tests" | "configuration" | "connections";
+
+const MONITOR_TABS = [
+  {
+    id: "tests",
+    labelKey: "registry.registryMonitorPage.tabTests",
+  },
+  {
+    id: "configuration",
+    labelKey: "registry.registryMonitorPage.tabConfiguration",
+  },
+  {
+    id: "connections",
+    labelKey: "registry.registryMonitorPage.tabConnections",
+  },
+] as const satisfies ReadonlyArray<{
+  id: MonitorSubTab;
+  labelKey: TranslationKey;
+}>;
+
+function isMonitorSubTab(value: string): value is MonitorSubTab {
+  return MONITOR_TABS.some((tab) => tab.id === value);
+}
 
 export default function RegistryMonitorPage() {
   const t = useT();
@@ -24,74 +48,63 @@ export default function RegistryMonitorPage() {
   );
 
   return (
-    <div className="h-full overflow-auto px-4 md:px-6 py-4 space-y-6">
-      <nav className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-        {[
-          {
-            id: "tests" as const,
-            labelKey: "registry.registryMonitorPage.tabTests" as const,
-          },
-          {
-            id: "configuration" as const,
-            labelKey: "registry.registryMonitorPage.tabConfiguration" as const,
-          },
-          {
-            id: "connections" as const,
-            labelKey: "registry.registryMonitorPage.tabConnections" as const,
-          },
-        ].map((item) => {
-          const isActive = activeSubTab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={cn(
-                "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex gap-1.5 items-center whitespace-nowrap",
-                isActive
-                  ? "bg-accent border-border text-foreground"
-                  : "bg-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground",
-              )}
-              onClick={() => setActiveSubTab(item.id)}
-            >
-              <span>{t(item.labelKey)}</span>
-            </button>
-          );
-        })}
-      </nav>
+    <>
+      <Main.Toolbar.Portal>
+        <CollectionTabs
+          ariaLabel={t("registry.registryMonitorPage.navigation")}
+          className="w-full"
+          activeTab={activeSubTab}
+          onTabChange={(nextTab) => {
+            if (isMonitorSubTab(nextTab)) setActiveSubTab(nextTab);
+          }}
+          tabs={MONITOR_TABS.map((tab) => ({
+            id: tab.id,
+            label: t(tab.labelKey),
+          }))}
+        />
+      </Main.Toolbar.Portal>
 
-      {activeSubTab === "tests" && (
-        <div className="space-y-6">
-          <MonitorDashboard
-            activeRunId={activeRunId}
-            onRunChange={setActiveRunId}
-          />
+      <div className="h-full overflow-auto">
+        <Main.Container width="wide" padding="compact">
+          <Main.Stack>
+            {activeSubTab === "tests" && (
+              <Main.Stack>
+                <MonitorDashboard
+                  activeRunId={activeRunId}
+                  onRunChange={setActiveRunId}
+                />
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
-            <div className="xl:col-span-8 space-y-6 min-w-0">
-              {activeRunId && <MonitorRunDetail runId={activeRunId} />}
-              <MonitorRunHistory
-                selectedRunId={activeRunId}
-                onSelectRun={setActiveRunId}
-              />
-            </div>
-            <div className="xl:col-span-4 space-y-2 min-w-0">
-              <h3 className="text-sm font-semibold">
-                {t("registry.registryMonitorPage.brokenMcps")}{" "}
-                {failedResults.length > 0 && (
-                  <Badge variant="destructive" className="text-[10px] ml-1">
-                    {failedResults.length}
-                  </Badge>
-                )}
-              </h3>
-              <BrokenMCPList results={failedResults} />
-            </div>
-          </div>
-        </div>
-      )}
+                <div className="grid grid-cols-1 items-start gap-4 @5xl:grid-cols-12">
+                  <div className="min-w-0 space-y-6 @5xl:col-span-8">
+                    {activeRunId && <MonitorRunDetail runId={activeRunId} />}
+                    <MonitorRunHistory
+                      selectedRunId={activeRunId}
+                      onSelectRun={setActiveRunId}
+                    />
+                  </div>
+                  <Main.Section className="min-w-0 gap-2 @5xl:col-span-4">
+                    <Main.Section.Header>
+                      <Main.Section.Title>
+                        {t("registry.registryMonitorPage.brokenMcps")}
+                      </Main.Section.Title>
+                      {failedResults.length > 0 && (
+                        <Badge variant="destructive" className="text-[10px]">
+                          {failedResults.length}
+                        </Badge>
+                      )}
+                    </Main.Section.Header>
+                    <BrokenMCPList results={failedResults} />
+                  </Main.Section>
+                </div>
+              </Main.Stack>
+            )}
 
-      {activeSubTab === "configuration" && <MonitorConfiguration />}
+            {activeSubTab === "configuration" && <MonitorConfiguration />}
 
-      {activeSubTab === "connections" && <MonitorConnectionsPanel />}
-    </div>
+            {activeSubTab === "connections" && <MonitorConnectionsPanel />}
+          </Main.Stack>
+        </Main.Container>
+      </div>
+    </>
   );
 }

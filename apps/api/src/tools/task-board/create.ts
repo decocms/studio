@@ -9,6 +9,7 @@ import {
   MAX_TASK_TITLE_LENGTH,
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
+  TaskBoardProjectIdSchema,
   TaskBoardItemTypeSchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
@@ -20,6 +21,7 @@ import { emitTaskBoardUpdated } from "./run-reactions";
 import { extractPrFromText } from "./pr-extract";
 import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
+import { requireOwnedVirtualMcp } from "@/tools/thread/helpers";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -42,6 +44,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     priority: TaskBoardItemPrioritySchema.optional(),
     type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
+    virtualMcpId: TaskBoardProjectIdSchema.nullable()
+      .optional()
+      .describe("Virtual MCP/project that owns this task."),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     tagIds: z.array(z.string()).max(1000).optional(),
@@ -97,6 +102,13 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
+    if (input.virtualMcpId) {
+      await requireOwnedVirtualMcp(
+        ctx.storage.virtualMcps,
+        input.virtualMcpId,
+        organizationId,
+      );
+    }
 
     const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
     const status = delegatedToSuperAgent
@@ -122,6 +134,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       type: input.type,
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
+      virtualMcpId: input.virtualMcpId ?? null,
       repo: input.repo ?? null,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,

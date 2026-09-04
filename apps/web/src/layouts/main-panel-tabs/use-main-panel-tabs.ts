@@ -1,13 +1,14 @@
 /**
- * Shared hook for the main-panel tab system.
+ * State assembly for the main-panel tab system.
  *
  * Assembles all tab sources (system + agent-declared + task-expanded +
  * ephemeral automation), resolves the active tab from the URL, and
  * returns a click-aware `setActiveTab` that implements tab-as-toggle
  * semantics via `resolveTabClickTarget`.
  *
- * Both the header tab bar and the main-panel content call this hook
- * independently; `useVirtualMCP` / `useSuspenseQuery` dedupe the reads.
+ * MainPanelTabsProvider evaluates this once per mounted task workspace. The
+ * desktop bar, mobile selector, and guarded route bodies consume that shared
+ * result through context.
  */
 
 import { useSearch } from "@tanstack/react-router";
@@ -38,7 +39,7 @@ import type { ThreadExpandedTool } from "@decocms/shared/entities";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import {
   formatPinnedViewTabId,
-  parseAutomationTabId,
+  formatAgentViewTabId,
   parseCodeTabId,
   parseDeckTabId,
   parseFileTabId,
@@ -46,7 +47,6 @@ import {
   resolveActiveTabAndOpen,
   resolveDefaultTabId,
   resolveTabClickTarget,
-  type AutomationTabParsed,
 } from "./tab-id";
 import { useActivePanelTabId, usePanelNavigate } from "./use-panel-navigate";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
@@ -66,13 +66,14 @@ import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectNativeViewPresence } from "./use-project-native-view-presence";
 import {
+  projectActiveViewUnavailable,
   projectDefaultViewUnavailable,
-  projectMainViewPresence,
-  projectSidebarViewUnavailable,
-  resolveProjectMainViewContext,
+  projectSidebarViewPresence,
+  resolveProjectMainViewProject,
 } from "./project-sidebar-views";
+import { resolveActiveRouteTitle } from "./active-route-title";
 
-export type AgentTabDef = {
+type AgentTabDef = {
   id: string;
   title: string;
   view: {
@@ -90,23 +91,27 @@ export type Tab = {
 };
 
 export interface MainPanelTabs {
+  virtualMcpId: string;
   activeTab: string;
+  /** Dynamic title that remains available when mobile Chat unmounts Main. */
+  activeRouteTitle?: string;
   mainOpen: boolean;
   setActiveTab: (id: string) => void;
-  layoutTabs: AgentTabDef[];
-  expandedTools: ThreadExpandedTool[];
-  automationTabParsed: AutomationTabParsed | null;
   tabs: Tab[];
 }
 
-export function useMainPanelTabs(ctx: {
+export function useMainPanelTabsState(ctx: {
   virtualMcpId: string;
   /** The open thread, or `null` on a destination route that names none. */
   taskId: string | null;
 }): MainPanelTabs {
   const t = useT();
   const { openPanel, closePanel } = usePanelNavigate();
-  const search = useSearch({ strict: false }) as { mainpanel?: boolean };
+  const routeSearch = useSearch({ strict: false });
+  const mainPanelParam =
+    "mainpanel" in routeSearch && typeof routeSearch.mainpanel === "boolean"
+      ? routeSearch.mainpanel
+      : undefined;
   const panelTabId = useActivePanelTabId();
   const routeDefaultMain = useRouteDefaultMain();
   const entity = useVirtualMCP(ctx.virtualMcpId);
@@ -137,15 +142,14 @@ export function useMainPanelTabs(ctx: {
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const reportsOnly = useReportsOnly();
   const { scopeId, project: scopedProject } = useProjectScope();
-  const mainViewContext = resolveProjectMainViewContext(
+  const mainViewProject = resolveProjectMainViewProject(
     scopeId,
     scopedProject,
     entity,
   );
-  const nativeViews = useProjectNativeViewPresence(mainViewContext.project);
-  const mainViewPresence = projectMainViewPresence(
-    mainViewContext.resolvedScopeId,
-    agentHasClonableSource(mainViewContext.project?.metadata),
+  const nativeViews = useProjectNativeViewPresence(mainViewProject);
+  const mainViewPresence = projectSidebarViewPresence(
+    agentHasClonableSource(mainViewProject?.metadata),
     nativeViews.presence,
   );
   const connections = useConnections({ includeVirtual: true });
@@ -245,7 +249,7 @@ export function useMainPanelTabs(ctx: {
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
       panelTabId,
-      mainPanelParam: search.mainpanel,
+      mainPanelParam,
       routeDefaultMain,
       metadata:
         effectiveDefaultMainView || entityLayout
@@ -301,7 +305,7 @@ export function useMainPanelTabs(ctx: {
   // A deep-linked project view whose backing capability is absent falls back
   // to the default once discovery settles, so stale URLs cannot mount views
   // that would only fail or show another tenant's site.
-  const projectViewHidden = projectSidebarViewUnavailable(
+  const projectViewHidden = projectActiveViewUnavailable(
     rawActiveTab,
     mainViewPresence,
     nativeViewPending,
@@ -316,11 +320,11 @@ export function useMainPanelTabs(ctx: {
     !surfaceTabIds.includes("code") &&
     runtimeResolved &&
     parseCodeTabId(rawActiveTab) !== null;
-  /** The surface's own landing view is the preview, for every runtime — a URL
-   *  that names no view lands there, and `?main=content` is the only thing that
-   *  opens Content. On desktop, that preview includes Blocks whenever the same
-   *  product gate exposes Content; it remains a mode of the view rather than a
-   *  second address, so nothing here has to second-guess the URL. */
+  /** The surface's own landing view is Preview for every runtime; Content is
+   *  named only by its `/site-editor/content` child. On desktop, Preview
+   *  includes Blocks whenever the same product gate exposes Content; it remains
+   *  a mode of the view rather than a second address, so nothing here has to
+   *  second-guess the URL. */
   const activeTab =
     !panelTabId && !routeDefaultMain && defaultTabHidden
       ? visibleDefaultTabId
@@ -335,8 +339,6 @@ export function useMainPanelTabs(ctx: {
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
       : rawMainOpen;
-
-  const automationTabParsed = parseAutomationTabId(activeTab);
 
   const surfaceTabTitle = (id: SurfaceTabId) =>
     id === "site-editor"
@@ -493,7 +495,7 @@ export function useMainPanelTabs(ctx: {
     ...deckTabs,
     ...libraryFileTabs,
     ...layoutTabs.map((t) => ({
-      id: t.id,
+      id: formatAgentViewTabId(t.id),
       title: t.title,
       kind: "agent" as const,
       icon: resolveTabIcon({
@@ -537,7 +539,7 @@ export function useMainPanelTabs(ctx: {
     // itself this falls through to the normal tab-toggle below.
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
       openPanel(id, {
-        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
+        agentId: getCommerceDiscoveryAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
         search: (prev) => ({ ...prev, thread: undefined }),
       });
@@ -553,12 +555,15 @@ export function useMainPanelTabs(ctx: {
   };
 
   return {
+    virtualMcpId: ctx.virtualMcpId,
     activeTab,
+    activeRouteTitle: resolveActiveRouteTitle({
+      activeTab,
+      entityTitle: entity?.title,
+      pinnedViews: entity?.metadata.ui?.pinnedViews,
+    }),
     mainOpen,
     setActiveTab,
-    layoutTabs,
-    expandedTools,
-    automationTabParsed,
     tabs,
   };
 }
