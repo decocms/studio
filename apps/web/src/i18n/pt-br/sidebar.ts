@@ -1,7 +1,6 @@
 import type { sidebar as sidebarEn } from "../en/sidebar.ts";
 
 export const sidebar = {
-  "sidebar.agentsSection.agents": "Projetos",
   "sidebar.archiveWorktreeDialog.cancel": "Cancelar",
   "sidebar.archiveWorktreeDialog.confirm": "Continuar",
   "sidebar.archiveWorktreeDialog.reclaimFailed":
@@ -11,15 +10,7 @@ export const sidebar = {
   "sidebar.archiveWorktreeDialog.stopsAndDeletesBefore":
     "Isso vai parar tudo o que está rodando em",
   "sidebar.archiveWorktreeDialog.title": "Arquivar este chat?",
-  "sidebar.agentsSection.browseAgents": "Procurar projetos",
   "sidebar.agentsSection.codeAgents": "Projetos de Código",
-  "sidebar.agentsSection.import": "Importar",
-  "sidebar.agentsSection.newAgent": "Novo projeto",
-  "sidebar.agentsSection.noAgentsFound": "Nenhum projeto encontrado",
-  "sidebar.agentsSection.searchAgents": "Procurar projetos...",
-  "sidebar.agentsSection.seeAllAgents": "Ver todos os projetos",
-  "sidebar.agentsSection.selectAnExistingAgent":
-    "Selecione um projeto existente",
   "sidebar.header.closeSidebar": "Fechar barra lateral",
   "sidebar.header.toggleSidebar": "Abrir ou fechar barra lateral",
   "sidebar.navDestinations.discover": "Descobrir",
@@ -43,6 +34,7 @@ export const sidebar = {
   "sidebar.picker.projectsHeading": "Projetos",
   "sidebar.picker.searchPlaceholder":
     "Buscar organiza\u00e7\u00f5es e projetos\u2026",
+  "sidebar.picker.title": "Organiza\u00e7\u00f5es e projetos",
   "sidebar.picker.moreExist":
     "H\u00e1 mais projetos do que cabem aqui \u2014 continue digitando",
   "sidebar.picker.verbLeaves": "\u00b7 sai de {name}",
