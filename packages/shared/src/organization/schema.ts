@@ -291,35 +291,87 @@ export function autoResolveConflictsEnabled(
  */
 const MAX_BRAND_JSON_FIELD_BYTES = 256 * 1024;
 const MAX_BRAND_IMAGES = 50;
+const MAX_BRAND_STRING_LENGTH = 500;
+const MAX_BRAND_OVERVIEW_LENGTH = 5000;
 
 /**
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({
   id: z.string().describe("Brand context ID"),
-  name: z.string().describe("Company name"),
-  domain: z.string().describe("Company domain (e.g. example.com)"),
-  overview: z.string().describe("Company overview / description"),
-  logo: z.string().nullable().optional().describe("Logo URL"),
-  favicon: z.string().nullable().optional().describe("Favicon URL"),
-  ogImage: z.string().nullable().optional().describe("OG image URL"),
+  name: z.string().max(MAX_BRAND_STRING_LENGTH).describe("Company name"),
+  domain: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .describe("Company domain (e.g. example.com)"),
+  overview: z
+    .string()
+    .max(MAX_BRAND_OVERVIEW_LENGTH)
+    .describe("Company overview / description"),
+  logo: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .nullable()
+    .optional()
+    .describe("Logo URL"),
+  favicon: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .nullable()
+    .optional()
+    .describe("Favicon URL"),
+  ogImage: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .nullable()
+    .optional()
+    .describe("OG image URL"),
   fonts: z
     .object({
-      heading: z.string().optional().describe("Font family for headings"),
-      body: z.string().optional().describe("Font family for body text"),
-      code: z.string().optional().describe("Font family for code / monospace"),
+      heading: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Font family for headings"),
+      body: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Font family for body text"),
+      code: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Font family for code / monospace"),
     })
     .nullable()
     .optional()
     .describe("Font families by semantic role"),
   colors: z
     .object({
-      primary: z.string().optional().describe("Primary brand color (hex)"),
-      secondary: z.string().optional().describe("Secondary brand color (hex)"),
-      accent: z.string().optional().describe("Accent / highlight color (hex)"),
-      background: z.string().optional().describe("Background color (hex)"),
+      primary: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Primary brand color (hex)"),
+      secondary: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Secondary brand color (hex)"),
+      accent: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Accent / highlight color (hex)"),
+      background: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Background color (hex)"),
       foreground: z
         .string()
+        .max(MAX_BRAND_STRING_LENGTH)
         .optional()
         .describe("Foreground / text color (hex)"),
     })
