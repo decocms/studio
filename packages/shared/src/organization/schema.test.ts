@@ -106,6 +106,13 @@ describe("BrandContextSchema JSON field caps", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects an oversized images blob within the count cap", () => {
+    // Unlike metadata, images had a count cap but no byte cap.
+    const images = [{ blob: "x".repeat(300 * 1024) }];
+    const result = BrandContextSchema.safeParse(baseBrandContext({ images }));
+    expect(result.success).toBe(false);
+  });
+
   it("rejects an oversized overview, name, domain, or logo URL", () => {
     expect(
       BrandContextSchema.safeParse(

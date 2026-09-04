@@ -383,6 +383,15 @@ export const BrandContextSchema = z.object({
     .max(MAX_BRAND_IMAGES)
     .nullable()
     .optional()
+    .refine(
+      (value) =>
+        value === null ||
+        value === undefined ||
+        JSON.stringify(value).length <= MAX_BRAND_JSON_FIELD_BYTES,
+      {
+        message: `images must serialize to at most ${MAX_BRAND_JSON_FIELD_BYTES} bytes`,
+      },
+    )
     .describe("Brand images"),
   metadata: z
     .record(z.string(), z.unknown())
