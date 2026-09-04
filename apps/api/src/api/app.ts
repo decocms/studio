@@ -604,6 +604,15 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       targetUrl.searchParams.set("resource", resourceIndicator);
     }
 
+    // The client derives scope from WWW-Authenticate, which some providers
+    // advertise wrongly; oauth_config.scopes overrides it per connection.
+    if (connection.oauth_config?.scopes?.length) {
+      targetUrl.searchParams.set(
+        "scope",
+        connection.oauth_config.scopes.join(" "),
+      );
+    }
+
     // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
     // Wrapped in try-catch to ensure OAuth redirect proceeds even if smart params fail
     if (isDecoHostedMcp(connection.connection_url)) {
