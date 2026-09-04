@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
-import { contentClientForTarget } from "@/git-providers/content";
+import { contentClientForTarget } from "@/git-providers";
 import { repoTargetInput, repoTargetOf } from "./repo-target";
 
 export const REPOSITORY_SEARCH_BRANCHES = defineTool({

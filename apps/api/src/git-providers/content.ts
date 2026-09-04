@@ -15,7 +15,7 @@
  */
 
 import type { RepoRef } from "@decocms/shared/git-providers";
-import { GitProviderError } from "../types";
+import { GitProviderError } from "./types";
 
 export interface TreeEntry {
   path: string;

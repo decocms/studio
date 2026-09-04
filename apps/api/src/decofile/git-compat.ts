@@ -14,14 +14,14 @@
  */
 
 import {
+  GitProviderError,
+  RepoWriteConflict,
+  repoErrorStatus,
+  requireBranchHead,
   type FileChange,
   type RepoContentClient,
-  repoErrorStatus,
-  RepoWriteConflict,
-  requireBranchHead,
   type TreeEntry,
-} from "@/git-providers/content/types";
-import { GitProviderError } from "@/git-providers/types";
+} from "@/git-providers";
 import { mapBounded, resolveOrCreateHead } from "./read-decofile";
 
 const DIFF_MAX_FILES = 200;

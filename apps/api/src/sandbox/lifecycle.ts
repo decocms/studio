@@ -11,7 +11,7 @@ import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
 import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
 import { buildCloneInfo } from "@/shared/github-clone-info";
-import { cloneInfoForRepository } from "@/git-providers/credentials";
+import { cloneInfoForRepository } from "@/git-providers";
 import { RepositoryStorage } from "@/storage/repositories";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";

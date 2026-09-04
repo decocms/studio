@@ -9,7 +9,7 @@
  * whoever answered.
  */
 import { describe, expect, it } from "bun:test";
-import { GitProviderError } from "@/git-providers/types";
+import { GitProviderError } from "@/git-providers";
 import {
   asHeadSha,
   cardLifecycle,

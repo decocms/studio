@@ -9,7 +9,7 @@ import {
   type FileChange,
   type RepoContentClient,
   RepoWriteConflict,
-} from "@/git-providers/content/types";
+} from "@/git-providers";
 import {
   aliasPathsForKey,
   blockEntriesInTree,

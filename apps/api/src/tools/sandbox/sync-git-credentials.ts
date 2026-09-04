@@ -13,7 +13,7 @@ import {
   cloneInfoForRepository,
   findRepositoryForLegacyBinding,
   repositoryUsesStudioCredentials,
-} from "../../git-providers/credentials";
+} from "@/git-providers";
 
 /** Matches the cap `sandbox-proxy.ts` applies to `/_sandbox/config` responses. */
 const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;

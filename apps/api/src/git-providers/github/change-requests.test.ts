@@ -17,7 +17,7 @@ import {
   mapPullRequest,
   pickMostRecentlyMerged,
   type RawGraphqlChangeRequest,
-} from "./github";
+} from "./change-requests";
 
 const REPO: RepoRef = {
   provider: "github",

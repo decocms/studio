@@ -20,7 +20,7 @@ import type { StudioContext } from "@/core/studio-context";
 import {
   type ChangeRequestClient,
   changeRequestClientForTarget,
-} from "@/git-providers/change-requests";
+} from "@/git-providers";
 import {
   NO_REPOSITORY_CREDENTIAL,
   repoTargetInput,

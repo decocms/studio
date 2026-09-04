@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 import { parseRepoUrl } from "@decocms/shared/git-providers";
-import type { RepoTarget } from "@/git-providers/credentials";
+import type { RepoTarget } from "@/git-providers";
 
 export const repoTargetInput = {
   repositoryId: z

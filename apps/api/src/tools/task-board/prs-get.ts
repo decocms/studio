@@ -3,14 +3,14 @@ import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import {
-  type ChangeRequest,
+  GitProviderError,
   changeRequestClientForOrigin,
+  type ChangeRequest,
   type ChangeRequestClient,
   type ChangeRequestDetail,
   type CheckRun,
   type ChecksSummary,
-} from "@/git-providers/change-requests";
-import { GitProviderError } from "@/git-providers/types";
+} from "@/git-providers";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import {
   LANES,

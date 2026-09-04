@@ -16,8 +16,8 @@
  */
 
 import { changeRequestUrl, type RepoRef } from "@decocms/shared/git-providers";
-import { encodeProjectPath } from "../gitlab/client";
-import { gitlabApiBaseUrl, gitlabFailure, gitlabFetch } from "../gitlab/http";
+import { encodeProjectPath } from "./client";
+import { gitlabApiBaseUrl, gitlabFailure, gitlabFetch } from "./http";
 import { GitProviderError, type TokenSource } from "../types";
 import {
   type ChangeRequest,
@@ -34,7 +34,7 @@ import {
   type MergeRefusal,
   type OpenChangeRequestParams,
   summarizeChecks,
-} from "./types";
+} from "../change-requests";
 
 /** One page is the whole answer here — the same bound GitHub's rollup uses. */
 const PAGE_SIZE = 100;

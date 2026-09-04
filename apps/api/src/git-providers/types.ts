@@ -16,6 +16,16 @@ import type { GitProviderKind, RepoRef } from "@decocms/shared/git-providers";
 
 export type RepoVisibility = "public" | "private" | "internal";
 
+/** Whether this deployment can run a provider's connect flow, and where. */
+export interface GitProviderCapability {
+  configured: boolean;
+  /**
+   * Hosts with a registration. Empty when unconfigured; a host absent from a
+   * configured provider's list connects with a token instead.
+   */
+  hosts: string[];
+}
+
 export interface RepoSummary {
   ref: RepoRef;
   /** Provider repository/project id, as a string (GitLab ids are numeric, GitHub's too). */

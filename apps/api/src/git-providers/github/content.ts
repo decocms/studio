@@ -19,8 +19,8 @@ import {
   isGithubRateLimited,
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
-import { githubGraphqlRequest } from "../github/graphql";
-import { githubApiBaseUrl } from "../github/http";
+import { githubGraphqlRequest } from "./graphql";
+import { githubApiBaseUrl } from "./http";
 import type { TokenSource } from "../types";
 import {
   type BranchPage,
@@ -29,7 +29,7 @@ import {
   type RepoContentClient,
   RepoWriteConflict,
   type TreeEntry,
-} from "./types";
+} from "../content";
 
 /**
  * A tree entry with the `mode` GitHub reports for it. The neutral `TreeEntry`

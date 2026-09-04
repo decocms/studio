@@ -3,7 +3,7 @@ import type { TaskBoardItem } from "@/storage/types";
 import {
   changeRequestClientForOrigin,
   type MergeOutcome as ProviderMergeOutcome,
-} from "@/git-providers/change-requests";
+} from "@/git-providers";
 import {
   allReviewersApproved,
   approvedButUnverified,

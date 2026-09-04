@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mergeRepoChoices, orgSharedFirst } from "./repo-choices";
+import { mergeRepoChoices } from "./repo-choices";
+import {
+  type LegacyRepoChoice,
+  orgSharedFirst,
+} from "./github/legacy-connection";
 import type { RepositoryRecord } from "@/storage/repositories";
 
 function repository(
@@ -22,10 +26,10 @@ function repository(
   };
 }
 
-const legacy = (owner: string, repo: string) => ({
+/** A legacy connection's repo, as `github/legacy-connection.ts` hands it over. */
+const legacy = (owner: string, repo: string): LegacyRepoChoice => ({
   connectionId: `conn_${owner}_${repo}`,
-  owner,
-  repo,
+  ref: { provider: "github", host: "github.com", path: `${owner}/${repo}` },
   installationId: 1,
 });
 

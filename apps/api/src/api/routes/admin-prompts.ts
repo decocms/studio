@@ -21,11 +21,11 @@ import {
 } from "@decocms/shared/git-providers";
 import { Hono } from "hono";
 import type { Env } from "@/api/hono-env";
-import { contentClientForProjectRepo } from "@/git-providers/content";
 import {
-  type RepoContentClient,
+  contentClientForProjectRepo,
   requireBranchHead,
-} from "@/git-providers/content/types";
+  type RepoContentClient,
+} from "@/git-providers";
 import {
   extractPromptRegion,
   replacePromptRegion,
