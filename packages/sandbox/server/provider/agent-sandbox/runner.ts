@@ -309,6 +309,17 @@ interface K8sRecord {
    */
   tenant: RunnerTenant | null;
   /**
+   * This claim bound a pod from its tenant's warm pool — a pod already cloned,
+   * installed and serving, so `cloneOnly` was NOT sent for it.
+   *
+   * The same bit `workloadConfigPayload` keys the workload on, kept so callers
+   * can act on it too: an agent loop's prompt has to say whether a dev server is
+   * already up, and guessing costs the run either a pointless cold start or
+   * minutes spent polling a port nothing listens on. False on a recovered
+   * record — the re-bootstrap path is `cloneOnly` by definition.
+   */
+  tenantPoolPodBound: boolean;
+  /**
    * The original options the caller passed to `ensure()`. Persisted so
    * `resurrectByHandle` can re-provision an evicted sandbox autonomously
    * (15-min idle TTL deletes the claim — without these we'd come back as
@@ -1487,11 +1498,8 @@ export class AgentSandboxProvider {
     );
     const daemonUrl = `http://127.0.0.1:${daemonForward.localPort}`;
     // Cold Sandboxes are named after the claim, adopted ones after their pool.
-    const boundToPoolPod = adoptedSandboxName !== handle;
-    const configPayload = this.workloadConfigPayload(
-      opts,
-      pool !== null && boundToPoolPod,
-    );
+    const tenantPoolPodBound = pool !== null && adoptedSandboxName !== handle;
+    const configPayload = this.workloadConfigPayload(opts, tenantPoolPodBound);
     // Warm-pool path: pod boots with the SandboxTemplate's sentinel token;
     // studio authenticates the first /config call with the sentinel and
     // rotates to `token` (per-claim) atomically with the workload patch.
@@ -1554,6 +1562,7 @@ export class AgentSandboxProvider {
       workload: opts.workload ?? null,
       daemonBootId: resolvedBootId,
       tenant: opts.tenant ?? null,
+      tenantPoolPodBound,
       // Persist the impl the claim actually got, not the one asked for: with the
       // kill switch off a `go` request lands on ts, and recovery must replay
       // what ran. Same pure call buildClaim made above.
@@ -2272,6 +2281,9 @@ export class AgentSandboxProvider {
       id,
       handle,
       adoptedSandboxName,
+      // Rehydrated, not bound here: whatever this pod once was, the
+      // re-bootstrap path is `cloneOnly` by definition.
+      tenantPoolPodBound: false,
       token: state.token,
       workdir: state.workdir ?? DEFAULT_WORKDIR,
       daemonUrl: live.daemonUrl,
@@ -2340,6 +2352,9 @@ export class AgentSandboxProvider {
       id,
       handle,
       adoptedSandboxName,
+      // Rehydrated, not bound here: whatever this pod once was, the
+      // re-bootstrap path is `cloneOnly` by definition.
+      tenantPoolPodBound: false,
       token,
       workdir: DEFAULT_WORKDIR,
       daemonUrl: live.daemonUrl,
@@ -2513,6 +2528,7 @@ export class AgentSandboxProvider {
       handle: rec.handle,
       workdir: rec.workdir,
       previewUrl: this.composePreviewUrl(rec),
+      warmPoolAdopted: rec.tenantPoolPodBound === true,
     };
   }
 

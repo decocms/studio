@@ -17,6 +17,16 @@ export interface Sandbox {
    * `start` script), which is what the UI's booting/ready state tracks.
    */
   previewUrl: string | null;
+  /**
+   * This sandbox is a pod adopted from its tenant's warm pool: the repository is
+   * already cloned, dependencies installed, and the dev server running. False
+   * for a cold pod, which is a bare checkout with nothing installed.
+   *
+   * Callers that put an agent inside the pod must say which of the two it got —
+   * the model cannot tell without spending turns on it, and both guesses are
+   * expensive (a needless cold start, or minutes polling a dead port).
+   */
+  warmPoolAdopted: boolean;
 }
 
 /** When omitted, no dev server is started; the default tool image is used. */

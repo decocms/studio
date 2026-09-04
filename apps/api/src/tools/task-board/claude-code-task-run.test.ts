@@ -40,12 +40,31 @@ describe("buildClaudeCodeTaskPrompt", () => {
   // review now, and the card stays In Progress until the REVIEWER decides — so
   // asking the model for that move would put the card in the wrong lane for
   // the whole time an agent is still working on it.
-  test("asks for a pull request and for the PR link, not a board move", () => {
+  // Inverted: the run used to be told to report its PR with
+  // `TASK_BOARD_ITEM_PR_LINK`. The board finds it by branch now
+  // (`pr-by-branch.ts`), so the prompt pins the BRANCH instead — asking for a
+  // tool that no longer exists would just burn a turn on `not_found`.
+  test("asks for a pull request on the given branch, not a board move", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("open a pull request");
-    expect(prompt).toContain("mcp__studio__TASK_BOARD_ITEM_PR_LINK");
+    expect(prompt).toContain("branch you were given");
+    expect(prompt).not.toContain("TASK_BOARD_ITEM_PR_LINK");
     expect(prompt).toContain("(task id: tbi_1)");
     expect(prompt).not.toContain('status "in_review"');
+  });
+
+  // Inverted: the prompt used to assert "Nothing is installed and NO dev server
+  // is running". Since #7016 a run can adopt its org's warm tenant pod — cloned,
+  // installed and serving — and which pod it gets is decided by the claim, long
+  // after this string is built. So the sandbox's state is stated at DISPATCH
+  // (`sandboxStateInstruction`) and must not appear here at all.
+  test("says nothing about installs or the dev server", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo);
+    expect(prompt).not.toContain("dev server");
+    expect(prompt).not.toContain("dependencies");
+    // The globally-installed browser is a property of the IMAGE, true of both
+    // kinds of pod, so that one line legitimately stays.
+    expect(prompt).not.toContain("nothing is installed");
   });
 
   test("says it runs autonomously", () => {
@@ -225,7 +244,7 @@ describe("buildClaudeCodeTaskPrompt with no repo (several in the org)", () => {
 
   test("still says how to finish", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null);
-    expect(prompt).toContain("TASK_BOARD_ITEM_PR_LINK");
+    expect(prompt).toContain("branch you were given");
     expect(prompt).toContain('move it to "done"');
   });
 });

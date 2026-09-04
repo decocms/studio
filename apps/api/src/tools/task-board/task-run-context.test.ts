@@ -51,24 +51,26 @@ describe("resolveTaskRunToolNames", () => {
 
   // A reviewer needs to FIND the PR as well as rule on it: `enable_tool` came
   // back `not_found` for this one too, in every observed review.
-  test("both surfaces can look up the task's PR", () => {
-    for (const list of [TASK_RUN_TOOL_NAMES, REVIEW_RUN_TOOL_NAMES]) {
-      expect(list).toContain("TASK_BOARD_ITEM_PRS_GET");
-    }
+  test("a reviewer can look up the task's PR", () => {
+    expect(REVIEW_RUN_TOOL_NAMES).toContain("TASK_BOARD_ITEM_PRS_GET");
   });
 
-  // Without this, a claude-code run has NO way to report the PR it opened (it
-  // runs `gh pr create` in the pod, where no Studio hook can see it) and the
-  // card strands In Review with no reviewer — see pr-link.ts.
-  test("a task run can link the PR it opened", () => {
-    expect(TASK_RUN_TOOL_NAMES).toContain("TASK_BOARD_ITEM_PR_LINK");
+  // Both inverted from "a task run can link / look up the PR it opened". The
+  // board no longer takes the run's word for its PR — it finds it by the branch
+  // the run was given (`pr-by-branch.ts`), so a Super Agent run needs neither
+  // tool and `TASK_BOARD_ITEM_PR_LINK` no longer exists.
+  test("a task run neither links nor looks up its own PR", () => {
+    expect(TASK_RUN_TOOL_NAMES).not.toContain("TASK_BOARD_ITEM_PRS_GET");
+    expect(TASK_RUN_TOOL_NAMES as readonly string[]).not.toContain(
+      "TASK_BOARD_ITEM_PR_LINK",
+    );
   });
 
   test("the review surface only ADDS to the narrow one", () => {
     for (const name of TASK_RUN_TOOL_NAMES) {
       expect(REVIEW_RUN_TOOL_NAMES).toContain(name);
     }
-    expect(REVIEW_RUN_TOOL_NAMES).toHaveLength(TASK_RUN_TOOL_NAMES.length + 1);
+    expect(REVIEW_RUN_TOOL_NAMES).toHaveLength(TASK_RUN_TOOL_NAMES.length + 2);
   });
 
   // The card behind a Jira-triggered run is only its anchor. Serving the board

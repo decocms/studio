@@ -1292,6 +1292,25 @@ export class TaskBoardStorage {
       .execute();
   }
 
+  /**
+   * Run threads linked to a task (the forward direction of the same
+   * many-to-many). Lets a caller holding only a card recover the run that
+   * worked on it — which is how the branch-based PR lookup
+   * (`pr-by-branch.ts`) finds the checkout the agent pushed.
+   */
+  async linkedThreadIds(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("task_board_item_threads")
+      .select("thread_id as threadId")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+    return rows.map((r) => r.threadId);
+  }
+
   async linkedTaskIds(
     threadId: string,
     organizationId: string,
