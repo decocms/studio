@@ -22,6 +22,7 @@ import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
 
 // Cap on cards sent to the LLM prompt, so a large backlog doesn't inflate cost per PR-open.
@@ -195,6 +196,10 @@ export async function applyBoardDecision(
   if (!item) return null;
 
   await linkPr(item.id);
+  // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+  await invalidatePrCards(orgId).catch((err) => {
+    console.error("[task-board] PR card cache invalidation failed", err);
+  });
   await storage.linkThread(item.id, threadId, orgId);
   if (decision.comment?.trim()) {
     await storage.createComment({

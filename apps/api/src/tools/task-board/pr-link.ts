@@ -25,6 +25,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth, requireOrganization } from "@/core/studio-context";
 import { extractPrFromText } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import { resolveRunTaskTargets } from "./run-reactions";
 import { requireTaskRunContext } from "./task-run-context";
 
@@ -100,6 +101,13 @@ export const TASK_BOARD_ITEM_PR_LINK = defineTool({
         taskBoardItemId,
         organizationId,
       );
+    }
+
+    // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+    if (taskBoardItemIds.length > 0) {
+      await invalidatePrCards(organizationId).catch((err) => {
+        console.error("[task-board] PR card cache invalidation failed", err);
+      });
     }
 
     return { url: pr.url, prNumber: pr.number, taskBoardItemIds };
