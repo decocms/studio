@@ -49,10 +49,24 @@ export function isRateLimitError(err: unknown): boolean {
  * only moves to Done once a poll observes `merged`, and a minute of "did my ship
  * button work?" is exactly the confusion this cache must not introduce.
  */
-import { getPrReadCache } from "./pr-read-cache";
+import { getPrCardCache, getPrReadCache } from "./pr-cache";
 
 export function invalidatePrReads(connectionId: string): Promise<void> {
   return getPrReadCache().invalidate(connectionId);
+}
+
+/**
+ * Drop an org's cached PR CARDS. Called after a write that changes what a card
+ * shows (a merge), so the next poll rebuilds it instead of serving the
+ * pre-merge card for the rest of the revalidate window — the task only moves to
+ * Done once a poll observes `merged`, and "did my ship button work?" is exactly
+ * the confusion this cache must not introduce.
+ *
+ * Org-wide rather than per task: a merge is rare, the rebuild is one poll's
+ * work, and a card keyed to the wrong task is worse than a cold one.
+ */
+export function invalidatePrCards(organizationId: string): Promise<void> {
+  return getPrCardCache().invalidate(organizationId);
 }
 
 /** `owner/repo#number`, for log lines. */
@@ -157,9 +171,8 @@ async function cachedPrRead(
 ): Promise<Record<string, unknown> | null> {
   try {
     const raw = await getPrReadCache().fetch({
-      connectionId,
-      name,
-      args,
+      namespace: connectionId,
+      key: JSON.stringify({ name, args }),
       fetchLive: () =>
         retry(
           async () => {
@@ -321,6 +334,8 @@ type PrLiveState = {
   previewUrl: string | null;
 };
 
+/** The live fields before GitHub has answered — also what the card cache serves
+ *  as its placeholder while the real read runs. */
 const NO_LIVE_STATE: PrLiveState = {
   title: null,
   body: null,
@@ -1220,19 +1235,52 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       organizationId,
     );
     // One GitHub round-trip per linked PR, in parallel, each best-effort.
-    const prs = await Promise.all(
-      linked.map(async (pr) => {
-        const live = await fetchPrLiveState(ctx, organizationId, pr);
-        return {
-          url: pr.url,
-          number: pr.number,
-          repoOwner: pr.repoOwner,
-          repoName: pr.repoName,
-          createdAt: pr.createdAt,
-          ...live,
-        };
-      }),
-    );
+    const assemble = () =>
+      Promise.all(
+        linked.map(async (pr) => {
+          const live = await fetchPrLiveState(ctx, organizationId, pr);
+          return {
+            url: pr.url,
+            number: pr.number,
+            repoOwner: pr.repoOwner,
+            repoName: pr.repoName,
+            createdAt: pr.createdAt,
+            ...live,
+          };
+        }),
+      );
+
+    // Serve the assembled card, not the raw reads it was built from. The read
+    // cache underneath still helps the sweeps, but it could not make THIS fast:
+    // it stores raw GitHub payloads, and a busy PR's `get_comments` runs past
+    // the value cap, so its put is rejected and that PR misses on every read
+    // forever. A card is a few hundred bytes, so it always stores — and one KV
+    // get replaces the four-to-six this made per PR.
+    //
+    // And on a cold card it does NOT block: the database already holds the
+    // repo, the number and the link, so that goes back immediately and GitHub's
+    // half (title, checks, preview) lands in KV for the next poll. Waiting on
+    // GitHub for what we already have was the ~2s.
+    const { value: prs, live } = await getPrCardCache().fetchOrPlaceholder({
+      namespace: organizationId,
+      key: taskBoardItemId,
+      fetchLive: assemble,
+      placeholder: linked.map((pr) => ({
+        url: pr.url,
+        number: pr.number,
+        repoOwner: pr.repoOwner,
+        repoName: pr.repoName,
+        createdAt: pr.createdAt,
+        ...NO_LIVE_STATE,
+      })),
+    });
+
+    // Everything below reconciles the TASK from what GitHub said about its PRs.
+    // On the placeholder we have not asked yet, and all-null does not mean
+    // "open, unmerged, no checks" — it means "unknown". Acting on it would hand
+    // a card to the reviewer, or move it to Done, on the strength of a database
+    // row. The next poll (seconds away) runs them on the real thing.
+    if (!live) return { prs };
 
     // Auto-hand-off to the reviewer: once the Super Agent's PR is In Review and
     // its checks are green — OR it has no checks at all — delegate to the

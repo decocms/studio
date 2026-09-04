@@ -13,6 +13,7 @@ import {
   type ChecksStatus,
   fetchPrChecksStatus,
   fetchPrConflict,
+  invalidatePrCards,
   invalidatePrReads,
   isRateLimitError,
   pickActivePr,
@@ -243,7 +244,10 @@ export async function mergeLinkedPr(
         // Awaited: the UI refetches as soon as this responds, and the KV delete
         // is a round-trip — firing it and returning races the very poll it is
         // meant to fix.
-        await invalidatePrReads(conn.id);
+        await Promise.all([
+          invalidatePrReads(conn.id),
+          invalidatePrCards(orgId),
+        ]);
         return { merged: true };
       }
       // A 429 says nothing about the method; re-asking IS the burst — stop.
