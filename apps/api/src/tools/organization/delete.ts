@@ -41,12 +41,24 @@ export const ORGANIZATION_DELETE = defineTool({
 
     // Merge into existing metadata — organization.update replaces it wholesale.
     const existing = await ctx.boundAuth.organization.get(input.id);
+    const existingMetadata = (existing?.metadata ?? {}) as Record<
+      string,
+      unknown
+    >;
+
+    // Already archived: skip the write, preserving the original archivedAt.
+    if (existingMetadata.archived === true) {
+      return {
+        success: true,
+        id: input.id,
+      };
+    }
 
     await ctx.boundAuth.organization.update({
       organizationId: input.id,
       data: {
         metadata: {
-          ...existing?.metadata,
+          ...existingMetadata,
           archived: true,
           archivedAt: new Date().toISOString(),
         },
