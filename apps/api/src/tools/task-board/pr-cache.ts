@@ -106,6 +106,17 @@ export class JetStreamKVPrCache {
   private readonly revalidating = new Set<string>();
   /** Used whenever KV is unavailable — development, or NATS not yet ready. */
   private readonly fallback: InMemoryMcpReadCache;
+  /**
+   * Backs {@link fetchOrPlaceholder} whenever KV is unavailable. `fallback`
+   * (above) can't serve that method: it has no notion of "return a placeholder
+   * without blocking", so without this a NATS outage silently turned
+   * `fetchOrPlaceholder`'s documented never-blocks guarantee into a synchronous
+   * `fetchLive()` — exactly the GitHub round-trip the card cache exists to
+   * remove from the request path. Capped so a sustained outage can't grow it
+   * unbounded.
+   */
+  private readonly placeholderFallback = new Map<string, StoredRead>();
+  private static readonly MAX_PLACEHOLDER_FALLBACK_ENTRIES = 1000;
 
   constructor(
     private readonly config: PrCacheConfig,
@@ -220,12 +231,6 @@ export class JetStreamKVPrCache {
   }): Promise<{ value: T; live: boolean }> {
     const { namespace, key: rawKey, fetchLive, placeholder } = params;
     const { cache, revalidateAfterMs, maxStaleMs } = this.config;
-    if (!this.kv) {
-      // No KV to hand a background result to, so there is nothing to come back
-      // for — blocking once beats never enriching at all.
-      return { value: await fetchLive(), live: true };
-    }
-
     const key = this.storageKey(namespace, rawKey);
     const stored = await this.read(key);
     const age = stored
@@ -260,6 +265,7 @@ export class JetStreamKVPrCache {
   }
 
   private async read(key: string): Promise<StoredRead | null> {
+    if (!this.kv) return this.placeholderFallback.get(key) ?? null;
     try {
       const entry = await this.kv?.get(key);
       if (!entry?.value?.length) return null;
@@ -275,6 +281,18 @@ export class JetStreamKVPrCache {
     value: unknown,
     cache: string,
   ): Promise<void> {
+    if (!this.kv) {
+      // Evict the oldest entry (insertion order) once past the cap.
+      if (
+        this.placeholderFallback.size >=
+        JetStreamKVPrCache.MAX_PLACEHOLDER_FALLBACK_ENTRIES
+      ) {
+        const oldest = this.placeholderFallback.keys().next().value;
+        if (oldest !== undefined) this.placeholderFallback.delete(oldest);
+      }
+      this.placeholderFallback.set(key, { storedAt: this.now(), value });
+      return;
+    }
     try {
       await this.kv?.put(
         key,

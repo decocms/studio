@@ -106,6 +106,42 @@ describe("JetStreamKVPrCache", () => {
   });
 });
 
+describe("fetchOrPlaceholder without KV (NATS down / not yet ready)", () => {
+  test("returns the placeholder instead of blocking on fetchLive", async () => {
+    const clock = { now: 0 };
+    const cache = new JetStreamKVPrCache(
+      PR_CARDS_CACHE,
+      { getJetStream: () => null },
+      () => clock.now,
+    );
+    // No init() call — this.kv stays null, like a pod not yet connected to NATS.
+    let resolveFetch: (() => void) | undefined;
+    const fetchLive = () =>
+      new Promise<{ n: number }>((resolve) => {
+        resolveFetch = () => resolve({ n: 1 });
+      });
+
+    const first = await cache.fetchOrPlaceholder({
+      namespace: "org_1",
+      key: "task_1",
+      fetchLive,
+      placeholder: { n: 0 },
+    });
+    expect(first).toEqual({ value: { n: 0 }, live: false });
+
+    resolveFetch?.();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const second = await cache.fetchOrPlaceholder({
+      namespace: "org_1",
+      key: "task_1",
+      fetchLive: () => Promise.reject(new Error("should not refetch yet")),
+      placeholder: { n: 0 },
+    });
+    expect(second).toEqual({ value: { n: 1 }, live: true });
+  });
+});
+
 describe("PR card cache config", () => {
   test("a card that was rendered once never blocks on GitHub again", () => {
     // The card cache exists because the read cache could not make a page
