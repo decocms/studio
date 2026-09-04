@@ -66,6 +66,11 @@ import {
   draftsModeEnabled,
   useBaseBranch,
 } from "@/components/thread/github/use-version-gate";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  useReleases,
+} from "@/components/thread/github/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
@@ -333,6 +338,42 @@ function VmEventsBridge({
     activeTask,
     session,
     setCurrentTaskBranch,
+  ]);
+
+  // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
+  const draftsVm = useVirtualMCP(virtualMcpId);
+  const draftsBase = useBaseBranch(draftsVm, currentBranch);
+  const { releases: draftReleases, createRelease: createDraftRelease } =
+    useReleases(virtualMcpId);
+  const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
+  const currentIsUnnamedDraft =
+    draftsModeEnabled(draftsVm) &&
+    isOwnDraftThread &&
+    !!currentBranch &&
+    currentBranch !== draftsBase &&
+    !draftReleases.some((r) => r.branch === currentBranch);
+  const namedDraftForBranchRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
+  useEffect(() => {
+    if (!currentIsUnnamedDraft || !currentBranch) return;
+    if (namedDraftForBranchRef.current === currentBranch) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't create twice
+    namedDraftForBranchRef.current = currentBranch;
+    createDraftRelease({
+      branch: currentBranch,
+      name: nextDraftName(
+        draftReleases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
+      color: nextReleaseColor(draftReleases.length),
+      createdAt: new Date().toISOString(),
+    }).catch(() => {});
+  }, [
+    currentIsUnnamedDraft,
+    currentBranch,
+    draftReleases,
+    createDraftRelease,
+    t,
   ]);
 
   // Open the events stream only when a sandbox actually exists or a start is
