@@ -126,7 +126,7 @@ export const common = {
     "Failed to reconnect GitHub: {error}",
   "common.githubRepoPicker.forkBadge": "Fork",
   "common.githubRepoPicker.githubConnected": "GitHub connected",
-  "common.githubRepoPicker.importFromGitHub": "Import from GitHub",
+  "common.githubRepoPicker.importFromGitHub": "Import repository",
   "common.githubRepoPicker.importedRepo": "Imported {name} from GitHub",
   "common.githubRepoPicker.installGitHubApp": "Install the GitHub App",
   "common.githubRepoPicker.installingGitHubConnection":
@@ -282,7 +282,7 @@ export const common = {
   "common.toolSetSelector.selectConnection":
     "Select a connection to view its tools",
   "common.createAgentDropdown.createFromScratch": "Create from scratch",
-  "common.createAgentDropdown.importFromGitHub": "Import from GitHub",
+  "common.createAgentDropdown.importFromGitHub": "Import repository",
   "common.createAgentDropdown.importFromDeco": "Import from deco.cx",
   "common.mainPanelTabs.preview": "Preview",
   "common.mainPanelTabs.code": "Code",

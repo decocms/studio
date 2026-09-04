@@ -1,7 +1,6 @@
 export const home = {
-  "home.orgAgents.importFromGitHub": "Import from GitHub",
-  "home.orgAgents.importToGetStarted":
-    "Import a repository from GitHub to get started.",
+  "home.orgAgents.importFromGitHub": "Import repository",
+  "home.orgAgents.importToGetStarted": "Import a repository to get started.",
   "home.orgHome.connectPill": "Connect your agent to Studio",
   "home.orgHome.greetingMorning": "Good morning, {name}",
   "home.orgHome.greetingAfternoon": "Good afternoon, {name}",
