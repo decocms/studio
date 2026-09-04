@@ -308,6 +308,18 @@ orgFs:
       cpu: 500m
       memory: 512Mi
 
+# Per-sandbox ephemeral volume sizes (emptyDir `sizeLimit`).
+#
+# HARD limits: exceeding one evicts the pod instantly, which surfaces as a run
+# that died mid-turn rather than as an error. `tmp` was 1Gi and is the one that
+# bites — a package-manager cache alone can clear that — so it now matches
+# `workdir`. Raise rather than economize: the cost of a too-large emptyDir is
+# node disk pressure, the cost of a too-small one is silently killed runs.
+volumeSizes:
+  workdir: 4Gi
+  tmp: 4Gi
+  home: 5Gi
+
 # Read-only root filesystem. When true, /app + /tmp + /home/sandbox are
 # remounted as emptyDirs and `safe.directory '*'` is set so git works
 # against the chowned mount.

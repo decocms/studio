@@ -800,3 +800,30 @@ describe("a lost sandbox's cause reaches the agent and the thread", () => {
     expect(chunks.map((c) => c.type)).toEqual(["start", "finish"]);
   });
 });
+
+describe("describeTermination — eviction", () => {
+  // An eviction was explicitly in the "carries no information" list, so a run
+  // whose pod was taken away for filling a volume reported only that the
+  // sandbox went away. The kubelet's message names the resource and the limit,
+  // which is the difference between an unexplained failure and a fixable one.
+  test("names the resource the pod ran out of", () => {
+    const text = describeTermination({
+      reason: "Evicted",
+      oomKilled: false,
+      evictionMessage:
+        'Usage of EmptyDir volume "tmp" exceeds the limit "1Gi".',
+    });
+
+    expect(text).toContain("evicted");
+    expect(text).toContain('EmptyDir volume "tmp"');
+    expect(text).toContain('"1Gi"');
+  });
+
+  // Retrying an eviction onto a fresh pod hits the same cap, so the text has to
+  // say so — otherwise the run loops and every attempt reads as bad luck.
+  test("says a retry will hit the same limit", () => {
+    expect(
+      describeTermination({ reason: "Evicted", oomKilled: false }),
+    ).toContain("same limit");
+  });
+});
