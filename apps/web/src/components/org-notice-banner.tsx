@@ -26,12 +26,19 @@ export function OrgNoticeBanner() {
         "flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-sm",
         isBlock
           ? "border-destructive/25 bg-destructive/5 text-destructive"
-          : "border-warning bg-warning/10 text-warning-foreground",
+          : "border-warning/40 bg-warning/10 text-foreground",
       )}
     >
-      <AlertTriangle className="size-4 shrink-0" />
+      {/* `warning-foreground` is the near-white ink for a SOLID warning fill —
+          on this tinted background the copy has to be `foreground`, with the
+          hue carried by the icon and the border. */}
+      <AlertTriangle
+        className={cn("size-4 shrink-0", isBlock ? undefined : "text-warning")}
+      />
       <span className="font-medium">{notice.title}</span>
-      <span className="min-w-0 flex-1 opacity-90">{notice.message}</span>
+      <span className="min-w-0 flex-1 text-muted-foreground">
+        {notice.message}
+      </span>
       {notice.ctaUrl && notice.ctaLabel ? (
         <Button size="sm" variant="outline" asChild>
           <a href={notice.ctaUrl} target="_blank" rel="noreferrer noopener">
