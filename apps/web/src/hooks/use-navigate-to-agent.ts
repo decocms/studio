@@ -71,30 +71,48 @@ export function useNavigateToAgent() {
      *  none. `wantedRuntime` narrows which empty chat qualifies, so "open the
      *  CMS" cannot resume a sandbox session. */
     const target = (cachedAgents ?? []).find((a) => a.id === virtualMcpId);
-    const entry = findAgentEntryThread(
-      manager?.threads.get() ?? NO_THREADS,
-      virtualMcpId,
-      session?.user?.id,
-      wantedRuntime ??
-        (target ? defaultThreadRuntime(target.metadata) : undefined),
-      !!(target && getActiveGithubRepo(target)),
-      {
-        knownBranches: new Set<string>([
-          baseBranch,
-          ...(target?.metadata?.releases ?? []).map((r) => r.branch),
-        ]),
-        draftsMode: draftsModeEnabled(target),
-      },
-    );
-    const taskId = entry?.id ?? crypto.randomUUID();
+    const hasBranch = !!(target && getActiveGithubRepo(target));
+    /** An agent's entry thread (its last branch/version for a repo editor, its
+     *  last conversation for a plain chat) can only be resolved from the TARGET
+     *  project's thread list. The manager here is keyed on `${org}::${locator}`,
+     *  so at a cross-project surface (org home, another project's sidebar) it is
+     *  a different-scoped instance that can't see this agent's threads. Resolving
+     *  against it always misses and mints a fresh id — a new chat/production
+     *  thread every visit. So we omit `thread` from the URL and let the shell's
+     *  loading-guarded resolver (agent-shell-layout), which runs in the project's
+     *  own scope, own it. We keep resolving here only when a specific runtime was
+     *  requested: that path parks a runtime intent the shell resolver can't read. */
+    const delegateEntryToShell = !options?.runtime;
+    const entry = delegateEntryToShell
+      ? undefined
+      : findAgentEntryThread(
+          manager?.threads.get() ?? NO_THREADS,
+          virtualMcpId,
+          session?.user?.id,
+          wantedRuntime ??
+            (target ? defaultThreadRuntime(target.metadata) : undefined),
+          hasBranch,
+          {
+            knownBranches: new Set<string>([
+              baseBranch,
+              ...(target?.metadata?.releases ?? []).map((r) => r.branch),
+            ]),
+            draftsMode: draftsModeEnabled(target),
+          },
+        );
+    const taskId = delegateEntryToShell
+      ? undefined
+      : (entry?.id ?? crypto.randomUUID());
     /** Park the runtime for the create the route loader will run. Only for a
      *  fresh id — a resumed thread is already stamped, and re-parking would
-     *  leave an unclaimed key behind. */
-    if (!entry && options?.runtime) {
+     *  leave an unclaimed key behind. `taskId` is undefined when delegating. */
+    if (taskId && !entry && options?.runtime) {
       writeThreadIntent(sessionStorage, locator, taskId, {
         runtime: options.runtime,
       });
     }
+    /** No `taskId` → omit `thread` and let the shell resolver add it. */
+    const threadSearch = taskId ? { thread: taskId } : {};
     const view = options?.panel ? panelLocationForTab(options.panel) : null;
     /**
      * An agent that names no view goes to Home, never to a bare `/agents` with
@@ -106,7 +124,7 @@ export function useNavigateToAgent() {
       navigate({
         to: DESTINATION_ROUTE.home,
         params: { org: org.slug },
-        search: { virtualmcpid: virtualMcpId, thread: taskId },
+        search: { virtualmcpid: virtualMcpId, ...threadSearch },
       });
       return;
     }
@@ -116,7 +134,7 @@ export function useNavigateToAgent() {
       search: {
         ...view.payload,
         virtualmcpid: virtualMcpId,
-        thread: taskId,
+        ...threadSearch,
       },
     });
   };
