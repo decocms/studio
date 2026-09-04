@@ -29,6 +29,11 @@ import { str } from "./primitives";
 
 export type RawBlock = { __resolveType?: string } & Record<string, unknown>;
 
+/** A block field that's already a JSON string, or an array/object to stringify. */
+function jsonStr(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value ?? []);
+}
+
 /**
  * Render a single block as its native, inline-editable representation
  * (Notion-style). Common blocks get bespoke editors matched by component
@@ -141,11 +146,7 @@ export function BlockEditor({
       case "CardGroup":
         return (
           <CardGroupBlock
-            cards={
-              typeof block.cards === "string"
-                ? block.cards
-                : JSON.stringify(block.cards ?? [])
-            }
+            cards={jsonStr(block.cards)}
             onChange={(cards) => onChange({ ...block, cards })}
           />
         );
@@ -176,16 +177,8 @@ export function BlockEditor({
       case "Table":
         return (
           <TableBlock
-            headers={
-              typeof block.headers === "string"
-                ? block.headers
-                : JSON.stringify(block.headers ?? [])
-            }
-            rows={
-              typeof block.rows === "string"
-                ? block.rows
-                : JSON.stringify(block.rows ?? [])
-            }
+            headers={jsonStr(block.headers)}
+            rows={jsonStr(block.rows)}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );
