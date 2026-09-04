@@ -22,7 +22,10 @@ import { type Kysely, sql } from "kysely";
  *   repo until the org connects through Studio's own GitHub App.
  *
  * Consumers gain a nullable `repository_id` FK; their legacy columns stay
- * readable until every reader has moved (dual-read, then drop).
+ * readable until every reader has moved (dual-read, then drop). `org_repo_sync`
+ * additionally trades `connection_id`'s NOT NULL for a check that at least one
+ * credential source is present, since a repository-backed sync names no
+ * connection.
  *
  * The backfill is SQL-only and idempotent: accounts from distinct
  * (org, installationId) in repoScope metadata; repositories from repoScope,
@@ -127,6 +130,20 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
     ALTER TABLE org_repo_sync
       ADD COLUMN repository_id text REFERENCES repositories(id) ON DELETE SET NULL
+  `.execute(db);
+  /**
+   * A sync backed by a repository has no `mcp-github` connection to name, so
+   * `connection_id` (NOT NULL since migration 168) gives way to the real
+   * invariant: a sync needs at least one credential source. Every existing row
+   * carries a connection, so the constraint validates without rewriting data.
+   */
+  await sql`
+    ALTER TABLE org_repo_sync ALTER COLUMN connection_id DROP NOT NULL
+  `.execute(db);
+  await sql`
+    ALTER TABLE org_repo_sync
+      ADD CONSTRAINT org_repo_sync_source_present
+      CHECK (connection_id IS NOT NULL OR repository_id IS NOT NULL)
   `.execute(db);
 
   /**
@@ -340,6 +357,18 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
+  /**
+   * Order matters: the constraint reads `repository_id`, and re-arming
+   * migration 168's NOT NULL means dropping the repository-only rows that
+   * have no connection to restore.
+   */
+  await sql`
+    ALTER TABLE org_repo_sync DROP CONSTRAINT IF EXISTS org_repo_sync_source_present
+  `.execute(db);
+  await sql`DELETE FROM org_repo_sync WHERE connection_id IS NULL`.execute(db);
+  await sql`
+    ALTER TABLE org_repo_sync ALTER COLUMN connection_id SET NOT NULL
+  `.execute(db);
   await sql`ALTER TABLE org_repo_sync DROP COLUMN IF EXISTS repository_id`.execute(
     db,
   );
