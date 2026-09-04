@@ -7,7 +7,8 @@ export const sandbox = {
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
-  "sandbox.availableSectionEditor.editingBreadcrumb": "Navegação de edição",
+  "sandbox.availableSectionEditor.editingBreadcrumb":
+    "Trilha de navegação de edição",
   "sandbox.availableSectionEditor.localEditsHint":
     "{typeLabel} — edições permanecem locais até que você salve isto como uma seção global.",
   "sandbox.availableSectionEditor.noEditableFields":
@@ -618,7 +619,7 @@ export const sandbox = {
   "sandbox.runnableBlockEditor.collapseResult": "Recolher resultado",
   "sandbox.runnableBlockEditor.editAsJson": "Editar como JSON",
   "sandbox.runnableBlockEditor.editingBreadcrumb":
-    "Trilha de migalhas da edição",
+    "Trilha de navegação de edição",
   "sandbox.runnableBlockEditor.expand": "Expandir",
   "sandbox.runnableBlockEditor.expandResult": "Expandir resultado",
   "sandbox.runnableBlockEditor.failedToRun": "Falha ao executar {singular}",
@@ -673,7 +674,8 @@ export const sandbox = {
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.savedSectionEditor.editAsJson": "Editar como JSON",
-  "sandbox.savedSectionEditor.editingBreadcrumb": "Trilha de edição",
+  "sandbox.savedSectionEditor.editingBreadcrumb":
+    "Trilha de navegação de edição",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Seção global — alterações são salvas automaticamente e aplicadas em todos os locais onde é usada.",
   "sandbox.savedSectionEditor.invalidJsonError":
