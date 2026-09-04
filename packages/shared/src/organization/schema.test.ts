@@ -104,4 +104,38 @@ describe("BrandContextSchema JSON field caps", () => {
     const result = BrandContextSchema.safeParse(baseBrandContext({ images }));
     expect(result.success).toBe(false);
   });
+
+  it("rejects an oversized overview, name, domain, or logo URL", () => {
+    expect(
+      BrandContextSchema.safeParse(
+        baseBrandContext({ overview: "x".repeat(5001) }),
+      ).success,
+    ).toBe(false);
+    expect(
+      BrandContextSchema.safeParse(baseBrandContext({ name: "x".repeat(501) }))
+        .success,
+    ).toBe(false);
+    expect(
+      BrandContextSchema.safeParse(
+        baseBrandContext({ domain: "x".repeat(501) }),
+      ).success,
+    ).toBe(false);
+    expect(
+      BrandContextSchema.safeParse(baseBrandContext({ logo: "x".repeat(501) }))
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects an oversized font family or color value", () => {
+    expect(
+      BrandContextSchema.safeParse(
+        baseBrandContext({ fonts: { heading: "x".repeat(501) } }),
+      ).success,
+    ).toBe(false);
+    expect(
+      BrandContextSchema.safeParse(
+        baseBrandContext({ colors: { primary: "x".repeat(501) } }),
+      ).success,
+    ).toBe(false);
+  });
 });
