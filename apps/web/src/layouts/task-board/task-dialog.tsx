@@ -1970,10 +1970,12 @@ function PrCard({
           </button>
           {checksOpen && (
             <div className="mt-2 flex flex-col gap-2">
-              {checks.map((c) => {
+              {checks.map((c, i) => {
                 const cs = checkRunStyle(c);
+                // Two check runs can share a `name`, so index disambiguates the key.
+                const checkKey = `${c.name}-${i}`;
                 return (
-                  <div key={c.name} className="rounded-md bg-muted/40 p-2">
+                  <div key={checkKey} className="rounded-md bg-muted/40 p-2">
                     <div className="flex items-center gap-2">
                       {cs.spin ? (
                         <Spinner className={cn("size-[13px]", cs.className)} />
@@ -2000,7 +2002,7 @@ function PrCard({
                     {c.summary && (
                       <div className="mt-1.5 max-h-64 overflow-auto text-muted-foreground">
                         <MemoizedMarkdown
-                          id={`${pr.url}-${c.name}`}
+                          id={`${pr.url}-${checkKey}`}
                           text={c.summary}
                         />
                       </div>
