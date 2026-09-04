@@ -240,6 +240,14 @@ stays identical on both sides, and a collision is a template-time failure.
 {{- if lt (int .size) 1 }}
 {{- fail (printf "sandbox-env: tenantPools[%s].size must be >= 1 (got %v) — a pool with 0 replicas pre-warms nothing." .name .size) -}}
 {{- end }}
+{{- if and .autoscaling .autoscaling.enabled }}
+{{- if eq (len (default (list) .autoscaling.triggers)) 0 }}
+{{- fail (printf "sandbox-env: tenantPools[%s].autoscaling.enabled=true requires at least one entry in .autoscaling.triggers — this chart ships no default trigger (the operator's claim metric is labelled by sandbox_template, which every tenant pool shares). A ScaledObject with no triggers sits at minReplicaCount forever. See values.yaml for a studio_sandbox_pool_pods example." .name) -}}
+{{- end }}
+{{- if lt (int .autoscaling.maxReplicaCount) (int .autoscaling.minReplicaCount) }}
+{{- fail (printf "sandbox-env: tenantPools[%s].autoscaling.maxReplicaCount (%v) must be >= minReplicaCount (%v)." .name .autoscaling.maxReplicaCount .autoscaling.minReplicaCount) -}}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 

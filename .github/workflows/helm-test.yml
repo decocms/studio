@@ -104,6 +104,41 @@ jobs:
             --set warmPool.size=2 \
             > /dev/null
 
+      - name: Render (tenant pool + KEDA autoscaling)
+        run: |
+          helm template sandbox-env deploy/helm/sandbox-env \
+            --namespace agent-sandbox-system \
+            -f deploy/helm/sandbox-env/examples/values-tenant-pool-keda.yaml \
+            > /dev/null
+
+      # The chart ships no default trigger on purpose (the operator's claim
+      # metric can't tell two tenant pools apart). A ScaledObject with no
+      # triggers would sit at minReplicaCount forever, so that must fail the
+      # render rather than deploy dormant.
+      - name: Render (tenant pool autoscaling without triggers must fail)
+        run: |
+          set +e
+          helm template sandbox-env deploy/helm/sandbox-env \
+            --namespace agent-sandbox-system \
+            --set envName=ci \
+            --set tenantPools[0].name=tenant-acme-ci \
+            --set tenantPools[0].size=1 \
+            --set tenantPools[0].autoscaling.enabled=true \
+            --set tenantPools[0].autoscaling.minReplicaCount=1 \
+            --set tenantPools[0].autoscaling.maxReplicaCount=4 \
+            > /tmp/render.out 2>&1
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 0 ]; then
+            echo "::error::tenant pool autoscaling rendered with no triggers — validation is missing."
+            exit 1
+          fi
+          if ! grep -q "autoscaling.triggers" /tmp/render.out; then
+            echo "::error::failed for the wrong reason — expected the triggers-required error."
+            cat /tmp/render.out
+            exit 1
+          fi
+
       - name: Render (envName missing must fail)
         run: |
           set +e

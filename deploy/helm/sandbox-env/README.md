@@ -14,6 +14,11 @@ Renders:
 - `Secret` `studio-sandbox-sentinel-<envName>` (initial daemon token)
 - `SandboxWarmPool` `studio-sandbox-<envName>` and `...-medium` (optional)
 - `HorizontalPodAutoscaler` for the warm pool (optional; requires explicit metrics)
+- `SandboxWarmPool` per entry in `tenantPools` — pods already running ONE org's
+  repo + dev server (optional)
+- KEDA `ScaledObject` per tenant pool that sets `autoscaling.enabled`
+  (optional; requires explicit `triggers` and KEDA in the cluster — see
+  `examples/values-tenant-pool-keda.yaml`)
 - `Deployment` `studio-sandbox-placeholder-<envName>` — node "balloon" (optional)
 - `Gateway` + `Certificate` `agent-sandbox-preview-<envName>` (optional;
   per-claim HTTPRoutes are minted by the Studio runner, not by this chart)

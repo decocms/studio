@@ -1,0 +1,48 @@
+{{- range .Values.tenantPools }}
+{{- if .autoscaling }}
+{{- if .autoscaling.enabled }}
+---
+# Optional KEDA ScaledObject for one tenant pool, driving the SandboxWarmPool's
+# native scale subresource (same subresource `kubectl scale` and the generic
+# pool's HPA use). Off unless the entry sets autoscaling.enabled — a tenant pool
+# stays a fixed `size` until someone opts in, and the chart works with KEDA
+# absent from the cluster.
+#
+# One ScaledObject per pool, declared next to the pool it scales: the pool name
+# is already the join key between this chart and Studio's
+# STUDIO_SANDBOX_TENANT_POOLS, and putting the scaler in a third place is a
+# third copy of that string to keep in sync.
+#
+# BYO trigger, no default: the operator's own claim metric is labelled by
+# `sandbox_template`, and every tenant pool shares the ONE template this chart
+# renders — so the obvious copy of the generic pool's query would scale every
+# tenant pool on the whole env's claim rate. Studio's per-pool gauge
+# `studio_sandbox_pool_pods{pool,state}` is the signal that actually
+# distinguishes them; scale on state="bound" (a pod handed to a user), not
+# state="ready", which counts "config posted" rather than "dev server up".
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .name }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
+    studio.decocms.com/tenant-pool: {{ .name }}
+spec:
+  scaleTargetRef:
+    apiVersion: extensions.agents.x-k8s.io/v1alpha1
+    kind: SandboxWarmPool
+    name: {{ .name }}
+  {{- with .autoscaling.pollingInterval }}
+  pollingInterval: {{ . }}
+  {{- end }}
+  {{- with .autoscaling.cooldownPeriod }}
+  cooldownPeriod: {{ . }}
+  {{- end }}
+  minReplicaCount: {{ .autoscaling.minReplicaCount }}
+  maxReplicaCount: {{ .autoscaling.maxReplicaCount }}
+  triggers:
+    {{- toYaml .autoscaling.triggers | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
