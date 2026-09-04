@@ -104,6 +104,7 @@ import {
   createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
   fetchProtectedResourceMetadata,
+  oauthProxyBodyLimit,
   protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
@@ -1530,6 +1531,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // canonical mount lives under `/api/:org/oauth-proxy/...` (registered via
   // `createOrgScopedApi` below) and gets cross-org enforcement for free.
   app.use("/oauth-proxy/:connectionId/*", logDeprecatedRoute);
+  app.use("/oauth-proxy/:connectionId/*", oauthProxyBodyLimit);
   app.all("/oauth-proxy/:connectionId/*", oauthProxyHandler);
 
   // Better-Auth-served Protected Resource Metadata for the gateway-style MCP

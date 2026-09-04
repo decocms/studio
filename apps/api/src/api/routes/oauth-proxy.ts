@@ -13,6 +13,7 @@
  */
 
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { oAuthProtectedResourceMetadata } from "better-auth/plugins";
 import { ContextFactory } from "../../core/context-factory";
 import type { StudioContext } from "../../core/studio-context";
@@ -41,6 +42,17 @@ import {
 type Variables = {
   studioContext: StudioContext;
 };
+
+/**
+ * The DCR-echo branch of `oauthProxyHandler` (app.ts) reads the request body
+ * as JSON before any auth check — this route is unauthenticated by design.
+ * Cap it like the other unauthenticated body-reading routes (jira-webhook,
+ * trigger-callback) so an attacker can't force large-body parses.
+ */
+export const oauthProxyBodyLimit = bodyLimit({
+  maxSize: 1_048_576, // 1MB
+  onError: (c) => c.json({ error: "Payload too large" }, 413),
+});
 
 type HonoEnv = { Variables: Variables };
 
