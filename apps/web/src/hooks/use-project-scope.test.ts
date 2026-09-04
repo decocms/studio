@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   MIN_PROJECTS_FOR_SWITCHER,
+  projectForScope,
   resolveProjectScopeId,
   scopableProjects,
 } from "./use-project-scope";
@@ -48,6 +49,28 @@ describe("scopableProjects", () => {
   test("tolerates null", () => {
     expect(scopableProjects(null)).toEqual([]);
     expect(scopableProjects(undefined)).toEqual([]);
+  });
+});
+
+describe("projectForScope", () => {
+  test("resolves a routed dev project without offering it in the picker", () => {
+    const live = project("vir_live");
+    const dev = project("vir_dev", { liveAgentId: live.id });
+    const all = [live, dev];
+
+    expect(scopableProjects(all)).toEqual([live]);
+    expect(projectForScope(all, dev.id, null)).toBe(dev);
+  });
+
+  test("resolves an exact routed project beyond the picker page", () => {
+    const listed = project("vir_listed");
+    const exact = project("vir_unlisted", { liveAgentId: listed.id });
+
+    expect(projectForScope([listed], exact.id, exact)).toBe(exact);
+  });
+
+  test("ignores an exact result for a different route identity", () => {
+    expect(projectForScope([], "vir_current", project("vir_stale"))).toBeNull();
   });
 });
 

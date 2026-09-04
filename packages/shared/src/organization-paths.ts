@@ -22,9 +22,14 @@ export function orgSettingsPath(
   return page ? `${base}/${page}` : base;
 }
 
-/** Canonical root of one agent's workspace. */
-function agentWorkspacePath(orgSlug: string, agentId: string): string {
-  return `/${encodeURIComponent(orgSlug)}/agents/${encodeURIComponent(agentId)}`;
+/** Canonical root of one project's workspace. */
+function projectWorkspacePath(orgSlug: string, agentId: string): string {
+  return `/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(agentId)}`;
+}
+
+/** Canonical Reports destination inside one project workspace. */
+export function projectReportsPath(orgSlug: string, projectId: string): string {
+  return `${projectWorkspacePath(orgSlug, projectId)}/reports`;
 }
 
 export interface AgentAppPathOptions {
@@ -45,7 +50,7 @@ export function agentAppPath(
   orgSlug: string,
   opts: AgentAppPathOptions,
 ): string {
-  const path = `${agentWorkspacePath(orgSlug, opts.agentId)}/apps/${encodeURIComponent(opts.connectionId)}/${encodeURIComponent(opts.toolName)}`;
+  const path = `${projectWorkspacePath(orgSlug, opts.agentId)}/apps/${encodeURIComponent(opts.connectionId)}/${encodeURIComponent(opts.toolName)}`;
   const query = new URLSearchParams(opts.search ?? {});
   return query.size > 0 ? `${path}?${query.toString()}` : path;
 }

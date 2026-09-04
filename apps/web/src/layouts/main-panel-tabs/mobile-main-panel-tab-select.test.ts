@@ -185,6 +185,23 @@ describe("resolveMobileMainPanelViewOptions", () => {
     expect(options.map(({ value }) => value)).toEqual(["chat"]);
   });
 
+  test("omits the organization Library inside a project", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "board",
+      orgSlug: "acme",
+      projectScoped: true,
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options.map(({ value }) => value)).toEqual(["chat", "board"]);
+  });
+
   test("keeps the current route selectable after switching to Chat", () => {
     const options = resolveMobileMainPanelViewOptions({
       tabs: [],

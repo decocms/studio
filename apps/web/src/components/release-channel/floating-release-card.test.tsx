@@ -232,7 +232,7 @@ describe("FloatingReleaseCard", () => {
     // Scoped to a project, on the agents route with NO view named: project
     // surfaces, but not the Site Editor's.
     routeRef.current = {
-      fullPath: "/$org/agents/$agentId/",
+      fullPath: "/$org/projects/$agentId/",
       search: {},
       params: { agentId: "vir_1" },
       staticData: { mainView: "overview" },
@@ -258,7 +258,7 @@ describe("FloatingReleaseCard", () => {
       }),
     ];
     routeRef.current = {
-      fullPath: "/$org/agents/$agentId/site-editor/",
+      fullPath: "/$org/projects/$agentId/site-editor/",
       search: {},
       params: { agentId: "vir_1" },
       staticData: {

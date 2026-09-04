@@ -31,6 +31,11 @@ export interface WorkspaceRouteMainProps {
   leading?: ReactNode;
   /** Explicit semantic parents between the organization and current route. */
   breadcrumbAncestors?: readonly MainBreadcrumbNavigableItem[];
+  /**
+   * Root control for this route's breadcrumb. Organization routes default to
+   * Home; project routes replace it with the project's own icon and root link.
+   */
+  breadcrumbScope?: MainBreadcrumbNavigableItem;
   /** The current destination is the scope itself, as on organization Home. */
   breadcrumbScopeIsCurrent?: boolean;
   /**
@@ -50,6 +55,7 @@ export function WorkspaceRouteMain({
   contentMode = "scroll",
   leading,
   breadcrumbAncestors,
+  breadcrumbScope: breadcrumbScopeOverride,
   breadcrumbScopeIsCurrent = false,
   boundaryKey,
   title,
@@ -60,10 +66,9 @@ export function WorkspaceRouteMain({
   const routeBoundaryKey = boundaryKey ?? routeKey;
   const fixedRouteTitle = useRouteMainTitle();
   const routeTitle = title?.trim() || fixedRouteTitle;
-  const breadcrumbScope = organizationMainBreadcrumbItem(
-    org,
-    t("sidebar.navDestinations.home"),
-  );
+  const breadcrumbScope =
+    breadcrumbScopeOverride ??
+    organizationMainBreadcrumbItem(org, t("sidebar.navDestinations.home"));
 
   return (
     <Main>
@@ -98,7 +103,7 @@ export function WorkspaceRouteMain({
       </Main.Topbar>
       <Main.Toolbar />
       <Main.Content mode={contentMode}>
-        <ErrorBoundary key={routeBoundaryKey}>
+        <ErrorBoundary resetKey={routeBoundaryKey}>
           <MainPanelBoundary>
             <MainPanelTestErrorTrigger routeId={routeBoundaryKey}>
               {children}

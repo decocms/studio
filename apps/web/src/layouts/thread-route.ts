@@ -81,7 +81,7 @@ export function useRouteThreadId(): string | null {
  *  route path. Search is consulted only while the forever-mounted legacy
  *  `/$org/$taskId` adapter is settling. */
 export function resolveRouteAgentId(input: {
-  /** Canonical `/$org/agents/$agentId/...` identity. */
+  /** Canonical `/$org/projects/$agentId/...` identity. */
   agentIdParam?: string;
   virtualMcpIdSearch?: string;
   /** True only on `/$org/$taskId`, the one route whose agent lives in search. */

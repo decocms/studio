@@ -20,7 +20,11 @@ import * as z from "zod";
 import { listOrganizationsCached } from "@/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readLastLocation, saveLastLocation } from "@/lib/last-location";
-import { promoteLegacyTaskParam } from "@/lib/legacy-route-translation";
+import {
+  canonicalProjectPathFromLegacyAgents,
+  isCanonicalAgentIdSegment,
+  promoteLegacyTaskParam,
+} from "@/lib/legacy-route-translation";
 import {
   legacyWorkspaceCompatibilitySearchSchema,
   legacyWorkspaceCompatibilitySearchShape,
@@ -421,8 +425,8 @@ const unifiedChatRoute = createRoute({
  * ROUTE GRAMMAR — path = which page, search = how that page is laid out.
  *
  * Organization pages are direct children (`home`, `tasks`, `reports`,
- * `library`). Agent identity is always the explicit
- * `/agents/$agentId` boundary, and every agent feature is a child below it.
+ * `library`). Project identity is always the explicit
+ * `/projects/$agentId` boundary, and every project feature is a child below it.
  * Site Editor owns a further nested Preview/Content/Code subtree so all three
  * inherit its topbar and console drawer structurally.
  *
@@ -438,7 +442,7 @@ const unifiedChatRoute = createRoute({
  * shipped project-first grammar.
  *
  * RANKING INVARIANT: TanStack ranks statics above dynamics above optionals at
- * the same position, so `/$org/home`, `/$org/agents` and `/$org/tasks` beat the
+ * the same position, so `/$org/home`, `/$org/projects` and `/$org/tasks` beat the
  * `/$org/$taskId` sibling exactly as `/$org/settings` already does. But
  * `sortDynamic` returns 0 for two SAME-SHAPE dynamic siblings under one node,
  * and the winner then silently becomes registration order — so never register a
@@ -449,8 +453,8 @@ const unifiedChatRoute = createRoute({
  * children, never the existence or meaning of organization paths.
  */
 
-/** Home is organization-owned. Agent identity always lives in the canonical
- *  `/agents/$agentId` branch below. */
+/** Home is organization-owned. Project identity always lives in the canonical
+ *  `/projects/$agentId` branch below. */
 const orgHomeRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/home",
@@ -467,13 +471,11 @@ const orgHomeRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/home.tsx")),
 });
 
-/** Bare `/agents` is a compatibility entry only. It either promotes the old
- *  search-carried identity into the path or lands on organization Home. The
- *  legacy `main` value deliberately survives this first hop and is retired by
- *  `LegacyMainRedirect` after the canonical agent layout has mounted. */
-const agentsIndexRoute = createRoute({
+/** Bare `/projects` promotes a search-carried legacy identity or lands on the
+ *  organization Home. It is an entry point, never a second project list. */
+const projectsIndexRoute = createRoute({
   getParentRoute: () => agentShellLayout,
-  path: "/agents",
+  path: "/projects",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   beforeLoad: ({ params, search }) => {
     const agentId = search.virtualmcpid?.trim();
@@ -490,7 +492,7 @@ const agentsIndexRoute = createRoute({
       });
     }
     throw redirect({
-      to: "/$org/agents/$agentId",
+      to: "/$org/projects/$agentId",
       params: { org: params.org, agentId },
       search: (prev: Record<string, unknown>) => ({
         ...prev,
@@ -502,11 +504,11 @@ const agentsIndexRoute = createRoute({
   },
 });
 
-/** Canonical identity boundary for one agent. Every feature is a real child
+/** Canonical identity boundary for one project. Every feature is a real child
  *  route and therefore owns both its composition and its URL. */
 const agentWorkspaceRoute = createRoute({
   getParentRoute: () => agentShellLayout,
-  path: "/agents/$agentId",
+  path: "/projects/$agentId",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   component: Outlet,
 });
@@ -517,6 +519,57 @@ const agentOverviewRoute = createRoute({
   staticData: { defaultMain: "overview", mainView: "overview" },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-overview.tsx"),
+  ),
+});
+
+const projectTasksRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/tasks/{-$taskKey}",
+  staticData: {
+    defaultMain: "board",
+    mainView: "board",
+    mainTitleKey: "taskBoard.taskBoard.tasksTitle",
+  },
+  validateSearch: z.object({
+    task: z.string().optional(),
+    ...taskBoardSearchShape,
+  }),
+  beforeLoad: ({ params, search }) => {
+    const promoted = promoteLegacyTaskParam(params.taskKey, search);
+    if (!promoted && search.repo === undefined) return;
+    throw redirect({
+      to: "/$org/projects/$agentId/tasks/{-$taskKey}",
+      params: {
+        org: params.org,
+        agentId: params.agentId,
+        taskKey: promoted?.taskKey ?? params.taskKey,
+      },
+      /** Project identity is structural here; a second, clearable project
+       * filter in search would make the URL lie about what the route can show. */
+      search: { ...(promoted?.search ?? search), repo: undefined },
+      hash: true,
+      replace: true,
+    });
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/project-tasks.tsx"),
+  ),
+});
+
+const projectReportsRoute = createRoute({
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/reports",
+  staticData: {
+    defaultMain: "reports",
+    mainView: "reports",
+    mainTitleKey: "sidebar.navDestinations.reports",
+  },
+  validateSearch: z.object({
+    connect: z.coerce.string().optional(),
+    siteUrl: z.string().optional(),
+  }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/project-reports.tsx"),
   ),
 });
 
@@ -589,7 +642,7 @@ const agentAutomationsRoute = createRoute({
     const automationId = search.automation;
     if (!automationId) return;
     throw redirect({
-      to: "/$org/agents/$agentId/automations/$automationId",
+      to: "/$org/projects/$agentId/automations/$automationId",
       params: { org: params.org, agentId: params.agentId, automationId },
       search: (prev: Record<string, unknown>) => ({
         ...prev,
@@ -792,13 +845,67 @@ const agentConnectSourcesRoute = createRoute({
 });
 
 /** Compatibility leaf for the briefly shipped project-first grammar
- *  (`/agents/<agent>/<view>`). Static canonical children win route ranking;
+ *  (`/projects/<project>/<view>`). Static canonical children win route ranking;
  *  the outer workspace adapter translates every remaining view directly to
  *  its canonical route before agent/runtime providers mount. */
 const agentLegacyProjectViewRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/$legacyView",
   component: () => null,
+});
+
+/** `/agents` was the previous canonical namespace. Keep it as a one-hop input
+ *  so shared links and browser history survive the terminology change; no
+ *  application navigation emits it. Nested paths are preserved verbatim and
+ *  then resolved by the canonical project tree's compatibility adapter. */
+const legacyAgentsIndexRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/agents",
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  beforeLoad: ({ params, search }) => {
+    const agentId = search.virtualmcpid?.trim();
+    throw redirect(
+      agentId
+        ? {
+            to: "/$org/projects/$agentId",
+            params: { org: params.org, agentId },
+            search: (previous: Record<string, unknown>) => previous,
+            hash: true,
+            replace: true,
+          }
+        : {
+            to: "/$org/projects",
+            params: { org: params.org },
+            search: (previous: Record<string, unknown>) => previous,
+            hash: true,
+            replace: true,
+          },
+    );
+  },
+});
+
+const legacyAgentsDeepRoute = createRoute({
+  getParentRoute: () => agentShellLayout,
+  path: "/agents/$",
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  beforeLoad: ({ params, location }) => {
+    const firstSegment = params._splat?.split("/").find(Boolean);
+    if (!isCanonicalAgentIdSegment(firstSegment)) return;
+
+    const canonicalPathname = canonicalProjectPathFromLegacyAgents(
+      location.pathname,
+    );
+    if (!canonicalPathname) return;
+
+    const hash = location.hash ? `#${location.hash}` : "";
+    throw redirect({
+      href: `${canonicalPathname}${location.searchStr}${hash}`,
+      replace: true,
+    });
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/legacy-agents-deep.tsx"),
+  ),
 });
 
 /**
@@ -915,7 +1022,7 @@ const orgMembersRedirectRoute = createRoute({
 const orgIndexSearchSchema = z.object({
   main: z.union([z.string(), z.literal(0)]).optional(),
   /** LEGACY INPUT ONLY — the retired org resolver carried project identity in
-   * search before `/agents/$agentId` became canonical. */
+   * search before `/projects/$agentId` became canonical. */
   virtualmcpid: z.string().optional(),
   /** Preserve every route-owned payload until the canonical destination can
    * reclaim it. TanStack validates this hop before OrgHome translates it. */
@@ -1325,6 +1432,8 @@ const agentSiteEditorWithChildren = agentSiteEditorRoute.addChildren([
 
 const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentOverviewRoute,
+  projectTasksRoute,
+  projectReportsRoute,
   agentSiteEditorWithChildren,
   agentAutomationsRoute,
   agentAutomationRoute,
@@ -1347,8 +1456,10 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
 const agentShellWithChildren = agentShellLayout.addChildren([
   unifiedChatRoute,
   orgHomeRoute,
-  agentsIndexRoute,
+  projectsIndexRoute,
   agentWorkspaceWithChildren,
+  legacyAgentsIndexRoute,
+  legacyAgentsDeepRoute,
   tasksRoute,
   reportsRoute,
   libraryRoute,

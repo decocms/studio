@@ -258,7 +258,7 @@ export function CommandPalette({
                   go(
                     () =>
                       navigate({
-                        to: DESTINATION_ROUTE.agents,
+                        to: DESTINATION_ROUTE.projects,
                         params: { org: org.slug, agentId: project.id },
                       }),
                     "project",

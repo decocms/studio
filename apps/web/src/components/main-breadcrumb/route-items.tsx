@@ -26,18 +26,18 @@ export function organizationMainBreadcrumbItem(
   };
 }
 
-export function agentMainBreadcrumbItem(
+export function projectMainBreadcrumbItem(
   orgSlug: string,
   agent: { id: string; title: string; icon?: string | null },
   fallbackLabel: string,
 ): MainBreadcrumbNavigableItem {
   const label = agent.title.trim() || fallbackLabel;
   return {
-    id: `agent:${agent.id}`,
+    id: `project:${agent.id}`,
     label,
     icon: <AgentAvatar icon={agent.icon ?? null} name={label} size="xs" />,
     link: {
-      to: "/$org/agents/$agentId",
+      to: "/$org/projects/$agentId",
       params: { org: orgSlug, agentId: agent.id },
       search: (previous) =>
         resolvePanelNavigationSearch({

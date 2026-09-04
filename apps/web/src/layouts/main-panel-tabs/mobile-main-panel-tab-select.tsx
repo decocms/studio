@@ -23,6 +23,7 @@ import { TabIconGlyph } from "./tab-icon-glyph";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 import { useRouteMainTitle } from "@/hooks/use-route-main-title";
+import { useScopeId } from "@/hooks/use-project-scope";
 
 export function resolveMobileMainPanelTabSelectLabel({
   tabs,
@@ -62,12 +63,14 @@ export function resolveMobileMainPanelViewOptions({
   activeTab,
   currentRouteTitle,
   orgSlug,
+  projectScoped = false,
   titles,
 }: {
   tabs: Array<{ id: string; title: string; icon: TabIcon }>;
   activeTab: string;
   currentRouteTitle?: string;
   orgSlug: string | undefined;
+  projectScoped?: boolean;
   titles: { chat: string; tasks: string; library: string; mainView: string };
 }): ViewOption[] {
   const chatOption = {
@@ -84,7 +87,9 @@ export function resolveMobileMainPanelViewOptions({
     ...(orgSlug
       ? [
           { value: "board", title: titles.tasks, icon: TASKS_ICON },
-          { value: "files", title: titles.library, icon: LIBRARY_ICON },
+          ...(projectScoped
+            ? []
+            : [{ value: "files", title: titles.library, icon: LIBRARY_ICON }]),
         ]
       : []),
   ];
@@ -134,8 +139,9 @@ export function restoreCurrentMobileMainSearch(
  * Mobile view selector. On mobile there's no side-by-side split, so a single
  * surface is visible at a time. This dropdown mirrors the desktop panel bar —
  * Chat, controls local to the current surface, contextual/per-thread views, and
- * the organization-owned Tasks / Library destinations. Durable project views stay in the responsive
- * sidebar on both desktop and mobile.
+ * Tasks plus the organization Library when unscoped. Project workspaces omit
+ * Library here for the same reason their sidebar does: it is not a project
+ * destination. Durable project views stay in the responsive sidebar.
  */
 export function MobileMainPanelTabSelect({
   currentRouteTitle,
@@ -150,6 +156,7 @@ export function MobileMainPanelTabSelect({
   const params = useParams({ strict: false });
   const orgSlug =
     "org" in params && typeof params.org === "string" ? params.org : undefined;
+  const projectScoped = useScopeId() !== null;
   const { virtualMcpId, tabs, activeTab, activeRouteTitle } =
     useMainPanelTabs();
   const workspace = useWorkspace();
@@ -160,14 +167,16 @@ export function MobileMainPanelTabSelect({
   // select primitive's competing attempt to restore its departing trigger.
   const routeChangeOwnsFocus = useRef(false);
 
-  // Tasks and Library are organization destinations. Selecting either clears
-  // the active thread, so their availability must not depend on `taskId`.
+  // Tasks exists at both organization and project scope; Library is org-only.
+  // Selecting either clears the active thread, so availability must not
+  // depend on `taskId`.
   const options = resolveMobileMainPanelViewOptions({
     tabs,
     activeTab,
     currentRouteTitle:
       currentRouteTitle ?? inheritedRouteTitle ?? activeRouteTitle,
     orgSlug,
+    projectScoped,
     titles: {
       chat: t("mainPanelTabs.mobileMainPanelTabSelect.chat"),
       tasks: t("mainPanelTabs.mobileMainPanelTabSelect.tasks"),

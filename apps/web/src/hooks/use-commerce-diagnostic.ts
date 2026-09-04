@@ -13,6 +13,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import {
+  commerceDiscoveryReportBelongsToProject,
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getCommerceDiscoveryAgentId,
   mcpClientQueryOptions,
@@ -20,7 +21,7 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@/sdk";
-import { AGENT_ROUTE } from "@/hooks/use-destination-route";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { KEYS } from "@/lib/query-keys";
 import { unwrapToolResult } from "@/routes/commerce-onboarding/companions-core";
 import {
@@ -76,7 +77,9 @@ export interface UseCommerceDiagnosticResult {
   cdClient: CommerceDiscoveryClient | null;
 }
 
-export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
+export function useCommerceDiagnostic(
+  projectId?: string,
+): UseCommerceDiagnosticResult {
   const { org } = useProjectContext();
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
 
@@ -105,6 +108,16 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
     },
   });
   const connectionItem = connectionQuery.data?.item ?? null;
+  const connectionBelongsToProject =
+    connectionItem !== null &&
+    commerceDiscoveryReportBelongsToProject(
+      org.id,
+      connectionItem.metadata?.projectId,
+      projectId,
+    );
+  const ownedConnectionItem = connectionBelongsToProject
+    ? connectionItem
+    : null;
 
   // Gate 2: only orgs that passed gate 1 open a client to the CD MCP.
   const { data: cdClient, isError: cdClientIsError } = useQuery({
@@ -113,12 +126,15 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
       orgId: org.id,
       orgSlug: org.slug,
     }),
-    enabled: !!connectionItem,
+    enabled: !!ownedConnectionItem,
   });
+  // A disabled TanStack query may still surface data warmed by an org-level
+  // caller. Mask it explicitly; `enabled` controls fetching, not cache reads.
+  const ownedCdClient = ownedConnectionItem ? cdClient : undefined;
 
   const diagnosticQuery = useQuery({
-    queryKey: KEYS.commerceDiscoveryDiagnostic(org.id, connectionId),
-    enabled: !!cdClient,
+    queryKey: KEYS.commerceDiscoveryDiagnostic(org.id, connectionId, projectId),
+    enabled: !!ownedCdClient,
     retry: 1,
     refetchInterval: (query) =>
       query.state.status !== "error" &&
@@ -126,8 +142,8 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
         ? GENERATING_POLL_MS
         : false,
     queryFn: async () => {
-      if (!cdClient) throw new Error("cdClient not ready");
-      const result = await cdClient.callTool({
+      if (!ownedCdClient) throw new Error("cdClient not ready");
+      const result = await ownedCdClient.callTool({
         name: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
         arguments: {},
       });
@@ -138,21 +154,23 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
     },
   });
 
-  const siteUrl = connectionItem?.metadata?.siteUrl;
+  const siteUrl = ownedConnectionItem?.metadata?.siteUrl;
 
   return {
-    diagnostic: diagnosticQuery.data ?? null,
-    isSuccess: diagnosticQuery.isSuccess,
+    diagnostic: ownedConnectionItem ? (diagnosticQuery.data ?? null) : null,
+    isSuccess: ownedConnectionItem
+      ? diagnosticQuery.isSuccess
+      : connectionQuery.isSuccess,
     isLoading: isCommerceDiagnosticLoading({
       connectionQueryPending: connectionQuery.isPending,
-      hasConnection: !!connectionItem,
+      hasConnection: !!ownedConnectionItem,
       cdClientFailed: cdClientIsError,
       diagnosticQueryPending: diagnosticQuery.isPending,
     }),
     siteUrl: typeof siteUrl === "string" && siteUrl ? siteUrl : null,
     host: hostFromSiteUrl(siteUrl),
     connectionId,
-    cdClient: (cdClient as CommerceDiscoveryClient | undefined) ?? null,
+    cdClient: (ownedCdClient as CommerceDiscoveryClient | undefined) ?? null,
   };
 }
 
@@ -165,7 +183,7 @@ export function commerceReportNavTarget(
   connectionId: string,
 ) {
   return {
-    to: AGENT_ROUTE.app,
+    to: PROJECT_ROUTE.app,
     params: {
       org: org.slug,
       agentId: getCommerceDiscoveryAgentId(org.id),

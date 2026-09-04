@@ -7,6 +7,7 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
+import { useScopeId } from "@/hooks/use-project-scope";
 import {
   navigateToTabLocation,
   tabIdForRoute,
@@ -16,7 +17,7 @@ import {
 import { resolvePanelNavigationSearch } from "./panel-navigation-search";
 
 /** The semantic view owned by the deepest matched route. */
-export function useMatchedMainView(): {
+function useMatchedMainView(): {
   mainView: string | undefined;
   siteEditorView: "preview" | "content" | "code" | undefined;
 } {
@@ -76,10 +77,19 @@ export function usePanelNavigate(): {
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const routeAgentId = useRouteVirtualMcpId();
+  const routeProjectId = useScopeId();
   const org = params.org ?? "";
 
   const openPanel = (tabId: string, opts?: OpenPanelOptions) => {
-    const orgDestination = tabRouteLocation(tabId).kind === "org-destination";
+    const location = tabRouteLocation(tabId);
+    const destinationScope =
+      opts?.agentId !== undefined || routeProjectId !== null
+        ? "project"
+        : "organization";
+    const orgDestination =
+      location.kind === "org-destination" ||
+      (location.kind === "project-destination" &&
+        destinationScope === "organization");
     const search: TabRouteSearchWriter = (prev) =>
       resolvePanelNavigationSearch({
         previous: prev,
@@ -90,6 +100,7 @@ export function usePanelNavigate(): {
       org,
       agentId: opts?.agentId ?? routeAgentId,
       tabId,
+      destinationScope,
       search,
       replace: opts?.replace ?? true,
     });

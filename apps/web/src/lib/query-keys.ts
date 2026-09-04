@@ -84,10 +84,23 @@ export const KEYS = {
 
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
-  // Owner diagnostic (get_my_diagnostic) polled by the home report banner —
-  // keyed per org + connection so a credential rotation forces a fresh fetch.
-  commerceDiscoveryDiagnostic: (orgId: string, connectionId: string) =>
+  commerceDiscoveryDiagnosticPrefix: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "diagnostic", orgId, connectionId] as const,
+  // Owner diagnostic (get_my_diagnostic) polled by report surfaces. Project
+  // scope is part of the identity so one project's cached diagnostic can never
+  // hydrate another project's Reports route. `null` is the org-wide reader.
+  commerceDiscoveryDiagnostic: (
+    orgId: string,
+    connectionId: string,
+    projectId?: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "diagnostic",
+      orgId,
+      connectionId,
+      projectId ?? null,
+    ] as const,
   commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
     ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
 

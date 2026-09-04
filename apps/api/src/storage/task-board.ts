@@ -318,6 +318,8 @@ export class TaskBoardStorage {
     type?: TaskBoardItemType;
     assigneeId?: string | null;
     assignedBy?: string | null;
+    /** Exact virtual MCP/project that owns this task. */
+    virtualMcpId?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
     dueDate?: string | null;
@@ -354,6 +356,7 @@ export class TaskBoardStorage {
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
+          virtual_mcp_id: params.virtualMcpId ?? null,
           repo: params.repo ?? null,
           due_date: params.dueDate ?? null,
           external_key: params.externalKey ?? null,
@@ -402,6 +405,7 @@ export class TaskBoardStorage {
       type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
+      virtualMcpId?: string | null;
       repo?: string | null;
       dueDate?: string | null;
       externalUrl?: string | null;
@@ -424,6 +428,9 @@ export class TaskBoardStorage {
           : {}),
         ...(data.assignedBy !== undefined
           ? { assigned_by: data.assignedBy }
+          : {}),
+        ...(data.virtualMcpId !== undefined
+          ? { virtual_mcp_id: data.virtualMcpId }
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
@@ -2406,6 +2413,7 @@ export class TaskBoardStorage {
     type?: string;
     assignee_id: string | null;
     assigned_by: string | null;
+    virtual_mcp_id: string | null;
     repo: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
@@ -2429,6 +2437,9 @@ export class TaskBoardStorage {
       type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
+      // Old rows and deliberately organization-level cards are explicit null,
+      // never undefined — every public schema requires the nullable field.
+      virtualMcpId: row.virtual_mcp_id ?? null,
       repo: row.repo,
       dueDate:
         row.due_date instanceof Date

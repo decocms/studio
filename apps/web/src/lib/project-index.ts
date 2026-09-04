@@ -13,11 +13,11 @@
  * because a repository is how a project is identified on a task, not a second
  * thing to choose.
  *
+ * A card's persisted `virtualMcpId` is authoritative. `repo` and linked runs
+ * remain as compatibility attribution for rows created before project
+ * ownership was stored; repository data still serves execution and display.
+ *
  * WHAT IS NOT HERE, deliberately:
- *  - No new persisted field. `task_board_items.repo` stays the only per-card
- *    link, with the same shape and the same writers it has today, so every
- *    server consumer of it (`shouldAdvanceToReview`, the reviewer's connection
- *    pin, stall recovery, GLOBAL_SEARCH) keeps working untouched.
  *  - No write to `?virtualmcpid=` from a board control. Coupling the exact
  *    board filter to the inclusive ambient scope is what #6801 removed, and
  *    re-creating it from the other end would hide every repo-less card the
@@ -32,6 +32,7 @@ import { projectRepo, resolveGithubAttachment } from "./github-repo";
 
 /** A card, as everything here reads one: its stamped repo and its runs. */
 export interface AttributableTask {
+  virtualMcpId?: string | null;
   repo?: string | null;
   threads?: readonly { virtualMcpId?: string | null }[];
 }
@@ -94,6 +95,10 @@ export interface ProjectIndex {
    * iterated won and its sibling's cards were routed to it silently.
    */
   byProject: Map<string, ProjectIndexEntry>;
+  /** Project id (including hidden dev aliases) → the visible project it
+   * represents. Unlike `byProject`, this retains identity inside a shared-repo
+   * bucket. */
+  projectById: Map<string, VirtualMCPEntity>;
 }
 
 /** `created_at` asc, `id` asc — so a bucket's representative never depends on
@@ -128,9 +133,11 @@ function entryTitle(entry: ProjectIndexEntry): string {
 export function buildProjectIndex(
   projects: readonly VirtualMCPEntity[],
   extraRepos: readonly (string | null | undefined)[] = [],
+  aliasCandidates: readonly VirtualMCPEntity[] = [],
 ): ProjectIndex {
   const byRepo = new Map<string, ProjectIndexEntry>();
   const byProject = new Map<string, ProjectIndexEntry>();
+  const projectById = new Map<string, VirtualMCPEntity>();
   const repoless: ProjectIndexEntry[] = [];
 
   /** The bucket for a repository, created on first sight. Keeps the casing it
@@ -156,6 +163,7 @@ export function buildProjectIndex(
       const entry = repoEntry(repo);
       entry.projects.push(project);
       byProject.set(project.id, entry);
+      projectById.set(project.id, project);
       continue;
     }
     const entry: ProjectIndexEntry = {
@@ -167,6 +175,7 @@ export function buildProjectIndex(
     };
     repoless.push(entry);
     byProject.set(project.id, entry);
+    projectById.set(project.id, project);
   }
 
   for (const label of extraRepos) {
@@ -188,27 +197,48 @@ export function buildProjectIndex(
     ...unclaimed.sort(byTitle),
   ];
 
+  /** Dev entities stay out of visible buckets, but tasks can legitimately
+   * persist their ids. Point each alias at its live project's bucket and
+   * identity so grouping remains exact even for a shared repository. */
+  for (const candidate of aliasCandidates) {
+    const metadata = candidate.metadata;
+    const liveProjectId =
+      typeof metadata === "object" &&
+      metadata !== null &&
+      "liveAgentId" in metadata &&
+      typeof metadata.liveAgentId === "string"
+        ? metadata.liveAgentId
+        : null;
+    if (!liveProjectId || candidate.id === liveProjectId) continue;
+    const entry = byProject.get(liveProjectId);
+    const project = projectById.get(liveProjectId);
+    if (!entry || !project) continue;
+    byProject.set(candidate.id, entry);
+    projectById.set(candidate.id, project);
+  }
+
   return {
     entries,
     byId: new Map(entries.map((entry) => [entry.id, entry] as const)),
     byRepo,
     byProject,
+    projectById,
   };
 }
 
 /**
  * Which bucket a card belongs to, or null when nothing says.
  *
- * Threads first, then `repo` — the precedence the org home and the sidebar
- * already used, kept so replacing their two copies with this one changes
- * nothing but the collision. A run names the project it ran in, which is the
- * only link that survives a card whose project pins no repository; `repo` is
- * what a card nobody has run yet still carries.
+ * Persisted owner first. Threads and then `repo` are the legacy-only fallback
+ * for cards whose owner is null.
  */
 export function entryForTask(
   task: AttributableTask,
   index: ProjectIndex,
 ): ProjectIndexEntry | null {
+  if (task.virtualMcpId) {
+    return index.byProject.get(task.virtualMcpId) ?? null;
+  }
   for (const thread of task.threads ?? []) {
     const found = thread.virtualMcpId
       ? index.byProject.get(thread.virtualMcpId)
@@ -230,6 +260,10 @@ export function projectsForTask(
   task: AttributableTask,
   index: ProjectIndex,
 ): VirtualMCPEntity[] {
+  if (task.virtualMcpId) {
+    const project = index.projectById.get(task.virtualMcpId);
+    return project ? [project] : [];
+  }
   const entry = entryForTask(task, index);
   if (!entry) return [];
   if (entry.projects.length <= 1) return entry.projects;
@@ -306,9 +340,15 @@ export function taskMatchesProjectFilter(
   index: ProjectIndex,
 ): boolean {
   if (filterId === null) return true;
-  if (filterId === NO_PROJECT_FILTER) return entryForTask(task, index) === null;
+  if (filterId === NO_PROJECT_FILTER) {
+    return !task.virtualMcpId && entryForTask(task, index) === null;
+  }
 
   const entry = entryForFilter(filterId, index);
+  if (task.virtualMcpId) {
+    const ownerEntry = index.byProject.get(task.virtualMcpId);
+    return ownerEntry ? ownerEntry === entry : task.virtualMcpId === filterId;
+  }
   if (!entry) {
     if (!filterId.includes("/")) return true;
     return normalizeRepo(task.repo) === normalizeRepo(filterId);
@@ -360,9 +400,9 @@ export function filterAfterCreate(
 /**
  * The buckets a card can be STAMPED with.
  *
- * A bucket needs a repository, because `task_board_items.repo` is the only
- * per-card link there is — and it must not be one whose connection was torn
- * down. `projectRepo` deliberately still answers for a `detached` project so
+ * A stampable bucket needs a repository for execution, and it must not be one
+ * whose connection was torn down. `projectRepo` deliberately still answers
+ * for a `detached` project so
  * its existing cards stay visible, but no PR can ever be opened there, and the
  * server refuses to advance a card with `repo != null && !hasPr`. Stamping one
  * parks a card In Progress forever.

@@ -1,7 +1,7 @@
 /**
  * useNavigateToAgent — navigates to an agent and adds it to the sidebar.
  *
- * Shared hook used by sidebar, home page, and /agents route to handle
+ * Shared hook used by sidebar, home page, and /projects route to handle
  * agent navigation with automatic personal sidebar membership.
  */
 

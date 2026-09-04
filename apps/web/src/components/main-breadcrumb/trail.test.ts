@@ -34,7 +34,7 @@ describe("isMainBreadcrumbScopeCurrent", () => {
 
 describe("resolveMainBreadcrumbAncestorTrail", () => {
   it("keeps distinct semantic ancestors even when labels match", () => {
-    const project = item("project:1", "Site Editor", "/agents/1");
+    const project = item("project:1", "Site Editor", "/projects/1");
 
     expect(
       resolveMainBreadcrumbAncestorTrail(
@@ -82,7 +82,7 @@ describe("resolveMainBreadcrumbAncestorTrail", () => {
   it("uses the innermost duplicate id consistently in every presentation", () => {
     const outerProject = item("project:1", "Old title", "/old-project");
     const settings = item("settings");
-    const innerProject = item("project:1", "Current title", "/agents/1");
+    const innerProject = item("project:1", "Current title", "/projects/1");
 
     const trail = resolveMainBreadcrumbAncestorTrail(
       "organization:1",

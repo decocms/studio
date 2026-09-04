@@ -78,46 +78,68 @@ export function useVirtualMCPs(options: UseVirtualMCPsOptions = {}) {
 export function useVirtualMCPsNonBlocking(
   options: UseVirtualMCPsOptions = {},
 ): VirtualMCPEntity[] {
-  const { org } = useProjectContext();
-  /** Non-blocking all the way down. `useMCPClient` here SUSPENDED, which made
-   *  this hook's whole contract depend on a parent having warmed the client
-   *  first — true only by luck, and false in the sidebar. */
-  const client = useMCPClientNonBlocking({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  return useVirtualMCPsNonBlockingState(options).items;
+}
 
-  const { data } = useQuery({
+/** The non-suspending virtual-MCP list together with first-load state.
+ *
+ * Consumers that make routing decisions must distinguish an empty completed
+ * list from a list whose self client or collection request is still pending;
+ * otherwise a cold deep link can be rejected before dev/live aliases resolve.
+ */
+export function useVirtualMCPsNonBlockingState(
+  options: UseVirtualMCPsOptions = {},
+  enabled = true,
+): { items: VirtualMCPEntity[]; pending: boolean; error: Error | null } {
+  const { org } = useProjectContext();
+  const clientQuery = useQuery(
+    mcpClientQueryOptions({
+      connectionId: SELF_MCP_ALIAS_ID,
+      orgId: org.id,
+      orgSlug: org.slug,
+    }),
+  );
+  const client = clientQuery.data ?? null;
+
+  const listQuery = useQuery({
     ...collectionListQueryOptions<VirtualMCPEntity>(
       org.id,
       "VIRTUAL_MCP",
       client,
       options,
     ),
-    enabled: !!client,
+    enabled: enabled && !!client,
   });
 
-  return data ?? [];
+  return {
+    items: listQuery.data ?? [],
+    pending:
+      enabled && (clientQuery.isPending || (!!client && listQuery.isPending)),
+    error: enabled ? (clientQuery.error ?? listQuery.error) : null,
+  };
 }
 
-/** One virtual MCP, read WITHOUT suspending — `null` until it resolves.
+/** One virtual MCP and its pending state, read WITHOUT suspending.
  *
  *  `ChatPrefsProvider` mounts ABOVE the sidebar and outside every Suspense
  *  boundary in the shell, so a suspending read there blanks the whole app back
  *  to the splash screen. Never use this where a missing entity is an error
- *  state: it cannot tell "still loading" from "not found". */
-export function useVirtualMCPNonBlocking(
+ *  state. The explicit `pending` bit lets route chrome distinguish an entity
+ *  still resolving from a completed missing/deleted entity. */
+export function useVirtualMCPNonBlockingState(
   virtualMcpId: string | null | undefined,
-): VirtualMCPEntity | null {
+): { item: VirtualMCPEntity | null; pending: boolean; error: Error | null } {
   const { org } = useProjectContext();
-  const client = useMCPClientNonBlocking({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const clientQuery = useQuery(
+    mcpClientQueryOptions({
+      connectionId: SELF_MCP_ALIAS_ID,
+      orgId: org.id,
+      orgSlug: org.slug,
+    }),
+  );
+  const client = clientQuery.data ?? null;
 
-  const { data } = useQuery({
+  const query = useQuery({
     ...collectionItemQueryOptions<VirtualMCPEntity>(
       org.id,
       "VIRTUAL_MCP",
@@ -127,7 +149,19 @@ export function useVirtualMCPNonBlocking(
     enabled: !!client && !!virtualMcpId,
   });
 
-  return data?.item ?? null;
+  return {
+    item: query.data?.item ?? null,
+    pending:
+      !!virtualMcpId &&
+      (clientQuery.isPending || (!!client && query.isPending)),
+    error: virtualMcpId ? (clientQuery.error ?? query.error) : null,
+  };
+}
+
+export function useVirtualMCPNonBlocking(
+  virtualMcpId: string | null | undefined,
+): VirtualMCPEntity | null {
+  return useVirtualMCPNonBlockingState(virtualMcpId).item;
 }
 
 /** The org's virtual MCPs, resolved OUTSIDE render — cache when warm, wire when

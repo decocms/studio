@@ -15,6 +15,7 @@ import {
   useActiveOrganizations,
 } from "@/lib/auth-client";
 import { isPostHogInitialized, track } from "@/lib/posthog-client";
+import { refreshCommerceDiagnosticOwnership } from "@/lib/commerce-diagnostic-cache";
 import { reportAttributionFromSearch } from "@/routes/reports/track";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -36,6 +37,7 @@ import {
 import {
   QueryErrorResetBoundary,
   useMutation,
+  useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
@@ -758,6 +760,7 @@ function CommerceSetupContent({
   initialSiteUrl?: string;
   sessionEmail?: string | null;
 }) {
+  const queryClient = useQueryClient();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -803,13 +806,17 @@ function CommerceSetupContent({
       return parseSelfToolResult<unknown>(result);
     },
     retry: false,
-    onSuccess: (_result, submittedSiteUrl) => {
+    onSuccess: async (_result, submittedSiteUrl) => {
       track("commerce_onboarding_setup_succeeded", {
         domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
         organization_id: org.id,
       });
       setInlineError(null);
-      void connectionQuery.refetch();
+      await refreshCommerceDiagnosticOwnership(
+        queryClient,
+        org.id,
+        connectionId,
+      );
       void virtualMcpQuery.refetch();
     },
     onError: (error, submittedSiteUrl) => {

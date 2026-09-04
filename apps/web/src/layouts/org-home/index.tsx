@@ -52,7 +52,7 @@ export default function OrgHome() {
   if (project) {
     return (
       <Navigate
-        to={DESTINATION_ROUTE.agents}
+        to={DESTINATION_ROUTE.projects}
         params={{ org: org.slug, agentId: project }}
         search={{ ...search, virtualmcpid: undefined }}
         hash={true}

@@ -11,10 +11,9 @@ import {
   isProjectSidebarViewId,
   projectActiveViewUnavailable,
   projectDefaultViewUnavailable,
-  projectMainViewPresence,
   projectSidebarViewPresence,
   projectSidebarViewUnavailable,
-  resolveProjectMainViewContext,
+  resolveProjectMainViewProject,
   resolveProjectSidebarViews,
   selectedProjectSidebarViews,
   toggleProjectSidebarView,
@@ -57,9 +56,6 @@ describe("project sidebar views", () => {
     );
 
     expect(availableProjectSidebarViews(presence)).toEqual([
-      "overview",
-      "reports",
-      "board",
       "site-editor",
       "assets",
       "e2e",
@@ -68,24 +64,10 @@ describe("project sidebar views", () => {
     ]);
   });
 
-  test("keeps only automations when a project has no source or native views", () => {
+  test("offers only optional destinations when a project has no source or native views", () => {
     expect(
       availableProjectSidebarViews(
         projectSidebarViewPresence(false, nativePresence([])),
-      ),
-    ).toEqual(["automations"]);
-  });
-
-  test("keeps org destinations present while gating their project-scoped form", () => {
-    const native = nativePresence([]);
-    expect(
-      availableProjectSidebarViews(
-        projectMainViewPresence(null, false, native),
-      ),
-    ).toEqual(["overview", "reports", "board", "automations"]);
-    expect(
-      availableProjectSidebarViews(
-        projectMainViewPresence("vir_1", false, native),
       ),
     ).toEqual(["automations"]);
   });
@@ -97,32 +79,31 @@ describe("project sidebar views", () => {
       metadata: { githubRepo: { url: "https://github.com/deco/site" } },
     };
 
-    const context = resolveProjectMainViewContext(project.id, project, shell);
-    expect(context).toEqual({
+    const resolvedProject = resolveProjectMainViewProject(
+      project.id,
       project,
-      resolvedScopeId: project.id,
-    });
+      shell,
+    );
+    expect(resolvedProject).toBe(project);
     expect(
       availableProjectSidebarViews(
-        projectMainViewPresence(
-          context.resolvedScopeId,
-          agentHasClonableSource(context.project?.metadata),
+        projectSidebarViewPresence(
+          agentHasClonableSource(resolvedProject?.metadata),
           nativePresence([]),
         ),
       ),
-    ).toEqual(["overview", "reports", "board", "site-editor", "automations"]);
+    ).toEqual(["site-editor", "automations"]);
   });
 
   test("reuses an agent-route shell and fails open while a destination scope resolves", () => {
     const project = { id: "vir_project" };
 
-    expect(resolveProjectMainViewContext(project.id, null, project)).toEqual({
+    expect(resolveProjectMainViewProject(project.id, null, project)).toBe(
       project,
-      resolvedScopeId: project.id,
-    });
+    );
     expect(
-      resolveProjectMainViewContext(project.id, null, { id: "decopilot" }),
-    ).toEqual({ project: null, resolvedScopeId: null });
+      resolveProjectMainViewProject(project.id, null, { id: "decopilot" }),
+    ).toBeNull();
   });
 
   test("uses the four-view initial selection for unversioned projects", () => {
@@ -144,12 +125,20 @@ describe("project sidebar views", () => {
     );
   });
 
-  test("treats versioned null and empty selections as an explicit all-off", () => {
-    expect(effectiveProjectSidebarViews(null, 1)).toEqual([]);
-    expect(effectiveProjectSidebarViews([], 1)).toEqual([]);
+  test("keeps structural Home, Reports, and Tasks when every optional row is off", () => {
+    expect(effectiveProjectSidebarViews(null, 1)).toEqual([
+      "overview",
+      "reports",
+      "board",
+    ]);
+    expect(effectiveProjectSidebarViews([], 1)).toEqual([
+      "overview",
+      "reports",
+      "board",
+    ]);
   });
 
-  test("requires both presence and selection", () => {
+  test("forces structural rows and requires presence plus selection for optional rows", () => {
     const presence = projectSidebarViewPresence(
       true,
       nativePresence(["assets", "e2e", "cdn"]),
@@ -160,7 +149,7 @@ describe("project sidebar views", () => {
         presence,
         1,
       ),
-    ).toEqual(["board", "assets", "cdn", "automations"]);
+    ).toEqual(["overview", "reports", "board", "assets", "cdn", "automations"]);
     expect(selectedProjectSidebarViews(undefined, presence)).toEqual([
       "overview",
       "reports",
@@ -193,6 +182,9 @@ describe("project sidebar views", () => {
     expect(
       defaultMainViewAfterSidebarToggle(null, "reports", false),
     ).toBeNull();
+    expect(
+      defaultMainViewAfterSidebarToggle({ type: "reports" }, "reports", false),
+    ).toEqual({ type: "reports" });
   });
 
   test("prefers canonical sidebar views, including explicit null and empty", () => {
@@ -239,7 +231,18 @@ describe("project sidebar views", () => {
         false,
         1,
       ),
-    ).toEqual(["cdn", "automations"]);
+    ).toEqual(["overview", "reports", "board", "cdn", "automations"]);
+  });
+
+  test("never disables a structural project destination", () => {
+    for (const viewId of ["overview", "reports", "board"] as const) {
+      expect(toggleProjectSidebarView(["assets"], viewId, false, 1)).toEqual([
+        "overview",
+        "reports",
+        "board",
+        "assets",
+      ]);
+    }
   });
 
   test("keeps native routes while presence discovery is pending", () => {
@@ -271,13 +274,18 @@ describe("project sidebar views", () => {
     ).toBe(false);
   });
 
-  test("rejects source-backed views immediately when source is absent", () => {
+  test("rejects only source-backed views when source is absent", () => {
     const none = projectSidebarViewPresence(false, nativePresence([]));
     const pending = { assets: true, siteAccess: true };
 
-    for (const viewId of ["overview", "reports", "board", "site-editor"]) {
-      expect(projectSidebarViewUnavailable(viewId, none, pending)).toBe(true);
-    }
+    expect(projectSidebarViewUnavailable("overview", none, pending)).toBe(
+      false,
+    );
+    expect(projectSidebarViewUnavailable("reports", none, pending)).toBe(false);
+    expect(projectSidebarViewUnavailable("board", none, pending)).toBe(false);
+    expect(projectSidebarViewUnavailable("site-editor", none, pending)).toBe(
+      true,
+    );
     expect(projectSidebarViewUnavailable("automations", none, pending)).toBe(
       false,
     );
@@ -287,15 +295,21 @@ describe("project sidebar views", () => {
     const none = projectSidebarViewPresence(false, nativePresence([]));
     const pending = { assets: false, siteAccess: false };
 
-    // Canonical Overview and Preview still render useful route-owned bodies,
-    // even though the same capability state hides their optional shortcuts.
-    for (const viewId of ["overview", "site-editor"]) {
-      expect(projectSidebarViewUnavailable(viewId, none, pending)).toBe(true);
-      expect(projectActiveViewUnavailable(viewId, none, pending)).toBe(false);
-    }
+    // Canonical Home is structural. Preview remains a useful route-owned body
+    // even when its optional shortcut is unavailable without source.
+    expect(projectSidebarViewUnavailable("overview", none, pending)).toBe(
+      false,
+    );
+    expect(projectActiveViewUnavailable("overview", none, pending)).toBe(false);
+    expect(projectSidebarViewUnavailable("site-editor", none, pending)).toBe(
+      true,
+    );
+    expect(projectActiveViewUnavailable("site-editor", none, pending)).toBe(
+      false,
+    );
 
-    // Other source-backed views remain unavailable.
-    expect(projectActiveViewUnavailable("board", none, pending)).toBe(true);
+    // Tasks remains a useful read-only destination for exact linked runs.
+    expect(projectActiveViewUnavailable("board", none, pending)).toBe(false);
   });
 
   test("rejects unavailable Site Editor and retired surface defaults", () => {

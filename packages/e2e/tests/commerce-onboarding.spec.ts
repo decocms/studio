@@ -1,9 +1,10 @@
-import { type Page } from "@playwright/test";
+import { type APIRequestContext, type Page } from "@playwright/test";
 import { sleep } from "@decocms/shared/std";
 import { type Client } from "pg";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { signUp } from "../fixtures/auth";
 import { connectDevDb } from "../fixtures/db";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
 const RUN_ID = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -47,6 +48,20 @@ function commerceDiscoveryConnectionId(orgId: string) {
 
 function commerceDiscoveryVirtualMcpId(orgId: string) {
   return `commerce-discovery_${orgId}`;
+}
+
+async function createReportProject(
+  request: APIRequestContext,
+  orgSlug: string,
+  title: string,
+): Promise<string> {
+  const result = await callSelfMcpTool<{ item: { id: string } }>(
+    request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    { data: { title, connections: [] } },
+  );
+  return result.item.id;
 }
 
 async function signUpOnCurrentLoginPage(page: Page, email: string) {
@@ -296,8 +311,10 @@ test.describe("Commerce onboarding route isolation", () => {
       connection_type: string;
       title: string;
       connection_token: string | null;
+      project_id: string | null;
     }>(
-      `SELECT connection_url, connection_type, title, connection_token
+      `SELECT connection_url, connection_type, title, connection_token,
+              metadata ->> 'projectId' AS project_id
        FROM connections
        WHERE id = $1`,
       [connectionId],
@@ -308,6 +325,7 @@ test.describe("Commerce onboarding route isolation", () => {
       connection_url: expect.stringMatching(/\/api\/v2\/mcp$/),
       connection_type: "HTTP",
       title: "Store Report",
+      project_id: virtualMcpId,
     });
     // Setup must mint and persist a client token (stored encrypted at rest) —
     // a non-null token guards against the old stub silently creating a
@@ -460,7 +478,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.waitForURL(
       (url) =>
         url.pathname ===
-          `/${user.orgSlug}/agents/${virtualMcpId}/apps/${connectionId}/get_my_diagnostic` &&
+          `/${user.orgSlug}/projects/${virtualMcpId}/apps/${connectionId}/get_my_diagnostic` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("connection") === null &&
         url.searchParams.get("tool") === null &&
@@ -472,6 +490,194 @@ test.describe("Commerce onboarding route isolation", () => {
       window.localStorage.getItem("studio:sidebar-open"),
     );
     expect(sidebarOpen).toBe("false");
+  });
+
+  test("keeps cold and in-product report setup on the owning project route", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-project-report"),
+      name: `Commerce Project Report ${RUN_ID}`,
+    });
+    const orgId = await trackCommerceDiscoveryOrgForSlug(db, user.orgSlug);
+    const coldProjectId = await createReportProject(
+      page.context().request,
+      user.orgSlug,
+      `Cold report ${RUN_ID}`,
+    );
+
+    // A bookmarked connect hand-off must be self-sufficient even before the
+    // org has a Commerce Discovery connection.
+    await page.goto(
+      `/${user.orgSlug}/projects/${coldProjectId}/reports?connect=1&siteUrl=cold.example`,
+    );
+    const coldCta = page.getByRole("button", { name: "View diagnostic" });
+    await expect(coldCta).toBeVisible({ timeout: 20_000 });
+    await coldCta.click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${user.orgSlug}/projects/${coldProjectId}/reports` &&
+        url.searchParams.get("connect") === null &&
+        url.searchParams.get("sidepanel") === "false",
+      { timeout: 20_000 },
+    );
+
+    const ownerAfterColdEntry = await db.query<{ project_id: string | null }>(
+      `SELECT metadata ->> 'projectId' AS project_id
+       FROM connections
+       WHERE id = $1 AND organization_id = $2`,
+      [commerceDiscoveryConnectionId(orgId), orgId],
+    );
+    expect(ownerAfterColdEntry.rows[0]?.project_id).toBe(coldProjectId);
+
+    // Starting from a second project's empty Reports screen transfers the
+    // singleton report explicitly and keeps the modal on that same route.
+    const inProductProjectId = await createReportProject(
+      page.context().request,
+      user.orgSlug,
+      `In-product report ${RUN_ID}`,
+    );
+    await page.goto(`/${user.orgSlug}/projects/${inProductProjectId}/reports`);
+    await expect(
+      page.getByRole("heading", { name: "No reports yet" }),
+    ).toBeVisible({ timeout: 20_000 });
+    await page.getByLabel("Store URL").fill("in-product.example");
+    await page.getByRole("button", { name: "Start diagnostic" }).click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname ===
+          `/${user.orgSlug}/projects/${inProductProjectId}/reports` &&
+        url.searchParams.get("connect") === "1",
+      { timeout: 20_000 },
+    );
+    await expect(
+      page.getByRole("button", { name: "View diagnostic" }),
+    ).toBeVisible({ timeout: 20_000 });
+
+    const ownerAfterInProductSetup = await db.query<{
+      project_id: string | null;
+    }>(
+      `SELECT metadata ->> 'projectId' AS project_id
+       FROM connections
+       WHERE id = $1 AND organization_id = $2`,
+      [commerceDiscoveryConnectionId(orgId), orgId],
+    );
+    expect(ownerAfterInProductSetup.rows[0]?.project_id).toBe(
+      inProductProjectId,
+    );
+  });
+
+  test("rejects a foreign report owner before creating the org connection", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-foreign-project"),
+      name: `Commerce Foreign Project ${RUN_ID}`,
+    });
+    const orgId = await orgIdForSlug(db, user.orgSlug);
+    const foreignProjectId = await createReportProject(
+      page.context().request,
+      user.orgSlug,
+      `Foreign report ${RUN_ID}`,
+    );
+    const foreignOrgId = `e2e_foreign_report_owner_${RUN_ID}_${foreignProjectId}`;
+
+    // Move the real project row to another tenant after creation. The lookup
+    // still resolves by id, so only the handler's explicit ownership check can
+    // reject it.
+    await db.query(
+      `INSERT INTO "organization" (id, name, slug, "createdAt")
+       VALUES ($1, $2, $3, $4)`,
+      [
+        foreignOrgId,
+        `Foreign report owner ${RUN_ID}`,
+        `foreign-report-owner-${RUN_ID}-${foreignProjectId}`,
+        new Date().toISOString(),
+      ],
+    );
+    await db.query(
+      `UPDATE connections SET organization_id = $1 WHERE id = $2`,
+      [foreignOrgId, foreignProjectId],
+    );
+
+    try {
+      await expect(
+        callSelfMcpTool(
+          page.context().request,
+          user.orgSlug,
+          "COMMERCE_DISCOVERY_SETUP",
+          {
+            siteUrl: "https://foreign.example",
+            projectId: foreignProjectId,
+          },
+        ),
+      ).rejects.toThrow("Project not found in organization");
+
+      const reportConnection = await db.query<{ id: string }>(
+        `SELECT id FROM connections
+         WHERE id = $1 AND organization_id = $2`,
+        [commerceDiscoveryConnectionId(orgId), orgId],
+      );
+      expect(reportConnection.rows).toHaveLength(0);
+    } finally {
+      await db.query(`DELETE FROM connections WHERE id = $1`, [
+        foreignProjectId,
+      ]);
+      await db.query(`DELETE FROM "organization" WHERE id = $1`, [
+        foreignOrgId,
+      ]);
+    }
+  });
+
+  test("returns each requested owner when first setup calls race", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-owner-race"),
+      name: `Commerce Owner Race ${RUN_ID}`,
+    });
+    const orgId = await trackCommerceDiscoveryOrgForSlug(db, user.orgSlug);
+    const projectOne = await createReportProject(
+      page.context().request,
+      user.orgSlug,
+      `Race one ${RUN_ID}`,
+    );
+    const projectTwo = await createReportProject(
+      page.context().request,
+      user.orgSlug,
+      `Race two ${RUN_ID}`,
+    );
+
+    type SetupResult = {
+      connection: { metadata?: Record<string, unknown> | null };
+    };
+    const [first, second] = await Promise.all([
+      callSelfMcpTool<SetupResult>(
+        page.context().request,
+        user.orgSlug,
+        "COMMERCE_DISCOVERY_SETUP",
+        { siteUrl: "https://race-one.example", projectId: projectOne },
+      ),
+      callSelfMcpTool<SetupResult>(
+        page.context().request,
+        user.orgSlug,
+        "COMMERCE_DISCOVERY_SETUP",
+        { siteUrl: "https://race-two.example", projectId: projectTwo },
+      ),
+    ]);
+
+    expect(first.connection.metadata?.projectId).toBe(projectOne);
+    expect(second.connection.metadata?.projectId).toBe(projectTwo);
+
+    const durableOwner = await db.query<{ project_id: string | null }>(
+      `SELECT metadata ->> 'projectId' AS project_id
+       FROM connections
+       WHERE id = $1 AND organization_id = $2`,
+      [commerceDiscoveryConnectionId(orgId), orgId],
+    );
+    expect([projectOne, projectTwo]).toContain(
+      durableOwner.rows[0]?.project_id,
+    );
   });
 
   test("keeps ambiguous domain users in commerce onboarding", async ({

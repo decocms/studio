@@ -199,6 +199,7 @@ import * as migration197taskboardprompts from "./197-task-board-prompts.ts";
 import * as migration198taskboardexternalurl from "./198-task-board-external-url.ts";
 import * as migration199dropjiramirrorandorgcolumns from "./199-drop-jira-mirror-and-org-columns.ts";
 import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
+import * as migration201taskboardprojectowner from "./201-task-board-project-owner.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -433,6 +434,7 @@ const migrations: Record<string, Migration> = {
   "199-drop-jira-mirror-and-org-columns":
     migration199dropjiramirrorandorgcolumns,
   "200-jira-run-trigger": migration200jirarruntrigger,
+  "201-task-board-project-owner": migration201taskboardprojectowner,
 };
 
 export default migrations;

@@ -3,8 +3,8 @@
  *
  * Tab ids remain the in-memory vocabulary shared by thread layout state and
  * the view switcher. URLs are a different concern: every view is represented
- * by the route that owns its layout, and agent identity always lives in the
- * `/$org/agents/$agentId` path. This module is the single pure boundary
+ * by the route that owns its layout, and project identity always lives in the
+ * `/$org/projects/$agentId` path. This module is the single pure boundary
  * between those two vocabularies.
  */
 
@@ -25,7 +25,10 @@ import {
   parseLibraryFileTabId,
   parsePinnedViewTabId,
 } from "./tab-id";
-import { AGENT_ROUTE, DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import {
+  PROJECT_ROUTE,
+  DESTINATION_ROUTE,
+} from "@/hooks/use-destination-route";
 import type { useNavigate } from "@tanstack/react-router";
 
 export type TabRouteLocation =
@@ -50,9 +53,11 @@ export type TabRouteLocation =
   | { kind: "output-deck"; path: string }
   | { kind: "library-file"; path: string }
   | { kind: "connect-sources" }
+  | { kind: "project-destination"; destination: ProjectTabDestination }
   | { kind: "org-destination"; destination: OrgTabDestination };
 
-export type OrgTabDestination = "home" | "tasks" | "reports" | "library";
+export type ProjectTabDestination = "tasks" | "reports";
+export type OrgTabDestination = "home" | "library";
 
 type AgentParams = { org: string; agentId: string };
 type OrgParams = { org: string };
@@ -68,63 +73,69 @@ export type TabRouteTarget =
     }
   | { to: typeof DESTINATION_ROUTE.reports; params: OrgParams; search: {} }
   | { to: typeof DESTINATION_ROUTE.library; params: OrgParams; search: {} }
-  | { to: typeof AGENT_ROUTE.root; params: AgentParams; search: {} }
-  | { to: typeof AGENT_ROUTE.siteEditor; params: AgentParams; search: {} }
+  | { to: typeof PROJECT_ROUTE.root; params: AgentParams; search: {} }
   | {
-      to: typeof AGENT_ROUTE.siteEditorContent;
+      to: typeof PROJECT_ROUTE.tasks;
+      params: AgentParams & { taskKey: undefined };
+      search: {};
+    }
+  | { to: typeof PROJECT_ROUTE.reports; params: AgentParams; search: {} }
+  | { to: typeof PROJECT_ROUTE.siteEditor; params: AgentParams; search: {} }
+  | {
+      to: typeof PROJECT_ROUTE.siteEditorContent;
       params: AgentParams;
       search: {};
     }
   | {
-      to: typeof AGENT_ROUTE.siteEditorCode;
+      to: typeof PROJECT_ROUTE.siteEditorCode;
       params: AgentParams;
       search: { file?: string };
     }
   | {
       to:
-        | typeof AGENT_ROUTE.settings
-        | typeof AGENT_ROUTE.assets
-        | typeof AGENT_ROUTE.git
-        | typeof AGENT_ROUTE.hosting
-        | typeof AGENT_ROUTE.e2e
-        | typeof AGENT_ROUTE.analytics
-        | typeof AGENT_ROUTE.monitor;
+        | typeof PROJECT_ROUTE.settings
+        | typeof PROJECT_ROUTE.assets
+        | typeof PROJECT_ROUTE.git
+        | typeof PROJECT_ROUTE.hosting
+        | typeof PROJECT_ROUTE.e2e
+        | typeof PROJECT_ROUTE.analytics
+        | typeof PROJECT_ROUTE.monitor;
       params: AgentParams;
       search: {};
     }
-  | { to: typeof AGENT_ROUTE.automations; params: AgentParams; search: {} }
+  | { to: typeof PROJECT_ROUTE.automations; params: AgentParams; search: {} }
   | {
-      to: typeof AGENT_ROUTE.automation;
+      to: typeof PROJECT_ROUTE.automation;
       params: AgentParams & { automationId: string };
       search: {};
     }
   | {
-      to: typeof AGENT_ROUTE.app;
+      to: typeof PROJECT_ROUTE.app;
       params: AgentParams & { connectionId: string; toolName: string };
       search: {};
     }
   | {
-      to: typeof AGENT_ROUTE.view;
+      to: typeof PROJECT_ROUTE.view;
       params: AgentParams & { viewId: string };
       search: {};
     }
   | {
-      to: typeof AGENT_ROUTE.outputFile;
+      to: typeof PROJECT_ROUTE.outputFile;
       params: AgentParams;
       search: { key: string };
     }
   | {
-      to: typeof AGENT_ROUTE.outputDeck;
+      to: typeof PROJECT_ROUTE.outputDeck;
       params: AgentParams;
       search: { path: string };
     }
   | {
-      to: typeof AGENT_ROUTE.libraryFile;
+      to: typeof PROJECT_ROUTE.libraryFile;
       params: AgentParams;
       search: { path: string };
     }
   | {
-      to: typeof AGENT_ROUTE.connectSources;
+      to: typeof PROJECT_ROUTE.connectSources;
       params: AgentParams;
       search: {};
     };
@@ -138,6 +149,8 @@ export interface NavigateToTabLocationOptions {
   tabId: string;
   org: string;
   agentId: string;
+  /** Tasks and Reports exist at both organization and project scope. */
+  destinationScope?: "organization" | "project";
   /** Shared route search (thread/layout state). The target's own payload is
    * applied last, so a caller cannot accidentally overwrite its identity. */
   search?: TabRouteSearchWriter;
@@ -197,11 +210,16 @@ export function tabIdForRoute(state: MatchedTabRouteState): string | undefined {
 }
 
 const ORG_DESTINATION_BY_TAB: Readonly<Record<string, OrgTabDestination>> = {
-  board: "tasks",
   files: "library",
-  reports: "reports",
   // Compatibility for persisted tabs written while Discover was a destination.
   discover: "home",
+};
+
+const PROJECT_DESTINATION_BY_TAB: Readonly<
+  Record<string, ProjectTabDestination>
+> = {
+  board: "tasks",
+  reports: "reports",
 };
 
 const AGENT_SECTION_BY_TAB: Readonly<
@@ -279,6 +297,11 @@ export function tabRouteLocation(tabId: string): TabRouteLocation {
   if (normalized === "automations") return { kind: "automations" };
   if (normalized === "connect-sources") return { kind: "connect-sources" };
 
+  const projectDestination = PROJECT_DESTINATION_BY_TAB[normalized];
+  if (projectDestination) {
+    return { kind: "project-destination", destination: projectDestination };
+  }
+
   const destination = ORG_DESTINATION_BY_TAB[normalized];
   if (destination) return { kind: "org-destination", destination };
 
@@ -293,55 +316,65 @@ export function tabRouteTarget(input: {
   tabId: string;
   org: string;
   agentId: string;
+  destinationScope?: "organization" | "project";
 }): TabRouteTarget {
   const { org, agentId } = input;
   const params = { org, agentId };
   const location = tabRouteLocation(input.tabId);
 
   switch (location.kind) {
+    case "project-destination":
+      if (input.destinationScope === "organization") {
+        return location.destination === "tasks"
+          ? {
+              to: DESTINATION_ROUTE.tasks,
+              params: { org, taskKey: undefined },
+              search: {},
+            }
+          : { to: DESTINATION_ROUTE.reports, params: { org }, search: {} };
+      }
+      return location.destination === "tasks"
+        ? {
+            to: PROJECT_ROUTE.tasks,
+            params: { ...params, taskKey: undefined },
+            search: {},
+          }
+        : { to: PROJECT_ROUTE.reports, params, search: {} };
     case "org-destination": {
       switch (location.destination) {
         case "home":
           return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
-        case "tasks":
-          return {
-            to: DESTINATION_ROUTE.tasks,
-            params: { org, taskKey: undefined },
-            search: {},
-          };
-        case "reports":
-          return { to: DESTINATION_ROUTE.reports, params: { org }, search: {} };
         case "library":
           return { to: DESTINATION_ROUTE.library, params: { org }, search: {} };
       }
     }
     case "agent-overview":
-      return { to: AGENT_ROUTE.root, params, search: {} };
+      return { to: PROJECT_ROUTE.root, params, search: {} };
     case "site-editor":
       if (location.view === "content") {
-        return { to: AGENT_ROUTE.siteEditorContent, params, search: {} };
+        return { to: PROJECT_ROUTE.siteEditorContent, params, search: {} };
       }
       if (location.view === "code") {
         return {
-          to: AGENT_ROUTE.siteEditorCode,
+          to: PROJECT_ROUTE.siteEditorCode,
           params,
           search: { file: location.file },
         };
       }
-      return { to: AGENT_ROUTE.siteEditor, params, search: {} };
+      return { to: PROJECT_ROUTE.siteEditor, params, search: {} };
     case "agent-section":
-      return { to: AGENT_ROUTE[location.section], params, search: {} };
+      return { to: PROJECT_ROUTE[location.section], params, search: {} };
     case "automations":
       return location.automationId
         ? {
-            to: AGENT_ROUTE.automation,
+            to: PROJECT_ROUTE.automation,
             params: { ...params, automationId: location.automationId },
             search: {},
           }
-        : { to: AGENT_ROUTE.automations, params, search: {} };
+        : { to: PROJECT_ROUTE.automations, params, search: {} };
     case "app":
       return {
-        to: AGENT_ROUTE.app,
+        to: PROJECT_ROUTE.app,
         params: {
           ...params,
           connectionId: location.connectionId,
@@ -351,30 +384,30 @@ export function tabRouteTarget(input: {
       };
     case "agent-view":
       return {
-        to: AGENT_ROUTE.view,
+        to: PROJECT_ROUTE.view,
         params: { ...params, viewId: location.viewId },
         search: {},
       };
     case "output-file":
       return {
-        to: AGENT_ROUTE.outputFile,
+        to: PROJECT_ROUTE.outputFile,
         params,
         search: { key: location.key },
       };
     case "output-deck":
       return {
-        to: AGENT_ROUTE.outputDeck,
+        to: PROJECT_ROUTE.outputDeck,
         params,
         search: { path: location.path },
       };
     case "library-file":
       return {
-        to: AGENT_ROUTE.libraryFile,
+        to: PROJECT_ROUTE.libraryFile,
         params,
         search: { path: location.path },
       };
     case "connect-sources":
-      return { to: AGENT_ROUTE.connectSources, params, search: {} };
+      return { to: PROJECT_ROUTE.connectSources, params, search: {} };
   }
 }
 
@@ -383,7 +416,7 @@ export function tabRouteTarget(input: {
  *
  * Organization Home owns the no-agent destination and the Super Agent's
  * overview/default chat. Explicit Super Agent views still use its
- * `/agents/$agentId/...` workspace, exactly like any other agent.
+ * `/projects/$agentId/...` workspace, exactly like any other agent.
  */
 export function canonicalThreadRouteTarget(input: {
   org: string;
@@ -412,6 +445,8 @@ export function canonicalThreadRouteTarget(input: {
     org: input.org,
     agentId: input.agentId,
     tabId: safeTabId,
+    destinationScope:
+      input.agentId === input.superAgentId ? "organization" : "project",
   });
 }
 
@@ -465,109 +500,125 @@ export function navigateToTabRouteTarget(
         replace,
       });
       return;
-    case AGENT_ROUTE.root:
+    case PROJECT_ROUTE.root:
       navigate({
-        to: AGENT_ROUTE.root,
+        to: PROJECT_ROUTE.root,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.siteEditor:
+    case PROJECT_ROUTE.tasks:
       navigate({
-        to: AGENT_ROUTE.siteEditor,
+        to: PROJECT_ROUTE.tasks,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.siteEditorContent:
+    case PROJECT_ROUTE.reports:
       navigate({
-        to: AGENT_ROUTE.siteEditorContent,
+        to: PROJECT_ROUTE.reports,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.siteEditorCode:
+    case PROJECT_ROUTE.siteEditor:
       navigate({
-        to: AGENT_ROUTE.siteEditorCode,
+        to: PROJECT_ROUTE.siteEditor,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.automations:
+    case PROJECT_ROUTE.siteEditorContent:
       navigate({
-        to: AGENT_ROUTE.automations,
+        to: PROJECT_ROUTE.siteEditorContent,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.automation:
+    case PROJECT_ROUTE.siteEditorCode:
       navigate({
-        to: AGENT_ROUTE.automation,
+        to: PROJECT_ROUTE.siteEditorCode,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.app:
+    case PROJECT_ROUTE.automations:
       navigate({
-        to: AGENT_ROUTE.app,
+        to: PROJECT_ROUTE.automations,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.view:
+    case PROJECT_ROUTE.automation:
       navigate({
-        to: AGENT_ROUTE.view,
+        to: PROJECT_ROUTE.automation,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.outputFile:
+    case PROJECT_ROUTE.app:
       navigate({
-        to: AGENT_ROUTE.outputFile,
+        to: PROJECT_ROUTE.app,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.outputDeck:
+    case PROJECT_ROUTE.view:
       navigate({
-        to: AGENT_ROUTE.outputDeck,
+        to: PROJECT_ROUTE.view,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.libraryFile:
+    case PROJECT_ROUTE.outputFile:
       navigate({
-        to: AGENT_ROUTE.libraryFile,
+        to: PROJECT_ROUTE.outputFile,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.connectSources:
+    case PROJECT_ROUTE.outputDeck:
       navigate({
-        to: AGENT_ROUTE.connectSources,
+        to: PROJECT_ROUTE.outputDeck,
         params: target.params,
         search,
         replace,
       });
       return;
-    case AGENT_ROUTE.settings:
-    case AGENT_ROUTE.assets:
-    case AGENT_ROUTE.git:
-    case AGENT_ROUTE.hosting:
-    case AGENT_ROUTE.e2e:
-    case AGENT_ROUTE.analytics:
-    case AGENT_ROUTE.monitor:
+    case PROJECT_ROUTE.libraryFile:
+      navigate({
+        to: PROJECT_ROUTE.libraryFile,
+        params: target.params,
+        search,
+        replace,
+      });
+      return;
+    case PROJECT_ROUTE.connectSources:
+      navigate({
+        to: PROJECT_ROUTE.connectSources,
+        params: target.params,
+        search,
+        replace,
+      });
+      return;
+    case PROJECT_ROUTE.settings:
+    case PROJECT_ROUTE.assets:
+    case PROJECT_ROUTE.git:
+    case PROJECT_ROUTE.hosting:
+    case PROJECT_ROUTE.e2e:
+    case PROJECT_ROUTE.analytics:
+    case PROJECT_ROUTE.monitor:
       navigate({
         to: target.to,
         params: target.params,

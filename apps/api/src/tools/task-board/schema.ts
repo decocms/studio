@@ -19,6 +19,9 @@ export const MAX_TASK_TITLE_LENGTH = 500;
  *  so nothing legitimate approaches this; same reasoning as the caps above. */
 export const MAX_TASK_REPO_LENGTH = 200;
 
+/** Persisted project ids are opaque but must be real, bounded identifiers. */
+export const TaskBoardProjectIdSchema = z.string().trim().min(1).max(200);
+
 /** A column automation's prompt is an instruction, not the message body —
  *  same reasoning as MAX_TASK_DESCRIPTION_LENGTH. */
 export const MAX_AUTOMATION_PROMPT_LENGTH = 50_000;
@@ -157,6 +160,9 @@ export const TaskBoardItemSchema = z.object({
   type: TaskBoardItemTypeSchema,
   assigneeId: z.string().nullable(),
   assignedBy: z.string().nullable(),
+  /** Exact virtual MCP/project ownership. Null for organization-level cards
+   *  and legacy rows that predate persisted project scope. */
+  virtualMcpId: z.string().nullable(),
   // `owner/name` of the repo (site) this task pertains to.
   repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),

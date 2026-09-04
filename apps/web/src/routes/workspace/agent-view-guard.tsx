@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { getRouteApi, Navigate } from "@tanstack/react-router";
-import { AGENT_ROUTE } from "@/hooks/use-destination-route";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useMainPanelTabs } from "@/layouts/main-panel-tabs/main-panel-tabs-context";
 import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 
 const agentRoute = getRouteApi(
-  "/shell/$org/org-shell/agent-shell/agents/$agentId",
+  "/shell/$org/org-shell/agent-shell/projects/$agentId",
 );
 
 /**
@@ -34,7 +34,7 @@ export function AgentViewGuard({
 
   return (
     <Navigate
-      to={AGENT_ROUTE.settings}
+      to={PROJECT_ROUTE.settings}
       params={{ org: params.org, agentId }}
       search={(prev) =>
         resolvePanelNavigationSearch({

@@ -38,6 +38,6 @@ export const sidePanelSearchSchema = z
 /**
  * Whether the main panel is open. Absent = the route/agent default, which opens
  * it whenever the URL names a view. Never written by the app when it agrees
- * with that default, so a plain `/$org/agents/vir_x/preview` stays clean.
+ * with that default, so a plain `/$org/projects/vir_x/preview` stays clean.
  */
 export const mainPanelSearchSchema = z.boolean().optional().catch(undefined);

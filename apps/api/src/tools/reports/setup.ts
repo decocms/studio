@@ -1,8 +1,12 @@
-import { agentAppPath } from "@decocms/shared/organization-paths";
+import {
+  agentAppPath,
+  projectReportsPath,
+} from "@decocms/shared/organization-paths";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   type ConnectionEntity,
   getCommerceDiscoveryAgentId,
+  getCommerceDiscoveryReportOwnerId,
   getWellKnownCommerceDiscoveryConnection,
   getWellKnownReportVirtualMCP,
   type VirtualMCPEntity,
@@ -23,6 +27,7 @@ import {
   fetchCommerceDiscoveryAuth,
   resolveCommerceDiscoveryMcpUrl,
 } from "./auth-client";
+import { isValidCommerceReportOwner } from "./ownership";
 
 const REPORT_TOOL_NAME =
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
@@ -37,6 +42,14 @@ const FRESH_ORG_WINDOW_MS = 60 * 60 * 1000;
 
 const CommerceDiscoverySetupInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL to configure."),
+  projectId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Project that owns this report. Defaults to the Commerce Discovery report project.",
+    ),
 });
 
 const CommerceDiscoverySetupOutputSchema = z.object({
@@ -113,29 +126,47 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
 
     const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id);
     const virtualMcpId = getCommerceDiscoveryAgentId(organization.id);
+    const reportOwnerProjectId = getCommerceDiscoveryReportOwnerId(
+      organization.id,
+      input.projectId,
+    );
 
-    /**
-     * Claim contact forwarded on /upgrade: Commerce Discovery emails this
-     * address when the run completes (the "generating" screen's promise). The
-     * "diagnóstico completo" CTA must land on the report app view — NOT the
-     * /commerce-onboarding page — so build the exact URL the app writes for
-     * that view (`commerceReportNavTarget`, web/hooks/use-commerce-diagnostic):
-     * the agent, connection, and tool are canonical path segments. All three
-     * ids are deterministic per org, so the URL is fully known here at
-     * /upgrade time. No thread: the report is a view, and
-     * no sidepanel param either — the vMCP's chatDefaultOpen selects Chat,
-     * matching the onboarding button.
-     */
+    // Keep the entity-level checks even when the storage adapter accepts an
+    // organization filter: an alias/synthetic lookup must resolve the exact
+    // requested project, and a foreign row must not claim this connection.
+    if (input.projectId !== undefined) {
+      const reportOwner = await ctx.storage.virtualMcps.findById(
+        reportOwnerProjectId,
+        organization.id,
+      );
+      if (
+        !isValidCommerceReportOwner(
+          reportOwner,
+          reportOwnerProjectId,
+          organization.id,
+        )
+      ) {
+        throw new Error("Project not found in organization");
+      }
+    }
+
+    // Commerce Discovery emails this URL when generation finishes. An
+    // in-product setup returns to its owning Reports route; public onboarding
+    // keeps the existing well-known report app destination.
+    const reportPath =
+      input.projectId !== undefined
+        ? projectReportsPath(
+            organization.slug ?? organization.id,
+            reportOwnerProjectId,
+          )
+        : agentAppPath(organization.slug ?? organization.id, {
+            agentId: virtualMcpId,
+            connectionId,
+            toolName: REPORT_TOOL_NAME,
+          });
     const claimContact = {
       email: ctx.auth.user?.email,
-      reportUrl: `${ctx.baseUrl}${agentAppPath(
-        organization.slug ?? organization.id,
-        {
-          agentId: virtualMcpId,
-          connectionId,
-          toolName: REPORT_TOOL_NAME,
-        },
-      )}`,
+      reportUrl: `${ctx.baseUrl}${reportPath}`,
     };
 
     let connection = await ctx.storage.connections.findById(
@@ -178,6 +209,16 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     // staging REPORTS_INTERNAL_API_URL (or the legacy CD env) overrides the host, so the
     // CD connection must point there too, not at the hardcoded prod constant.
     const mcpUrl = resolveCommerceDiscoveryMcpUrl();
+    const syncClaimedConnection = (current: ConnectionEntity) =>
+      ctx.storage.connections.update(current.id, {
+        connection_url: mcpUrl,
+        connection_token: auth.authorizationToken,
+        metadata: {
+          ...(current.metadata ?? {}),
+          siteUrl: normalized.value,
+          projectId: reportOwnerProjectId,
+        },
+      });
 
     if (connection) {
       console.log("[commerce-discovery] syncing connection to claimed site", {
@@ -185,11 +226,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
         siteUrl: normalized.value,
         connectionId,
       });
-      connection = await ctx.storage.connections.update(connection.id, {
-        connection_url: mcpUrl,
-        connection_token: auth.authorizationToken,
-        metadata: { ...(connection.metadata ?? {}), siteUrl: normalized.value },
-      });
+      connection = await syncClaimedConnection(connection);
     } else {
       console.log("[commerce-discovery] creating connection", {
         orgId: organization.id,
@@ -207,7 +244,11 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
           ...base,
           // Persist the site so a returning session (arriving with no ?siteUrl
           // param) can still recover it and trigger the run from "See full report".
-          metadata: { ...(base.metadata ?? {}), siteUrl: normalized.value },
+          metadata: {
+            ...(base.metadata ?? {}),
+            siteUrl: normalized.value,
+            projectId: reportOwnerProjectId,
+          },
           organization_id: organization.id,
           created_by: userId,
         });
@@ -219,6 +260,9 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
           organization.id,
           error,
         );
+        // Another setup won the create race. Its owner/site may differ, so this
+        // request still has to apply the claim it just completed.
+        connection = await syncClaimedConnection(connection);
       }
     }
 

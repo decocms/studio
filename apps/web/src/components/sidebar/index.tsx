@@ -11,11 +11,13 @@
  *  HOW the slots are spaced lives in `SidebarShell` and only there. */
 
 import { ErrorBoundary } from "@/components/error-boundary";
-import { AgentSwitcherCrumb } from "@/components/header/shell-breadcrumb";
-import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
+import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
+import { track } from "@/lib/posthog-client";
+import { useProjectContext } from "@/sdk";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { SidebarPickerHeader, SidebarPickerHeaderMobile } from "./header";
@@ -30,36 +32,33 @@ import {
   SettingsVersion,
 } from "./settings-sidebar";
 import { SidebarShell } from "./shell";
-import { SidebarAgentGroupsProvider } from "./sidebar-agent-groups-context";
-
-/** The org sheet's header: the shared mobile strip, plus the agent switcher so
- *  the agent can be changed from the sheet. It is added HERE and not in the
- *  shared strip because it reads the thread manager, which the settings route
- *  tree does not mount. Picking anything closes the sheet (`onClose`) so the
- *  chosen chat is visible. */
-function OrgSidebarHeaderMobile({ onClose }: { onClose: () => void }) {
-  return (
-    <SidebarPickerHeaderMobile onClose={onClose}>
-      <AgentSwitcherCrumb onNavigate={onClose} />
-    </SidebarPickerHeaderMobile>
-  );
-}
 
 /** Cloudflare's "← Back to Domains", for an agent workspace. It reads the raw
  * route identity so a deleted or inaccessible agent still has an exit. */
 function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
+  const { org } = useProjectContext();
   const scopeId = useScopeId();
-  const exitToOrg = useExitProjectScope();
 
   if (!scopeId) return null;
 
   return (
     <SidebarBackRow
       label={t("sidebar.scope.allProjects")}
-      /** The shared exit action owns analytics and the canonical Home target. */
+      link={{
+        to: DESTINATION_ROUTE.home,
+        params: { org: org.slug },
+        search: (previous) =>
+          resolvePanelNavigationSearch({
+            previous,
+            destination: "organization",
+          }),
+      }}
       onSelect={() => {
-        exitToOrg();
+        track("scope_cleared", {
+          relocated: true,
+          reason: "agent_workspace_exit",
+        });
         onNavigate?.();
       }}
     />
@@ -75,19 +74,29 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
  *  listed one row per project off a suspense query — restoring either would put
  *  a skeleton back in front of the sidebar. */
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+  const scopeId = useScopeId();
+
   return (
-    <ErrorBoundary>
+    <ErrorBoundary resetKey={scopeId ?? "organization"}>
       <div className="flex flex-col gap-1">
-        <NavDestinationsContent onNavigate={onNavigate} />
-        <ProjectNav onNavigate={onNavigate} />
-        {/* Settings closes the DESTINATIONS, above the project list. The list
-            grows with the org and nests a few rows under each entry, so a row
-            pinned after it drifts further from the fixed nav it belongs to on
-            every project added — and lands at the bottom of a scroll on a big
-            org. Everything above this rule is a place; everything below is the
-            org's map. */}
-        <NavSettingsRow onNavigate={onNavigate} />
-        <SidebarProjectsSection onNavigate={onNavigate} />
+        {scopeId ? (
+          <>
+            <ProjectNav onNavigate={onNavigate} />
+            <NavSettingsRow onNavigate={onNavigate} />
+          </>
+        ) : (
+          <>
+            <NavDestinationsContent onNavigate={onNavigate} />
+            {/* Settings closes the DESTINATIONS, above the project list. The
+                list grows with the org and nests a few rows under each entry,
+                so a row pinned after it drifts further from the fixed nav it
+                belongs to on every project added — and lands at the bottom of
+                a scroll on a big org. Everything above this rule is a place;
+                everything below is the org's map. */}
+            <NavSettingsRow onNavigate={onNavigate} />
+            <SidebarProjectsSection onNavigate={onNavigate} />
+          </>
+        )}
       </div>
     </ErrorBoundary>
   );
@@ -97,27 +106,23 @@ export function StudioSidebar() {
   const inSettings = useInSettings();
 
   return (
-    <SidebarAgentGroupsProvider>
-      <SidebarShell
-        header={<SidebarPickerHeader />}
-        back={inSettings ? <SettingsBackRow /> : <ProjectBackRow />}
-        body={inSettings ? <SettingsNav /> : <OrgSidebarBody />}
-        footer={inSettings ? <SettingsVersion /> : <SidebarAccountFooter />}
-      />
-    </SidebarAgentGroupsProvider>
+    <SidebarShell
+      header={<SidebarPickerHeader />}
+      back={inSettings ? <SettingsBackRow /> : <ProjectBackRow />}
+      body={inSettings ? <SettingsNav /> : <OrgSidebarBody />}
+      footer={inSettings ? <SettingsVersion /> : <SidebarAccountFooter />}
+    />
   );
 }
 
 export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
   return (
-    <SidebarAgentGroupsProvider>
-      <SidebarShell
-        sheet
-        header={<OrgSidebarHeaderMobile onClose={onClose} />}
-        back={<ProjectBackRow onNavigate={onClose} />}
-        body={<OrgSidebarBody onNavigate={onClose} />}
-        footer={<SidebarAccountFooterMobile />}
-      />
-    </SidebarAgentGroupsProvider>
+    <SidebarShell
+      sheet
+      header={<SidebarPickerHeaderMobile onClose={onClose} />}
+      back={<ProjectBackRow onNavigate={onClose} />}
+      body={<OrgSidebarBody onNavigate={onClose} />}
+      footer={<SidebarAccountFooterMobile />}
+    />
   );
 }

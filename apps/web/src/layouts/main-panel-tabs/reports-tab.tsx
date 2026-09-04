@@ -9,15 +9,16 @@
  *
  * Starting it is exactly the onboarding hand-off, reused rather than
  * reimplemented: COMMERCE_DISCOVERY_SETUP claims the site, then we navigate to
- * the organization Home surface with `?connect=1`, which mounts the blocking
+ * the owning Reports surface with `?connect=1`, which mounts the blocking
  * CommerceConnectModal — the step that asks for the data sources (GA4/GSC/VTEX/
- * GitHub), triggers COMMERCE_DISCOVERY_RUN and opens the report.
+ * GitHub), triggers COMMERCE_DISCOVERY_RUN and opens the report. The org-level
+ * fallback still hands off through Home for public onboarding.
  *
  * Once a diagnostic does exist this tab IS the report app: Reports is a
  * destination, so which view it shows follows from whether a report exists, not
  * from a URL the caller has to get right.
  */
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { lazy, Suspense, useState } from "react";
@@ -29,9 +30,13 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import {
+  DESTINATION_ROUTE,
+  PROJECT_ROUTE,
+} from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
+import { refreshCommerceDiagnosticOwnership } from "@/lib/commerce-diagnostic-cache";
 import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
 import { MiniReportPage } from "@/components/home/mini-report-page";
 import {
@@ -51,9 +56,9 @@ const AppViewContent = lazy(() =>
   })),
 );
 
-export function ReportsTab() {
+export function ReportsTab({ projectId }: { projectId?: string }) {
   const { diagnostic, isLoading, siteUrl, connectionId } =
-    useCommerceDiagnostic();
+    useCommerceDiagnostic(projectId);
 
   if (isLoading) return <PanelLoading />;
 
@@ -74,7 +79,11 @@ export function ReportsTab() {
         fallback={() => <StartDiagnosticState claimedSiteUrl={siteUrl} />}
       >
         <Suspense fallback={<PanelLoading />}>
-          <StartDiagnostic claimedSiteUrl={siteUrl} />
+          <StartDiagnostic
+            claimedSiteUrl={siteUrl}
+            connectionId={connectionId}
+            projectId={projectId}
+          />
         </Suspense>
       </ErrorBoundary>
     </div>
@@ -148,11 +157,16 @@ function StartDiagnosticState({
 
 function StartDiagnostic({
   claimedSiteUrl,
+  connectionId,
+  projectId,
 }: {
   claimedSiteUrl: string | null;
+  connectionId: string;
+  projectId?: string;
 }) {
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -170,10 +184,20 @@ function StartDiagnostic({
       parseSelfToolResult<unknown>(
         await selfClient.callTool({
           name: "COMMERCE_DISCOVERY_SETUP",
-          arguments: { siteUrl: url },
+          arguments: {
+            siteUrl: url,
+            ...(projectId ? { projectId } : {}),
+          },
         }),
       ),
     retry: false,
+    onSuccess: async () => {
+      await refreshCommerceDiagnosticOwnership(
+        queryClient,
+        org.id,
+        connectionId,
+      );
+    },
   });
 
   const start = async (rawSiteUrl: string) => {
@@ -186,6 +210,7 @@ function StartDiagnostic({
     const domain = siteUrlToHost(normalized.value) ?? undefined;
     track("reports_start_diagnostic_submitted", {
       organization_id: org.id,
+      project_id: projectId,
       domain,
     });
     try {
@@ -193,6 +218,7 @@ function StartDiagnostic({
     } catch (err) {
       track("reports_start_diagnostic_failed", {
         organization_id: org.id,
+        project_id: projectId,
         domain,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -201,6 +227,17 @@ function StartDiagnostic({
       return;
     }
     // The connections step triggers the run and opens the report.
+    if (projectId) {
+      navigate({
+        to: PROJECT_ROUTE.reports,
+        params: { org: org.slug, agentId: projectId },
+        search: {
+          connect: "1",
+          siteUrl: normalized.value,
+        },
+      });
+      return;
+    }
     navigate({
       to: DESTINATION_ROUTE.home,
       params: { org: org.slug },

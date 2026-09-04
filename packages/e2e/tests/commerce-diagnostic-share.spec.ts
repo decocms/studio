@@ -87,7 +87,7 @@ test.describe("commerce-diagnostic share-invite", () => {
     expect(body.accept_url).toContain("/auth/accept-invitation?invitationId=");
     const redirectTo = new URL(body.accept_url).searchParams.get("redirectTo");
     expect(redirectTo).toBe(
-      `/${owner.orgSlug}/agents/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
+      `/${owner.orgSlug}/projects/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
     );
 
     const invites = await pendingInvites(orgId!, invitee);
@@ -124,7 +124,7 @@ test.describe("commerce-diagnostic share-invite", () => {
     // The member skips the invite: the CTA is the report deep link itself.
     expect(body.accept_url).not.toContain("accept-invitation");
     expect(body.accept_url).toContain(
-      `/${owner.orgSlug}/agents/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
+      `/${owner.orgSlug}/projects/commerce-discovery_${orgId}/apps/${orgId}_commerce-discovery/get_my_diagnostic`,
     );
     expect(await pendingInvites(orgId!, owner.email)).toHaveLength(0);
 

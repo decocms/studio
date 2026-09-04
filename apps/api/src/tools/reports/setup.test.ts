@@ -149,7 +149,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     const reportUrl = (claimArg as unknown as { reportUrl?: string })
       .reportUrl!;
     expect(reportUrl).toBe(
-      `https://studio.example.com/test-org/agents/commerce-discovery_${ORG_ID}/apps/${ORG_ID}_commerce-discovery/get_my_diagnostic`,
+      `https://studio.example.com/test-org/projects/commerce-discovery_${ORG_ID}/apps/${ORG_ID}_commerce-discovery/get_my_diagnostic`,
     );
     expect(reportUrl).not.toContain("virtualmcpid=");
     expect(reportUrl).not.toContain("connection=");
@@ -164,6 +164,9 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     expect(update.data.connection_token).toBe("dgn_fresh_token");
     expect((update.data.metadata as Record<string, unknown>).siteUrl).toBe(
       "https://new-site.com",
+    );
+    expect((update.data.metadata as Record<string, unknown>).projectId).toBe(
+      `commerce-discovery_${ORG_ID}`,
     );
   });
 

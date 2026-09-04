@@ -2,9 +2,11 @@
  * E2E: the destination routes, and the legacy URLs that translate into them.
  *
  * The route grammar under test: **path = which page, search = how that page is
- * laid out.** Home, Tasks, Reports and Library are org-level paths. An agent
- * workspace puts identity in `/agents/<agentId>`, and each agent-owned surface
- * is nested below it. Preview, Content, and Code are children of Site Editor.
+ * laid out.** Home and Library are organization-level paths, while Tasks and
+ * Reports have both organization-wide and project-owned forms. A project
+ * workspace puts identity in `/projects/<projectId>`, and every project-owned
+ * surface is nested below it. Preview, Content, and Code are children of Site
+ * Editor.
  * `sidepanel`, `mainpanel` and `thread` stay in search because they describe
  * the workspace layout rather than its identity.
  *
@@ -323,6 +325,7 @@ test.describe("destination routes", () => {
       page.context().request,
       orgSlug,
       "route topbar e2e",
+      { clonable: true },
     );
     await callSelfMcpTool(
       page.context().request,
@@ -337,35 +340,54 @@ test.describe("destination routes", () => {
         active: true,
       },
     );
+    const projectThreadId = await createThread(
+      page.context().request,
+      orgSlug,
+      agentId,
+    );
     const routes = [
       { path: `/${orgSlug}/home`, title: "Home" },
       { path: `/${orgSlug}/tasks`, title: "Tasks" },
       { path: `/${orgSlug}/reports`, title: "Reports" },
       { path: `/${orgSlug}/library`, title: "Library" },
       {
-        path: `/${orgSlug}/agents/${agentId}`,
+        path: `/${orgSlug}/projects/${agentId}`,
         title: "route topbar e2e",
         projectScoped: true,
       },
       {
-        path: `/${orgSlug}/agents/${agentId}/site-editor`,
+        path: `/${orgSlug}/projects/${agentId}/tasks`,
+        title: "Tasks",
+        projectScoped: true,
+      },
+      {
+        path: `/${orgSlug}/projects/${agentId}/reports`,
+        title: "Reports",
+        projectScoped: true,
+      },
+      {
+        path: `/${orgSlug}/projects/${agentId}/site-editor`,
         title: "Site Editor",
         projectScoped: true,
       },
       {
-        path: `/${orgSlug}/agents/${agentId}/settings`,
+        path: `/${orgSlug}/projects/${agentId}/settings`,
         title: "Settings",
         projectScoped: true,
       },
       {
-        path: `/${orgSlug}/agents/${agentId}/automations`,
+        path: `/${orgSlug}/projects/${agentId}/automations`,
         title: "Automations",
         projectScoped: true,
       },
     ] as const;
 
     for (const route of routes) {
-      await page.goto(route.path);
+      const projectScoped =
+        "projectScoped" in route && route.projectScoped === true;
+      await page.goto(
+        projectScoped ? `${route.path}?thread=${projectThreadId}` : route.path,
+      );
       await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
       expect(new URL(page.url()).pathname).toBe(route.path);
       await expect(mainTopbar(page)).toHaveCount(1);
@@ -389,6 +411,8 @@ test.describe("destination routes", () => {
         ),
       ).toHaveCount(scopeIsCurrent ? 0 : 1);
       if (scopeIsCurrent) {
+        /* Organization Home keeps one semantic heading for focus and screen
+           readers, but renders no visual breadcrumb or icon-only duplicate. */
         await expect(
           mainTopbarRegion(page, "left")
             .getByRole("heading", {
@@ -397,7 +421,7 @@ test.describe("destination routes", () => {
               exact: true,
             })
             .locator("svg"),
-        ).toHaveCount(1);
+        ).toHaveCount(0);
       } else {
         /* The final route is the adjacent page title, not a repeated last crumb. */
         await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(
@@ -408,26 +432,28 @@ test.describe("destination routes", () => {
         await expect(scopeLink).toHaveText("");
         await expect(scopeLink).toHaveAttribute("aria-label", /\S/);
         await expect(scopeLink.locator("svg")).toHaveCount(1);
-        await expect(scopeLink).toHaveAttribute(
-          "href",
-          new RegExp(`/${orgSlug}/home$`),
-        );
-        if ("projectScoped" in route && route.projectScoped) {
-          if (route.path.endsWith(`/agents/${agentId}`)) {
-            await expect(breadcrumb.getByRole("link")).toHaveCount(1);
-          } else {
-            const projectParent = await breadcrumbParent(
-              page,
-              breadcrumb,
-              "route topbar e2e",
-            );
-            await expect(projectParent.link).toBeVisible();
-            const href = await projectParent.link.getAttribute("href");
-            expect(new URL(href ?? "", page.url()).pathname).toBe(
-              `/${orgSlug}/agents/${agentId}`,
-            );
-            if (projectParent.overflowed) await page.keyboard.press("Escape");
-          }
+        if (projectScoped) {
+          /* Project routes replace the generic organization Home button with
+             the project's own avatar. It is the breadcrumb root, stays
+             icon-only, and always returns to that project's Home. */
+          await expect(scopeLink).toHaveAttribute(
+            "aria-label",
+            "route topbar e2e",
+          );
+          expect(
+            new URL((await scopeLink.getAttribute("href")) ?? "", page.url())
+              .pathname,
+          ).toBe(`/${orgSlug}/projects/${agentId}`);
+          await expect(
+            breadcrumb.getByRole("link", { name: "Home", exact: true }),
+          ).toHaveCount(0);
+          await expect(breadcrumb.getByRole("link")).toHaveCount(1);
+        } else {
+          await expect(scopeLink).toHaveAttribute("aria-label", "Home");
+          await expect(scopeLink).toHaveAttribute(
+            "href",
+            new RegExp(`/${orgSlug}/home$`),
+          );
         }
       }
     }
@@ -440,7 +466,7 @@ test.describe("destination routes", () => {
       }),
     ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
-    await page.goto(`/${orgSlug}/agents/${agentId}/automations`);
+    await page.goto(`/${orgSlug}/projects/${agentId}/automations`);
     /** The list body owns this action, but its portal must place the rendered
      * controls in the route's center and right-hand topbar regions. */
     await expect(
@@ -519,6 +545,252 @@ test.describe("destination routes", () => {
     ).toHaveCount(0);
     await expect(
       readOnlyActions.getByRole("button", { name: "Upload file", exact: true }),
+    ).toHaveCount(0);
+  });
+
+  test("a project sidebar starts at Project Home and keeps project destinations scoped", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const projectTitle = "scoped navigation e2e";
+    const projectId = await createProject(
+      page.context().request,
+      orgSlug,
+      projectTitle,
+      { clonable: true },
+    );
+    const { item: projectTask } = await callSelfMcpTool<{
+      item: { id: string };
+    }>(page.context().request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+      title: "scoped navigation task e2e",
+      repo: "example/repo",
+    });
+    const projectRoot = `/${orgSlug}/projects/${projectId}`;
+
+    await page.goto(projectRoot);
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    const projectHome = sidebar.getByRole("link", {
+      name: "Home",
+      exact: true,
+    });
+    await expect(projectHome).toHaveCount(1);
+    expect(
+      new URL((await projectHome.getAttribute("href")) ?? "", page.url())
+        .pathname,
+    ).toBe(projectRoot);
+    await expect(
+      sidebar.getByRole("link", { name: "Library", exact: true }),
+    ).toHaveCount(0);
+
+    /* Home is structural and first inside the project's durable navigation;
+       Reports and Tasks are project children, not organization links copied
+       into a scoped sidebar. */
+    const projectMenu = projectHome.locator("xpath=ancestor::ul[1]");
+    await expect
+      .poll(async () =>
+        projectMenu
+          .locator("a[aria-label], button[aria-label]")
+          .evaluateAll((links) =>
+            links.map((link) => link.getAttribute("aria-label")),
+          ),
+      )
+      .toEqual(["Home", "Reports", "Tasks", "Site Editor"]);
+
+    const reportsLink = sidebar.getByRole("link", {
+      name: "Reports",
+      exact: true,
+    });
+    const tasksLink = sidebar.getByRole("link", {
+      name: "Tasks",
+      exact: true,
+    });
+    await tasksLink.click();
+    await page.waitForURL((url) => url.pathname === `${projectRoot}/tasks`, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(tasksLink).toHaveAttribute("aria-current", "page");
+    await expect(reportsLink).not.toHaveAttribute("aria-current", "page");
+
+    /* A task detail is still the Tasks surface. The active row follows the
+       route family, not only the exact list URL. */
+    await page.goto(`${projectRoot}/tasks/${projectTask.id}`);
+    await expect(page.getByTestId("task-detail")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    expect(
+      new URL(page.url()).pathname.startsWith(`${projectRoot}/tasks/`),
+    ).toBe(true);
+    await expect(tasksLink).toHaveAttribute("aria-current", "page");
+    await expect(reportsLink).not.toHaveAttribute("aria-current", "page");
+
+    /* Sharing a project task must copy the scoped detail address, not fall
+       back to the organization-wide board merely because both boards render
+       the same detail component. */
+    const detailUrl = new URL(page.url());
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"], {
+        origin: detailUrl.origin,
+      });
+    await page
+      .getByTestId("task-detail")
+      .getByRole("button", { name: "Copy link to this task", exact: true })
+      .click();
+    await expect
+      .poll(async () => {
+        const copied = await page.evaluate(() =>
+          navigator.clipboard.readText(),
+        );
+        return copied ? new URL(copied).pathname : "";
+      })
+      .toBe(detailUrl.pathname);
+    const copiedTaskUrl = new URL(
+      await page.evaluate(() => navigator.clipboard.readText()),
+    );
+    expect(copiedTaskUrl.origin).toBe(detailUrl.origin);
+    expect(copiedTaskUrl.pathname).toBe(detailUrl.pathname);
+    expect(copiedTaskUrl.pathname.startsWith(`${projectRoot}/tasks/`)).toBe(
+      true,
+    );
+    expect(copiedTaskUrl.search).toBe("");
+    expect(copiedTaskUrl.hash).toBe("");
+
+    const projectBreadcrumbRoot = mainTopbarRegion(page, "left").getByRole(
+      "link",
+      { name: projectTitle, exact: true },
+    );
+    expect(
+      new URL(
+        (await projectBreadcrumbRoot.getAttribute("href")) ?? "",
+        page.url(),
+      ).pathname,
+    ).toBe(projectRoot);
+    await expect(projectBreadcrumbRoot.locator("svg")).toHaveCount(1);
+    await expect(
+      mainTopbarRegion(page, "left").getByRole("link", {
+        name: "Home",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+
+    await projectBreadcrumbRoot.click();
+    await page.waitForURL((url) => url.pathname === projectRoot, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await reportsLink.click();
+    await page.waitForURL((url) => url.pathname === `${projectRoot}/reports`, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(reportsLink).toHaveAttribute("aria-current", "page");
+    await expect(tasksLink).not.toHaveAttribute("aria-current", "page");
+  });
+
+  test("a cold project Tasks entry resolves its exact scope and hides the redundant project filter", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const projectId = await createProject(
+      request,
+      orgSlug,
+      "cold scoped tasks e2e",
+      { clonable: true },
+    );
+    const matchingTitle = `Scoped task ${crypto.randomUUID()}`;
+    const otherTitle = `Other project task ${crypto.randomUUID()}`;
+    await callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+      title: matchingTitle,
+      repo: "example/repo",
+    });
+    await callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+      title: otherTitle,
+      repo: "someone/else",
+    });
+
+    const path = `/${orgSlug}/projects/${projectId}/tasks`;
+    await page.goto(`${path}?repo=someone%2Felse#cold-entry`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === path &&
+        url.searchParams.get("repo") === null &&
+        url.hash === "#cold-entry",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(
+      mainPanel(page).getByRole("button").filter({ hasText: matchingTitle }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      mainPanel(page).getByRole("button").filter({ hasText: otherTitle }),
+    ).toHaveCount(0);
+    await expect(
+      mainPanel(page).getByRole("button", {
+        name: "Project",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+  });
+
+  test("an attention task nested under a project opens that project's task detail", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const projectId = await createProject(
+      request,
+      orgSlug,
+      "attention navigation e2e",
+      { clonable: true },
+    );
+    const taskTitle = `Project attention ${crypto.randomUUID()}`;
+    await callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+      title: taskTitle,
+      status: "in_review",
+      repo: "example/repo",
+    });
+
+    await page.goto(`/${orgSlug}/home`);
+    const orgSidebar = page.locator('[data-slot="sidebar"]');
+    const projectRow = orgSidebar.getByRole("link", {
+      name: "attention navigation e2e",
+      exact: true,
+    });
+    await expect(projectRow).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    const projectRowUrl = new URL(
+      (await projectRow.getAttribute("href")) ?? "",
+      page.url(),
+    );
+    expect(projectRowUrl.pathname).toBe(`/${orgSlug}/projects/${projectId}`);
+    expect(projectRowUrl.search).toBe("");
+    expect(projectRowUrl.hash).toBe("");
+    await projectRow.click();
+    await page.waitForURL(
+      (url) => url.pathname === `/${orgSlug}/projects/${projectId}`,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+
+    /* The attention child is available from the organization map; return to
+       it after proving that its ordinary project row always opens Home. */
+    await page.goto(`/${orgSlug}/home`);
+    const attentionTask = orgSidebar.getByRole("link", {
+      name: taskTitle,
+      exact: true,
+    });
+    await expect(attentionTask).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await attentionTask.click();
+
+    const projectTasks = `/${orgSlug}/projects/${projectId}/tasks/`;
+    await page.waitForURL((url) => url.pathname.startsWith(projectTasks), {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(page.getByTestId("task-detail")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    const projectSidebar = page.locator('[data-slot="sidebar"]');
+    await expect(
+      projectSidebar.getByRole("link", { name: "Tasks", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      projectSidebar.getByRole("link", { name: "Library", exact: true }),
     ).toHaveCount(0);
   });
 
@@ -907,7 +1179,7 @@ test.describe("destination routes", () => {
     });
   });
 
-  test("the bare org legacy Chat link keeps its named agent and layout", async ({
+  test("the bare org legacy Chat link keeps its named project and layout", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -928,7 +1200,7 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}?${search}#composer`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("sidepanel") === "true" &&
         url.searchParams.get("mainpanel") === "false" &&
@@ -965,12 +1237,12 @@ test.describe("destination routes", () => {
     const projectId = await createProject(request, orgSlug, "legacy shape e2e");
     const threadId = await createThread(request, orgSlug, projectId);
 
-    /* Agent identity moves into the canonical path and the thread id moves to
+    /* Project identity moves into the canonical path and the thread id moves to
        layout search. Both legacy routing keys disappear. */
     await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${projectId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
@@ -983,7 +1255,7 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/${threadId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
@@ -1007,7 +1279,7 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${superAgentId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${superAgentId}/settings` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("sidepanel") === "true" &&
         url.searchParams.get("main") === null &&
@@ -1048,7 +1320,7 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/settings` &&
         url.searchParams.get("thread") === intendedThreadId &&
         url.searchParams.get("main") === null &&
         url.searchParams.get("virtualmcpid") === null,
@@ -1064,15 +1336,14 @@ test.describe("destination routes", () => {
     ]);
   });
 
-  /** A legacy org-owned view can be the translator's first hop, but the thread
-   * row is authoritative about where the chat may mount. Once ownership loads,
-   * both old shapes settle on the owning agent rather than leaving a project
-   * thread attached to Tasks or Library. */
-  for (const { main, destination } of [
-    { main: "board", destination: "tasks" },
-    { main: "files", destination: "library" },
+  /** A legacy destination can be the translator's first hop, but the thread
+   * row is authoritative about where the chat may mount. Project Tasks keeps
+   * its project-owned route; organization Library yields to Project Home. */
+  for (const { main, destination, projectSuffix } of [
+    { main: "board", destination: "tasks", projectSuffix: "/tasks" },
+    { main: "files", destination: "library", projectSuffix: "" },
   ] as const) {
-    test(`a legacy main=${main} thread settles on its owning agent after /${destination}`, async ({
+    test(`a legacy main=${main} thread settles in its owning project after /${destination}`, async ({
       authedPage: { page, orgSlug },
     }) => {
       const request = page.context().request;
@@ -1080,6 +1351,7 @@ test.describe("destination routes", () => {
         request,
         orgSlug,
         `legacy ${main} e2e`,
+        main === "board" ? { clonable: true } : undefined,
       );
       const threadId = await createThread(request, orgSlug, projectId);
 
@@ -1088,7 +1360,8 @@ test.describe("destination routes", () => {
       );
       await page.waitForURL(
         (url) =>
-          url.pathname === `/${orgSlug}/agents/${projectId}` &&
+          url.pathname ===
+            `/${orgSlug}/projects/${projectId}${projectSuffix}` &&
           url.searchParams.get("thread") === threadId,
         { timeout: SHELL_TIMEOUT_MS },
       );
@@ -1163,17 +1436,19 @@ test.describe("destination routes", () => {
   });
 
   /**
-   * Agent identity and its surface are separate path segments. Whether the
+   * Project identity and its surface are separate path segments. Whether the
    * panel is OPEN remains layout search, so closing it keeps the same place.
    * The old search-carried identity and `?main=` remain accepted inputs only.
    */
-  test("an agent surface is canonical, and legacy search settles on it", async ({
+  test("a project surface is canonical, and legacy search settles on it", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
     const projectId = await createProject(request, orgSlug, "panel path e2e");
 
-    await page.goto(`/${orgSlug}/agents/${projectId}/settings?sidepanel=true`);
+    await page.goto(
+      `/${orgSlug}/projects/${projectId}/settings?sidepanel=true`,
+    );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(page.getByTestId("workspace-panel-separator")).toHaveCount(1);
@@ -1235,7 +1510,7 @@ test.describe("destination routes", () => {
     /* A bookmarked closed layout keeps the view in the path and exposes one
        recovery action in Chat. */
     await page.goto(
-      `/${orgSlug}/agents/${projectId}/settings?sidepanel=true&mainpanel=false`,
+      `/${orgSlug}/projects/${projectId}/settings?sidepanel=true&mainpanel=false`,
     );
     await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toHaveAttribute("aria-hidden", "true");
@@ -1259,7 +1534,7 @@ test.describe("destination routes", () => {
     });
     await expect(showMain).toHaveAttribute("aria-expanded", "false");
     expect(new URL(page.url()).pathname).toBe(
-      `/${orgSlug}/agents/${projectId}/settings`,
+      `/${orgSlug}/projects/${projectId}/settings`,
     );
 
     /* Reopening must restore the same semantic and visual order. A panel
@@ -1269,7 +1544,7 @@ test.describe("destination routes", () => {
     await showMain.click();
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
         url.searchParams.get("sidepanel") === "true" &&
         url.searchParams.get("mainpanel") !== "false",
       { timeout: SHELL_TIMEOUT_MS },
@@ -1314,7 +1589,7 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("main") === null,
       { timeout: SHELL_TIMEOUT_MS },
@@ -1323,7 +1598,7 @@ test.describe("destination routes", () => {
   });
 
   /** The briefly shipped view-first route remains a compatibility adapter. */
-  test("a legacy /agents/<view>?virtualmcpid= URL redirects to the agent surface", async ({
+  test("a legacy /agents/<view>?virtualmcpid= URL redirects to the project surface", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -1332,7 +1607,7 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents/settings?virtualmcpid=${projectId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
         url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -1358,7 +1633,7 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
         url.searchParams.get("main") === null &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
@@ -1373,7 +1648,7 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
         url.searchParams.get("main") === null &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId &&
@@ -1389,7 +1664,7 @@ test.describe("destination routes", () => {
     await page.waitForURL(
       (url) =>
         url.pathname ===
-          `/${orgSlug}/agents/${projectId}/views/custom-dashboard` &&
+          `/${orgSlug}/projects/${projectId}/views/custom-dashboard` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId &&
         url.hash === "#section",
@@ -1401,19 +1676,19 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents/code?virtualmcpid=${projectId}&main=0`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/site-editor/code` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/site-editor/code` &&
         url.searchParams.get("main") === null &&
         url.searchParams.get("mainpanel") === "false",
       { timeout: SHELL_TIMEOUT_MS },
     );
 
     /* `overview` was emitted by the briefly shipped project-first grammar.
-       It means this agent's overview, unlike legacy view-first
+       It means this project's overview, unlike legacy view-first
        `?main=overview`, which continues to mean organization Home. */
     await page.goto(`/${orgSlug}/agents/${projectId}/overview#overview`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.hash === "#overview",
       { timeout: SHELL_TIMEOUT_MS },
@@ -1433,21 +1708,56 @@ test.describe("destination routes", () => {
   });
 
   /** A workspace root is canonical and never duplicates identity in search. */
-  test("a lone /agents/<agentId> is the canonical agent workspace", async ({
+  test("a lone /projects/<projectId> is the canonical project workspace", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
     const projectId = await createProject(request, orgSlug, "lone id e2e");
 
-    await page.goto(`/${orgSlug}/agents/${projectId}`);
+    await page.goto(`/${orgSlug}/projects/${projectId}`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expectChatCollapsed(page);
     const landed = new URL(page.url());
-    expect(landed.pathname).toBe(`/${orgSlug}/agents/${projectId}`);
+    expect(landed.pathname).toBe(`/${orgSlug}/projects/${projectId}`);
     expect(landed.searchParams.get("virtualmcpid")).toBeNull();
   });
 
-  test("canonical paths outrank stale search-carried agent identity", async ({
+  test("the previous /agents namespace is a replace-only alias that preserves layout and hash", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const projectId = await createProject(
+      request,
+      orgSlug,
+      "namespace compatibility e2e",
+    );
+    const threadId = await createThread(request, orgSlug, projectId);
+
+    await page.goto(`/${orgSlug}/home#before-legacy`);
+    await page.goto(
+      `/${orgSlug}/agents/${projectId}/settings?thread=${threadId}&sidepanel=true&mainpanel=true#legacy-namespace`,
+    );
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
+        url.searchParams.get("thread") === threadId &&
+        url.searchParams.get("sidepanel") === "true" &&
+        url.searchParams.get("mainpanel") === "true" &&
+        url.hash === "#legacy-namespace",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(chatPanel(page)).toBeVisible();
+
+    await page.goBack();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/home` && url.hash === "#before-legacy",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+  });
+
+  test("canonical paths outrank stale search-carried project identity", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -1460,16 +1770,17 @@ test.describe("destination routes", () => {
       request,
       orgSlug,
       "stale identity e2e",
+      { clonable: true },
     );
 
-    /* Once identity is in a canonical agent path, an old query value is only
-       residue. It is removed; it can never switch the mounted agent. */
+    /* Once identity is in a canonical project path, an old query value is only
+       residue. It is removed; it can never switch the mounted project. */
     await page.goto(
-      `/${orgSlug}/agents/${pathAgentId}/settings?virtualmcpid=${staleAgentId}`,
+      `/${orgSlug}/projects/${pathAgentId}/settings?virtualmcpid=${staleAgentId}`,
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${pathAgentId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${pathAgentId}/settings` &&
         url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -1478,13 +1789,30 @@ test.describe("destination routes", () => {
       { timeout: SHELL_TIMEOUT_MS },
     );
 
-    /* Org destinations never inherit a stale project scope either. Home is
-       the one historical exception: a scoped Home URL meant "open agent", so
-       its compatibility adapter promotes the id into the canonical path. */
+    /* Tasks, Reports, and Home accepted query-carried project identity before
+       the project namespace existed. Their compatibility adapters promote it
+       into the matching project route. Library stays organization-owned and
+       removes the stale identity instead. */
     await page.goto(`/${orgSlug}/tasks?virtualmcpid=${staleAgentId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/tasks` &&
+        url.pathname === `/${orgSlug}/projects/${staleAgentId}/tasks` &&
+        url.searchParams.get("virtualmcpid") === null,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+
+    await page.goto(`/${orgSlug}/reports?virtualmcpid=${staleAgentId}`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${staleAgentId}/reports` &&
+        url.searchParams.get("virtualmcpid") === null,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+
+    await page.goto(`/${orgSlug}/library?virtualmcpid=${staleAgentId}`);
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/library` &&
         url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -1492,13 +1820,13 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/home?virtualmcpid=${staleAgentId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${staleAgentId}` &&
+        url.pathname === `/${orgSlug}/projects/${staleAgentId}` &&
         url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
   });
 
-  test("an agent-declared view keeps its namespace when its id collides", async ({
+  test("a project-declared view keeps its namespace when its id collides", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -1521,7 +1849,7 @@ test.describe("destination routes", () => {
     const threadId = await createThread(request, orgSlug, agentId);
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}?thread=${threadId}&sidepanel=true`,
+      `/${orgSlug}/projects/${agentId}?thread=${threadId}&sidepanel=true`,
     );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     const declaredView = page.getByRole("button", {
@@ -1532,11 +1860,11 @@ test.describe("destination routes", () => {
     await declaredView.click();
 
     /* The raw metadata id says `reports`, but its typed tab identity says this
-       is an agent view. It must not be mistaken for the built-in organization
-       Reports destination when navigation resolves it. */
+       is a project view. It must not be mistaken for either built-in Reports
+       destination when navigation resolves it. */
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/views/${viewId}` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/views/${viewId}` &&
         url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -1547,7 +1875,7 @@ test.describe("destination routes", () => {
       "navigation",
       { name: "Breadcrumb", exact: true },
     );
-    const agentParent = await breadcrumbParent(
+    const projectParent = await breadcrumbParent(
       page,
       declaredViewBreadcrumb,
       "colliding view e2e",
@@ -1557,10 +1885,10 @@ test.describe("destination routes", () => {
     ).toHaveCount(0);
     await expect(declaredViewBreadcrumb).not.toContainText(viewTitle);
 
-    await agentParent.link.click();
+    await projectParent.link.click();
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("sidepanel") === "true",
       { timeout: SHELL_TIMEOUT_MS },
@@ -1568,24 +1896,24 @@ test.describe("destination routes", () => {
     await expect(chatPanel(page)).toBeVisible();
 
     // The sidebar Overview row is a real link (open-in-new-tab semantics), but
-    // it must use the same agent-scoped search writer as every view button.
+    // it must use the same project-scoped search writer as every view button.
     await declaredView.click();
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/views/${viewId}` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/views/${viewId}` &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
     const projectOverview = page
       .locator('[data-slot="sidebar"]')
-      .locator(`a[href^="/${orgSlug}/agents/${agentId}"]`)
+      .locator(`a[href^="/${orgSlug}/projects/${agentId}"]`)
       .filter({ hasText: "Home" })
       .first();
     await expect(projectOverview).toBeVisible();
     await projectOverview.click();
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("sidepanel") === "true",
       { timeout: SHELL_TIMEOUT_MS },
@@ -1601,7 +1929,7 @@ test.describe("destination routes", () => {
     await page.waitForURL(
       (url) =>
         url.pathname ===
-          `/${orgSlug}/agents/${agentId}/views/${legacyCollisionId}` &&
+          `/${orgSlug}/projects/${agentId}/views/${legacyCollisionId}` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("virtualmcpid") === null &&
         url.hash === "#monitor-view",
@@ -1609,7 +1937,7 @@ test.describe("destination routes", () => {
     );
     await expect(
       page.getByRole("heading", { name: legacyCollisionTitle, level: 1 }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
   });
 
   test("a populated thread reopens Chat on cold load unless search closes it", async ({
@@ -1621,10 +1949,10 @@ test.describe("destination routes", () => {
     const threadId = await createThread(request, orgSlug, agentId);
     const message = `Persisted route turn ${crypto.randomUUID()}`;
     await populateThread(orgId, threadId, message);
-    const route = `/${orgSlug}/agents/${agentId}?thread=${threadId}`;
+    const route = `/${orgSlug}/projects/${agentId}?thread=${threadId}`;
 
     /* No panel preference in the URL: the loaded conversation reopens Chat
-       alongside the route-owned agent overview. */
+       alongside the route-owned project overview. */
     await page.goto(route);
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
@@ -1720,17 +2048,17 @@ test.describe("destination routes", () => {
     ).toBeVisible();
   });
 
-  test("the agent Settings topbar keeps both actions reachable at 320px", async ({
+  test("the project Settings topbar keeps both actions reachable at 320px", async ({
     authedPage: { page, orgSlug },
   }) => {
     await usePortugueseMobileViewport(page);
     const agentId = await createProject(
       page.context().request,
       orgSlug,
-      "compact agent settings e2e",
+      "compact project settings e2e",
     );
 
-    await page.goto(`/${orgSlug}/agents/${agentId}/settings`);
+    await page.goto(`/${orgSlug}/projects/${agentId}/settings`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(
       mainTopbarRegion(page, "left").getByRole("heading", {
@@ -1776,7 +2104,7 @@ test.describe("destination routes", () => {
       "mobile active option e2e",
     );
 
-    await page.goto(`/${orgSlug}/agents/${agentId}/settings`);
+    await page.goto(`/${orgSlug}/projects/${agentId}/settings`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
     const trigger = page.getByRole("combobox", {
@@ -1801,6 +2129,39 @@ test.describe("destination routes", () => {
     );
   });
 
+  test("the mobile Tasks option respects organization and project scope", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+
+    await page.goto(`/${orgSlug}/home`);
+    const viewSelect = page.getByRole("combobox", {
+      name: "View",
+      exact: true,
+    });
+    await expect(viewSelect).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await viewSelect.click();
+    await page.getByRole("option", { name: "Tasks", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === `/${orgSlug}/tasks`, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    const projectId = await createProject(
+      page.context().request,
+      orgSlug,
+      "mobile scoped Tasks e2e",
+      { clonable: true },
+    );
+    await page.goto(`/${orgSlug}/projects/${projectId}/settings`);
+    await expect(viewSelect).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await viewSelect.click();
+    await page.getByRole("option", { name: "Tasks", exact: true }).click();
+    await page.waitForURL(
+      (url) => url.pathname === `/${orgSlug}/projects/${projectId}/tasks`,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+  });
+
   test("mobile View trigger names the selected Chat surface", async ({
     authedPage: { page, orgSlug },
   }) => {
@@ -1812,7 +2173,7 @@ test.describe("destination routes", () => {
       projectTitle,
     );
 
-    await page.goto(`/${orgSlug}/agents/${agentId}`);
+    await page.goto(`/${orgSlug}/projects/${agentId}`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
     const trigger = page.getByRole("combobox", {
@@ -1845,8 +2206,9 @@ test.describe("destination routes", () => {
       page.context().request,
       orgSlug,
       "mobile focus e2e",
+      { clonable: true },
     );
-    await page.goto(`/${orgSlug}/agents/${agentId}/settings`);
+    await page.goto(`/${orgSlug}/projects/${agentId}/settings`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
     const viewSelect = page.getByRole("combobox", {
@@ -1881,9 +2243,10 @@ test.describe("destination routes", () => {
     await page.keyboard.press("Enter");
     await page.getByRole("option", { name: "Tasks", exact: true }).focus();
     await page.keyboard.press("Enter");
-    await page.waitForURL((url) => url.pathname === `/${orgSlug}/tasks`, {
-      timeout: SHELL_TIMEOUT_MS,
-    });
+    await page.waitForURL(
+      (url) => url.pathname === `/${orgSlug}/projects/${agentId}/tasks`,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
     await expect(
       mainTopbarRegion(page, "left").getByRole("heading", {
         level: 1,
@@ -1905,14 +2268,14 @@ test.describe("destination routes", () => {
       projectTitle,
       { clonable: true, layoutTabs: [{ id: viewId, title: viewTitle }] },
     );
-    await page.goto(`/${orgSlug}/agents/${agentId}`);
+    await page.goto(`/${orgSlug}/projects/${agentId}`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
-    const homeBreadcrumb = mainTopbar(page).getByRole("link", {
-      name: "Home",
+    const projectBreadcrumb = mainTopbar(page).getByRole("link", {
+      name: projectTitle,
       exact: true,
     });
-    await homeBreadcrumb.focus();
+    await projectBreadcrumb.focus();
     await page.setViewportSize({ width: 320, height: 720 });
     const responsiveViewSelect = page.getByRole("combobox", {
       name: "View",
@@ -1920,7 +2283,7 @@ test.describe("destination routes", () => {
     });
     await expect(responsiveViewSelect).toBeFocused();
     await page.setViewportSize({ width: 1280, height: 720 });
-    await expect(homeBreadcrumb).toBeFocused();
+    await expect(projectBreadcrumb).toBeFocused();
 
     const viewTab = mainTopbar(page).getByRole("button", {
       name: viewTitle,
@@ -1929,7 +2292,8 @@ test.describe("destination routes", () => {
     await viewTab.focus();
     await page.keyboard.press("Enter");
     await page.waitForURL(
-      (url) => url.pathname === `/${orgSlug}/agents/${agentId}/views/${viewId}`,
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${agentId}/views/${viewId}`,
       { timeout: SHELL_TIMEOUT_MS },
     );
     await expect(
@@ -1947,7 +2311,7 @@ test.describe("destination routes", () => {
     await projectParent.focus();
     await page.keyboard.press("Enter");
     await page.waitForURL(
-      (url) => url.pathname === `/${orgSlug}/agents/${agentId}`,
+      (url) => url.pathname === `/${orgSlug}/projects/${agentId}`,
       { timeout: SHELL_TIMEOUT_MS },
     );
     await expect(
@@ -1963,7 +2327,8 @@ test.describe("destination routes", () => {
     // target instead of leaving keyboard users at document.body.
     await page.goBack();
     await page.waitForURL(
-      (url) => url.pathname === `/${orgSlug}/agents/${agentId}/views/${viewId}`,
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${agentId}/views/${viewId}`,
       { timeout: SHELL_TIMEOUT_MS },
     );
     await expect(
@@ -1995,7 +2360,7 @@ test.describe("destination routes", () => {
     // Toggling the active Site Editor tab is a search-only navigation that
     // collapses Main. Its visible semantic replacement lives in Chat.
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor?thread=${threadId}&sidepanel=true&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor?thread=${threadId}&sidepanel=true&mainpanel=true`,
     );
     const activePreviewTab = mainPanel(page).getByRole("button", {
       name: "Preview",
@@ -2079,7 +2444,7 @@ test.describe("destination routes", () => {
     // panel inert. Focus follows to the visible View switcher, then returns to
     // the exact desktop node only if the user leaves that handoff untouched.
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor?thread=${threadId}&sidepanel=true&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor?thread=${threadId}&sidepanel=true&mainpanel=true`,
     );
     await page.setViewportSize({ width: 1280, height: 720 });
     const mainFocusProbe = mainPanel(page);
@@ -2113,7 +2478,7 @@ test.describe("destination routes", () => {
     // With no explicit side-panel preference, Main wins on mobile. The same
     // handoff works symmetrically for a focused Chat descendant.
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor?thread=${threadId}&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor?thread=${threadId}&mainpanel=true`,
     );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
@@ -2141,7 +2506,7 @@ test.describe("destination routes", () => {
       { clonable: true },
     );
     const threadId = await createThread(request, orgSlug, agentId);
-    const base = `/${orgSlug}/agents/${agentId}/site-editor`;
+    const base = `/${orgSlug}/projects/${agentId}/site-editor`;
 
     for (const path of [base, `${base}/content`, `${base}/code`]) {
       await page.goto(`${path}?thread=${threadId}`);
@@ -2154,7 +2519,7 @@ test.describe("destination routes", () => {
     }
 
     /** Code kept its selected file in search; only its structural ownership
-     *  and the agent identity move into the canonical path. */
+     *  and the project identity move into the canonical path. */
     await page.goto(
       `/${orgSlug}/agents/code?virtualmcpid=${agentId}&thread=${threadId}&file=src%2Fapp.tsx`,
     );
@@ -2206,7 +2571,7 @@ test.describe("destination routes", () => {
       await page.waitForURL(
         (url) =>
           url.pathname ===
-            `/${orgSlug}/agents/${agentId}/site-editor/content` &&
+            `/${orgSlug}/projects/${agentId}/site-editor/content` &&
           url.searchParams.get("thread") === threadId &&
           url.searchParams.get("main") === null &&
           url.searchParams.get("virtualmcpid") === null &&
@@ -2246,7 +2611,7 @@ test.describe("destination routes", () => {
     await page.waitForURL(
       (url) =>
         url.pathname ===
-          `/${orgSlug}/agents/${agentId}/apps/${connectionId}/${toolName}` &&
+          `/${orgSlug}/projects/${agentId}/apps/${connectionId}/${toolName}` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("main") === null &&
         url.searchParams.get("virtualmcpid") === null &&
@@ -2265,7 +2630,7 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents?${fileSearch}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/outputs/file` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/outputs/file` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("key") === fileKey &&
         url.searchParams.get("main") === null &&
@@ -2282,17 +2647,21 @@ test.describe("destination routes", () => {
       request,
       orgSlug,
       "legacy agents destination payload e2e",
+      { clonable: true },
     );
     const { item } = await callSelfMcpTool<{ item: { id: string } }>(
       request,
       orgSlug,
       "TASK_BOARD_ITEM_CREATE",
-      { title: "legacy agents destination card" },
+      {
+        title: "legacy agents destination card",
+        repo: "example/repo",
+      },
     );
 
     /* `?main=` was accepted on every workspace route. Passing through the
-       short `/agents` identity adapter must not make the eventual Tasks route
-       lose the card/filter state that belongs to it. */
+       short `/agents` identity adapter must not make the eventual project
+       Tasks route lose the card/filter state that belongs to it. */
     const boardSearch = new URLSearchParams({
       virtualmcpid: agentId,
       main: "board",
@@ -2305,14 +2674,14 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents?${boardSearch}#board-state`);
     await page.waitForURL(
       (url) =>
-        url.pathname.startsWith(`/${orgSlug}/tasks/`) &&
+        url.pathname.startsWith(`/${orgSlug}/projects/${agentId}/tasks/`) &&
         url.searchParams.get("main") === null &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("task") === null &&
         url.searchParams.get("view") === "list" &&
         url.searchParams.get("q") === "legacy destination query" &&
         url.searchParams.get("priority") === "high" &&
-        url.searchParams.get("repo") === "acme/storefront" &&
+        url.searchParams.get("repo") === null &&
         url.hash === "#board-state",
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -2350,7 +2719,7 @@ test.describe("destination routes", () => {
     const threadId = await createThread(request, orgSlug, agentId);
     const connectionId = "connection_legacy_e2e";
     const toolName = "get_orders";
-    const canonical = `/${orgSlug}/agents/${agentId}/apps/${connectionId}/${toolName}`;
+    const canonical = `/${orgSlug}/projects/${agentId}/apps/${connectionId}/${toolName}`;
 
     const assertCanonical = async () => {
       await page.waitForURL(
@@ -2376,6 +2745,25 @@ test.describe("destination routes", () => {
     );
     await assertCanonical();
 
+    /* A slash belongs to the tool id, not the route grammar. The retired
+       namespace must decode it from search and emit it as one encoded path
+       segment in the canonical namespace. */
+    const slashToolName = "GET/orders";
+    const encodedSlashToolName = encodeURIComponent(slashToolName);
+    const encodedCanonical = `/${orgSlug}/projects/${agentId}/apps/${connectionId}/${encodedSlashToolName}`;
+    await page.goto(
+      `/${orgSlug}/agents/${agentId}/app?connection=${connectionId}&tool=${encodedSlashToolName}&sidepanel=true#encoded-tool`,
+    );
+    await page.waitForURL(
+      (url) =>
+        url.pathname === encodedCanonical &&
+        url.searchParams.get("connection") === null &&
+        url.searchParams.get("tool") === null &&
+        url.searchParams.get("sidepanel") === "true" &&
+        url.hash === "#encoded-tool",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+
     /** The oldest thread URL encoded the whole pinned-view id in `?main=`. */
     await page.goto(
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=${encodeURIComponent(`app:${connectionId}:${toolName}`)}`,
@@ -2386,7 +2774,7 @@ test.describe("destination routes", () => {
 
   /** A bare agent path and a view-first path were both shipped. Neither is a
    *  canonical workspace anymore, but both remain permanent input aliases. */
-  test("unscoped legacy agent paths settle on canonical destinations", async ({
+  test("unscoped legacy /agents paths settle on canonical destinations", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -2416,7 +2804,7 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${superAgentId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${superAgentId}/settings` &&
         url.searchParams.get("thread") === threadId &&
         url.searchParams.get("sidepanel") === "true" &&
         url.searchParams.get("virtualmcpid") === null &&
@@ -2429,19 +2817,70 @@ test.describe("destination routes", () => {
     await page.waitForURL((url) => url.pathname === `/${orgSlug}/home`, {
       timeout: SHELL_TIMEOUT_MS,
     });
+
+    /* An opaque view-first name has no path identity of its own. The mounted
+       organization supplies its Super Agent even when `?virtualmcpid=` is
+       absent, and the old namespace is never emitted again. */
+    await page.goto(
+      `/${orgSlug}/agents/custom-dashboard?thread=${threadId}&sidepanel=true#custom-dashboard`,
+    );
+    await page.waitForURL(
+      (url) =>
+        url.pathname ===
+          `/${orgSlug}/projects/${superAgentId}/views/custom-dashboard` &&
+        url.searchParams.get("thread") === threadId &&
+        url.searchParams.get("sidepanel") === "true" &&
+        url.searchParams.get("virtualmcpid") === null &&
+        url.hash === "#custom-dashboard",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+  });
+
+  test("a canonical /projects segment is never reinterpreted as a legacy view", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const canonicalPath = `/${orgSlug}/projects/not-an-id`;
+    const projectLookup = page.waitForResponse(
+      (response) =>
+        response.url().includes("/tools/COLLECTION_VIRTUAL_MCP_GET") &&
+        response.request().method() === "POST",
+    );
+
+    await page.goto(`${canonicalPath}?sidepanel=true#canonical-project`);
+    await projectLookup;
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(
+      page.getByRole("button", {
+        name: "Organization and project: Project",
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      page.getByRole("button", {
+        name: "Organization and project: Loading…",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+
+    const settled = new URL(page.url());
+    expect(settled.pathname).toBe(canonicalPath);
+    expect(settled.searchParams.get("sidepanel")).toBe("true");
+    expect(settled.hash).toBe("#canonical-project");
   });
 
   /**
-   * REPRODUCED BUG. Home, Tasks, Reports and Library are ORG-LEVEL: they have
-   * no `{-$project}` segment because they belong to the Super Agent. Opening
-   * another agent's chat from one of them used to stay put and record that
-   * agent in `?virtualmcpid=`, which the workspace then read back — so a whole
-   * org-wide report served itself scoped to one project.
+   * REPRODUCED BUG. The organization-wide forms of Home, Tasks, Reports and
+   * Library have no project segment. Opening another project's chat from one
+   * of them used to stay put and record that project in `?virtualmcpid=`, which
+   * the workspace then read back — so an org-wide report served itself scoped
+   * to one project.
    *
-   * A thread belongs where its agent lives, so the switch leaves for that
-   * agent's own workspace and the search key is written nowhere.
+   * A thread belongs where its project lives, so the switch leaves for that
+   * project's own workspace and the search key is written nowhere.
    */
-  test("an org-level destination never carries an agent in its search", async ({
+  test("an org-level destination never carries a project in its search", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -2464,11 +2903,11 @@ test.describe("destination routes", () => {
     await expect(row).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await row.click();
 
-    /* Landing on the agent workspace puts identity in the path. The assertion
+    /* Landing on the project workspace puts identity in the path. The assertion
        above pins that the org-level report never inherited it as a filter. */
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },

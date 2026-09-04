@@ -5,7 +5,7 @@ import { AgentRouteMain } from "./agent-route-main";
 import { resolveRouteResourceTarget } from "./route-resource-title";
 
 const route = getRouteApi(
-  "/shell/$org/org-shell/agent-shell/agents/$agentId/library/file",
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/library/file",
 );
 
 export default function AgentLibraryFileRoute() {

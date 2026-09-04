@@ -9,7 +9,7 @@ import { useVirtualMCP } from "@/sdk";
 import { AgentRouteMain } from "./agent-route-main";
 
 const route = getRouteApi(
-  "/shell/$org/org-shell/agent-shell/agents/$agentId/apps/$connectionId/$toolName",
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/apps/$connectionId/$toolName",
 );
 
 export default function AgentAppRoute() {

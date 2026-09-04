@@ -6,6 +6,10 @@ import {
   nextTagColor,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import {
+  getCommerceDiscoveryReportOwnerId,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
 import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
@@ -52,6 +56,11 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   EXACT on the normalized title (case, surrounding and repeated whitespace) —
  *   deliberately not fuzzy, because two findings that differ by a few words are
  *   usually two findings, and wrongly merging them loses one silently.
+ *   Both matches are restricted to report-generated rows (`created_by = system`,
+ *   no Jira `source`). The report connection is singleton per org, so changing
+ *   its configured project intentionally transfers matching open findings on
+ *   the next import; an ordinary same-title task in a sibling project is never
+ *   converted or moved.
  *
  * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
  *
@@ -125,7 +134,6 @@ export const createTaskBoardImportRoutes = () => {
     if (!organizationId) {
       return c.json({ error: "Organization context required" }, 403);
     }
-
     const parsed = importBodySchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -135,6 +143,18 @@ export const createTaskBoardImportRoutes = () => {
         400,
       );
     }
+    /** This endpoint is the Commerce Discovery diagnostic receiver. Setup
+     * persists the project selected for the singleton report connection;
+     * older connections have no owner metadata and intentionally fall back
+     * to the deterministic Commerce project. */
+    const reportConnection = await ctx.storage.connections.findById(
+      WellKnownOrgMCPId.COMMERCE_DISCOVERY(organizationId),
+      organizationId,
+    );
+    const virtualMcpId = getCommerceDiscoveryReportOwnerId(
+      organizationId,
+      reportConnection?.metadata?.projectId,
+    );
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     const autoAssignToSuperAgent =
       settings?.flags?.auto_assign_report_tasks_to_super_agent ?? false;
@@ -214,6 +234,8 @@ export const createTaskBoardImportRoutes = () => {
           .selectFrom("task_board_items")
           .select(["id", "title", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
+          .where("created_by", "=", "system")
+          .where("source", "is", null)
           .where((eb) =>
             eb.or([
               eb("dismissed_at", "is not", null),
@@ -235,6 +257,8 @@ export const createTaskBoardImportRoutes = () => {
           .selectFrom("task_board_items")
           .select(["id", "external_key", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
+          .where("created_by", "=", "system")
+          .where("source", "is", null)
           .where("external_key", "in", keys)
           .where((eb) =>
             eb.or([
@@ -324,6 +348,8 @@ export const createTaskBoardImportRoutes = () => {
             {
               description: item.description ?? null,
               priority: item.priority,
+              // Also backfill rows imported before project ownership existed.
+              virtualMcpId,
             },
             "system",
           );
@@ -348,6 +374,7 @@ export const createTaskBoardImportRoutes = () => {
             : item.assigneeId
               ? "system"
               : null,
+          virtualMcpId,
           externalKey: item.externalKey ?? null,
           by: "system",
         });

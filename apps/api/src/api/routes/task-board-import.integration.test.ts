@@ -16,6 +16,10 @@ import {
 import { getSettings, setGlobalSettings } from "../../settings";
 import { TaskBoardStorage } from "../../storage/task-board";
 import { createApp } from "../app";
+import {
+  getCommerceDiscoveryAgentId,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
 
 if (!getSettings().encryptionKey) {
   setGlobalSettings({
@@ -44,6 +48,30 @@ const BODY = {
   ],
   source: { url: "shop.com" },
 };
+
+async function insertReportConnection(
+  database: StudioDatabase,
+  organizationId: string,
+  projectId: string,
+) {
+  const now = new Date().toISOString();
+  await database.db
+    .insertInto("connections")
+    .values({
+      id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(organizationId),
+      organization_id: organizationId,
+      created_by: "user_1",
+      title: "Store Report",
+      connection_type: "HTTP",
+      connection_url: "https://reports.example/mcp",
+      metadata: JSON.stringify({ projectId }),
+      status: "active",
+      pinned: false,
+      created_at: now,
+      updated_at: now,
+    })
+    .execute();
+}
 
 describe("Task Board Import Route", () => {
   let database: StudioDatabase;
@@ -152,6 +180,7 @@ describe("Task Board Import Route", () => {
       expect(row.status).toBe("triage");
       expect(row.created_by).toBe("system");
       expect(row.updated_by).toBe("system");
+      expect(row.virtual_mcp_id).toBe(getCommerceDiscoveryAgentId("org_board"));
     }
     const byTitle = new Map(rows.map((r) => [r.title, r]));
     expect(byTitle.get("Adicionar H1 na home")?.priority).toBe("high");
@@ -159,6 +188,22 @@ describe("Task Board Import Route", () => {
     expect(byTitle.get("Liberar o GPTBot no WAF")?.description).toBe(
       "403 no WAF.",
     );
+  });
+
+  it("uses the report connection's project owner instead of the legacy fallback", async () => {
+    const projectId = "vir_report_owner";
+    await insertReportConnection(database, "org_board", projectId);
+
+    const res = await app.fetch(post("org_board", "svc-secret", BODY));
+    expect(res.status).toBe(200);
+
+    const owners = await database.db
+      .selectFrom("task_board_items")
+      .select("virtual_mcp_id")
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(owners).toHaveLength(BODY.items.length);
+    expect(owners.every((row) => row.virtual_mcp_id === projectId)).toBe(true);
   });
 
   it("delegates a super-agent item: To Do, owner as the run principal", async () => {
@@ -252,6 +297,7 @@ describe("Task Board Import Route", () => {
 
   it("an externalKey matching an open item refreshes it instead of duplicating", async () => {
     const key = "diag:shop.com:GEO-001";
+    const projectId = "vir_backfilled_report_owner";
     const run1 = await app.fetch(
       post("org_board", "svc-secret", {
         items: [
@@ -270,6 +316,19 @@ describe("Task Board Import Route", () => {
       updated: 0,
       delegated: 0,
     });
+
+    // Simulate a report row created before persisted project ownership. A
+    // normal refresh must backfill it instead of leaving legacy inference in
+    // place forever.
+    await database.db
+      .updateTable("task_board_items")
+      .set({ virtual_mcp_id: null })
+      .where("organization_id", "=", "org_board")
+      .where("external_key", "=", key)
+      .execute();
+    // The org later attaches its singleton report to a real project. The next
+    // refresh transfers the matching report finding to that configured owner.
+    await insertReportConnection(database, "org_board", projectId);
 
     // A month later the diagnostic re-runs, finds the same issue with fresh
     // evidence and a worse severity — the card is refreshed, not duplicated,
@@ -303,6 +362,53 @@ describe("Task Board Import Route", () => {
     expect(rows[0]?.description).toBe("403 no WAF (run 2).");
     expect(rows[0]?.priority).toBe("high");
     expect(rows[0]?.external_key).toBe(key);
+    expect(rows[0]?.virtual_mcp_id).toBe(projectId);
+  });
+
+  it("does not steal a same-title user task from a sibling project", async () => {
+    const title = "Adicionar H1 na home";
+    const siblingProjectId = "vir_sibling";
+    const reportProjectId = "vir_report";
+    const storage = new TaskBoardStorage(database.db);
+    const userTask = await storage.create({
+      organizationId: "org_board",
+      title,
+      description: "Human-authored context",
+      virtualMcpId: siblingProjectId,
+      by: "user_1",
+    });
+    await insertReportConnection(database, "org_board", reportProjectId);
+
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title, description: "Report evidence" }],
+        source: { url: "shop.com", run_id: "run_title_collision" },
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id", "description", "created_by", "virtual_mcp_id"])
+      .where("organization_id", "=", "org_board")
+      .where("title", "=", title)
+      .orderBy("created_at")
+      .execute();
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.id === userTask.id)).toMatchObject({
+      description: "Human-authored context",
+      created_by: "user_1",
+      virtual_mcp_id: siblingProjectId,
+    });
+    expect(rows.find((row) => row.id !== userTask.id)).toMatchObject({
+      description: "Report evidence",
+      created_by: "system",
+      virtual_mcp_id: reportProjectId,
+    });
   });
 
   it("attaches the sender's tags, reusing an existing name case-insensitively", async () => {

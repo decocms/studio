@@ -4,6 +4,7 @@ import {
 } from "@decocms/shared/reports/site-url";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t.ts";
+import { refreshCommerceDiagnosticOwnership } from "@/lib/commerce-diagnostic-cache";
 import { track } from "@/lib/posthog-client";
 import { KEYS } from "@/lib/query-keys";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -14,15 +15,22 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { commerceReportNavTarget } from "@/hooks/use-commerce-diagnostic";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
+  commerceDiscoveryReportBelongsToProject,
   SELF_MCP_ALIAS_ID,
+  getCommerceDiscoveryReportOwnerId,
   useMCPClient,
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@/sdk";
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { Suspense, useState } from "react";
@@ -44,31 +52,45 @@ import { parseSelfToolResult } from "./self-tool-result.ts";
  * is triggered so the caller can drop the `connect` search param and reveal the
  * report.
  */
-export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
+export function CommerceConnectModal({
+  siteUrl,
+  projectId,
+}: {
+  siteUrl?: string;
+  projectId?: string;
+}) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const t = useT();
 
   /**
-   * Completing the connect step opens the diagnostic report in a fresh thread.
-   * That navigation also drops the `?connect=1` param, which unmounts this modal
-   * and reveals the report. Target end state: the Commerce Discovery report app
-   * open in the main panel, with chat (`sidepanel: false`, overriding the report
-   * agent's chatDefaultOpen) and the sidebar both closed.
+   * Completing the connect step drops `?connect=1`, unmounts this modal, and
+   * reveals the report with chat and the sidebar closed. A project-owned flow
+   * stays on that project's Reports route; public onboarding keeps its original
+   * Commerce Discovery app destination.
    *
    * The sidebar is closed through localStorage rather than a prop because
    * `OrgLayout` owns that state and this modal renders above it. The report is
    * the whole screen at this point in onboarding — the nav has nowhere useful
    * to go yet.
    *
-   * The target's params carry both the report agent and app identity. Its
-   * route-owned search is spread so the chat-panel override is additive.
+   * The onboarding target's params carry both the report agent and app
+   * identity. Its route-owned search is spread so the chat-panel override is
+   * additive.
    */
   const goToReport = () => {
     localStorage.setItem(
       LOCALSTORAGE_KEYS.sidebarOpen(),
       JSON.stringify(false),
     );
+    if (projectId) {
+      navigate({
+        to: PROJECT_ROUTE.reports,
+        params: { org: org.slug, agentId: projectId },
+        search: { sidepanel: false },
+      });
+      return;
+    }
     const target = commerceReportNavTarget(
       org,
       WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
@@ -114,6 +136,7 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
             <Suspense fallback={<CompanionMcpsSectionSkeleton />}>
               <CommerceConnectModalContent
                 siteUrlFromUrl={siteUrl}
+                projectId={projectId}
                 onComplete={goToReport}
               />
             </Suspense>
@@ -126,13 +149,16 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
 
 function CommerceConnectModalContent({
   siteUrlFromUrl,
+  projectId,
   onComplete,
 }: {
   siteUrlFromUrl?: string;
+  projectId?: string;
   onComplete: () => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -155,8 +181,17 @@ function CommerceConnectModalContent({
   });
 
   const item = connectionQuery.data.item;
+  const connectionOwnerId = getCommerceDiscoveryReportOwnerId(
+    org.id,
+    item?.metadata?.projectId,
+  );
+  const connectionBelongsToProject = commerceDiscoveryReportBelongsToProject(
+    org.id,
+    item?.metadata?.projectId,
+    projectId,
+  );
   const metadataSiteUrl =
-    typeof item?.metadata?.siteUrl === "string"
+    connectionBelongsToProject && typeof item?.metadata?.siteUrl === "string"
       ? (item.metadata.siteUrl as string)
       : undefined;
   // Prefer the site from the URL (same context as /commerce-onboarding?siteUrl=…);
@@ -175,10 +210,20 @@ function CommerceConnectModalContent({
       parseSelfToolResult<unknown>(
         await selfClient.callTool({
           name: "COMMERCE_DISCOVERY_SETUP",
-          arguments: { siteUrl: url },
+          arguments: {
+            siteUrl: url,
+            ...(projectId ? { projectId } : {}),
+          },
         }),
       ),
     retry: false,
+    onSuccess: async () => {
+      await refreshCommerceDiagnosticOwnership(
+        queryClient,
+        org.id,
+        connectionId,
+      );
+    },
   });
   const runMutation = useMutation({
     mutationFn: async (url: string) =>
@@ -205,6 +250,12 @@ function CommerceConnectModalContent({
     const normalized = siteUrl ? normalizeReportsSiteUrl(siteUrl) : null;
     if (normalized?.ok) {
       try {
+        // A direct project hand-off may arrive before this browser has observed
+        // the setup write. Claim only the URL supplied by this flow; never
+        // borrow another project's stored site while transferring ownership.
+        if (projectId && connectionOwnerId !== projectId) {
+          await setupMutation.mutateAsync(normalized.value);
+        }
         let runResult = await runMutation.mutateAsync(normalized.value);
         // triggered:false means the site isn't claimed for this org on the
         // Commerce Discovery side (not_upgraded). Reconcile by re-running setup

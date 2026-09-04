@@ -15,8 +15,8 @@
 import { useRouterState } from "@tanstack/react-router";
 export const DESTINATION_ROUTE = {
   home: "/$org/home",
-  /** One agent's overview. Agent identity is never carried in search. */
-  agents: "/$org/agents/$agentId",
+  /** One project's overview. Project identity is never carried in search. */
+  projects: "/$org/projects/$agentId",
   tasks: "/$org/tasks/{-$taskKey}",
   reports: "/$org/reports",
   library: "/$org/library",
@@ -27,28 +27,30 @@ export const DESTINATION_ROUTE = {
   legacyThread: "/$org/$taskId",
 } as const;
 
-/** Canonical route tree below one agent workspace. Keeping these literals in
+/** Canonical route tree below one project workspace. Keeping these literals in
  * one typed vocabulary makes every navigation caller agree with the router. */
-export const AGENT_ROUTE = {
-  root: DESTINATION_ROUTE.agents,
-  siteEditor: "/$org/agents/$agentId/site-editor",
-  siteEditorContent: "/$org/agents/$agentId/site-editor/content",
-  siteEditorCode: "/$org/agents/$agentId/site-editor/code",
-  automations: "/$org/agents/$agentId/automations",
-  automation: "/$org/agents/$agentId/automations/$automationId",
-  app: "/$org/agents/$agentId/apps/$connectionId/$toolName",
-  view: "/$org/agents/$agentId/views/$viewId",
-  outputFile: "/$org/agents/$agentId/outputs/file",
-  outputDeck: "/$org/agents/$agentId/outputs/deck",
-  libraryFile: "/$org/agents/$agentId/library/file",
-  connectSources: "/$org/agents/$agentId/connect-sources",
-  settings: "/$org/agents/$agentId/settings",
-  assets: "/$org/agents/$agentId/assets",
-  git: "/$org/agents/$agentId/git",
-  hosting: "/$org/agents/$agentId/hosting",
-  e2e: "/$org/agents/$agentId/e2e",
-  analytics: "/$org/agents/$agentId/analytics",
-  monitor: "/$org/agents/$agentId/cdn",
+export const PROJECT_ROUTE = {
+  root: DESTINATION_ROUTE.projects,
+  tasks: "/$org/projects/$agentId/tasks/{-$taskKey}",
+  reports: "/$org/projects/$agentId/reports",
+  siteEditor: "/$org/projects/$agentId/site-editor",
+  siteEditorContent: "/$org/projects/$agentId/site-editor/content",
+  siteEditorCode: "/$org/projects/$agentId/site-editor/code",
+  automations: "/$org/projects/$agentId/automations",
+  automation: "/$org/projects/$agentId/automations/$automationId",
+  app: "/$org/projects/$agentId/apps/$connectionId/$toolName",
+  view: "/$org/projects/$agentId/views/$viewId",
+  outputFile: "/$org/projects/$agentId/outputs/file",
+  outputDeck: "/$org/projects/$agentId/outputs/deck",
+  libraryFile: "/$org/projects/$agentId/library/file",
+  connectSources: "/$org/projects/$agentId/connect-sources",
+  settings: "/$org/projects/$agentId/settings",
+  assets: "/$org/projects/$agentId/assets",
+  git: "/$org/projects/$agentId/git",
+  hosting: "/$org/projects/$agentId/hosting",
+  e2e: "/$org/projects/$agentId/e2e",
+  analytics: "/$org/projects/$agentId/analytics",
+  monitor: "/$org/projects/$agentId/cdn",
 } as const;
 
 /** The matched leaf route's full path, e.g. `"/$org/tasks/{-$taskKey}"`. */

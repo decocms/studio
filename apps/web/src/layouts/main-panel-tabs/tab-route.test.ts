@@ -77,9 +77,9 @@ describe("tabRouteLocation", () => {
     ).toEqual({ kind: "library-file", path: "home/docs/spec final.md" });
   });
 
-  test("maps org destinations without smuggling agent identity into search", () => {
+  test("separates project destinations from the organization Library", () => {
     expect(tabRouteLocation("board")).toEqual({
-      kind: "org-destination",
+      kind: "project-destination",
       destination: "tasks",
     });
     expect(tabRouteLocation("files")).toEqual({
@@ -87,7 +87,7 @@ describe("tabRouteLocation", () => {
       destination: "library",
     });
     expect(tabRouteLocation("reports")).toEqual({
-      kind: "org-destination",
+      kind: "project-destination",
       destination: "reports",
     });
   });
@@ -131,12 +131,12 @@ describe("tabRouteTarget", () => {
 
   test("puts agent identity in every agent-owned path", () => {
     expect(tabRouteTarget({ ...base, tabId: "site-editor" })).toEqual({
-      to: "/$org/agents/$agentId/site-editor",
+      to: "/$org/projects/$agentId/site-editor",
       params: base,
       search: {},
     });
     expect(tabRouteTarget({ ...base, tabId: "settings" })).toEqual({
-      to: "/$org/agents/$agentId/settings",
+      to: "/$org/projects/$agentId/settings",
       params: base,
       search: {},
     });
@@ -149,14 +149,14 @@ describe("tabRouteTarget", () => {
         tabId: formatPinnedViewTabId("conn_1", "GET_ORDERS"),
       }),
     ).toEqual({
-      to: "/$org/agents/$agentId/apps/$connectionId/$toolName",
+      to: "/$org/projects/$agentId/apps/$connectionId/$toolName",
       params: { ...base, connectionId: "conn_1", toolName: "GET_ORDERS" },
       search: {},
     });
     expect(
       tabRouteTarget({ ...base, tabId: formatCodeTabId("src/a.tsx") }),
     ).toEqual({
-      to: "/$org/agents/$agentId/site-editor/code",
+      to: "/$org/projects/$agentId/site-editor/code",
       params: base,
       search: { file: "src/a.tsx" },
     });
@@ -170,17 +170,47 @@ describe("tabRouteTarget", () => {
           tabId: formatAgentViewTabId(viewId),
         }),
       ).toEqual({
-        to: "/$org/agents/$agentId/views/$viewId",
+        to: "/$org/projects/$agentId/views/$viewId",
         params: { ...base, viewId },
         search: {},
       });
     }
   });
 
-  test("org destinations carry no agent identity", () => {
+  test("project destinations keep project identity in their path", () => {
     expect(tabRouteTarget({ ...base, tabId: "board" })).toEqual({
+      to: "/$org/projects/$agentId/tasks/{-$taskKey}",
+      params: { ...base, taskKey: undefined },
+      search: {},
+    });
+    expect(tabRouteTarget({ ...base, tabId: "reports" })).toEqual({
+      to: "/$org/projects/$agentId/reports",
+      params: base,
+      search: {},
+    });
+  });
+
+  test("organization context keeps shared destinations outside a project", () => {
+    expect(
+      tabRouteTarget({
+        ...base,
+        tabId: "board",
+        destinationScope: "organization",
+      }),
+    ).toEqual({
       to: "/$org/tasks/{-$taskKey}",
       params: { org: "acme", taskKey: undefined },
+      search: {},
+    });
+    expect(
+      tabRouteTarget({
+        ...base,
+        tabId: "reports",
+        destinationScope: "organization",
+      }),
+    ).toEqual({
+      to: "/$org/reports",
+      params: { org: "acme" },
       search: {},
     });
   });
@@ -211,8 +241,22 @@ describe("canonicalThreadRouteTarget", () => {
         tabId: "settings",
       }),
     ).toEqual({
-      to: "/$org/agents/$agentId/settings",
+      to: "/$org/projects/$agentId/settings",
       params: { org: "acme", agentId: base.superAgentId },
+      search: {},
+    });
+  });
+
+  test("keeps shared Super Agent destinations at organization scope", () => {
+    expect(
+      canonicalThreadRouteTarget({
+        ...base,
+        agentId: base.superAgentId,
+        tabId: "board",
+      }),
+    ).toEqual({
+      to: "/$org/tasks/{-$taskKey}",
+      params: { org: "acme", taskKey: undefined },
       search: {},
     });
   });
@@ -242,7 +286,7 @@ describe("canonicalThreadRouteTarget", () => {
     expect(
       canonicalThreadRouteTarget({ ...base, agentId: "agent-1" }),
     ).toMatchObject({
-      to: "/$org/agents/$agentId",
+      to: "/$org/projects/$agentId",
       params: { org: "acme", agentId: "agent-1" },
     });
     expect(
@@ -252,13 +296,34 @@ describe("canonicalThreadRouteTarget", () => {
         tabId: "settings",
       }),
     ).toMatchObject({
-      to: "/$org/agents/$agentId/settings",
+      to: "/$org/projects/$agentId/settings",
       params: { org: "acme", agentId: "agent-1" },
     });
   });
 
-  test("sanitizes restored organization destinations for project threads", () => {
-    for (const tabId of ["board", "files", "reports", "discover"]) {
+  test("keeps project destinations and sanitizes organization-only destinations", () => {
+    expect(
+      canonicalThreadRouteTarget({
+        ...base,
+        agentId: "agent-1",
+        tabId: "board",
+      }),
+    ).toMatchObject({
+      to: "/$org/projects/$agentId/tasks/{-$taskKey}",
+      params: { org: "acme", agentId: "agent-1" },
+    });
+    expect(
+      canonicalThreadRouteTarget({
+        ...base,
+        agentId: "agent-1",
+        tabId: "reports",
+      }),
+    ).toMatchObject({
+      to: "/$org/projects/$agentId/reports",
+      params: { org: "acme", agentId: "agent-1" },
+    });
+
+    for (const tabId of ["files", "discover"]) {
       expect(
         canonicalThreadRouteTarget({
           ...base,
@@ -266,7 +331,7 @@ describe("canonicalThreadRouteTarget", () => {
           tabId,
         }),
       ).toMatchObject({
-        to: "/$org/agents/$agentId",
+        to: "/$org/projects/$agentId",
         params: { org: "acme", agentId: "agent-1" },
       });
     }

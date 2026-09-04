@@ -4,7 +4,7 @@ import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { AgentViewGuard } from "./agent-view-guard";
 
 const route = getRouteApi(
-  "/shell/$org/org-shell/agent-shell/agents/$agentId/site-editor/code",
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/site-editor/code",
 );
 
 export default function AgentSiteEditorCodeRoute() {

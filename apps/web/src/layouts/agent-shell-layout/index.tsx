@@ -53,6 +53,7 @@ import {
   Outlet,
   useNavigate,
   useParams,
+  useRouterState,
 } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -80,7 +81,7 @@ import {
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
-import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
+import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
 import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
 import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
@@ -91,7 +92,10 @@ import {
   useRouteThreadId,
   useRouteVirtualMcpId,
 } from "@/layouts/thread-route";
-import { AGENT_ROUTE, DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import {
+  PROJECT_ROUTE,
+  DESTINATION_ROUTE,
+} from "@/hooks/use-destination-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -628,7 +632,7 @@ function AgentInsetProvider() {
 
     return (
       <Navigate
-        to={AGENT_ROUTE.root}
+        to={PROJECT_ROUTE.root}
         params={{ org: orgSlug, agentId: destination.agentId }}
         search={(prev) => ({
           sidepanel: prev.sidepanel,
@@ -821,11 +825,32 @@ function AgentInsetProvider() {
 
 export default function AgentShellLayout() {
   const params = useParams({ strict: false });
+  /** TanStack publishes the next location before its route matches commit so
+   * the current tree can render a transition. Workspace providers are not a
+   * passive current tree, though: they create missing threads and enforce
+   * thread ownership. Letting them read the next `?thread=` beside the old
+   * route params can permanently create it for the wrong project (or relocate
+   * a valid one) while a compatibility redirect is still resolving. Suspend
+   * the side-effecting workspace until path and search belong to one committed
+   * match snapshot. */
+  const routeCommitPending = useRouterState({
+    select: (state) =>
+      state.isLoading &&
+      state.resolvedLocation !== undefined &&
+      state.resolvedLocation.href !== state.location.href,
+  });
 
-  if (params.taskId !== undefined) {
+  if (routeCommitPending) return <PanelLoading />;
+
+  /** Both compatibility leaves must translate before a project/runtime scope
+   * mounts. In particular, `/agents/<view>` has only `_splat`; treating it as
+   * an ordinary workspace would make `useRouteVirtualMcpId` fall back to the
+   * Super Agent and let thread ownership redirect away from the requested
+   * view before the leaf's adapter ever rendered. */
+  if (params.taskId !== undefined || params._splat !== undefined) {
     return (
       <MainPanelBoundary>
-        <LegacyThreadRedirect />
+        {params.taskId !== undefined ? <LegacyThreadRedirect /> : <Outlet />}
       </MainPanelBoundary>
     );
   }

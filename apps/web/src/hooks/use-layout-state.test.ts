@@ -143,7 +143,7 @@ describe("resolveDefaultPanelState", () => {
   /**
    * INVERTED: a destination route used to open its main view AND the chat
    * beside it. Going to Tasks now shows Tasks alone — a route that names its
-   * own `defaultMain` collapses the side panel, and `/$org/agents` gets its open
+   * own `defaultMain` collapses the side panel, and `/$org/projects` gets its open
    * panel for free by declaring no `defaultMain` at all.
    */
   test("a route default opens Main alone, collapsing the chat", () => {

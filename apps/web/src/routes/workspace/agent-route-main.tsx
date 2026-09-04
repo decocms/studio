@@ -10,7 +10,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { useT } from "@/i18n/use-t";
-import { agentMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
+import { projectMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
 import type { MainBreadcrumbNavigableItem } from "@/components/main-breadcrumb";
 import {
   WorkspaceRouteMain,
@@ -23,8 +23,11 @@ import {
  * primitive never guesses its composition from router params.
  */
 export function AgentRouteMain(
-  props: Omit<WorkspaceRouteMainProps, "breadcrumbAncestors" | "leading"> & {
-    /** The agent itself is current on its canonical overview route. */
+  props: Omit<
+    WorkspaceRouteMainProps,
+    "breadcrumbAncestors" | "breadcrumbScope" | "leading"
+  > & {
+    /** Use the project's name as the current title on its overview route. */
     agentRoot?: boolean;
     /** Semantic route levels nested below the agent. */
     breadcrumbAncestors?: readonly MainBreadcrumbNavigableItem[];
@@ -51,23 +54,18 @@ export function AgentRouteMain(
   const routeTitle = agentRoot
     ? projectTitle
     : routeProps.title?.trim() || fixedRouteTitle;
+  const projectScope = projectMainBreadcrumbItem(
+    org.slug,
+    breadcrumbAgent,
+    t("taskBoard.taskDialog.projectLabel"),
+  );
 
   return (
     <WorkspaceRouteMain
       {...routeProps}
       title={routeTitle}
-      breadcrumbAncestors={
-        agentRoot
-          ? undefined
-          : [
-              agentMainBreadcrumbItem(
-                org.slug,
-                breadcrumbAgent,
-                t("taskBoard.taskDialog.projectLabel"),
-              ),
-              ...breadcrumbAncestors,
-            ]
-      }
+      breadcrumbScope={projectScope}
+      breadcrumbAncestors={breadcrumbAncestors}
       actions={
         <>
           {routeProps.actions}

@@ -7,7 +7,7 @@ import { AgentRouteMain } from "./agent-route-main";
 import { resolveAgentViewRouteTitle } from "./route-resource-title";
 
 const route = getRouteApi(
-  "/shell/$org/org-shell/agent-shell/agents/$agentId/views/$viewId",
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/views/$viewId",
 );
 
 export default function AgentViewRoute() {

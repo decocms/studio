@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { agentAppPath, orgSettingsPath } from "./organization-paths";
+import {
+  agentAppPath,
+  orgSettingsPath,
+  projectReportsPath,
+} from "./organization-paths";
 
 describe("orgSettingsPath", () => {
   test("puts member-facing pages under /settings, not the org root", () => {
@@ -29,7 +33,7 @@ describe("agentAppPath", () => {
         toolName: "get_my_diagnostic",
       }),
     ).toBe(
-      "/acme/agents/commerce_agent/apps/commerce_connection/get_my_diagnostic",
+      "/acme/projects/commerce_agent/apps/commerce_connection/get_my_diagnostic",
     );
   });
 
@@ -42,10 +46,18 @@ describe("agentAppPath", () => {
     });
 
     expect(path).toBe(
-      "/a%2Fb/agents/agent%2Fone/apps/connection%2Fone/tool%20name?thread=thread%2Fone",
+      "/a%2Fb/projects/agent%2Fone/apps/connection%2Fone/tool%20name?thread=thread%2Fone",
     );
     expect(path).not.toContain("virtualmcpid");
     expect(path).not.toContain("connection=");
     expect(path).not.toContain("tool=");
+  });
+});
+
+describe("projectReportsPath", () => {
+  test("builds and encodes the canonical project report route", () => {
+    expect(projectReportsPath("a/b", "project/one")).toBe(
+      "/a%2Fb/projects/project%2Fone/reports",
+    );
   });
 });

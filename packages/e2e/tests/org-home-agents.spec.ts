@@ -57,7 +57,7 @@ async function assertCanonicalNewProjectHome(
     { timeout: SHELL_TIMEOUT_MS },
   );
   const landed = new URL(page.url());
-  expect(landed.pathname).not.toContain("/agents/");
+  expect(landed.pathname).not.toContain("/projects/");
   await expect(page.getByTestId("main-panel")).toBeVisible({
     timeout: SHELL_TIMEOUT_MS,
   });
@@ -149,7 +149,7 @@ test.describe("org home — the agent roster", () => {
       orgSlug,
       `Picker Agent ${orgSlug}`,
     );
-    await page.goto(`/${orgSlug}/agents/${agentId}/settings`);
+    await page.goto(`/${orgSlug}/projects/${agentId}/settings`);
     await expect(page.getByTestId("main-panel")).toBeVisible({
       timeout: SHELL_TIMEOUT_MS,
     });

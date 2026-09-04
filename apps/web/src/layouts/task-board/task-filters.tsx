@@ -62,6 +62,7 @@ import { getInitials } from "@/lib/get-initials";
 import {
   entryForFilter,
   NO_PROJECT_FILTER,
+  normalizeRepo,
   projectFilterNarrows,
   taskMatchesProjectFilter,
   type ProjectIndex,
@@ -99,6 +100,58 @@ export type TaskFilters = {
   /** Free-text match against title/description, empty string = no filter. */
   search: string;
 };
+
+/**
+ * An owning project supplied by a project route.
+ *
+ * `projectId` is the exact identity used by linked task runs. `repo` is the
+ * durable attribution a newly-created card can carry before it has a run; it
+ * is null for projects without a repository.
+ */
+export type TaskBoardProjectScope = Readonly<{
+  projectId: string;
+  repo: string | null;
+  /** Persisted identities that belong to the same visible project, such as a
+   * hidden dev agent whose `liveAgentId` points at `projectId`. */
+  relatedProjectIds?: readonly string[];
+}>;
+
+/**
+ * Enrich a route's canonical project scope with hidden dev-agent identities.
+ *
+ * The pairing reference lives on the dev entity. Keeping the alias in the
+ * scope means exact linked-run attribution can remain pure and the `vir_…`
+ * fail-closed guard does not permanently reject work performed by the
+ * project's own dev partner.
+ */
+export function resolveTaskBoardProjectScope(
+  scope: TaskBoardProjectScope,
+  candidates: readonly { id: string; metadata?: unknown }[],
+): TaskBoardProjectScope {
+  const related = new Set(scope.relatedProjectIds ?? []);
+  for (const candidate of candidates) {
+    const metadata = candidate.metadata;
+    if (
+      typeof metadata !== "object" ||
+      metadata === null ||
+      !("liveAgentId" in metadata) ||
+      typeof metadata.liveAgentId !== "string"
+    )
+      continue;
+
+    if (
+      metadata.liveAgentId === scope.projectId &&
+      candidate.id !== scope.projectId
+    )
+      related.add(candidate.id);
+    if (
+      candidate.id === scope.projectId &&
+      metadata.liveAgentId !== scope.projectId
+    )
+      related.add(metadata.liveAgentId);
+  }
+  return { ...scope, relatedProjectIds: [...related] };
+}
 
 export const EMPTY_FILTERS: TaskFilters = {
   assignee: null,
@@ -216,6 +269,58 @@ export function taskMatchesFilters(
   }
   if (!taskMatchesProjectFilter(item, f.project, index)) return false;
   return true;
+}
+
+/**
+ * Whether a task belongs on one project's route-owned board.
+ *
+ * Persisted ownership is authoritative, including its dev/live aliases. Only
+ * rows created before that field existed fall back to linked-run and repository
+ * inference. That fallback keeps durable legacy links working without letting
+ * a newly-created task leak into every project that pins the same repository.
+ */
+export function taskMatchesProjectScope(
+  item: TaskBoardItem,
+  scope: TaskBoardProjectScope,
+  index: ProjectIndex,
+): boolean {
+  const projectIds = [scope.projectId, ...(scope.relatedProjectIds ?? [])];
+  if (item.virtualMcpId !== null) {
+    return projectIds.includes(item.virtualMcpId);
+  }
+
+  /** Legacy owner-null rows only: a task may have runs under more than one
+   * project. Any exact run makes it attributable to this route. */
+  if (
+    item.threads.some(
+      (thread) =>
+        !!thread.virtualMcpId && projectIds.includes(thread.virtualMcpId),
+    )
+  ) {
+    return true;
+  }
+
+  /** An explicit run under another project is stronger than a shared repo.
+   * Check both the loaded index and the persisted `vir_…` identity shape: the
+   * latter fails closed while the non-blocking index is cold and for projects
+   * beyond its first page. Synthetic system agents use named prefixes, so they
+   * still fall through to the card's repository attribution. */
+  if (
+    item.threads.some((thread) => {
+      const id = thread.virtualMcpId;
+      return (
+        !!id &&
+        !projectIds.includes(id) &&
+        (index.byProject.has(id) ||
+          (id.startsWith("vir_") && id.length > "vir_".length))
+      );
+    })
+  ) {
+    return false;
+  }
+  const scopeRepo = normalizeRepo(scope.repo);
+  if (!scopeRepo) return false;
+  return normalizeRepo(item.repo) === scopeRepo;
 }
 
 const DUE_OPTIONS_LABEL_KEYS: Record<DueFilter, TranslationKey> = {
@@ -851,6 +956,7 @@ function FilterControls({
   index,
   onChange,
   onOpenBoardSettings,
+  showProjectFilter,
   block,
 }: {
   filters: TaskFilters;
@@ -859,6 +965,7 @@ function FilterControls({
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
   onOpenBoardSettings: () => void;
+  showProjectFilter: boolean;
   block?: boolean;
 }) {
   return (
@@ -893,15 +1000,16 @@ function FilterControls({
       {/* Keep the control mounted while a project filter is active even if the
           option list empties (last project and repo removed) — otherwise it
           silently hides tasks with no visible chip to clear. */}
-      {(index.entries.length > 0 ||
-        projectFilterNarrows(filters.project, index)) && (
-        <ProjectFilter
-          block={block}
-          value={filters.project}
-          index={index}
-          onChange={(project) => onChange({ ...filters, project })}
-        />
-      )}
+      {showProjectFilter &&
+        (index.entries.length > 0 ||
+          projectFilterNarrows(filters.project, index)) && (
+          <ProjectFilter
+            block={block}
+            value={filters.project}
+            index={index}
+            onChange={(project) => onChange({ ...filters, project })}
+          />
+        )}
       <BoardSettingsButton block={block} onClick={onOpenBoardSettings} />
     </>
   );
@@ -915,6 +1023,7 @@ export function TaskFiltersBar({
   index,
   onChange,
   onOpenBoardSettings,
+  showProjectFilter = true,
 }: {
   filters: TaskFilters;
   members: Member[];
@@ -922,6 +1031,7 @@ export function TaskFiltersBar({
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
   onOpenBoardSettings: () => void;
+  showProjectFilter?: boolean;
 }) {
   const t = useT();
   return (
@@ -937,8 +1047,12 @@ export function TaskFiltersBar({
         index={index}
         onChange={onChange}
         onOpenBoardSettings={onOpenBoardSettings}
+        showProjectFilter={showProjectFilter}
       />
-      {hasActiveFilters(filters, index) && (
+      {hasActiveFilters(
+        showProjectFilter ? filters : { ...filters, project: null },
+        index,
+      ) && (
         <button
           type="button"
           onClick={() => onChange(EMPTY_FILTERS)}
@@ -963,6 +1077,7 @@ export function TaskFiltersDrawer({
   index,
   onChange,
   onOpenBoardSettings,
+  showProjectFilter = true,
 }: {
   filters: TaskFilters;
   members: Member[];
@@ -970,10 +1085,14 @@ export function TaskFiltersDrawer({
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
   onOpenBoardSettings: () => void;
+  showProjectFilter?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const count = activeFilterCount(filters, index);
+  const count = activeFilterCount(
+    showProjectFilter ? filters : { ...filters, project: null },
+    index,
+  );
   const triggerClass = chipClass(count > 0);
   return (
     <Drawer open={open} onOpenChange={setOpen} direction="bottom">
@@ -1001,6 +1120,7 @@ export function TaskFiltersDrawer({
             index={index}
             onChange={onChange}
             onOpenBoardSettings={onOpenBoardSettings}
+            showProjectFilter={showProjectFilter}
           />
         </div>
         <DrawerFooter className="flex-row gap-2">

@@ -6,7 +6,7 @@ import { AgentRouteMain } from "./agent-route-main";
 import { resolveRouteResourceTarget } from "./route-resource-title";
 
 const route = getRouteApi(
-  "/shell/$org/org-shell/agent-shell/agents/$agentId/outputs/file",
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/outputs/file",
 );
 
 export default function AgentFileRoute() {

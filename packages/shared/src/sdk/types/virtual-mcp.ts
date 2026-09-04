@@ -145,9 +145,10 @@ export const VirtualMcpUILayoutTabSchema = z.object({
 
 export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
 
-/** Project views that may be shown in the sidebar. Availability is resolved at
- * runtime (for example, Site Editor requires source and Assets requires a file
- * config); this persisted list only records the project's chosen entries. */
+/** Project view identifiers accepted in persisted sidebar metadata. Home,
+ * Reports, and Tasks are structural regardless of that metadata. Availability
+ * for optional views is resolved at runtime (for example, Site Editor requires
+ * source and Assets requires a file config). */
 export const VirtualMcpSidebarViewSchema = z.enum([
   "overview",
   "reports",
@@ -877,13 +878,13 @@ const VirtualMcpMetadataFields = {
     .nullable()
     .optional()
     .describe(
-      "Project views selected for the sidebar. Interpret as an exact list when sidebarViewsVersion is 1; unversioned values use legacy native-only semantics. Runtime presence gates still apply.",
+      "Optional project views selected for the sidebar. Home, Reports, and Tasks are structural and always remain visible. Interpret the other entries as an exact list when sidebarViewsVersion is 1; unversioned values use legacy native-only semantics. Runtime presence gates still apply.",
     ),
   sidebarViewsVersion: z
     .literal(1)
     .optional()
     .describe(
-      "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
+      "Version 1 marks metadata.sidebarViews as the exact optional-view list. Structural Home, Reports, and Tasks cannot be disabled.",
     ),
   githubRepo: GithubRepoSchema.nullable()
     .optional()

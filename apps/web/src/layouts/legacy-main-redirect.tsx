@@ -7,7 +7,7 @@
 import type { ReactNode } from "react";
 import { Navigate, useParams, useSearch } from "@tanstack/react-router";
 import {
-  AGENT_ROUTE,
+  PROJECT_ROUTE,
   DESTINATION_ROUTE,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
@@ -71,190 +71,210 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
-    case AGENT_ROUTE.root:
+    case PROJECT_ROUTE.root:
       return (
         <Navigate
-          to={AGENT_ROUTE.root}
+          to={PROJECT_ROUTE.root}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.siteEditor:
+    case PROJECT_ROUTE.tasks:
       return (
         <Navigate
-          to={AGENT_ROUTE.siteEditor}
+          to={PROJECT_ROUTE.tasks}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.siteEditorContent:
+    case PROJECT_ROUTE.reports:
       return (
         <Navigate
-          to={AGENT_ROUTE.siteEditorContent}
+          to={PROJECT_ROUTE.reports}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.siteEditorCode:
+    case PROJECT_ROUTE.siteEditor:
       return (
         <Navigate
-          to={AGENT_ROUTE.siteEditorCode}
+          to={PROJECT_ROUTE.siteEditor}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.settings:
+    case PROJECT_ROUTE.siteEditorContent:
       return (
         <Navigate
-          to={AGENT_ROUTE.settings}
+          to={PROJECT_ROUTE.siteEditorContent}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.assets:
+    case PROJECT_ROUTE.siteEditorCode:
       return (
         <Navigate
-          to={AGENT_ROUTE.assets}
+          to={PROJECT_ROUTE.siteEditorCode}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.git:
+    case PROJECT_ROUTE.settings:
       return (
         <Navigate
-          to={AGENT_ROUTE.git}
+          to={PROJECT_ROUTE.settings}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.hosting:
+    case PROJECT_ROUTE.assets:
       return (
         <Navigate
-          to={AGENT_ROUTE.hosting}
+          to={PROJECT_ROUTE.assets}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.e2e:
+    case PROJECT_ROUTE.git:
       return (
         <Navigate
-          to={AGENT_ROUTE.e2e}
+          to={PROJECT_ROUTE.git}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.analytics:
+    case PROJECT_ROUTE.hosting:
       return (
         <Navigate
-          to={AGENT_ROUTE.analytics}
+          to={PROJECT_ROUTE.hosting}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.monitor:
+    case PROJECT_ROUTE.e2e:
       return (
         <Navigate
-          to={AGENT_ROUTE.monitor}
+          to={PROJECT_ROUTE.e2e}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.automations:
+    case PROJECT_ROUTE.analytics:
       return (
         <Navigate
-          to={AGENT_ROUTE.automations}
+          to={PROJECT_ROUTE.analytics}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.automation:
+    case PROJECT_ROUTE.monitor:
       return (
         <Navigate
-          to={AGENT_ROUTE.automation}
+          to={PROJECT_ROUTE.monitor}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.app:
+    case PROJECT_ROUTE.automations:
       return (
         <Navigate
-          to={AGENT_ROUTE.app}
+          to={PROJECT_ROUTE.automations}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.view:
+    case PROJECT_ROUTE.automation:
       return (
         <Navigate
-          to={AGENT_ROUTE.view}
+          to={PROJECT_ROUTE.automation}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.outputFile:
+    case PROJECT_ROUTE.app:
       return (
         <Navigate
-          to={AGENT_ROUTE.outputFile}
+          to={PROJECT_ROUTE.app}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.outputDeck:
+    case PROJECT_ROUTE.view:
       return (
         <Navigate
-          to={AGENT_ROUTE.outputDeck}
+          to={PROJECT_ROUTE.view}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.libraryFile:
+    case PROJECT_ROUTE.outputFile:
       return (
         <Navigate
-          to={AGENT_ROUTE.libraryFile}
+          to={PROJECT_ROUTE.outputFile}
           params={route.params}
           search={search}
           hash={true}
           replace
         />
       );
-    case AGENT_ROUTE.connectSources:
+    case PROJECT_ROUTE.outputDeck:
       return (
         <Navigate
-          to={AGENT_ROUTE.connectSources}
+          to={PROJECT_ROUTE.outputDeck}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case PROJECT_ROUTE.libraryFile:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.libraryFile}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case PROJECT_ROUTE.connectSources:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.connectSources}
           params={route.params}
           search={search}
           hash={true}
@@ -271,8 +291,11 @@ export function LegacyMainRedirect({ children }: { children?: ReactNode }) {
   const leafRoutePath = useLeafRoutePath();
 
   const org = params.org;
-  /** The legacy thread route translates its own path, identity and main view. */
-  if (!org || params.taskId !== undefined) return children ?? null;
+  /** Legacy thread and `/agents/*` alias routes translate their own path,
+   * identity, and main view before canonical providers mount. */
+  if (!org || params.taskId !== undefined || params._splat !== undefined) {
+    return children ?? null;
+  }
 
   const agentId = resolveLegacyAgentId({
     agentIdParam: params.agentId,

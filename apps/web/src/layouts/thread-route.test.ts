@@ -178,7 +178,7 @@ describe("resolveDestinationThreadSearch", () => {
 describe("resolveActiveAgentId", () => {
   /**
    * THE BUG, second site: the thread list's "New chat" read only
-   * `?virtualmcpid=`, so on `/$org/agents/<project>` it found nothing and handed
+   * `?virtualmcpid=`, so on `/$org/projects/<project>` it found nothing and handed
    * the new chat to the Super Agent. The route answers first.
    */
   test("the route's agent wins", () => {

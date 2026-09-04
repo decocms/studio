@@ -22,7 +22,7 @@ function VirtualMCPListItem({
       onClick={() => {
         const taskId = crypto.randomUUID();
         navigate({
-          to: "/$org/agents/$agentId",
+          to: "/$org/projects/$agentId",
           params: { org, agentId: virtualMcp.id },
           search: { thread: taskId },
         });

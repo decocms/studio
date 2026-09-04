@@ -133,7 +133,7 @@ export const virtualMcp = {
     "Nenhum dos servidores conectados expõe ferramentas interativas.",
   "virtualMcp.layoutTabContent.sidebarViews": "Visualizações da barra lateral",
   "virtualMcp.layoutTabContent.sidebarViewsDescription":
-    "Escolha quais visualizações disponíveis aparecem na barra lateral deste projeto.",
+    "Escolha quais visualizações opcionais aparecem junto de Início, Relatórios e Tarefas.",
   "virtualMcp.layoutTabContent.settings": "Configurações",
   "virtualMcp.layoutTabContent.showChat": "Mostrar chat",
   "virtualMcp.layoutTabContent.showChatDescription":

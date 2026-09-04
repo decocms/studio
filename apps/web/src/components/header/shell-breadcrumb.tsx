@@ -1,183 +1,20 @@
-/**
- * Org + agent navigation crumbs, used standalone so each can be placed
- * independently:
- *
- *   switcher (Slack-style). Opens the org switcher popover. Lives in the desktop
- *   sidebar header and the mobile sidebar sheet.
- * - **{@link AgentSwitcherCrumb}** — the active agent (the org's Super Agent by
- *   default). The avatar opens the agent's home; the label opens the agent
- *   picker. Lives in the desktop topbar (when the sidebar is collapsed) and the
- *   mobile top header + sheet.
- */
-import { Suspense } from "react";
+/** Compact new-chat action shared by workspace chrome. */
 import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
-import { ChevronDown, Edit05 } from "@untitledui/icons";
+import { Edit05 } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  getWellKnownDecopilotVirtualMCP,
-  useProjectContext,
-  useVirtualMCP,
-  useVirtualMCPs,
-} from "@/sdk";
-import { getActiveGithubRepo } from "@/lib/github-repo";
-import {
-  draftsModeEnabled,
-  useBaseBranch,
-} from "@/components/thread/github/use-version-gate";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { AgentAvatar } from "@/components/agent-icon";
-import { AgentScopePicker } from "@/components/sidebar/agents-section";
 import { useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { findAgentEntryThread } from "@/lib/reusable-new-chat";
-import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
-import { authClient } from "@/lib/auth-client.ts";
 import { useT } from "@/i18n/use-t.ts";
-
-const crumbBtnClass =
-  "inline-flex items-center gap-1.5 min-w-0 rounded-md pl-1 pr-2 py-1.5 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
-
-/**
- * Agent crumb — resolves the active agent (thread's agent when inside a thread,
- * else the org's Super Agent). The avatar navigates to the agent's home (its
- * empty "New chat", or a fresh one); the label + chevron open the agent picker.
- * Suspends on the vMCP fetch, so it's wrapped in its own boundary and never
- * blocks the toolbar.
- *
- * `fallback` supplies the icon/title for a synthesized agent (the Super Agent
- * is never persisted, so `useVirtualMCP` returns null for it) — without it the
- * avatar would render a hash-based placeholder instead of the real icon.
- */
-function AgentCrumb({
-  agentId,
-  fallback,
-  onOpenHome,
-  onPick,
-}: {
-  agentId: string;
-  fallback?: VirtualMCPEntity;
-  onOpenHome: () => void;
-  onPick: (id: string | null) => void;
-}) {
-  const t = useT();
-  const entity = useVirtualMCP(agentId) ?? fallback ?? null;
-  const title =
-    entity?.title ?? t("header.shellBreadcrumb.superAgentDefaultName");
-  return (
-    <div className="flex min-w-0 items-center gap-0">
-      <button
-        type="button"
-        onClick={onOpenHome}
-        aria-label={t("header.shellBreadcrumb.openAgentHome", { name: title })}
-        className="flex items-center shrink-0 rounded-md p-1 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-      >
-        <AgentAvatar
-          icon={(entity?.icon as string | null) ?? null}
-          name={title}
-          size="xs"
-        />
-      </button>
-      <AgentScopePicker
-        side="bottom"
-        align="start"
-        selectedAgentId={agentId}
-        onSelectAgent={onPick}
-        trigger={
-          <button type="button" className={crumbBtnClass}>
-            <span className="truncate font-medium max-w-[8rem]">{title}</span>
-            <ChevronDown
-              size={14}
-              className="shrink-0 text-muted-foreground opacity-70"
-            />
-          </button>
-        }
-      />
-    </div>
-  );
-}
-
-/**
- * Agent switcher crumb — just the agent avatar + name + picker, standalone.
- * Used in the topbar (desktop) and the mobile sidebar sheet header; the org
- * icon sits beside it. `onNavigate` fires after a pick so the mobile sheet can
- * close itself once an agent is chosen.
- */
-export function AgentSwitcherCrumb({
-  onNavigate,
-}: {
-  onNavigate?: () => void;
-} = {}) {
-  const { org } = useProjectContext();
-  const { threads } = useThreads();
-  const allAgents = useVirtualMCPs();
-  const { data: session } = authClient.useSession();
-  const { setTaskId, createNewTask } = usePanelActions();
-  const projectDefaultRuntime = useProjectDefaultRuntime();
-  /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
-  const baseBranch = useBaseBranch(undefined, null);
-
-  const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
-  const decopilotId = decopilot.id;
-  /** Route-aware: `$agentId` on canonical workspaces, with legacy fallback. */
-  const activeAgentId = useRouteVirtualMcpId();
-
-  // Open the picked agent directly. The Super Agent (Decopilot) is opened by
-  // its well-known id like any other agent rather than by navigating to
-  // `/$org`: the org landing may resolve to a configured "main agent", so
-  // routing the Super Agent through `/$org` would redirect away from it and
-  // leave it unreachable. `null` (the picker's "Super Agent" row) maps to the
-  // Decopilot id.
-  const handlePickAgent = (id: string | null) => {
-    const targetId = id ?? decopilotId;
-    const target = (allAgents ?? []).find((a) => a.id === targetId);
-    const isDraftsMode = draftsModeEnabled(target);
-    const existing = findAgentEntryThread(
-      threads,
-      targetId,
-      session?.user?.id,
-      projectDefaultRuntime(targetId),
-      !!(target && getActiveGithubRepo(target)),
-      {
-        knownBranches: new Set<string>([
-          baseBranch,
-          ...(target?.metadata?.releases ?? []).map((r) => r.branch),
-        ]),
-        draftsMode: isDraftsMode,
-      },
-    );
-    if (existing) {
-      setTaskId(existing.id, targetId);
-    } else {
-      // Drafts mode mints a fresh thread on production, never an unnamed draft.
-      void createNewTask(targetId, isDraftsMode ? baseBranch : undefined);
-    }
-    onNavigate?.();
-  };
-
-  return (
-    <Suspense
-      fallback={<span className="h-5 w-24 rounded bg-muted animate-pulse" />}
-    >
-      <AgentCrumb
-        agentId={activeAgentId}
-        fallback={activeAgentId === decopilotId ? decopilot : undefined}
-        onOpenHome={() => handlePickAgent(activeAgentId)}
-        onPick={handlePickAgent}
-      />
-    </Suspense>
-  );
-}
 
 /**
  * New-chat button — starts a fresh chat with the active agent (reusing an
  * existing empty "New chat" for it when there is one, so empties don't pile
- * up). Sibling of {@link AgentSwitcherCrumb}: shown in the same places (the
- * collapsed-sidebar topbar / chat header) so "new chat" stays reachable when
- * the sidebar's own new-chat action is tucked away.
+ * up). It stays available in compact workspace chrome so "new chat" remains
+ * reachable when the sidebar's own action is tucked away.
  */
 export function NewChatCrumb() {
   const t = useT();

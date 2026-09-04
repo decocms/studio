@@ -15,7 +15,7 @@
 
 import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { AGENT_ROUTE } from "@/hooks/use-destination-route";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
@@ -142,7 +142,7 @@ function EditorRedirect({
 }) {
   return (
     <Navigate
-      to={AGENT_ROUTE.siteEditorContent}
+      to={PROJECT_ROUTE.siteEditorContent}
       params={{ org: orgSlug, agentId: projectId }}
       search={pageSearch}
       replace
@@ -161,7 +161,7 @@ function EditorChooser({
   const navigate = useNavigate();
   const open = (match: EditorMatch) => {
     navigate({
-      to: AGENT_ROUTE.siteEditorContent,
+      to: PROJECT_ROUTE.siteEditorContent,
       params: { org: match.orgSlug, agentId: match.project.id },
       search: pageSearch,
     });

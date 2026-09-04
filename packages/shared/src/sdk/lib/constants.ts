@@ -348,6 +348,37 @@ const commerceDiscoveryPrefix = createWellKnownAgentPrefix(
 export const isCommerceDiscoveryAgentId = commerceDiscoveryPrefix.is;
 export const getCommerceDiscoveryAgentId = commerceDiscoveryPrefix.get;
 
+/**
+ * The project that owns an organization's singleton Commerce Discovery report.
+ *
+ * New setup calls persist this value as `connection.metadata.projectId`. The
+ * fallback keeps pre-ownership connections attached to the well-known report
+ * project instead of making legacy org-wide data visible inside an arbitrary
+ * project route.
+ */
+export function getCommerceDiscoveryReportOwnerId(
+  organizationId: string,
+  projectId: unknown,
+): string {
+  return typeof projectId === "string" && projectId.trim()
+    ? projectId.trim()
+    : getCommerceDiscoveryAgentId(organizationId);
+}
+
+/** Org-level readers intentionally see the current org report; project-level
+ * readers only see the report whose persisted owner matches their route. */
+export function commerceDiscoveryReportBelongsToProject(
+  organizationId: string,
+  ownerProjectId: unknown,
+  projectId?: string,
+): boolean {
+  return (
+    projectId === undefined ||
+    getCommerceDiscoveryReportOwnerId(organizationId, ownerProjectId) ===
+      projectId
+  );
+}
+
 export function getWellKnownCommerceDiscoveryConnection(
   orgId: string,
   authorizationToken: string,

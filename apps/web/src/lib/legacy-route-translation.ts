@@ -4,7 +4,7 @@
  *
  * Legacy URLs encoded agent identity in `?virtualmcpid=` and a view in either
  * `?main=` or an `/agents/<panel>` segment. Canonical URLs encode both in the
- * route tree: `/agents/$agentId/...`. These helpers are the one-way boundary
+ * route tree: `/projects/$agentId/...`. These helpers are the one-way boundary
  * between those grammars. They accept every unambiguous old shape, but every
  * emitted target is canonical; an adapter never redirects through another
  * legacy URL. An unmarked custom view named exactly like an agent-id namespace
@@ -12,7 +12,10 @@
  * so canonical path identity wins that one retired collision.
  */
 
-import { AGENT_ROUTE, DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import {
+  PROJECT_ROUTE,
+  DESTINATION_ROUTE,
+} from "@/hooks/use-destination-route";
 import {
   isKnownPanelSegment,
   tabIdForPanel,
@@ -46,13 +49,30 @@ export interface LegacyCanonicalTarget {
   search: Record<string, unknown>;
 }
 
-/** Whether a matched `/$org/agents/$agentId` route has another path segment.
- * Segment counting is deliberate: searching for `"/agents/"` is ambiguous
- * when the organization slug itself is `"agents"`. Query strings are absent
- * from TanStack's `location.pathname`; trailing slashes add no segment. */
-export function agentWorkspacePathHasChild(pathname: string): boolean {
+/** Rename only the retired namespace in a raw, encoded pathname.
+ *
+ * Router splat params are decoded, so rebuilding a pathname from `_splat`
+ * corrupts valid segment data such as a tool name containing an encoded `/`.
+ * This operates on the browser pathname instead and leaves every encoded byte
+ * after the namespace untouched. `null` fails closed when the input is not the
+ * exact org-scoped legacy shape. */
+export function canonicalProjectPathFromLegacyAgents(
+  pathname: string,
+): string | null {
+  const match = /^(\/[^/]+)\/agents(?=\/|$)/.exec(pathname);
+  if (!match?.[1]) return null;
+  return `${match[1]}/projects${pathname.slice(match[0].length)}`;
+}
+
+/** Whether a current or legacy project workspace has another path segment.
+ * Segment counting is deliberate: searching by substring is ambiguous when an
+ * organization itself is named `projects` or `agents`. */
+export function projectWorkspacePathHasChild(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
-  return segments[1] === "agents" && segments.length > 3;
+  return (
+    (segments[1] === "projects" || segments[1] === "agents") &&
+    segments.length > 3
+  );
 }
 
 /** `main=0` changes layout on the current route; every named view moves to a
@@ -107,10 +127,9 @@ export function retireLegacyAgentSearch(
 }
 
 /**
- * Retire search-carried identity that arrives on a canonical organization
- * destination. Historical scoped Home links still mean "open this agent";
- * other destination pages are organization-owned and simply discard the
- * stale identity.
+ * Retire search-carried identity that arrives on an organization destination.
+ * Home, Tasks, and Reports historically accepted a project in search, so keep
+ * that meaning by promoting them beneath the project's canonical path.
  */
 export function translateLegacyOrgDestinationAgentSearch(args: {
   org: string;
@@ -119,10 +138,18 @@ export function translateLegacyOrgDestinationAgentSearch(args: {
 }): LegacyMainTranslation | null {
   if (args.search.virtualmcpid === undefined) return null;
 
-  if (args.routePath === DESTINATION_ROUTE.home) {
-    const agentId = normalizedAgentId(args.search.virtualmcpid);
-    if (agentId) {
-      const route = canonicalBaseRoute(args.org, agentId);
+  const agentId = normalizedAgentId(args.search.virtualmcpid);
+  if (agentId) {
+    const tabId =
+      args.routePath === DESTINATION_ROUTE.tasks
+        ? "board"
+        : args.routePath === DESTINATION_ROUTE.reports
+          ? "reports"
+          : null;
+    if (args.routePath === DESTINATION_ROUTE.home || tabId) {
+      const route = tabId
+        ? tabRouteTarget({ org: args.org, agentId, tabId })
+        : canonicalBaseRoute(args.org, agentId);
       return {
         kind: "canonical",
         route,
@@ -235,7 +262,7 @@ export function translateLegacyAgentPath(args: {
       : null;
   }
 
-  if (!pathAgentId || agentWorkspacePathHasChild(args.pathname)) return null;
+  if (!pathAgentId || projectWorkspacePathHasChild(args.pathname)) return null;
 
   const opaqueViewFirst =
     args.search.virtualmcpid !== undefined &&
@@ -262,21 +289,26 @@ export function translateLegacyAgentPath(args: {
     : null;
 }
 
-/** `main` values that always meant an org-owned destination. In particular,
- * legacy `main=overview` opened org Home; it must not silently change meaning
- * now that an agent overview route also exists. */
+/** Retired destination values. Tasks and Reports retain an explicit project's
+ * scope, while Library remains organization-owned. `main=overview` always
+ * opened org Home; it must not silently change meaning now that Project Home
+ * also exists. */
 function legacyDestinationTarget(
   main: string,
   org: string,
   search: Readonly<Record<string, unknown>>,
+  agentId?: string,
 ): TabRouteTarget | null {
+  const projectId = normalizedAgentId(agentId);
   switch (main) {
     case "board":
-      return {
-        to: DESTINATION_ROUTE.tasks,
-        params: { org, taskKey: undefined },
-        search: {},
-      };
+      return projectId
+        ? tabRouteTarget({ org, agentId: projectId, tabId: "board" })
+        : {
+            to: DESTINATION_ROUTE.tasks,
+            params: { org, taskKey: undefined },
+            search: {},
+          };
     case "files": {
       const path = stringSearchValue(search.path);
       return {
@@ -286,7 +318,9 @@ function legacyDestinationTarget(
       };
     }
     case "reports":
-      return { to: DESTINATION_ROUTE.reports, params: { org }, search: {} };
+      return projectId
+        ? tabRouteTarget({ org, agentId: projectId, tabId: "reports" })
+        : { to: DESTINATION_ROUTE.reports, params: { org }, search: {} };
     case "overview":
       return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
     case "discover":
@@ -307,6 +341,7 @@ function canonicalRouteForLegacyTab(args: {
     args.tabId,
     args.org,
     args.search,
+    args.agentId,
   );
   if (destination) return destination;
 
@@ -328,7 +363,7 @@ function canonicalRouteForLegacyTab(args: {
     args.tabId.trim() === ""
   ) {
     return {
-      to: AGENT_ROUTE.root,
+      to: PROJECT_ROUTE.root,
       params: { org: args.org, agentId },
       search: {},
     };
@@ -341,7 +376,7 @@ function canonicalBaseRoute(org: string, agentId?: string): TabRouteTarget {
   const normalized = normalizedAgentId(agentId);
   return normalized
     ? {
-        to: AGENT_ROUTE.root,
+        to: PROJECT_ROUTE.root,
         params: { org, agentId: normalized },
         search: {},
       }
@@ -549,6 +584,15 @@ export function translateLegacyThreadRoute(args: {
     route,
     search: {
       ...canonicalSearch(search, route),
+      // The legacy path itself names a chat. Once promoted onto Home or a
+      // project's route-owned main surface, leaving this implicit would let
+      // that destination's default close Chat and hide the conversation the
+      // durable link was opened for. Preserve an explicit opt-out, but make a
+      // bare `/$org/$taskId` deterministic regardless of whether the thread is
+      // empty or its messages have loaded yet.
+      ...(main === undefined && search.sidepanel === undefined
+        ? { sidepanel: true }
+        : {}),
       ...(main === 0 || main === "0" ? { mainpanel: false } : {}),
       ...(main === "chat" ? { sidepanel: true, mainpanel: false } : {}),
       thread: args.taskId,

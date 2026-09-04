@@ -9,7 +9,7 @@ import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-na
 import { AgentRouteMain } from "./agent-route-main";
 
 const route = getRouteApi(
-  "/shell/$org/org-shell/agent-shell/agents/$agentId/automations/$automationId",
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/automations/$automationId",
 );
 
 export default function AgentAutomationRoute() {
@@ -40,7 +40,7 @@ export default function AgentAutomationRoute() {
                 id: "automations",
                 label: t("automations.automationsList.title"),
                 link: {
-                  to: "/$org/agents/$agentId/automations",
+                  to: "/$org/projects/$agentId/automations",
                   params: { org: org.slug, agentId },
                   search: (previous) =>
                     resolvePanelNavigationSearch({
@@ -59,7 +59,7 @@ export default function AgentAutomationRoute() {
         activeView={automationView}
         onViewChange={(nextView) => {
           navigate({
-            to: "/$org/agents/$agentId/automations/$automationId",
+            to: "/$org/projects/$agentId/automations/$automationId",
             params: { org: org.slug, agentId, automationId },
             search: (previous) => ({
               ...previous,

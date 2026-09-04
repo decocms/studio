@@ -148,6 +148,8 @@ import {
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
+import type { TaskBoardProjectScope } from "./task-filters";
+import { taskSharePath } from "./task-route";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -369,6 +371,9 @@ interface TaskEditorProps {
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
+  /** Route-owned project scope. It defaults new cards to the project's
+   * repository and removes the project picker so edits cannot leave scope. */
+  projectScope?: TaskBoardProjectScope;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -414,6 +419,7 @@ function TaskBoardItemEditor({
   onAfterPageUnmount,
   item,
   defaultStatus,
+  projectScope,
   onSubmit,
   onDelete,
   onClone,
@@ -453,7 +459,7 @@ function TaskBoardItemEditor({
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    repo: item?.repo ?? null,
+    repo: item ? (item.repo ?? null) : (projectScope?.repo ?? null),
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
@@ -719,7 +725,11 @@ function TaskBoardItemEditor({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 copyLink(
-                  `${window.location.origin}/${org.slug}/tasks/${key ?? item.id}`,
+                  `${window.location.origin}${taskSharePath(
+                    org.slug,
+                    item,
+                    projectScope?.projectId,
+                  )}`,
                 );
                 toast.success(t("taskBoard.taskDialog.linkCopied"));
               }}
@@ -1344,46 +1354,48 @@ function TaskBoardItemEditor({
               </Popover>
             </PropertyGroup>
 
-            <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which project this task pertains to. The value persisted is
-                  still the repository — that is the only per-card link there
-                  is — but what you PICK is a project, named as you know it. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    /* Hugs its label like every other property; the cap is
-                       what keeps a long project name inside the column. */
-                    className={cn(
-                      PROPERTY_BUTTON,
-                      "max-w-full",
-                      !repo && EMPTY_PROPERTY,
-                    )}
-                  >
-                    <ProjectEntryIcon entry={selectedEntry} />
-                    <span className="min-w-0 truncate text-left">
-                      {selectedEntry?.title ??
-                        repo ??
-                        t("taskBoard.taskDialog.projectButton")}
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem onSelect={() => patch({ repo: null })}>
-                    {t("taskBoard.taskDialog.noProject")}
-                  </DropdownMenuItem>
-                  {projectEntries.map((entry) => (
-                    <DropdownMenuItem
-                      key={entry.id}
-                      className="gap-2"
-                      onSelect={() => patch({ repo: entry.repo })}
+            {!projectScope && (
+              <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
+                {/* Which project this task pertains to. The value persisted is
+                    still the repository — that is the only per-card link there
+                    is — but what you PICK is a project, named as you know it. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      /* Hugs its label like every other property; the cap is
+                         what keeps a long project name inside the column. */
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        "max-w-full",
+                        !repo && EMPTY_PROPERTY,
+                      )}
                     >
-                      <ProjectEntryRow entry={entry} />
+                      <ProjectEntryIcon entry={selectedEntry} />
+                      <span className="min-w-0 truncate text-left">
+                        {selectedEntry?.title ??
+                          repo ??
+                          t("taskBoard.taskDialog.projectButton")}
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64">
+                    <DropdownMenuItem onSelect={() => patch({ repo: null })}>
+                      {t("taskBoard.taskDialog.noProject")}
                     </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </PropertyGroup>
+                    {projectEntries.map((entry) => (
+                      <DropdownMenuItem
+                        key={entry.id}
+                        className="gap-2"
+                        onSelect={() => patch({ repo: entry.repo })}
+                      >
+                        <ProjectEntryRow entry={entry} />
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </PropertyGroup>
+            )}
           </div>
         </div>
       </div>
@@ -1451,7 +1463,7 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "onSubmit" | "isSaving"
+    "onClose" | "defaultStatus" | "projectScope" | "onSubmit" | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;

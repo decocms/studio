@@ -1633,6 +1633,9 @@ export interface TaskBoardItemTable {
   type: ColumnType<TaskBoardItemType, TaskBoardItemType | undefined, string>;
   assignee_id: string | null;
   assigned_by: string | null;
+  /** The virtual MCP/project that owns this card. Null only for legacy and
+   *  organization-level cards. Kept even if that project is later deleted. */
+  virtual_mcp_id: string | null;
   repo: string | null;
   due_date: ColumnType<
     Date | null,
@@ -1905,6 +1908,9 @@ export interface TaskBoardItem {
   type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
+  /** Exact virtual MCP/project ownership. Null for organization-level cards
+   *  and rows created before project ownership was persisted. */
+  virtualMcpId: string | null;
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
    *  created org-wide (no site context) carry none. */
   repo: string | null;

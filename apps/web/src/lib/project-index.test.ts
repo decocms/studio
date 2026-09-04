@@ -38,9 +38,14 @@ function project(
 }
 
 function task(
-  link: { repo?: string | null; virtualMcpId?: string } = {},
+  link: {
+    repo?: string | null;
+    virtualMcpId?: string;
+    ownerId?: string | null;
+  } = {},
 ): AttributableTask {
   return {
+    virtualMcpId: link.ownerId ?? null,
     repo: link.repo ?? null,
     threads: link.virtualMcpId
       ? [{ virtualMcpId: link.virtualMcpId }]
@@ -188,6 +193,19 @@ describe("entryForTask", () => {
     ).toBe("acme/alpha");
   });
 
+  test("persisted ownership outranks both a sibling run and repository", () => {
+    expect(
+      entryForTask(
+        {
+          virtualMcpId: "vir_a",
+          repo: "acme/bravo",
+          threads: [{ virtualMcpId: "vir_b" }],
+        },
+        index,
+      )?.id,
+    ).toBe("acme/alpha");
+  });
+
   test("falls back to the repo for a card nobody has run", () => {
     expect(entryForTask(task({ repo: "ACME/Alpha" }), index)?.id).toBe(
       "acme/alpha",
@@ -239,6 +257,26 @@ describe("projectsForTask / projectForTask", () => {
       "vir_m2",
     ]);
     expect(projectForTask(card, index)).toBeNull();
+  });
+
+  test("persisted ownership resolves one project inside a shared repo bucket", () => {
+    const card = task({ repo: "acme/mono", ownerId: "vir_m2" });
+    expect(projectsForTask(card, index).map((p) => p.id)).toEqual(["vir_m2"]);
+    expect(projectForTask(card, index)?.id).toBe("vir_m2");
+  });
+
+  test("a hidden dev owner resolves to its visible live project", () => {
+    const dev = {
+      ...MONO_1,
+      id: "vir_m1_dev",
+      metadata: { ...MONO_1.metadata, liveAgentId: "vir_m1" },
+    } as VirtualMCPEntity;
+    const withAlias = buildProjectIndex([MONO_1, MONO_2], [], [dev]);
+    const card = task({ repo: "acme/mono", ownerId: dev.id });
+
+    expect(projectsForTask(card, withAlias).map((p) => p.id)).toEqual([
+      "vir_m1",
+    ]);
   });
 
   test("nothing for an unattributable card", () => {
@@ -305,6 +343,16 @@ describe("taskMatchesProjectFilter", () => {
   test("either project of a shared monorepo bucket selects the same cards", () => {
     const card = task({ repo: "acme/mono", virtualMcpId: "vir_m1" });
     expect(taskMatchesProjectFilter(card, "acme/mono", index)).toBe(true);
+  });
+
+  test("an owned card does not match a sibling repository bucket", () => {
+    expect(
+      taskMatchesProjectFilter(
+        task({ repo: "acme/bravo", ownerId: "vir_a" }),
+        "acme/bravo",
+        index,
+      ),
+    ).toBe(false);
   });
 
   test("an unclaimed repository still filters", () => {

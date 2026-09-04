@@ -1,10 +1,7 @@
 import { Outlet } from "@tanstack/react-router";
 import { Main } from "@/components/main";
 import { MainBreadcrumb } from "@/components/main-breadcrumb";
-import {
-  agentMainBreadcrumbItem,
-  organizationMainBreadcrumbItem,
-} from "@/components/main-breadcrumb/route-items";
+import { projectMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
 import { useChatTask } from "@/components/chat/context";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -33,10 +30,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { shouldShowSiteEditorDrawer } from "./drawer-availability";
-import {
-  useActivePanelTabId,
-  useMatchedMainView,
-} from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t";
 import {
   CodeWorkspaceProvider,
@@ -91,7 +85,6 @@ export function SiteEditorLayout({ agentId }: SiteEditorLayoutProps) {
   const { activeTask, currentBranch, taskId } = useChatTask();
   const session = useSessionRuntime(agentId);
   const routeView = useActivePanelTabId() ?? "site-editor";
-  const siteEditorView = useMatchedMainView().siteEditorView ?? "preview";
   const hasClonableSource =
     agentHasClonableSource(entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
@@ -115,17 +108,11 @@ export function SiteEditorLayout({ agentId }: SiteEditorLayoutProps) {
             <WorkspaceMainLeading currentRouteTitle={title} />
             <MainBreadcrumb
               compactTitle="visually-hidden"
-              scope={organizationMainBreadcrumbItem(
-                org,
-                t("sidebar.navDestinations.home"),
+              scope={projectMainBreadcrumbItem(
+                org.slug,
+                breadcrumbAgent,
+                t("taskBoard.taskDialog.projectLabel"),
               )}
-              ancestors={[
-                agentMainBreadcrumbItem(
-                  org.slug,
-                  breadcrumbAgent,
-                  t("taskBoard.taskDialog.projectLabel"),
-                ),
-              ]}
               current={{ id: "site-editor", label: title }}
             />
             <Main.Topbar.Left.Target />
@@ -191,7 +178,7 @@ export function SiteEditorLayout({ agentId }: SiteEditorLayoutProps) {
           className="flex min-h-0 flex-1 flex-col"
         >
           <Main.Content mode="canvas">
-            <ErrorBoundary key={siteEditorView}>
+            <ErrorBoundary resetKey={routeView}>
               <MainPanelBoundary>
                 <MainPanelTestErrorTrigger routeId={routeView}>
                   <Outlet />

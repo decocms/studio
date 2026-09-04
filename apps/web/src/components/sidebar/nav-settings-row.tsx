@@ -10,9 +10,9 @@
 import type { LinkProps } from "@tanstack/react-router";
 import { Settings02 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
-import { AGENT_ROUTE, useLeafRoutePath } from "@/hooks/use-destination-route";
+import { PROJECT_ROUTE, useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useScopeId } from "@/hooks/use-project-scope";
-import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
@@ -24,7 +24,6 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { org } = useProjectContext();
   const scopeId = useScopeId();
-  const { openPanel } = usePanelNavigate();
   const leafPath = useLeafRoutePath();
 
   /** EITHER settings surface highlights the one row: with a single control for
@@ -34,7 +33,8 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
    *  org branch is defensive: the settings tree is its own shell with its own
    *  sidebar, so this row is not rendered while it is open. */
   const isActive =
-    leafPath.startsWith("/$org/settings") || leafPath === AGENT_ROUTE.settings;
+    leafPath.startsWith("/$org/settings") ||
+    leafPath === PROJECT_ROUTE.settings;
 
   /** One label for both targets. Which settings it opens is already said by
    *  the sidebar it sits in — a project's sidebar names the project at the top
@@ -42,12 +42,16 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
    *  different controls. */
   const label = t("sidebar.navDestinations.settings");
 
-  /** Unscoped this stays a real anchor, so middle-click and open-in-new-tab
-   *  keep working as they do for every other org-wide destination. Scoped it
-   *  uses the same route transition as the other project views, retaining the
-   *  active chat while clearing payload owned by the route being left. */
-  const link: LinkProps | undefined = scopeId
-    ? undefined
+  const link: LinkProps = scopeId
+    ? {
+        to: PROJECT_ROUTE.settings,
+        params: { org: org.slug, agentId: scopeId },
+        search: (previous) =>
+          resolvePanelNavigationSearch({
+            previous,
+            destination: "agent",
+          }),
+      }
     : { to: "/$org/settings", params: { org: org.slug } };
 
   return (
@@ -63,9 +67,6 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
             destination: SETTINGS_DESTINATION,
             target: scopeId ? "project" : "org",
           });
-          if (scopeId) {
-            openPanel("settings", { agentId: scopeId, replace: false });
-          }
           onNavigate?.();
         }}
       />

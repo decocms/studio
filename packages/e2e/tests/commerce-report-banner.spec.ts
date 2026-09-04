@@ -3,7 +3,7 @@
  *
  * Not the org home: that landing is the agent roster, and the banner sits with
  * the project's own summary. Every test therefore visits the project's
- * canonical `/agents/<agentId>` workspace before asserting.
+ * canonical `/projects/<agentId>` workspace before asserting.
  *
  * The banner reads run state live from the CD connection's own MCP
  * (`get_my_diagnostic`), so these specs stand up a controlled test MCP
@@ -100,6 +100,7 @@ async function createCdConnection(
   orgSlug: string,
   orgId: string,
   url: string,
+  projectId?: string,
 ): Promise<void> {
   await callSelfMcpTool(request, orgSlug, "COLLECTION_CONNECTIONS_CREATE", {
     data: {
@@ -107,7 +108,7 @@ async function createCdConnection(
       title: "Commerce Discovery (e2e)",
       connection_type: "HTTP",
       connection_url: url,
-      metadata: { siteUrl: SITE_URL },
+      metadata: { siteUrl: SITE_URL, ...(projectId ? { projectId } : {}) },
     },
   });
 }
@@ -150,7 +151,7 @@ async function waitForHome(
   orgSlug: string,
   projectId: string,
 ): Promise<void> {
-  await page.goto(`/${orgSlug}/agents/${projectId}`);
+  await page.goto(`/${orgSlug}/projects/${projectId}`);
   /** The task composer belongs to the PROJECT home — an unscoped landing
    *  renders the org roster and its search instead, never this. */
   await page
@@ -217,7 +218,7 @@ test.describe("commerce report banner", () => {
       await page.waitForURL(
         (url) =>
           url.pathname ===
-            `/${orgSlug}/agents/${cdAgentId(orgId)}/apps/${cdConnectionId(orgId)}/${REPORT_TOOL}` &&
+            `/${orgSlug}/projects/${cdAgentId(orgId)}/apps/${cdConnectionId(orgId)}/${REPORT_TOOL}` &&
           url.searchParams.get("virtualmcpid") === null &&
           url.searchParams.get("connection") === null &&
           url.searchParams.get("tool") === null,
@@ -246,6 +247,61 @@ test.describe("commerce report banner", () => {
 
       await expect(
         page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+    } finally {
+      await mcp.stop();
+    }
+  });
+
+  test("project Reports isolates a warmed org diagnostic and follows ownership transfers", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const orgId = await findOrgId(request, orgSlug);
+    const projectOne = await createProject(request, orgSlug);
+    const projectTwo = await createProject(request, orgSlug);
+
+    const mcp = await startDiagnosticMcp({
+      url: SITE_URL,
+      scope: "private",
+      scanned_at: "2026-07-10T12:00:00.000Z",
+    });
+    try {
+      await createCdConnection(request, orgSlug, orgId, mcp.url, projectOne);
+
+      // Warm both the org-level diagnostic and CD client caches first. A
+      // disabled project query must not reuse either value for another owner.
+      await waitForHome(page, orgSlug, projectTwo);
+      await expect(
+        page.getByRole("button", { name: new RegExp(READY_TITLE) }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+
+      await page.goto(`/${orgSlug}/projects/${projectTwo}/reports`);
+      await expect(
+        page.getByRole("heading", { name: "No reports yet" }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+
+      await page.goto(`/${orgSlug}/projects/${projectOne}/reports`);
+      await expect(
+        page.getByText(`Tool "${REPORT_TOOL}" was not found or has no UI.`),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+
+      await callSelfMcpTool(request, orgSlug, "COLLECTION_CONNECTIONS_UPDATE", {
+        id: cdConnectionId(orgId),
+        data: { metadata: { siteUrl: SITE_URL, projectId: projectTwo } },
+      });
+
+      // A hard navigation models another browser observing the durable owner,
+      // independent of the mutation caller's in-memory query cache.
+      await page.reload();
+      await expect(
+        page.getByRole("heading", { name: "No reports yet" }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+
+      await page.goto(`/${orgSlug}/projects/${projectTwo}/reports`);
+      await expect(
+        page.getByText(`Tool "${REPORT_TOOL}" was not found or has no UI.`),
       ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
     } finally {
       await mcp.stop();

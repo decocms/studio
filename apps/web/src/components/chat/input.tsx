@@ -347,7 +347,7 @@ function useHomeSubmit() {
       // ensure-fallback will retry if the row is missing.
     }
     navigate({
-      to: "/$org/agents/$agentId",
+      to: "/$org/projects/$agentId",
       params: { org: org.slug, agentId: targetVmcp },
       search: { thread: newId, autosend: AUTOSEND_QUERY_VALUE },
     });

@@ -68,8 +68,8 @@ import { useProjectNativeViewPresence } from "./use-project-native-view-presence
 import {
   projectActiveViewUnavailable,
   projectDefaultViewUnavailable,
-  projectMainViewPresence,
-  resolveProjectMainViewContext,
+  projectSidebarViewPresence,
+  resolveProjectMainViewProject,
 } from "./project-sidebar-views";
 import { resolveActiveRouteTitle } from "./active-route-title";
 
@@ -142,15 +142,14 @@ export function useMainPanelTabsState(ctx: {
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const reportsOnly = useReportsOnly();
   const { scopeId, project: scopedProject } = useProjectScope();
-  const mainViewContext = resolveProjectMainViewContext(
+  const mainViewProject = resolveProjectMainViewProject(
     scopeId,
     scopedProject,
     entity,
   );
-  const nativeViews = useProjectNativeViewPresence(mainViewContext.project);
-  const mainViewPresence = projectMainViewPresence(
-    mainViewContext.resolvedScopeId,
-    agentHasClonableSource(mainViewContext.project?.metadata),
+  const nativeViews = useProjectNativeViewPresence(mainViewProject);
+  const mainViewPresence = projectSidebarViewPresence(
+    agentHasClonableSource(mainViewProject?.metadata),
     nativeViews.presence,
   );
   const connections = useConnections({ includeVirtual: true });

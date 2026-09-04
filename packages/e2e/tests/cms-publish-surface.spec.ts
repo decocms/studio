@@ -454,8 +454,26 @@ test.describe("fast preview publish surface", () => {
       const input = pageJsonPanel
         .locator(".monaco-editor textarea.inputarea")
         .first();
+      const focusLiveInput = async () => {
+        // Monaco can replace its hidden textarea while reconciling a model.
+        // A one-shot `focus()` may therefore focus the outgoing node just as
+        // the locator starts resolving the replacement. Re-acquire and focus
+        // until the live textarea owns focus; this still drives the real
+        // editor and does not reach into app state.
+        await expect
+          .poll(
+            async () => {
+              await input.focus();
+              return input.evaluate(
+                (element) => document.activeElement === element,
+              );
+            },
+            { timeout: 5_000 },
+          )
+          .toBe(true);
+      };
       await expect(input).toBeVisible();
-      await input.focus();
+      await focusLiveInput();
       const selectAllShortcut = await page.evaluate(() =>
         navigator.platform.toLowerCase().includes("mac")
           ? "Meta+A"
@@ -466,8 +484,7 @@ test.describe("fast preview publish surface", () => {
       await expect(pageJsonPanel.locator(".view-lines")).toHaveText("");
       /* Monaco may replace its hidden textarea while reconciling an empty
          model. Re-establish focus on the live input before sending the edit. */
-      await input.focus();
-      await expect(input).toBeFocused();
+      await focusLiveInput();
       await page.keyboard.insertText(nextJson);
       await expect(pageJsonPanel.locator(".view-lines")).toContainText(marker);
       const renderedJson = (
@@ -631,14 +648,14 @@ test.describe("fast preview publish surface", () => {
       .toBeLessThanOrEqual(580);
 
     const projectParent = breadcrumb
-      .locator('[data-slot="main-breadcrumb-ancestor"]')
+      .locator('[data-slot="main-breadcrumb-scope"]')
       .getByRole("link");
     await projectParent.focus();
     await expect(projectParent).toBeFocused();
     const projectParentHref = await projectParent.getAttribute("href");
     expect(projectParentHref).not.toBeNull();
     expect(new URL(projectParentHref ?? "", page.url()).pathname).toBe(
-      `/${orgSlug}/agents/${project.vmcpId}`,
+      `/${orgSlug}/projects/${project.vmcpId}`,
     );
 
     // --- Entry point 1: the dropdown (the half that regressed) -------------
@@ -681,7 +698,7 @@ test.describe("fast preview publish surface", () => {
        direct editor such as Site skips the inapplicable Items stage. */
     await page.keyboard.press("Escape");
     const contentUrl = new URL(page.url());
-    contentUrl.pathname = `/${orgSlug}/agents/${project.vmcpId}/site-editor/content`;
+    contentUrl.pathname = `/${orgSlug}/projects/${project.vmcpId}/site-editor/content`;
     await page.goto(contentUrl.toString());
     const collectionsStage = mainPanel.locator(
       '[data-content-stage="collections"]',
@@ -752,7 +769,7 @@ test.describe("fast preview publish surface", () => {
     await expect(siteCollection).toBeFocused();
 
     const previewUrl = new URL(page.url());
-    previewUrl.pathname = `/${orgSlug}/agents/${project.vmcpId}/site-editor`;
+    previewUrl.pathname = `/${orgSlug}/projects/${project.vmcpId}/site-editor`;
     await page.goto(previewUrl.toString());
 
     /* Site Editor remains actionable on its one-surface mobile layout. The
@@ -856,7 +873,7 @@ test.describe("fast preview publish surface", () => {
     try {
       await page.setViewportSize({ width: 900, height: 700 });
       await page.goto(
-        `/${orgSlug}/agents/${project.vmcpId}/site-editor?thread=${thread.item.id}&sidepanel=false`,
+        `/${orgSlug}/projects/${project.vmcpId}/site-editor?thread=${thread.item.id}&sidepanel=false`,
       );
       const choosePage = page.getByRole("button", {
         name: "Choose page",

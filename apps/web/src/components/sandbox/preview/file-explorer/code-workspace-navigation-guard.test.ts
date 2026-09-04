@@ -13,8 +13,8 @@ describe("isSameCodeWorkspaceNavigation", () => {
     expect(
       isSameCodeWorkspaceNavigation({
         identity,
-        currentPathname: "/acme/agents/storefront/site-editor/code",
-        nextPathname: "/acme/agents/storefront/site-editor/content",
+        currentPathname: "/acme/projects/storefront/site-editor/code",
+        nextPathname: "/acme/projects/storefront/site-editor/content",
         nextSearch: { thread: "thread-1", path: "/home" },
       }),
     ).toBe(true);
@@ -24,8 +24,8 @@ describe("isSameCodeWorkspaceNavigation", () => {
     expect(
       isSameCodeWorkspaceNavigation({
         identity,
-        currentPathname: "/acme/agents/storefront/site-editor/code",
-        nextPathname: "/acme/agents/storefront/site-editor",
+        currentPathname: "/acme/projects/storefront/site-editor/code",
+        nextPathname: "/acme/projects/storefront/site-editor",
         nextSearch: { thread: "thread-2" },
       }),
     ).toBe(false);
@@ -35,8 +35,8 @@ describe("isSameCodeWorkspaceNavigation", () => {
     expect(
       isSameCodeWorkspaceNavigation({
         identity,
-        currentPathname: "/acme/agents/storefront/site-editor/code",
-        nextPathname: "/acme/agents/storefront/settings",
+        currentPathname: "/acme/projects/storefront/site-editor/code",
+        nextPathname: "/acme/projects/storefront/settings",
         nextSearch: { thread: "thread-1" },
       }),
     ).toBe(false);
@@ -46,8 +46,8 @@ describe("isSameCodeWorkspaceNavigation", () => {
     expect(
       isSameCodeWorkspaceNavigation({
         identity: { ...identity, orgSlug: "site-editor" },
-        currentPathname: "/site-editor/agents/storefront/site-editor/code",
-        nextPathname: "/site-editor/agents/storefront/settings",
+        currentPathname: "/site-editor/projects/storefront/site-editor/code",
+        nextPathname: "/site-editor/projects/storefront/settings",
         nextSearch: { thread: "thread-1" },
       }),
     ).toBe(false);
@@ -57,8 +57,8 @@ describe("isSameCodeWorkspaceNavigation", () => {
     expect(
       isSameCodeWorkspaceNavigation({
         identity: { ...identity, threadId: null },
-        currentPathname: "/acme/agents/storefront/site-editor",
-        nextPathname: "/acme/agents/storefront/site-editor/code",
+        currentPathname: "/acme/projects/storefront/site-editor",
+        nextPathname: "/acme/projects/storefront/site-editor/code",
         nextSearch: {},
       }),
     ).toBe(true);

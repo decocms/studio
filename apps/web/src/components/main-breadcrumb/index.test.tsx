@@ -42,14 +42,18 @@ function renderBreadcrumb(currentId: string) {
 }
 
 describe("MainBreadcrumb", () => {
-  it("omits a current Home scope from the parent breadcrumb", async () => {
-    const { container, findByRole, getByTestId, queryByRole } =
+  it("omits the visual breadcrumb on the organization Home route", async () => {
+    const { container, findByRole, queryByRole, queryByTestId } =
       renderBreadcrumb("organization:1");
 
     const heading = await findByRole("heading", { level: 1, name: "Home" });
-    expect(heading).toContainElement(getByTestId("home-icon"));
+    expect(heading).toHaveClass("sr-only");
+    expect(queryByTestId("home-icon")).toBeNull();
     expect(queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
     expect(container.querySelectorAll("h1")).toHaveLength(1);
+    expect(
+      container.querySelector('[data-slot="main-breadcrumb-row"]'),
+    ).not.toBeInTheDocument();
     expect(
       container.querySelector(
         '[data-slot="main-breadcrumb-current-separator"]',

@@ -20,6 +20,7 @@ import { expect, test } from "../fixtures/test";
 interface CreatedItem {
   id: string;
   title: string;
+  virtualMcpId: string | null;
   repo: string | null;
 }
 
@@ -59,14 +60,30 @@ async function seedCard(
   orgSlug: string,
   title: string,
   repo: string | null,
+  virtualMcpId?: string,
 ) {
   const { item } = await callSelfMcpTool<{ item: CreatedItem }>(
     request,
     orgSlug,
     "TASK_BOARD_ITEM_CREATE",
-    repo ? { title, repo } : { title },
+    {
+      title,
+      ...(repo ? { repo } : {}),
+      ...(virtualMcpId ? { virtualMcpId } : {}),
+    },
   );
   return item;
+}
+
+async function listCards(request: APIRequestContext, orgSlug: string) {
+  return (
+    await callSelfMcpTool<{ items: CreatedItem[] }>(
+      request,
+      orgSlug,
+      "TASK_BOARD_ITEM_LIST",
+      {},
+    )
+  ).items;
 }
 
 async function openBoard(page: Page, orgSlug: string, search = "") {
@@ -95,6 +112,82 @@ const option = (page: Page, label: string) =>
   page.locator("[cmdk-list]").getByText(label, { exact: true });
 
 test.describe("task board project filter", () => {
+  test("validates and persists project ownership without same-repo leakage", async ({
+    authedPage,
+  }) => {
+    test.setTimeout(60_000);
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const originalTitle = `Untouched ${orgSlug}`;
+    const invalidTitle = `Invalid ${orgSlug}`;
+    const existing = await seedCard(request, orgSlug, originalTitle, null);
+    const missingProject = `vir_missing_${orgSlug}`;
+
+    await expect(
+      callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+        title: invalidTitle,
+        virtualMcpId: missingProject,
+      }),
+    ).rejects.toThrow(/virtual mcp not found/i);
+    await expect(
+      callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_UPDATE", {
+        id: existing.id,
+        title: invalidTitle,
+        virtualMcpId: missingProject,
+      }),
+    ).rejects.toThrow(/virtual mcp not found/i);
+
+    const unchangedCards = await listCards(request, orgSlug);
+    expect(unchangedCards.some((item) => item.title === invalidTitle)).toBe(
+      false,
+    );
+    expect(
+      unchangedCards.find((item) => item.id === existing.id),
+    ).toMatchObject({
+      title: originalTitle,
+      virtualMcpId: null,
+    });
+
+    const { mono } = repoNames(orgSlug);
+    const projectA = (await seedProject(request, orgSlug, "Storefront", mono))
+      .item;
+    const projectB = (await seedProject(request, orgSlug, "Checkout", mono))
+      .item;
+    const title = `Owned ${orgSlug}`;
+
+    await page.goto(`/${orgSlug}/projects/${projectA.id}/tasks`);
+    const main = page.getByTestId("main-panel");
+    await main.getByRole("button", { name: "New task", exact: true }).click();
+    await page.getByPlaceholder("Task title...").fill(title);
+    await page.getByRole("button", { name: "Create task" }).click();
+
+    await expect
+      .poll(async () => {
+        const item = (await listCards(request, orgSlug)).find(
+          (candidate) => candidate.title === title,
+        );
+        return item?.virtualMcpId;
+      })
+      .toBe(projectA.id);
+    await expect(card(page, title)).toBeVisible();
+
+    await card(page, title).click();
+    await main.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Clone" }).click();
+    await expect
+      .poll(async () => {
+        const clone = (await listCards(request, orgSlug)).find(
+          (candidate) => candidate.title === `${title} (copy)`,
+        );
+        return clone?.virtualMcpId;
+      })
+      .toBe(projectA.id);
+
+    await page.goto(`/${orgSlug}/projects/${projectB.id}/tasks`);
+    await expect(card(page, title)).toBeHidden();
+    await expect(card(page, `${title} (copy)`)).toBeHidden();
+  });
+
   test("offers projects by name, merges a shared repository, and narrows the board", async ({
     authedPage,
   }) => {

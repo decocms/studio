@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
+  KeyboardCode,
   KeyboardSensor,
   PointerSensor,
   closestCorners,
@@ -75,6 +76,8 @@ import {
   getWellKnownDecopilotVirtualMCP,
   useConnections,
   useProjectContext,
+  useVirtualMCPNonBlockingState,
+  useVirtualMCPsNonBlockingState,
 } from "@/sdk";
 import {
   getRepoScope,
@@ -148,7 +151,10 @@ import {
   EMPTY_FILTERS,
   TaskFiltersBar,
   TaskFiltersDrawer,
+  resolveTaskBoardProjectScope,
   taskMatchesFilters,
+  taskMatchesProjectScope,
+  type TaskBoardProjectScope,
   type TaskFilters,
 } from "./task-filters";
 import { useBoardSearch, visibleSelection } from "./filters-search";
@@ -156,9 +162,13 @@ import { useProjectIndex } from "@/hooks/use-project-index";
 import { filterAfterCreate } from "@/lib/project-index";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import {
+  DESTINATION_ROUTE,
+  PROJECT_ROUTE,
+} from "@/hooks/use-destination-route";
 import {
   findTaskByKeyOrId,
+  shouldRedirectMissingTask,
   taskRouteSegment,
 } from "@/layouts/task-board/task-route";
 import { useThreadActions } from "@/components/chat/store/hooks";
@@ -804,9 +814,30 @@ function AssigneeDisplay({
   );
 }
 
-export function TaskBoardPage() {
+export function TaskBoardPage({
+  projectScope,
+}: {
+  projectScope?: TaskBoardProjectScope;
+} = {}) {
   const t = useT();
   const { items, isLoading } = useTaskBoardItems();
+  const projectEntity = useVirtualMCPNonBlockingState(projectScope?.projectId);
+  /** Find the reverse half of the dev/live pair without relying on the first
+   * page of the org-wide project list. The server applies this metadata filter
+   * before pagination; the exact entity query above covers a dev route whose
+   * own metadata points forward to live. */
+  const reverseProjectAliases = useVirtualMCPsNonBlockingState(
+    {
+      filters: [
+        {
+          column: "metadata.liveAgentId",
+          value: projectScope?.projectId ?? "__no_project_scope__",
+        },
+      ],
+      pageSize: 1000,
+    },
+    !!projectScope,
+  );
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -897,6 +928,25 @@ export function TaskBoardPage() {
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
+  const projectAliasCandidates = projectEntity.item
+    ? [projectEntity.item, ...reverseProjectAliases.items]
+    : reverseProjectAliases.items;
+  const resolvedProjectScope = projectScope
+    ? resolveTaskBoardProjectScope(projectScope, projectAliasCandidates)
+    : undefined;
+  const projectAliasesPending =
+    !!projectScope && (projectEntity.pending || reverseProjectAliases.pending);
+  const projectAliasesError = projectScope
+    ? (projectEntity.error ?? reverseProjectAliases.error)
+    : null;
+  /** A project route owns the project dimension. Ignore a stale/shareable
+   * `?repo=` there while retaining every other URL filter exactly as-is. */
+  const boardFilters = projectScope ? { ...filters, project: null } : filters;
+  const scopedItems = resolvedProjectScope
+    ? items.filter((item) =>
+        taskMatchesProjectScope(item, resolvedProjectScope, projectIndex),
+      )
+    : items;
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -916,7 +966,7 @@ export function TaskBoardPage() {
   const clearSelection = () => setSelection(new Set());
   // A filter change can hide selected cards the same way the list-view toggle does.
   const handleFiltersChange = (next: TaskFilters) => {
-    setFilters(next);
+    setFilters(projectScope ? { ...next, project: null } : next);
     clearSelection();
   };
   // Create only: an existing card is addressed by its path, not by state.
@@ -931,6 +981,29 @@ export function TaskBoardPage() {
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
+  /** Keep task details inside the route that owns this board. Search remains
+   * untouched so layout and non-project filters survive card navigation. */
+  const navigateToTask = (taskKey: string | undefined, replace: boolean) => {
+    if (projectScope) {
+      navigate({
+        to: PROJECT_ROUTE.tasks,
+        params: {
+          org: org.slug,
+          agentId: projectScope.projectId,
+          taskKey,
+        },
+        search: (prev: Record<string, unknown>) => prev,
+        replace,
+      });
+      return;
+    }
+    navigate({
+      to: DESTINATION_ROUTE.tasks,
+      params: { org: org.slug, taskKey },
+      search: (prev: Record<string, unknown>) => prev,
+      replace,
+    });
+  };
   const openBoardSettings = () => {
     navigate({
       to: "/$org/settings/task-board",
@@ -954,12 +1027,17 @@ export function TaskBoardPage() {
     "taskKey" in routeParams && typeof routeParams.taskKey === "string"
       ? routeParams.taskKey
       : undefined;
-  const openItem = findTaskByKeyOrId(items, openTaskKey) ?? null;
+  const openItem = findTaskByKeyOrId(scopedItems, openTaskKey) ?? null;
   const taskReturnFocusRef = useRef<HTMLElement | null>(null);
   const boardFocusRef = useRef<HTMLDivElement>(null);
   /** A deleted (or never-visible) card leaves the segment dangling; land on
    *  the board rather than an empty pane. */
-  const staleTaskKey = !!openTaskKey && !openItem && !isLoading;
+  const staleTaskKey = shouldRedirectMissingTask({
+    taskKey: openTaskKey,
+    taskFound: !!openItem,
+    tasksPending: isLoading,
+    projectAliasesPending,
+  });
   /** The key the card actually wears, so a link minted from an id or from
    *  `deco-1` settles on the shareable form instead of preserving whatever
    *  spelling it arrived as. */
@@ -972,13 +1050,7 @@ export function TaskBoardPage() {
    * of opens would bury the page the board was reached from.
    */
   const closeTask = () => {
-    if (openTaskKey)
-      navigate({
-        to: DESTINATION_ROUTE.tasks,
-        params: { org: org.slug, taskKey: undefined },
-        search: (prev: Record<string, unknown>) => prev,
-        replace: true,
-      });
+    if (openTaskKey) navigateToTask(undefined, true);
   };
 
   /**
@@ -1059,8 +1131,8 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  const visibleItems = items.filter((item) =>
-    taskMatchesFilters(item, filters, projectIndex),
+  const visibleItems = scopedItems.filter((item) =>
+    taskMatchesFilters(item, boardFilters, projectIndex),
   );
   /** Bulk actions operate only on cards that remain visible after a filter
    * change, never on a stale hidden selection. */
@@ -1084,6 +1156,7 @@ export function TaskBoardPage() {
    * made here.
    */
   const widenProjectFilterFor = (repo: string | null) => {
+    if (projectScope) return;
     const next = filterAfterCreate({ repo }, filters.project, projectIndex);
     if (next !== filters.project) {
       setFilters({ ...filters, project: next });
@@ -1116,11 +1189,7 @@ export function TaskBoardPage() {
       boardFocusRef.current?.contains(activeElement)
         ? activeElement
         : null;
-    navigate({
-      to: DESTINATION_ROUTE.tasks,
-      params: { org: org.slug, taskKey: taskRouteSegment(org.slug, item) },
-      search: (prev: Record<string, unknown>) => prev,
-    });
+    navigateToTask(taskRouteSegment(org.slug, item), false);
   };
 
   const closeCreate = () => {
@@ -1166,42 +1235,49 @@ export function TaskBoardPage() {
   const showBoardTopbarActions =
     !openItem &&
     !(isLoading && items.length === 0) &&
+    !projectAliasesPending &&
     !staleTaskKey &&
     !(canonicalKey && canonicalKey !== openTaskKey);
   const topbarActions = showBoardTopbarActions ? boardActions : null;
   const topbarContributions = (
     <Main.Topbar.Right.Portal>{topbarActions}</Main.Topbar.Right.Portal>
   );
-  const showBodyToolbar = items.length > 0;
+  const showBodyToolbar = scopedItems.length > 0;
   const toolbarContributions =
     showBodyToolbar && !openItem ? (
       <Main.Toolbar.Portal>
         <div className="flex min-w-0 flex-1 items-center">
           <div className="sm:hidden">
             <TaskFiltersDrawer
-              filters={filters}
+              filters={boardFilters}
               members={members}
               tags={orgTags}
               index={projectIndex}
               onChange={handleFiltersChange}
               onOpenBoardSettings={openBoardSettings}
+              showProjectFilter={!projectScope}
             />
           </div>
           <div className="hidden min-w-0 flex-1 overflow-x-auto sm:block">
             <TaskFiltersBar
-              filters={filters}
+              filters={boardFilters}
               members={members}
               tags={orgTags}
               index={projectIndex}
               onChange={handleFiltersChange}
               onOpenBoardSettings={openBoardSettings}
+              showProjectFilter={!projectScope}
             />
           </div>
         </div>
       </Main.Toolbar.Portal>
     ) : null;
 
-  if (isLoading && items.length === 0) {
+  // A failed alias lookup is not an empty alias set. Let the route boundary
+  // offer retry instead of silently redirecting a valid deep-linked task.
+  if (projectAliasesError) throw projectAliasesError;
+
+  if ((isLoading && items.length === 0) || projectAliasesPending) {
     return (
       <>
         {topbarContributions}
@@ -1219,13 +1295,27 @@ export function TaskBoardPage() {
     return (
       <>
         {topbarContributions}
-        <Navigate
-          to={DESTINATION_ROUTE.tasks}
-          params={{ org: org.slug, taskKey: undefined }}
-          search={(prev: Record<string, unknown>) => prev}
-          hash={true}
-          replace
-        />
+        {projectScope ? (
+          <Navigate
+            to={PROJECT_ROUTE.tasks}
+            params={{
+              org: org.slug,
+              agentId: projectScope.projectId,
+              taskKey: undefined,
+            }}
+            search={(prev: Record<string, unknown>) => prev}
+            hash={true}
+            replace
+          />
+        ) : (
+          <Navigate
+            to={DESTINATION_ROUTE.tasks}
+            params={{ org: org.slug, taskKey: undefined }}
+            search={(prev: Record<string, unknown>) => prev}
+            hash={true}
+            replace
+          />
+        )}
       </>
     );
   }
@@ -1234,13 +1324,27 @@ export function TaskBoardPage() {
     return (
       <>
         {topbarContributions}
-        <Navigate
-          to={DESTINATION_ROUTE.tasks}
-          params={{ org: org.slug, taskKey: canonicalKey }}
-          search={(prev: Record<string, unknown>) => prev}
-          hash={true}
-          replace
-        />
+        {projectScope ? (
+          <Navigate
+            to={PROJECT_ROUTE.tasks}
+            params={{
+              org: org.slug,
+              agentId: projectScope.projectId,
+              taskKey: canonicalKey,
+            }}
+            search={(prev: Record<string, unknown>) => prev}
+            hash={true}
+            replace
+          />
+        ) : (
+          <Navigate
+            to={DESTINATION_ROUTE.tasks}
+            params={{ org: org.slug, taskKey: canonicalKey }}
+            search={(prev: Record<string, unknown>) => prev}
+            hash={true}
+            replace
+          />
+        )}
       </>
     );
   }
@@ -1249,7 +1353,7 @@ export function TaskBoardPage() {
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-      {items.length === 0 ? (
+      {scopedItems.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
           <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
             {t("taskBoard.taskBoard.noTasksYet")}
@@ -1407,6 +1511,9 @@ export function TaskBoardPage() {
           }}
           onClone={() => {
             // A copy starts fresh and undelegated: no assignee, no threads.
+            // Scoped copies retain both the exact project and its optional
+            // execution repository.
+            const repo = projectScope ? projectScope.repo : openItem.repo;
             actions.create.mutate({
               title: t("taskBoard.taskDialog.cloneTitle", {
                 title: openItem.title,
@@ -1414,11 +1521,14 @@ export function TaskBoardPage() {
               description: openItem.description,
               status: openItem.status,
               priority: openItem.priority,
-              repo: openItem.repo,
+              virtualMcpId: projectScope
+                ? projectScope.projectId
+                : openItem.virtualMcpId,
+              repo,
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
             });
-            widenProjectFilterFor(openItem.repo ?? null);
+            widenProjectFilterFor(repo ?? null);
             toast.success(t("taskBoard.taskDialog.cloneSuccess"));
             closeTask();
           }}
@@ -1452,6 +1562,7 @@ export function TaskBoardPage() {
               view: "site-editor",
             });
           }}
+          projectScope={projectScope}
         />
       )}
 
@@ -1460,14 +1571,22 @@ export function TaskBoardPage() {
         open={dialogOpen}
         onClose={closeCreate}
         defaultStatus={createStatus ?? undefined}
+        projectScope={projectScope}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
           if (blockSuperAgentWithoutGithub(input.assigneeId)) {
             closeCreate();
             return;
           }
-          actions.create.mutate(input);
-          widenProjectFilterFor(input.repo ?? null);
+          const scopedInput = projectScope
+            ? {
+                ...input,
+                virtualMcpId: projectScope.projectId,
+                repo: projectScope.repo,
+              }
+            : input;
+          actions.create.mutate(scopedInput);
+          widenProjectFilterFor(scopedInput.repo ?? null);
           closeCreate();
         }}
       />
@@ -1841,7 +1960,7 @@ function Lanes({
   onToggleSelect: (id: string) => void;
   onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: TaskBoardItemStatus) => void;
+  onCreate?: (status: TaskBoardItemStatus) => void;
   onMove: (
     ids: string[],
     status: TaskBoardItemStatus,
@@ -1996,6 +2115,16 @@ function Lanes({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
+      // A task card is both the board's primary navigation control and its
+      // drag handle. Reserve Space for the documented keyboard drag flow so
+      // Enter keeps the button's native meaning: open the task.
+      keyboardCodes: {
+        start: [KeyboardCode.Space],
+        cancel: [KeyboardCode.Esc],
+        // Enter is an end key only after a Space-started drag; otherwise it
+        // would fall through to the button and navigate away mid-drag.
+        end: [KeyboardCode.Space, KeyboardCode.Enter, KeyboardCode.Tab],
+      },
     }),
   );
 
@@ -2287,7 +2416,7 @@ function Lane({
   onToggleSelect: (id: string) => void;
   onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: TaskBoardItemStatus) => void;
+  onCreate?: (status: TaskBoardItemStatus) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
@@ -2364,17 +2493,19 @@ function Lane({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
-          type="button"
-          aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-            lane: label,
-          })}
-          title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-          onClick={() => onCreate(status)}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Plus size={15} />
-        </button>
+        {onCreate && (
+          <button
+            type="button"
+            aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+              lane: label,
+            })}
+            title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
+            onClick={() => onCreate(status)}
+            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Plus size={15} />
+          </button>
+        )}
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
           overflow-y container clips the x-axis too, which would clip a FLIP-

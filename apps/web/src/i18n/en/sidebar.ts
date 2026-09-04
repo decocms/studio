@@ -1,5 +1,4 @@
 export const sidebar = {
-  "sidebar.agentsSection.agents": "Projects",
   "sidebar.archiveWorktreeDialog.cancel": "Cancel",
   "sidebar.archiveWorktreeDialog.confirm": "Continue",
   "sidebar.archiveWorktreeDialog.reclaimFailed":
@@ -9,14 +8,7 @@ export const sidebar = {
   "sidebar.archiveWorktreeDialog.stopsAndDeletesBefore":
     "This will stop everything running on",
   "sidebar.archiveWorktreeDialog.title": "Archive this chat?",
-  "sidebar.agentsSection.browseAgents": "Browse projects",
   "sidebar.agentsSection.codeAgents": "Code Projects",
-  "sidebar.agentsSection.import": "Import",
-  "sidebar.agentsSection.newAgent": "New project",
-  "sidebar.agentsSection.noAgentsFound": "No projects found",
-  "sidebar.agentsSection.searchAgents": "Search projects...",
-  "sidebar.agentsSection.seeAllAgents": "See all projects",
-  "sidebar.agentsSection.selectAnExistingAgent": "Select an existing project",
   "sidebar.header.closeSidebar": "Close sidebar",
   "sidebar.header.toggleSidebar": "Toggle sidebar",
   "sidebar.navDestinations.home": "Home",
@@ -30,6 +22,7 @@ export const sidebar = {
   "sidebar.scope.allProjects": "All projects",
   "sidebar.picker.ariaLabel": "Organization and project: {name}",
   "sidebar.picker.projectInOrg": "{project} — {org}",
+  "sidebar.picker.projectFallback": "Project",
   "sidebar.picker.newOrganization": "New organization",
   "sidebar.picker.newProject": "New project",
   "sidebar.picker.noMatches": "Nothing matches \u201c{query}\u201d",

@@ -85,6 +85,26 @@ test("a card dragged to another lane moves and stays fully visible", async ({
     .toMatchObject({ "Card 3": "todo", "Card 0": "triage" });
 });
 
+test("Space starts a keyboard drag without stealing Enter navigation", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const request = page.context().request;
+  await seedCards(request, orgSlug, 1);
+  await openBoard(page, orgSlug);
+
+  const card = page.locator('button:has-text("Card 0")');
+  await card.focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => statusByTitle(request, orgSlug))
+    .toMatchObject({ "Card 0": "todo" });
+  expect(new URL(page.url()).pathname).toBe(`/${orgSlug}/tasks`);
+});
+
 test("every card in a multi-selection moves together and none are hidden", async ({
   authedPage,
 }) => {

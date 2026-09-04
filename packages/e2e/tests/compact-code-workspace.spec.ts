@@ -83,7 +83,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=true&mainpanel=false`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=true&mainpanel=false`,
     );
 
     const group = page.locator('[data-workspace-layout="stacked"]');
@@ -198,7 +198,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
     );
 
     const search = page.getByRole("textbox", {
@@ -359,7 +359,7 @@ test.describe("Compact Code workspace", () => {
     await page.getByRole("button", { name: "Preview", exact: true }).click();
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/site-editor` &&
         url.searchParams.get("thread") === threadId,
       { timeout: 30_000 },
     );
@@ -374,7 +374,7 @@ test.describe("Compact Code workspace", () => {
     await page.getByRole("button", { name: "Code", exact: true }).click();
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor/code` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/site-editor/code` &&
         url.searchParams.get("thread") === threadId,
       { timeout: 30_000 },
     );
@@ -475,7 +475,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
     );
     await expect(
       page.getByRole("textbox", {
@@ -532,7 +532,7 @@ test.describe("Compact Code workspace", () => {
     await expect(dirtyTab).toHaveAttribute("aria-selected", "true");
     await expect(editor.locator(".view-lines")).toContainText("rascunho-local");
     expect(new URL(page.url()).pathname).toBe(
-      `/${orgSlug}/agents/${agentId}/site-editor/code`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code`,
     );
   });
 
@@ -603,7 +603,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${sourceThreadId}&sidepanel=true&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${sourceThreadId}&sidepanel=true&mainpanel=true`,
     );
     await expect(
       page.getByRole("textbox", {
@@ -753,7 +753,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
     );
     await expect(
       page.getByRole("textbox", { name: "Search files", exact: true }),
@@ -855,7 +855,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
     );
     const search = page.getByRole("textbox", {
       name: "Search files",
@@ -973,7 +973,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
     );
     await expect(
       page.getByRole("textbox", { name: "Search files", exact: true }),
@@ -1093,7 +1093,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
     );
     await expect(
       page.getByRole("textbox", { name: "Search files", exact: true }),
@@ -1210,7 +1210,7 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+      `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
     );
     await expect(
       page.getByRole("textbox", { name: "Search files", exact: true }),
@@ -1341,7 +1341,7 @@ test.describe("Compact Code workspace", () => {
 
     try {
       await page.goto(
-        `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+        `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
       );
       await expect(
         page.getByRole("textbox", { name: "Search files", exact: true }),
@@ -1484,7 +1484,7 @@ test.describe("Compact Code workspace", () => {
 
     try {
       await page.goto(
-        `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+        `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
       );
       const readmeFile = page.getByRole("button", {
         name: "README.md",
@@ -1694,7 +1694,7 @@ test.describe("Compact Code workspace", () => {
 
     try {
       await page.goto(
-        `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+        `/${orgSlug}/projects/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
       );
       const back = page.getByRole("button", {
         name: "Back to files",

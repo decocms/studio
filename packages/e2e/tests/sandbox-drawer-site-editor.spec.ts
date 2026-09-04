@@ -73,7 +73,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
     /** Every nested editor body inherits the drawer from the structural
      * parent. Navigating each URL as a fresh document guards against a drawer
      * left mounted by the previous child masking a missing composition. */
-    const siteEditorBase = `/${orgSlug}/agents/${agent.item.id}/site-editor`;
+    const siteEditorBase = `/${orgSlug}/projects/${agent.item.id}/site-editor`;
     for (const child of ["", "/content", "/code"] as const) {
       const path = `${siteEditorBase}${child}`;
       await page.goto(`${path}?thread=${thread.item.id}&sidepanel=true`);
@@ -237,7 +237,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
 
     /** Wait on the settings body, so the absence below is a painted panel. */
     await page.goto(
-      `/${orgSlug}/agents/${agent.item.id}/settings?thread=${thread.item.id}`,
+      `/${orgSlug}/projects/${agent.item.id}/settings?thread=${thread.item.id}`,
     );
     await expect(page.getByPlaceholder("Project name")).toBeVisible({
       timeout: 60_000,
@@ -252,7 +252,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
     await page.waitForURL(
       (url) =>
         url.pathname ===
-          `/${orgSlug}/agents/${agent.item.id}/site-editor/code` &&
+          `/${orgSlug}/projects/${agent.item.id}/site-editor/code` &&
         url.searchParams.get("thread") === thread.item.id &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("main") === null,
@@ -396,7 +396,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
 
     try {
       await page.goto(
-        `/${orgSlug}/agents/${agent.item.id}/site-editor?thread=${thread.item.id}&sidepanel=false`,
+        `/${orgSlug}/projects/${agent.item.id}/site-editor?thread=${thread.item.id}&sidepanel=false`,
       );
       const mainPanel = page.getByTestId("main-panel");
       const terminalTabs = mainPanel.getByRole("tablist", {

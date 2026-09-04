@@ -42,7 +42,7 @@ export function isSameCodeWorkspaceNavigation({
   nextSearch: unknown;
 }): boolean {
   const siteEditorRoute = currentPathname.match(
-    /^(\/[^/]+\/agents\/[^/]+\/site-editor)(?:\/|$)/,
+    /^(\/[^/]+\/projects\/[^/]+\/site-editor)(?:\/|$)/,
   );
   const siteEditorRoot = siteEditorRoute?.[1];
   if (!siteEditorRoot) return false;

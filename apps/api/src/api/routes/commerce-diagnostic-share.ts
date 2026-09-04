@@ -33,7 +33,7 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * The accept URL's `redirectTo` is the deep link that OPENS the diagnostic app
  * view — the exact shape `commerceReportNavTarget()`
  * (web/hooks/use-commerce-diagnostic.ts) and setup.ts's completion-email link
- * build: `/{slug}/agents/{agent}/apps/{conn}/get_my_diagnostic`, where every
+ * build: `/{slug}/projects/{agent}/apps/{conn}/get_my_diagnostic`, where every
  * identity is a path segment. Mail sent before that grammar carried the same
  * target as `?main=app:{conn}:get_my_diagnostic`; the web app accepts that
  * shape forever (`web/layouts/legacy-main-redirect.tsx`), so delivered links

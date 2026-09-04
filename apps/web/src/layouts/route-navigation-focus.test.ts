@@ -213,7 +213,7 @@ describe("navigation focus controller", () => {
   test("showing Main waits for its route heading to leave an inert surface", async () => {
     const harness = createControllerHarness();
     try {
-      const pathname = "/acme/agents/project/settings";
+      const pathname = "/acme/projects/project/settings";
       const hiddenHref = `${pathname}?mainpanel=false`;
       const visibleHref = `${pathname}?mainpanel=true`;
       window.history.replaceState(null, "", hiddenHref);

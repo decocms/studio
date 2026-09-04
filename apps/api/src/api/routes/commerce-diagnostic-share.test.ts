@@ -8,7 +8,7 @@ describe("diagnosticDeepLinkPath", () => {
   it("builds the deep link that opens the diagnostic app view", () => {
     const path = diagnosticDeepLinkPath("acme", "org_123");
     expect(path).toBe(
-      "/acme/agents/commerce-discovery_org_123/apps/org_123_commerce-discovery/get_my_diagnostic",
+      "/acme/projects/commerce-discovery_org_123/apps/org_123_commerce-discovery/get_my_diagnostic",
     );
     expect(path).not.toContain("?");
   });

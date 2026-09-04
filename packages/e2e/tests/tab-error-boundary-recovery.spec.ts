@@ -91,7 +91,7 @@ test.describe("tab error boundary recovers on tab switch", () => {
       .click({ timeout: 60_000 });
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/site-editor` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("main") === null,
       { timeout: 60_000 },
@@ -105,7 +105,7 @@ test.describe("tab error boundary recovers on tab switch", () => {
       .click({ timeout: 60_000 });
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/${agentId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${agentId}/settings` &&
         url.searchParams.get("thread") === threadId,
       { timeout: 60_000 },
     );

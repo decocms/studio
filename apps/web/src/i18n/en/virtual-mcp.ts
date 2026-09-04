@@ -129,7 +129,7 @@ export const virtualMcp = {
     "None of the connected servers expose interactive tools.",
   "virtualMcp.layoutTabContent.sidebarViews": "Sidebar views",
   "virtualMcp.layoutTabContent.sidebarViewsDescription":
-    "Choose which available views appear in this project's sidebar.",
+    "Choose which optional views appear alongside Home, Reports, and Tasks.",
   "virtualMcp.layoutTabContent.settings": "Settings",
   "virtualMcp.layoutTabContent.showChat": "Show chat",
   "virtualMcp.layoutTabContent.showChatDescription":
