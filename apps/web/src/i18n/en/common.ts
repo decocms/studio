@@ -58,6 +58,11 @@ export const common = {
   "common.capabilityLoadError.description":
     "Something went wrong checking your access. This is usually temporary.",
   "common.capabilityLoadError.title": "Couldn't load your permissions",
+  "common.noPermissionState.description":
+    "Your role doesn't include permission for this section. Ask an organization admin to update your role if you need it.",
+  "common.noPermissionState.goToProfile": "Go to your profile",
+  "common.noPermissionState.title": "No access",
+  "common.noPermissionState.titleWithArea": "No access to {area}",
   "common.capabilityLoadError.tryAgain": "Try again",
   "common.createOrganizationDialog.cancel": "Cancel",
   "common.createOrganizationDialog.createButton": "Create Organization",

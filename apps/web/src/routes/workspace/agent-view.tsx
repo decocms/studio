@@ -4,6 +4,7 @@ import { AppViewContent } from "@/routes/project-app-view";
 import { useVirtualMCP } from "@/sdk";
 import { RouteNotFound } from "./route-not-found";
 import { AgentRouteMain } from "./agent-route-main";
+import { resolveAgentViewRouteTitle } from "./route-resource-title";
 
 const route = getRouteApi(
   "/shell/$org/org-shell/agent-shell/agents/$agentId/views/$viewId",
@@ -16,9 +17,10 @@ export default function AgentViewRoute() {
   const view = agent?.metadata.ui?.layout?.tabs?.find(
     (tab) => tab.id === viewId,
   );
+  const title = resolveAgentViewRouteTitle(view?.title, viewId);
 
   return (
-    <AgentRouteMain title={view?.title} contentClassName="overflow-hidden">
+    <AgentRouteMain title={title} contentMode="canvas">
       {!view ? (
         <RouteNotFound />
       ) : (

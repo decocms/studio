@@ -1,7 +1,7 @@
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { WELL_KNOWN_STARTERS } from "@decocms/sandbox/shared";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -9,6 +9,7 @@ import { useSandboxEvents } from "../../hooks/use-sandbox-events";
 import {
   DEFAULT_TAB,
   DrawerToolbar,
+  drawerTabId,
   type DrawerStatus,
   type DrawerToolbarHandle,
 } from "./toolbar";
@@ -19,6 +20,10 @@ import {
   resolveDrawerResizeMetrics,
 } from "./resize";
 import { activeTabAfterScriptClose } from "./script-tab-state";
+import {
+  createTabCloseFocusHandoff,
+  type TabCloseFocusHandoff,
+} from "./tab-close-focus-handoff";
 
 export interface PreviewDrawerProps {
   vmId: string | null;
@@ -41,6 +46,7 @@ export interface PreviewDrawerProps {
 
 export function PreviewDrawer(props: PreviewDrawerProps) {
   const t = useT();
+  const tabPanelId = useId();
   const vmEvents = useSandboxEvents();
   const [active, setActive] = useState<string>(DEFAULT_TAB);
   const [scriptTabs, setScriptTabs] = useState<string[]>([]);
@@ -52,6 +58,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   const scriptTabVersionsRef = useRef<Map<string, number>>(new Map());
   const toolbarRef = useRef<DrawerToolbarHandle>(null);
   const activeTabRef = useRef(DEFAULT_TAB);
+  const focusHandoffsRef = useRef<Set<TabCloseFocusHandoff>>(new Set());
 
   // Once-per-VM auto-open of dev/start. Render-time setState gated by a ref
   // so a second render after the first scripts event becomes a no-op. The
@@ -168,18 +175,15 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     const version = scriptTabVersionsRef.current.get(name) ?? 0;
     closingScriptTabsRef.current.set(name, version);
     const closeOwnedFocus = document.activeElement === closeButton;
-    let focusHandoffCancelled = false;
-    const cancelForPointerIntent = (event: PointerEvent) => {
-      if (event.target !== closeButton) focusHandoffCancelled = true;
-    };
-    const cancelForKeyboardIntent = (event: KeyboardEvent) => {
-      if (event.key === "Tab" || document.activeElement !== closeButton) {
-        focusHandoffCancelled = true;
-      }
-    };
+    let focusHandoff: TabCloseFocusHandoff | null = null;
+    let focusHandoffArmed = false;
     if (closeOwnedFocus) {
-      document.addEventListener("pointerdown", cancelForPointerIntent, true);
-      document.addEventListener("keydown", cancelForKeyboardIntent, true);
+      focusHandoff = createTabCloseFocusHandoff(closeButton, {
+        onFinish: () => {
+          if (focusHandoff) focusHandoffsRef.current.delete(focusHandoff);
+        },
+      });
+      focusHandoffsRef.current.add(focusHandoff);
     }
     setClosingScriptTabs((prev) => new Set(prev).add(name));
     try {
@@ -189,32 +193,27 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
       if (res === null) return;
       if (!res.ok) throw new Error(`Kill failed: ${res.statusText}`);
       if ((scriptTabVersionsRef.current.get(name) ?? 0) !== version) return;
-      const shouldRestoreFocus = closeOwnedFocus && !focusHandoffCancelled;
       scriptTabVersionsRef.current.set(name, version + 1);
-      setScriptTabs((prev) => prev.filter((tab) => tab !== name));
       const focusTarget = activeTabAfterScriptClose(
         activeTabRef.current,
         name,
         DEFAULT_TAB,
       );
+      if (focusHandoff) {
+        focusHandoffArmed = true;
+        focusHandoff.focusAfterSourceRemoval(
+          () => toolbarRef.current?.focusTab(focusTarget) ?? false,
+        );
+      }
+      setScriptTabs((prev) => prev.filter((tab) => tab !== name));
       activeTabRef.current = focusTarget;
       setActive((current) =>
         activeTabAfterScriptClose(current, name, DEFAULT_TAB),
       );
-      if (shouldRestoreFocus) {
-        // Browser focus fallout from removing the active control finishes after
-        // the commit. Focus the surviving active tab on the following frame.
-        // `shouldRestoreFocus` was captured before removal, so an intermediate
-        // browser fallback (often the add-script trigger) is not user intent.
-        requestAnimationFrame(() => {
-          toolbarRef.current?.focusTab(focusTarget);
-        });
-      }
     } catch {
       toast.error(t("sandbox.drawer.failedToStop", { name }));
     } finally {
-      document.removeEventListener("pointerdown", cancelForPointerIntent, true);
-      document.removeEventListener("keydown", cancelForKeyboardIntent, true);
+      if (!focusHandoffArmed) focusHandoff?.cancel();
       if (closingScriptTabsRef.current.get(name) === version) {
         closingScriptTabsRef.current.delete(name);
         setClosingScriptTabs((prev) => {
@@ -301,6 +300,8 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   useLayoutEffect(
     () => () => {
       resizeCleanupRef.current?.();
+      for (const handoff of focusHandoffsRef.current) handoff.cancel();
+      focusHandoffsRef.current.clear();
     },
     [],
   );
@@ -460,6 +461,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
         active={active}
         scriptTabs={scriptTabs}
         closingScriptTabs={closingScriptTabs}
+        tabPanelId={tabPanelId}
         onSelectTab={handleSelectTab}
         onAddScript={handleAddScript}
         onCloseScript={handleCloseScript}
@@ -470,7 +472,12 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
         onStopActiveScript={handleStopActive}
       />
       {props.open && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          id={tabPanelId}
+          role="tabpanel"
+          aria-labelledby={drawerTabId(tabPanelId, active)}
+          className="flex-1 overflow-hidden"
+        >
           <DrawerBody
             vmId={props.vmId}
             active={active}

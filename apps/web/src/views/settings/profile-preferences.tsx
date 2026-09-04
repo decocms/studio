@@ -1,4 +1,4 @@
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
@@ -12,6 +12,7 @@ import {
   ToggleGroupItem,
 } from "@decocms/ui/components/toggle-group.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Moon01, Monitor01, Play, Sun } from "@untitledui/icons";
 import { Controller, useForm } from "react-hook-form";
 import { authClient } from "@/lib/auth-client";
@@ -30,7 +31,6 @@ import { track } from "@/lib/posthog-client";
 import {
   SettingsCard,
   SettingsCardItem,
-  SettingsPage,
   SettingsSection,
 } from "@/components/settings/settings-section";
 
@@ -84,7 +84,13 @@ function ProfileSection() {
     },
   });
 
-  if (isPending) return null;
+  if (isPending) {
+    return (
+      <div role="status" aria-label={t("common.loading")}>
+        <Skeleton className="h-36 w-full" />
+      </div>
+    );
+  }
 
   return (
     <SettingsSection>
@@ -382,18 +388,14 @@ function PreferencesSection() {
 }
 
 export function ProfilePreferencesPage() {
-  const t = useT();
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <Page.Title>{t("settings.title")}</Page.Title>
-            <ProfileSection />
-            <PreferencesSection />
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <div className="h-full overflow-y-auto">
+      <Main.Container width="standard">
+        <Main.Stack gap="spacious">
+          <ProfileSection />
+          <PreferencesSection />
+        </Main.Stack>
+      </Main.Container>
+    </div>
   );
 }

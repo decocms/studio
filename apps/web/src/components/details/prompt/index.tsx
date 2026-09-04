@@ -20,7 +20,6 @@ import { PromptSchema } from "@decocms/bindings/prompt";
 import { Suspense } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
-import { ViewActions, ViewLayout, ViewTabs } from "../layout";
 import { SaveActions } from "@/components/save-actions";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -209,38 +208,20 @@ function PromptDetailContent({
       <Main.Title.Portal>
         <span title={prompt.title}>{prompt.title}</span>
       </Main.Title.Portal>
-      <ViewLayout>
-        <ViewTabs>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-medium text-foreground truncate">
-              {prompt.title}
-            </span>
-            {prompt.description ? (
-              <>
-                <span className="text-xs text-muted-foreground font-normal">
-                  •
-                </span>
-                <span className="text-xs text-muted-foreground font-normal truncate min-w-0 max-w-[20ch]">
-                  {prompt.description}
-                </span>
-              </>
-            ) : null}
-          </div>
-        </ViewTabs>
-
-        <ViewActions>
+      <Main.Topbar.Right.Portal>
+        <div className="flex items-center gap-1">
           <SaveActions
             onSave={() => void saveAndLock()}
             onUndo={resetToInitial}
             isDirty={form.formState.isDirty}
             isSaving={isSaving}
           />
-        </ViewActions>
-
-        <div className="h-full">
-          <PromptEditForm form={form} />
         </div>
-      </ViewLayout>
+      </Main.Topbar.Right.Portal>
+
+      <div className="h-full min-h-0">
+        <PromptEditForm form={form} />
+      </div>
     </>
   );
 }

@@ -28,10 +28,15 @@ import {
   X,
 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
+import { drawerTabIndexForKey } from "./script-tab-state";
 import type { DrawerStatus } from "./status-pill";
 
 /** The always-present tab. Catch-all for clone + install logs. */
 export const DEFAULT_TAB = "setup";
+
+export function drawerTabId(tabPanelId: string, tab: string): string {
+  return `${tabPanelId}-tab-${encodeURIComponent(tab)}`;
+}
 
 export type { DrawerStatus } from "./status-pill";
 
@@ -51,6 +56,7 @@ export interface DrawerToolbarProps {
   active: string;
   scriptTabs: string[];
   closingScriptTabs: ReadonlySet<string>;
+  tabPanelId: string;
   onSelectTab: (tab: string) => void;
   onAddScript: (name: string) => void;
   onCloseScript: (name: string, closeButton: HTMLButtonElement) => void;
@@ -65,7 +71,7 @@ export interface DrawerToolbarProps {
 
 export interface DrawerToolbarHandle {
   /** Focus the requested tab, falling back to Setup if it no longer exists. */
-  focusTab: (tab: string) => void;
+  focusTab: (tab: string) => boolean;
 }
 
 function canReceiveFocus(
@@ -88,26 +94,39 @@ export function DrawerToolbar({
   const addableScripts = props.scripts.filter(
     (s) => !props.scriptTabs.includes(s),
   );
+  const tabs = [DEFAULT_TAB, ...props.scriptTabs];
+
+  function focusTab(tab: string) {
+    const requested =
+      tab === DEFAULT_TAB
+        ? setupTabRef.current
+        : scriptTabRefs.current.get(tab);
+    const target = canReceiveFocus(requested) ? requested : setupTabRef.current;
+    if (!canReceiveFocus(target)) return false;
+    target.focus({ preventScroll: true });
+    return target.ownerDocument.activeElement === target;
+  }
 
   useImperativeHandle(ref, () => ({
-    focusTab: (tab) => {
-      const requested =
-        tab === DEFAULT_TAB
-          ? setupTabRef.current
-          : scriptTabRefs.current.get(tab);
-      const target = canReceiveFocus(requested)
-        ? requested
-        : setupTabRef.current;
-      if (canReceiveFocus(target)) target.focus();
-    },
+    focusTab,
   }));
 
-  // The setup tab doubles as the drawer toggle. When already active, clicking
-  // toggles open/closed; otherwise it selects setup (which opens the drawer).
-  const handleSetupClick = () => {
-    if (props.active === DEFAULT_TAB) props.onToggle();
-    else props.onSelectTab(DEFAULT_TAB);
-  };
+  function handleTabKeyDown(
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentTab: string,
+  ) {
+    const nextIndex = drawerTabIndexForKey(
+      event.key,
+      tabs.indexOf(currentTab),
+      tabs.length,
+    );
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    if (!nextTab) return;
+    props.onSelectTab(nextTab);
+    focusTab(nextTab);
+  }
 
   return (
     <div className="flex h-7 shrink-0 items-center gap-1 border-t border-b border-border bg-muted/60 px-2">
@@ -138,33 +157,44 @@ export function DrawerToolbar({
             : t("sandbox.preview.expandTerminal")}
         </TooltipContent>
       </Tooltip>
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        <SetupTab
-          tabRef={setupTabRef}
-          active={props.active === DEFAULT_TAB}
-          open={props.open}
-          onClick={handleSetupClick}
-          t={t}
-        />
-        {props.scriptTabs.map((tabName) => (
-          <TabButton
-            key={tabName}
-            tabRef={(button) => {
-              if (button) scriptTabRefs.current.set(tabName, button);
-              else scriptTabRefs.current.delete(tabName);
-            }}
-            active={props.active === tabName}
-            closeDisabled={props.closingScriptTabs.has(tabName)}
-            onClick={() => {
-              if (props.active === tabName) props.onToggle();
-              else props.onSelectTab(tabName);
-            }}
-            onClose={(closeButton) => props.onCloseScript(tabName, closeButton)}
+      <div className="flex min-w-0 flex-1 items-center gap-1">
+        <div
+          role="tablist"
+          aria-orientation="horizontal"
+          aria-label={t("sandbox.toolbar.tabsLabel")}
+          className="flex min-w-0 items-center gap-1 overflow-x-auto"
+        >
+          <SetupTab
+            tabRef={setupTabRef}
+            active={props.active === DEFAULT_TAB}
+            id={drawerTabId(props.tabPanelId, DEFAULT_TAB)}
+            controls={props.open ? props.tabPanelId : undefined}
+            onClick={() => props.onSelectTab(DEFAULT_TAB)}
+            onKeyDown={(event) => handleTabKeyDown(event, DEFAULT_TAB)}
             t={t}
-          >
-            {tabName}
-          </TabButton>
-        ))}
+          />
+          {props.scriptTabs.map((tabName) => (
+            <TabButton
+              key={tabName}
+              tabRef={(button) => {
+                if (button) scriptTabRefs.current.set(tabName, button);
+                else scriptTabRefs.current.delete(tabName);
+              }}
+              active={props.active === tabName}
+              id={drawerTabId(props.tabPanelId, tabName)}
+              controls={props.open ? props.tabPanelId : undefined}
+              closeDisabled={props.closingScriptTabs.has(tabName)}
+              onClick={() => props.onSelectTab(tabName)}
+              onKeyDown={(event) => handleTabKeyDown(event, tabName)}
+              onClose={(closeButton) =>
+                props.onCloseScript(tabName, closeButton)
+              }
+              t={t}
+            >
+              {tabName}
+            </TabButton>
+          ))}
+        </div>
         <AddScriptButton scripts={addableScripts} onRun={props.onAddScript} />
       </div>
       {props.showScriptControls ? (
@@ -191,30 +221,38 @@ export function DrawerToolbar({
 }
 
 /**
- * Setup tab + drawer toggle. Pure tab — sandbox lifecycle actions
+ * Setup tab. Sandbox lifecycle actions
  * (Start/Stop/Restart/Resume/Retry) all live on the right via
  * SandboxActionControls so the tab itself never reshapes based on status.
  */
 function SetupTab({
   tabRef,
   active,
-  open,
+  id,
+  controls,
   onClick,
+  onKeyDown,
   t,
 }: {
   tabRef: Ref<HTMLButtonElement>;
   active: boolean;
-  open: boolean;
+  id: string;
+  controls?: string;
   onClick: () => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   t: import("@/i18n/use-t.ts").TFunction;
 }) {
   return (
     <button
       ref={tabRef}
       type="button"
-      aria-pressed={active && open}
-      aria-expanded={active && open}
+      id={id}
+      role="tab"
+      aria-selected={active}
+      aria-controls={controls}
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       className={cn(
         "flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs",
         active
@@ -327,22 +365,29 @@ function SandboxActionControls({
 function TabButton({
   tabRef,
   active,
+  id,
+  controls,
   closeDisabled,
   onClick,
+  onKeyDown,
   onClose,
   children,
   t,
 }: {
   tabRef: Ref<HTMLButtonElement>;
   active: boolean;
+  id: string;
+  controls?: string;
   closeDisabled: boolean;
   onClick: () => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   onClose?: (closeButton: HTMLButtonElement) => void;
   children: React.ReactNode;
   t: import("@/i18n/use-t.ts").TFunction;
 }) {
   return (
     <div
+      role="presentation"
       className={cn(
         "flex h-6 items-center rounded-md border text-xs",
         active
@@ -353,7 +398,13 @@ function TabButton({
       <button
         ref={tabRef}
         type="button"
+        id={id}
+        role="tab"
+        aria-selected={active}
+        aria-controls={controls}
+        tabIndex={active ? 0 : -1}
         onClick={onClick}
+        onKeyDown={onKeyDown}
         className={cn(
           "flex h-full items-center",
           onClose ? "pl-2 pr-1" : "px-2",
@@ -407,7 +458,25 @@ function AddScriptButton({
         </TooltipTrigger>
         <TooltipContent>{t("sandbox.toolbar.runScript")}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="start" className="p-1 w-56">
+      <PopoverContent
+        align="start"
+        className="p-1 w-56"
+        onCloseAutoFocus={(event) => {
+          const content = event.currentTarget;
+          if (!(content instanceof HTMLElement)) return;
+          const activeElement = content.ownerDocument.activeElement;
+          if (
+            activeElement &&
+            activeElement !== content.ownerDocument.body &&
+            !content.contains(activeElement)
+          ) {
+            // Radix can finish its exit after keyboard focus has already moved
+            // into the tab strip. That later intent must win over restoring the
+            // add-script trigger.
+            event.preventDefault();
+          }
+        }}
+      >
         <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
           {t("sandbox.toolbar.runAScript")}
         </div>

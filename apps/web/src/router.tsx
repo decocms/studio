@@ -612,6 +612,9 @@ const agentAutomationRoute = createRoute({
     mainView: "automation",
     mainTitleKey: "automations.automationsList.title",
   },
+  validateSearch: z.object({
+    automationView: z.enum(["settings", "runs"]).optional(),
+  }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-automation.tsx"),
   ),
@@ -723,7 +726,11 @@ const agentAppRoute = createRoute({
 const agentViewRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/views/$viewId",
-  staticData: { defaultMain: "view", mainView: "view" },
+  staticData: {
+    defaultMain: "view",
+    mainView: "view",
+    mainTitleKey: "mainPanelTabs.agentView.title",
+  },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-view.tsx"),
   ),
@@ -732,7 +739,11 @@ const agentViewRoute = createRoute({
 const agentOutputFileRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/outputs/file",
-  staticData: { defaultMain: "file", mainView: "file" },
+  staticData: {
+    defaultMain: "file",
+    mainView: "file",
+    mainTitleKey: "mainPanelTabs.fileTab.title",
+  },
   validateSearch: z.object({ key: z.string().optional() }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-file.tsx"),
@@ -742,7 +753,11 @@ const agentOutputFileRoute = createRoute({
 const agentOutputDeckRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/outputs/deck",
-  staticData: { defaultMain: "deck", mainView: "deck" },
+  staticData: {
+    defaultMain: "deck",
+    mainView: "deck",
+    mainTitleKey: "mainPanelTabs.deckTab.title",
+  },
   validateSearch: z.object({ path: z.string().optional() }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-deck.tsx"),
@@ -752,7 +767,11 @@ const agentOutputDeckRoute = createRoute({
 const agentLibraryFileRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/library/file",
-  staticData: { defaultMain: "library-file", mainView: "library-file" },
+  staticData: {
+    defaultMain: "library-file",
+    mainView: "library-file",
+    mainTitleKey: "mainPanelTabs.libraryFileTab.title",
+  },
   validateSearch: z.object({ path: z.string().optional() }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-library-file.tsx"),
@@ -1216,15 +1235,26 @@ const settingsRegistryRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/registry",
   staticData: { mainTitleKey: "settings.nav.store" },
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/registry.tsx"),
-  ),
+  validateSearch: z.object({
+    registryTab: z.enum(["items", "requests", "qa", "settings"]).optional(),
+  }),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/settings/store/registry",
+      params: { org: params.org },
+      search,
+      replace: true,
+    });
+  },
 });
 
 const settingsStoreRegistryRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/store/registry",
   staticData: { mainTitleKey: "settings.nav.store" },
+  validateSearch: z.object({
+    registryTab: z.enum(["items", "requests", "qa", "settings"]).optional(),
+  }),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/store-registry.tsx"),
   ),

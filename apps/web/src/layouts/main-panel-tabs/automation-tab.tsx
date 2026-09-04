@@ -2,9 +2,8 @@ import { parseAutomationTabId } from "./tab-id";
 import { SettingsTab as AutomationInlineDetail } from "@/views/automations/automation-detail";
 import { AutomationRunsView } from "@/views/automations/automation-runs";
 import { useAutomation } from "@/hooks/use-automations";
-import { Page } from "@/components/page";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
+import { Main } from "@/components/main";
 import {
   Select,
   SelectContent,
@@ -12,8 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
-import { ArrowLeft } from "@untitledui/icons";
-import { usePanelNavigate } from "./use-panel-navigate";
 import { Suspense, useState } from "react";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
@@ -41,6 +38,10 @@ const WINDOW_OPTIONS = [
 
 type WindowKey = (typeof WINDOW_OPTIONS)[number]["key"];
 
+function isWindowKey(value: string): value is WindowKey {
+  return WINDOW_OPTIONS.some((option) => option.key === value);
+}
+
 function computeRange(key: WindowKey): { startDate: string; endDate: string } {
   const ms = WINDOW_OPTIONS.find((o) => o.key === key)!.ms;
   const now = Date.now();
@@ -53,59 +54,43 @@ function computeRange(key: WindowKey): { startDate: string; endDate: string } {
 function RunsTab({
   automationId,
   triggerIds,
+  range,
 }: {
   automationId: string;
   triggerIds: string[];
+  range: { startDate: string; endDate: string };
 }) {
-  const t = useT();
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [range, setRange] = useState(() => computeRange("30d"));
-
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-end">
-        <Select
-          value={windowKey}
-          onValueChange={(v) => {
-            const key = v as WindowKey;
-            setWindowKey(key);
-            setRange(computeRange(key));
-          }}
-        >
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {WINDOW_OPTIONS.map((o) => (
-              <SelectItem key={o.key} value={o.key}>
-                {t(o.labelKey)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <AutomationRunsView
-        automationId={automationId}
-        triggerIds={triggerIds}
-        range={range}
-      />
-    </div>
+    <AutomationRunsView
+      automationId={automationId}
+      triggerIds={triggerIds}
+      range={range}
+    />
   );
 }
 
 export function AutomationTab({
   tabId,
   routeAgentId,
+  activeView,
+  onViewChange,
 }: {
   tabId: string;
   routeAgentId: string;
+  activeView: "settings" | "runs";
+  onViewChange: (view: "settings" | "runs") => void;
 }) {
   const parsed = parseAutomationTabId(tabId);
   if (!parsed) return null;
 
   return (
     <Suspense fallback={<PanelLoading />}>
-      <AutomationTabInner id={parsed.id} routeAgentId={routeAgentId} />
+      <AutomationTabInner
+        id={parsed.id}
+        routeAgentId={routeAgentId}
+        activeView={activeView}
+        onViewChange={onViewChange}
+      />
     </Suspense>
   );
 }
@@ -113,16 +98,18 @@ export function AutomationTab({
 function AutomationTabInner({
   id,
   routeAgentId,
+  activeView,
+  onViewChange,
 }: {
   id: string;
   routeAgentId: string;
+  activeView: "settings" | "runs";
+  onViewChange: (view: "settings" | "runs") => void;
 }) {
   const t = useT();
-  const { openPanel } = usePanelNavigate();
   const { data: automation, isLoading } = useAutomation(id);
-  const [tab, setTab] = useState<"settings" | "runs">("settings");
-
-  const onBack = () => openPanel("automations");
+  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
+  const [range, setRange] = useState(() => computeRange("30d"));
 
   if (isLoading) {
     return <PanelLoading />;
@@ -142,34 +129,58 @@ function AutomationTabInner({
   const triggerIds = automation.triggers.map((t) => t.id);
 
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <div className="flex items-center justify-between pb-4 shrink-0">
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <ArrowLeft size={14} />
-              {t("mainPanelTabs.automationTab.backToList")}
-            </Button>
-            <CollectionTabs
-              tabs={[
-                {
-                  id: "settings",
-                  label: t("mainPanelTabs.automationTab.settings"),
-                },
-                { id: "runs", label: t("mainPanelTabs.automationTab.runs") },
-              ]}
-              activeTab={tab}
-              onTabChange={(t) => setTab(t as "settings" | "runs")}
-            />
-          </div>
+    <>
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 items-center justify-between gap-3">
+          <CollectionTabs
+            ariaLabel={t("sidebar.projectNav.automations")}
+            tabs={[
+              {
+                id: "settings",
+                label: t("mainPanelTabs.automationTab.settings"),
+              },
+              { id: "runs", label: t("mainPanelTabs.automationTab.runs") },
+            ]}
+            activeTab={activeView}
+            onTabChange={(next) => {
+              if (next === "settings" || next === "runs") {
+                onViewChange(next);
+              }
+            }}
+          />
+          {activeView === "runs" ? (
+            <Select
+              value={windowKey}
+              onValueChange={(value) => {
+                if (!isWindowKey(value)) return;
+                setWindowKey(value);
+                setRange(computeRange(value));
+              }}
+            >
+              <SelectTrigger className="h-8 w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WINDOW_OPTIONS.map((option) => (
+                  <SelectItem key={option.key} value={option.key}>
+                    {t(option.labelKey)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+        </div>
+      </Main.Toolbar.Portal>
 
-          {tab === "settings" ? (
+      <div className="h-full min-h-0 overflow-auto">
+        <Main.Container width="standard">
+          {activeView === "settings" ? (
             <AutomationInlineDetail automationId={id} automation={automation} />
           ) : (
-            <RunsTab automationId={id} triggerIds={triggerIds} />
+            <RunsTab automationId={id} triggerIds={triggerIds} range={range} />
           )}
-        </Page.Body>
-      </Page.Content>
-    </Page>
+        </Main.Container>
+      </div>
+    </>
   );
 }

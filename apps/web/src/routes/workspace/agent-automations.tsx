@@ -5,7 +5,7 @@ import { AgentRouteMain } from "./agent-route-main";
 export default function AgentAutomationsRoute() {
   const agentId = useRouteVirtualMcpId();
   return (
-    <AgentRouteMain contentClassName="overflow-hidden">
+    <AgentRouteMain contentMode="canvas">
       <AutomationsListTab virtualMcpId={agentId} />
     </AgentRouteMain>
   );

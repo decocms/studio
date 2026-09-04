@@ -136,6 +136,7 @@ export const details = {
   "details.tool.connectionNotFound": "Conexão não encontrada",
   "details.tool.connectionNotFoundMessage":
     "Esta conexão pode ter sido excluída ou você pode não ter acesso a ela.",
+  "details.tool.copyResult": "Copiar resultado",
   "details.tool.copiedToClipboard": "Copiado para a área de transferência",
   "details.tool.enter": "Insira {key}...",
   "details.tool.enterAsJson": "Insira {key} como JSON...",
@@ -146,6 +147,7 @@ export const details = {
   "details.tool.interactiveView": "Visualização interativa",
   "details.tool.jsonView": "Visualização JSON",
   "details.tool.loadingApp": "Carregando aplicativo...",
+  "details.tool.noDescription": "Nenhuma descrição disponível",
   "details.tool.noParametersRequired": "Nenhum parâmetro obrigatório",
   "details.tool.parameters": "Parâmetros",
   "details.tool.rawJsonExample": 'ex. { "foo": "bar" }',
@@ -155,4 +157,7 @@ export const details = {
   "details.tool.runToolToSeeResults":
     "Execute a ferramenta para ver os resultados",
   "details.tool.selectTrueOrFalse": "Selecione verdadeiro ou falso...",
+  "details.tool.statusConnecting": "Conectando",
+  "details.tool.statusError": "Erro",
+  "details.tool.statusReady": "Pronto",
 } satisfies Record<keyof typeof detailsEn, string>;

@@ -1,7 +1,7 @@
 import type { settings as settingsEn } from "../en/settings.ts";
 
 export const settings = {
-  "settings.title": "Perfil e preferências",
+  "settings.common.documentation": "Documentação",
   "settings.nav.organization": "Organização",
   "settings.nav.build": "Construir",
   "settings.nav.manage": "Gerenciar",
@@ -155,14 +155,17 @@ export const settings = {
   "settings.automations.emptyDescription":
     "As automa\u00e7\u00f5es s\u00e3o criadas por agente. Abra um agente e adicione uma na aba de Automa\u00e7\u00f5es.",
   "settings.automations.emptyTitle": "Nenhuma automa\u00e7\u00e3o ainda",
+  "settings.automations.errorDescription":
+    "Não foi possível carregar as automações desta organização.",
+  "settings.automations.errorTitle": "Não foi possível carregar as automações",
   "settings.automations.noResultsDescription":
     'Nenhuma automa\u00e7\u00e3o corresponde a "{search}"',
   "settings.automations.noResultsTitle":
     "Nenhuma automa\u00e7\u00e3o encontrada",
-  "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
+  "settings.automations.retry": "Tentar novamente",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Importar skill",
+  "settings.skills.actionsLabel": "A\u00e7\u00f5es para {name}",
   "settings.skills.importing": "Importando\u2026",
   "settings.skills.importSuccess": '"{name}" importada',
   "settings.skills.importError": "Falha ao importar a skill",
@@ -473,7 +476,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
     "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
@@ -543,6 +545,7 @@ export const settings = {
   "settings.orgRoleDetail.membersUpdatedSuccessfully":
     "Membros atualizados com sucesso!",
   "settings.orgRoleDetail.models": "Modelos",
+  "settings.orgRoleDetail.newRole": "Novo papel",
   "settings.orgRoleDetail.noLlmConnectionsConfigured":
     "Nenhuma conex\u00e3o LLM configurada",
   "settings.orgRoleDetail.noMembers": "Sem membros",
@@ -560,6 +563,8 @@ export const settings = {
   "settings.orgRoleDetail.removeMember": "Remover {name} do papel",
   "settings.orgRoleDetail.roleCreatedSuccessfully": "Papel criado com sucesso!",
   "settings.orgRoleDetail.roleName": "Nome do papel",
+  "settings.orgRoleDetail.sectionsAriaLabel":
+    "Configura\u00e7\u00f5es do papel",
   "settings.orgRoleDetail.roleNameIsRequired":
     "Nome do papel \u00e9 obrigat\u00f3rio",
   "settings.orgRoleDetail.roleUpdatedSuccessfully":
@@ -609,12 +614,13 @@ export const settings = {
     "Aplica\u00e7\u00e3o de SSO desativada",
   "settings.orgSso.enforcementEnabledSuccess":
     "Aplica\u00e7\u00e3o de SSO ativada",
+  "settings.orgSso.failedToLoad":
+    "N\u00e3o foi poss\u00edvel carregar as configura\u00e7\u00f5es de SSO",
   "settings.orgSso.issuerUrlDescription":
     "A URL do issuer OIDC do seu provedor de identidade.",
   "settings.orgSso.issuerUrlLabel": "URL do Issuer",
   "settings.orgSso.issuerUrlPlaceholder":
     "https://login.microsoftonline.com/{tenant}/v2.0",
-  "settings.orgSso.loading": "Carregando...",
   "settings.orgSso.providerLabel": "Provedor",
   "settings.orgSso.removeButton": "Remover",
   "settings.orgSso.removeConfirmation":
@@ -625,11 +631,11 @@ export const settings = {
     "Issuer, ID do Cliente e Dom\u00ednio s\u00e3o obrigat\u00f3rios",
   "settings.orgSso.saveSsoConfigError":
     "Falha ao salvar configura\u00e7\u00e3o SSO",
+  "settings.orgSso.retry": "Tentar novamente",
   "settings.orgSso.savingButton": "Salvando...",
   "settings.orgSso.scopesLabel": "Escopos",
   "settings.orgSso.scopesPlaceholder": "openid email profile",
   "settings.orgSso.sectionTitle": "Single Sign-On",
-  "settings.orgSso.securityTitle": "Seguran\u00e7a",
   "settings.orgSso.testSsoButton": "Testar SSO",
   "settings.orgSso.toggleEnforcementError":
     "Falha ao alternar aplica\u00e7\u00e3o de SSO",
@@ -657,7 +663,6 @@ export const settings = {
   "settings.orgStore.nameLabel": "Nome",
   "settings.orgStore.namePlaceholder": "p.ex. Registro Acme Corp",
   "settings.orgStore.optional": "Opcional",
-  "settings.orgStore.pageTitle": "Loja",
   "settings.orgStore.privateMcpRegistry": "Registro MCP privado",
   "settings.orgStore.privateRegistriesSection": "Registros Privados",
   "settings.orgStore.privateRegistry": "Registro Privado",
@@ -669,6 +674,8 @@ export const settings = {
     "https://registry.exemplo.com/mcp",
   "settings.orgStore.remove": "Remover",
   "settings.orgStore.removeRegistry": "Remover este registro?",
+  "settings.orgStore.removeRegistryLabel": "Remover {name}",
+  "settings.orgStore.toggleRegistryLabel": "Ativar ou desativar {name}",
   "settings.organizationForm.failedToReadImage": "Falha ao ler imagem",
   "settings.organizationForm.failedToUpdateOrg":
     "Falha ao atualizar organiza\u00e7\u00e3o",
@@ -698,6 +705,7 @@ export const settings = {
   "settings.providerKeyRow.keyDeleted": "Chave exclu\u00edda",
   "settings.roles.allConnections": "Todas as conex\u00f5es",
   "settings.roles.basicAccess": "Acesso b\u00e1sico",
+  "settings.roles.actionsLabel": "A\u00e7\u00f5es para {role}",
   "settings.roles.builtIn": "Integrada",
   "settings.roles.cancel": "Cancelar",
   "settings.roles.columnMembers": "Membros",
@@ -716,6 +724,7 @@ export const settings = {
   "settings.roles.deletedSuccessfully":
     "Fun\u00e7\u00e3o exclu\u00edda com sucesso!",
   "settings.roles.failedToLoad": "Falha ao carregar fun\u00e7\u00f5es",
+  "settings.roles.failedToDelete": "Falha ao excluir fun\u00e7\u00e3o",
   "settings.roles.fullAccess": "Acesso completo",
   "settings.roles.fullOrgAccess": "Acesso completo da organiza\u00e7\u00e3o",
   "settings.roles.noPermissions": "Sem permiss\u00f5es",
@@ -772,6 +781,7 @@ export const settings = {
   "settings.secrets.emptyTitle": "Nenhum segredo ainda",
   "settings.secrets.failedToCreateSecret": "Falha ao criar segredo",
   "settings.secrets.failedToLoadError": "Falha ao carregar segredos: {error}",
+  "settings.secrets.failedToLoadFallback": "Falha ao carregar segredos",
   "settings.secrets.nameHelp":
     "Letras, d\u00edgitos, sublinhado, ponto, h\u00edfen. Sem distin\u00e7\u00e3o entre mai\u00fasculas e min\u00fasculas dentro do seu escopo.",
   "settings.secrets.nameLabel": "Nome",

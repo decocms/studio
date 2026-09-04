@@ -4,7 +4,6 @@ import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Outlet, useRouterState } from "@tanstack/react-router";
 import { Main } from "@/components/main";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { PageContentClassNameProvider } from "@/components/page";
 import { useT } from "@/i18n/use-t";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import {
@@ -38,7 +37,7 @@ export default function SettingsLayout() {
     <>
       <Main className="bg-sidebar p-0 md:p-1.5">
         <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background md:rounded-[0.75rem] md:card-shadow">
-          <Main.Topbar className="grid-cols-[minmax(0,1fr)_auto]">
+          <Main.Topbar>
             <Main.Topbar.Left>
               <div className="md:hidden">
                 <SidebarTriggerButton />
@@ -74,17 +73,20 @@ export default function SettingsLayout() {
               />
               <Main.Topbar.Left.Target />
             </Main.Topbar.Left>
-            <Main.Topbar.Right className="col-start-2">
+            <Main.Topbar.Center>
+              <Main.Topbar.Center.Target />
+            </Main.Topbar.Center>
+            <Main.Topbar.Right>
               <Main.Topbar.Right.Target />
             </Main.Topbar.Right>
           </Main.Topbar>
 
-          <Main.Content className="overflow-hidden">
+          <Main.Toolbar />
+
+          <Main.Content mode="canvas">
             <ErrorBoundary key={routeKey}>
               <MainPanelBoundary>
-                <PageContentClassNameProvider value="p-0">
-                  <Outlet />
-                </PageContentClassNameProvider>
+                <Outlet />
               </MainPanelBoundary>
             </ErrorBoundary>
           </Main.Content>

@@ -138,12 +138,12 @@ test.describe("tab error boundary recovers on tab switch", () => {
       timeout: 60_000,
     });
 
-    // Sandbox drawer's setup button is a sibling of the boundary, so it
+    // Sandbox drawer's setup tab is a sibling of the boundary, so it
     // stays mounted and interactive — the drawer chrome should still render
     // even though the tab body crashed.
     const sandboxToolbarTab = page
       .getByTestId("main-panel")
-      .getByRole("button", { name: /^sandbox$/i });
+      .getByRole("tab", { name: /^sandbox$/i });
     await expect(sandboxToolbarTab).toBeVisible({ timeout: 60_000 });
   });
 

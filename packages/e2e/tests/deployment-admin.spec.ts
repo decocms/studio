@@ -890,25 +890,32 @@ test.describe("/api/_admin/*", () => {
     const admin = await ensureDeploymentAdmin(adminCtx);
     await verifyDeploymentAdmin(db, admin.userId);
 
+    const scope = crypto.randomUUID();
     const orgACtx = await newApiContext(playwright);
-    const orgA = await signUpViaApi(orgACtx);
+    const orgA = await signUpViaApi(orgACtx, {
+      email: `site-reassign-a-${scope}@playwright.local`,
+      name: `SiteReassignA${scope.replaceAll("-", "")} Owner`,
+    });
     const orgAId = (
       await db.query<{ id: string }>(
         `SELECT id FROM "organization" WHERE slug = $1`,
         [orgA.orgSlug],
       )
     ).rows[0]?.id;
-    const orgBCtx = await newApiContext(playwright);
-    const orgB = await signUpViaApi(orgBCtx);
+    const orgBSlug = `site-reassign-b-${scope}`;
+    const createOrgB = await orgACtx.post("/api/auth/organization/create", {
+      data: { name: `Site Reassign B ${scope}`, slug: orgBSlug },
+    });
+    expect(createOrgB.status()).toBe(200);
     const orgBId = (
       await db.query<{ id: string }>(
         `SELECT id FROM "organization" WHERE slug = $1`,
-        [orgB.orgSlug],
+        [orgBSlug],
       )
     ).rows[0]?.id;
     if (!orgAId || !orgBId) throw new Error("Org not found after signup");
 
-    const slug = `e2e-shared-${Date.now()}`;
+    const slug = `e2e-shared-${scope}`;
     expect(
       (
         await adminCtx.post(`/api/_admin/orgs/${orgAId}/sites`, {
@@ -963,7 +970,6 @@ test.describe("/api/_admin/*", () => {
 
     await adminCtx.dispose();
     await orgACtx.dispose();
-    await orgBCtx.dispose();
   });
 
   test("sites: invalid slug 400, unknown org 404, non-admin blocked", async ({
@@ -1089,9 +1095,18 @@ test.describe("/api/_admin/*", () => {
 
     await page.goto("/_admin");
     await expect(
-      page.getByRole("heading", { name: "Admin Dashboard" }),
+      page
+        .locator('[data-slot="main-topbar-left"]')
+        .getByRole("heading", { level: 1, name: "Users", exact: true }),
     ).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
+    await expect(page.locator("h1")).toHaveCount(1);
+    const adminNavigation = page.getByRole("navigation", {
+      name: "Admin sections",
+      exact: true,
+    });
+    await expect(
+      adminNavigation.getByRole("link", { name: "Users", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
 
     // The index route redirects to the users tab; a broken redirect renders a
     // blank outlet under a green heading.
@@ -1105,9 +1120,11 @@ test.describe("/api/_admin/*", () => {
 
     // Search reaches the API and finds a known row (the admin itself — the
     // unsearched first page can't be asserted on a long-lived dev DB).
-    await page
-      .getByPlaceholder("Search users by email or name...")
-      .fill(DEPLOYMENT_ADMIN_EMAIL);
+    const search = page
+      .locator('[data-slot="main-toolbar"]')
+      .getByPlaceholder("Search users by email or name...");
+    await expect(search).toBeVisible();
+    await search.fill(DEPLOYMENT_ADMIN_EMAIL);
     await expect(page.getByText(DEPLOYMENT_ADMIN_EMAIL).first()).toBeVisible({
       timeout: 15_000,
     });

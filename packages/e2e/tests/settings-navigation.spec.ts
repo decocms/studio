@@ -7,19 +7,27 @@
 
 import { sleep } from "@decocms/shared/std";
 import { expect, test } from "../fixtures/test";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 
 const SIDEBAR = '[data-slot="sidebar"]';
 const SUBNAV = '[data-slot="settings-subnav"]';
-const HEADING = '[data-slot="settings-heading"]';
+const TOPBAR_LEFT = '[data-slot="main-topbar-left"]';
+const TOPBAR_RIGHT = '[data-slot="main-topbar-right"]';
+const MAIN_CONTENT = '[data-slot="main-content"]';
+const SHELL_TIMEOUT_MS = 60_000;
 
 test.describe("settings sidebar", () => {
   test("advanced rows stay collapsed until asked for", async ({
     authedPage,
   }) => {
+    // Signup, the first org public-set sync, and cold route compilation may
+    // share one local dev-server event loop with three other E2E workers.
+    test.slow();
     const { page, orgSlug } = authedPage;
     await page.goto(`/${orgSlug}/settings/general`);
 
     const sidebar = page.locator(SIDEBAR);
+    await expect(sidebar).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(sidebar.getByRole("link", { name: "General" })).toBeVisible();
     await expect(sidebar.getByRole("link", { name: "Secrets" })).toHaveCount(0);
 
@@ -32,10 +40,13 @@ test.describe("settings sidebar", () => {
   test("a deep link into an advanced row opens the disclosure", async ({
     authedPage,
   }) => {
+    test.slow();
     const { page, orgSlug } = authedPage;
     await page.goto(`/${orgSlug}/settings/buckets`);
 
-    const storage = page.locator(SIDEBAR).getByRole("link", {
+    const sidebar = page.locator(SIDEBAR);
+    await expect(sidebar).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    const storage = sidebar.getByRole("link", {
       name: "Storage",
     });
     await expect(storage).toBeVisible();
@@ -49,6 +60,105 @@ test.describe("settings sidebar", () => {
  * signer-upper in the suite.
  */
 test.describe("settings tabs", () => {
+  test("storage create actions stay in the topbar at compact widths", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const api = page.context().request;
+    await page.setViewportSize({ width: 320, height: 720 });
+
+    await page.goto(`/${orgSlug}/settings/buckets`);
+
+    const addBucket = page
+      .locator(TOPBAR_RIGHT)
+      .getByRole("button", { name: "Add bucket", exact: true });
+    await expect(addBucket).toBeVisible();
+    await expect(
+      page
+        .locator(MAIN_CONTENT)
+        .getByRole("button", { name: "Add bucket", exact: true }),
+      "an empty page keeps its contextual shortcut",
+    ).toBeVisible();
+    expect(
+      await addBucket.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= window.innerWidth;
+      }),
+      "the compact topbar action is not clipped",
+    ).toBe(true);
+
+    await callSelfMcpTool(api, orgSlug, "FILE_CONFIG_CREATE", {
+      name: `settings-nav-${Date.now()}`,
+      bucket: "settings-navigation",
+      region: "us-east-1",
+      credentialType: "static",
+      accessKeyId: "e2e-access-key",
+      secretAccessKey: "e2e-secret-key",
+    });
+    await page.reload();
+
+    await expect(addBucket).toBeVisible();
+    await expect(
+      page
+        .locator(MAIN_CONTENT)
+        .getByRole("button", { name: "Add bucket", exact: true }),
+      "a populated page has no duplicate content action",
+    ).toHaveCount(0);
+
+    await page.goto(`/${orgSlug}/settings/synced-repos`);
+
+    const addRepo = page
+      .locator(TOPBAR_RIGHT)
+      .getByRole("button", { name: "Add repo", exact: true });
+    await expect(addRepo).toBeVisible();
+    await expect(
+      page
+        .locator(MAIN_CONTENT)
+        .getByRole("button", { name: "Add repo", exact: true }),
+      "an empty page keeps its contextual shortcut",
+    ).toBeVisible();
+    expect(
+      await addRepo.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= window.innerWidth;
+      }),
+      "the compact topbar action is not clipped",
+    ).toBe(true);
+
+    const { item: repoConnection } = await callSelfMcpTool<{
+      item: { id: string };
+    }>(api, orgSlug, "COLLECTION_CONNECTIONS_CREATE", {
+      data: {
+        title: `GitHub: settings navigation ${Date.now()}`,
+        app_name: "mcp-github",
+        connection_type: "HTTP",
+        connection_url: "https://example.com/mcp",
+        metadata: {
+          repoScope: {
+            installationId: 1,
+            repositoryId: 99,
+            owner: "acme",
+            repo: "widget",
+            permissions: { contents: "read" },
+          },
+        },
+      },
+    });
+    await callSelfMcpTool(api, orgSlug, "ORG_REPO_SYNC_CREATE", {
+      connectionId: repoConnection.id,
+      volume: `settings-nav-${Date.now()}`,
+    });
+    await page.reload();
+
+    await expect(addRepo).toBeVisible();
+    await expect(
+      page
+        .locator(MAIN_CONTENT)
+        .getByRole("button", { name: "Add repo", exact: true }),
+      "a populated page has no duplicate content action",
+    ).toHaveCount(0);
+  });
+
   test("a merged row stays highlighted while its tabs navigate", async ({
     authedPage,
   }) => {
@@ -77,7 +187,13 @@ test.describe("settings tabs", () => {
     const { page, orgSlug } = authedPage;
     await page.goto(`/${orgSlug}/settings/connect`);
 
-    await expect(page.locator(HEADING)).toContainText("Connect to clients");
+    await expect(
+      page.locator(TOPBAR_LEFT).getByRole("heading", {
+        level: 1,
+        name: "Connect",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(page.locator(SUBNAV)).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: "Connect a client" }),
@@ -96,7 +212,13 @@ test.describe("settings tabs", () => {
     const { page, orgSlug } = authedPage;
     await page.goto(`/${orgSlug}/settings/api-keys`);
 
-    await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
+    await expect(
+      page.locator(TOPBAR_LEFT).getByRole("heading", {
+        level: 1,
+        name: "API keys",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(page.locator(SUBNAV)).toHaveCount(0);
     await expect(
       page.locator(SIDEBAR).getByRole("link", { name: "Connect", exact: true }),
@@ -124,7 +246,13 @@ test.describe("settings tabs", () => {
     await tabs.getByRole("link", { name: "Buckets" }).click();
 
     await expect(page.getByTestId("settings-content-loading")).toBeVisible();
-    await expect(page.locator(HEADING)).toContainText("Storage");
+    await expect(
+      page.locator(TOPBAR_LEFT).getByRole("heading", {
+        level: 1,
+        name: "Buckets",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(
       tabs.getByRole("link", { name: "Synced repos" }),
     ).toBeVisible();

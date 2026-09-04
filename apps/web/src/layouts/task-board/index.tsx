@@ -1172,13 +1172,44 @@ export function TaskBoardPage() {
   const topbarContributions = (
     <Main.Topbar.Right.Portal>{topbarActions}</Main.Topbar.Right.Portal>
   );
+  const showBodyToolbar = items.length > 0;
+  const toolbarContributions =
+    showBodyToolbar && !openItem ? (
+      <Main.Toolbar.Portal>
+        <div className="flex min-w-0 flex-1 items-center">
+          <div className="sm:hidden">
+            <TaskFiltersDrawer
+              filters={filters}
+              members={members}
+              tags={orgTags}
+              index={projectIndex}
+              onChange={handleFiltersChange}
+              onOpenBoardSettings={openBoardSettings}
+            />
+          </div>
+          <div className="hidden min-w-0 flex-1 overflow-x-auto sm:block">
+            <TaskFiltersBar
+              filters={filters}
+              members={members}
+              tags={orgTags}
+              index={projectIndex}
+              onChange={handleFiltersChange}
+              onOpenBoardSettings={openBoardSettings}
+            />
+          </div>
+        </div>
+      </Main.Toolbar.Portal>
+    ) : null;
 
   if (isLoading && items.length === 0) {
     return (
       <>
         {topbarContributions}
         <div className="flex flex-1 items-center justify-center">
-          <Spinner className="size-5 text-muted-foreground" />
+          <Spinner
+            className="size-5 text-muted-foreground"
+            label={t("common.loading")}
+          />
         </div>
       </>
     );
@@ -1214,54 +1245,10 @@ export function TaskBoardPage() {
     );
   }
 
-  const showBodyToolbar = items.length > 0;
-
   /** The board itself — header, toolbar, lanes. Hoisted so wrapping it
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-      {/* Header — capped + centered to the same width as the board content so
-        they line up; content-capped, not scroll-capped. */}
-      {showBodyToolbar && (
-        <div
-          className={cn(
-            "mx-auto flex w-full max-w-[1680px] flex-col gap-3 px-4 pt-4 sm:px-8 sm:pt-6",
-          )}
-        >
-          {/* Commerce orgs: a persistent unlock CTA that self-hides once the
-          diagnostic is paid. The board stays usable in the meantime. */}
-
-          {/* Toolbar — filters on the left (inline bar on desktop, a single
-          drawer button on mobile), view toggle + New task on the right. */}
-          <div className="flex flex-wrap items-center gap-2">
-            {items.length > 0 && (
-              <>
-                <div className="sm:hidden">
-                  <TaskFiltersDrawer
-                    filters={filters}
-                    members={members}
-                    tags={orgTags}
-                    index={projectIndex}
-                    onChange={handleFiltersChange}
-                    onOpenBoardSettings={openBoardSettings}
-                  />
-                </div>
-                <div className="hidden sm:block">
-                  <TaskFiltersBar
-                    filters={filters}
-                    members={members}
-                    tags={orgTags}
-                    index={projectIndex}
-                    onChange={handleFiltersChange}
-                    onOpenBoardSettings={openBoardSettings}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
           <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
@@ -1370,6 +1357,7 @@ export function TaskBoardPage() {
       className="relative flex min-h-0 flex-1 flex-col"
     >
       {topbarContributions}
+      {toolbarContributions}
 
       {/* Hidden rather than unmounted while a task is open: lane scroll, the
           horizontal board scroll and dnd-kit's state all survive the trip into
@@ -2583,7 +2571,7 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
         attentionLabel
           ? "bg-warning/10 hover:bg-warning/15"
           : "bg-card hover:bg-accent/60",
@@ -2661,7 +2649,7 @@ function ListRow({
     <button
       type="button"
       onClick={onOpen}
-      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-accent/60"
+      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
     >
       <StatusIcon
         size={16}

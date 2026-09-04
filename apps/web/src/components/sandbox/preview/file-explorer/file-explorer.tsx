@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useEffect, useState, useRef } from "react";
+import { type RefCallback, useId, useRef, useState } from "react";
 import {
   ArrowLeft,
   FilePlus01,
@@ -29,14 +29,20 @@ import {
   fetchGitStatus,
   sandboxGitStatusQueryKey,
 } from "../../../thread/github/sandbox-git-api.ts";
-import type { FileBuffer, TreeNode } from "./types";
+import type { FileBuffer, FileOperationError, TreeNode } from "./types";
 import {
   FileExplorerNameDialog,
   type FileExplorerNameDialogMode,
 } from "./file-explorer-name-dialog";
 import { FileExplorerDeleteDialog } from "./file-explorer-delete-dialog";
+import { FileExplorerUnsavedDialog } from "./file-explorer-unsaved-dialog";
 import { FileTreeRow } from "./file-tree-row";
-import { LatestWriteQueue } from "./latest-write-queue";
+import { useCodeWorkspace } from "./code-workspace-context";
+import {
+  activeFileAfterTabClose,
+  fileBufferIsDirty,
+  tabIndexForKey,
+} from "./file-tab-state";
 import { buildSandboxUrl, type SandboxProxyRef } from "@/sdk/sandbox-url";
 import {
   buildFileTree,
@@ -77,7 +83,6 @@ const FILENAME_MATCH_LIMIT = 200;
 /** At narrower widths the tree and editor become a mounted drill-in flow. */
 const COMPACT_CODE_WORKSPACE_WIDTH = 640;
 
-type CompactCodePane = "tree" | "editor";
 type EditorFocusTarget = "back" | "pending-reveal";
 
 interface FileOpenIntent {
@@ -132,6 +137,30 @@ function GrepMatchLine({ text, query }: { text: string; query: string }) {
   );
 }
 
+function OpenPathSynchronization({
+  openPath,
+  open,
+  invalidate,
+}: {
+  openPath: string | null | undefined;
+  open: (path: string) => void;
+  invalidate: () => void;
+}) {
+  const [mount] = useState<RefCallback<HTMLSpanElement>>(
+    () => (node: HTMLSpanElement | null) => {
+      if (!node) return;
+      if (openPath && isSafeExplorerOpenPath(openPath)) {
+        open(openPath);
+      } else {
+        invalidate();
+      }
+      return invalidate;
+    },
+  );
+
+  return <span ref={mount} hidden data-slot="file-explorer-open-path-sync" />;
+}
+
 export function FileExplorer({
   orgSlug,
   virtualMcpId,
@@ -139,18 +168,34 @@ export function FileExplorer({
   threadId,
   openPath,
 }: FileExplorerProps) {
+  const {
+    buffers,
+    setBuffers,
+    fileErrors,
+    setFileErrors,
+    openTabs,
+    openTabPathsRef,
+    updateOpenTabs,
+    selectedFile,
+    setSelectedFile,
+    selectedTreeNode,
+    setSelectedTreeNode,
+    compactPane,
+    setCompactPane,
+    fileReadInflightRef,
+    fileWriteQueue,
+  } = useCodeWorkspace();
   const [workspaceWidth, workspaceRef] = useElementWidth();
   const isCompactWorkspace =
     workspaceWidth >= 0 && workspaceWidth < COMPACT_CODE_WORKSPACE_WIDTH;
-  const [compactPane, setCompactPane] = useState<CompactCodePane>(() =>
-    openPath && isSafeExplorerOpenPath(openPath) ? "editor" : "tree",
-  );
   const compactBackButtonRef = useRef<HTMLButtonElement>(null);
   const treeSearchInputRef = useRef<HTMLInputElement>(null);
   const openTabsRef = useRef<HTMLDivElement>(null);
+  const fileTabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const editorPanelId = useId();
   const compactBackHandoffRef = useFocusHandoffRef(
     compactBackButtonRef,
-    { ref: openTabsRef, selector: 'button[aria-pressed="true"]' },
+    { ref: openTabsRef, selector: '[role="tab"][aria-selected="true"]' },
     { ref: treeSearchInputRef },
   );
 
@@ -196,21 +241,6 @@ export function FileExplorer({
   }>({ files: [], directories: [], truncated: false });
   const { files, directories } = treeLists;
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNode | null>(
-    null,
-  );
-  const [openTabs, setOpenTabs] = useState<string[]>([]);
-  // Async filesystem mutations must consult the tabs that exist when they
-  // complete, not the render snapshot from when their dialog was submitted.
-  const openTabPathsRef = useRef<string[]>([]);
-
-  function updateOpenTabs(updater: (current: string[]) => string[]): string[] {
-    const next = updater(openTabPathsRef.current);
-    openTabPathsRef.current = next;
-    setOpenTabs(next);
-    return next;
-  }
   const [search, setSearch] = useState("");
   // Filename matches across the WHOLE repo (not just the loaded tree). `null` =
   // not searching; `[]` = searched, no hits. Tree paths (leading slash).
@@ -273,16 +303,14 @@ export function FileExplorer({
     });
   }
 
-  // File buffers: path -> { savedContent, editorValue, loaded }
-  const [buffers, setBuffers] = useState<Map<string, FileBuffer>>(new Map());
+  const [pendingTabClose, setPendingTabClose] = useState<string | null>(null);
+  const [tabCloseSaving, setTabCloseSaving] = useState(false);
   // Coalesce reads per path. In particular, drilling out and back into a file
   // before its first read resolves must not start a second response that can
   // later overwrite a user's dirty buffer.
-  const fileReadInflightRef = useRef<Map<string, Promise<string>>>(new Map());
   // Preserve server arrival order for repeated saves of one path. While a
   // write is running, repeated Cmd/Ctrl+S requests converge on the newest
   // editor value instead of racing an older response against it.
-  const fileWriteQueueRef = useRef(new LatestWriteQueue<string, string>());
 
   // Editor ref for save
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
@@ -403,6 +431,15 @@ export function FileExplorer({
       }
       return next;
     });
+    setFileErrors((prev) => {
+      const next = new Map<string, FileOperationError>();
+      for (const [path, error] of prev) {
+        const mapped = remap(path);
+        if (mapped) next.set(mapped, error);
+      }
+      return next;
+    });
+    setPendingTabClose((prev) => (prev ? remap(prev) : prev));
     setSelectedTreeNode((prev) => {
       if (!prev) return prev;
       const nextPath = remap(prev.path);
@@ -503,7 +540,7 @@ export function FileExplorer({
     if (pathExistsInFileList(toPath, files, directories)) {
       throw new Error(t("sandbox.fileExplorer.fileAlreadyExists", { name }));
     }
-    await fileWriteQueueRef.current.withFence(
+    await fileWriteQueue.withFence(
       (path) => isPathAtOrBelow(path, fromPath),
       async () => {
         await postSandbox("rename", {
@@ -562,7 +599,7 @@ export function FileExplorer({
     invalidateFileOpenIntent();
     setFsActionPending(true);
     try {
-      await fileWriteQueueRef.current.withFence(
+      await fileWriteQueue.withFence(
         (path) => isPathAtOrBelow(path, node.path),
         async () => {
           await postSandbox("unlink", {
@@ -637,21 +674,6 @@ export function FileExplorer({
   }
 
   const t = useT();
-
-  // Deep-link selection synchronizes the committed route with this stateful
-  // editor. Starting it during render can leak work from an abandoned
-  // concurrent render, so this is intentionally commit-bound. Cleanup fences
-  // every outstanding async ancestor lookup before the next path takes over.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- external route-to-editor synchronization must start after commit
-  useEffect(() => {
-    if (openPath && isSafeExplorerOpenPath(openPath)) {
-      openFileGuarded(openPath);
-    } else {
-      invalidateFileOpenIntent();
-    }
-    return () => invalidateFileOpenIntent();
-    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- open helpers are render-local; the route path is the synchronization key
-  }, [openPath]);
 
   async function fetchGlob(
     body: Record<string, unknown>,
@@ -784,6 +806,12 @@ export function FileExplorer({
 
   async function loadFileContent(path: string) {
     if (buffers.get(path)?.loaded) return;
+    setFileErrors((prev) => {
+      if (prev.get(path)?.kind !== "read") return prev;
+      const next = new Map(prev);
+      next.delete(path);
+      return next;
+    });
     // Reopening a just-closed path may join a read already in flight. Restore
     // the placeholder first so that shared response has somewhere to commit.
     setBuffers((prev) => {
@@ -825,8 +853,25 @@ export function FileExplorer({
         });
         return next;
       });
-    } catch {
-      // Failed to load — leave buffer empty
+      setFileErrors((prev) => {
+        if (prev.get(path)?.kind !== "read") return prev;
+        const next = new Map(prev);
+        next.delete(path);
+        return next;
+      });
+    } catch (error) {
+      // Preserve the unloaded placeholder so Retry can reuse the open tab,
+      // while making the failed read distinguishable from an in-flight one.
+      if (openTabPathsRef.current.includes(path)) {
+        setFileErrors((prev) => {
+          const next = new Map(prev);
+          next.set(path, {
+            kind: "read",
+            message: error instanceof Error ? error.message : String(error),
+          });
+          return next;
+        });
+      }
     } finally {
       if (fileReadInflightRef.current.get(path) === read) {
         fileReadInflightRef.current.delete(path);
@@ -954,9 +999,9 @@ export function FileExplorer({
     openFileGuarded(match.path, "pending-reveal", reveal);
   }
 
-  async function saveFile(path: string, content: string) {
+  async function saveFile(path: string, content: string): Promise<boolean> {
     try {
-      await fileWriteQueueRef.current.enqueue(path, content, async (latest) => {
+      await fileWriteQueue.enqueue(path, content, async (latest) => {
         await postSandbox("write", {
           path: toDaemonPath(path),
           content: latest,
@@ -982,12 +1027,30 @@ export function FileExplorer({
           }
           return next;
         });
+        setFileErrors((prev) => {
+          if (prev.get(path)?.kind !== "write") return prev;
+          const next = new Map(prev);
+          next.delete(path);
+          return next;
+        });
       });
+      return true;
     } catch (err) {
       saveChangesDebug("file save failed", {
         path,
         error: err instanceof Error ? err.message : String(err),
       });
+      if (openTabPathsRef.current.includes(path)) {
+        setFileErrors((prev) => {
+          const next = new Map(prev);
+          next.set(path, {
+            kind: "write",
+            message: err instanceof Error ? err.message : String(err),
+          });
+          return next;
+        });
+      }
+      return false;
     }
   }
 
@@ -1005,13 +1068,18 @@ export function FileExplorer({
     loadFileContent(path);
   }
 
-  function closeTab(path: string) {
+  function closeTabNow(path: string) {
     invalidateFileOpenIntent();
+    const currentTabs = openTabPathsRef.current;
+    const nextSelectedFile = activeFileAfterTabClose(
+      currentTabs,
+      selectedFile,
+      path,
+    );
     const nextTabs = updateOpenTabs((current) =>
       current.filter((tab) => tab !== path),
     );
     if (selectedFile === path) {
-      const nextSelectedFile = nextTabs[nextTabs.length - 1] ?? null;
       setSelectedFile(nextSelectedFile);
       if (!nextSelectedFile) showFileTree();
     }
@@ -1020,6 +1088,66 @@ export function FileExplorer({
       next.delete(path);
       return next;
     });
+    setFileErrors((prev) => {
+      if (!prev.has(path)) return prev;
+      const next = new Map(prev);
+      next.delete(path);
+      return next;
+    });
+    setPendingTabClose((pending) => (pending === path ? null : pending));
+    requestAnimationFrame(() => {
+      if (nextSelectedFile) {
+        fileTabRefs.current.get(nextSelectedFile)?.focus();
+      } else if (nextTabs.length === 0) {
+        treeSearchInputRef.current?.focus();
+      }
+    });
+  }
+
+  function requestCloseTab(path: string) {
+    if (fileBufferIsDirty(buffers.get(path))) {
+      setPendingTabClose(path);
+      return;
+    }
+    closeTabNow(path);
+  }
+
+  async function saveAndClosePendingTab() {
+    const path = pendingTabClose;
+    if (!path || tabCloseSaving) return;
+    const buffer = buffers.get(path);
+    if (!buffer?.loaded) {
+      closeTabNow(path);
+      return;
+    }
+    setTabCloseSaving(true);
+    try {
+      if (await saveFile(path, buffer.editorValue)) closeTabNow(path);
+    } finally {
+      setTabCloseSaving(false);
+    }
+  }
+
+  function handleFileTabKeyDown(
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    path: string,
+  ) {
+    if (event.key === "Delete") {
+      event.preventDefault();
+      requestCloseTab(path);
+      return;
+    }
+
+    const currentIndex = openTabs.indexOf(path);
+    const nextIndex = tabIndexForKey(event.key, currentIndex, openTabs.length);
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextPath = openTabs[nextIndex];
+    if (!nextPath) return;
+    invalidateFileOpenIntent();
+    setSelectedFile(nextPath);
+    void loadFileContent(nextPath);
+    fileTabRefs.current.get(nextPath)?.focus();
   }
 
   function toggleDir(path: string) {
@@ -1161,9 +1289,12 @@ export function FileExplorer({
   const contentMatchCount = contentMatches?.length ?? 0;
 
   const currentBuffer = selectedFile ? buffers.get(selectedFile) : null;
-  const isDirty =
-    currentBuffer?.loaded &&
-    currentBuffer.editorValue !== currentBuffer.savedContent;
+  const currentError = selectedFile ? fileErrors.get(selectedFile) : undefined;
+  const isDirty = fileBufferIsDirty(currentBuffer ?? undefined);
+
+  function fileTabId(path: string): string {
+    return `${editorPanelId}-tab-${encodeURIComponent(path)}`;
+  }
 
   const deleteDirtyPaths = deleteTarget
     ? getDirtyOpenPathsUnder(deleteTarget.path)
@@ -1219,9 +1350,22 @@ export function FileExplorer({
     setAskAi(null);
   }
 
+  // The identity/path key makes route-to-editor synchronization a commit
+  // lifecycle: a replacement first fences the previous async open, then starts
+  // the next one. Abandoned concurrent renders cannot start IO.
+  const openPathSynchronization = (
+    <OpenPathSynchronization
+      key={JSON.stringify([orgSlug, virtualMcpId, branch, threadId, openPath])}
+      openPath={openPath}
+      open={openFileGuarded}
+      invalidate={invalidateFileOpenIntent}
+    />
+  );
+
   if (loading && !treeLoaded) {
     return (
       <div className="flex items-center justify-center h-full w-full">
+        {openPathSynchronization}
         <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
@@ -1232,6 +1376,7 @@ export function FileExplorer({
       ref={workspaceRef}
       className="@container [container-name:cms-code] flex h-full w-full overflow-hidden"
     >
+      {openPathSynchronization}
       {/* File tree sidebar */}
       <div
         data-code-pane="tree"
@@ -1499,7 +1644,8 @@ export function FileExplorer({
             )}
             <div
               ref={openTabsRef}
-              role="group"
+              role="tablist"
+              aria-orientation="horizontal"
               aria-label={t("sandbox.fileExplorer.files")}
               className="flex min-w-0 flex-1 items-stretch overflow-x-auto"
             >
@@ -1514,6 +1660,7 @@ export function FileExplorer({
                 return (
                   <div
                     key={tab}
+                    role="presentation"
                     className={cn(
                       "flex shrink-0 items-stretch border-r text-xs transition-colors",
                       isActive
@@ -1522,18 +1669,35 @@ export function FileExplorer({
                     )}
                   >
                     <button
+                      ref={(button) => {
+                        if (button) fileTabRefs.current.set(tab, button);
+                        else fileTabRefs.current.delete(tab);
+                      }}
                       type="button"
+                      id={fileTabId(tab)}
+                      role="tab"
                       className="flex min-w-0 items-center gap-1 py-1.5 pl-3 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                      aria-pressed={isActive}
+                      aria-selected={isActive}
+                      aria-controls={editorPanelId}
+                      tabIndex={isActive ? 0 : -1}
                       onClick={() => {
                         invalidateFileOpenIntent();
                         setSelectedFile(tab);
-                        loadFileContent(tab);
+                        void loadFileContent(tab);
                       }}
+                      onKeyDown={(event) => handleFileTabKeyDown(event, tab)}
                     >
                       <span className="max-w-32 truncate">{name}</span>
                       {tabDirty && (
-                        <span className="size-1.5 shrink-0 rounded-full bg-foreground/60" />
+                        <>
+                          <span
+                            aria-hidden="true"
+                            className="size-1.5 shrink-0 rounded-full bg-foreground/60"
+                          />
+                          <span className="sr-only">
+                            {t("sandbox.fileExplorer.unsavedChanges")}
+                          </span>
+                        </>
                       )}
                     </button>
                     <button
@@ -1543,7 +1707,7 @@ export function FileExplorer({
                         name,
                       })}
                       title={t("sandbox.fileExplorer.closeFileTab", { name })}
-                      onClick={() => closeTab(tab)}
+                      onClick={() => requestCloseTab(tab)}
                     >
                       <XClose size={12} />
                     </button>
@@ -1608,7 +1772,12 @@ export function FileExplorer({
         )}
 
         {/* Monaco editor */}
-        <div className="flex-1 overflow-hidden">
+        <div
+          id={editorPanelId}
+          role={selectedFile ? "tabpanel" : undefined}
+          aria-labelledby={selectedFile ? fileTabId(selectedFile) : undefined}
+          className="flex-1 overflow-hidden"
+        >
           {selectedFile && currentBuffer?.loaded ? (
             <Editor
               key={selectedFile}
@@ -1654,6 +1823,26 @@ export function FileExplorer({
                 },
               }}
             />
+          ) : selectedFile && currentError?.kind === "read" ? (
+            <div
+              role="alert"
+              className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center"
+            >
+              <p className="text-sm font-medium text-foreground">
+                {t("sandbox.fileExplorer.failedToLoadFile", {
+                  name: selectedFile.split("/").pop() ?? selectedFile,
+                })}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                title={currentError.message}
+                onClick={() => void loadFileContent(selectedFile)}
+              >
+                {t("sandbox.fileExplorer.retry")}
+              </Button>
+            </div>
           ) : selectedFile && !currentBuffer?.loaded ? (
             <div className="flex items-center justify-center h-full w-full">
               <Spinner className="size-5 text-muted-foreground" />
@@ -1669,12 +1858,35 @@ export function FileExplorer({
         {selectedFile && (
           <div className="flex shrink-0 items-center justify-between gap-2 border-t px-3 py-1 text-[11px] text-muted-foreground">
             <span className="min-w-0 truncate">{selectedFile}</span>
-            <span className="shrink-0">
-              {isDirty
-                ? t("sandbox.fileExplorer.modified")
-                : t("sandbox.fileExplorer.saved")}{" "}
-              &middot; {getLanguageFromPath(selectedFile)}
-            </span>
+            {currentError?.kind === "write" ? (
+              <span
+                role="alert"
+                className="flex min-w-0 items-center justify-end gap-2 text-destructive"
+                title={currentError.message}
+              >
+                <span className="truncate">
+                  {t("sandbox.fileExplorer.failedToSaveFile")}
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => {
+                    if (currentBuffer?.loaded) {
+                      void saveFile(selectedFile, currentBuffer.editorValue);
+                    }
+                  }}
+                >
+                  {t("sandbox.fileExplorer.retry")}
+                </button>
+              </span>
+            ) : (
+              <span className="shrink-0">
+                {isDirty
+                  ? t("sandbox.fileExplorer.modified")
+                  : t("sandbox.fileExplorer.saved")}{" "}
+                &middot; {getLanguageFromPath(selectedFile)}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1705,6 +1917,23 @@ export function FileExplorer({
           if (!open && !fsActionPending) setDeleteTarget(null);
         }}
         onConfirm={(node) => void handleDelete(t, node)}
+      />
+
+      <FileExplorerUnsavedDialog
+        path={pendingTabClose}
+        saving={tabCloseSaving}
+        error={
+          pendingTabClose && fileErrors.get(pendingTabClose)?.kind === "write"
+            ? t("sandbox.fileExplorer.failedToSaveFile")
+            : undefined
+        }
+        onOpenChange={(open) => {
+          if (!open && !tabCloseSaving) setPendingTabClose(null);
+        }}
+        onDiscard={() => {
+          if (pendingTabClose) closeTabNow(pendingTabClose);
+        }}
+        onSave={() => void saveAndClosePendingTab()}
       />
     </div>
   );

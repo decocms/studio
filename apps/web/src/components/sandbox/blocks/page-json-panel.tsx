@@ -1,4 +1,4 @@
-import { type Ref, useImperativeHandle, useState } from "react";
+import { type Ref, useImperativeHandle } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { X } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -64,21 +64,6 @@ export function PageJsonPanel({
   const initialJson =
     pageData === undefined ? "" : JSON.stringify(pageData, null, 2);
 
-  /**
-   * The panel can disappear without its Close button: choosing a global
-   * component/loader removes the current page, and changing Site Editor tabs
-   * unmounts Preview. Own the debounce at that lifecycle boundary so every
-   * valid edit is persisted before useDebouncedSaveBlock cancels its timers.
-   *
-   * This callback ref is created once. React runs its returned cleanup only
-   * when this mounted panel is actually detached (rather than on every render),
-   * and the first `flush` closure is safe because the hook stores work in refs.
-   */
-  const [flushOnUnmount] = useState(() => (element: HTMLDivElement | null) => {
-    if (!element) return;
-    return () => flush();
-  });
-
   const scheduleSave = (raw: string) => {
     if (readOnly) return;
     let parsed: unknown;
@@ -97,13 +82,12 @@ export function PageJsonPanel({
     save(pageKey, parsed as Record<string, unknown>);
   };
 
-  // Explicit close paths flush before changing focus; the lifecycle cleanup
-  // above covers every other way this panel can disappear.
+  // Explicit close paths flush before changing focus. The hook also flushes by
+  // default if another route or editor lifecycle unmounts this panel directly.
   useImperativeHandle(ref, () => ({ flush }));
 
   return (
     <div
-      ref={flushOnUnmount}
       data-slot="page-json-panel"
       className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
     >

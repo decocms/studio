@@ -12,6 +12,7 @@ function deferred() {
 async function createCodeWorkspace(
   api: Parameters<typeof createHttpConnection>[0],
   orgSlug: string,
+  threadTitle?: string,
 ) {
   await callSelfMcpTool(api, orgSlug, "AI_PROVIDER_KEY_CREATE", {
     providerId: "anthropic",
@@ -48,7 +49,11 @@ async function createCodeWorkspace(
   const thread = await callSelfMcpTool<{
     item: { id: string; branch: string | null };
   }>(api, orgSlug, "COLLECTION_THREADS_CREATE", {
-    data: { virtual_mcp_id: agent.item.id, branch: "draft" },
+    data: {
+      virtual_mcp_id: agent.item.id,
+      branch: "draft",
+      ...(threadTitle ? { title: threadTitle } : {}),
+    },
   });
   expect(thread.item.branch).toBe("draft");
   return { agentId: agent.item.id, threadId: thread.item.id };
@@ -219,12 +224,11 @@ test.describe("Compact Code workspace", () => {
       name: "app.tsx",
       exact: true,
     });
-    const tabs = page.getByRole("group", { name: "Files", exact: true });
-    const appTab = tabs.getByRole("button", {
-      name: "app.tsx",
-      exact: true,
+    const tabs = page.getByRole("tablist", { name: "Files", exact: true });
+    const appTab = tabs.getByRole("tab", {
+      name: /^app\.tsx(?: Unsaved changes)?$/,
     });
-    const readmeTab = tabs.getByRole("button", {
+    const readmeTab = tabs.getByRole("tab", {
       name: "README.md",
       exact: true,
     });
@@ -271,11 +275,11 @@ test.describe("Compact Code workspace", () => {
     // desktop/mobile boundary. An unsaved Monaco model and its selected file
     // must therefore survive both directions without a reload.
     await page.setViewportSize({ width: 767, height: 844 });
-    await expect(appTab).toHaveAttribute("aria-pressed", "true");
+    await expect(appTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText(/^Modified\s*·\s*typescript$/)).toBeVisible();
     await expectExactEditorBuffer();
     await page.setViewportSize({ width: 800, height: 844 });
-    await expect(appTab).toHaveAttribute("aria-pressed", "true");
+    await expect(appTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText(/^Modified\s*·\s*typescript$/)).toBeVisible();
     await expectExactEditorBuffer();
 
@@ -290,13 +294,13 @@ test.describe("Compact Code workspace", () => {
     await expect(page).toHaveURL(
       (url) => url.searchParams.get("file") === "/README.md",
     );
-    await expect(readmeTab).toHaveAttribute("aria-pressed", "true");
+    await expect(readmeTab).toHaveAttribute("aria-selected", "true");
     await expect(appTab).toBeVisible();
     await expect(page.getByText(/^Saved\s*·\s*markdown$/)).toBeVisible();
     expect(readRequests).toBe(2);
 
     await appTab.click();
-    await expect(appTab).toHaveAttribute("aria-pressed", "true");
+    await expect(appTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText(/^Modified\s*·\s*typescript$/)).toBeVisible();
     await expectExactEditorBuffer();
 
@@ -347,6 +351,342 @@ test.describe("Compact Code workspace", () => {
     await expect(
       page.locator(".monaco-editor .line-numbers.active-line-number").first(),
     ).toHaveText("4");
+    expect(readRequests).toBe(2);
+
+    /* Preview, Content, and Code are sibling routes under one Site Editor.
+       Leaving Code therefore unmounts its route body. The route-scoped
+       workspace owns open tabs and dirty buffers so that ordinary editor
+       navigation cannot silently discard work. This is intentionally a real
+       route transition, not a viewport change or file-only history update. */
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor` &&
+        url.searchParams.get("thread") === threadId,
+      { timeout: 30_000 },
+    );
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: "Site Editor",
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Code", exact: true }).click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}/site-editor/code` &&
+        url.searchParams.get("thread") === threadId,
+      { timeout: 30_000 },
+    );
+    await expect(appTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText(/^Modified\s*·\s*typescript$/)).toBeVisible();
+    await expectExactEditorBuffer();
+    expect(readRequests).toBe(2);
+
+    await appTab.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(readmeTab).toBeFocused();
+    await expect(readmeTab).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowLeft");
+    await expect(appTab).toBeFocused();
+    await expect(appTab).toHaveAttribute("aria-selected", "true");
+    await expectExactEditorBuffer();
+
+    /* Dirty tabs expose their state in the accessible name and never close on
+       an ambiguous click or Delete key. Cancel keeps the buffer; Discard is
+       the explicit destructive path and hands selection to the adjacent tab. */
+    await expect(appTab).toHaveAccessibleName("app.tsx Unsaved changes");
+    await page
+      .getByRole("button", { name: "Close app.tsx", exact: true })
+      .click();
+    const unsavedDialog = page.getByRole("alertdialog", {
+      name: "Save changes to app.tsx?",
+      exact: true,
+    });
+    await expect(unsavedDialog).toBeVisible();
+    await unsavedDialog
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(unsavedDialog).toBeHidden();
+    await expect(appTab).toHaveAttribute("aria-selected", "true");
+    await expectExactEditorBuffer();
+
+    await appTab.focus();
+    await page.keyboard.press("Delete");
+    await expect(unsavedDialog).toBeVisible();
+    await unsavedDialog
+      .getByRole("button", { name: "Discard", exact: true })
+      .click();
+    await expect(unsavedDialog).toHaveCount(0);
+    await expect(appTab).toHaveCount(0);
+    await expect(readmeTab).toHaveAttribute("aria-selected", "true");
+    await expect(readmeTab).toBeFocused();
+    expect(readRequests).toBe(2);
+  });
+
+  test("a localized branch change guard keeps the unsaved Code draft when cancelled", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.addInitScript(() => {
+      try {
+        const key = "studio:user:preferences";
+        const current = JSON.parse(localStorage.getItem(key) ?? "{}");
+        localStorage.setItem(
+          key,
+          JSON.stringify({ ...current, language: "pt-BR" }),
+        );
+      } catch {
+        /* Sandboxed child frames may have no storage; the app frame does. */
+      }
+    });
+    const { agentId, threadId } = await createCodeWorkspace(
+      page.context().request,
+      orgSlug,
+    );
+
+    await page.route(
+      new RegExp(`/api/${orgSlug}/sandbox/${agentId}/draft/glob(?:\\?|$)`),
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          json: {
+            files: ["src/app.tsx"],
+            directories: ["src"],
+            truncated: false,
+          },
+        });
+      },
+    );
+    await page.route(
+      new RegExp(`/api/${orgSlug}/sandbox/${agentId}/draft/read(?:\\?|$)`),
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          json: {
+            kind: "file",
+            content: 'export const original = "seed";\n',
+          },
+        });
+      },
+    );
+
+    await page.goto(
+      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=false&mainpanel=true`,
+    );
+    await expect(
+      page.getByRole("textbox", {
+        name: "Pesquisar arquivos",
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "src", exact: true }).click();
+    await page.getByRole("button", { name: "app.tsx", exact: true }).click();
+
+    const editor = page.locator(".monaco-editor").first();
+    const editorInput = editor.locator("textarea.inputarea");
+    await expect(editor.locator(".view-lines")).toContainText("original");
+    await editorInput.focus();
+    await expect(editorInput).toBeFocused();
+    await page.keyboard.insertText("// rascunho-local");
+    await expect(editor.locator(".view-lines")).toContainText("rascunho-local");
+
+    const dirtyTab = page.getByRole("tab", {
+      name: "app.tsx Alterações não salvas",
+      exact: true,
+    });
+    await expect(dirtyTab).toHaveAttribute("aria-selected", "true");
+
+    const branchPicker = page
+      .locator('[data-slot="main-topbar-right"]')
+      .getByRole("button", { name: "draft", exact: true });
+    await expect(branchPicker).toBeVisible();
+    await branchPicker.click();
+    await page
+      .getByPlaceholder("Pesquisar branches…", { exact: true })
+      .fill("troca-segura");
+    await page
+      .getByRole("button", {
+        name: 'Criar "troca-segura"',
+        exact: true,
+      })
+      .click();
+
+    const guard = page.getByRole("alertdialog", {
+      name: "Descartar alterações não salvas?",
+      exact: true,
+    });
+    await expect(guard).toBeVisible();
+    await expect(guard).toContainText(
+      "Trocar de branch ou sair do Editor do Site descartará permanentemente suas alterações de código não salvas.",
+    );
+    await guard
+      .getByRole("button", { name: "Continuar editando", exact: true })
+      .click();
+
+    await expect(guard).toHaveCount(0);
+    await expect(branchPicker).toHaveAccessibleName("draft");
+    await expect(dirtyTab).toHaveAttribute("aria-selected", "true");
+    await expect(editor.locator(".view-lines")).toContainText("rascunho-local");
+    expect(new URL(page.url()).pathname).toBe(
+      `/${orgSlug}/agents/${agentId}/site-editor/code`,
+    );
+  });
+
+  test("discarding a localized thread change clears the retained Code draft", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.addInitScript(() => {
+      try {
+        const key = "studio:user:preferences";
+        const current = JSON.parse(localStorage.getItem(key) ?? "{}");
+        localStorage.setItem(
+          key,
+          JSON.stringify({ ...current, language: "pt-BR" }),
+        );
+      } catch {
+        /* Sandboxed child frames may have no storage; the app frame does. */
+      }
+    });
+
+    const { agentId, threadId: sourceThreadId } = await createCodeWorkspace(
+      page.context().request,
+      orgSlug,
+      "Conversa de origem",
+    );
+    const targetThread = await callSelfMcpTool<{ item: { id: string } }>(
+      page.context().request,
+      orgSlug,
+      "COLLECTION_THREADS_CREATE",
+      {
+        data: {
+          virtual_mcp_id: agentId,
+          title: "Conversa de destino",
+          branch: "draft",
+        },
+      },
+    );
+
+    let readRequests = 0;
+    await page.route(
+      new RegExp(`/api/${orgSlug}/sandbox/${agentId}/draft/glob(?:\\?|$)`),
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          json: {
+            files: ["src/app.tsx"],
+            directories: ["src"],
+            truncated: false,
+          },
+        });
+      },
+    );
+    await page.route(
+      new RegExp(`/api/${orgSlug}/sandbox/${agentId}/draft/read(?:\\?|$)`),
+      async (route) => {
+        readRequests++;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          json: {
+            kind: "file",
+            content: 'export const original = "seed";\n',
+          },
+        });
+      },
+    );
+
+    await page.goto(
+      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${sourceThreadId}&sidepanel=true&mainpanel=true`,
+    );
+    await expect(
+      page.getByRole("textbox", {
+        name: "Pesquisar arquivos",
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "src", exact: true }).click();
+    await page.getByRole("button", { name: "app.tsx", exact: true }).click();
+
+    const editor = page.locator(".monaco-editor").first();
+    const editorInput = editor.locator("textarea.inputarea");
+    await expect(editor.locator(".view-lines")).toContainText("original");
+    await editorInput.focus();
+    await page.keyboard.insertText("// rascunho-da-origem");
+    await expect(editor.locator(".view-lines")).toContainText(
+      "rascunho-da-origem",
+    );
+    await expect(
+      page.getByRole("tab", {
+        name: "app.tsx Alterações não salvas",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(readRequests).toBe(1);
+
+    const threadsMenu = page
+      .getByTestId("side-panel")
+      .getByRole("button", { name: "Chats", exact: true });
+    await threadsMenu.click();
+    const targetThreadRow = page.locator(
+      `[data-task-id="${targetThread.item.id}"]`,
+    );
+    await expect(targetThreadRow).toContainText("Conversa de destino");
+    await targetThreadRow.click();
+
+    const guard = page.getByRole("alertdialog", {
+      name: "Descartar alterações não salvas?",
+      exact: true,
+    });
+    await expect(guard).toBeVisible();
+    await guard
+      .getByRole("button", { name: "Descartar e continuar", exact: true })
+      .click();
+    await page.waitForURL(
+      (url) => url.searchParams.get("thread") === targetThread.item.id,
+      { timeout: 30_000 },
+    );
+    await expect(guard).toHaveCount(0);
+
+    await threadsMenu.click();
+    const sourceThreadRow = page.locator(`[data-task-id="${sourceThreadId}"]`);
+    await expect(sourceThreadRow).toContainText("Conversa de origem");
+    await sourceThreadRow.click();
+    await page.waitForURL(
+      (url) => url.searchParams.get("thread") === sourceThreadId,
+      { timeout: 30_000 },
+    );
+    await expect(guard).toHaveCount(0);
+
+    await expect(
+      page.getByRole("tab", {
+        name: "app.tsx Alterações não salvas",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("textbox", {
+        name: "Pesquisar arquivos",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "src", exact: true }).click();
+    await page.getByRole("button", { name: "app.tsx", exact: true }).click();
+    await expect(editor.locator(".view-lines")).toContainText("original");
+    await expect(editor.locator(".view-lines")).not.toContainText(
+      "rascunho-da-origem",
+    );
+    await expect(
+      page.getByRole("tab", { name: "app.tsx", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
     expect(readRequests).toBe(2);
   });
 
@@ -440,12 +780,12 @@ test.describe("Compact Code workspace", () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    const tabs = page.getByRole("group", { name: "Files", exact: true });
-    const readmeTab = tabs.getByRole("button", {
+    const tabs = page.getByRole("tablist", { name: "Files", exact: true });
+    const readmeTab = tabs.getByRole("tab", {
       name: "README.md",
       exact: true,
     });
-    await expect(readmeTab).toHaveAttribute("aria-pressed", "true");
+    await expect(readmeTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText(/^Saved\s*·\s*markdown$/)).toBeVisible();
     expect(readPaths).toEqual(["README.md"]);
 
@@ -458,9 +798,9 @@ test.describe("Compact Code workspace", () => {
         }),
     );
 
-    await expect(readmeTab).toHaveAttribute("aria-pressed", "true");
+    await expect(readmeTab).toHaveAttribute("aria-selected", "true");
     await expect(
-      tabs.getByRole("button", { name: "slow.ts", exact: true }),
+      tabs.getByRole("tab", { name: "slow.ts", exact: true }),
     ).toHaveCount(0);
     await expect(page).toHaveURL(
       (url) => url.searchParams.get("file") === "/README.md",
@@ -783,11 +1123,11 @@ test.describe("Compact Code workspace", () => {
     });
     // The pending modal makes the background accessibility-inert, so inspect
     // the still-mounted tab by its DOM state until the create request settles.
-    const tabs = page.locator('[data-code-pane="editor"] [role="group"]');
+    const tabs = page.locator('[data-code-pane="editor"] [role="tablist"]');
     const readmeTab = tabs
-      .locator('button[aria-pressed="true"]')
+      .locator('[role="tab"][aria-selected="true"]')
       .filter({ hasText: "README.md" });
-    await expect(readmeTab).toHaveAttribute("aria-pressed", "true");
+    await expect(readmeTab).toHaveAttribute("aria-selected", "true");
     expect(readPaths).toEqual(["README.md"]);
 
     releaseCreateWrite.resolve();
@@ -798,9 +1138,9 @@ test.describe("Compact Code workspace", () => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         }),
     );
-    await expect(readmeTab).toHaveAttribute("aria-pressed", "true");
+    await expect(readmeTab).toHaveAttribute("aria-selected", "true");
     await expect(
-      tabs.getByRole("button", { name: "created.ts", exact: true }),
+      tabs.getByRole("tab", { name: "created.ts", exact: true }),
     ).toHaveCount(0);
     expect(readPaths).toEqual(["README.md"]);
   });

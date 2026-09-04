@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { usePackagePath } from "./use-package-path";
@@ -17,6 +17,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
 import { BlockSaveRevisionTracker } from "./block-save-revision";
+import { DebouncedSaveQueue } from "./debounced-save-queue";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -208,6 +209,10 @@ type SaveData =
   | Record<string, unknown>
   | (() => Record<string, unknown> | null);
 
+interface DebouncedSaveBlockOptions {
+  onSaved?: () => void;
+}
+
 /**
  * Wraps {@link useSaveBlock} with the standard debounced-autosave loop shared by
  * every form-driven block editor (section forms, the SEO editor, the SEO
@@ -218,7 +223,7 @@ type SaveData =
  */
 export function useDebouncedSaveBlock(
   params: UseSaveBlockParams,
-  opts?: { onSaved?: () => void },
+  opts?: DebouncedSaveBlockOptions,
 ) {
   const saveBlock = useSaveBlock(params);
   const t = useT();
@@ -245,69 +250,53 @@ export function useDebouncedSaveBlock(
     data: SaveData;
     runtime: typeof runtimeRef.current;
   }
-  const pendingRef = useRef<Map<string, PendingSave>>(new Map());
-  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map(),
+
+  const consumePendingSave = (pending: PendingSave) => {
+    try {
+      const resolved =
+        typeof pending.data === "function" ? pending.data() : pending.data;
+      if (!resolved) return;
+      pending.runtime.mutate(
+        { blockKey: pending.blockKey, data: resolved },
+        {
+          onSuccess: () => pending.runtime.onSaved?.(),
+          onError: (err) =>
+            toast.error(
+              pending.runtime.t("sectionsEditor.sectionsEditor.saveFailed", {
+                error: err.message,
+              }),
+            ),
+        },
+      );
+    } catch (error) {
+      toast.error(
+        pending.runtime.t("sectionsEditor.sectionsEditor.saveFailed", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  };
+  const [saveQueue] = useState(
+    () => new DebouncedSaveQueue<PendingSave>(consumePendingSave),
   );
 
-  const runPendingSave = (pendingKey: string) => {
-    const pending = pendingRef.current.get(pendingKey);
-    if (!pending) return;
-    const resolved =
-      typeof pending.data === "function" ? pending.data() : pending.data;
-    pendingRef.current.delete(pendingKey);
-    if (!resolved) return;
-    pending.runtime.mutate(
-      { blockKey: pending.blockKey, data: resolved },
-      {
-        onSuccess: () => pending.runtime.onSaved?.(),
-        onError: (err) =>
-          toast.error(
-            pending.runtime.t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          ),
-      },
-    );
-  };
+  const flush = () => saveQueue.flush();
+  /** Explicitly abandon values that have not entered the mutation queue yet. */
+  const discard = () => saveQueue.discard();
 
-  const flush = () => {
-    for (const timer of timersRef.current.values()) {
-      clearTimeout(timer);
-    }
-    timersRef.current.clear();
-    for (const pendingKey of [...pendingRef.current.keys()]) {
-      runPendingSave(pendingKey);
-    }
-  };
-
-  // Cancel pending debounced saves on unmount so they can't fire against a torn
-  // -down editor after navigation. Call `flush()` explicitly when closing a sheet
-  // or leaving an editor so edits inside the debounce window still persist.
+  // Route changes are ordinary completion, not cancellation: persist the last
+  // valid value synchronously during teardown. A caller that implements a real
+  // Cancel action can call `discard()` immediately before teardown.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup on unmount
   useEffect(() => {
-    const timers = timersRef.current;
-    return () => {
-      for (const timer of timers.values()) {
-        clearTimeout(timer);
-      }
-    };
-  }, []);
+    return () => saveQueue.settleOnUnmount();
+  }, [saveQueue]);
 
   const save = (blockKey: string, data: SaveData) => {
     const runtime = runtimeRef.current;
     const pendingKey = `${runtime.scopeKey}:${JSON.stringify(blockKey)}`;
-    pendingRef.current.set(pendingKey, { blockKey, data, runtime });
-    const existing = timersRef.current.get(pendingKey);
-    if (existing) clearTimeout(existing);
-    timersRef.current.set(
-      pendingKey,
-      setTimeout(() => {
-        timersRef.current.delete(pendingKey);
-        runPendingSave(pendingKey);
-      }, AUTOSAVE_DELAY),
-    );
+    saveQueue.schedule(pendingKey, { blockKey, data, runtime }, AUTOSAVE_DELAY);
   };
 
-  return { save, flush, isPending: saveBlock.isPending };
+  return { save, flush, discard, isPending: saveBlock.isPending };
 }

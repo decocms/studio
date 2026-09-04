@@ -27,6 +27,7 @@ import {
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Main } from "@/components/main";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
@@ -220,15 +221,15 @@ function Band({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        <p className="max-w-prose text-sm text-muted-foreground">
-          {description}
-        </p>
-      </div>
+    <Main.Section>
+      <Main.Section.Header>
+        <div className="flex min-w-0 flex-col gap-1">
+          <Main.Section.Title>{title}</Main.Section.Title>
+          <Main.Section.Description>{description}</Main.Section.Description>
+        </div>
+      </Main.Section.Header>
       {children}
-    </section>
+    </Main.Section>
   );
 }
 
@@ -240,8 +241,8 @@ export function DiscoverTab() {
   const outstanding = steps.filter((step) => !step.done);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 p-6 md:p-10">
+    <Main.Container width="reading">
+      <Main.Stack gap="spacious">
         <p className="max-w-prose text-sm text-muted-foreground">
           {t("discover.subtitle")}
         </p>
@@ -259,7 +260,7 @@ export function DiscoverTab() {
               <li
                 key={step.key}
                 className={cn(
-                  "flex items-start gap-3 rounded-xl border border-border bg-card p-4",
+                  "flex flex-col items-start gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row",
                   step.done && "opacity-60",
                 )}
               >
@@ -281,7 +282,11 @@ export function DiscoverTab() {
                     {step.body}
                   </span>
                 </div>
-                {!step.done && <div className="shrink-0">{step.action}</div>}
+                {!step.done && (
+                  <div className="shrink-0 self-end sm:self-start">
+                    {step.action}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -340,7 +345,7 @@ export function DiscoverTab() {
             </Button>
           </div>
         </Band>
-      </div>
-    </div>
+      </Main.Stack>
+    </Main.Container>
   );
 }

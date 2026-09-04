@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   collectionStartStage,
+  compactStageForCurrentView,
   COMPACT_CONTENT_WORKSPACE_WIDTH,
   isCompactContentWorkspace,
 } from "./compact-workspace";
@@ -42,5 +43,11 @@ describe("compact content workspace", () => {
     ] as const) {
       expect(collectionStartStage(collection)).toBe("items");
     }
+  });
+
+  test("restores the semantic view when a wide workspace becomes compact", () => {
+    expect(compactStageForCurrentView("pages", true)).toBe("detail");
+    expect(compactStageForCurrentView("pages", false)).toBe("items");
+    expect(compactStageForCurrentView("site", false)).toBe("detail");
   });
 });

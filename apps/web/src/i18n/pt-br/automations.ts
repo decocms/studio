@@ -116,6 +116,7 @@ export const automations = {
     "Quando esta automação deve executar?",
   "automations.automationListRow.ariaActive": "Ativo",
   "automations.automationListRow.ariaNoTriggers": "Nenhum gatilho configurado",
+  "automations.automationListRow.actionsLabel": "A\u00e7\u00f5es para {name}",
   "automations.automationListRow.ariaPaused": "Pausado",
   "automations.automationListRow.cancel": "Cancelar",
   "automations.automationListRow.delete": "Deletar",
@@ -150,10 +151,15 @@ export const automations = {
   "automations.automationsList.emptyDescription":
     "Crie sua primeira automação para executar este projeto em um cronograma ou em resposta a eventos.",
   "automations.automationsList.emptyTitle": "Nenhuma automação ainda",
+  "automations.automationsList.errorDescription":
+    "Não foi possível carregar as automações deste projeto.",
+  "automations.automationsList.errorTitle":
+    "Não foi possível carregar as automações",
   "automations.automationsList.newAutomation": "Nova automação",
   "automations.automationsList.noResultsDescription":
     'Nenhuma automação corresponde a "{search}"',
   "automations.automationsList.noResultsTitle": "Nenhuma automação encontrada",
+  "automations.automationsList.retry": "Tentar novamente",
   "automations.automationsList.searchPlaceholder": "Pesquisar automações...",
   "automations.automationsList.title": "Automações",
   "automations.eventTriggerForm.addTriggerButton": "Adicionar gatilho",

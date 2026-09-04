@@ -62,13 +62,13 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
       { data: { virtual_mcp_id: agent.item.id } },
     );
 
-    // The drawer's setup tab is a <button> with visible text "sandbox" and
-    // a Terminal icon (see drawer/toolbar.tsx :: SetupTab). Asserting on it
-    // is the cheap proof that the drawer chrome is mounted under the tab;
-    // we deliberately don't try to start the sandbox.
+    // The drawer's setup tab has visible text "sandbox" and a Terminal icon
+    // (see drawer/toolbar.tsx :: SetupTab). Asserting on its tab semantics is
+    // the cheap proof that the drawer chrome is mounted under the route; we
+    // deliberately don't try to start the sandbox.
     const sandboxToolbarTab = page
       .getByTestId("main-panel")
-      .getByRole("button", { name: /^sandbox$/i });
+      .getByRole("tab", { name: /^sandbox$/i });
 
     /** Every nested editor body inherits the drawer from the structural
      * parent. Navigating each URL as a fresh document guards against a drawer
@@ -129,7 +129,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
       await expect(breadcrumb).not.toContainText("Site Editor");
       await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
       await expect(
-        page.getByTestId("main-panel").locator('[data-slot="main-subheader"]'),
+        page.getByTestId("main-panel").locator('[data-slot="main-toolbar"]'),
       ).toBeVisible();
 
       const mainPanel = page.getByTestId("main-panel");
@@ -259,6 +259,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
       { timeout: 60_000 },
     );
     await expect(sandboxToolbarTab).toBeVisible({ timeout: 60_000 });
+    await expect(sandboxToolbarTab).toHaveAttribute("aria-selected", "true");
   });
 
   test("restores keyboard focus after a confirmed script-tab close", async ({
@@ -398,7 +399,11 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
         `/${orgSlug}/agents/${agent.item.id}/site-editor?thread=${thread.item.id}&sidepanel=false`,
       );
       const mainPanel = page.getByTestId("main-panel");
-      const devTab = mainPanel.getByRole("button", {
+      const terminalTabs = mainPanel.getByRole("tablist", {
+        name: "Terminal tabs",
+        exact: true,
+      });
+      const devTab = terminalTabs.getByRole("tab", {
         name: "dev",
         exact: true,
       });
@@ -408,11 +413,19 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
         .getByRole("button", { name: "Run script", exact: true })
         .click();
       await page.getByRole("button", { name: /build$/ }).click();
-      const buildTab = mainPanel.getByRole("button", {
+      const buildTab = terminalTabs.getByRole("tab", {
         name: "build",
         exact: true,
       });
       await expect(buildTab).toBeVisible();
+      await expect(buildTab).toHaveAttribute("aria-selected", "true");
+      await buildTab.focus();
+      await page.keyboard.press("ArrowLeft");
+      await expect(devTab).toBeFocused();
+      await expect(devTab).toHaveAttribute("aria-selected", "true");
+      await page.keyboard.press("ArrowRight");
+      await expect(buildTab).toBeFocused();
+      await expect(buildTab).toHaveAttribute("aria-selected", "true");
       const buildExecCountBeforeClose = execRequests.get("build") ?? 0;
 
       const closeDev = mainPanel.getByRole("button", {
@@ -470,7 +483,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
       releaseBuildKill.resolve();
       await expect(closeBuild).toHaveCount(0);
       await expect(
-        mainPanel.getByRole("button", { name: /^sandbox$/i }),
+        mainPanel.getByRole("tab", { name: /^sandbox$/i }),
       ).toBeFocused();
     } finally {
       releaseDevKill.resolve();

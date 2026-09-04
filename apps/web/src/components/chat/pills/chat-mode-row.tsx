@@ -36,6 +36,8 @@ export function ChatModeRowPure({ branchPill }: PureProps) {
 interface SmartProps {
   virtualMcp: VirtualMCPEntity | null | undefined;
   currentBranch: string | null;
+  /** Route editors can confirm before a branch change replaces local state. */
+  requestBranchChange?: (change: () => void) => void;
 }
 
 /**
@@ -47,7 +49,11 @@ interface SmartProps {
  *
  * Locked flag is derived from `useOptionalChatStream().messages.length > 0`.
  */
-export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
+export function ChatModeRow({
+  virtualMcp,
+  currentBranch,
+  requestBranchChange,
+}: SmartProps) {
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
   const locked =
@@ -76,14 +82,22 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   // Locked chat's branch is fixed: open a new chat on the picked branch.
   const onChange = (next: string) => {
-    if (locked && createTask) createTask({ branch: next });
-    else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+    const change = () => {
+      if (locked && createTask) createTask({ branch: next });
+      else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+    };
+    if (requestBranchChange) requestBranchChange(change);
+    else change();
   };
   // Locked or CMS→sandbox: branch off into a fresh thread, don't re-point.
   const onCreateBranch = (next: string) => {
-    if ((locked || createBranchAsCms) && createTask)
-      createTask({ branch: next });
-    else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+    const change = () => {
+      if ((locked || createBranchAsCms) && createTask)
+        createTask({ branch: next });
+      else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+    };
+    if (requestBranchChange) requestBranchChange(change);
+    else change();
   };
 
   const branchPill =

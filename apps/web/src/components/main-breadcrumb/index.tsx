@@ -4,7 +4,12 @@ import type {
   MouseEventHandler,
   ReactNode,
 } from "react";
-import { type LinkProps, useLinkProps } from "@tanstack/react-router";
+import { useRef } from "react";
+import {
+  type LinkProps,
+  useLinkProps,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -78,6 +83,12 @@ export interface MainBreadcrumbProps {
   className?: string;
   /** Override only when embedding this in a differently named navigation. */
   ariaLabel?: string;
+  /**
+   * Workspace routes already expose the current destination in their compact
+   * view switcher. They can keep the one semantic heading visually hidden
+   * until the breadcrumb trail appears at the desktop breakpoint.
+   */
+  compactTitle?: "visible" | "visually-hidden";
 }
 
 /**
@@ -125,6 +136,11 @@ function BreadcrumbOverflowMenu({
   className?: string;
 }) {
   const t = useT();
+  const routeChangeOwnsFocus = useRef(false);
+
+  const markRouteChange = () => {
+    routeChangeOwnsFocus.current = true;
+  };
 
   return (
     <DropdownMenu>
@@ -141,10 +157,17 @@ function BreadcrumbOverflowMenu({
           <DotsHorizontal size={16} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-w-64">
+      <DropdownMenuContent
+        align="start"
+        className="max-w-64"
+        onCloseAutoFocus={(event) => {
+          if (routeChangeOwnsFocus.current) event.preventDefault();
+          routeChangeOwnsFocus.current = false;
+        }}
+      >
         {items.map((item) =>
           isMainBreadcrumbLinkItem(item) ? (
-            <DropdownMenuItem key={item.id} asChild>
+            <DropdownMenuItem key={item.id} asChild onSelect={markRouteChange}>
               <BreadcrumbRouterLink item={item}>
                 {item.icon ? <span aria-hidden>{item.icon}</span> : null}
                 <span dir="auto" className="truncate" title={item.label}>
@@ -153,7 +176,13 @@ function BreadcrumbOverflowMenu({
               </BreadcrumbRouterLink>
             </DropdownMenuItem>
           ) : (
-            <DropdownMenuItem key={item.id} onSelect={item.onSelect}>
+            <DropdownMenuItem
+              key={item.id}
+              onSelect={() => {
+                markRouteChange();
+                item.onSelect();
+              }}
+            >
               {item.icon ? <span aria-hidden>{item.icon}</span> : null}
               <span dir="auto" className="truncate" title={item.label}>
                 {item.label}
@@ -259,8 +288,13 @@ function MainBreadcrumbRoot({
   current,
   className,
   ariaLabel,
+  compactTitle = "visible",
 }: MainBreadcrumbProps) {
   const t = useT();
+  const routePathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  const routeFocusIdentity = `${routePathname}:${current.id}`;
   return (
     <Main.Breadcrumb.Parent.Target>
       {({ present: dynamicParentPresent, target: dynamicParentTarget }) => {
@@ -283,7 +317,7 @@ function MainBreadcrumbRoot({
             <Breadcrumb
               aria-label={ariaLabel ?? t("header.mainBreadcrumb.ariaLabel")}
               data-slot="main-breadcrumb"
-              className="min-w-0 shrink"
+              className="hidden min-w-0 shrink md:block"
             >
               <BreadcrumbList className="w-full gap-0.5 whitespace-nowrap text-sm sm:gap-0.5">
                 <BreadcrumbItem
@@ -326,9 +360,18 @@ function MainBreadcrumbRoot({
 
             <span
               aria-hidden="true"
-              className="h-4 w-px shrink-0 bg-border/80"
+              className="hidden h-4 w-px shrink-0 bg-border/80 md:block"
             />
-            <Main.Title dir="auto" className="min-w-12 flex-1">
+            <Main.Title
+              key={routeFocusIdentity}
+              dir="auto"
+              data-route-focus-identity={routeFocusIdentity}
+              data-route-focus-pathname={routePathname}
+              className={cn(
+                "min-w-12 flex-1",
+                compactTitle === "visually-hidden" && "sr-only md:not-sr-only",
+              )}
+            >
               <Main.Title.Target
                 fallback={
                   <span title={current.label} className="contents">

@@ -305,8 +305,57 @@ test.describe("fast preview publish surface", () => {
 
     /* The CMS mode/page toolbar is a separate row. Its menu is bounded by the
        Main card instead of being clipped under the sidebar or right-hand Chat. */
-    const editorToolbar = mainPanel.locator('[data-slot="main-subheader"]');
+    const editorToolbar = mainPanel.locator('[data-slot="main-toolbar"]');
     await expect(editorToolbar).toBeVisible();
+
+    /* Device sizing is explicit route chrome, not a floating overlay on top of
+       the page being edited. Pin both placement and the state contract: each
+       choice names its logical viewport, exactly one is pressed, and changing
+       it updates the iframe's layout width without remounting the frame. */
+    const deviceControls = editorToolbar.getByRole("group", {
+      name: "Preview size",
+      exact: true,
+    });
+    await expect(deviceControls).toBeVisible();
+    await expect(
+      mainPanel
+        .locator('[data-slot="main-toolbar-right"]')
+        .getByRole("group", { name: "Preview size", exact: true }),
+    ).toHaveCount(1);
+    const desktopSize = deviceControls.getByRole("button", {
+      name: "Desktop",
+      exact: true,
+    });
+    const tabletSize = deviceControls.getByRole("button", {
+      name: "Tablet (1024px)",
+      exact: true,
+    });
+    const mobileSize = deviceControls.getByRole("button", {
+      name: "Mobile (412px)",
+      exact: true,
+    });
+    await expect(desktopSize).toHaveAttribute("aria-pressed", "true");
+    await expect(deviceControls.locator('[aria-pressed="true"]')).toHaveCount(
+      1,
+    );
+
+    await tabletSize.click();
+    await expect(tabletSize).toHaveAttribute("aria-pressed", "true");
+    await expect(desktopSize).toHaveAttribute("aria-pressed", "false");
+    await expect(previewFrame.locator("..")).toHaveCSS("width", "1024px");
+
+    await mobileSize.click();
+    await expect(mobileSize).toHaveAttribute("aria-pressed", "true");
+    await expect(tabletSize).toHaveAttribute("aria-pressed", "false");
+    await expect(previewFrame.locator("..")).toHaveCSS("width", "412px");
+    await expect(previewFrame).toHaveAttribute(
+      "data-e2e-mounted-across-compact-stages",
+      "true",
+    );
+
+    await desktopSize.click();
+    await expect(desktopSize).toHaveAttribute("aria-pressed", "true");
+
     const choosePage = editorToolbar.getByRole("button", {
       name: "Choose page",
       exact: true,
@@ -415,6 +464,10 @@ test.describe("fast preview publish surface", () => {
       await input.press(selectAllShortcut);
       await input.press("Backspace");
       await expect(pageJsonPanel.locator(".view-lines")).toHaveText("");
+      /* Monaco may replace its hidden textarea while reconciling an empty
+         model. Re-establish focus on the live input before sending the edit. */
+      await input.focus();
+      await expect(input).toBeFocused();
       await page.keyboard.insertText(nextJson);
       await expect(pageJsonPanel.locator(".view-lines")).toContainText(marker);
       const renderedJson = (
@@ -657,10 +710,13 @@ test.describe("fast preview publish surface", () => {
     // The compact list Back control disappears at Content's own measured
     // breakpoint. Keep focus in the same task at its persistent search field.
     await backToCollections.focus();
-    await page.setViewportSize({ width: 1600, height: 720 });
+    // The persisted split deliberately gives Chat a substantial right column;
+    // use enough total width for Content itself (not merely the viewport) to
+    // cross its 840px wide-mode threshold.
+    await page.setViewportSize({ width: 2000, height: 720 });
     await expect(backToCollections).toHaveCount(0);
     await expect(pageSearch).toBeFocused();
-    await page.setViewportSize({ width: 1200, height: 720 });
+    await page.setViewportSize({ width: 800, height: 720 });
     await expect(backToCollections).toBeVisible();
 
     await backToCollections.click();
@@ -683,20 +739,13 @@ test.describe("fast preview publish surface", () => {
     });
     await expect(directEditorBack).toBeFocused();
 
-    // Direct editors have no item rail. Widening from their compact Back
-    // control therefore lands on the first visible editor action, not body.
-    await page.setViewportSize({ width: 1600, height: 720 });
+    // This direct editor has neither an item rail nor an editable field.
+    // Widening from its compact Back control therefore returns to the active
+    // collection trigger rather than dropping focus on the document body.
+    await page.setViewportSize({ width: 2000, height: 720 });
     await expect(directEditorBack).toHaveCount(0);
-    await expect
-      .poll(() =>
-        detailStage.evaluate(
-          (stage) =>
-            document.activeElement instanceof HTMLElement &&
-            stage.contains(document.activeElement),
-        ),
-      )
-      .toBe(true);
-    await page.setViewportSize({ width: 1200, height: 720 });
+    await expect(siteCollection).toBeFocused();
+    await page.setViewportSize({ width: 800, height: 720 });
     await expect(directEditorBack).toBeVisible();
 
     await directEditorBack.click();

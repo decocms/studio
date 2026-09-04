@@ -1,5 +1,4 @@
 import { Outlet } from "@tanstack/react-router";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { Main } from "@/components/main";
 import { MainBreadcrumb } from "@/components/main-breadcrumb";
 import {
@@ -39,9 +38,32 @@ import {
   useMatchedMainView,
 } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t";
+import {
+  CodeWorkspaceProvider,
+  codeWorkspaceIdentityKey,
+  useCodeWorkspace,
+} from "@/components/sandbox/preview/file-explorer/code-workspace-context";
+import { CodeWorkspaceNavigationGuard } from "@/components/sandbox/preview/file-explorer/code-workspace-navigation-guard";
 
 export interface SiteEditorLayoutProps {
   agentId: string;
+}
+
+function SiteEditorChatModeRow({
+  entity,
+  currentBranch,
+}: {
+  entity: Parameters<typeof ChatModeRow>[0]["virtualMcp"];
+  currentBranch: string | null;
+}) {
+  const { requestIdentityChange } = useCodeWorkspace();
+  return (
+    <ChatModeRow
+      virtualMcp={entity}
+      currentBranch={currentBranch}
+      requestBranchChange={requestIdentityChange}
+    />
+  );
 }
 
 /**
@@ -66,11 +88,10 @@ export function SiteEditorLayout({ agentId }: SiteEditorLayoutProps) {
           title: t("taskBoard.taskDialog.projectLabel"),
           icon: null,
         });
-  const { activeTask, currentBranch } = useChatTask();
+  const { activeTask, currentBranch, taskId } = useChatTask();
   const session = useSessionRuntime(agentId);
   const routeView = useActivePanelTabId() ?? "site-editor";
   const siteEditorView = useMatchedMainView().siteEditorView ?? "preview";
-  const previewRouteActive = siteEditorView === "preview";
   const hasClonableSource =
     agentHasClonableSource(entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
@@ -78,110 +99,114 @@ export function SiteEditorLayout({ agentId }: SiteEditorLayoutProps) {
     hasClonableSource,
     runtime: session.runtime,
   });
+  const codeWorkspaceIdentity = {
+    orgSlug: org.slug,
+    virtualMcpId: agentId,
+    branch: currentBranch,
+    threadId: taskId ?? null,
+  };
 
   return (
-    <Main>
-      <Main.Topbar className="grid-cols-[minmax(0,1fr)_auto]">
-        <Main.Topbar.Left>
-          <WorkspaceMainLeading currentRouteTitle={title} />
-          <MainBreadcrumb
-            className="hidden md:flex"
-            scope={organizationMainBreadcrumbItem(
-              org,
-              t("sidebar.navDestinations.home"),
-            )}
-            ancestors={[
-              agentMainBreadcrumbItem(
-                org.slug,
-                breadcrumbAgent,
-                t("taskBoard.taskDialog.projectLabel"),
-              ),
-            ]}
-            current={{ id: "site-editor", label: title }}
-          />
-          <Main.Title className="sr-only md:hidden">{title}</Main.Title>
-          <Main.Topbar.Left.Target />
-        </Main.Topbar.Left>
+    <CodeWorkspaceProvider identity={codeWorkspaceIdentity}>
+      <Main>
+        <CodeWorkspaceNavigationGuard />
+        <Main.Topbar className="grid-cols-[minmax(0,1fr)_auto]">
+          <Main.Topbar.Left>
+            <WorkspaceMainLeading currentRouteTitle={title} />
+            <MainBreadcrumb
+              compactTitle="visually-hidden"
+              scope={organizationMainBreadcrumbItem(
+                org,
+                t("sidebar.navDestinations.home"),
+              )}
+              ancestors={[
+                agentMainBreadcrumbItem(
+                  org.slug,
+                  breadcrumbAgent,
+                  t("taskBoard.taskDialog.projectLabel"),
+                ),
+              ]}
+              current={{ id: "site-editor", label: title }}
+            />
+            <Main.Topbar.Left.Target />
+          </Main.Topbar.Left>
 
-        <Main.Topbar.Center className="hidden" />
+          <Main.Topbar.Center className="hidden" />
 
-        <Main.Topbar.Right className="col-start-2">
-          <div className="hidden min-w-0 shrink items-center justify-end md:flex">
-            <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
-          </div>
-          {/* Route-local actions belong between the branch selector and this
+          <Main.Topbar.Right className="col-start-2">
+            <div className="hidden min-w-0 shrink items-center justify-end md:flex">
+              <SiteEditorChatModeRow
+                entity={entity}
+                currentBranch={currentBranch}
+              />
+            </div>
+            {/* Route-local actions belong between the branch selector and this
               non-shrinking cluster in both visual and keyboard order. */}
-          <Main.Topbar.Right.Target />
-          <div className="flex shrink-0 items-center justify-end gap-1">
-            {entity && (
-              <>
-                <div className="hidden md:block">
-                  <DevAgentControl virtualMcp={entity} />
-                </div>
-                {agentShowsGithubHeaderActions(entity) &&
-                  (session.runtime === "cms" ? (
-                    <CmsHeaderActions virtualMcpId={entity.id} />
-                  ) : (
-                    <HeaderActions virtualMcpId={entity.id} />
-                  ))}
-              </>
-            )}
-            <WorkspaceMainTrailing />
-          </div>
-        </Main.Topbar.Right>
-      </Main.Topbar>
+            <Main.Topbar.Right.Target />
+            <div className="flex shrink-0 items-center justify-end gap-1">
+              {entity && (
+                <>
+                  <div className="hidden md:block">
+                    <DevAgentControl virtualMcp={entity} />
+                  </div>
+                  {agentShowsGithubHeaderActions(entity) &&
+                    (session.runtime === "cms" ? (
+                      <CmsHeaderActions virtualMcpId={entity.id} />
+                    ) : (
+                      <HeaderActions virtualMcpId={entity.id} />
+                    ))}
+                </>
+              )}
+              <WorkspaceMainTrailing />
+            </div>
+          </Main.Topbar.Right>
+        </Main.Topbar>
 
-      {/* Site Editor has its own compact mode toolbar. Keeping mode and page
+        {/* Site Editor has its own compact mode toolbar. Keeping mode and page
           controls off the route/publishing row gives CMS actions a stable,
           unclipped home even when Chat leaves Main near its minimum width. */}
-      <Main.Subheader
-        className={cn(
-          "@container [container-name:main-topbar_panel-header] hidden h-10 items-center gap-2 px-1.5 py-0 md:grid",
-          previewRouteActive
-            ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
-            : "grid-cols-1",
-        )}
-      >
-        <div className="flex min-w-0 items-center overflow-hidden">
-          <MainPanelTabsBar
-            disableActiveMainToggle={!workspace.sidePanelOpen}
-          />
-        </div>
-        {/* Preview contributes its stateful URL controls through this stable
-            target. Content and Code leave it empty. */}
-        {previewRouteActive ? (
-          <>
-            <div className="flex min-w-0 items-center justify-center">
-              <Main.Subheader.Center.Target />
-            </div>
-            <div aria-hidden="true" />
-          </>
-        ) : null}
-      </Main.Subheader>
+        <Main.Toolbar className="@container [container-name:main-topbar_panel-header] hidden h-10 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-1.5 py-0 md:grid">
+          <Main.Toolbar.Left className="overflow-hidden">
+            <MainPanelTabsBar
+              disableActiveMainToggle={!workspace.sidePanelOpen}
+            />
+            <Main.Toolbar.Left.Target />
+          </Main.Toolbar.Left>
+          {/* Preview contributes stateful URL controls through the center;
+            mode-specific tools can use the stable right-hand target. */}
+          <Main.Toolbar.Center>
+            <Main.Toolbar.Center.Target />
+          </Main.Toolbar.Center>
+          <Main.Toolbar.Right>
+            <Main.Toolbar.Right.Target />
+          </Main.Toolbar.Right>
+        </Main.Toolbar>
 
-      {/* The drawer measures this body region, not the whole Main card. Route
+        {/* The drawer measures this body region, not the whole Main card. Route
           chrome can therefore grow without stealing the preview reserve at
           the drawer's maximum height. */}
-      <div
-        data-slot="site-editor-workspace"
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <Main.Content className="overflow-hidden">
-          <ErrorBoundary key={siteEditorView}>
-            <MainPanelBoundary>
-              <MainPanelTestErrorTrigger routeId={routeView}>
-                <Outlet />
-              </MainPanelTestErrorTrigger>
-            </MainPanelBoundary>
-          </ErrorBoundary>
-        </Main.Content>
+        <div
+          key={codeWorkspaceIdentityKey(codeWorkspaceIdentity)}
+          data-slot="site-editor-workspace"
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <Main.Content mode="canvas">
+            <ErrorBoundary key={siteEditorView}>
+              <MainPanelBoundary>
+                <MainPanelTestErrorTrigger routeId={routeView}>
+                  <Outlet />
+                </MainPanelTestErrorTrigger>
+              </MainPanelBoundary>
+            </ErrorBoundary>
+          </Main.Content>
 
-        {showDrawer && (
-          <Main.Drawer>
-            <PreviewDrawerHost virtualMcpId={agentId} />
-          </Main.Drawer>
-        )}
-      </div>
-    </Main>
+          {showDrawer && (
+            <Main.Drawer>
+              <PreviewDrawerHost virtualMcpId={agentId} />
+            </Main.Drawer>
+          )}
+        </div>
+      </Main>
+    </CodeWorkspaceProvider>
   );
 }

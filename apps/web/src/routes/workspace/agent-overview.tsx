@@ -3,7 +3,7 @@ import { AgentRouteMain } from "./agent-route-main";
 
 export default function AgentOverviewRoute() {
   return (
-    <AgentRouteMain agentRoot contentClassName="overflow-hidden">
+    <AgentRouteMain agentRoot contentMode="scroll">
       <OverviewTab />
     </AgentRouteMain>
   );

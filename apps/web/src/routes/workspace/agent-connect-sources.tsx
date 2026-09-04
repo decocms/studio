@@ -3,7 +3,7 @@ import { AgentRouteMain } from "./agent-route-main";
 
 export default function AgentConnectSourcesRoute() {
   return (
-    <AgentRouteMain contentClassName="overflow-hidden">
+    <AgentRouteMain contentMode="canvas">
       <ConnectSourcesTab />
     </AgentRouteMain>
   );

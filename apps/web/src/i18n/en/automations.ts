@@ -109,6 +109,7 @@ export const automations = {
     "When should this automation run?",
   "automations.automationListRow.ariaActive": "Active",
   "automations.automationListRow.ariaNoTriggers": "No triggers configured",
+  "automations.automationListRow.actionsLabel": "Actions for {name}",
   "automations.automationListRow.ariaPaused": "Paused",
   "automations.automationListRow.cancel": "Cancel",
   "automations.automationListRow.delete": "Delete",
@@ -143,10 +144,14 @@ export const automations = {
   "automations.automationsList.emptyDescription":
     "Create your first automation to run this project on a schedule or in response to events.",
   "automations.automationsList.emptyTitle": "No automations yet",
+  "automations.automationsList.errorDescription":
+    "We couldn't load this project's automations.",
+  "automations.automationsList.errorTitle": "Couldn't load automations",
   "automations.automationsList.newAutomation": "New automation",
   "automations.automationsList.noResultsDescription":
     'No automations match "{search}"',
   "automations.automationsList.noResultsTitle": "No automations found",
+  "automations.automationsList.retry": "Try again",
   "automations.automationsList.searchPlaceholder": "Search automations...",
   "automations.automationsList.title": "Automations",
   "automations.eventTriggerForm.addTriggerButton": "Add trigger",

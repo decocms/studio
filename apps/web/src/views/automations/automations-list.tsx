@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Plus, Zap } from "@untitledui/icons";
+import { AlertTriangle, Plus, Zap } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
-import { Page } from "@/components/page";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import {
   buildDefaultAutomationInput,
@@ -18,7 +18,12 @@ import { Main } from "@/components/main";
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
-  const { data: automations = [] } = useAutomations(virtualMcpId);
+  const {
+    data: automations = [],
+    isPending,
+    isError,
+    refetch,
+  } = useAutomations(virtualMcpId);
   const { create } = useAutomationActions();
   const [search, setSearch] = useState("");
 
@@ -56,17 +61,23 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   );
 
   const searchInput =
-    automations.length > 0 ? (
+    automations.length > 0 && !isPending && !isError ? (
       <SearchInput
         value={search}
         onChange={setSearch}
         placeholder={t("automations.automationsList.searchPlaceholder")}
         className="w-[clamp(7rem,35cqw,23.4375rem)]"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setSearch("");
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
       />
     ) : null;
 
   return (
-    <Page>
+    <>
       {searchInput && (
         <Main.Topbar.Center.Portal>
           <div
@@ -78,50 +89,86 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
         </Main.Topbar.Center.Portal>
       )}
       {searchInput && (
-        <Main.Subheader.Portal>
+        <Main.Toolbar.Portal visibility="compact">
           <div
             data-responsive-focus-group="automations-search"
             className="w-full md:hidden [&>*]:w-full"
           >
             {searchInput}
           </div>
-        </Main.Subheader.Portal>
+        </Main.Toolbar.Portal>
       )}
       <Main.Topbar.Right.Portal>{newButton}</Main.Topbar.Right.Portal>
-      <Page.Content>
-        <Page.Body className="pt-6 md:pt-8">
-          {automations.length === 0 ? (
-            <div className="flex items-center justify-center py-20">
-              <EmptyState
-                image={<Zap size={48} className="text-muted-foreground" />}
-                title={t("automations.automationsList.emptyTitle")}
-                description={t("automations.automationsList.emptyDescription")}
-              />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-20">
-              <EmptyState
-                image={<Zap size={48} className="text-muted-foreground" />}
-                title={t("automations.automationsList.noResultsTitle")}
-                description={t(
-                  "automations.automationsList.noResultsDescription",
-                  { search },
-                )}
-              />
-            </div>
-          ) : (
-            <div className="mt-6 rounded-xl border border-border overflow-hidden">
-              {filtered.map((a) => (
-                <AutomationListRow
-                  key={a.id}
-                  automation={a}
-                  onClick={() => goToDetail(a.id)}
+      <div className="h-full overflow-y-auto">
+        <Main.Container width="standard">
+          <Main.Stack>
+            {isPending ? (
+              <div
+                role="status"
+                aria-label={t("common.loading")}
+                className="flex min-h-56 items-center justify-center"
+              >
+                <Spinner className="size-5 text-muted-foreground" />
+              </div>
+            ) : isError ? (
+              <div className="flex min-h-56 items-center justify-center">
+                <EmptyState
+                  image={
+                    <AlertTriangle
+                      size={48}
+                      className="text-muted-foreground"
+                    />
+                  }
+                  title={t("automations.automationsList.errorTitle")}
+                  description={t(
+                    "automations.automationsList.errorDescription",
+                  )}
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void refetch()}
+                    >
+                      {t("automations.automationsList.retry")}
+                    </Button>
+                  }
                 />
-              ))}
-            </div>
-          )}
-        </Page.Body>
-      </Page.Content>
-    </Page>
+              </div>
+            ) : automations.length === 0 ? (
+              <div className="flex min-h-56 items-center justify-center">
+                <EmptyState
+                  image={<Zap size={48} className="text-muted-foreground" />}
+                  title={t("automations.automationsList.emptyTitle")}
+                  description={t(
+                    "automations.automationsList.emptyDescription",
+                  )}
+                />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex min-h-56 items-center justify-center">
+                <EmptyState
+                  image={<Zap size={48} className="text-muted-foreground" />}
+                  title={t("automations.automationsList.noResultsTitle")}
+                  description={t(
+                    "automations.automationsList.noResultsDescription",
+                    { search },
+                  )}
+                />
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-border">
+                {filtered.map((a) => (
+                  <AutomationListRow
+                    key={a.id}
+                    automation={a}
+                    onClick={() => goToDetail(a.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </Main.Stack>
+        </Main.Container>
+      </div>
+    </>
   );
 }

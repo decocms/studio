@@ -1,4 +1,4 @@
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { AutomationTab } from "@/layouts/main-panel-tabs/automation-tab";
 import { automationMatchesRouteAgent } from "@/layouts/main-panel-tabs/automation-route";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
@@ -16,6 +16,8 @@ export default function AgentAutomationRoute() {
   const t = useT();
   const { org } = useProjectContext();
   const { automationId } = route.useParams();
+  const { automationView = "settings" } = route.useSearch();
+  const navigate = useNavigate();
   const agentId = useRouteVirtualMcpId();
   const { data: automation } = useAutomation(automationId);
   const routeAutomation =
@@ -29,7 +31,7 @@ export default function AgentAutomationRoute() {
 
   return (
     <AgentRouteMain
-      contentClassName="overflow-hidden"
+      contentMode="canvas"
       title={routeAutomation ? automationTitle : undefined}
       breadcrumbAncestors={
         routeAutomation
@@ -54,6 +56,18 @@ export default function AgentAutomationRoute() {
       <AutomationTab
         tabId={`automation:${automationId}`}
         routeAgentId={agentId}
+        activeView={automationView}
+        onViewChange={(nextView) => {
+          navigate({
+            to: "/$org/agents/$agentId/automations/$automationId",
+            params: { org: org.slug, agentId, automationId },
+            search: (previous) => ({
+              ...previous,
+              automationView: nextView === "settings" ? undefined : nextView,
+            }),
+            replace: true,
+          });
+        }}
       />
     </AgentRouteMain>
   );

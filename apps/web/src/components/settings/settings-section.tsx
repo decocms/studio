@@ -2,6 +2,8 @@ import { Card } from "@decocms/ui/components/card.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowUpRight } from "@untitledui/icons";
 import { Children, isValidElement, type ReactNode } from "react";
+import { Main } from "@/components/main";
+import { useT } from "@/i18n/use-t";
 
 interface SettingsSectionProps {
   title?: ReactNode;
@@ -23,21 +25,16 @@ export function SettingsSection({
   headerClassName,
   children,
 }: SettingsSectionProps) {
+  const t = useT();
+
   return (
-    <section className={cn("flex flex-col gap-3", className)}>
+    <Main.Section className={className}>
       {(title || description || docsHref || actions) && (
-        <div
-          className={cn(
-            "flex items-center justify-between gap-3 px-4",
-            headerClassName,
-          )}
-        >
-          <div className="flex flex-col gap-1 min-w-0">
-            {title && (
-              <h2 className="text-[15px] font-medium leading-tight">{title}</h2>
-            )}
+        <Main.Section.Header className={cn("px-4", headerClassName)}>
+          <div className="flex min-w-0 flex-col gap-1">
+            {title && <Main.Section.Title>{title}</Main.Section.Title>}
             {(description || docsHref) && (
-              <p className="text-sm text-muted-foreground leading-snug">
+              <Main.Section.Description className="leading-snug">
                 {description}
                 {docsHref && (
                   <a
@@ -46,17 +43,18 @@ export function SettingsSection({
                     rel="noreferrer"
                     className="inline-flex items-center gap-0.5 ml-1 text-foreground hover:underline"
                   >
-                    Docs <ArrowUpRight size={12} />
+                    {t("settings.common.documentation")}{" "}
+                    <ArrowUpRight size={12} />
                   </a>
                 )}
-              </p>
+              </Main.Section.Description>
             )}
           </div>
-          {actions && <div className="shrink-0">{actions}</div>}
-        </div>
+          {actions && <Main.Section.Actions>{actions}</Main.Section.Actions>}
+        </Main.Section.Header>
       )}
       {children}
-    </section>
+    </Main.Section>
   );
 }
 
@@ -98,29 +96,8 @@ export function SettingsCardItem({
   className,
   children,
 }: SettingsCardItemProps) {
-  return (
-    <div
-      className={cn(
-        children
-          ? "flex items-start gap-3 px-4 py-4"
-          : "flex items-center gap-3 px-4 py-4",
-        onClick && "hover:bg-muted/50 cursor-pointer",
-        className,
-      )}
-      onClick={onClick}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={
-        onClick
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onClick();
-              }
-            }
-          : undefined
-      }
-    >
+  const content = (
+    <>
       {icon && (
         <div className="size-8 shrink-0 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground">
           {icon}
@@ -135,11 +112,34 @@ export function SettingsCardItem({
         )}
         {children}
       </div>
-      {action && (
-        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-          {action}
-        </div>
+    </>
+  );
+
+  return (
+    <div
+      className={cn(
+        children
+          ? "flex items-start gap-3 px-4 py-4"
+          : "flex items-center gap-3 px-4 py-4",
+        onClick && "hover:bg-muted/50",
+        className,
       )}
+    >
+      {onClick ? (
+        <button
+          type="button"
+          className={cn(
+            "flex min-w-0 flex-1 gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            children ? "items-start" : "items-center",
+          )}
+          onClick={onClick}
+        >
+          {content}
+        </button>
+      ) : (
+        content
+      )}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
@@ -159,16 +159,5 @@ export function SettingsCardActions({
     >
       {children}
     </div>
-  );
-}
-
-interface SettingsPageProps {
-  className?: string;
-  children: ReactNode;
-}
-
-export function SettingsPage({ className, children }: SettingsPageProps) {
-  return (
-    <div className={cn("flex flex-col gap-10", className)}>{children}</div>
   );
 }

@@ -3,6 +3,7 @@ import { FileTab } from "@/layouts/main-panel-tabs/file-tab";
 import { useRouteThreadId } from "@/layouts/thread-route";
 import { RouteNotFound } from "./route-not-found";
 import { AgentRouteMain } from "./agent-route-main";
+import { resolveRouteResourceTarget } from "./route-resource-title";
 
 const route = getRouteApi(
   "/shell/$org/org-shell/agent-shell/agents/$agentId/outputs/file",
@@ -11,11 +12,15 @@ const route = getRouteApi(
 export default function AgentFileRoute() {
   const { key } = route.useSearch();
   const threadId = useRouteThreadId();
-  const title = key?.split("/").pop() ?? key;
+  const target = resolveRouteResourceTarget(key);
 
   return (
-    <AgentRouteMain title={title} contentClassName="overflow-hidden">
-      {key ? <FileTab fileKey={key} taskId={threadId} /> : <RouteNotFound />}
+    <AgentRouteMain title={target?.title} contentMode="canvas">
+      {target ? (
+        <FileTab fileKey={target.value} taskId={threadId} />
+      ) : (
+        <RouteNotFound />
+      )}
     </AgentRouteMain>
   );
 }

@@ -1,6 +1,12 @@
 import type { sandbox as sandboxEn } from "../en/sandbox.ts";
 
 export const sandbox = {
+  "sandbox.codeWorkspaceNavigationGuard.description":
+    "Trocar de branch ou sair do Editor do Site descartará permanentemente suas alterações de código não salvas.",
+  "sandbox.codeWorkspaceNavigationGuard.discard": "Descartar e continuar",
+  "sandbox.codeWorkspaceNavigationGuard.stay": "Continuar editando",
+  "sandbox.codeWorkspaceNavigationGuard.title":
+    "Descartar alterações não salvas?",
   "sandbox.appEditor.createdSection": 'Seção "{name}" criada',
   "sandbox.appEditor.editingBreadcrumb": "Trilha de navegação de edição",
   "sandbox.appEditor.failedAddSection": "Não foi possível adicionar a seção",
@@ -100,14 +106,150 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
+  "sandbox.contentBrowser.appNotInstalled":
+    '"{name}" não está instalado neste site.',
+  "sandbox.contentBrowser.authorNoun": "autor",
+  "sandbox.contentBrowser.availableSections": "Seções disponíveis",
   "sandbox.contentBrowser.backToCollections": "Voltar para coleções",
   "sandbox.contentBrowser.backToItems": "Voltar para itens",
+  "sandbox.contentBrowser.bulkAddedToManyPosts":
+    "Categoria adicionada a {count} posts",
+  "sandbox.contentBrowser.bulkAddedToOnePost":
+    "Categoria adicionada a {count} post",
+  "sandbox.contentBrowser.bulkMovedManyPosts":
+    "{count} posts movidos para esta categoria",
+  "sandbox.contentBrowser.bulkMovedOnePost":
+    "{count} post movido para esta categoria",
+  "sandbox.contentBrowser.bulkResultWithUnchanged":
+    "{result} ({count} já estava(m) definido(s))",
+  "sandbox.contentBrowser.bulkUpdateFailed": "Falha na atualização em massa",
+  "sandbox.contentBrowser.cancel": "Cancelar",
+  "sandbox.contentBrowser.categoryNoun": "categoria",
+  "sandbox.contentBrowser.copyName": "{name} (cópia)",
+  "sandbox.contentBrowser.couldNotAddVariant":
+    "Não foi possível adicionar a variante",
+  "sandbox.contentBrowser.couldNotCreate": "Não foi possível criar o item",
+  "sandbox.contentBrowser.couldNotCreateRedirect":
+    "Não foi possível criar o redirecionamento",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
+  "sandbox.contentBrowser.couldNotLoadSiteData":
+    "Não foi possível carregar os dados do site.",
+  "sandbox.contentBrowser.createAuthor": "Criar novo autor",
+  "sandbox.contentBrowser.createCategory": "Criar nova categoria",
+  "sandbox.contentBrowser.createFirstAuthorHint":
+    'Clique em "+" para criar seu primeiro autor.',
+  "sandbox.contentBrowser.createFirstCategoryHint":
+    'Clique em "+" para criar sua primeira categoria.',
+  "sandbox.contentBrowser.createFirstItemHint":
+    'Clique em "+" para criar seu primeiro item.',
+  "sandbox.contentBrowser.createFirstPageHint":
+    'Clique em "+" para criar sua primeira página.',
+  "sandbox.contentBrowser.createFirstPostHint":
+    'Clique em "+" para criar seu primeiro post.',
+  "sandbox.contentBrowser.createFirstRedirectHint":
+    'Clique em "+" para criar seu primeiro redirecionamento.',
+  "sandbox.contentBrowser.createPage": "Criar nova página",
+  "sandbox.contentBrowser.createPost": "Criar novo post",
+  "sandbox.contentBrowser.createRedirect": "Criar novo redirecionamento",
+  "sandbox.contentBrowser.createdAuthor": "Autor criado",
+  "sandbox.contentBrowser.createdCategory": "Categoria criada",
+  "sandbox.contentBrowser.createdPage": 'Página "{name}" criada',
+  "sandbox.contentBrowser.createdPost": "Post criado",
+  "sandbox.contentBrowser.createdRedirect": "Redirecionamento criado",
+  "sandbox.contentBrowser.defaultPageName": "Minha nova página",
+  "sandbox.contentBrowser.delete": "Excluir",
+  "sandbox.contentBrowser.deleteFailed": "Falha ao excluir",
+  "sandbox.contentBrowser.deleteItemDescription":
+    'A remoção de "{name}" será permanente. Esta ação não pode ser desfeita.',
+  "sandbox.contentBrowser.deleteManyPostsDescription":
+    "{count} posts serão removidos permanentemente. Esta ação não pode ser desfeita.",
+  "sandbox.contentBrowser.deleteOnePostDescription":
+    "{count} post será removido permanentemente. Esta ação não pode ser desfeita.",
+  "sandbox.contentBrowser.deleteSectionDescription":
+    'A seção "{name}" será removida. As páginas que ainda fazem referência a ela perderão essa seção.',
+  "sandbox.contentBrowser.deleteTitle": "Excluir {item}?",
+  "sandbox.contentBrowser.deletedItem": 'Item excluído: "{name}"',
+  "sandbox.contentBrowser.deletedManyPosts": "{count} posts excluídos",
+  "sandbox.contentBrowser.deletedOnePost": "{count} post excluído",
+  "sandbox.contentBrowser.deleting": "Excluindo…",
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
+  "sandbox.contentBrowser.duplicatedItem": 'Cópia criada: "{name}"',
+  "sandbox.contentBrowser.duplicatedPageAs": 'Página duplicada como "{name}"',
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',
+  "sandbox.contentBrowser.installed": "Instalado",
+  "sandbox.contentBrowser.itemNoun": "item",
+  "sandbox.contentBrowser.manyPostsNoun": "{count} posts",
+  "sandbox.contentBrowser.missingFields": "Ausente(s): {fields}",
+  "sandbox.contentBrowser.noAppsFound": "Nenhum app encontrado.",
+  "sandbox.contentBrowser.noAuthorsYet": "Nenhum autor ainda.",
+  "sandbox.contentBrowser.noCategoriesYet": "Nenhuma categoria ainda.",
+  "sandbox.contentBrowser.noEditableContent": "Nenhum conteúdo editável",
+  "sandbox.contentBrowser.noEditableContentDescription":
+    "Este projeto não expõe páginas, seções, aplicativos, carregadores ou ações do Deco.",
+  "sandbox.contentBrowser.noItemsYet": "Nenhum item ainda.",
+  "sandbox.contentBrowser.noPagesYet": "Nenhuma página ainda.",
+  "sandbox.contentBrowser.noPostsYet": "Nenhum post ainda.",
+  "sandbox.contentBrowser.noRedirectSource": "(sem origem)",
+  "sandbox.contentBrowser.noRedirectTarget": "(sem destino)",
+  "sandbox.contentBrowser.noRedirectsYet": "Nenhum redirecionamento ainda.",
+  "sandbox.contentBrowser.noSectionsHint":
+    "Salve uma seção de uma página ou inicie o servidor de desenvolvimento do preview.",
+  "sandbox.contentBrowser.noSectionsYet": "Nenhuma seção ainda.",
+  "sandbox.contentBrowser.noSlug": "sem slug",
+  "sandbox.contentBrowser.onePostNoun": "{count} post",
+  "sandbox.contentBrowser.pageNotFound": "Página não encontrada",
+  "sandbox.contentBrowser.pageNoun": "página",
+  "sandbox.contentBrowser.pagePathAlreadyExists":
+    'Já existe uma página com o caminho "{path}".',
+  "sandbox.contentBrowser.pageUpdated": "Página atualizada",
+  "sandbox.contentBrowser.postNoun": "post",
+  "sandbox.contentBrowser.recordNotFound": "Registro não encontrado.",
+  "sandbox.contentBrowser.redirectNoun": "redirecionamento",
   "sandbox.contentBrowser.renameFailed": "Falha ao renomear",
+  "sandbox.contentBrowser.saveFailed": "Falha ao salvar",
+  "sandbox.contentBrowser.savedSections": "Seções salvas",
+  "sandbox.contentBrowser.searchActions": "Pesquisar ações…",
+  "sandbox.contentBrowser.searchApps": "Pesquisar apps…",
+  "sandbox.contentBrowser.searchAuthors": "Pesquisar autores…",
+  "sandbox.contentBrowser.searchCalendar": "Pesquisar calendário…",
+  "sandbox.contentBrowser.searchCategories": "Pesquisar categorias…",
+  "sandbox.contentBrowser.searchLoaders": "Pesquisar carregadores…",
+  "sandbox.contentBrowser.searchPages": "Pesquisar páginas…",
+  "sandbox.contentBrowser.searchPosts": "Pesquisar posts…",
+  "sandbox.contentBrowser.searchPostSchedule": "Pesquisar posts agendados…",
+  "sandbox.contentBrowser.searchRedirects": "Pesquisar redirecionamentos…",
+  "sandbox.contentBrowser.searchSections": "Pesquisar seções…",
+  "sandbox.contentBrowser.searchSeo": "Pesquisar SEO…",
+  "sandbox.contentBrowser.searchSite": "Pesquisar configurações do site…",
+  "sandbox.contentBrowser.sectionNoun": "seção",
   "sandbox.contentBrowser.sectionNotFound": "Seção não encontrada.",
   "sandbox.contentBrowser.sectionRenamed": "Seção renomeada",
+  "sandbox.contentBrowser.selectAppDescription":
+    "Navegue por todos os apps e selecione um instalado para editar suas configurações.",
+  "sandbox.contentBrowser.selectAppToEdit": "Selecione um app para editar",
+  "sandbox.contentBrowser.selectAuthorToEdit": "Selecione um autor para editar",
+  "sandbox.contentBrowser.selectCategoryToEdit":
+    "Selecione uma categoria para editar",
+  "sandbox.contentBrowser.selectItemDescription":
+    'Escolha um item da lista ou clique em "+" para criar um.',
+  "sandbox.contentBrowser.selectItemToEdit": "Selecione um item para editar",
+  "sandbox.contentBrowser.selectPageToEdit": "Selecione uma página para editar",
+  "sandbox.contentBrowser.selectPostToEdit": "Selecione um post para editar",
+  "sandbox.contentBrowser.selectRedirectToEdit":
+    "Selecione um redirecionamento para editar",
+  "sandbox.contentBrowser.selectedTemplateNoLongerExists":
+    "O modelo selecionado não existe mais.",
+  "sandbox.contentBrowser.siteSettingsNotFound":
+    "Configurações do site não encontradas",
+  "sandbox.contentBrowser.siteSettingsNotFoundDescription":
+    "Este projeto não tem um bloco do aplicativo do site (site/apps/site.ts).",
+  "sandbox.contentBrowser.sourcePageNotFound":
+    "Página de origem não encontrada",
+  "sandbox.contentBrowser.tryDifferentSearch":
+    "Tente um termo de pesquisa diferente.",
+  "sandbox.contentBrowser.variantAdded": 'Variante adicionada a "{name}"',
+  "sandbox.contentBrowser.waitingForSandboxContext":
+    "Aguardando o contexto da sandbox…",
   "sandbox.drawer.failedToRestart": "Falha ao reiniciar {name}",
   "sandbox.drawer.failedToRun": "Falha ao executar {name}",
   "sandbox.drawer.failedToStop": "Falha ao parar {name}",
@@ -188,10 +330,13 @@ export const sandbox = {
   "sandbox.fileExplorer.closeFileTab": "Fechar {name}",
   "sandbox.fileExplorer.deleteFailed": "Falha ao deletar",
   "sandbox.fileExplorer.failedToCopyText": "Falha ao copiar {label}",
+  "sandbox.fileExplorer.failedToLoadFile": "Não foi possível carregar {name}",
   "sandbox.fileExplorer.failedToLoadFolder": "Falha ao carregar pasta",
   "sandbox.fileExplorer.failedToOpenFile": "Falha ao abrir arquivo",
   "sandbox.fileExplorer.failedToRefreshFileTree":
     "Falha ao atualizar árvore de arquivos",
+  "sandbox.fileExplorer.failedToSaveFile":
+    "Não foi possível salvar. Suas alterações continuam aqui.",
   "sandbox.fileExplorer.fileAlreadyExists": '"{name}" já existe',
   "sandbox.fileExplorer.fileCreated": 'Criado "{name}"',
   "sandbox.fileExplorer.fileDeleted": 'Deletado "{name}"',
@@ -213,12 +358,14 @@ export const sandbox = {
     "Nenhuma correspondência no conteúdo dos arquivos",
   "sandbox.fileExplorer.operationFailed": "Operação falhou",
   "sandbox.fileExplorer.renamedTo": 'Renomeado para "{name}"',
+  "sandbox.fileExplorer.retry": "Tentar novamente",
   "sandbox.fileExplorer.saved": "Salvo",
   "sandbox.fileExplorer.searchFilesLabel": "Pesquisar arquivos",
   "sandbox.fileExplorer.searchFilesPlaceholder": "Pesquisar arquivos...",
   "sandbox.fileExplorer.selectFileToEdit": "Selecione um arquivo para editar",
   "sandbox.fileExplorer.send": "Enviar",
   "sandbox.fileExplorer.textCopied": "{label} copiado",
+  "sandbox.fileExplorer.unsavedChanges": "Alterações não salvas",
   "sandbox.fileExplorerDeleteDialog.cancel": "Cancelar",
   "sandbox.fileExplorerDeleteDialog.delete": "Excluir",
   "sandbox.fileExplorerDeleteDialog.description":
@@ -249,6 +396,13 @@ export const sandbox = {
   "sandbox.fileExplorerNameDialog.renameSubmit": "Renomear",
   "sandbox.fileExplorerNameDialog.renameTitle": "Renomear",
   "sandbox.fileExplorerNameDialog.saving": "Salvando…",
+  "sandbox.fileExplorerUnsavedDialog.cancel": "Cancelar",
+  "sandbox.fileExplorerUnsavedDialog.description":
+    "Salve suas alterações antes de fechar este arquivo ou descarte-as permanentemente.",
+  "sandbox.fileExplorerUnsavedDialog.discard": "Descartar",
+  "sandbox.fileExplorerUnsavedDialog.save": "Salvar",
+  "sandbox.fileExplorerUnsavedDialog.saving": "Salvando…",
+  "sandbox.fileExplorerUnsavedDialog.title": "Salvar alterações em {name}?",
   "sandbox.fileTreeRow.copyPath": "Copiar caminho",
   "sandbox.fileTreeRow.copyRelativePath": "Copiar caminho relativo",
   "sandbox.fileTreeRow.delete": "Deletar",
@@ -263,6 +417,7 @@ export const sandbox = {
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
   "sandbox.itemRow.selectItem": "Selecionar {title}",
+  "sandbox.itemRow.variantCount": "{count} variantes",
   "sandbox.listBlocks.addCard": "Adicionar card",
   "sandbox.listBlocks.addItem": "Adicionar item",
   "sandbox.listBlocks.addStat": "Adicionar estatística",
@@ -460,8 +615,9 @@ export const sandbox = {
   "sandbox.preview.devServerPreviewTitle":
     "Visualização do servidor de desenvolvimento",
   "sandbox.preview.deviceDesktop": "Desktop",
-  "sandbox.preview.deviceMobile": "Celular (375px)",
-  "sandbox.preview.deviceTablet": "Tablet (768px)",
+  "sandbox.preview.deviceMobile": "Celular (412px)",
+  "sandbox.preview.deviceSelector": "Tamanho da prévia",
+  "sandbox.preview.deviceTablet": "Tablet (1024px)",
   "sandbox.preview.editBlocks": "Editar blocos",
   "sandbox.preview.enterToGo": "Enter para ir",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
@@ -680,6 +836,9 @@ export const sandbox = {
   "sandbox.runtimeFields.packagePath": "Caminho do pacote",
   "sandbox.runtimeFields.packagePathDescription":
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
+  "sandbox.saveStatus.couldNotSave": "Não foi possível salvar",
+  "sandbox.saveStatus.saved": "Salvo",
+  "sandbox.saveStatus.saving": "Salvando…",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.savedSectionEditor.editAsJson": "Editar como JSON",
   "sandbox.savedSectionEditor.editingBreadcrumb":
@@ -780,6 +939,7 @@ export const sandbox = {
   "sandbox.toolbar.stopProcess": "Parar processo",
   "sandbox.toolbar.stopSandboxTooltip": "Parar sandbox",
   "sandbox.toolbar.stopping": "Parando…",
+  "sandbox.toolbar.tabsLabel": "Abas do terminal",
   "sandbox.variantCalendar.always": "Sempre",
   "sandbox.variantCalendar.calendarMode": "Calendário",
   "sandbox.variantCalendar.dateMatcherInfo":

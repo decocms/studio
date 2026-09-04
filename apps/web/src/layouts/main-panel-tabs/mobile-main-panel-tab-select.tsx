@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Columns03, Folder, MessageCircle01 } from "@untitledui/icons";
 import {
@@ -155,6 +156,9 @@ export function MobileMainPanelTabSelect({
   const { org } = useProjectContext();
   const reportsOnly = useReportsOnly();
   const onReportAgent = virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+  // A path replacement hands focus to the destination heading; suppress the
+  // select primitive's competing attempt to restore its departing trigger.
+  const routeChangeOwnsFocus = useRef(false);
 
   // Tasks and Library are organization destinations. Selecting either clears
   // the active thread, so their availability must not depend on `taskId`.
@@ -202,6 +206,7 @@ export function MobileMainPanelTabSelect({
     // from any other shell deep-link into it instead of opening a source-less
     // panel on the current agent (mirrors setActiveTab in useMainPanelTabs).
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: value })) {
+      routeChangeOwnsFocus.current = true;
       openPanel(value, {
         agentId: getCommerceDiscoveryAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
@@ -210,6 +215,7 @@ export function MobileMainPanelTabSelect({
       return;
     }
     if (value === "chat") {
+      routeChangeOwnsFocus.current = false;
       navigate({
         to: ".",
         search: (prev: Record<string, unknown>) => ({
@@ -221,6 +227,7 @@ export function MobileMainPanelTabSelect({
       return;
     }
     if (selection.surface === "chat" && value === activeTab) {
+      routeChangeOwnsFocus.current = false;
       navigate({
         to: ".",
         search: restoreCurrentMobileMainSearch,
@@ -230,6 +237,7 @@ export function MobileMainPanelTabSelect({
     }
     /** The view is the path now, so only the chat half needs writing: naming a
      *  view is what opens the main panel. */
+    routeChangeOwnsFocus.current = value !== activeTab;
     openPanel(value, {
       search: (prev) => ({ ...prev, sidepanel: false }),
     });
@@ -262,6 +270,10 @@ export function MobileMainPanelTabSelect({
         data-route-focus-source="mobile-view-select"
         align="end"
         className="w-56"
+        onCloseAutoFocus={(event) => {
+          if (routeChangeOwnsFocus.current) event.preventDefault();
+          routeChangeOwnsFocus.current = false;
+        }}
       >
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>

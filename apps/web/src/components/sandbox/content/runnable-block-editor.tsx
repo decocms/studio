@@ -1,6 +1,6 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   ChevronRight,
@@ -135,19 +135,6 @@ export function RunnableBlockEditor({
     branch,
   });
   const run = useRunBlock({ orgSlug, virtualMcpId, branch, threadId });
-
-  // useDebouncedSaveBlock CANCELS pending saves on unmount (its documented
-  // contract is that leaving callers flush explicitly). This editor unmounts on
-  // back navigation and on target switch (keyed remount), so flush on the way
-  // out or edits inside the debounce window would be silently lost. Capturing
-  // the first render's `flush` is safe: it closes over the hook's stable refs.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — unmount flush of pending saves
-  useEffect(() => {
-    return () => {
-      flush();
-    };
-    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
-  }, []);
 
   const singular = runnableSingular(kind);
   const typeLabel =

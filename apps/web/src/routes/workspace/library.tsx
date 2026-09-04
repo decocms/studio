@@ -3,7 +3,7 @@ import { WorkspaceRouteMain } from "./workspace-route-main";
 
 export default function LibraryRoute() {
   return (
-    <WorkspaceRouteMain contentClassName="overflow-hidden">
+    <WorkspaceRouteMain contentMode="canvas">
       <LibraryTab />
     </WorkspaceRouteMain>
   );

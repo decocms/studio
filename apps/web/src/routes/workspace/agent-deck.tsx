@@ -2,6 +2,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import { DeckTab } from "@/layouts/main-panel-tabs/deck-tab";
 import { RouteNotFound } from "./route-not-found";
 import { AgentRouteMain } from "./agent-route-main";
+import { resolveRouteResourceTarget } from "./route-resource-title";
 
 const route = getRouteApi(
   "/shell/$org/org-shell/agent-shell/agents/$agentId/outputs/deck",
@@ -9,13 +10,13 @@ const route = getRouteApi(
 
 export default function AgentDeckRoute() {
   const { path } = route.useSearch();
-  const title = path
-    ? (path.split("/").pop() ?? path).replace(/\.html$/i, "")
-    : undefined;
+  const target = resolveRouteResourceTarget(path, (leaf) =>
+    leaf.replace(/\.html$/i, ""),
+  );
 
   return (
-    <AgentRouteMain title={title} contentClassName="overflow-hidden">
-      {path ? <DeckTab path={path} /> : <RouteNotFound />}
+    <AgentRouteMain title={target?.title} contentMode="canvas">
+      {target ? <DeckTab path={target.value} /> : <RouteNotFound />}
     </AgentRouteMain>
   );
 }

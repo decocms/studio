@@ -41,7 +41,6 @@ import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
-import { ViewLayout } from "./layout";
 import {
   OAuthAuthenticationState,
   ManualAuthRequiredState,
@@ -655,6 +654,7 @@ function ToolDetailsAuthenticated({
             <Button
               size="icon"
               variant="ghost"
+              aria-label={t("details.tool.copyResult")}
               className="absolute top-4 right-4 h-8 w-8 bg-background/80 hover:bg-background border border-border shadow-sm"
               onClick={() => {
                 navigator.clipboard.writeText(
@@ -677,76 +677,67 @@ function ToolDetailsAuthenticated({
   );
 
   return (
-    <ViewLayout>
-      <div className="flex flex-col h-full overflow-hidden @container">
-        {/* Header */}
-        <div className="flex flex-col gap-3 py-7 px-8 bg-background border-b border-border shrink-0">
-          {/* Row 1: icon | title + status | selector */}
-          <div className="flex items-center gap-4">
-            <IntegrationIcon
-              icon={connection?.icon || null}
-              name={connection?.title || toolName}
-              size="xl"
-              className="shrink-0"
-            />
-            <h2 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
-              {toolName}
-            </h2>
-            {/* MCP Status */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
-              {toolsQuery.isSuccess ? (
-                <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
-              ) : toolsQuery.isLoading ? (
-                <Spinner className="size-[10px] text-warning shrink-0" />
-              ) : (
-                <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
-              )}
-              <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
-                {toolsQuery.isSuccess
-                  ? "ready"
-                  : toolsQuery.isLoading
-                    ? "connecting"
-                    : "error"}
-              </span>
-            </div>
-            <ToolAnnotationBadges
-              annotations={tool?.annotations}
-              _meta={tool?._meta as Record<string, unknown> | undefined}
-            />
-            {/* Instance switcher — visible only on large containers */}
-            <div className="hidden @3xl:flex items-center ml-auto shrink-0">
-              {instanceSelector}
-            </div>
-          </div>
-          {/* Row 2: description */}
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {tool?.description || "No description available"}
-          </p>
-        </div>
-
-        {/* Instance switcher — visible only on small containers */}
-        {siblings.length > 1 && (
-          <div className="flex @3xl:hidden items-center gap-3 px-8 py-3 border-b border-border">
-            <span className="text-xs font-medium text-muted-foreground shrink-0">
-              {t("details.tool.instance")}
+    <div className="@container flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border bg-background px-4 py-5 @3xl:px-8 @3xl:py-6">
+        <div className="flex items-center gap-4">
+          <IntegrationIcon
+            icon={connection?.icon || null}
+            name={connection?.title || toolName}
+            size="xl"
+            className="shrink-0"
+          />
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
+            {toolsQuery.isSuccess ? (
+              <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
+            ) : toolsQuery.isLoading ? (
+              <Spinner className="size-[10px] text-warning shrink-0" />
+            ) : (
+              <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
+            )}
+            <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
+              {toolsQuery.isSuccess
+                ? t("details.tool.statusReady")
+                : toolsQuery.isLoading
+                  ? t("details.tool.statusConnecting")
+                  : t("details.tool.statusError")}
             </span>
+          </div>
+          <ToolAnnotationBadges
+            annotations={tool?.annotations}
+            _meta={tool?._meta as Record<string, unknown> | undefined}
+          />
+          {/* Instance switcher — visible only on large containers */}
+          <div className="hidden @3xl:flex items-center ml-auto shrink-0">
             {instanceSelector}
           </div>
-        )}
+        </div>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {tool?.description || t("details.tool.noDescription")}
+        </p>
+      </div>
 
-        {/* Content area */}
-        <div className="flex-1 overflow-auto @3xl:overflow-hidden">
-          <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] @3xl:h-full @3xl:grid-rows-1">
-            {/* Parameters */}
-            <div className="@3xl:border-r border-border @3xl:overflow-auto">
-              {parametersSection}
-            </div>
-            {/* Result */}
-            {resultPanel}
+      {/* Instance switcher — visible only on small containers */}
+      {siblings.length > 1 && (
+        <div className="flex @3xl:hidden items-center gap-3 px-8 py-3 border-b border-border">
+          <span className="text-xs font-medium text-muted-foreground shrink-0">
+            {t("details.tool.instance")}
+          </span>
+          {instanceSelector}
+        </div>
+      )}
+
+      {/* Content area */}
+      <div className="flex-1 overflow-auto @3xl:overflow-hidden">
+        <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] @3xl:h-full @3xl:grid-rows-1">
+          {/* Parameters */}
+          <div className="@3xl:border-r border-border @3xl:overflow-auto">
+            {parametersSection}
           </div>
+          {/* Result */}
+          {resultPanel}
         </div>
       </div>
-    </ViewLayout>
+    </div>
   );
 }
 

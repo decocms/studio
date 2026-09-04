@@ -6,7 +6,7 @@ import { AgentViewGuard } from "./agent-view-guard";
 export default function AgentE2eRoute() {
   const agentId = useRouteVirtualMcpId();
   return (
-    <AgentRouteMain contentClassName="overflow-hidden">
+    <AgentRouteMain contentMode="canvas">
       <AgentViewGuard tabId="e2e">
         <E2eTab virtualMcpId={agentId} />
       </AgentViewGuard>

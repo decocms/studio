@@ -25,6 +25,7 @@ import { ideDeepLink } from "@/components/sandbox/ide-deep-link";
 import { useT } from "@/i18n/use-t.ts";
 import { EmptyState } from "@/components/empty-state";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
+import { Main } from "@/components/main";
 
 const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
@@ -74,71 +75,80 @@ export function CodeTab({
     );
   }
 
-  return (
-    <div className="flex flex-col w-full h-full">
-      {repoDir && (
-        <div className="relative flex h-12 shrink-0 items-center border-b border-border/60 px-3 md:px-4">
-          <div className="ml-auto flex shrink-0 items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("mainPanelTabs.codeTab.openInVscode")}
-                  onClick={() => window.open(ideDeepLink("vscode", repoDir))}
-                >
-                  <img
-                    src={VSCODE_ICON_URL}
-                    alt="VSCode"
-                    width={14}
-                    height={14}
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t("mainPanelTabs.codeTab.openInVscode")}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("mainPanelTabs.codeTab.openInCursor")}
-                  onClick={() => window.open(ideDeepLink("cursor", repoDir))}
-                >
-                  <img
-                    src={CURSOR_ICON_URL}
-                    alt="Cursor"
-                    width={14}
-                    height={14}
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t("mainPanelTabs.codeTab.openInCursor")}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-      )}
-      <div className="flex-1 relative overflow-hidden bg-background">
-        <Suspense
-          fallback={
-            <div className="h-full flex items-center justify-center">
-              <Spinner className="size-5 text-muted-foreground" />
-            </div>
-          }
-        >
-          <FileExplorer
-            orgSlug={org.slug}
-            virtualMcpId={virtualMcpId}
-            branch={branch}
-            threadId={taskId ?? null}
-            openPath={openPath}
-          />
-        </Suspense>
-      </div>
+  const ideActions = repoDir ? (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("mainPanelTabs.codeTab.openInVscode")}
+            onClick={() => window.open(ideDeepLink("vscode", repoDir))}
+          >
+            <img
+              src={VSCODE_ICON_URL}
+              alt=""
+              width={14}
+              height={14}
+              aria-hidden="true"
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {t("mainPanelTabs.codeTab.openInVscode")}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("mainPanelTabs.codeTab.openInCursor")}
+            onClick={() => window.open(ideDeepLink("cursor", repoDir))}
+          >
+            <img
+              src={CURSOR_ICON_URL}
+              alt=""
+              width={14}
+              height={14}
+              aria-hidden="true"
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {t("mainPanelTabs.codeTab.openInCursor")}
+        </TooltipContent>
+      </Tooltip>
     </div>
+  ) : null;
+
+  return (
+    <>
+      {ideActions ? (
+        <Main.Topbar.Right.Portal>{ideActions}</Main.Topbar.Right.Portal>
+      ) : null}
+      <div className="flex h-full w-full flex-col">
+        <div className="flex-1 relative overflow-hidden bg-background">
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center">
+                <Spinner
+                  className="size-5 text-muted-foreground"
+                  label={t("common.loading")}
+                />
+              </div>
+            }
+          >
+            <FileExplorer
+              orgSlug={org.slug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              threadId={taskId ?? null}
+              openPath={openPath}
+            />
+          </Suspense>
+        </div>
+      </div>
+    </>
   );
 }

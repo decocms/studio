@@ -61,7 +61,9 @@ export function ItemRow({
           <TooltipTrigger asChild>
             <Icon size={16} className="shrink-0 text-success" />
           </TooltipTrigger>
-          <TooltipContent side="right">{variantCount} variants</TooltipContent>
+          <TooltipContent side="right">
+            {t("sandbox.itemRow.variantCount", { count: variantCount })}
+          </TooltipContent>
         </Tooltip>
       </span>
     ) : logoUrl ? (
@@ -108,7 +110,7 @@ export function ItemRow({
             "flex shrink-0 items-center pl-2.5 transition-opacity",
             selected || selectionActive
               ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
           )}
           onClick={(e) => e.stopPropagation()}
         >
@@ -123,7 +125,7 @@ export function ItemRow({
         type="button"
         onClick={onClick}
         aria-current={active ? "true" : undefined}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {rowIcon}
         <span className="min-w-0 flex-1">
@@ -166,7 +168,7 @@ export function ItemRow({
       {menu && (
         <div
           className={cn(
-            "pr-1 opacity-0 transition-opacity group-hover:opacity-100",
+            "pr-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
             active && "opacity-100",
           )}
         >

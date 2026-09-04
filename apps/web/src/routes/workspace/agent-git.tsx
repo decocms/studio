@@ -6,7 +6,7 @@ import { AgentViewGuard } from "./agent-view-guard";
 export default function AgentGitRoute() {
   const agentId = useRouteVirtualMcpId();
   return (
-    <AgentRouteMain contentClassName="overflow-hidden">
+    <AgentRouteMain contentMode="canvas">
       <AgentViewGuard tabId="git">
         <GitTab virtualMcpId={agentId} />
       </AgentViewGuard>

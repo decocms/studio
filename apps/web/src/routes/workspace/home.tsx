@@ -3,7 +3,7 @@ import { WorkspaceRouteMain } from "./workspace-route-main";
 
 export default function HomeRoute() {
   return (
-    <WorkspaceRouteMain contentClassName="overflow-hidden">
+    <WorkspaceRouteMain contentMode="scroll">
       <OrgAgentsTab />
     </WorkspaceRouteMain>
   );

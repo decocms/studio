@@ -6,7 +6,7 @@ import { AgentViewGuard } from "./agent-view-guard";
 export default function AgentAnalyticsRoute() {
   const agentId = useRouteVirtualMcpId();
   return (
-    <AgentRouteMain contentClassName="overflow-hidden">
+    <AgentRouteMain contentMode="canvas">
       <AgentViewGuard tabId="analytics">
         <AnalyticsTab virtualMcpId={agentId} />
       </AgentViewGuard>

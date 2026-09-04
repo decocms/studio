@@ -60,6 +60,11 @@ export const common = {
     "Algo deu errado ao verificar seu acesso. Isso geralmente é temporário.",
   "common.capabilityLoadError.title":
     "Não foi possível carregar suas permissões",
+  "common.noPermissionState.description":
+    "Sua função não inclui permissão para esta seção. Peça a um administrador da organização para atualizar sua função caso precise de acesso.",
+  "common.noPermissionState.goToProfile": "Ir para o seu perfil",
+  "common.noPermissionState.title": "Sem acesso",
+  "common.noPermissionState.titleWithArea": "Sem acesso a {area}",
   "common.capabilityLoadError.tryAgain": "Tentar novamente",
   "common.createOrganizationDialog.cancel": "Cancelar",
   "common.createOrganizationDialog.createButton": "Criar Organização",

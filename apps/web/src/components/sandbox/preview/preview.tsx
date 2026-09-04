@@ -191,8 +191,6 @@ const COMPACT_PREVIEW_WORKSPACE_WIDTH = 720;
 
 type CompactPreviewStage = "canvas" | "blocks";
 
-const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
-
 // Device labels are resolved per-render in the component to use t()
 const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
   mobile: "sandbox.preview.deviceMobile",
@@ -1324,11 +1322,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Only a moved or restarted dev server; file edits reload the page themselves.
   useSandboxReloadHandler(reloadPreviewPreservingScroll);
 
-  const handleDeviceToggle = () => {
-    const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
-    setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
-  };
-
   const setPathParamValue = (name: string, value: string) => {
     if (!currentPageKey) return;
     const pageKey = currentPageKey;
@@ -1878,10 +1871,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         transformOrigin: "top center",
       };
 
-  // Device toggle works on any live iframe; visual-editor toggle is sandbox-only.
-  const floatingPreviewControls = previewSurfaceActive ? (
-    <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
-      <div className="flex items-center gap-0.5 rounded-full border bg-background/60 p-1 shadow-lg backdrop-blur-md">
+  // Preview controls belong to the route toolbar, where they remain discoverable
+  // without covering the page being edited. Visual editing is sandbox-only.
+  const previewToolbarControls = previewSurfaceActive ? (
+    <div className="flex min-w-0 items-center gap-1">
+      <div className="flex items-center gap-0.5">
         {canVisualEdit && (
           <>
             <Tooltip>
@@ -1891,39 +1885,46 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   aria-pressed={effectiveEditingMode === "visual"}
                   aria-label={t("sandbox.preview.visualEditor")}
                   active={effectiveEditingMode === "visual"}
-                  className="rounded-full"
                 >
                   <CursorClick01 size={16} />
                 </ToolbarIconButton>
               </TooltipTrigger>
-              <TooltipContent side="top">
+              <TooltipContent side="bottom">
                 {t("sandbox.preview.visualEditor")}
               </TooltipContent>
             </Tooltip>
             <div className="mx-0.5 h-5 w-px bg-border" />
           </>
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-              className="rounded-full"
-            >
-              <span
-                key={previewDeviceSize}
-                className="flex items-center justify-center animate-device-icon-pop"
-              >
-                {previewDeviceSize === "mobile" && <Phone02 size={16} />}
-                {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
-                {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
-              </span>
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-          </TooltipContent>
-        </Tooltip>
+        <div
+          role="group"
+          aria-label={t("sandbox.preview.deviceSelector")}
+          className="flex items-center gap-0.5"
+        >
+          {(
+            [
+              ["desktop", <Monitor04 key="desktop" size={16} />],
+              ["tablet", <Tablet01 key="tablet" size={16} />],
+              ["mobile", <Phone02 key="mobile" size={16} />],
+            ] as const
+          ).map(([device, icon]) => (
+            <Tooltip key={device}>
+              <TooltipTrigger asChild>
+                <ToolbarIconButton
+                  onClick={() => setPreviewDeviceSize(device)}
+                  aria-label={t(DEVICE_LABEL_KEYS[device])}
+                  aria-pressed={previewDeviceSize === device}
+                  active={previewDeviceSize === device}
+                >
+                  {icon}
+                </ToolbarIconButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t(DEVICE_LABEL_KEYS[device])}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
       </div>
     </div>
   ) : null;
@@ -1959,16 +1960,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ) : null,
         )}
       {urlControls && !isMobile && (
-        <Main.Subheader.Center.Portal>
-          {urlControls}
-        </Main.Subheader.Center.Portal>
+        <Main.Toolbar.Center.Portal>{urlControls}</Main.Toolbar.Center.Portal>
       )}
-      {urlGroup && isMobile && (
+      {previewToolbarControls && !isMobile && (
+        <Main.Toolbar.Right.Portal>
+          {previewToolbarControls}
+        </Main.Toolbar.Right.Portal>
+      )}
+      {isMobile && (urlGroup || previewToolbarControls) && (
         <div
           data-responsive-focus-group="preview-url-controls"
-          className="flex h-10 shrink-0 items-center justify-center gap-0.5 border-b border-border/60 bg-background px-2"
+          className="flex min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 py-1"
         >
-          {urlGroup}
+          {urlGroup && (
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-0.5">
+              {urlGroup}
+            </div>
+          )}
+          {previewToolbarControls}
         </div>
       )}
 
@@ -2199,7 +2208,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   )}
 
                   {effectiveEditingMode === "visual" && !visualElement && (
-                    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/90 px-3 py-1 text-xs font-medium text-primary-foreground shadow-md backdrop-blur-sm pointer-events-none select-none">
                       <CursorClick01 size={12} />
                       {t("sandbox.preview.clickElementToAsk")}
                     </div>
@@ -2210,8 +2219,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       onDismiss={() => setVisualElement(null)}
                     />
                   )}
-
-                  {floatingPreviewControls}
 
                   {previewSurfaceActive && iframeSrc && (
                     <div

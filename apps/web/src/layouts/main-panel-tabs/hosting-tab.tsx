@@ -77,6 +77,7 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -369,11 +370,18 @@ function DeployButton({
         size="sm"
         onClick={() => setConfirm(true)}
         disabled={deployMutation.isPending}
+        aria-label={
+          deployMutation.isPending
+            ? t("mainPanelTabs.hostingTab.deploying")
+            : t("mainPanelTabs.hostingTab.deploy")
+        }
       >
         <Rocket01 className="size-4" />
-        {deployMutation.isPending
-          ? t("mainPanelTabs.hostingTab.deploying")
-          : t("mainPanelTabs.hostingTab.deploy")}
+        <span className="@max-sm/main-topbar:hidden">
+          {deployMutation.isPending
+            ? t("mainPanelTabs.hostingTab.deploying")
+            : t("mainPanelTabs.hostingTab.deploy")}
+        </span>
       </Button>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
@@ -2332,77 +2340,73 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
   );
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Server01 className="size-[18px] text-muted-foreground" />
-              <h2 className="text-base font-semibold text-foreground">
-                {t("mainPanelTabs.hostingTab.title")}
-              </h2>
-              {framework && <Badge variant="secondary">{framework}</Badge>}
-            </div>
+    <>
+      <Main.Topbar.Right.Portal>
+        <DeployButton base={base} orgSlug={org.slug} site={siteSlug} />
+      </Main.Topbar.Right.Portal>
+      <div className="h-full min-h-0 overflow-y-auto">
+        <Main.Container width="standard" className="flex flex-col gap-6">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm text-muted-foreground">
               {t("mainPanelTabs.hostingTab.subtitle", { site: siteSlug })}
             </p>
+            {framework && <Badge variant="secondary">{framework}</Badge>}
           </div>
-          <DeployButton base={base} orgSlug={org.slug} site={siteSlug} />
-        </div>
 
-        {/* Deployments — current + history timeline + build logs */}
-        <DeploymentsSection
-          base={base}
-          orgSlug={org.slug}
-          site={siteSlug}
-          enabled={enabled}
-          deployments={deployments}
-          isLoading={deploymentsQuery.isLoading}
-          error={deploymentsQuery.error}
-        />
+          {/* Deployments — current + history timeline + build logs */}
+          <DeploymentsSection
+            base={base}
+            orgSlug={org.slug}
+            site={siteSlug}
+            enabled={enabled}
+            deployments={deployments}
+            isLoading={deploymentsQuery.isLoading}
+            error={deploymentsQuery.error}
+          />
 
-        {/* Environment variables (interactive) */}
-        <EnvSection
-          base={base}
-          orgSlug={org.slug}
-          site={siteSlug}
-          envVars={envVars}
-          codeVars={codeVars}
-          isLoading={envQuery.isLoading}
-          error={envQuery.error}
-        />
+          {/* Environment variables (interactive) */}
+          <EnvSection
+            base={base}
+            orgSlug={org.slug}
+            site={siteSlug}
+            envVars={envVars}
+            codeVars={codeVars}
+            isLoading={envQuery.isLoading}
+            error={envQuery.error}
+          />
 
-        {/* Secrets (interactive; names only) */}
-        <SecretsSection
-          base={base}
-          orgSlug={org.slug}
-          site={siteSlug}
-          secrets={secrets}
-          isLoading={secretsQuery.isLoading}
-          error={secretsQuery.error}
-        />
+          {/* Secrets (interactive; names only) */}
+          <SecretsSection
+            base={base}
+            orgSlug={org.slug}
+            site={siteSlug}
+            secrets={secrets}
+            isLoading={secretsQuery.isLoading}
+            error={secretsQuery.error}
+          />
 
-        {/* Custom domains (per-substrate: knative DecoDomain vs CF Worker Route) */}
-        <DomainsSection
-          base={base}
-          orgSlug={org.slug}
-          site={siteSlug}
-          domains={domains}
-          dnsTemplate={dnsTemplate}
-          isLoading={domainsQuery.isLoading}
-          error={domainsQuery.error}
-        />
+          {/* Custom domains (per-substrate: knative DecoDomain vs CF Worker Route) */}
+          <DomainsSection
+            base={base}
+            orgSlug={org.slug}
+            site={siteSlug}
+            domains={domains}
+            dnsTemplate={dnsTemplate}
+            isLoading={domainsQuery.isLoading}
+            error={domainsQuery.error}
+          />
 
-        {/* Redirects (interactive) */}
-        <RedirectsSection
-          base={base}
-          orgSlug={org.slug}
-          site={siteSlug}
-          redirects={redirects}
-          isLoading={redirectsQuery.isLoading}
-          error={redirectsQuery.error}
-        />
+          {/* Redirects (interactive) */}
+          <RedirectsSection
+            base={base}
+            orgSlug={org.slug}
+            site={siteSlug}
+            redirects={redirects}
+            isLoading={redirectsQuery.isLoading}
+            error={redirectsQuery.error}
+          />
+        </Main.Container>
       </div>
-    </div>
+    </>
   );
 }

@@ -21,7 +21,12 @@ export interface WorkspaceRouteMainProps {
   actions?: ReactNode;
   center?: ReactNode;
   children: ReactNode;
-  contentClassName?: string;
+  /**
+   * Routes declare whether Main or their canvas owns scrolling. Keeping this
+   * semantic prevents an incidental utility class from creating two scroll
+   * containers.
+   */
+  contentMode?: "scroll" | "canvas";
   /** Explicit route-owned content after the title in the left topbar slot. */
   leading?: ReactNode;
   /** Explicit semantic parents between the organization and current route. */
@@ -40,7 +45,7 @@ export function WorkspaceRouteMain({
   actions,
   center,
   children,
-  contentClassName,
+  contentMode = "scroll",
   leading,
   breadcrumbAncestors,
   boundaryKey,
@@ -59,23 +64,15 @@ export function WorkspaceRouteMain({
         <Main.Topbar.Left>
           <WorkspaceMainLeading currentRouteTitle={routeTitle}>
             {routeTitle ? (
-              <>
-                <MainBreadcrumb
-                  className="hidden md:flex"
-                  scope={organizationMainBreadcrumbItem(
-                    org,
-                    t("sidebar.navDestinations.home"),
-                  )}
-                  ancestors={breadcrumbAncestors}
-                  current={{ id: `route:${routeKey}`, label: routeTitle }}
-                />
-                {/* Mobile's view selector owns the visible route label. Keep a
-                    single semantic page heading without leaving invisible
-                    breadcrumb actions in the keyboard order. */}
-                <Main.Title className="sr-only md:hidden">
-                  {routeTitle}
-                </Main.Title>
-              </>
+              <MainBreadcrumb
+                compactTitle="visually-hidden"
+                scope={organizationMainBreadcrumbItem(
+                  org,
+                  t("sidebar.navDestinations.home"),
+                )}
+                ancestors={breadcrumbAncestors}
+                current={{ id: `route:${routeKey}`, label: routeTitle }}
+              />
             ) : null}
             {leading}
           </WorkspaceMainLeading>
@@ -90,8 +87,8 @@ export function WorkspaceRouteMain({
           <WorkspaceMainTrailing>{actions}</WorkspaceMainTrailing>
         </Main.Topbar.Right>
       </Main.Topbar>
-      <Main.Subheader className="md:hidden" />
-      <Main.Content className={contentClassName}>
+      <Main.Toolbar />
+      <Main.Content mode={contentMode}>
         <ErrorBoundary key={routeBoundaryKey}>
           <MainPanelBoundary>
             <MainPanelTestErrorTrigger routeId={routeBoundaryKey}>

@@ -5,7 +5,7 @@ import { AgentRouteMain } from "./agent-route-main";
 export default function AgentSettingsRoute() {
   const agentId = useRouteVirtualMcpId();
   return (
-    <AgentRouteMain contentClassName="overflow-hidden">
+    <AgentRouteMain contentMode="canvas">
       <SettingsTab virtualMcpId={agentId} />
     </AgentRouteMain>
   );

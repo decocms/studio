@@ -3,7 +3,7 @@ import { WorkspaceRouteMain } from "./workspace-route-main";
 
 export default function ReportsRoute() {
   return (
-    <WorkspaceRouteMain contentClassName="overflow-hidden">
+    <WorkspaceRouteMain contentMode="canvas">
       <ReportsTab />
     </WorkspaceRouteMain>
   );

@@ -46,3 +46,11 @@ export function collectionStartStage(
     }
   }
 }
+
+/** Restore the semantic view when a wide three-rail workspace becomes compact. */
+export function compactStageForCurrentView(
+  collection: CollectionId,
+  hasSelection: boolean,
+): Exclude<CompactContentStage, "collections"> {
+  return hasSelection ? "detail" : collectionStartStage(collection);
+}

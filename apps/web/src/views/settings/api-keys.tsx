@@ -22,7 +22,9 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 import {
   type ApiKey,
   type CreatedApiKey,
@@ -84,7 +86,7 @@ function ApiKeyRow({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function EmptyState({ onCreate }: { onCreate?: () => void }) {
   const t = useT();
   return (
     <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
@@ -99,10 +101,12 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
           {t("settings.apiKeys.emptyDescription")}
         </p>
       </div>
-      <Button onClick={onCreate} size="sm" className="mt-2">
-        <Plus size={14} />
-        {t("settings.apiKeys.newKey")}
-      </Button>
+      {onCreate ? (
+        <Button onClick={onCreate} size="sm" className="mt-2">
+          <Plus size={14} aria-hidden="true" />
+          {t("settings.apiKeys.newKey")}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -243,10 +247,16 @@ function CreateApiKeyDialog({
  * API keys — the whole feature as one section, so it can sit under the clients
  * it authenticates on the Connect page and still be all of `/settings/api-keys`.
  *
- * `headerClassName="px-0"` matches the Connect page's full-bleed cards: the
- * heading aligns with the page, the card is the section's only surface.
+ * `embedded` is the reusable Connect-page presentation. `standalone` lets the
+ * route shell own the visible page title and primary-action placement.
  */
-export function ApiKeysSection() {
+interface ApiKeysSectionProps {
+  presentation?: "embedded" | "standalone";
+}
+
+export function ApiKeysSection({
+  presentation = "embedded",
+}: ApiKeysSectionProps) {
   const t = useT();
   const { data, isLoading, error } = useApiKeysList();
   const deleteApiKey = useDeleteApiKey();
@@ -254,6 +264,22 @@ export function ApiKeysSection() {
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ApiKey | null>(null);
   const apiKeys = data ?? [];
+  const createAction = (
+    <Button
+      onClick={() => setCreateOpen(true)}
+      size="sm"
+      aria-label={t("settings.apiKeys.newKey")}
+    >
+      <Plus size={14} aria-hidden="true" />
+      <span
+        className={cn(
+          presentation === "standalone" && "@max-sm/main-topbar:hidden",
+        )}
+      >
+        {t("settings.apiKeys.newKey")}
+      </span>
+    </Button>
+  );
 
   async function handleDelete() {
     if (!pendingDelete) return;
@@ -274,85 +300,97 @@ export function ApiKeysSection() {
   }
 
   return (
-    <SettingsSection
-      headerClassName="px-0"
-      title={t("settings.apiKeys.sectionTitle")}
-      description={t("settings.apiKeys.sectionDescription")}
-      actions={
-        apiKeys.length > 0 ? (
-          <Button onClick={() => setCreateOpen(true)} size="sm">
-            <Plus size={14} />
-            {t("settings.apiKeys.newKey")}
-          </Button>
-        ) : undefined
-      }
-    >
-      {isLoading ? (
-        <Card className="gap-0 overflow-hidden p-0">
-          <p className="px-4 py-3 text-xs text-muted-foreground">
-            {t("settings.apiKeys.loading")}
-          </p>
-        </Card>
-      ) : /* A failed REFETCH keeps `data`, so only surface the error when it
+    <>
+      {presentation === "standalone" ? (
+        <Main.Topbar.Right.Portal>{createAction}</Main.Topbar.Right.Portal>
+      ) : null}
+      <SettingsSection
+        headerClassName="px-0"
+        title={
+          presentation === "embedded"
+            ? t("settings.apiKeys.sectionTitle")
+            : undefined
+        }
+        description={t("settings.apiKeys.sectionDescription")}
+        actions={
+          presentation === "embedded" && apiKeys.length > 0
+            ? createAction
+            : undefined
+        }
+      >
+        {isLoading ? (
+          <Card className="gap-0 overflow-hidden p-0">
+            <p className="px-4 py-3 text-xs text-muted-foreground">
+              {t("settings.apiKeys.loading")}
+            </p>
+          </Card>
+        ) : /* A failed REFETCH keeps `data`, so only surface the error when it
              left us with nothing to show — otherwise a background 401 on
              window focus replaces a loaded list (and its create path) with an
              error card. */
-      error && apiKeys.length === 0 ? (
-        <ErrorFallback error={error} />
-      ) : apiKeys.length === 0 ? (
-        <EmptyState onCreate={() => setCreateOpen(true)} />
-      ) : (
-        <Card className="gap-0 overflow-hidden p-0">
-          <ul className="divide-y divide-border">
-            {apiKeys.map((key) => (
-              <ApiKeyRow
-                key={key.id}
-                apiKey={key}
-                onDelete={() => setPendingDelete(key)}
-              />
-            ))}
-          </ul>
-        </Card>
-      )}
+        error && apiKeys.length === 0 ? (
+          <ErrorFallback error={error} />
+        ) : apiKeys.length === 0 ? (
+          <EmptyState
+            onCreate={
+              presentation === "embedded"
+                ? () => setCreateOpen(true)
+                : undefined
+            }
+          />
+        ) : (
+          <Card className="gap-0 overflow-hidden p-0">
+            <ul className="divide-y divide-border">
+              {apiKeys.map((key) => (
+                <ApiKeyRow
+                  key={key.id}
+                  apiKey={key}
+                  onDelete={() => setPendingDelete(key)}
+                />
+              ))}
+            </ul>
+          </Card>
+        )}
 
-      <CreateApiKeyDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={setCreatedKey}
-      />
-      <CreatedKeyDialog
-        createdKey={createdKey}
-        onClose={() => setCreatedKey(null)}
-      />
+        <CreateApiKeyDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={setCreatedKey}
+        />
+        <CreatedKeyDialog
+          createdKey={createdKey}
+          onClose={() => setCreatedKey(null)}
+        />
 
-      <AlertDialog
-        open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("settings.apiKeys.deleteTitle", {
-                name: pendingDelete?.name ?? "",
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("settings.apiKeys.deleteDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("settings.apiKeys.cancelButton")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              {t("settings.apiKeys.deleteKey")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </SettingsSection>
+        <AlertDialog
+          open={pendingDelete !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("settings.apiKeys.deleteTitle", {
+                  name: pendingDelete?.name ?? "",
+                })}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("settings.apiKeys.deleteDescription")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("settings.apiKeys.cancelButton")}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete}>
+                {t("settings.apiKeys.deleteKey")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </SettingsSection>
+    </>
   );
 }
 
@@ -364,7 +402,7 @@ export function OrgApiKeysPage() {
         <ErrorFallback error={error ?? new Error("Failed to load API keys")} />
       )}
     >
-      <ApiKeysSection />
+      <ApiKeysSection presentation="standalone" />
     </SettingsGroupPage>
   );
 }

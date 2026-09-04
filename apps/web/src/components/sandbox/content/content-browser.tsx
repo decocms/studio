@@ -34,7 +34,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useT } from "@/i18n/use-t.ts";
+import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useElementWidth } from "@/hooks/use-element-width";
 import {
   FOCUSABLE_HANDOFF_TARGET,
@@ -104,7 +104,6 @@ import {
   type CategoryRef,
   addCategoryToPost,
   BLOG_KINDS,
-  BLOG_SINGULAR,
   buildBlogBlock,
   emptyBlogPayload,
   generateBlogKey,
@@ -137,10 +136,77 @@ import {
 } from "./section-group-header";
 import {
   collectionStartStage,
+  compactStageForCurrentView,
   type CollectionId,
   type CompactContentStage,
   isCompactContentWorkspace,
 } from "./compact-workspace";
+
+const COLLECTION_SEARCH_KEYS = {
+  pages: "sandbox.contentBrowser.searchPages",
+  sections: "sandbox.contentBrowser.searchSections",
+  apps: "sandbox.contentBrowser.searchApps",
+  site: "sandbox.contentBrowser.searchSite",
+  seo: "sandbox.contentBrowser.searchSeo",
+  calendar: "sandbox.contentBrowser.searchCalendar",
+  "post-schedule": "sandbox.contentBrowser.searchPostSchedule",
+  loaders: "sandbox.contentBrowser.searchLoaders",
+  actions: "sandbox.contentBrowser.searchActions",
+  redirects: "sandbox.contentBrowser.searchRedirects",
+  posts: "sandbox.contentBrowser.searchPosts",
+  authors: "sandbox.contentBrowser.searchAuthors",
+  categories: "sandbox.contentBrowser.searchCategories",
+} satisfies Record<CollectionId, TranslationKey>;
+
+const BLOG_NOUN_KEYS = {
+  posts: "sandbox.contentBrowser.postNoun",
+  authors: "sandbox.contentBrowser.authorNoun",
+  categories: "sandbox.contentBrowser.categoryNoun",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const BLOG_CREATED_KEYS = {
+  posts: "sandbox.contentBrowser.createdPost",
+  authors: "sandbox.contentBrowser.createdAuthor",
+  categories: "sandbox.contentBrowser.createdCategory",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const CREATE_ITEM_KEYS: Partial<Record<CollectionId, TranslationKey>> = {
+  pages: "sandbox.contentBrowser.createPage",
+  redirects: "sandbox.contentBrowser.createRedirect",
+  posts: "sandbox.contentBrowser.createPost",
+  authors: "sandbox.contentBrowser.createAuthor",
+  categories: "sandbox.contentBrowser.createCategory",
+};
+
+const SELECT_TO_EDIT_KEYS: Partial<Record<CollectionId, TranslationKey>> = {
+  pages: "sandbox.contentBrowser.selectPageToEdit",
+  apps: "sandbox.contentBrowser.selectAppToEdit",
+  redirects: "sandbox.contentBrowser.selectRedirectToEdit",
+  posts: "sandbox.contentBrowser.selectPostToEdit",
+  authors: "sandbox.contentBrowser.selectAuthorToEdit",
+  categories: "sandbox.contentBrowser.selectCategoryToEdit",
+};
+
+const BLOG_EMPTY_LABEL_KEYS = {
+  posts: "sandbox.contentBrowser.noPostsYet",
+  authors: "sandbox.contentBrowser.noAuthorsYet",
+  categories: "sandbox.contentBrowser.noCategoriesYet",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const BLOG_EMPTY_HINT_KEYS = {
+  posts: "sandbox.contentBrowser.createFirstPostHint",
+  authors: "sandbox.contentBrowser.createFirstAuthorHint",
+  categories: "sandbox.contentBrowser.createFirstCategoryHint",
+} satisfies Record<BlogKind, TranslationKey>;
+
+const DELETE_NOUN_KEYS = {
+  page: "sandbox.contentBrowser.pageNoun",
+  section: "sandbox.contentBrowser.sectionNoun",
+  redirect: "sandbox.contentBrowser.redirectNoun",
+} satisfies Record<
+  Exclude<NonNullable<DeleteTarget>["kind"], "blog" | "blog-bulk">,
+  TranslationKey
+>;
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -249,6 +315,7 @@ export interface ContentBrowserProps {
 }
 
 export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
+  const t = useT();
   const inset = useInsetContext();
   const { currentBranch: branch } = useChatTask();
   const { org } = useProjectContext();
@@ -283,7 +350,11 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   }
 
   if (!virtualMcpId || !branch) {
-    return <EmptyMessage title="Waiting for sandbox context…" />;
+    return (
+      <EmptyMessage
+        title={t("sandbox.contentBrowser.waitingForSandboxContext")}
+      />
+    );
   }
 
   return (
@@ -357,6 +428,8 @@ function ContentBrowserReady({
   const t = useT();
   const [workspaceWidth, workspaceRef] = useElementWidth();
   const compactWorkspace = isCompactContentWorkspace(workspaceWidth);
+  const [lastMeasuredCompactWorkspace, setLastMeasuredCompactWorkspace] =
+    useState<boolean | null>(null);
   const [compactStage, setCompactStage] =
     useState<CompactContentStage>("collections");
   const collectionsStageRef = useRef<HTMLDivElement>(null);
@@ -384,6 +457,19 @@ function ContentBrowserReady({
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
   const [selection, setSelection] = useState<Selection>(null);
+  if (
+    workspaceWidth >= 0 &&
+    lastMeasuredCompactWorkspace !== compactWorkspace
+  ) {
+    const reenteredCompactWorkspace =
+      lastMeasuredCompactWorkspace === false && compactWorkspace;
+    setLastMeasuredCompactWorkspace(compactWorkspace);
+    if (reenteredCompactWorkspace) {
+      setCompactStage(
+        compactStageForCurrentView(activeCollection, selection !== null),
+      );
+    }
+  }
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
@@ -568,7 +654,9 @@ function ContentBrowserReady({
   }
 
   if (dataMissing) {
-    return <EmptyMessage title="Could not load site data." />;
+    return (
+      <EmptyMessage title={t("sandbox.contentBrowser.couldNotLoadSiteData")} />
+    );
   }
 
   const pages = extractPages(decofile).sort((a, b) =>
@@ -626,8 +714,8 @@ function ContentBrowserReady({
     return (
       <EmptyMessage
         icon={AlertCircle}
-        title="No editable content"
-        description="This project doesn't expose any Deco pages, sections, apps, loaders, or actions."
+        title={t("sandbox.contentBrowser.noEditableContent")}
+        description={t("sandbox.contentBrowser.noEditableContentDescription")}
       />
     );
   }
@@ -667,10 +755,16 @@ function ContentBrowserReady({
         blockKey: page.key,
         data: { ...fullPageData, sections: updatedSections },
       });
-      toast.success(`Variant added to "${page.name}"`);
+      toast.success(
+        t("sandbox.contentBrowser.variantAdded", { name: page.name }),
+      );
       selectItem({ collection: "pages", key: page.key, path: page.path });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not add variant");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.couldNotAddVariant"),
+      );
     }
   };
 
@@ -680,7 +774,7 @@ function ContentBrowserReady({
     setPageDialog({
       mode: "create",
       sourceKey: null,
-      initialName: "My new page",
+      initialName: t("sandbox.contentBrowser.defaultPageName"),
       initialPath: "/example",
     });
   };
@@ -720,20 +814,28 @@ function ContentBrowserReady({
           const template = decofile[values.templateKey] as
             | Record<string, unknown>
             | undefined;
-          if (!template) throw new Error("Selected template no longer exists.");
+          if (!template) {
+            throw new Error(
+              t("sandbox.contentBrowser.selectedTemplateNoLongerExists"),
+            );
+          }
           data = { ...template, name: values.name, path: values.path };
         } else {
           data = buildEmptyPage(values.name, values.path);
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Created "${values.name}"`);
+        toast.success(
+          t("sandbox.contentBrowser.createdPage", { name: values.name }),
+        );
         selectItem({ collection: "pages", key, path: values.path });
       } else if (mode === "duplicate" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
           | undefined;
-        if (!source) throw new Error("Source page not found");
+        if (!source) {
+          throw new Error(t("sandbox.contentBrowser.sourcePageNotFound"));
+        }
         const { key, data } = buildDuplicatePage({
           source,
           pages,
@@ -741,20 +843,24 @@ function ContentBrowserReady({
           newPath: values.path,
         });
         await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Duplicated as "${values.name}"`);
+        toast.success(
+          t("sandbox.contentBrowser.duplicatedPageAs", { name: values.name }),
+        );
         selectItem({ collection: "pages", key, path: values.path });
       } else if (mode === "rename" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
           | undefined;
-        if (!source) throw new Error("Page not found");
+        if (!source) {
+          throw new Error(t("sandbox.contentBrowser.pageNotFound"));
+        }
         const data: Record<string, unknown> = {
           ...source,
           name: values.name,
           path: values.path,
         };
         await saveBlock.mutateAsync({ blockKey: sourceKey, data });
-        toast.success("Page updated");
+        toast.success(t("sandbox.contentBrowser.pageUpdated"));
         if (selection?.collection === "pages" && selection.key === sourceKey) {
           setSelection({
             collection: "pages",
@@ -765,7 +871,11 @@ function ContentBrowserReady({
       }
       setPageDialog(null);
     } catch (err) {
-      setPageDialogError(err instanceof Error ? err.message : "Save failed");
+      setPageDialogError(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.saveFailed"),
+      );
     }
   };
 
@@ -782,7 +892,7 @@ function ContentBrowserReady({
         ? normalizePagePath(pageDialog.initialPath)
         : null;
     if (sourceNorm !== targetNorm && takenPaths.has(targetNorm)) {
-      return `A page with path "${path}" already exists.`;
+      return t("sandbox.contentBrowser.pagePathAlreadyExists", { path });
     }
     return null;
   };
@@ -876,11 +986,13 @@ function ContentBrowserReady({
     });
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success("Created redirect");
+      toast.success(t("sandbox.contentBrowser.createdRedirect"));
       selectItem({ collection: "redirects", key });
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not create redirect",
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.couldNotCreateRedirect"),
       );
     }
   };
@@ -891,10 +1003,14 @@ function ContentBrowserReady({
     const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success(`Created ${BLOG_SINGULAR[kind]}`);
+      toast.success(t(BLOG_CREATED_KEYS[kind]));
       selectItem({ collection: kind, key });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.couldNotCreate"),
+      );
     }
   };
 
@@ -944,24 +1060,30 @@ function ContentBrowserReady({
   const handleDuplicateBlog = async (entry: BlogEntry) => {
     const source = decofile[entry.key] as Record<string, unknown> | undefined;
     if (!source) {
-      toast.error("Record not found.");
+      toast.error(t("sandbox.contentBrowser.recordNotFound"));
       return;
     }
     const key = generateBlogKey(decofile, entry.kind);
     const labelKey = entry.kind === "posts" ? "title" : "name";
     const payload = {
       ...structuredClone(getBlogPayload(source, entry.kind)),
-      [labelKey]: `${entry.label} (copy)`,
+      [labelKey]: t("sandbox.contentBrowser.copyName", { name: entry.label }),
     };
     try {
       await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
       });
-      toast.success(`Duplicated "${entry.label}"`);
+      toast.success(
+        t("sandbox.contentBrowser.duplicatedItem", { name: entry.label }),
+      );
       selectItem({ collection: entry.kind, key });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Duplicate failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.duplicateFailed"),
+      );
     }
   };
 
@@ -1044,16 +1166,37 @@ function ContentBrowserReady({
     const total = selectedPostKeys.size;
     try {
       const changed = await applyBulkCategory(mode, category);
-      const verb = mode === "add" ? "Added to" : "Moved";
       const unchanged = total - changed;
+      const result =
+        mode === "add"
+          ? t(
+              changed === 1
+                ? "sandbox.contentBrowser.bulkAddedToOnePost"
+                : "sandbox.contentBrowser.bulkAddedToManyPosts",
+              { count: changed },
+            )
+          : t(
+              changed === 1
+                ? "sandbox.contentBrowser.bulkMovedOnePost"
+                : "sandbox.contentBrowser.bulkMovedManyPosts",
+              { count: changed },
+            );
       toast.success(
-        `${verb} ${changed} ${changed === 1 ? "post" : "posts"}` +
-          (unchanged > 0 ? ` (${unchanged} already set)` : ""),
+        unchanged > 0
+          ? t("sandbox.contentBrowser.bulkResultWithUnchanged", {
+              result,
+              count: unchanged,
+            })
+          : result,
       );
       clearSelection();
       showItems();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Bulk update failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.bulkUpdateFailed"),
+      );
     }
   };
 
@@ -1066,9 +1209,12 @@ function ContentBrowserReady({
           await deleteBlock.mutateAsync({ blockKey: key });
         }
         toast.success(
-          `Deleted ${deleteTarget.count} ${
-            deleteTarget.count === 1 ? "post" : "posts"
-          }`,
+          t(
+            deleteTarget.count === 1
+              ? "sandbox.contentBrowser.deletedOnePost"
+              : "sandbox.contentBrowser.deletedManyPosts",
+            { count: deleteTarget.count },
+          ),
         );
         if (
           selection &&
@@ -1112,7 +1258,7 @@ function ContentBrowserReady({
       } else {
         await deleteBlock.mutateAsync({ blockKey: key });
       }
-      toast.success(`Deleted "${label}"`);
+      toast.success(t("sandbox.contentBrowser.deletedItem", { name: label }));
       if (
         selection &&
         selection.collection !== "available-section" &&
@@ -1123,19 +1269,46 @@ function ContentBrowserReady({
       }
       setDeleteTarget(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.deleteFailed"),
+      );
     }
   };
 
   // ------------------ Render ------------------
   // `saveBlock` too: a category delete rewrites its posts before unlinking it.
   const isDeleting = deleteBlock.isPending || saveBlock.isPending;
-  const deleteNoun =
-    deleteTarget?.kind === "blog"
-      ? BLOG_SINGULAR[deleteTarget.blogKind]
+  const deleteNoun = !deleteTarget
+    ? t("sandbox.contentBrowser.itemNoun")
+    : deleteTarget.kind === "blog"
+      ? t(BLOG_NOUN_KEYS[deleteTarget.blogKind])
+      : deleteTarget.kind === "blog-bulk"
+        ? t(
+            deleteTarget.count === 1
+              ? "sandbox.contentBrowser.onePostNoun"
+              : "sandbox.contentBrowser.manyPostsNoun",
+            { count: deleteTarget.count },
+          )
+        : t(DELETE_NOUN_KEYS[deleteTarget.kind]);
+  const deleteDescription =
+    deleteTarget?.kind === "section"
+      ? t("sandbox.contentBrowser.deleteSectionDescription", {
+          name: deleteTarget.label,
+        })
       : deleteTarget?.kind === "blog-bulk"
-        ? `${deleteTarget.count} ${deleteTarget.count === 1 ? "post" : "posts"}`
-        : (deleteTarget?.kind ?? "item");
+        ? t(
+            deleteTarget.count === 1
+              ? "sandbox.contentBrowser.deleteOnePostDescription"
+              : "sandbox.contentBrowser.deleteManyPostsDescription",
+            { count: deleteTarget.count },
+          )
+        : deleteTarget
+          ? t("sandbox.contentBrowser.deleteItemDescription", {
+              name: deleteTarget.label,
+            })
+          : null;
   const collectionStage = collectionStartStage(activeCollection);
   const collectionsStageClassName = compactWorkspace
     ? compactStage === "collections"
@@ -1380,7 +1553,7 @@ function ContentBrowserReady({
                     block={decofile[siteApp.key] as Record<string, unknown>}
                     decofile={decofile}
                     meta={meta}
-                    title="Site"
+                    title={t("sandbox.collectionsSidebar.site")}
                     excludeFields={["seo"]}
                     schemaPending={isAppSchemaLoading(siteApp.resolveType, [
                       "seo",
@@ -1389,8 +1562,10 @@ function ContentBrowserReady({
                   />
                 ) : (
                   <EmptyMessage
-                    title="Site settings not found"
-                    description="This project doesn't have a site app block (site/apps/site.ts)."
+                    title={t("sandbox.contentBrowser.siteSettingsNotFound")}
+                    description={t(
+                      "sandbox.contentBrowser.siteSettingsNotFoundDescription",
+                    )}
                   />
                 )
               ) : activeCollection === "seo" ? (
@@ -1541,21 +1716,14 @@ function ContentBrowserReady({
                 )
               ) : (
                 <EmptyMessage
-                  title={`Select ${
-                    isBlogKind(activeCollection)
-                      ? `a ${BLOG_SINGULAR[activeCollection]}`
-                      : activeCollection === "pages"
-                        ? "a page"
-                        : activeCollection === "apps"
-                          ? "an app"
-                          : activeCollection === "redirects"
-                            ? "a redirect"
-                            : "a section"
-                  } to edit`}
+                  title={t(
+                    SELECT_TO_EDIT_KEYS[activeCollection] ??
+                      "sandbox.contentBrowser.selectItemToEdit",
+                  )}
                   description={
                     activeCollection === "apps"
-                      ? "Browse all apps and select an installed one to edit its settings."
-                      : 'Pick an item from the list, or click "+" to create one.'
+                      ? t("sandbox.contentBrowser.selectAppDescription")
+                      : t("sandbox.contentBrowser.selectItemDescription")
                   }
                 />
               )}
@@ -1626,21 +1794,15 @@ function ContentBrowserReady({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{`Delete ${deleteNoun}?`}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.kind === "section"
-                ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
-                : deleteTarget?.kind === "blog-bulk"
-                  ? `${deleteTarget.count} ${
-                      deleteTarget.count === 1 ? "post" : "posts"
-                    } will be removed permanently. This can't be undone.`
-                  : deleteTarget
-                    ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
-                    : null}
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t("sandbox.contentBrowser.deleteTitle", { item: deleteNoun })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>
+              {t("sandbox.contentBrowser.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -1652,10 +1814,10 @@ function ContentBrowserReady({
               {isDeleting ? (
                 <>
                   <Spinner className="size-3.5" />
-                  Deleting…
+                  {t("sandbox.contentBrowser.deleting")}
                 </>
               ) : (
-                "Delete"
+                t("sandbox.contentBrowser.delete")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1898,12 +2060,10 @@ function ItemList({
     }
   };
 
-  const placeholder = `Search ${activeCollection}…`;
-  const createTooltip = isBlogKind(activeCollection)
-    ? `Create new ${BLOG_SINGULAR[activeCollection]}`
-    : activeCollection === "redirects"
-      ? "Create new redirect"
-      : "Create new page";
+  const placeholder = t(COLLECTION_SEARCH_KEYS[activeCollection]);
+  const createTooltip = t(
+    CREATE_ITEM_KEYS[activeCollection] ?? "sandbox.contentBrowser.createPage",
+  );
   // Sections are created by saving an available section, not via the "+".
   const showCreateButton =
     activeCollection !== "apps" && activeCollection !== "sections";
@@ -2001,8 +2161,8 @@ function ItemList({
             filteredPages.length === 0 ? (
               <ListEmpty
                 hasItems={pages.length > 0}
-                emptyLabel="No pages yet."
-                emptyHint='Click "+" to create your first page.'
+                emptyLabel={t("sandbox.contentBrowser.noPagesYet")}
+                emptyHint={t("sandbox.contentBrowser.createFirstPageHint")}
               />
             ) : (
               filteredPages.map((page) => {
@@ -2044,14 +2204,17 @@ function ItemList({
             filteredAvailableSections.length === 0 ? (
               <ListEmpty
                 hasItems={sections.length > 0 || availableSections.length > 0}
-                emptyLabel="No sections yet."
-                emptyHint="Save a section from a page, or start the preview dev server."
+                emptyLabel={t("sandbox.contentBrowser.noSectionsYet")}
+                emptyHint={t("sandbox.contentBrowser.noSectionsHint")}
               />
             ) : (
               <>
                 {savedSectionGroups.length > 0 && (
                   <>
-                    <GroupHeader icon={Globe02} label="Saved sections" />
+                    <GroupHeader
+                      icon={Globe02}
+                      label={t("sandbox.contentBrowser.savedSections")}
+                    />
                     {savedSectionGroups.map((group) => (
                       <div key={group.label} className="flex flex-col gap-1">
                         <div className="px-2.5 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -2095,7 +2258,7 @@ function ItemList({
                   <>
                     <GroupHeader
                       icon={LayoutAlt01}
-                      label="Available sections"
+                      label={t("sandbox.contentBrowser.availableSections")}
                       className={cn(savedSectionGroups.length > 0 && "mt-3")}
                     />
                     {filteredAvailableSections.map((section) => {
@@ -2135,8 +2298,8 @@ function ItemList({
             ) : filteredApps.length === 0 ? (
               <ListEmpty
                 hasItems={appCatalog.length > 0}
-                emptyLabel="No apps found."
-                emptyHint="Try a different search term."
+                emptyLabel={t("sandbox.contentBrowser.noAppsFound")}
+                emptyHint={t("sandbox.contentBrowser.tryDifferentSearch")}
               />
             ) : (
               filteredApps.map((entry) => {
@@ -2155,14 +2318,16 @@ function ItemList({
                     trailing={
                       entry.installed ? (
                         <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
-                          Installed
+                          {t("sandbox.contentBrowser.installed")}
                         </span>
                       ) : undefined
                     }
                     onClick={() => {
                       if (!entry.installed || !entry.blockKey) {
                         toast.message(
-                          `${entry.title} is not installed on this site.`,
+                          t("sandbox.contentBrowser.appNotInstalled", {
+                            name: entry.title,
+                          }),
                         );
                         return;
                       }
@@ -2176,16 +2341,18 @@ function ItemList({
             filteredRedirects.length === 0 ? (
               <ListEmpty
                 hasItems={redirects.length > 0}
-                emptyLabel="No redirects yet."
-                emptyHint='Click "+" to create your first redirect.'
+                emptyLabel={t("sandbox.contentBrowser.noRedirectsYet")}
+                emptyHint={t("sandbox.contentBrowser.createFirstRedirectHint")}
               />
             ) : (
               filteredRedirects.map((entry) => (
                 <ItemRow
                   key={entry.key}
                   icon={CornerUpRight}
-                  title={entry.from || "(no source)"}
-                  subtitle={`→ ${entry.to || "(no target)"}`}
+                  title={
+                    entry.from || t("sandbox.contentBrowser.noRedirectSource")
+                  }
+                  subtitle={`→ ${entry.to || t("sandbox.contentBrowser.noRedirectTarget")}`}
                   active={
                     selection?.collection === "redirects" &&
                     selection.key === entry.key
@@ -2204,8 +2371,8 @@ function ItemList({
             sortedPosts.length === 0 ? (
               <ListEmpty
                 hasItems={postsWithMeta.length > 0}
-                emptyLabel="No posts yet."
-                emptyHint='Click "+" to create your first post.'
+                emptyLabel={t("sandbox.contentBrowser.noPostsYet")}
+                emptyHint={t("sandbox.contentBrowser.createFirstPostHint")}
               />
             ) : (
               sortedPosts.map((post) => {
@@ -2220,9 +2387,11 @@ function ItemList({
                     key={post.key}
                     icon={File02}
                     title={post.title}
-                    subtitle={post.slug || "no slug"}
+                    subtitle={post.slug || t("sandbox.contentBrowser.noSlug")}
                     invalid={post.missing.length > 0}
-                    invalidReason={`Missing: ${post.missing.join(", ")}`}
+                    invalidReason={t("sandbox.contentBrowser.missingFields", {
+                      fields: post.missing.join(", "),
+                    })}
                     active={
                       selection?.collection === "posts" &&
                       selection.key === post.key
@@ -2249,12 +2418,16 @@ function ItemList({
           ) : filteredBlog.length === 0 ? (
             <ListEmpty
               hasItems={blogEntries.length > 0}
-              emptyLabel={`No ${activeCollection} yet.`}
-              emptyHint={`Click "+" to create your first ${
+              emptyLabel={t(
                 isBlogKind(activeCollection)
-                  ? BLOG_SINGULAR[activeCollection]
-                  : "item"
-              }.`}
+                  ? BLOG_EMPTY_LABEL_KEYS[activeCollection]
+                  : "sandbox.contentBrowser.noItemsYet",
+              )}
+              emptyHint={t(
+                isBlogKind(activeCollection)
+                  ? BLOG_EMPTY_HINT_KEYS[activeCollection]
+                  : "sandbox.contentBrowser.createFirstItemHint",
+              )}
             />
           ) : (
             filteredBlog.map((entry) => {

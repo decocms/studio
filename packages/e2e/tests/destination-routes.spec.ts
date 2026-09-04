@@ -31,15 +31,23 @@ import { expect, test } from "../fixtures/test";
  *  crosses the shell plus four lazy main-panel views. */
 const SHELL_TIMEOUT_MS = 90_000;
 
-/** The two panels of the desktop workspace, by their test ids. The chat card
- *  renders its contents only while the side panel is open, so the ABSENCE of
- *  `chat-panel` is what "the chat is collapsed" looks like from outside. */
+/** The two panels of the desktop workspace, by their test ids. Both subtrees
+ *  stay mounted across collapse so route and draft state survive; the card is
+ *  hidden, inert, and removed from the accessibility tree while collapsed. */
 const chatPanel = (page: Page) => page.getByTestId("chat-panel");
 const mainPanel = (page: Page) => page.getByTestId("main-panel");
+const sidePanel = (page: Page) => page.getByTestId("side-panel");
 const mainTopbar = (page: Page) =>
   mainPanel(page).locator('[data-slot="main-topbar"]');
 const mainTopbarRegion = (page: Page, region: "left" | "center" | "right") =>
   mainTopbar(page).locator(`[data-slot="main-topbar-${region}"]`);
+
+async function expectChatCollapsed(page: Page): Promise<void> {
+  await expect(chatPanel(page)).toHaveCount(1);
+  await expect(chatPanel(page)).toBeHidden();
+  await expect(sidePanel(page)).toHaveAttribute("aria-hidden", "true");
+  await expect(sidePanel(page)).toHaveAttribute("inert", "");
+}
 
 /** Resolve a parent from the adaptive trail without assuming it fits inline. */
 async function breadcrumbParent(
@@ -346,6 +354,7 @@ test.describe("destination routes", () => {
           exact: true,
         }),
       ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(mainPanel(page).locator("h1")).toHaveCount(1);
       const breadcrumb = mainTopbarRegion(page, "left").getByRole(
         "navigation",
         { name: "Breadcrumb", exact: true },
@@ -357,6 +366,7 @@ test.describe("destination routes", () => {
       const scopeLink = breadcrumb.getByRole("link").first();
       await expect(scopeLink).toHaveText("");
       await expect(scopeLink).toHaveAttribute("aria-label", /\S/);
+      await expect(scopeLink.locator("svg")).toHaveCount(1);
       await expect(scopeLink).toHaveAttribute(
         "href",
         new RegExp(`/${orgSlug}/home$`),
@@ -380,6 +390,15 @@ test.describe("destination routes", () => {
       }
     }
 
+    await page.goto(`/${orgSlug}/tasks`);
+    await expect(
+      mainTopbarRegion(page, "right").getByRole("button", {
+        name: "New task",
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    await page.goto(`/${orgSlug}/agents/${agentId}/automations`);
     /** The list body owns this action, but its portal must place the rendered
      * controls in the route's center and right-hand topbar regions. */
     await expect(
@@ -405,7 +424,7 @@ test.describe("destination routes", () => {
     await desktopLibrarySearch.focus();
     await page.setViewportSize({ width: 767, height: 720 });
     const mobileLibrarySearch = mainPanel(page)
-      .locator('[data-slot="main-subheader"]')
+      .locator('[data-slot="main-toolbar"]')
       .getByPlaceholder("Search all files…");
     await expect(mobileLibrarySearch).toBeFocused();
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -477,6 +496,7 @@ test.describe("destination routes", () => {
       ["monitor", "Monitor"],
       ["members", "Members"],
       ["secrets", "Secrets"],
+      ["api-keys", "API keys"],
       ["buckets", "Buckets"],
       ["store", "Store"],
       ["sso", "Security"],
@@ -497,9 +517,13 @@ test.describe("destination routes", () => {
           exact: true,
         }),
       ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(page.locator("h1")).toHaveCount(1);
       await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
       await expect(breadcrumb).not.toContainText(title);
-      await expect(breadcrumb.getByRole("link").first()).toHaveAttribute(
+      const homeLink = breadcrumb.getByRole("link").first();
+      await expect(homeLink).toHaveText("");
+      await expect(homeLink.locator("svg")).toHaveCount(1);
+      await expect(homeLink).toHaveAttribute(
         "href",
         new RegExp(`/${orgSlug}/home$`),
       );
@@ -508,6 +532,80 @@ test.describe("destination routes", () => {
       ).toHaveAttribute("href", new RegExp(`/${orgSlug}/settings/general$`));
       expect(new URL(page.url()).pathname).toBe(path);
     }
+  });
+
+  test("Settings route controls stay in their responsive shell regions", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await usePortugueseMobileViewport(page);
+
+    await page.goto(`/${orgSlug}/settings/members`);
+    const membersTopbar = page.locator('[data-slot="main-topbar"]');
+    const invite = membersTopbar.getByRole("button", {
+      name: "Convidar Membro",
+      exact: true,
+    });
+    await expect(invite).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(invite).toBeInViewport({ ratio: 1 });
+
+    const membersToolbar = page.locator('[data-slot="main-toolbar"]');
+    const memberSearch = membersToolbar.getByPlaceholder("Procurar membros...");
+    const displayMenu = membersToolbar.getByRole("button", {
+      name: "Exibição & filtros",
+      exact: true,
+    });
+    await expect(memberSearch).toBeVisible();
+    await expect(memberSearch).toBeInViewport({ ratio: 1 });
+    await expect(displayMenu).toBeVisible();
+    await expect(displayMenu).toBeInViewport({ ratio: 1 });
+
+    await page.goto(`/${orgSlug}/settings/api-keys`);
+    const apiKeysTopbar = page.locator('[data-slot="main-topbar"]');
+    await expect(
+      apiKeysTopbar.getByRole("heading", {
+        level: 1,
+        name: "Chaves de API",
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(page.locator("h1")).toHaveCount(1);
+    await expect(
+      page.getByRole("heading", {
+        level: 2,
+        name: "Chaves de API",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    const newKey = apiKeysTopbar.getByRole("button", {
+      name: "Nova chave",
+      exact: true,
+    });
+    await expect(newKey).toBeVisible();
+    await expect(newKey).toBeInViewport({ ratio: 1 });
+  });
+
+  test("a built-in role detail keeps its identity in the shell title only", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.goto(`/${orgSlug}/settings/roles`);
+    await page.getByRole("button", { name: "Owner", exact: true }).click();
+
+    const topbarLeft = page.locator('[data-slot="main-topbar-left"]');
+    await expect(
+      topbarLeft.getByRole("heading", {
+        level: 1,
+        name: "Owner",
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(page.locator("h1")).toHaveCount(1);
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Owner", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Built-in", { exact: true })).toBeVisible();
+    await expect(
+      topbarLeft.getByRole("button", { name: "Roles", exact: true }),
+    ).toBeVisible();
   });
 
   test("Settings detail breadcrumbs use route titles while data is unavailable", async ({
@@ -1303,7 +1401,7 @@ test.describe("destination routes", () => {
 
     await page.goto(`/${orgSlug}/agents/${projectId}`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await expect(chatPanel(page)).toHaveCount(0);
+    await expectChatCollapsed(page);
     const landed = new URL(page.url());
     expect(landed.pathname).toBe(`/${orgSlug}/agents/${projectId}`);
     expect(landed.searchParams.get("virtualmcpid")).toBeNull();
@@ -1373,6 +1471,7 @@ test.describe("destination routes", () => {
       orgSlug,
       "colliding view e2e",
       {
+        clonable: true,
         layoutTabs: [
           { id: viewId, title: viewTitle },
           { id: legacyCollisionId, title: legacyCollisionTitle },
@@ -1499,7 +1598,7 @@ test.describe("destination routes", () => {
        than only an in-app toggle. */
     await page.goto(`${route}&sidepanel=false`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await expect(chatPanel(page)).toHaveCount(0);
+    await expectChatCollapsed(page);
     expect(new URL(page.url()).searchParams.get("sidepanel")).toBe("false");
   });
 
@@ -1570,8 +1669,8 @@ test.describe("destination routes", () => {
       await expect(control).toBeInViewport({ ratio: 1 });
     }
 
-    const subheader = mainPanel(page).locator('[data-slot="main-subheader"]');
-    const search = subheader.getByPlaceholder("Pesquisar todos os arquivos…");
+    const toolbar = mainPanel(page).locator('[data-slot="main-toolbar"]');
+    const search = toolbar.getByPlaceholder("Pesquisar todos os arquivos…");
     await expect(search).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(search).toBeInViewport({ ratio: 1 });
 
@@ -1579,6 +1678,52 @@ test.describe("destination routes", () => {
     await expect(
       page.getByRole("dialog", { name: "Nova pasta", exact: true }),
     ).toBeVisible();
+  });
+
+  test("the agent Settings topbar keeps both actions reachable at 320px", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await usePortugueseMobileViewport(page);
+    const agentId = await createProject(
+      page.context().request,
+      orgSlug,
+      "compact agent settings e2e",
+    );
+
+    await page.goto(`/${orgSlug}/agents/${agentId}/settings`);
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      mainTopbarRegion(page, "left").getByRole("heading", {
+        level: 1,
+        name: "Configurações",
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(mainPanel(page).locator("h1")).toHaveCount(1);
+
+    const actions = mainTopbarRegion(page, "right");
+    const controls = ["Testar Projeto", "Conectar"].map((name) => ({
+      button: actions.getByRole("button", { name, exact: true }),
+      name,
+    }));
+
+    for (const { button, name } of controls) {
+      await expect(button).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(button).toBeEnabled();
+      await expect(button).toHaveAccessibleName(name);
+      await expect(button).toBeInViewport({ ratio: 1 });
+
+      const bounds = await button.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds?.x ?? -1).toBeGreaterThanOrEqual(0);
+      expect((bounds?.x ?? 321) + (bounds?.width ?? 0)).toBeLessThanOrEqual(
+        320,
+      );
+
+      /* Compact labels leave the visual row while aria-label preserves each
+         action's name for assistive technology and icon-only discovery. */
+      await expect(button.getByText(name, { exact: true })).toBeHidden();
+    }
   });
 
   test("the mobile view selector exposes its real active route option", async ({
@@ -2313,7 +2458,7 @@ test.describe("destination routes", () => {
        the chat starts collapsed beside it. */
     await page.goto(`/${orgSlug}/tasks`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await expect(chatPanel(page)).toHaveCount(0);
+    await expectChatCollapsed(page);
 
     /* An explicit `?sidepanel=` outranks the route's default. */
     await page.goto(`/${orgSlug}/tasks?sidepanel=true`);
@@ -2344,6 +2489,6 @@ test.describe("destination routes", () => {
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await page.goto(`/${orgSlug}/tasks?sidepanel=0`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await expect(chatPanel(page)).toHaveCount(0);
+    await expectChatCollapsed(page);
   });
 });

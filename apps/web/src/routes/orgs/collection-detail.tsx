@@ -17,7 +17,6 @@ import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Container } from "@untitledui/icons";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { Suspense, type ComponentType } from "react";
-import { ViewLayout } from "@/components/details/layout";
 import { useT } from "@/i18n/use-t.ts";
 
 interface CollectionDetailsProps {
@@ -141,7 +140,7 @@ function CollectionDetailsContent() {
       <Main.Title.Portal>
         <span title={itemId}>{itemId}</span>
       </Main.Title.Portal>
-      <ViewLayout>
+      <div className="flex h-full min-h-0 items-center justify-center">
         <EmptyState
           icon={<Container size={36} className="text-muted-foreground" />}
           title={t("orgs.collectionDetail.noComponentDefinedTitle")}
@@ -151,7 +150,7 @@ function CollectionDetailsContent() {
             children: t("orgs.collectionDetail.goBackButton"),
           }}
         />
-      </ViewLayout>
+      </div>
     </>
   );
 }

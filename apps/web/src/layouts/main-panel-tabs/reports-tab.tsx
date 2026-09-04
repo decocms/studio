@@ -43,6 +43,7 @@ import {
 import { parseSelfToolResult } from "@/routes/commerce-onboarding/self-tool-result.ts";
 import { translateSiteError } from "@/routes/commerce-onboarding/site-error.ts";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
+import { Main } from "@/components/main";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -102,7 +103,10 @@ function StartDiagnosticState({
   const t = useT();
   const host = siteUrlToHost(claimedSiteUrl ?? undefined);
   return (
-    <div className="flex min-h-full w-full flex-col items-center justify-center gap-8 p-6">
+    <Main.Container
+      width="reading"
+      className="flex min-h-full flex-col items-center justify-center gap-8"
+    >
       {/* The report you don't have yet, tilted under its own glow. */}
       <div className="relative flex items-end justify-center pt-4">
         <div
@@ -138,7 +142,7 @@ function StartDiagnosticState({
           ))}
         </ul>
       </div>
-    </div>
+    </Main.Container>
   );
 }
 

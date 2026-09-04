@@ -10,6 +10,7 @@ import { useBaseBranch } from "@/components/thread/github/use-version-gate";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { Main } from "@/components/main";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { User } from "@/components/user/user";
 import { useT } from "@/i18n/use-t.ts";
@@ -55,13 +56,19 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Maximize01, Play, Plus, Stars01, Trash01 } from "@untitledui/icons";
+import {
+  Link01,
+  Maximize01,
+  Play,
+  Plus,
+  Stars01,
+  Trash01,
+} from "@untitledui/icons";
 import { Suspense, useEffect, useReducer, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useDebouncedAutosave } from "@/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import { IconPicker } from "../../components/icon-picker";
-import { Page } from "@/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
 import { FilesSection } from "./files-section";
 import { SubAgentsSection } from "./sub-agents-section";
@@ -352,10 +359,8 @@ function decodeJwtEmail(token: string): string | null {
 
 function VirtualMcpDetailViewWithData({
   virtualMcp,
-  hideOwnTitle,
 }: {
   virtualMcp: VirtualMCPEntity;
-  hideOwnTitle?: boolean;
 }) {
   const t = useT();
   const [preferences] = usePreferences();
@@ -938,37 +943,41 @@ function VirtualMcpDetailViewWithData({
   };
 
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <div className="flex flex-col gap-10">
-            {!hideOwnTitle && (
-              <Page.Title
-                actions={
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleTestAgent}
-                    >
-                      <Play size={14} className="size-[14px]!" />
-                      {t("virtualMcp.virtualMcp.testAgent")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      <Trash01 size={14} />
-                    </Button>
-                  </div>
-                }
-              >
-                {t("virtualMcp.virtualMcp.settings")}
-              </Page.Title>
-            )}
-
+    <>
+      <Main.Topbar.Right.Portal>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleTestAgent}
+          aria-label={t("virtualMcp.virtualMcp.testAgent")}
+        >
+          <Play aria-hidden="true" size={14} className="size-[14px]!" />
+          <span className="@max-sm/main-topbar:hidden">
+            {t("virtualMcp.virtualMcp.testAgent")}
+          </span>
+        </Button>
+        <Button
+          size="sm"
+          aria-label={t("virtualMcp.virtualMcp.connect")}
+          onClick={() => {
+            track("agent_connect_modal_opened", {
+              agent_id: virtualMcp.id,
+            });
+            dispatch({
+              type: "SET_SHARE_DIALOG_OPEN",
+              payload: true,
+            });
+          }}
+        >
+          <Link01 aria-hidden="true" size={14} className="size-[14px]!" />
+          <span className="@max-sm/main-topbar:hidden">
+            {t("virtualMcp.virtualMcp.connect")}
+          </span>
+        </Button>
+      </Main.Topbar.Right.Portal>
+      <div className="h-full min-h-0 overflow-auto">
+        <Main.Container width="standard">
+          <Main.Stack gap="spacious">
             {/* Agent identity header */}
             <div className="flex items-center gap-3">
               <Controller
@@ -1040,41 +1049,6 @@ function VirtualMcpDetailViewWithData({
                   )}
                 />
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => {
-                  track("agent_connect_modal_opened", {
-                    agent_id: virtualMcp.id,
-                  });
-                  dispatch({
-                    type: "SET_SHARE_DIALOG_OPEN",
-                    payload: true,
-                  });
-                }}
-              >
-                <span className="flex items-center -space-x-1.5 mr-0.5">
-                  <span className="inline-flex items-center justify-center size-4 rounded-full bg-black ring-1 ring-white/20 shrink-0">
-                    <img
-                      src="/logos/cursor.svg"
-                      alt="Cursor"
-                      className="size-2.5 brightness-0 invert"
-                    />
-                  </span>
-                  <span
-                    className="relative z-10 inline-flex items-center justify-center size-4 rounded-full ring-1 ring-background shrink-0"
-                    style={{ backgroundColor: "#D97757" }}
-                  >
-                    <img
-                      src="/logos/Claude Code.svg"
-                      alt="Claude"
-                      className="size-2.5 brightness-0 invert"
-                    />
-                  </span>
-                </span>
-                {t("virtualMcp.virtualMcp.connect")}
-              </Button>
             </div>
 
             {/* Creator metadata */}
@@ -1394,9 +1368,9 @@ function VirtualMcpDetailViewWithData({
                 {t("virtualMcp.virtualMcp.deleteAgent")}
               </Button>
             </section>
-          </div>
-        </Page.Body>
-      </Page.Content>
+          </Main.Stack>
+        </Main.Container>
+      </div>
 
       {/* Dialogs */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -1490,7 +1464,7 @@ function VirtualMcpDetailViewWithData({
           </div>
         </DialogContent>
       </Dialog>
-    </Page>
+    </>
   );
 }
 
@@ -1500,10 +1474,8 @@ function VirtualMcpDetailViewWithData({
 
 export function VirtualMcpDetailView({
   virtualMcpId,
-  hideOwnTitle,
 }: {
   virtualMcpId: string;
-  hideOwnTitle?: boolean;
 }) {
   const t = useT();
   const navigate = useNavigate();
@@ -1538,7 +1510,6 @@ export function VirtualMcpDetailView({
     <VirtualMcpDetailViewWithData
       key={getActiveGithubRepo(virtualMcp)?.connectionId ?? ""}
       virtualMcp={virtualMcp}
-      hideOwnTitle={hideOwnTitle}
     />
   );
 }

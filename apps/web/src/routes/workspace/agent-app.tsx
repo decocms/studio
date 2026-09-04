@@ -28,7 +28,7 @@ export default function AgentAppRoute() {
     }) ?? toTitleCase(toolName);
 
   return (
-    <AgentRouteMain title={title} contentClassName="overflow-hidden">
+    <AgentRouteMain title={title} contentMode="canvas">
       <AppViewContent
         connectionId={connectionId}
         toolName={toolName}

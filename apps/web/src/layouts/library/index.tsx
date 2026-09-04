@@ -485,14 +485,14 @@ export function LibraryPage({
           {searchInput}
         </div>
       </Main.Topbar.Center.Portal>
-      <Main.Subheader.Portal>
+      <Main.Toolbar.Portal visibility="compact">
         <div
           data-responsive-focus-group="library-search"
-          className="w-full md:hidden [&>*]:w-full"
+          className="w-full [&>*]:w-full"
         >
           {searchInput}
         </div>
-      </Main.Subheader.Portal>
+      </Main.Toolbar.Portal>
       <Main.Topbar.Right.Portal>{topbarActions}</Main.Topbar.Right.Portal>
       <input
         ref={fileInputRef}
@@ -502,7 +502,7 @@ export function LibraryPage({
         onChange={(e) => void handleUpload(e.target.files)}
       />
       <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
+        <Main.Container width="standard" className="flex flex-col gap-10 py-10">
           {/* The breadcrumb names the current content location; global search
               and folder-level actions belong to the surrounding Main chrome. */}
           <div className="min-w-0">
@@ -539,7 +539,7 @@ export function LibraryPage({
               onMove={handleMove}
             />
           )}
-        </div>
+        </Main.Container>
       </div>
 
       {/* Preview/skill/brand each render as a right-side panel on desktop

@@ -15,7 +15,7 @@ export default function TasksRoute() {
 
   return (
     <WorkspaceRouteMain
-      contentClassName="overflow-hidden"
+      contentMode="canvas"
       title={selectedTaskKey}
       boundaryKey={
         selectedTaskKey ? `tasks:detail:${selectedTaskKey}` : "tasks:list"

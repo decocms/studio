@@ -1,6 +1,7 @@
 import type { mainPanelTabs as mainPanelTabsEn } from "../en/main-panel-tabs.ts";
 
 export const mainPanelTabs = {
+  "mainPanelTabs.agentView.title": "Visualização",
   "mainPanelTabs.automationTab.automationNotFound": "Automação não encontrada",
   "mainPanelTabs.automationTab.backToList": "Voltar para a lista",
   "mainPanelTabs.automationTab.last24hours": "Últimas 24 horas",
@@ -28,11 +29,14 @@ export const mainPanelTabs = {
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Conecte um repositório do GitHub para editar o conteúdo deste site.",
   "mainPanelTabs.contentTab.noContentToEdit": "Nenhum conteúdo para editar",
+  "mainPanelTabs.deckTab.title": "Apresentação",
   "mainPanelTabs.fileTab.close": "Fechar",
   "mainPanelTabs.fileTab.download": "Baixar",
   "mainPanelTabs.fileTab.fileNotAvailable":
     "Este arquivo não está mais disponível.",
   "mainPanelTabs.fileTab.openInNewTab": "Abrir em nova aba",
+  "mainPanelTabs.fileTab.title": "Arquivo de saída",
+  "mainPanelTabs.libraryFileTab.title": "Arquivo da biblioteca",
   "mainPanelTabs.hostingTab.title": "Hospedagem",
   "mainPanelTabs.hostingTab.subtitle": "Infraestrutura de {site}",
   "mainPanelTabs.hostingTab.deployments": "Implantações",
@@ -387,6 +391,16 @@ export const mainPanelTabs = {
     "As análises estão ativas neste site — são adicionadas automaticamente, nada pra colar.",
   "mainPanelTabs.analyticsTab.installTrackPrefix":
     "Envie eventos personalizados do seu código via ",
+  "mainPanelTabs.analyticsTab.customEventsTitle":
+    "Envie eventos personalizados do seu código",
+  "mainPanelTabs.analyticsTab.customEventsDescription":
+    "O Analytics fica ativo automaticamente — visualizações de página são coletadas sem código. Para eventos personalizados, chame a API pública do cliente em",
+  "mainPanelTabs.analyticsTab.pageviewApiDescription":
+    "Registre uma visualização de página manualmente, como após uma mudança de rota em uma SPA.",
+  "mainPanelTabs.analyticsTab.trackApiDescription":
+    "Registre um evento personalizado. Nomes aceitam letras minúsculas, números e sublinhados com até 40 caracteres; as propriedades são um objeto plano opcional.",
+  "mainPanelTabs.analyticsTab.purchaseApiDescription":
+    "Registre uma compra. O ID da transação elimina duplicatas ao recarregar a página de confirmação, evitando contar a mesma venda duas vezes.",
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",

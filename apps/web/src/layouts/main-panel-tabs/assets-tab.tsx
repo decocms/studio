@@ -226,14 +226,14 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
           {searchInput}
         </div>
       </Main.Topbar.Center.Portal>
-      <Main.Subheader.Portal>
+      <Main.Toolbar.Portal visibility="compact">
         <div
           data-responsive-focus-group="assets-search"
-          className="w-full md:hidden [&>*]:w-full"
+          className="w-full [&>*]:w-full"
         >
           {searchInput}
         </div>
-      </Main.Subheader.Portal>
+      </Main.Toolbar.Portal>
       <Main.Topbar.Right.Portal>{uploadButton}</Main.Topbar.Right.Portal>
       <div className="flex shrink-0 items-center justify-between gap-3">
         <p className="min-w-0 truncate text-xs text-muted-foreground">
@@ -261,6 +261,7 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
         onDrop={onDrop}
         className={cn(
           "flex shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border/60 p-4 text-center transition-colors",
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
           isDragging && "border-primary bg-primary/5",
           upload.isPending && "pointer-events-none opacity-60",
         )}
