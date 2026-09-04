@@ -29,6 +29,7 @@ import {
   agentHasClonableSource,
   agentHasConnectedGithub,
 } from "@/lib/agent-capabilities";
+import { stripMcpServerPrefix } from "@/lib/tool-namespace";
 import { useChatTask } from "@/components/chat/index";
 import { getActiveGithubRepo } from "@/lib/github-repo.ts";
 import { usePrByBranch } from "@/components/thread/github/use-pr-data.ts";
@@ -371,7 +372,7 @@ export function useMainPanelTabs(ctx: {
     const id = formatPinnedViewTabId(t.appId, t.toolName);
     pinnedTabMap.set(id, {
       id,
-      title: t.toolName,
+      title: toTitleCase(stripMcpServerPrefix(t.toolName)),
       appId: t.appId,
       iconKey: t.toolName,
     });
