@@ -121,6 +121,36 @@ const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
   conflict: 60,
 };
 
+/**
+ * Keeps MCP tool schemas OUT of the turn-1 prompt.
+ *
+ * The harness mounts an org's connections without `alwaysLoad` so their tools
+ * stay behind Claude Code's tool search (see `mcpServersFor` in the harness
+ * runner) — but that only happens when tool search is ON, and the CLI turns it
+ * off by default against a non-first-party `ANTHROPIC_BASE_URL`, which is every
+ * OpenRouter and Deco-gateway run. Those runs therefore loaded every mounted
+ * tool eagerly: one production org's 22 connections came to ~1.5MB of schemas
+ * (VTEX's `tools/list` alone is 990KB) and failed every run on `Prompt is too
+ * long` before its first tool call.
+ *
+ * Set on every shape rather than only the proxied ones: a first-party
+ * credential already defers by default, so this is a no-op there, and one code
+ * path beats a provider matrix that has to be kept in sync with the CLI's own
+ * default.
+ *
+ * Verified against real OpenRouter rather than assumed, because the mechanism
+ * is not what its name suggests. Claude Code does tool search CLIENT-side: it
+ * withholds the deferred tools itself and offers an ordinary `ToolSearch`
+ * function tool it answers locally. The only thing on the wire is
+ * `defer_loading: true` on a single `DeferredToolPlaceholder`, alongside the
+ * loaded tools — so none of OpenRouter's server-tool variants
+ * (`tool_search_tool_regex_20251119`, and the `bm25` one it rejects) is ever
+ * requested. Anthropic models through OpenRouter accept that shape and honour
+ * the deferral; the one rule is that at least one tool stay loaded, which the
+ * CLI's own always-loaded set satisfies.
+ */
+const TOOL_SEARCH = "1";
+
 /** The subset of a resolved model source this needs. */
 export interface ClaudeCodeCredential {
   providerId: string;
@@ -160,6 +190,7 @@ export function claudeCodeEnvFromCredential(
   const budget = {
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
+    ENABLE_TOOL_SEARCH: TOOL_SEARCH,
   };
   if (providerId === "anthropic") {
     return {
