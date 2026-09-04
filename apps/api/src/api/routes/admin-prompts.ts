@@ -15,12 +15,14 @@
  *
  * Mounted by `admin.ts`, therefore already behind `requireDeploymentAdmin`.
  */
+import { repoRefFromOwnerName } from "@decocms/shared/git-providers";
 import { Hono } from "hono";
 import type { Env } from "@/api/hono-env";
+import { contentClientWithToken } from "@/git-providers/content";
 import {
-  createGitDataClient,
-  type GitDataClient,
-} from "@/decofile/github-git-data";
+  type RepoContentClient,
+  requireBranchHead,
+} from "@/git-providers/content/types";
 import { githubConnectionAccessToken } from "@/oauth/github-mint";
 import { resolveGithubConnection } from "@/tools/task-board/prs-get";
 import {
@@ -116,7 +118,7 @@ async function resolveActorOrg(
 /** A GitHub client on the acting admin's own connection. */
 async function clientForActor(
   ctx: Ctx,
-): Promise<{ gh: GitDataClient; org: { slug: string; name: string } }> {
+): Promise<{ gh: RepoContentClient; org: { slug: string; name: string } }> {
   const org = await resolveActorOrg(ctx);
   // The mint path for a repo-scoped child connection reads `ctx.organization`,
   // which is exactly what this route doesn't have — bind the resolved org so
@@ -137,7 +139,10 @@ async function clientForActor(
     throw new PromptEditorError("Reconnect GitHub to edit prompts", 400);
   }
   return {
-    gh: createGitDataClient({ ...PROMPT_REPO, accessToken }),
+    gh: contentClientWithToken(
+      repoRefFromOwnerName(PROMPT_REPO.owner, PROMPT_REPO.repo),
+      accessToken,
+    ),
     org: { slug: org.slug, name: org.name },
   };
 }
@@ -173,12 +178,12 @@ export function applyPromptEdits(
 
 /** Every distinct source file the registry touches, read once at `ref`. */
 async function readSources(
-  gh: GitDataClient,
+  gh: RepoContentClient,
   ref: string,
 ): Promise<Map<string, string>> {
   const paths = [...new Set(PROMPTS.map((p) => p.path))];
   const texts = await Promise.all(
-    paths.map((path) => gh.getFileTextAtRef(ref, path)),
+    paths.map((path) => gh.readFileAtRef(ref, path)),
   );
   const sources = new Map<string, string>();
   paths.forEach((path, i) => {
@@ -200,7 +205,7 @@ export function createAdminPromptRoutes(): Hono<Env> {
     // Pin the read to the commit, not the branch: the sha goes back to the
     // client and is what a save is written against, so a push landing between
     // the two can be reported as a conflict instead of silently reverted.
-    const baseSha = await gh.getHeadSha(branch);
+    const baseSha = await requireBranchHead(gh, branch);
     const sources = await readSources(gh, baseSha);
 
     return c.json({
@@ -245,7 +250,7 @@ export function createAdminPromptRoutes(): Hono<Env> {
 
     const { gh } = await clientForActor(c.get("studioContext"));
     const base = await gh.getDefaultBranch();
-    const baseSha = await gh.getHeadSha(base);
+    const baseSha = await requireBranchHead(gh, base);
     if (typeof body.baseSha === "string" && body.baseSha !== baseSha) {
       // The editor loaded an older HEAD; committing its text would revert
       // whatever landed since. The client reloads and the operator re-applies.
@@ -266,29 +271,20 @@ export function createAdminPromptRoutes(): Hono<Env> {
     const changedPaths = [
       ...new Set(edits.map((e) => PROMPTS.find((p) => p.id === e.id)!.path)),
     ];
-    const entries = await Promise.all(
-      changedPaths.map(async (path) => ({
-        path,
-        mode: "100644",
-        type: "blob" as const,
-        sha: await gh.createBlob(sources.get(path)!),
-      })),
-    );
-
-    const treeSha = await gh.createTree(
-      await gh.getCommitTreeSha(baseSha),
-      entries,
-    );
-    const commitSha = await gh.createCommit({
-      message: title,
-      treeSha,
-      parentShas: [baseSha],
-    });
     const branch = `admin/prompts-${Date.now().toString(36)}`;
-    await gh.createRef(branch, commitSha);
-    const pr = await gh.createPullRequest({ base, head: branch, title });
+    await gh.createBranch(branch, baseSha);
+    await gh.commitFiles({
+      branch,
+      message: title,
+      expectedHead: baseSha,
+      changes: changedPaths.map((path) => ({
+        path,
+        content: sources.get(path)!,
+      })),
+    });
+    const pr = await gh.createChangeRequest({ base, head: branch, title });
 
-    return c.json({ number: pr.number, url: pr.html_url, branch });
+    return c.json({ number: pr.number, url: pr.url, branch });
   });
 
   app.onError((error, c) => {

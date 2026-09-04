@@ -1,13 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import type { TreeEntry } from "./github-git-data";
+import type { TreeEntry } from "@/git-providers/content/types";
 import {
   aliasPathsForKey,
   blockEntriesInTree,
   blocksDirPath,
+  gitBlobSha,
 } from "./read-decofile";
 
 function blob(path: string): TreeEntry {
-  return { path, mode: "100644", type: "blob", sha: `sha-${path}` };
+  return { path, type: "blob", sha: `sha-${path}` };
 }
 
 describe("blocksDirPath", () => {
@@ -26,7 +27,7 @@ describe("blockEntriesInTree", () => {
       blob(".deco/blocks/readme.md"),
       blob(".deco/blocks.gen.json"),
       blob("src/index.ts"),
-      { path: ".deco/blocks", mode: "040000", type: "tree", sha: "t" },
+      { path: ".deco/blocks", type: "tree", sha: "t" },
     ];
     const stems = blockEntriesInTree(tree, null).map((e) => e.stem);
     expect(stems.sort()).toEqual(["Header", "Upper"]);
@@ -65,5 +66,21 @@ describe("aliasPathsForKey", () => {
       ".deco/blocks/A%2fB.json",
     ]);
     expect(aliasPathsForKey(entries, "missing")).toEqual([]);
+  });
+});
+
+describe("gitBlobSha", () => {
+  /** The object ids git itself produces — the cache is keyed by the sha the
+   *  provider's tree listing reports, so a mismatch is a silent cache miss. */
+  it("matches git's blob hashing, including for an empty file", () => {
+    expect(gitBlobSha("")).toBe("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
+    expect(gitBlobSha("hello\n")).toBe(
+      "ce013625030ba8dba906f756967f9e9ca394464a",
+    );
+  });
+
+  it("hashes byte length, not code-point length", () => {
+    expect(gitBlobSha("é")).toBe(gitBlobSha("\u00e9"));
+    expect(gitBlobSha("é")).not.toBe(gitBlobSha("e"));
   });
 });

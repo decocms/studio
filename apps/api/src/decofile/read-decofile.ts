@@ -4,7 +4,14 @@ import {
   decoBlockKeyFromFileStem,
   mergeBlocks,
 } from "@decocms/shared/decofile";
+import { repoIdentityKey, type RepoRef } from "@decocms/shared/git-providers";
 import type { Counter } from "@opentelemetry/api";
+import {
+  type RepoContentClient,
+  requireBranchHead,
+  RepoWriteConflict,
+  type TreeEntry,
+} from "@/git-providers/content/types";
 import { meter } from "../observability";
 import {
   getBlob,
@@ -14,34 +21,38 @@ import {
   putMerged,
   removeScratchDir,
 } from "./disk-cache";
-import type { GitDataClient, TreeEntry } from "./github-git-data";
-import { GitHubApiError } from "./github-git-data";
 import { createSingleFlight } from "./single-flight";
 import { extractBlocksFromTarball } from "./tar-extract";
+
+/** Disk-cache and single-flight namespace for a repo, host-qualified so two
+ * providers' identically-named repos can never share an entry. */
+function cacheScope(repo: RepoRef): [owner: string, name: string] {
+  return [repo.host, repo.path];
+}
 
 /**
  * Branch head sha, creating the branch from the default branch's head when it
  * doesn't exist yet. Thread-scoped branches are minted client-side and only
- * materialize on GitHub at first CMS touch — the sandbox flow forks locally at
- * clone time, and this is the sandbox-less equivalent. A 422 on create means a
- * concurrent first-touch won the race; re-read the ref it created.
+ * materialize on the provider at first CMS touch — the sandbox flow forks
+ * locally at clone time, and this is the sandbox-less equivalent. A conflict on
+ * create means a concurrent first-touch won the race; re-read the ref it made.
  */
 export async function resolveOrCreateHead(
-  client: GitDataClient,
+  client: RepoContentClient,
   branch: string,
 ): Promise<string> {
+  const existing = await client.getBranch(branch);
+  if (existing) return existing.sha;
+  const baseSha = await requireBranchHead(
+    client,
+    await client.getDefaultBranch(),
+  );
   try {
-    return await client.getHeadSha(branch);
-  } catch (err) {
-    if (!(err instanceof GitHubApiError) || err.status !== 404) throw err;
-  }
-  const baseSha = await client.getHeadSha(await client.getDefaultBranch());
-  try {
-    await client.createRef(branch, baseSha);
+    await client.createBranch(branch, baseSha);
     return baseSha;
   } catch (err) {
-    if (err instanceof GitHubApiError && err.status === 422) {
-      return client.getHeadSha(branch);
+    if (err instanceof RepoWriteConflict) {
+      return requireBranchHead(client, branch);
     }
     throw err;
   }
@@ -176,16 +187,25 @@ export function aliasPathsForKey(
     .sort();
 }
 
-/** Let writers prime blobs they just created, so the read after a save never
+/**
+ * A blob's git object id: sha1 over `blob <byte length>\0<content>`. Computed
+ * locally rather than read off a write response, because the intent-level write
+ * (`commitFiles`) never reports the object ids it created — and it needn't,
+ * since git's hashing is the same everywhere the cache is keyed by it.
+ */
+export function gitBlobSha(content: string): string {
+  const bytes = Buffer.from(content, "utf-8");
+  return createHash("sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
+}
+
+/** Let writers prime blobs they just wrote, so the read after a save never
  * re-fetches content this replica already has in hand. Write-through to the
  * disk store; fail-open (a store problem is a no-op, never an error). */
-export function primeBlobCache(
-  owner: string,
-  repo: string,
-  blobSha: string,
-  content: string,
-): Promise<void> {
-  return putBlob(owner, repo, blobSha, content);
+export function primeBlobCache(repo: RepoRef, content: string): Promise<void> {
+  return putBlob(...cacheScope(repo), gitBlobSha(content), content);
 }
 
 export interface DecofileSnapshot {
@@ -219,7 +239,7 @@ function mergedDocSha(sha: string, packagePath: string | null): string {
 const snapshotFlight = createSingleFlight<DecofileSnapshot>();
 
 export async function readDecofileSnapshot(
-  client: GitDataClient,
+  client: RepoContentClient,
   branch: string,
   packagePath: string | null,
   options?: {
@@ -231,19 +251,19 @@ export async function readDecofileSnapshot(
 ): Promise<DecofileSnapshot> {
   const sha = options?.createBranchIfMissing
     ? await resolveOrCreateHead(client, branch)
-    : await client.getHeadSha(branch);
+    : await requireBranchHead(client, branch);
   return snapshotFlight.run(
-    `${client.owner}/${client.repo}@${sha}:${packagePath ?? ""}`,
+    `${repoIdentityKey(client.repo)}@${sha}:${packagePath ?? ""}`,
     () => resolveSnapshot(client, sha, packagePath),
   );
 }
 
 async function resolveSnapshot(
-  client: GitDataClient,
+  client: RepoContentClient,
   sha: string,
   packagePath: string | null,
 ): Promise<DecofileSnapshot> {
-  const { owner, repo } = client;
+  const [owner, repo] = cacheScope(client.repo);
   const docSha = mergedDocSha(sha, packagePath);
 
   // Merged disk hit: serve the stored string as-is — no JSON parse, no
@@ -251,8 +271,7 @@ async function resolveSnapshot(
   const cachedMerged = await getMerged(owner, repo, docSha);
   if (cachedMerged !== null) return { sha, decofile: cachedMerged };
 
-  const treeSha = await client.getCommitTreeSha(sha);
-  const tree = await client.getDecofileTree(treeSha, packagePath);
+  const tree = await client.listDecofileEntries(sha, packagePath);
   const entries = blockEntriesInTree(tree, packagePath);
 
   // Per-blob disk hits first; only what's left goes to GitHub.
@@ -284,7 +303,7 @@ async function resolveSnapshot(
     async (e) => {
       const hit = known.get(e.path);
       if (hit !== undefined) return { stem: e.stem, content: hit };
-      const content = await client.getBlobText(e.sha);
+      const content = await client.readBlob(e.sha);
       await putBlob(owner, repo, e.sha, content);
       return { stem: e.stem, content };
     },
@@ -315,12 +334,13 @@ async function resolveSnapshot(
  * blob fetches instead of a wrong document.
  */
 async function tryTarballIngest(
-  client: GitDataClient,
+  client: RepoContentClient,
   sha: string,
   packagePath: string | null,
   entries: Array<{ stem: string; sha: string; path: string; size?: number }>,
 ): Promise<Map<string, string> | null> {
-  const repoKey = `${client.owner}/${client.repo}`;
+  const [owner, repo] = cacheScope(client.repo);
+  const repoKey = repoIdentityKey(client.repo);
 
   // Pre-validate BEFORE downloading (golden rule 3 beats golden rule 2): the
   // extracted files are only "small" in aggregate if the tree says so. A tree
@@ -350,7 +370,8 @@ async function tryTarballIngest(
   const scratchDir = await makeScratchDir();
   if (scratchDir === null) return null;
   try {
-    const body = await client.getTarballStream(sha);
+    const body = await client.getArchive(sha);
+    if (body === null) return null; // provider serves no archive (the e2e stub)
     const files = await extractBlocksFromTarball(
       body,
       scratchDir,
@@ -364,7 +385,7 @@ async function tryTarballIngest(
       // same ref): skip rather than cache under a wrong sha.
       if (blobSha === undefined) continue;
       const content = await readFile(f.diskPath, "utf8");
-      await putBlob(client.owner, client.repo, blobSha, content);
+      await putBlob(owner, repo, blobSha, content);
       out.set(f.path, content);
     }
     return out;
