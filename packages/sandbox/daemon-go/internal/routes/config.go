@@ -18,6 +18,15 @@ const (
 	tokenMaxLength = 256
 )
 
+// maxConfigUpdateBodyBytes bounds the PUT /_sandbox/config request body. A
+// config patch is small structured JSON (git/application/operator fields plus
+// an env map whose individual values are already capped at envValueMax), never
+// a file transfer — but nothing bounds how many env keys or repositories a
+// caller sends. Without a limit, io.ReadAll streams an unbounded body into
+// memory and could crash the daemon, tearing down the sandbox pod on the next
+// missed health probe.
+const maxConfigUpdateBodyBytes = 1024 * 1024
+
 type OrchestratorState struct {
 	Running bool `json:"running"`
 	Pending int  `json:"pending"`
@@ -108,7 +117,7 @@ func ConfigRead(deps ConfigDeps) http.HandlerFunc {
 
 func ConfigUpdate(deps ConfigDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		raw, err := io.ReadAll(r.Body)
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxConfigUpdateBodyBytes))
 		if err != nil {
 			httpx.Error(w, 400, "bad body: "+err.Error())
 			return
