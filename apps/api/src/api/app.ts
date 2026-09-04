@@ -476,7 +476,11 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   // answer DCR from the connection's hand-registered client so the authorize
   // and token legs below need no special case.
   if (endpoint === "register" && connection.oauth_config?.clientId) {
+    // The client metadata is echoed back because RFC 7591 §3.2.1 says the
+    // response is the request plus the credentials, and clients validate it.
+    const requested = await c.req.json().catch(() => ({}));
     return c.json({
+      ...(typeof requested === "object" && requested !== null ? requested : {}),
       client_id: connection.oauth_config.clientId,
       ...(connection.oauth_config.clientSecret
         ? { client_secret: connection.oauth_config.clientSecret }
