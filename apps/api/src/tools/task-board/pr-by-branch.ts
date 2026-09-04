@@ -194,6 +194,23 @@ export async function linkPrFromRunBranch(
             repoName: pr.repo,
             connectionId: conn.id,
           });
+          // The one piece of bookkeeping the deleted `TASK_BOARD_ITEM_PR_LINK`
+          // did alongside its link that nothing else on this path does.
+          // Idempotent, and a no-op for the case this file exists for — a run
+          // that opened its PR and then died is already In Review by the time
+          // we get here, and keeps a null cycle. It matters for a run still
+          // going: without the stamp, `reviewCycleStart` and the reviewer fence
+          // fall back to scanning activity, and a re-dispatch cannot tell one
+          // cycle from the next.
+          //
+          // ponytail: no `clearSweepBudget` here. The only caller is the sweeper
+          // itself, which continues straight into the reviewer dispatch in this
+          // same pass — clearing the interval it just claimed would buy nothing
+          // but an extra tick. Add it if a non-sweeper caller appears.
+          await ctx.storage.taskBoard.openReviewCycleIfInProgress(
+            item.id,
+            orgId,
+          );
           await invalidatePrCards(orgId).catch(() => {});
           console.log(
             `[task-board] ${item.id}: linked ${pr.url} found on branch ${ref}`,
