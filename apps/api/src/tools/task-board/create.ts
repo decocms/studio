@@ -18,6 +18,7 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { extractPrFromText } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -144,6 +145,10 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         repoOwner: pr.owner,
         repoName: pr.repo,
         connectionId: null,
+      });
+      // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+      await invalidatePrCards(organizationId).catch((err) => {
+        console.error("[task-board] PR card cache invalidation failed", err);
       });
     }
 

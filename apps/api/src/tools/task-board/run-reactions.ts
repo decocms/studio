@@ -32,6 +32,7 @@ import type { OrganizationBillingStorage } from "@/storage/organization-billing"
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { sseHub } from "@/event-bus/sse-hub";
@@ -258,6 +259,8 @@ export async function capturePrForRun(
         connectionId: connectionId ?? null,
       });
     }
+    // Drop the cached cards so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+    if (targets.length > 0) await invalidatePrCards(orgId);
   } catch (err) {
     console.error("[task-board] PR capture failed", err);
   }

@@ -22,6 +22,7 @@ import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { runColumnAutomation } from "./run-column-automation";
 import { extractPrFromText } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import {
   ensureTaskExecutionAllowed,
   isReportsTask,
@@ -417,6 +418,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         repoOwner: pr.owner,
         repoName: pr.repo,
         connectionId: null,
+      });
+      // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+      await invalidatePrCards(organizationId).catch((err) => {
+        console.error("[task-board] PR card cache invalidation failed", err);
       });
     }
 
