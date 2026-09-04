@@ -125,9 +125,10 @@ export async function syncOrgRepoSafe(
       authToken,
       skipVolumeQuota: false,
     });
-    await ctx.storage.orgRepoSyncs.recordSyncResult(config.id, {
-      error: null,
-    });
+    // Best-effort: the sync already succeeded, so a failed status write must not fall into the catch below and report a spurious failure.
+    await ctx.storage.orgRepoSyncs
+      .recordSyncResult(config.id, { error: null })
+      .catch(() => {});
     return { id: config.id, volume: config.volume, ...counts };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
