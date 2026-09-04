@@ -746,7 +746,13 @@ function resumeReason(errorMessage: string, infra: string | null): string {
  * and the user is not is how "it just stopped" survived in prod.
  *
  * Null for a stop that carries no information beyond the broken stream we
- * already reported (a graceful shutdown, an eviction, a pod already gone).
+ * already reported (a graceful shutdown, a pod already gone).
+ *
+ * An eviction used to be in that list and should not have been: it is the most
+ * actionable stop there is, because the kubelet says which resource ran out.
+ * Silently swallowing it is how 41 pods evicted for filling `/tmp` in one
+ * afternoon produced nothing but a generic "the sandbox went away", on runs
+ * that then retried onto fresh pods and filled it again.
  */
 export function describeTermination(
   termination: PodTermination | null,
@@ -757,6 +763,16 @@ export function describeTermination(
       ? ` (memory limit ${termination.memoryLimit})`
       : "";
     return `it was killed by the kernel for exceeding its memory limit${limit} — OOMKilled`;
+  }
+  if (termination.reason === "Evicted") {
+    const detail = termination.evictionMessage
+      ? `: ${termination.evictionMessage.replace(/\.$/, "")}`
+      : "";
+    return (
+      `the sandbox pod was evicted by the kubelet${detail} — the run filled a ` +
+      `resource the pod is capped at, so retrying it on a fresh pod will hit ` +
+      `the same limit unless it writes less`
+    );
   }
   if (termination.reason === "Completed") return null;
   const code =

@@ -185,6 +185,15 @@ export interface PodTermination {
   exitCode?: number;
   /** The limit that was hit, as k8s spells it (`4Gi`). */
   memoryLimit?: string;
+  /**
+   * The kubelet's eviction message when `reason` is `Evicted`, verbatim — it
+   * names the resource and the limit, e.g.
+   * `Usage of EmptyDir volume "tmp" exceeds the limit "1Gi".`
+   *
+   * Without it an eviction is indistinguishable from any other lost pod, which
+   * is how a run that filled a volume looked like "the sandbox went away".
+   */
+  evictionMessage?: string;
 }
 
 export function sandboxIdKey(id: SandboxId): string {
