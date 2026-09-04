@@ -43,11 +43,11 @@ export const RegistryConfigSchema = z.object({
 
 export type RegistryConfig = z.infer<typeof RegistryConfigSchema>;
 
-const ModelSlotSchema = z
+export const ModelSlotSchema = z
   .object({
-    keyId: z.string(),
-    modelId: z.string(),
-    title: z.string().optional(),
+    keyId: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+    modelId: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+    title: z.string().max(MAX_SETTINGS_STRING_LENGTH).optional(),
   })
   .nullable();
 

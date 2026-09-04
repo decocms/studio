@@ -3,6 +3,7 @@ import {
   autoResolveConflictsEnabled,
   BrandContextSchema,
   DEFAULT_ON_FLAGS,
+  ModelSlotSchema,
   orgFlagEnabled,
 } from "./schema";
 
@@ -103,5 +104,35 @@ describe("BrandContextSchema JSON field caps", () => {
     const images = Array(51).fill({ url: "https://example.com/a.png" });
     const result = BrandContextSchema.safeParse(baseBrandContext({ images }));
     expect(result.success).toBe(false);
+  });
+});
+
+describe("ModelSlotSchema", () => {
+  it("accepts a normal model slot", () => {
+    expect(
+      ModelSlotSchema.safeParse({
+        keyId: "key_1",
+        modelId: "claude-sonnet-5",
+        title: "Sonnet 5",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an oversized keyId, modelId, or title", () => {
+    // Regression: #6961 capped every sibling free-text field but left these three unbounded.
+    const longString = "x".repeat(501);
+    expect(
+      ModelSlotSchema.safeParse({ keyId: longString, modelId: "m" }).success,
+    ).toBe(false);
+    expect(
+      ModelSlotSchema.safeParse({ keyId: "k", modelId: longString }).success,
+    ).toBe(false);
+    expect(
+      ModelSlotSchema.safeParse({
+        keyId: "k",
+        modelId: "m",
+        title: longString,
+      }).success,
+    ).toBe(false);
   });
 });
