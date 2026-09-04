@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
-import { createProxyMonitoringMiddleware } from "./proxy-monitoring";
+import {
+  createProxyMonitoringMiddleware,
+  extractCallToolErrorMessage,
+} from "./proxy-monitoring";
 
 function createMockSpan() {
   const attrs: Record<string, unknown> = {};
@@ -133,5 +136,21 @@ describe("proxy monitoring middleware", () => {
 
     expect(spans.length).toBe(1);
     expect(spans[0]!._isEnded()).toBe(true);
+  });
+});
+
+describe("extractCallToolErrorMessage", () => {
+  it("returns undefined for a malformed downstream result instead of throwing", () => {
+    expect(extractCallToolErrorMessage(null as any)).toBeUndefined();
+    expect(extractCallToolErrorMessage(undefined as any)).toBeUndefined();
+    expect(extractCallToolErrorMessage("nope" as any)).toBeUndefined();
+  });
+
+  it("extracts the text content when isError is set", () => {
+    const result = {
+      isError: true,
+      content: [{ type: "text", text: "boom" }],
+    } as any;
+    expect(extractCallToolErrorMessage(result)).toBe("boom");
   });
 });

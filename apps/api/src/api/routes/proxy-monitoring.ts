@@ -17,7 +17,10 @@ type CallToolMiddleware = (
 export function extractCallToolErrorMessage(
   result: CallToolResult,
 ): string | undefined {
-  if (!result.isError) return undefined;
+  // A non-conformant downstream MCP server can send a null/missing result.
+  if (!result || typeof result !== "object" || !result.isError) {
+    return undefined;
+  }
   const content = (result as unknown as { content?: unknown }).content;
   if (!Array.isArray(content)) return undefined;
 
