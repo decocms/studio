@@ -315,7 +315,7 @@ function ThreadConversationPanelLoading() {
 const LIVE_REFRESH_DEBOUNCE_MS = 400;
 
 /**
- * Poll interval while the run is still going.
+ * Poll interval for an open sheet.
  *
  * Polling, not events alone, because `decopilot.step` is emitted ONLY by the
  * hosted Decopilot path: `runRegistry.dispatch({ type: "STEP_DONE" })` lives in
@@ -338,7 +338,6 @@ function useLiveThreadMessages(
   orgSlug: string,
   locator: string,
   threadId: string,
-  live: boolean,
 ) {
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -357,7 +356,6 @@ function useLiveThreadMessages(
     orgSlug,
     // `taskId` is matched against the event's `subject`, which is the thread id.
     taskId: threadId,
-    enabled: live,
     onStep: refresh,
     onFinish: refresh,
     onReconnect: refresh,
@@ -384,7 +382,6 @@ function ThreadConversationPanel({
   meta: boolean;
 }) {
   const { org } = useProjectContext();
-  const live = thread.status === "in_progress";
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useSuspenseInfiniteQuery({
       queryKey: KEYS.threadMessages(locator, thread.id),
@@ -411,13 +408,17 @@ function ThreadConversationPanel({
         if ((page?.items?.length ?? 0) < MESSAGES_PAGE_SIZE) return undefined;
         return pages.length * MESSAGES_PAGE_SIZE;
       },
-      staleTime: 60_000,
-      // Only an open sheet on a still-running thread polls: a settled thread is
-      // immutable, and a closed sheet is unmounted.
-      refetchInterval: live ? LIVE_REFRESH_POLL_MS : false,
+      // A settled thread is immutable, so a stale window would be free — but
+      // the only status this view has is the snapshot the card handed it, and a
+      // run that started (or is still starting) after that read looks settled
+      // here. Polling an open sheet unconditionally costs one small read every
+      // few seconds and cannot be wrong; a closed sheet is unmounted.
+      // ponytail: poll while open, no liveness gate.
+      staleTime: 0,
+      refetchInterval: LIVE_REFRESH_POLL_MS,
     });
 
-  useLiveThreadMessages(org.slug, locator, thread.id, live);
+  useLiveThreadMessages(org.slug, locator, thread.id);
 
   const allItems = data.pages.flatMap(
     (p: { items?: ThreadMessageEntity[] }) => p.items ?? [],
