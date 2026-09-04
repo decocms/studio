@@ -32,6 +32,34 @@ interface MintedToken {
   expiresAt: Date | null;
 }
 
+type MintResult = {
+  isError?: boolean;
+  structuredContent?: { token?: unknown; expiresAt?: unknown };
+  content?: Array<{ type?: string; text?: string }>;
+};
+
+/**
+ * MINT_REPO_TOKEN's structuredContent is untrusted output from a called MCP
+ * tool — narrow with typeof (like `access_token` in refresh-access-token.ts)
+ * rather than trusting the `MintResult` cast, so a malformed/non-string token
+ * or expiresAt can't reach the token vault or produce an Invalid Date.
+ * Exported for unit testing; not part of the module's public API.
+ */
+export function extractMintedToken(res: MintResult): MintedToken {
+  const token = res.structuredContent?.token;
+  if (res.isError || typeof token !== "string" || !token) {
+    throw new Error(RECONNECT_ERROR);
+  }
+  const expiresAtRaw = res.structuredContent?.expiresAt;
+  const expiresAt =
+    typeof expiresAtRaw === "string" ? new Date(expiresAtRaw) : null;
+  return {
+    accessToken: token,
+    expiresAt:
+      expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt : null,
+  };
+}
+
 /**
  * Mint a fresh repo-scoped token by calling MINT_REPO_TOKEN through the org
  * connection named in the recipe. Validates org ownership of the source
@@ -69,12 +97,6 @@ async function mintRepoToken(
   // injected as the bearer either way (the gate needs the user-to-server token).
   const client = await clientFromConnection(orgConn, ctx, true);
   try {
-    type MintResult = {
-      isError?: boolean;
-      structuredContent?: { token?: string; expiresAt?: string };
-      content?: Array<{ type?: string; text?: string }>;
-    };
-
     // Self-heal legacy recipes: re-add the optional reads each re-mint, shedding whichever the installation hasn't granted yet (see the helper's note).
     const { result: res } = await mintRepoTokenWithFallback<MintResult>(
       (permissions) =>
@@ -90,15 +112,7 @@ async function mintRepoToken(
       withOptionalReadPermissions(recipe.permissions),
     );
 
-    const token = res.structuredContent?.token;
-    if (res.isError || !token) {
-      throw new Error(RECONNECT_ERROR);
-    }
-    const expiresAtRaw = res.structuredContent?.expiresAt;
-    return {
-      accessToken: token,
-      expiresAt: expiresAtRaw ? new Date(expiresAtRaw) : null,
-    };
+    return extractMintedToken(res);
   } finally {
     await client.close().catch(() => {});
   }
