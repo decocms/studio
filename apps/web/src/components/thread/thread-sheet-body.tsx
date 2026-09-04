@@ -12,11 +12,14 @@
  * {@link ThreadSheetBody}.
  */
 
-import { Suspense } from "react";
+import { Suspense, useRef } from "react";
 import type { useConnections, useVirtualMCPs } from "@/sdk";
-import { useMCPClient } from "@/sdk";
+import { useMCPClient, useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
-import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
+import {
+  useQueryClient,
+  useSuspenseInfiniteQuery,
+} from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SheetHeader, SheetTitle } from "@decocms/ui/components/sheet.tsx";
@@ -34,6 +37,7 @@ import type {
   StudioThreadMessage as ThreadMessage,
 } from "@decocms/shared/entities";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { useDecopilotEvents } from "@/hooks/use-decopilot-events.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
@@ -285,6 +289,61 @@ function ThreadConversationPanelLoading() {
   );
 }
 
+/**
+ * Keep an open sheet's transcript current while its run is still going.
+ *
+ * The body is a plain paged read with a 60s `staleTime` and nothing that
+ * invalidates it, so it froze at mount: the only way to see new output was to
+ * close the sheet and open it again, and inside the stale window even that
+ * showed nothing. The last pair's `status="streaming"` shimmered over a
+ * transcript that was not actually moving.
+ *
+ * The org-wide `/watch` pool already carries this thread's step/finish events
+ * and is ref-counted per org, so listening costs no new connection — the live
+ * chat's `/stream` (and its whole ThreadConnection) stays out of a read-only
+ * viewer that has no composer.
+ *
+ * Invalidations are coalesced: a chatty run emits a step per tool call, and one
+ * refetch of every loaded page per step is the re-render storm `foldSubStream`
+ * exists to avoid on the chat side. A trailing window collapses a burst into one
+ * refetch, at the cost of showing new output up to that late.
+ *
+ * `onReconnect` matters as much as the steps: `/watch` is at-most-once, so a
+ * blip or a tab wake drops the events that would have refreshed this, and
+ * without a catch-up the sheet silently resumes being stale.
+ */
+const LIVE_REFRESH_DEBOUNCE_MS = 400;
+
+function useLiveThreadMessages(
+  orgSlug: string,
+  locator: string,
+  threadId: string,
+  live: boolean,
+) {
+  const queryClient = useQueryClient();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refresh = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      queryClient.invalidateQueries({
+        queryKey: KEYS.threadMessages(locator, threadId),
+      });
+    }, LIVE_REFRESH_DEBOUNCE_MS);
+  };
+
+  useDecopilotEvents({
+    orgSlug,
+    // `taskId` is matched against the event's `subject`, which is the thread id.
+    taskId: threadId,
+    enabled: live,
+    onStep: refresh,
+    onFinish: refresh,
+    onReconnect: refresh,
+  });
+}
+
 function ThreadConversationPanel({
   client,
   locator,
@@ -304,6 +363,7 @@ function ThreadConversationPanel({
   nav?: ThreadSheetNav;
   meta: boolean;
 }) {
+  const { org } = useProjectContext();
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useSuspenseInfiniteQuery({
       queryKey: KEYS.threadMessages(locator, thread.id),
@@ -332,6 +392,13 @@ function ThreadConversationPanel({
       },
       staleTime: 60_000,
     });
+
+  useLiveThreadMessages(
+    org.slug,
+    locator,
+    thread.id,
+    thread.status === "in_progress",
+  );
 
   const allItems = data.pages.flatMap(
     (p: { items?: ThreadMessageEntity[] }) => p.items ?? [],
