@@ -217,8 +217,8 @@ describe("findAgentEntryThread", () => {
     ).toBe("draft");
   });
 
-  // Drafts mode: an unnamed draft is never editable, so it is never auto-resumed.
-  it("drafts mode resumes the named version, ignoring a newer unnamed draft", () => {
+  // Drafts mode resumes the most recently edited draft, named or not.
+  it("drafts mode resumes the most recently edited draft, named or unnamed", () => {
     expect(
       findAgentEntryThread(
         [onRelease, newerUnnamedDraft],
@@ -226,12 +226,12 @@ describe("findAgentEntryThread", () => {
         USER,
         undefined,
         true,
-        { knownBranches: known, draftsMode: true },
+        { knownBranches: known, draftsMode: true, baseBranch: "main" },
       )?.id,
-    ).toBe("release");
+    ).toBe("draft");
   });
 
-  it("drafts mode returns undefined when nothing sits on a named version (caller mints on production)", () => {
+  it("drafts mode resumes an unnamed draft instead of minting on production", () => {
     expect(
       findAgentEntryThread(
         [newerUnnamedDraft],
@@ -239,11 +239,25 @@ describe("findAgentEntryThread", () => {
         USER,
         undefined,
         true,
-        {
-          knownBranches: known,
-          draftsMode: true,
-        },
-      ),
+        { knownBranches: known, draftsMode: true, baseBranch: "main" },
+      )?.id,
+    ).toBe("draft");
+  });
+
+  it("drafts mode never resumes a production thread (caller mints a fresh draft)", () => {
+    const onProduction = task({
+      id: "prod",
+      title: "Live",
+      harness_id: "claude-code",
+      branch: "main",
+      updated_at: "2026-04-01T00:00:00Z",
+    });
+    expect(
+      findAgentEntryThread([onProduction], "agent-1", USER, undefined, true, {
+        knownBranches: known,
+        draftsMode: true,
+        baseBranch: "main",
+      }),
     ).toBeUndefined();
   });
 

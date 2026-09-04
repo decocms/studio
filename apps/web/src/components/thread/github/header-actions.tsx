@@ -335,16 +335,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const switchToFreshBranch = async () => {
-    if (draftsModeEnabled(vm)) {
-      const published = branch;
-      await setCurrentTaskBranch(baseBranch);
-      if (published && published !== baseBranch) {
-        await deleteRelease(published);
-      }
-      return;
-    }
+    // Always land on a fresh editable draft, never on read-only production.
+    const published = draftsModeEnabled(vm) ? branch : null;
     const nextBranch = generateBranchName(branchUserLabel(session?.user));
     await setCurrentTaskBranch(nextBranch);
+    if (published && published !== baseBranch) {
+      await deleteRelease(published);
+    }
   };
 
   const handleSquashMerge = async (pullNumber: number) => {

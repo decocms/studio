@@ -28,6 +28,10 @@ import {
   draftsModeEnabled,
   useBaseBranch,
 } from "@/components/thread/github/use-version-gate";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { AgentScopePicker } from "@/components/sidebar/agents-section";
@@ -147,13 +151,19 @@ export function AgentSwitcherCrumb({
           ...(target?.metadata?.releases ?? []).map((r) => r.branch),
         ]),
         draftsMode: isDraftsMode,
+        baseBranch,
       },
     );
     if (existing) {
       setTaskId(existing.id, targetId);
     } else {
-      // Drafts mode mints a fresh thread on production, never an unnamed draft.
-      void createNewTask(targetId, isDraftsMode ? baseBranch : undefined);
+      // Drafts mode mints a fresh thread on an editable draft, never production.
+      void createNewTask(
+        targetId,
+        isDraftsMode
+          ? generateBranchName(branchUserLabel(session?.user))
+          : undefined,
+      );
     }
     onNavigate?.();
   };
