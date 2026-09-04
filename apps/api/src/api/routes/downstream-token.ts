@@ -7,7 +7,7 @@
 
 import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
-import { canRefresh } from "../../oauth/token-refresh";
+import { canRefresh, clearRefreshBackoff } from "../../oauth/token-refresh";
 import { resolveOriginTokenEndpoint } from "../../oauth/resolve-token-endpoint";
 import {
   DownstreamTokenStorage,
@@ -137,6 +137,9 @@ export const createDownstreamTokenRoutes = () => {
     };
 
     const token = await tokenStorage.upsert(tokenData);
+
+    // A freshly saved token has never failed - drop any backoff armed by the previous dead token.
+    clearRefreshBackoff(connectionId);
 
     return c.json({
       success: true,

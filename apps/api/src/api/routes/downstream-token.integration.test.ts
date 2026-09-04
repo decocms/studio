@@ -9,7 +9,13 @@ import {
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
 import type { StudioDatabase } from "../../database";
-import { createDownstreamTokenRoutes } from "./downstream-token";
+const mockClearRefreshBackoff = mock((_connectionId?: string) => {});
+mock.module("../../oauth/token-refresh", () => ({
+  canRefresh: () => false,
+  clearRefreshBackoff: mockClearRefreshBackoff,
+}));
+
+const { createDownstreamTokenRoutes } = await import("./downstream-token");
 
 describe("Downstream Token Routes", () => {
   let database: StudioDatabase;
@@ -102,6 +108,20 @@ describe("Downstream Token Routes", () => {
     const body = (await res.json()) as { success: boolean; expiresAt: string };
     expect(body.success).toBe(true);
     expect(body.expiresAt).toBeTruthy();
+  });
+
+  it("clears the token-refresh backoff entry on save", async () => {
+    // Regression: a stale backoff from the previous dead token would falsely bounce a refresh right after reconnect.
+    mockClearRefreshBackoff.mockClear();
+
+    const res = await app.request("/connections/conn_1/oauth-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken: "at", refreshToken: "rt" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockClearRefreshBackoff).toHaveBeenCalledWith("conn_1");
   });
 
   it("stores expiresIn: 0 as already-expired, not never-expiring", async () => {
