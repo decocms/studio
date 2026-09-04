@@ -31,6 +31,8 @@ export interface WorkspaceRouteMainProps {
   leading?: ReactNode;
   /** Explicit semantic parents between the organization and current route. */
   breadcrumbAncestors?: readonly MainBreadcrumbNavigableItem[];
+  /** The current destination is the scope itself, as on organization Home. */
+  breadcrumbScopeIsCurrent?: boolean;
   /**
    * Identity of the rendered route payload for error recovery. Defaults to the
    * canonical panel tab, but sibling URLs that share a tab (for example Tasks
@@ -48,6 +50,7 @@ export function WorkspaceRouteMain({
   contentMode = "scroll",
   leading,
   breadcrumbAncestors,
+  breadcrumbScopeIsCurrent = false,
   boundaryKey,
   title,
 }: WorkspaceRouteMainProps) {
@@ -57,6 +60,10 @@ export function WorkspaceRouteMain({
   const routeBoundaryKey = boundaryKey ?? routeKey;
   const fixedRouteTitle = useRouteMainTitle();
   const routeTitle = title?.trim() || fixedRouteTitle;
+  const breadcrumbScope = organizationMainBreadcrumbItem(
+    org,
+    t("sidebar.navDestinations.home"),
+  );
 
   return (
     <Main>
@@ -66,12 +73,14 @@ export function WorkspaceRouteMain({
             {routeTitle ? (
               <MainBreadcrumb
                 compactTitle="visually-hidden"
-                scope={organizationMainBreadcrumbItem(
-                  org,
-                  t("sidebar.navDestinations.home"),
-                )}
+                scope={breadcrumbScope}
                 ancestors={breadcrumbAncestors}
-                current={{ id: `route:${routeKey}`, label: routeTitle }}
+                current={{
+                  id: breadcrumbScopeIsCurrent
+                    ? breadcrumbScope.id
+                    : `route:${routeKey}`,
+                  label: routeTitle,
+                }}
               />
             ) : null}
             {leading}

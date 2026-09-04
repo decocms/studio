@@ -14,9 +14,10 @@
  *   ?thread                 the open thread on a destination route
  *
  * WHICH view the main panel shows is the matched child route, not search — see
- * `main-panel-tabs/tab-route.ts`. So the two panel toggles here are pure
- * visibility: they navigate `to: "."` and never touch the path, which means a
- * closed panel still remembers its view and can never fabricate a thread id.
+ * `main-panel-tabs/tab-route.ts`. Panel visibility actions navigate `to: "."`
+ * and never touch the path, which means a closed panel still remembers its view
+ * and can never fabricate a thread id. Chat can be toggled; Main's shell action
+ * only restores a panel hidden by route or history state.
  * Thread-changing actions go through `useThreadNavigate`, which writes the
  * canonical route's `?thread=` layout state. The legacy `/$org/$taskId` shape
  * is accepted only long enough for its compatibility redirect to settle.
@@ -57,7 +58,7 @@ export interface WorkspaceLayoutState {
 }
 
 export interface WorkspaceLayoutActions {
-  toggleMain: () => void;
+  openMain: () => void;
   toggleSidePanel: () => void;
   createNewTask: () => void;
 }
@@ -66,8 +67,6 @@ export interface WorkspaceLayoutActions {
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
 
-export type WorkspacePanel = "side" | "main";
-
 export interface WorkspaceVisibility {
   sidePanelOpen: boolean;
   mainOpen: boolean;
@@ -75,7 +74,7 @@ export interface WorkspaceVisibility {
 
 export type WorkspacePanelAction =
   | { type: "toggleSidePanel" }
-  | { type: "toggleMain" }
+  | { type: "openMain" }
   | { type: "openSidePanel" };
 
 export type WorkspacePanelSearchUpdate = {
@@ -110,15 +109,8 @@ export function resolveWorkspaceThread(input: {
   };
 }
 
-export function canCloseWorkspacePanel(
-  panel: WorkspacePanel,
-  visibility: WorkspaceVisibility,
-): boolean {
-  const openPanelCount =
-    Number(visibility.sidePanelOpen) + Number(visibility.mainOpen);
-
-  if (openPanelCount <= 1) return false;
-  return panel === "side" ? visibility.sidePanelOpen : visibility.mainOpen;
+export function canCloseSidePanel(visibility: WorkspaceVisibility): boolean {
+  return visibility.sidePanelOpen && visibility.mainOpen;
 }
 
 function withWorkspaceFallback(
@@ -177,16 +169,12 @@ export function resolveWorkspacePanelAction(
   switch (action.type) {
     case "toggleSidePanel":
       if (visibility.sidePanelOpen) {
-        if (!canCloseWorkspacePanel("side", visibility)) return null;
+        if (!canCloseSidePanel(visibility)) return null;
         return { sidepanel: false };
       }
       return { sidepanel: true };
-    case "toggleMain":
-      if (visibility.mainOpen) {
-        if (!canCloseWorkspacePanel("main", visibility)) return null;
-        return { mainpanel: false };
-      }
-      return { mainpanel: true };
+    case "openMain":
+      return visibility.mainOpen ? null : { mainpanel: true };
     case "openSidePanel":
       return visibility.sidePanelOpen ? null : { sidepanel: true };
   }
@@ -296,9 +284,9 @@ export function useWorkspaceLayoutState(
     });
   };
 
-  const toggleMain = () => {
+  const openMain = () => {
     const update = resolveWorkspacePanelAction(
-      { type: "toggleMain" },
+      { type: "openMain" },
       visibility,
     );
     if (update) navigateSearch(update, { replace: true });
@@ -340,7 +328,7 @@ export function useWorkspaceLayoutState(
     sidePanelOpen,
     mainOpen,
     sidePanelParamPresent: search.sidepanel !== undefined,
-    toggleMain,
+    openMain,
     toggleSidePanel,
     createNewTask,
   };

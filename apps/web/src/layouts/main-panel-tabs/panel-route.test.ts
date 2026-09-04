@@ -18,6 +18,7 @@ describe("legacy panel parser", () => {
       "board",
       "app",
       "library-file",
+      "discover",
     ]) {
       expect(isKnownPanelSegment(panel)).toBe(true);
     }

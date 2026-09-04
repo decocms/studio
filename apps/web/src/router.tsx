@@ -421,7 +421,7 @@ const unifiedChatRoute = createRoute({
  * ROUTE GRAMMAR — path = which page, search = how that page is laid out.
  *
  * Organization pages are direct children (`home`, `tasks`, `reports`,
- * `library`, `discover`). Agent identity is always the explicit
+ * `library`). Agent identity is always the explicit
  * `/agents/$agentId` boundary, and every agent feature is a child below it.
  * Site Editor owns a further nested Preview/Content/Code subtree so all three
  * inherit its topbar and console drawer structurally.
@@ -874,29 +874,23 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
-/**
- * Discover — the permanent, linkable home for what this org does NOT have yet:
- * unfinished setup, capabilities not turned on, and the app catalog.
- *
- * It exists so a destination never has to be hidden to keep the sidebar honest.
- * Hiding Reports until an org owned a diagnostic shipped once and was reverted,
- * because it removed the only in-product way to ask for one (see
- * `main-panel-tabs/reports-tab.tsx`). Withholding a shortcut must never
- * withhold the purchase — so anything withheld is named here instead.
- *
- * Org-wide by definition: what you don't have isn't a property of one project.
- */
-const discoverRoute = createRoute({
+/** Keep the retired path out of the dynamic `/$taskId` route. Durable links
+ * land on Home without preserving a stale search-carried agent identity. */
+const retiredDiscoverRedirectRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/discover",
-  staticData: {
-    defaultMain: "discover",
-    mainView: "discover",
-    mainTitleKey: "discover.title",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/home",
+      params: { org: params.org },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        virtualmcpid: undefined,
+      }),
+      hash: true,
+      replace: true,
+    });
   },
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/discover.tsx"),
-  ),
 });
 
 /**
@@ -1358,7 +1352,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([
   tasksRoute,
   reportsRoute,
   libraryRoute,
-  discoverRoute,
+  retiredDiscoverRedirectRoute,
 ]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([

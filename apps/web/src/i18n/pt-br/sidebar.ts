@@ -22,7 +22,6 @@ export const sidebar = {
     "Selecione um projeto existente",
   "sidebar.header.closeSidebar": "Fechar barra lateral",
   "sidebar.header.toggleSidebar": "Abrir ou fechar barra lateral",
-  "sidebar.navDestinations.discover": "Descobrir",
   "sidebar.navDestinations.home": "Início",
   "sidebar.navDestinations.library": "Biblioteca",
   "sidebar.navDestinations.reports": "Relatórios",

@@ -651,16 +651,19 @@ export class NavigationFocusController {
         !focusIsInRouteChrome(active);
       if (focusMovedElsewhere) return;
 
+      if (request.sourceType === "main-panel-toggle") {
+        this.focusRouteHeading(request);
+        return;
+      }
+
       const routeTarget =
         request.sourceType === "mobile-view-select"
           ? visibleElement(
               `${MOBILE_VIEW_SELECT_SOURCE}[data-slot="select-trigger"]`,
             )
-          : request.sourceType === "main-panel-toggle"
-            ? visibleElement(MAIN_PANEL_CONTROL)
-            : request.sourceType === "chat-panel-toggle"
-              ? visibleElement(CHAT_PANEL_CONTROL)
-              : visibleElement(ROUTE_HEADING);
+          : request.sourceType === "chat-panel-toggle"
+            ? visibleElement(CHAT_PANEL_CONTROL)
+            : visibleElement(ROUTE_HEADING);
       const target = routeTarget ?? visibleElement(SHOW_MAIN_PANEL_CONTROL);
       if (target) this.focusTarget(target);
     });

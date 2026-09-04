@@ -19,7 +19,6 @@ export const agentShellLayout = {
     "Algo deu errado. Tente atualizar.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Tarefa indisponível",
   "agentShellLayout.toggleButtons.hideChat": "Ocultar chat",
-  "agentShellLayout.toggleButtons.hidePanel": "Ocultar painel",
   "agentShellLayout.toggleButtons.showChat": "Mostrar chat",
   "agentShellLayout.toggleButtons.showPanel": "Mostrar painel",
   "agentShellLayout.workspace.resizePanels":

@@ -131,6 +131,9 @@ test.describe("org home — the agent roster", () => {
     await page.keyboard.press(`${modifier}+K`);
     const palette = page.getByRole("dialog", { name: "Command palette" });
     await expect(palette).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      palette.getByRole("option", { name: "Discover", exact: true }),
+    ).toHaveCount(0);
     await palette
       .getByRole("option", { name: "New project", exact: true })
       .click();
@@ -160,25 +163,6 @@ test.describe("org home — the agent roster", () => {
     await page
       .getByRole("button", { name: "New project", exact: true })
       .click();
-
-    await assertCanonicalNewProjectHome(page, orgSlug);
-  });
-
-  test("the Discover checklist Create project action opens organization Home", async ({
-    authedPage: { page, orgSlug },
-  }) => {
-    /** This fixture owns a fresh organization, so the project step is
-     * outstanding even though code-owned Studio Pack agents already exist. */
-    await page.goto(`/${orgSlug}/discover`);
-    await expect(page.getByTestId("main-panel")).toBeVisible({
-      timeout: SHELL_TIMEOUT_MS,
-    });
-
-    const projectStep = page
-      .getByRole("listitem")
-      .filter({ hasText: "Create a project" });
-    await expect(projectStep).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await projectStep.getByRole("link", { name: "Create" }).click();
 
     await assertCanonicalNewProjectHome(page, orgSlug);
   });

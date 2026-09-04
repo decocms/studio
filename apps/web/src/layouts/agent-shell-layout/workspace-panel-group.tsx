@@ -2,8 +2,9 @@
  * Persistent desktop workspace: MainPanel | ChatPanel.
  *
  * Each panel is one full-height card. Chat owns a `PanelHeader`; every routed
- * Main surface owns its own `Main.Topbar`. Panel controls sit against the outer
- * edge of the panel they affect and relocate when that panel is hidden.
+ * Main surface owns its own `Main.Topbar`. Chat's visibility control stays at
+ * Main's trailing edge; when Main is hidden, its recovery control appears at
+ * Chat's leading edge.
  */
 
 import { useRef, type PropsWithChildren, type ReactNode } from "react";
@@ -24,10 +25,7 @@ import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { SidePanel } from "./side-panel";
-import {
-  PanelCollapseToggle,
-  PanelToggleFocusProvider,
-} from "./toggle-buttons";
+import { PanelVisibilityToggle } from "./toggle-buttons";
 import { PanelHeader } from "./panel-header";
 import { useT } from "@/i18n/use-t";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
@@ -100,7 +98,7 @@ export interface WorkspacePanelGroupProps extends WorkspaceVisibility {
   virtualMcpId: string;
   /** The open thread, or `null` on a destination route that names none. */
   taskId: string | null;
-  toggleMain: () => void;
+  openMain: () => void;
   chatContent?: ReactNode;
   mainContent: ReactNode;
   /** Mobile presents one surface while keeping both panel subtrees mounted. */
@@ -112,7 +110,7 @@ export function WorkspacePanelGroup({
   taskId,
   sidePanelOpen,
   mainOpen,
-  toggleMain,
+  openMain,
   chatContent,
   mainContent,
   mobileSurface,
@@ -186,14 +184,13 @@ export function WorkspacePanelGroup({
   const chatHeader = (
     <>
       <PanelHeader className="max-md:hidden">
-        {/* Main is physically left of Chat. Its reopen control moves to Chat's
-            leading edge when Main no longer has a header of its own. */}
+        {/* Main is physically left of Chat. Its recovery control appears at
+            Chat's leading edge only while Main is hidden. */}
         {!mainOpen && (
-          <PanelCollapseToggle
+          <PanelVisibilityToggle
             panel="main"
-            open={mainOpen}
-            disabled={!sidePanelOpen}
-            onToggle={toggleMain}
+            open={false}
+            onToggle={openMain}
           />
         )}
         {threadsMenu}
@@ -209,84 +206,82 @@ export function WorkspacePanelGroup({
   );
 
   return (
-    <PanelToggleFocusProvider>
-      <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1">
-        <ResizablePanelGroup
-          ref={syncPanelGroupLayout}
-          key={`${virtualMcpId}-${taskId}`}
-          defaultLayout={desiredLayout}
-          orientation={stacked ? "vertical" : "horizontal"}
-          data-workspace-layout={stacked ? "stacked" : "columns"}
-          className={cn(
-            // Full-height cards need the same room above as below.
-            "min-h-0 min-w-0 flex-1 pt-1 pb-1 pr-1 pl-0 max-md:p-0",
-            stacked
-              ? "flex-col [&>[data-workspace-panel-open]]:!min-h-0 [&>[data-workspace-panel-open]]:!min-w-0"
-              : "flex-row",
-          )}
-          style={{ overflow: "visible" }}
-          onLayoutChanged={(layout, { isUserInteraction }) => {
-            const percentage = layout[SIDE_PANEL_ID];
-            if (
-              isUserInteraction &&
-              !mobile &&
-              !stacked &&
-              sidePanelVisible &&
-              mainVisible &&
-              typeof percentage === "number" &&
-              percentage > 0 &&
-              percentage < 100
-            ) {
-              setSidePanelWidth(percentage);
-            }
-          }}
+    <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1">
+      <ResizablePanelGroup
+        ref={syncPanelGroupLayout}
+        key={`${virtualMcpId}-${taskId}`}
+        defaultLayout={desiredLayout}
+        orientation={stacked ? "vertical" : "horizontal"}
+        data-workspace-layout={stacked ? "stacked" : "columns"}
+        className={cn(
+          // Full-height cards need the same room above as below.
+          "min-h-0 min-w-0 flex-1 pt-1 pb-1 pr-1 pl-0 max-md:p-0",
+          stacked
+            ? "flex-col [&>[data-workspace-panel-open]]:!min-h-0 [&>[data-workspace-panel-open]]:!min-w-0"
+            : "flex-row",
+        )}
+        style={{ overflow: "visible" }}
+        onLayoutChanged={(layout, { isUserInteraction }) => {
+          const percentage = layout[SIDE_PANEL_ID];
+          if (
+            isUserInteraction &&
+            !mobile &&
+            !stacked &&
+            sidePanelVisible &&
+            mainVisible &&
+            typeof percentage === "number" &&
+            percentage > 0 &&
+            percentage < 100
+          ) {
+            setSidePanelWidth(percentage);
+          }
+        }}
+      >
+        <ResizablePanel
+          id={MAIN_PANEL_ID}
+          defaultSize={`${mainSize}%`}
+          minSize={stacked ? stackedMinSize : MAIN_COLUMN_MIN_SIZE}
+          collapsible={!mainVisible}
+          collapsedSize="0%"
+          data-workspace-panel-open={mainVisible ? "" : undefined}
+          className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <ResizablePanel
-            id={MAIN_PANEL_ID}
-            defaultSize={`${mainSize}%`}
-            minSize={stacked ? stackedMinSize : MAIN_COLUMN_MIN_SIZE}
-            collapsible={!mainVisible}
-            collapsedSize="0%"
-            data-workspace-panel-open={mainVisible ? "" : undefined}
-            className="min-w-0 overflow-hidden bg-sidebar"
-          >
-            <PanelCard testId="main-panel" inactive={!mainVisible}>
-              {mainContent}
-            </PanelCard>
-          </ResizablePanel>
+          <PanelCard testId="main-panel" inactive={!mainVisible}>
+            {mainContent}
+          </PanelCard>
+        </ResizablePanel>
 
-          {/* Visibility is URL-owned. Interactive collapse is disabled above for
+        {/* Visibility is URL-owned. Interactive collapse is disabled above for
             a URL-open panel; a URL-closed panel alone remains collapsible so the
             imperative layout can size it to zero. The separator only exists while
             both panels are present, preventing library state from contradicting
             the URL and its toggle labels. */}
-          {sidePanelVisible && mainVisible && (
-            <ResizableHandle
-              id={PANEL_SEPARATOR_ID}
-              aria-label={t("agentShellLayout.workspace.resizePanels")}
-              className="bg-sidebar"
-            />
-          )}
+        {sidePanelVisible && mainVisible && (
+          <ResizableHandle
+            id={PANEL_SEPARATOR_ID}
+            aria-label={t("agentShellLayout.workspace.resizePanels")}
+            className="bg-sidebar"
+          />
+        )}
 
-          <ResizablePanel
-            id={SIDE_PANEL_ID}
-            defaultSize={`${sideSize}%`}
-            minSize={stacked ? stackedMinSize : CHAT_COLUMN_MIN_SIZE}
-            collapsible={!sidePanelVisible}
-            collapsedSize="0%"
-            data-workspace-panel-open={sidePanelVisible ? "" : undefined}
-            className="min-w-0 overflow-hidden bg-sidebar"
+        <ResizablePanel
+          id={SIDE_PANEL_ID}
+          defaultSize={`${sideSize}%`}
+          minSize={stacked ? stackedMinSize : CHAT_COLUMN_MIN_SIZE}
+          collapsible={!sidePanelVisible}
+          collapsedSize="0%"
+          data-workspace-panel-open={sidePanelVisible ? "" : undefined}
+          className="min-w-0 overflow-hidden bg-sidebar"
+        >
+          <PanelCard
+            testId="side-panel"
+            inactive={!sidePanelVisible}
+            header={sidePanelVisible ? chatHeader : null}
           >
-            <PanelCard
-              testId="side-panel"
-              inactive={!sidePanelVisible}
-              header={sidePanelVisible ? chatHeader : null}
-            >
-              <SidePanel chatContent={chatContent} />
-            </PanelCard>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
-    </PanelToggleFocusProvider>
+            <SidePanel chatContent={chatContent} />
+          </PanelCard>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
   );
 }

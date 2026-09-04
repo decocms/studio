@@ -239,14 +239,13 @@ export const GATED_CONTROL_PLANE_TABS = new Set<string>([
 ]);
 
 // Agent-independent overlays (Tasks `board`, Library `files`, the commerce
-// report's `connect-sources`, the empty `reports`) take over the panel and aren't
-// sandbox-backed views. Also the in-panel-app navigate allowlist.
+// report's `connect-sources`, and the empty `reports`) take over the panel and
+// aren't sandbox-backed views. Also the in-panel-app navigate allowlist.
 export const OVERLAY_TABS = new Set([
   "board",
   "files",
   "connect-sources",
   "reports",
-  "discover",
 ]);
 
 /**

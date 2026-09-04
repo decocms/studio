@@ -40,6 +40,10 @@ const KNOWN_LEGACY_PANEL_SEGMENTS: ReadonlySet<string> = new Set([
   "connections",
   "layout",
   "preview",
+  // Retired organization destination. Recognize durable view-first URLs so
+  // the compatibility translator can send them to Home instead of treating
+  // `discover` as an agent id.
+  "discover",
 ]);
 
 /** True when a lone legacy segment names a view rather than an agent. */

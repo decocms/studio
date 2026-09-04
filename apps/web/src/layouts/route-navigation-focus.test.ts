@@ -210,6 +210,44 @@ describe("rendered navigation ownership", () => {
 });
 
 describe("navigation focus controller", () => {
+  test("showing Main waits for its route heading to leave an inert surface", async () => {
+    const harness = createControllerHarness();
+    try {
+      const pathname = "/acme/agents/project/settings";
+      const hiddenHref = `${pathname}?mainpanel=false`;
+      const visibleHref = `${pathname}?mainpanel=true`;
+      window.history.replaceState(null, "", hiddenHref);
+
+      const showMain = document.createElement("button");
+      showMain.setAttribute("aria-controls", "workspace-main-panel");
+      showMain.setAttribute("aria-expanded", "false");
+      document.body.append(showMain);
+      showMain.focus();
+
+      const main = document.createElement("main");
+      main.dataset.slot = "main";
+      main.inert = true;
+      document.body.append(main);
+      const heading = appendRouteHeading(pathname, "Settings");
+
+      const event = navigationEvent(hiddenHref, visibleHref, {
+        pathChanged: false,
+      });
+      harness.emit("onBeforeNavigate", event);
+      window.history.replaceState(null, "", visibleHref);
+      harness.emit("onRendered", event);
+      harness.runNextFrame();
+
+      expect(showMain).toHaveFocus();
+      showMain.remove();
+      main.inert = false;
+
+      await waitFor(() => expect(heading).toHaveFocus());
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   test("external autofocus between render and frame cancels the route handoff", () => {
     const harness = createControllerHarness();
     try {

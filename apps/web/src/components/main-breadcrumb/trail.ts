@@ -24,6 +24,19 @@ export interface MainBreadcrumbAncestorPresentation<
 }
 
 /**
+ * Whether the route's current destination is also its breadcrumb scope.
+ *
+ * Identity, rather than a localized label, distinguishes the organization
+ * Home route from an unrelated route that happens to have the same title.
+ */
+export function isMainBreadcrumbScopeCurrent(
+  scope: MainBreadcrumbIdentity,
+  current: MainBreadcrumbIdentity,
+): boolean {
+  return scope.id === current.id;
+}
+
+/**
  * Derive the inline parent and stable overflow from one semantic ancestor list.
  *
  * Scope/current identities cannot also be ancestors. For a duplicate ancestor

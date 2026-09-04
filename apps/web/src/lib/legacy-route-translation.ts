@@ -135,8 +135,7 @@ export function translateLegacyOrgDestinationAgentSearch(args: {
     args.routePath === DESTINATION_ROUTE.home ||
     args.routePath === DESTINATION_ROUTE.tasks ||
     args.routePath === DESTINATION_ROUTE.reports ||
-    args.routePath === DESTINATION_ROUTE.library ||
-    args.routePath === DESTINATION_ROUTE.discover
+    args.routePath === DESTINATION_ROUTE.library
   ) {
     return {
       kind: "same-route",
@@ -291,7 +290,7 @@ function legacyDestinationTarget(
     case "overview":
       return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
     case "discover":
-      return { to: DESTINATION_ROUTE.discover, params: { org }, search: {} };
+      return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
     default:
       return null;
   }

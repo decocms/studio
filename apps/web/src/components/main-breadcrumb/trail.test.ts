@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  isMainBreadcrumbScopeCurrent,
   resolveMainBreadcrumbAncestorPresentation,
   resolveMainBreadcrumbAncestorTrail,
 } from "./trail";
@@ -13,6 +14,23 @@ interface TestItem {
 function item(id: string, label = id, destination = `/${id}`): TestItem {
   return { id, label, destination };
 }
+
+describe("isMainBreadcrumbScopeCurrent", () => {
+  it("collapses only the same semantic destination", () => {
+    expect(
+      isMainBreadcrumbScopeCurrent(
+        item("organization:1", "Home"),
+        item("organization:1", "Home"),
+      ),
+    ).toBe(true);
+    expect(
+      isMainBreadcrumbScopeCurrent(
+        item("organization:1", "Home"),
+        item("route:home-dashboard", "Home"),
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("resolveMainBreadcrumbAncestorTrail", () => {
   it("keeps distinct semantic ancestors even when labels match", () => {

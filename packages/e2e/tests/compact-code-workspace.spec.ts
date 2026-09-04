@@ -62,7 +62,7 @@ async function createCodeWorkspace(
 test.describe("Compact Code workspace", () => {
   test.setTimeout(90_000);
 
-  test("keeps a short stacked workspace feasible and hands keyboard focus between Main toggles", async ({
+  test("keeps a short stacked workspace feasible and restores focus with Main", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -83,15 +83,37 @@ test.describe("Compact Code workspace", () => {
     );
 
     await page.goto(
-      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=true&mainpanel=true`,
+      `/${orgSlug}/agents/${agentId}/site-editor/code?thread=${threadId}&sidepanel=true&mainpanel=false`,
     );
 
     const group = page.locator('[data-workspace-layout="stacked"]');
     const main = page.getByTestId("main-panel");
     const chat = page.getByTestId("side-panel");
     await expect(group).toBeVisible({ timeout: 30_000 });
-    await expect(main).toBeVisible();
+    await expect(main).toBeHidden();
     await expect(chat).toBeVisible();
+
+    const showMain = chat.getByRole("button", {
+      name: "Show panel",
+      exact: true,
+    });
+    await showMain.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(
+      (url) => url.searchParams.get("mainpanel") !== "false",
+      { timeout: 30_000 },
+    );
+    await expect(main).toBeVisible();
+    await expect(
+      main.getByRole("heading", {
+        level: 1,
+        name: "Site Editor",
+        exact: true,
+      }),
+    ).toBeFocused();
+    await expect(
+      page.getByRole("button", { name: "Hide panel", exact: true }),
+    ).toHaveCount(0);
 
     const [groupBox, mainBox, chatBox] = await Promise.all([
       group.boundingBox(),
@@ -108,30 +130,6 @@ test.describe("Compact Code workspace", () => {
     expect(chatBox.height).toBeGreaterThan(0);
     expect(mainBox.y + mainBox.height).toBeLessThanOrEqual(chatBox.y);
     expect(mainBox.height + chatBox.height).toBeLessThan(groupBox.height);
-
-    const hideMain = page.getByRole("button", {
-      name: "Hide panel",
-      exact: true,
-    });
-    await hideMain.focus();
-    await expect(hideMain).toBeFocused();
-    await page.keyboard.press("Enter");
-    await page.waitForURL(
-      (url) => url.searchParams.get("mainpanel") === "false",
-      { timeout: 30_000 },
-    );
-
-    const showMain = chat.getByRole("button", {
-      name: "Show panel",
-      exact: true,
-    });
-    await expect(showMain).toBeFocused();
-    await page.keyboard.press("Enter");
-    await page.waitForURL(
-      (url) => url.searchParams.get("mainpanel") === "true",
-      { timeout: 30_000 },
-    );
-    await expect(hideMain).toBeFocused();
   });
 
   test("drills into one pane with deterministic focus and preserves editor state", async ({

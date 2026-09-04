@@ -26,7 +26,10 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t";
 import { DotsHorizontal } from "@untitledui/icons";
-import { resolveMainBreadcrumbAncestorPresentation } from "./trail";
+import {
+  isMainBreadcrumbScopeCurrent,
+  resolveMainBreadcrumbAncestorPresentation,
+} from "./trail";
 import { Main } from "@/components/main";
 
 interface MainBreadcrumbItemBase {
@@ -280,7 +283,8 @@ function NavigableItem({
  * segment. The nearest parent stays visible while earlier ancestors remain
  * actionable from one stable overflow menu. The organization scope is an
  * accessible Home icon, avoiding a second copy of the organization name beside
- * the persistent sidebar.
+ * the persistent sidebar. When that scope is itself current, its breadcrumb
+ * landmark is omitted and the icon becomes decorative content in the title.
  */
 function MainBreadcrumbRoot({
   scope,
@@ -295,6 +299,8 @@ function MainBreadcrumbRoot({
     select: (state) => state.location.pathname,
   });
   const routeFocusIdentity = `${routePathname}:${current.id}`;
+  const scopeIsCurrent = isMainBreadcrumbScopeCurrent(scope, current);
+  const currentIcon = current.icon ?? (scopeIsCurrent ? scope.icon : undefined);
   return (
     <Main.Breadcrumb.Parent.Target>
       {({ present: dynamicParentPresent, target: dynamicParentTarget }) => {
@@ -314,54 +320,59 @@ function MainBreadcrumbRoot({
             data-responsive-focus-group="main-route-navigation"
             className={cn("flex min-w-0 flex-1 items-center gap-2", className)}
           >
-            <Breadcrumb
-              aria-label={ariaLabel ?? t("header.mainBreadcrumb.ariaLabel")}
-              data-slot="main-breadcrumb"
-              className="hidden min-w-0 shrink md:block"
-            >
-              <BreadcrumbList className="w-full gap-0.5 whitespace-nowrap text-sm sm:gap-0.5">
-                <BreadcrumbItem
-                  data-slot="main-breadcrumb-scope"
-                  className="shrink-0 gap-0.5"
-                >
-                  <NavigableItem item={scope} scope />
-                </BreadcrumbItem>
-
-                {hasVisibleParent ? <BreadcrumbSeparator /> : null}
-                {overflowAncestors.length > 0 ? (
-                  <>
-                    <BreadcrumbItem className="shrink-0 gap-0.5">
-                      <BreadcrumbOverflowMenu items={overflowAncestors} />
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                  </>
-                ) : null}
-                {inlineAncestor ? (
+            {!scopeIsCurrent ? (
+              <Breadcrumb
+                aria-label={ariaLabel ?? t("header.mainBreadcrumb.ariaLabel")}
+                data-slot="main-breadcrumb"
+                className="hidden min-w-0 shrink md:block"
+              >
+                <BreadcrumbList className="w-full gap-0.5 whitespace-nowrap text-sm sm:gap-0.5">
                   <BreadcrumbItem
-                    data-slot="main-breadcrumb-ancestor"
-                    className="min-w-0 gap-0.5"
+                    data-slot="main-breadcrumb-scope"
+                    className="shrink-0 gap-0.5"
                   >
-                    <NavigableItem item={inlineAncestor} />
+                    <NavigableItem item={scope} scope />
                   </BreadcrumbItem>
-                ) : null}
-                <BreadcrumbItem
-                  key="dynamic-parent-target"
-                  data-slot="main-breadcrumb-dynamic-parent"
-                  aria-hidden={dynamicParentPresent ? undefined : true}
-                  className={cn(
-                    "min-w-0 gap-0.5",
-                    !dynamicParentPresent && "hidden",
-                  )}
-                >
-                  {dynamicParentTarget}
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
 
-            <span
-              aria-hidden="true"
-              className="hidden h-4 w-px shrink-0 bg-border/80 md:block"
-            />
+                  {hasVisibleParent ? <BreadcrumbSeparator /> : null}
+                  {overflowAncestors.length > 0 ? (
+                    <>
+                      <BreadcrumbItem className="shrink-0 gap-0.5">
+                        <BreadcrumbOverflowMenu items={overflowAncestors} />
+                      </BreadcrumbItem>
+                      <BreadcrumbSeparator />
+                    </>
+                  ) : null}
+                  {inlineAncestor ? (
+                    <BreadcrumbItem
+                      data-slot="main-breadcrumb-ancestor"
+                      className="min-w-0 gap-0.5"
+                    >
+                      <NavigableItem item={inlineAncestor} />
+                    </BreadcrumbItem>
+                  ) : null}
+                  <BreadcrumbItem
+                    key="dynamic-parent-target"
+                    data-slot="main-breadcrumb-dynamic-parent"
+                    aria-hidden={dynamicParentPresent ? undefined : true}
+                    className={cn(
+                      "min-w-0 gap-0.5",
+                      !dynamicParentPresent && "hidden",
+                    )}
+                  >
+                    {dynamicParentTarget}
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+            ) : null}
+
+            {!scopeIsCurrent ? (
+              <span
+                aria-hidden="true"
+                data-slot="main-breadcrumb-current-separator"
+                className="hidden h-4 w-px shrink-0 bg-border/80 md:block"
+              />
+            ) : null}
             <Main.Title
               key={routeFocusIdentity}
               dir="auto"
@@ -375,12 +386,12 @@ function MainBreadcrumbRoot({
               <Main.Title.Target
                 fallback={
                   <span title={current.label} className="contents">
-                    {current.icon ? (
+                    {currentIcon ? (
                       <span
                         aria-hidden="true"
                         className="mr-1.5 inline-flex align-middle"
                       >
-                        {current.icon}
+                        {currentIcon}
                       </span>
                     ) : null}
                     {current.label}

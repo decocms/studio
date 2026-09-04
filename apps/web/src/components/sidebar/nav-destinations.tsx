@@ -3,13 +3,7 @@
 
 import type { LinkProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import {
-  BarChartSquare02,
-  Columns03,
-  Compass03,
-  Folder,
-  Home02,
-} from "@untitledui/icons";
+import { BarChartSquare02, Columns03, Folder, Home02 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import {
@@ -40,7 +34,6 @@ export const NAV_DESTINATION_KEYS = [
   "reports",
   "board",
   "files",
-  "discover",
 ] as const;
 
 type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
@@ -88,14 +81,6 @@ function useNavDestinations(): NavDestination[] {
       isActive: leafPath === DESTINATION_ROUTE.library,
       trackAs: "files",
       link: { to: DESTINATION_ROUTE.library, params: { org: org.slug } },
-    },
-    discover: {
-      key: "discover",
-      label: t("sidebar.navDestinations.discover"),
-      icon: <Compass03 size={16} />,
-      isActive: leafPath === DESTINATION_ROUTE.discover,
-      trackAs: "discover",
-      link: { to: DESTINATION_ROUTE.discover, params: { org: org.slug } },
     },
   };
 

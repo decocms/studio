@@ -1,7 +1,7 @@
 /**
  * The ⌘K palette — reach without a nav row.
  *
- * The sidebar is a fixed five-row spine on purpose, which only works if there
+ * The sidebar is a fixed destination spine, which only works if there
  * is another way to get to everything it does not list: individual projects,
  * settings pages, the catalog, a task by name. That is this.
  *
@@ -25,7 +25,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChartSquare02,
   Columns03,
-  Compass03,
   Folder,
   Home02,
   MessageSquare01,
@@ -199,13 +198,6 @@ export function CommandPalette({
       label: t("sidebar.navDestinations.library"),
       icon: <Folder />,
       to: DESTINATION_ROUTE.library,
-      params: orgParams,
-    },
-    {
-      key: "discover",
-      label: t("sidebar.navDestinations.discover"),
-      icon: <Compass03 />,
-      to: DESTINATION_ROUTE.discover,
       params: orgParams,
     },
   ] as const;

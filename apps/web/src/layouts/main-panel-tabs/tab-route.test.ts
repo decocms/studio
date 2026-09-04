@@ -92,6 +92,20 @@ describe("tabRouteLocation", () => {
     });
   });
 
+  test("retires persisted Discover tabs to organization Home", () => {
+    expect(tabRouteLocation("discover")).toEqual({
+      kind: "org-destination",
+      destination: "home",
+    });
+    expect(
+      tabRouteTarget({ org: "acme", agentId: "vir_1", tabId: "discover" }),
+    ).toEqual({
+      to: "/$org/home",
+      params: { org: "acme" },
+      search: {},
+    });
+  });
+
   test("normalizes retired built-in names but leaves unknown ids intact", () => {
     for (const tab of ["instructions", "connections", "layout", "settings"]) {
       expect(tabRouteLocation(tab)).toEqual({

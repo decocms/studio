@@ -8,9 +8,9 @@
  *     └── VmEventsBridge
  *         └── ActiveTaskRuntimeProvider
  *             └── WorkspacePanelGroup
- *                 ├── Main panel  (header: view tabs + toggles, Preview
- *                     controls, publish). Buttons relocate between the two
- *                     headers so nothing disappears when a panel is closed.
+ *                 ├── Main panel  (header: view tabs, Chat visibility,
+ *                     Preview controls, publish). Chat exposes Main's recovery
+ *                     control when route or history state hides Main.
  *                 └── Chat panel  (header: threads + new chat)
  *
  * Mobile changes which persistent panel is visible, never which provider or
@@ -493,7 +493,7 @@ function TaskWorkspace({
           taskId={layout.threadId}
           sidePanelOpen={layout.sidePanelOpen}
           mainOpen={layout.mainOpen}
-          toggleMain={layout.toggleMain}
+          openMain={layout.openMain}
           chatContent={<ActiveTaskBoundary />}
           mainContent={mainContent}
           mobileSurface={mobileSurface}

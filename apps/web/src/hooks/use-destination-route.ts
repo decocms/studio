@@ -20,7 +20,6 @@ export const DESTINATION_ROUTE = {
   tasks: "/$org/tasks/{-$taskKey}",
   reports: "/$org/reports",
   library: "/$org/library",
-  discover: "/$org/discover",
   /** The `/$org` resolver. Transiently matched before it redirects, so Home
    *  highlights there instead of leaving the list blank on cold entry. */
   orgIndex: "/$org/",

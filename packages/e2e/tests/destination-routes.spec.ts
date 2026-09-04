@@ -293,6 +293,29 @@ test.describe("destination routes", () => {
     expect(await countOrgThreads(orgId)).toBe(0);
   });
 
+  test("retired Discover links settle on Home without becoming a task or agent", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.goto(
+      `/${orgSlug}/discover?sidepanel=true&virtualmcpid=vir_stale#legacy`,
+    );
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/home` &&
+        url.searchParams.get("virtualmcpid") === null,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+
+    const url = new URL(page.url());
+    expect(url.searchParams.get("sidepanel")).toBe("true");
+    expect(url.searchParams.get("thread")).toBeNull();
+    expect(url.hash).toBe("#legacy");
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      page.getByRole("link", { name: "Discover", exact: true }),
+    ).toHaveCount(0);
+  });
+
   test("route-owned titles and actions occupy their topbar regions", async ({
     authedPage: { page, orgSlug },
   }) => {
@@ -319,7 +342,6 @@ test.describe("destination routes", () => {
       { path: `/${orgSlug}/tasks`, title: "Tasks" },
       { path: `/${orgSlug}/reports`, title: "Reports" },
       { path: `/${orgSlug}/library`, title: "Library" },
-      { path: `/${orgSlug}/discover`, title: "Discover" },
       {
         path: `/${orgSlug}/agents/${agentId}`,
         title: "route topbar e2e",
@@ -359,33 +381,53 @@ test.describe("destination routes", () => {
         "navigation",
         { name: "Breadcrumb", exact: true },
       );
-      await expect(breadcrumb).toHaveCount(1);
-      /* The final route is the adjacent page title, not a repeated last crumb. */
-      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
-      await expect(breadcrumb).not.toContainText(route.title);
-      const scopeLink = breadcrumb.getByRole("link").first();
-      await expect(scopeLink).toHaveText("");
-      await expect(scopeLink).toHaveAttribute("aria-label", /\S/);
-      await expect(scopeLink.locator("svg")).toHaveCount(1);
-      await expect(scopeLink).toHaveAttribute(
-        "href",
-        new RegExp(`/${orgSlug}/home$`),
-      );
-      if ("projectScoped" in route && route.projectScoped) {
-        if (route.path.endsWith(`/agents/${agentId}`)) {
-          await expect(breadcrumb.getByRole("link")).toHaveCount(1);
-        } else {
-          const projectParent = await breadcrumbParent(
-            page,
-            breadcrumb,
-            "route topbar e2e",
-          );
-          await expect(projectParent.link).toBeVisible();
-          const href = await projectParent.link.getAttribute("href");
-          expect(new URL(href ?? "", page.url()).pathname).toBe(
-            `/${orgSlug}/agents/${agentId}`,
-          );
-          if (projectParent.overflowed) await page.keyboard.press("Escape");
+      const scopeIsCurrent = route.path === `/${orgSlug}/home`;
+      await expect(breadcrumb).toHaveCount(scopeIsCurrent ? 0 : 1);
+      await expect(
+        mainTopbarRegion(page, "left").locator(
+          '[data-slot="main-breadcrumb-current-separator"]',
+        ),
+      ).toHaveCount(scopeIsCurrent ? 0 : 1);
+      if (scopeIsCurrent) {
+        await expect(
+          mainTopbarRegion(page, "left")
+            .getByRole("heading", {
+              level: 1,
+              name: "Home",
+              exact: true,
+            })
+            .locator("svg"),
+        ).toHaveCount(1);
+      } else {
+        /* The final route is the adjacent page title, not a repeated last crumb. */
+        await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(
+          0,
+        );
+        await expect(breadcrumb).not.toContainText(route.title);
+        const scopeLink = breadcrumb.getByRole("link").first();
+        await expect(scopeLink).toHaveText("");
+        await expect(scopeLink).toHaveAttribute("aria-label", /\S/);
+        await expect(scopeLink.locator("svg")).toHaveCount(1);
+        await expect(scopeLink).toHaveAttribute(
+          "href",
+          new RegExp(`/${orgSlug}/home$`),
+        );
+        if ("projectScoped" in route && route.projectScoped) {
+          if (route.path.endsWith(`/agents/${agentId}`)) {
+            await expect(breadcrumb.getByRole("link")).toHaveCount(1);
+          } else {
+            const projectParent = await breadcrumbParent(
+              page,
+              breadcrumb,
+              "route topbar e2e",
+            );
+            await expect(projectParent.link).toBeVisible();
+            const href = await projectParent.link.getAttribute("href");
+            expect(new URL(href ?? "", page.url()).pathname).toBe(
+              `/${orgSlug}/agents/${agentId}`,
+            );
+            if (projectParent.overflowed) await page.keyboard.press("Escape");
+          }
         }
       }
     }
@@ -1170,23 +1212,19 @@ test.describe("destination routes", () => {
     expect(mainColumnBox.x).toBeLessThan(separatorBox.x);
     expect(separatorBox.x).toBeLessThan(chatColumnBox.x);
 
-    /* Panel controls name their semantic target rather than the edge they
-       happen to occupy. They remain compact icon buttons in the crowded CMS
-       toolbar while exposing state and ownership to assistive technology. */
-    const hideMain = mainTopbarRegion(page, "left").getByRole("button", {
-      name: "Hide panel",
-      exact: true,
-    });
+    /* Main stays primary and has no generic hide action in its topbar. Chat's
+       compact control still exposes state and ownership to assistive
+       technology in the crowded CMS toolbar. */
+    await expect(
+      mainTopbarRegion(page, "left").getByRole("button", {
+        name: "Hide panel",
+        exact: true,
+      }),
+    ).toHaveCount(0);
     const hideChat = mainTopbarRegion(page, "right").getByRole("button", {
       name: "Hide chat",
       exact: true,
     });
-    await expect(hideMain).toHaveAttribute(
-      "aria-controls",
-      "workspace-main-panel",
-    );
-    await expect(hideMain).toHaveAttribute("aria-expanded", "true");
-    await expect(hideMain).toHaveText("");
     await expect(hideChat).toHaveAttribute(
       "aria-controls",
       "workspace-side-panel",
@@ -1194,14 +1232,10 @@ test.describe("destination routes", () => {
     await expect(hideChat).toHaveAttribute("aria-expanded", "true");
     await expect(hideChat).toHaveText("");
 
-    /* Closing keeps the view in the path, so reopening returns to it. */
-    await hideMain.click();
-    await page.waitForURL(
-      (url) =>
-        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
-        url.searchParams.get("sidepanel") === "true" &&
-        url.searchParams.get("mainpanel") === "false",
-      { timeout: SHELL_TIMEOUT_MS },
+    /* A bookmarked closed layout keeps the view in the path and exposes one
+       recovery action in Chat. */
+    await page.goto(
+      `/${orgSlug}/agents/${projectId}/settings?sidepanel=true&mainpanel=false`,
     );
     await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toHaveAttribute("aria-hidden", "true");
@@ -1224,7 +1258,6 @@ test.describe("destination routes", () => {
       exact: true,
     });
     await expect(showMain).toHaveAttribute("aria-expanded", "false");
-    await expect(showMain).toBeFocused();
     expect(new URL(page.url()).pathname).toBe(
       `/${orgSlug}/agents/${projectId}/settings`,
     );
@@ -1232,6 +1265,7 @@ test.describe("destination routes", () => {
     /* Reopening must restore the same semantic and visual order. A panel
        library can otherwise append the restored node after Chat even though
        the first render was correct. */
+    await showMain.focus();
     await showMain.click();
     await page.waitForURL(
       (url) =>
@@ -1242,7 +1276,13 @@ test.describe("destination routes", () => {
     );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(page.getByTestId("workspace-panel-separator")).toHaveCount(1);
-    await expect(hideMain).toBeFocused();
+    await expect(
+      mainPanel(page).getByRole("heading", {
+        level: 1,
+        name: "Settings",
+        exact: true,
+      }),
+    ).toBeFocused();
     expect(
       await workspaceColumns.evaluateAll((columns) =>
         columns.map((column) => column.getAttribute("data-testid")),
@@ -1980,11 +2020,13 @@ test.describe("destination routes", () => {
       (url) => url.searchParams.get("mainpanel") === "true",
       { timeout: SHELL_TIMEOUT_MS },
     );
-    const restoredHideMain = mainPanel(page).getByRole("button", {
-      name: "Hide panel",
-      exact: true,
-    });
-    await expect(restoredHideMain).toBeFocused();
+    await expect(
+      mainPanel(page).getByRole("heading", {
+        level: 1,
+        name: "Site Editor",
+        exact: true,
+      }),
+    ).toBeFocused();
 
     await page.goForward();
     await page.waitForURL(

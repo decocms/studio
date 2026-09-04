@@ -212,7 +212,7 @@ describe("translateLegacyThreadRoute", () => {
       ["files", "/$org/library"],
       ["reports", "/$org/reports"],
       ["overview", "/$org/home"],
-      ["discover", "/$org/discover"],
+      ["discover", "/$org/home"],
     ] as const;
 
     for (const [main, to] of rows) {
@@ -779,7 +779,6 @@ describe("translateLegacyOrgDestinationAgentSearch", () => {
       "/$org/tasks/{-$taskKey}",
       "/$org/reports",
       "/$org/library",
-      "/$org/discover",
     ]) {
       expect(
         translateLegacyOrgDestinationAgentSearch({

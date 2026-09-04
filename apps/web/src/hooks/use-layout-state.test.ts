@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  canCloseWorkspacePanel,
+  canCloseSidePanel,
   computeWorkspacePanelSizes,
   mobileSurfaceSearch,
   resolveDefaultPanelState,
@@ -255,22 +255,18 @@ describe("resolveDefaultPanelState", () => {
   });
 });
 
-describe("canCloseWorkspacePanel", () => {
-  test("allows closing either panel when both are open", () => {
+describe("canCloseSidePanel", () => {
+  test("allows closing Chat when Main remains open", () => {
     const visibility = { sidePanelOpen: true, mainOpen: true };
-    expect(canCloseWorkspacePanel("side", visibility)).toBe(true);
-    expect(canCloseWorkspacePanel("main", visibility)).toBe(true);
+    expect(canCloseSidePanel(visibility)).toBe(true);
   });
 
-  test("does not allow closing the final open panel", () => {
+  test("does not allow closing Chat when it is the final open panel", () => {
     expect(
-      canCloseWorkspacePanel("side", {
+      canCloseSidePanel({
         sidePanelOpen: true,
         mainOpen: false,
       }),
-    ).toBe(false);
-    expect(
-      canCloseWorkspacePanel("main", { sidePanelOpen: false, mainOpen: true }),
     ).toBe(false);
   });
 });
@@ -303,25 +299,19 @@ describe("resolveWorkspacePanelAction", () => {
     ).toBeNull();
   });
 
-  /** INVERTED: opening Main used to have to NAME a view (`main=<tabId>`), which
-   *  is why closing it erased one. Both directions are the boolean now. */
-  test("opens and closes Main with the final-panel guard", () => {
+  /** Opening Main used to have to NAME a view (`main=<tabId>`). The recovery
+   *  action now changes visibility only, so the route keeps owning the view. */
+  test("opens Main idempotently without changing its remembered view", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleMain" },
+        { type: "openMain" },
         { sidePanelOpen: true, mainOpen: false },
       ),
     ).toEqual({ mainpanel: true });
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleMain" },
+        { type: "openMain" },
         { sidePanelOpen: true, mainOpen: true },
-      ),
-    ).toEqual({ mainpanel: false });
-    expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleMain" },
-        { sidePanelOpen: false, mainOpen: true },
       ),
     ).toBeNull();
   });

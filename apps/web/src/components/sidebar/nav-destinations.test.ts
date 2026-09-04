@@ -8,7 +8,6 @@ describe("organization navigation", () => {
       "reports",
       "board",
       "files",
-      "discover",
     ]);
   });
 

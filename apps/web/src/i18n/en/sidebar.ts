@@ -19,7 +19,6 @@ export const sidebar = {
   "sidebar.agentsSection.selectAnExistingAgent": "Select an existing project",
   "sidebar.header.closeSidebar": "Close sidebar",
   "sidebar.header.toggleSidebar": "Toggle sidebar",
-  "sidebar.navDestinations.discover": "Discover",
   "sidebar.navDestinations.home": "Home",
   "sidebar.navDestinations.library": "Library",
   "sidebar.navDestinations.reports": "Reports",
