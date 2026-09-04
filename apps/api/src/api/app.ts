@@ -1417,9 +1417,17 @@ export async function createApp(options: CreateAppOptions = {}) {
   // two numbers mean for scaling:
   //
   //   queue_length — ENQUEUED, work waiting for any pod. Scales UP.
-  //   in_flight    — PENDING, runs executing on some pod right now. A FLOOR:
-  //                  targeted at the queue's `workerConcurrency`, it asks for
-  //                  exactly the replicas needed to hold the running work.
+  //   in_flight    — PENDING, runs executing on some pod right now. Targeted at
+  //                  the queue's `workerConcurrency`, so it asks for exactly the
+  //                  replicas needed to hold the work already running.
+  //
+  // `in_flight` behaves as a FLOOR while recovery is healthy — every PENDING row
+  // belongs to a live executor, and per-pod PENDING is capped at
+  // `workerConcurrency` by the dequeue, so it can never ask for more replicas
+  // than are already busy. It is NOT an unconditional floor: during a rollout,
+  // and until DBOS recovery re-enqueues a dead pod's rows, the dead and the live
+  // rows are both counted and the trigger can briefly ask for more. That
+  // over-ask is bounded by `dequeuedAfter` below and self-corrects on recovery.
   //
   // Reporting only the backlog is what made KEDA scale in a busy worker: a run
   // streams for minutes with nothing enqueued behind it, the trigger reads
@@ -1429,14 +1437,44 @@ export async function createApp(options: CreateAppOptions = {}) {
   //
   // Restricted to the queues we actually register — DBOS.listQueuedWorkflows
   // would happily query a made-up name and just return an empty list.
+  //
+  // How stale a PENDING row may be and still count as in flight. Comfortably
+  // above `RUN_IDLE_TIMEOUT_MS` (10 min), the point at which Studio itself stops
+  // believing a run is alive — so this never clips a real run's floor, it only
+  // stops an unrecovered row from holding a replica up indefinitely.
+  const IN_FLIGHT_STALENESS_MS = 30 * 60 * 1000;
   app.get(`${SYSTEM_PATHS.DBOS_QUEUE_DEPTH_PREFIX}:queueName`, async (c) => {
     const queueName = c.req.param("queueName");
     if (!DBOS_QUEUE_NAMES.has(queueName)) {
       return c.json({ error: `Unknown queue: ${queueName}` }, 404);
     }
+    // `loadInput: false` on both: the rows are counted, never read, and a
+    // hosted-harness workflow's input is the whole run request — deserializing
+    // every one of them twice per KEDA poll to call `.length` on the array is
+    // pure waste.
     const [enqueued, running] = await Promise.all([
-      DBOS.listQueuedWorkflows({ queueName, status: "ENQUEUED" }),
-      DBOS.listQueuedWorkflows({ queueName, status: "PENDING" }),
+      DBOS.listQueuedWorkflows({
+        queueName,
+        status: "ENQUEUED",
+        loadInput: false,
+        loadOutput: false,
+      }),
+      DBOS.listQueuedWorkflows({
+        queueName,
+        status: "PENDING",
+        loadInput: false,
+        loadOutput: false,
+        // PENDING is not proof of a LIVE executor: a pod that was SIGKILLed
+        // leaves its rows PENDING with `queue_name` intact until DBOS recovery
+        // re-enqueues them, and a workflow that recovery never reaches stays
+        // that way indefinitely. Unbounded, those rows would hold worker
+        // replicas up forever. Bounded here to runs dequeued recently enough
+        // to still be plausibly executing, so a stuck row ages out of the
+        // floor instead of pinning capacity to it.
+        dequeuedAfter: new Date(
+          Date.now() - IN_FLIGHT_STALENESS_MS,
+        ).toISOString(),
+      }),
     ]);
     return c.json({
       queue_length: enqueued.length,

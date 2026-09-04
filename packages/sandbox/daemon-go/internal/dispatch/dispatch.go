@@ -296,6 +296,11 @@ func NewRegistry() *Registry {
 func (reg *Registry) tombstoned(runId string) bool {
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
+	return reg.tombstonedLocked(runId)
+}
+
+// tombstonedLocked is `tombstoned` for a caller that already holds `reg.mu`.
+func (reg *Registry) tombstonedLocked(runId string) bool {
 	expiry, ok := reg.tombstones[runId]
 	if !ok {
 		return false
@@ -322,6 +327,9 @@ func (reg *Registry) tombstoned(runId string) bool {
 // after its own replica died is NOT that case — there is no second writer, only
 // a second reader — which is exactly what reattach distinguishes.
 //
+// A nil entry means the run was cancelled (tombstoned) while we waited: the
+// caller answers 410, exactly as the handler's pre-wait check would have.
+//
 // The returned wait function MUST be called before starting a harness: it blocks
 // until a displaced run's handler has returned (bounded by `takeoverTimeout`).
 func (reg *Registry) claimOrAttach(
@@ -339,15 +347,27 @@ func (reg *Registry) claimOrAttach(
 		// before concluding this is a competing writer. See `supersedeGrace`.
 		// (Already-detached runs fall through this immediately.)
 		reg.mu.Unlock()
+		waitStart := time.Now()
 		waitForDetach(prev, supersedeGrace)
 		reg.mu.Lock()
 		// The wait is lock-free, so the decision is made from the registry as
-		// it is NOW, never from the pointer we waited on. Three outcomes, and
-		// `prev` may have been replaced by an entirely different dispatch:
+		// it is NOW, never from the pointer we waited on — `prev` may even have
+		// been replaced by an entirely different dispatch:
+		//   - tombstoned       → cancelled while we waited; not ours to start
 		//   - in finishedRuns  → it ended detached; collect its frames
 		//   - gone from the map → it ended with its client still reading, so
 		//     the terminal was already delivered; this dispatch is a new turn
 		//   - still there      → detached ? reattach : genuine second writer
+		//
+		// The tombstone re-read is what the grace makes necessary: DELETE is
+		// exactly the thing that ends the wait early (cancelling closes
+		// `prev.done`), so a stop pressed during the grace would otherwise be
+		// answered by STARTING the run it just cancelled. The pre-wait check in
+		// the handler covers only the instant before this.
+		if reg.tombstonedLocked(runId) {
+			reg.mu.Unlock()
+			return nil, false, func() {}
+		}
 		if done, ok := reg.finishedRuns[runId]; ok {
 			reg.mu.Unlock()
 			return done, false, func() {}
@@ -361,7 +381,7 @@ func (reg *Registry) claimOrAttach(
 		if prev != nil {
 			slog.Info("dispatch incumbent still attached; taking over",
 				"harness", sandboxHarnessID, "run_id", runId,
-				"waited_s", int(supersedeGrace.Seconds()))
+				"waited_ms", time.Since(waitStart).Milliseconds())
 		}
 	}
 	created, cancel := newCancel()
@@ -456,9 +476,15 @@ func (reg *Registry) displaced(runId string, entry *activeRun) bool {
 // collects the real result, instead of finding nothing and re-running a turn
 // that had already completed.
 func (reg *Registry) release(runId string, entry *activeRun) {
+	// All of it under `reg.mu`, including `close(done)`. A dispatch deciding
+	// what to do about this run holds that same lock, so it cannot observe the
+	// half-retired state in between — a run marked finished but still listed in
+	// `activeRuns` reads as "attached", and taking it over there would discard a
+	// terminal that had already been produced.
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
 	entry.markFinished()
 	retain := entry.hasPending()
-	reg.mu.Lock()
 	if reg.activeRuns[runId] == entry {
 		delete(reg.activeRuns, runId)
 		if retain {
@@ -472,7 +498,6 @@ func (reg *Registry) release(runId string, entry *activeRun) {
 			})
 		}
 	}
-	reg.mu.Unlock()
 	close(entry.done)
 }
 
@@ -613,6 +638,12 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		ctx, cancel := context.WithCancel(context.Background())
 		return &activeRun{ctx: ctx, done: make(chan struct{})}, cancel
 	})
+	if entry == nil {
+		// Cancelled during the supersede grace — same answer as the pre-wait
+		// tombstone check above, just decided later.
+		jsonError(w, 410, map[string]string{"error": "tombstoned"})
+		return
+	}
 	slog.Info("dispatch received", "harness", sandboxHarnessID, "run_id", runId,
 		"fresh", fresh)
 
