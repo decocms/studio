@@ -85,30 +85,15 @@ export function repoKeyFromCloneUrl(cloneUrl: string): string | null {
  * served*, never a request field — the operator has no notion of a tenant and
  * will happily bind any pool a claim names, so the claim (built server-side)
  * is the only thing keeping one org's warm pods away from another's.
+ *
+ * Purpose is deliberately not a factor: a `harness-run` used to be excluded
+ * because it posts `cloneOnly`, which stops the pod's dev task. The fix is to
+ * drop `cloneOnly` once such a run actually binds a pool pod (see
+ * `workloadConfigPayload` in runner.ts), not to send it to a cold pod.
  */
 export function resolveTenantPool(
   pools: readonly TenantPool[],
-  claim: {
-    orgId: string | undefined;
-    cloneUrl: string | undefined;
-    /**
-     * Kept for `claimTemplateName` (a harness run still gets the roomier
-     * `-medium` template), but no longer excludes a run from the pool.
-     *
-     * It used to: a `harness-run` posts `cloneOnly`, and the daemon's clone
-     * step stops the dev task, so binding a warm pod consumed a slot AND
-     * de-warmed the pod it took. The destructive part there is `cloneOnly`,
-     * not the run — a pool pod matching the SAME org and repo is already
-     * cloned, installed and serving exactly what the run needs, so the fix is
-     * to stop sending `cloneOnly` when the claim lands on one (see
-     * `tenantPoolKeepsWorkload` in runner.ts) rather than to send the run to a
-     * cold pod and make it install from scratch inside its own turn.
-     *
-     * The isolation rule is unchanged: org AND repo must both match, so a run
-     * can only ever adopt a pod warmed for its own repo.
-     */
-    purpose?: SandboxPurpose;
-  },
+  claim: { orgId: string | undefined; cloneUrl: string | undefined },
 ): TenantPool | null {
   const { orgId, cloneUrl } = claim;
   if (!orgId || !cloneUrl) return null;

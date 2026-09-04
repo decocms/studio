@@ -1320,7 +1320,6 @@ export class AgentSandboxProvider {
     const tenantPool = resolveTenantPool(this.tenantPools, {
       orgId: opts.tenant?.orgId,
       cloneUrl: opts.repo?.cloneUrl,
-      purpose: opts.purpose,
     });
     const envEntries = warmPoolMode
       ? []
@@ -1389,7 +1388,6 @@ export class AgentSandboxProvider {
     const pool = resolveTenantPool(this.tenantPools, {
       orgId: opts.tenant?.orgId,
       cloneUrl: opts.repo?.cloneUrl,
-      purpose: opts.purpose,
     });
     const claim = this.buildClaim(
       handle,
@@ -1488,7 +1486,12 @@ export class AgentSandboxProvider {
       handle,
     );
     const daemonUrl = `http://127.0.0.1:${daemonForward.localPort}`;
-    const configPayload = this.workloadConfigPayload(opts);
+    // Cold Sandboxes are named after the claim, adopted ones after their pool.
+    const boundToPoolPod = adoptedSandboxName !== handle;
+    const configPayload = this.workloadConfigPayload(
+      opts,
+      pool !== null && boundToPoolPod,
+    );
     // Warm-pool path: pod boots with the SandboxTemplate's sentinel token;
     // studio authenticates the first /config call with the sentinel and
     // rotates to `token` (per-claim) atomically with the workload patch.
@@ -1558,23 +1561,14 @@ export class AgentSandboxProvider {
     };
   }
 
-  /** Whether these opts resolve to a tenant pool — see `workloadConfigPayload`. */
-  private claimTookTenantPool(opts: EnsureOptions | null): boolean {
-    if (!opts) return false;
-    return (
-      resolveTenantPool(this.tenantPools, {
-        orgId: opts.tenant?.orgId,
-        cloneUrl: opts.repo?.cloneUrl,
-        purpose: opts.purpose,
-      }) !== null
-    );
-  }
-
   /**
    * Daemon `/config` payload from ensure opts. Shared by fresh provision and
    * warm-pool re-bootstrap so a recreated pool pod re-clones the same workload.
    */
-  private workloadConfigPayload(opts: EnsureOptions | null) {
+  private workloadConfigPayload(
+    opts: EnsureOptions | null,
+    tenantPoolPodBound: boolean,
+  ) {
     return buildConfigPayload({
       runtime: opts?.workload?.runtime ?? "node",
       packageManager: opts?.workload?.packageManager
@@ -1592,19 +1586,9 @@ export class AgentSandboxProvider {
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
       // previous claim's clone-only config gets it cleared on a normal one.
       //
-      // A claim that landed on a TENANT pool never sends it. `cloneOnly` makes
-      // the daemon's clone step stop the dev task, which would de-warm the pod
-      // the run just took — the exact damage that used to justify keeping
-      // harness runs out of tenant pools altogether. A pool pod is already
-      // cloned, installed and serving THIS repo, so there is nothing for
-      // clone-only to save and everything for it to throw away. The pipeline
-      // still short-circuits install and start when the tree is unchanged, so
-      // adopting one costs a branch checkout, not a rebuild.
+      // Dropped on a bound tenant-pool pod: its clone step would stop the warm dev task.
       ...(opts
-        ? {
-            cloneOnly:
-              opts.cloneOnly === true && !this.claimTookTenantPool(opts),
-          }
+        ? { cloneOnly: opts.cloneOnly === true && !tenantPoolPodBound }
         : {}),
     });
   }
@@ -2047,7 +2031,8 @@ export class AgentSandboxProvider {
     ensureOpts: EnsureOptions | null,
   ): Promise<boolean> {
     if (this.sentinelToken === null) return false;
-    const payload = this.workloadConfigPayload(ensureOpts) ?? {};
+    // A recreated pool pod is empty — nothing warm to preserve.
+    const payload = this.workloadConfigPayload(ensureOpts, false) ?? {};
     try {
       await postConfig(daemonUrl, this.sentinelToken, payload, {
         rotateToken: token,

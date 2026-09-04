@@ -86,47 +86,15 @@ describe("resolveTenantPool", () => {
     ).toBe("tenant-acme-site");
   });
 
-  it("a harness-run claim for the pool's own repo takes a tenant pod", () => {
-    // Inverted deliberately. This used to return null: a harness run posts
-    // `cloneOnly`, whose clone step stops the dev task, so binding a warm pod
-    // consumed a slot AND de-warmed the pod it took. The destructive part is
-    // `cloneOnly`, not the run — a pool pod for the SAME org and repo is
-    // already cloned, installed and serving exactly what the run needs. So the
-    // claim keeps the workload instead (runner drops `cloneOnly` for a
-    // tenant-pool claim), and every Electrolux task no longer starts cold with
-    // four warm pods idle beside it.
-    expect(
-      resolveTenantPool(POOLS, {
-        orgId: "org-acme",
-        cloneUrl: url,
-        purpose: "harness-run",
-      })?.name,
-    ).toBe("tenant-acme-site");
-    // An explicit `interactive` is unchanged.
-    expect(
-      resolveTenantPool(POOLS, {
-        orgId: "org-acme",
-        cloneUrl: url,
-        purpose: "interactive",
-      })?.name,
-    ).toBe("tenant-acme-site");
-  });
-
-  // The isolation rule is the thing that must NOT relax with it: a run may only
-  // ever adopt a pod warmed for its own org and its own repo.
+  // Purpose no longer excludes a run; org+repo isolation must not relax with it.
   it("still refuses another org's pool and another repo's pool", () => {
     expect(
-      resolveTenantPool(POOLS, {
-        orgId: "org-other",
-        cloneUrl: url,
-        purpose: "harness-run",
-      }),
+      resolveTenantPool(POOLS, { orgId: "org-other", cloneUrl: url }),
     ).toBeNull();
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
         cloneUrl: "https://github.com/acme/other-repo.git",
-        purpose: "harness-run",
       }),
     ).toBeNull();
   });
