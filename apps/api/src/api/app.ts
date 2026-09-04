@@ -472,6 +472,20 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     return c.json({ error: "Connection not found" }, 404);
   }
 
+  // Some providers advertise a `registration_endpoint` and then 403 it (Figma):
+  // answer DCR from the connection's hand-registered client so the authorize
+  // and token legs below need no special case.
+  if (endpoint === "register" && connection.oauth_config?.clientId) {
+    return c.json({
+      client_id: connection.oauth_config.clientId,
+      ...(connection.oauth_config.clientSecret
+        ? { client_secret: connection.oauth_config.clientSecret }
+        : {}),
+      // 0 = never expires; an expiry would send the client back through /register.
+      client_secret_expires_at: 0,
+    });
+  }
+
   // Get origin auth server - tries Protected Resource Metadata first, then falls back to origin root
   const resourceRes = await fetchProtectedResourceMetadata(
     connection.connection_url,
