@@ -8,9 +8,13 @@ import type { GitDataClient, TreeWriteEntry } from "./github-git-data";
 import { GitHubApiError } from "./github-git-data";
 import {
   aliasPathsForKey,
+  BLOB_FETCH_CONCURRENCY,
   blockEntriesInTree,
   blocksDirPath,
+  getBlockText,
+  mapBounded,
   primeBlobCache,
+  primeMergedSnapshot,
   resolveOrCreateHead,
 } from "./read-decofile";
 
@@ -171,14 +175,19 @@ async function commitBatch(batch: Batch): Promise<string> {
     const genPath = packagePath
       ? `${packagePath}/.deco/blocks.gen.json`
       : ".deco/blocks.gen.json";
+    // Non-null after an in-commit regen, so it can prime the read cache below.
+    let genContent: string | null = null;
     if (tree.some((e) => e.type === "blob" && e.path === genPath)) {
-      const files = await Promise.all(
-        [...nextBlocks.values()].map(async (b) => ({
+      // Disk-cache-first + bounded (see getBlockText), mirroring the read path.
+      const files = await mapBounded(
+        [...nextBlocks.values()],
+        BLOB_FETCH_CONCURRENCY,
+        async (b) => ({
           stem: b.stem,
-          content: b.content ?? (await client.getBlobText(b.sha as string)),
-        })),
+          content: b.content ?? (await getBlockText(client, b.sha as string)),
+        }),
       );
-      const { decofile: genContent, skipped } = mergeBlocks(files);
+      const { decofile, skipped } = mergeBlocks(files);
       if (skipped.length > 0) {
         console.warn("decofile gen: dropped blocks that were not valid JSON", {
           repo: `${client.owner}/${client.repo}`,
@@ -187,13 +196,14 @@ async function commitBatch(batch: Batch): Promise<string> {
           blocks: skipped.map((s) => s.key),
         });
       }
-      const genBlobSha = await client.createBlob(genContent);
+      const genBlobSha = await client.createBlob(decofile);
       writes.push({
         path: genPath,
         mode: "100644",
         type: "blob",
         sha: genBlobSha,
       });
+      genContent = decofile;
     }
 
     const newTreeSha = await client.createTree(baseTreeSha, writes);
@@ -204,6 +214,16 @@ async function commitBatch(batch: Batch): Promise<string> {
     });
     try {
       await client.updateRef(branch, commitSha);
+      // The read after this save then hits the merged doc on disk (fail-open).
+      if (genContent !== null) {
+        await primeMergedSnapshot(
+          client.owner,
+          client.repo,
+          commitSha,
+          packagePath,
+          genContent,
+        );
+      }
       return commitSha;
     } catch (err) {
       // Non-fast-forward: someone else advanced the branch between our head
