@@ -794,11 +794,11 @@ export interface StudioToolIO {
     output: { restored: number };
   };
   TASK_ADD_REPO: {
-    input: { connectionId?: string | undefined };
+    input: { id?: string | undefined; connectionId?: string | undefined };
     output: {
       success: boolean;
       message: string;
-      repositories?: { connectionId: string; repo: string }[] | undefined;
+      repositories?: { id: string; repo: string }[] | undefined;
       repo?: string | undefined;
       cloned?: boolean | undefined;
       files?: string | undefined;

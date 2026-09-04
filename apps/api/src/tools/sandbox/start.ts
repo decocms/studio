@@ -387,21 +387,45 @@ async function buildExtraRepoOpts(args: {
   const dirNames = secondaryRepoDirNames(secondaries);
   const out: EnsureRepo[] = [];
   for (const [i, repo] of secondaries.entries()) {
-    if (!repo.connectionId) continue;
     try {
-      const { cloneUrl } = await buildCloneInfo(
-        repo.connectionId,
-        repo.owner,
-        repo.name,
-        args.ctx.db,
-        args.ctx.vault,
+      /**
+       * A secondary may come from either model, and the two can mix in one
+       * sandbox: the daemon clones each checkout from its own credentialed
+       * URL, so a GitHub primary alongside a GitLab secondary is just two
+       * independent clones.
+       */
+      const repository = await findRepositoryForLegacyBinding(
+        args.ctx.storage,
+        args.orgId,
+        repo,
       );
+      const studioRepository =
+        repository &&
+        (await repositoryUsesStudioCredentials(args.ctx.storage, repository))
+          ? repository
+          : null;
+      if (!studioRepository && !repo.connectionId) continue;
+      const { cloneUrl } = studioRepository
+        ? await cloneInfoForRepository(args.ctx, studioRepository, {
+            forceRefresh: true,
+          })
+        : await buildCloneInfo(
+            repo.connectionId!,
+            repo.owner,
+            repo.name,
+            args.ctx.db,
+            args.ctx.vault,
+          );
       out.push({
         cloneUrl,
-        connectionId: repo.connectionId,
+        ...(studioRepository
+          ? { repositoryId: studioRepository.id }
+          : { connectionId: repo.connectionId! }),
         userName: args.gitUserName,
         userEmail: args.gitUserEmail,
-        displayName: `${repo.owner}/${repo.name}`,
+        displayName: studioRepository
+          ? studioRepository.path
+          : `${repo.owner}/${repo.name}`,
         directoryName: dirNames[i]!,
         submoduleCredentials: [],
       });
