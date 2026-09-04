@@ -79,6 +79,12 @@ const RUNTIME_ENV_MAX = 100;
 /** Cap on git submodule credentials per sandbox. */
 const SUBMODULE_CREDENTIALS_MAX = 50;
 
+/** Cap on a single literal env var's value length — an unbounded string here
+ *  is attacker-controlled payload size on a mutation input (posted verbatim
+ *  to the sandbox daemon on every SANDBOX_START), not a real env value. 8KB
+ *  comfortably covers legitimate values (JSON config, certs, tokens). */
+const RUNTIME_ENV_LITERAL_VALUE_MAX = 8192;
+
 /**
  * Virtual MCP connection schema for input (Create/Update) - fields can be optional
  */
@@ -407,7 +413,7 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     key: envVarKey,
     kind: z.literal("literal"),
-    value: z.string(),
+    value: z.string().max(RUNTIME_ENV_LITERAL_VALUE_MAX),
   }),
   z.object({
     key: envVarKey,

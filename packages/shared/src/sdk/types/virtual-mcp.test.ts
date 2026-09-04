@@ -566,6 +566,32 @@ test("VirtualMCPUpdateDataSchema rejects more than 100 runtime env vars", () => 
   expect(result.success).toBe(false);
 });
 
+test("VirtualMCPUpdateDataSchema rejects a literal runtime env value over 8192 chars", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      runtime: {
+        env: [
+          { key: "TOKEN", kind: "literal" as const, value: "a".repeat(8193) },
+        ],
+      },
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema accepts a literal runtime env value at the 8192 char boundary", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      runtime: {
+        env: [
+          { key: "TOKEN", kind: "literal" as const, value: "a".repeat(8192) },
+        ],
+      },
+    },
+  });
+  expect(result.success).toBe(true);
+});
+
 test("SandboxRecord.startedWith is optional with nullable packageManager/port/path", () => {
   const a = SandboxRecordSchema.parse({ sandboxHandle: "v", previewUrl: null });
   expect(a.startedWith).toBeUndefined();
