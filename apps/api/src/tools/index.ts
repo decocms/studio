@@ -44,6 +44,7 @@ import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
 import * as GitTools from "./git";
+import * as ChangeRequestTools from "./change-requests";
 import * as SearchTools from "./search";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
@@ -256,11 +257,8 @@ export const CORE_TOOLS = [
   SandboxTools.SANDBOX_START,
   SandboxTools.SANDBOX_DELETE,
 
-  // GitHub tools (app-only)
+  // GitHub App installations (app-only) — the one surface that is GitHub's own
   GitHubTools.GITHUB_LIST_USER_ORGS,
-  GitHubTools.GITHUB_SEARCH_BRANCHES,
-  GitHubTools.GITHUB_PR_STATE,
-  GitHubTools.GITHUB_LAST_PUBLISHED_PR,
 
   // Git provider accounts + first-class repositories (app-only)
   GitTools.GIT_PROVIDER_CAPABILITIES,
@@ -271,6 +269,15 @@ export const CORE_TOOLS = [
   GitTools.REPOSITORY_SEARCH,
   GitTools.REPOSITORY_LINK,
   GitTools.REPOSITORY_DELETE,
+  GitTools.REPOSITORY_SEARCH_BRANCHES,
+
+  // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
+  ChangeRequestTools.CHANGE_REQUEST_STATE,
+  ChangeRequestTools.CHANGE_REQUEST_LAST_MERGED,
+  ChangeRequestTools.CHANGE_REQUEST_LIST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_CHECK_LOG,
+  ChangeRequestTools.CHANGE_REQUEST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_MERGE,
 
   // Link tools
 

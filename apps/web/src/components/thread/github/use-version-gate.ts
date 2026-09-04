@@ -1,6 +1,6 @@
 import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
-import { getActiveGithubRepo } from "@/lib/github-repo";
+import { getActiveGithubRepo, repoToolTarget } from "@/lib/github-repo";
 import {
   branchUserLabel,
   generateBranchName,
@@ -25,7 +25,7 @@ export function useBaseBranch(
     usePrByBranch({
       orgId: org.id,
       orgSlug: org.slug,
-      connectionId: repo?.connectionId ?? "",
+      target: repoToolTarget(repo),
       owner: repo?.owner ?? "",
       repo: repo?.name ?? "",
       branch: currentBranch ?? null,

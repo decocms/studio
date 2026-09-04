@@ -4,7 +4,6 @@ import {
   buildCommitActions,
   decoDirFor,
   directoryOf,
-  gitlabErrorMessage,
   groupPathsByDirectory,
   isBranchExistsConflict,
   isCommitConflict,
@@ -13,7 +12,8 @@ import {
   mapMergeRequestState,
   pooledMap,
   type ResolvedChange,
-} from "./gitlab";
+} from "./content";
+import { gitlabErrorMessage } from "./http";
 
 describe("buildCommitActions", () => {
   test("an existing file is an update guarded by its last commit", () => {

@@ -119,7 +119,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMergeFailedRateLimited":
     "ainda não deu para fazer o merge — o GitHub está limitando nossas requisições. Isso é tentado de novo automaticamente.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
-    "o GitHub recusou o merge: {detail}",
+    "o provider recusou o merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedConflict":
+    "conflita com a branch base e não pôde ser mesclado",
   "taskBoard.taskDialog.activityMergeFailedError":
     "não conseguiu mesclar o pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",

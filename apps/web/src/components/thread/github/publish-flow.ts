@@ -8,13 +8,13 @@
 
 import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
 import type { SandboxProxyRef } from "@/sdk/sandbox-url";
+import type { RepoToolTarget } from "@/lib/github-repo";
 import { toast } from "sonner";
 import type { TFunction } from "@/i18n/use-t.ts";
 import {
-  openPullRequestForBranch,
-  squashMergePullRequest,
+  openChangeRequestForBranch,
+  squashMergeChangeRequest,
   type CreatedPullRequest,
-  type GithubMcpClient,
 } from "./github-pr-api.ts";
 import {
   fetchGitStatus,
@@ -75,14 +75,13 @@ export interface PublishTarget {
   /** Route sandbox-less Fast Preview git operations to the upstream API. */
   fastPreview?: boolean;
   baseBranch: string;
-  githubClient: GithubMcpClient;
+  /** Which repository, and which credential reads it. */
+  target: RepoToolTarget;
   owner: string;
   repo: string;
   /** Branch name on GitHub; the sandbox's HEAD can differ from `branch`. */
   headBranch: string;
   coAuthor?: CoAuthorIdentity;
-  /** The branch's already-open pull request, updated instead of opening a new one. */
-  existingOpenPr?: CreatedPullRequest;
   /**
    * The head the confirmed change list was read from. Checked against the live
    * head before anything mutates; see {@link PublishHeadMovedError}. Omit to
@@ -186,15 +185,12 @@ function openPullRequest(
   target: PublishTarget,
   parts: PublishMessage,
 ): Promise<CreatedPullRequest> {
-  return openPullRequestForBranch(target.githubClient, {
-    owner: target.owner,
-    repo: target.repo,
+  return openChangeRequestForBranch(target.orgSlug, target.target, {
     branch: target.headBranch,
     title: parts.title,
     body: parts.body,
     base: target.baseBranch,
     coAuthor: target.coAuthor,
-    existing: target.existingOpenPr,
   });
 }
 
@@ -221,10 +217,8 @@ export async function runPublishFlow(
     () => openPullRequest(target, parts),
   );
   try {
-    await squashMergePullRequest(target.githubClient, {
-      owner: target.owner,
-      repo: target.repo,
-      pullNumber: pr.number,
+    await squashMergeChangeRequest(target.orgSlug, target.target, {
+      number: pr.number,
       commitTitle: parts.title,
       commitMessage: parts.body,
       coAuthor: target.coAuthor,

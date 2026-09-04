@@ -8,6 +8,7 @@
  * presents an installation or user token.
  */
 
+import { apiBaseUrlFor } from "@decocms/shared/git-providers";
 import {
   countGithubRateLimited,
   githubRetryAfterMs,
@@ -21,8 +22,19 @@ const GITHUB_JSON_ACCEPT = "application/vnd.github+json";
 /** Matches the other GitHub REST callers (`tools/github/list-user-orgs.ts`). */
 export const GITHUB_TIMEOUT_MS = 15_000;
 
+/**
+ * REST base for a GitHub host. `GITHUB_API_BASE_URL` overrides it so the e2e
+ * suite can point every GitHub caller at a local stub — read per call site so
+ * a long-lived dev server and a test webServer agree on one value, and never
+ * reaching api.github.com from a test is a property of the whole module, not
+ * of one client.
+ */
+export function githubApiBaseUrl(host: string): string {
+  return process.env.GITHUB_API_BASE_URL ?? apiBaseUrlFor("github", host);
+}
+
 export interface GithubFetchInit {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH" | "PUT";
   /** Sent as `Authorization: Bearer <token>` — App JWTs and tokens alike. */
   token: string;
   accept?: string;

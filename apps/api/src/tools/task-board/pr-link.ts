@@ -24,7 +24,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth, requireOrganization } from "@/core/studio-context";
-import { extractPrFromText } from "./pr-extract";
+import { findChangeRequestIn } from "./change-request-extract";
 import { invalidatePrCards } from "./prs-get";
 import { resolveRunTaskTargets } from "./run-reactions";
 import { requireTaskRunContext } from "./task-run-context";
@@ -62,11 +62,12 @@ export const TASK_BOARD_ITEM_PR_LINK = defineTool({
     const organizationId = requireOrganization(ctx).id;
     const { threadId } = requireTaskRunContext();
 
-    const pr = extractPrFromText(input.url);
+    const pr = findChangeRequestIn(input.url);
     if (!pr) {
       throw new Error(
-        `Not a GitHub pull request URL: ${input.url} ` +
-          "(expected https://github.com/<owner>/<repo>/pull/<number>)",
+        `Not a change request URL: ${input.url} (expected ` +
+          "https://github.com/<owner>/<repo>/pull/<number> or " +
+          "https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid>)",
       );
     }
 
@@ -82,8 +83,7 @@ export const TASK_BOARD_ITEM_PR_LINK = defineTool({
         organizationId,
         url: pr.url,
         prNumber: pr.number,
-        repoOwner: pr.owner,
-        repoName: pr.repo,
+        repo: pr.repo,
       });
       // There is something to review now — open the cycle, which is what puts
       // the card on the sweeper's work list. The card is NOT moved: an agent

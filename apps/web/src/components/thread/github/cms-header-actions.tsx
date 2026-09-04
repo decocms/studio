@@ -31,7 +31,7 @@ import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
-import { resolveGithubAttachment } from "@/lib/github-repo.ts";
+import { repoToolTarget, resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -184,7 +184,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -196,7 +196,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const lastPublishedQuery = useLastPublishedPr({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     base: baseBranch,
@@ -205,7 +205,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const checksQuery = useChecks({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -214,7 +214,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const reviewsQuery = usePrReviews({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -446,7 +446,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           virtualMcpId={virtualMcpId}
           branch={branch}
           baseBranch={baseBranch}
-          githubConnectionId={githubRepo.connectionId ?? ""}
+          repoTarget={repoToolTarget(githubRepo)}
           owner={githubRepo.owner}
           repo={githubRepo.name}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}

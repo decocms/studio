@@ -16,7 +16,8 @@ import {
   isPermissionRejected,
   OPTIONAL_MINT_PERMISSIONS,
 } from "@decocms/shared/github-repo-scope";
-import type { GithubAppConfig } from "../env";
+import { type GithubAppConfig, readGithubAppConfig } from "./env";
+import type { GitProviderCapability } from "../types";
 import { GitProviderError } from "../types";
 import {
   githubErrorMessage,
@@ -367,4 +368,75 @@ export class GithubAppAuth {
       if (entries.length < perPage) return installations;
     }
   }
+}
+
+let appAuthSingleton: GithubAppAuth | null | undefined;
+
+/**
+ * The process-wide App signer, or null when this deployment has no App
+ * registered. One instance because its installation-token cache lives inside
+ * it: a second signer would mint a second token per installation and halve
+ * the cache's usefulness.
+ *
+ * Lives here rather than in the credential ladder so that the ladder — which
+ * is provider-neutral — holds no GitHub state of its own.
+ */
+export function getGithubAppAuth(): GithubAppAuth | null {
+  if (appAuthSingleton === undefined) {
+    const config = readGithubAppConfig();
+    appAuthSingleton =
+      config && usableAppKey(config) ? new GithubAppAuth(config) : null;
+  }
+  return appAuthSingleton;
+}
+
+/**
+ * Whether the configured private key can actually sign — checked HERE, at the
+ * gate, rather than at the first mint.
+ *
+ * `readGithubAppConfig` only proves five environment variables are non-empty,
+ * and a PEM mangled on the way into a secret manager (the newlines eaten, the
+ * classic one) is a perfectly good non-empty string. Without this check that
+ * key still makes `getGithubAppAuth()` non-null, which makes every backfilled
+ * account `accountIsServable`, which takes every GitHub repository OFF its
+ * legacy connection and onto an App that cannot sign — turning a bad paste
+ * into an outage instead of a no-op.
+ *
+ * Answering null instead leaves the whole feature dormant and every org on the
+ * path it is already using, which is what a misconfiguration should cost.
+ *
+ * Exported for its test: the singleton above memoizes, so only the predicate
+ * can be exercised across more than one configuration in a process.
+ */
+export function usableAppKey(config: GithubAppConfig): boolean {
+  try {
+    createPrivateKey(config.privateKeyPem);
+    return true;
+  } catch (cause) {
+    console.error(
+      "[git-providers] GITHUB_APP_PRIVATE_KEY is not a usable private key — " +
+        "the GitHub App stays disabled and orgs keep their existing " +
+        "connections. Check that newlines survived the secret store.",
+      cause,
+    );
+    return false;
+  }
+}
+
+/**
+ * The App serves github.com only — GitHub Enterprise needs its own App
+ * registered per instance, which this deployment has no config for. So the
+ * host list is a constant here rather than a setting.
+ */
+const GITHUB_APP_HOST = "github.com";
+
+export function githubCapability(): GitProviderCapability {
+  /**
+   * BOTH a readable config and a signer built from it: a malformed PEM parses
+   * as config and then fails at the first mint, which is a worse answer than
+   * "not configured".
+   */
+  const configured =
+    readGithubAppConfig() !== null && getGithubAppAuth() !== null;
+  return { configured, hosts: configured ? [GITHUB_APP_HOST] : [] };
 }

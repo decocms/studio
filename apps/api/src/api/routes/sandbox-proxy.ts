@@ -52,12 +52,12 @@ import {
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
-import { contentClientForProjectRepo } from "../../git-providers/content";
 import {
+  RepoWriteConflict,
+  contentClientForProjectRepo,
   repoErrorStatus,
   repoRateLimitRetryAfterMs,
-  RepoWriteConflict,
-} from "../../git-providers/content/types";
+} from "@/git-providers";
 import { GitProviderError } from "../../git-providers/types";
 import {
   repoGitDiff,

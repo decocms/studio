@@ -2584,8 +2584,11 @@ function describeActivity(
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
     case "merge_failed": {
-      // `detail` names the repo (no_connection) or carries GitHub's refusal
-      // text — the difference between "it's broken" and "connect this repo".
+      /**
+       * `detail` names the repo (no_connection) or carries the provider's
+       * refusal text — the difference between "it's broken" and "connect this
+       * repo".
+       */
       const detail = typeof d.detail === "string" ? d.detail : "";
       switch (d.reason) {
         case "no_pr":
@@ -2600,6 +2603,9 @@ function describeActivity(
             : t("taskBoard.taskDialog.activityMergeFailed");
         case "rate_limited":
           return t("taskBoard.taskDialog.activityMergeFailedRateLimited");
+        // The one refusal with an automatic answer: the agent can rebase.
+        case "conflict":
+          return t("taskBoard.taskDialog.activityMergeFailedConflict");
         case "refused":
           return detail
             ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })

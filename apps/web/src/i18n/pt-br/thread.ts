@@ -192,6 +192,14 @@ export const thread = {
   "thread.publishDialog.loadingChanges": "Carregando alterações…",
   "thread.publishDialog.mergeFailed":
     "Alterações foram enviadas e PR #{prNumber} está aberto, mas a mesclagem falhou: {message}",
+  "thread.mergeRefused.conflict":
+    "Conflita com a branch base — faça rebase e tente de novo.",
+  "thread.mergeRefused.blocked":
+    "O repositório recusou o merge — falta uma revisão obrigatória ou uma regra de branch.",
+  "thread.mergeRefused.rateLimited":
+    "O provider está limitando as requisições — tente de novo em instantes.",
+  "thread.mergeRefused.notFound": "Não existe mais.",
+  "thread.mergeRefused.error": "Falha ao fazer merge.",
   "thread.publishDialog.openingComparison": "Abrindo a comparação…",
   "thread.publishDialog.opensPullRequestInto":
     "Abre um pull request para {baseBranch} para revisão.",

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { useProjectContext } from "@/sdk";
 import {
   Tabs,
@@ -20,7 +21,7 @@ interface Props {
   pr: PrSummary;
   virtualMcpId: string;
   branch: string;
-  connectionId: string;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
 }
@@ -31,7 +32,7 @@ export function PrSubTabs({
   pr,
   virtualMcpId,
   branch,
-  connectionId,
+  target,
   owner,
   repo,
 }: Props) {
@@ -48,7 +49,14 @@ export function PrSubTabs({
     base: pr.base,
     headSha: pr.headSha,
     pullNumber: pr.number,
-    connectionId,
+    /**
+     * The Changes tab reads the sandbox's own diff first; this is the fallback
+     * for when the sandbox has none, and it is still GitHub-only (it walks
+     * `get_file_contents` per file over the MCP connection). An empty
+     * connection disables it, so a GitLab project shows the sandbox diff and
+     * nothing else rather than erroring.
+     */
+    connectionId: target.connectionId ?? "",
     owner,
     repo,
     enabled: activeValue === "changes",
@@ -110,23 +118,13 @@ export function PrSubTabs({
 
         <div className="min-h-0 flex-1 overflow-y-auto pt-5">
           <TabsContent value="description" className="mt-0">
-            <DescriptionTab
-              pr={pr}
-              connectionId={connectionId}
-              owner={owner}
-              repo={repo}
-            />
+            <DescriptionTab pr={pr} target={target} owner={owner} repo={repo} />
           </TabsContent>
           <TabsContent value="changes" className="mt-0">
             <ChangesTab diffQuery={diffQuery} />
           </TabsContent>
           <TabsContent value="checks" className="mt-0">
-            <ChecksTab
-              pr={pr}
-              connectionId={connectionId}
-              owner={owner}
-              repo={repo}
-            />
+            <ChecksTab pr={pr} target={target} owner={owner} repo={repo} />
           </TabsContent>
         </div>
       </Tabs>

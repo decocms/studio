@@ -1,4 +1,5 @@
 import { useProjectContext } from "@/sdk";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Markdown } from "@decocms/ui/components/markdown.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -17,7 +18,7 @@ import {
 
 interface Props {
   pr: PrSummary;
-  connectionId: string;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
 }
@@ -26,10 +27,10 @@ interface Props {
  * Checks sub-tab: list of CI runs for the PR head SHA. Each row shows
  * the run name, status/conclusion, duration, a link to the provider's
  * run page, and a Re-run button that sends a templated chat message.
- * Rows expand to render the check run's `output` (e.g. the QA journey's
- * step-by-step table) inline, lazily fetched via GET_CHECK_RUN.
+ * Rows expand to render the run's own report (e.g. the QA journey's
+ * step-by-step table) inline, lazily fetched per row.
  */
-export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
+export function ChecksTab({ pr, target, owner, repo }: Props) {
   const { org } = useProjectContext();
   const chat = useChatStream();
   const t = useT();
@@ -38,7 +39,7 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
   const checksQuery = useChecks({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId,
+    target,
     owner,
     repo,
     branch: pr.head,
@@ -96,14 +97,20 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
   return (
     <ul className="flex flex-col gap-0.5">
       {checks.map((c) => {
-        const isOpen = expanded.has(c.id);
-        const checkRunId = Number(c.id);
+        /**
+         * A run with no id has no report to expand — a GitHub commit status
+         * is a link, not a run, and GitLab's job trace is addressed by job id.
+         * Those rows still render; they just do not open.
+         */
+        const rowKey = c.id ?? c.name;
+        const isOpen = c.id !== null && expanded.has(c.id);
         return (
-          <li key={c.id} className="flex flex-col">
+          <li key={rowKey} className="flex flex-col">
             <div className="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
               <button
                 type="button"
-                onClick={() => toggle(c.id)}
+                disabled={c.id === null}
+                onClick={() => c.id !== null && toggle(c.id)}
                 aria-expanded={isOpen}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
@@ -149,10 +156,10 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
               <CheckRunDetail
                 orgId={org.id}
                 orgSlug={org.slug}
-                connectionId={connectionId}
+                target={target}
                 owner={owner}
                 repo={repo}
-                checkRunId={Number.isFinite(checkRunId) ? checkRunId : null}
+                checkRunId={c.id}
               />
             )}
           </li>
@@ -165,10 +172,10 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
 interface CheckRunDetailProps {
   orgId: string;
   orgSlug: string;
-  connectionId: string;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
-  checkRunId: number | null;
+  checkRunId: string | null;
 }
 
 /** Lazily-loaded detail rendered under an expanded check row. */

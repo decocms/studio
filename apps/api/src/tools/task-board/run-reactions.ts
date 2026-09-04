@@ -4,7 +4,8 @@
  * A task delegated to the Super Agent rides its run's lifecycle:
  *   enqueued            → todo          (create/update tool, synchronous)
  *   loop starts         → in_progress    (runHostedHarness)
- *   agent opens a PR    → review cycle   (github MCP tool call OR bash `gh pr create`)
+ *   agent opens one     → review cycle   (a provider MCP tool call OR bash
+ *                                          `gh pr create` / `glab mr create`)
  *                         opens, lane
  *                         stays in_progress
  *   thread finishes,    → in_review      (projector terminal → thread-finish hook)
@@ -31,7 +32,7 @@ import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
-import { extractPrFromValue } from "./pr-extract";
+import { findChangeRequestIn } from "./change-request-extract";
 import { invalidatePrCards } from "./prs-get";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -228,8 +229,8 @@ export async function openReviewCycleForRun(
 }
 
 /**
- * A run opened a GitHub PR — extract its identity from `source` (an MCP
- * `create_pull_request` result or a `bash` tool's output) and link it to the
+ * A run opened a change request — extract its identity from `source` (a
+ * provider tool result or a `bash` tool's output) and link it to the
  * run's task board item(s). Resolves the target(s) the same way as the status
  * advance (runMetadata first, else the thread link), so a PR opened inside a
  * subtask (which carries no metadata but shares the thread) still links.
@@ -245,7 +246,7 @@ export async function capturePrForRun(
   const orgId = ctx.organization?.id;
   if (!orgId) return;
   try {
-    const pr = extractPrFromValue(source);
+    const pr = findChangeRequestIn(source);
     if (!pr) return;
     const targets = await resolveRunTaskTargets(ctx, orgId, threadId);
     for (const itemId of targets) {
@@ -254,8 +255,7 @@ export async function capturePrForRun(
         organizationId: orgId,
         url: pr.url,
         prNumber: pr.number,
-        repoOwner: pr.owner,
-        repoName: pr.repo,
+        repo: pr.repo,
         connectionId: connectionId ?? null,
       });
     }
@@ -661,27 +661,37 @@ export async function reopenTasksOnThreadRun(
 }
 
 /**
- * True when an MCP tool call opens a GitHub PR. Matched by substring so a
- * gateway-prefixed name (`conn-6-..._create_pull_request`) still counts.
+ * True when an MCP tool call opens a change request. Matched by substring so a
+ * gateway-prefixed name (`conn-6-..._create_pull_request`) still counts, and
+ * per provider because each names its own object.
  */
 export function isPrCreateMcpTool(toolName: string): boolean {
   return (
     toolName.includes("create_pull_request") ||
-    toolName.includes("createPullRequest")
+    toolName.includes("createPullRequest") ||
+    toolName.includes("create_merge_request") ||
+    toolName.includes("createMergeRequest")
   );
 }
 
-// ponytail: heuristics for the bash escape hatch. Agents open PRs from bash two
-// ways — `gh pr create`, or a raw `curl -X POST …/repos/…/pulls` when gh / the
-// GitHub-MCP tool is unavailable (observed in prod: the MCP connection was scoped
-// to the wrong repo → the agent fell back to curl). Known ceiling: misses shell
-// aliases and script wrappers. The reliable path is the MCP tool above.
-const GH_PR_CREATE = /\bgh\s+pr\s+create\b/;
-const GITHUB_API_PULLS = /api\.github\.com\/repos\/[^\s"']+\/pulls\b/;
+/**
+ * ponytail: heuristics for the bash escape hatch. Agents open one from bash
+ * two ways — the provider's CLI (`gh pr create`, `glab mr create`), or a raw
+ * `curl -X POST` at the REST endpoint when the CLI or the MCP tool is
+ * unavailable (observed in prod: the MCP connection was scoped to the wrong
+ * repository, so the agent fell back to curl). Known ceiling: misses shell
+ * aliases and script wrappers. The reliable path is the tool above.
+ *
+ * Both CLIs are in the sandbox image and the checkout's own credential decides
+ * which one is authenticated, so a run can genuinely use either.
+ */
+const CLI_CREATE = /\b(?:gh\s+pr|glab\s+mr)\s+create\b/;
+const REST_CHANGE_REQUESTS =
+  /\/(?:repos\/[^\s"']+\/pulls|projects\/[^\s"']+\/merge_requests)\b/;
 const HTTP_POST = /(?:-X|--request)\s+POST/;
 
-/** True when a bash command opens a GitHub PR (gh CLI or a REST POST to /pulls). */
+/** True when a bash command opens a change request (either CLI, or a REST POST). */
 export function isPrCreateBashCommand(command: string): boolean {
-  if (GH_PR_CREATE.test(command)) return true;
-  return GITHUB_API_PULLS.test(command) && HTTP_POST.test(command);
+  if (CLI_CREATE.test(command)) return true;
+  return REST_CHANGE_REQUESTS.test(command) && HTTP_POST.test(command);
 }

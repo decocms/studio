@@ -32,18 +32,18 @@ import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
 import { parseGithubRepoFromMetadata } from "@/tools/sandbox/sync-git-credentials";
-import { contentClientForProjectRepo } from "@/git-providers/content";
+import {
+  RepoWriteConflict,
+  contentClientForProjectRepo,
+  repoErrorStatus,
+  type RepoContentClient,
+} from "@/git-providers";
 import {
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
-import {
-  type RepoContentClient,
-  repoErrorStatus,
-  RepoWriteConflict,
-} from "@/git-providers/content/types";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import type { Env } from "../hono-env";
 

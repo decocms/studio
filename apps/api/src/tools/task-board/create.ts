@@ -17,7 +17,7 @@ import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { extractPrFromText } from "./pr-extract";
+import { findChangeRequestIn } from "./change-request-extract";
 import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
 
@@ -69,11 +69,12 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     }
 
     // Parse the PR link before any write, so a bad URL fails without orphaning a card.
-    const pr = input.prUrl ? extractPrFromText(input.prUrl) : null;
+    const pr = input.prUrl ? findChangeRequestIn(input.prUrl) : null;
     if (input.prUrl && !pr) {
       throw new Error(
-        `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
-          "https://github.com/<owner>/<repo>/pull/<number>)",
+        `Not a change request URL: ${input.prUrl} (expected ` +
+          "https://github.com/<owner>/<repo>/pull/<number> or " +
+          "https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid>)",
       );
     }
 
@@ -142,8 +143,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         organizationId,
         url: pr.url,
         prNumber: pr.number,
-        repoOwner: pr.owner,
-        repoName: pr.repo,
+        repo: pr.repo,
         connectionId: null,
       });
       // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.

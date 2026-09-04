@@ -1845,13 +1845,23 @@ export interface TaskBoardItemTagRef {
   createdAt: string;
 }
 
-/** A PR linked to a task — identity only. Title/state are fetched live. */
+/**
+ * A change request linked to a task — identity only. Title/state are fetched
+ * live through a `ChangeRequestClient`.
+ *
+ * `url` is the identity that matters: it names the provider, the host and the
+ * repository path, which is the only shape a GitLab project nested in
+ * subgroups fits. `repoOwner`/`repoName` are the pre-provider split, kept for
+ * the legacy readers; `repositoryId` is the credential, and `connectionId` the
+ * legacy one it replaces.
+ */
 export interface TaskBoardItemPrRef {
   url: string;
   number: number;
   repoOwner: string;
   repoName: string;
   connectionId: string | null;
+  repositoryId: string | null;
   createdAt: string;
 }
 

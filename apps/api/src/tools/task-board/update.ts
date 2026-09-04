@@ -21,7 +21,7 @@ import { recordTaskActivities } from "./activity";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { runColumnAutomation } from "./run-column-automation";
-import { extractPrFromText } from "./pr-extract";
+import { findChangeRequestIn } from "./change-request-extract";
 import { invalidatePrCards } from "./prs-get";
 import {
   ensureTaskExecutionAllowed,
@@ -244,11 +244,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     // Parse the PR link before any write, so a bad URL fails without a partial edit.
-    const pr = input.prUrl ? extractPrFromText(input.prUrl) : null;
+    const pr = input.prUrl ? findChangeRequestIn(input.prUrl) : null;
     if (input.prUrl && !pr) {
       throw new Error(
-        `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
-          "https://github.com/<owner>/<repo>/pull/<number>)",
+        `Not a change request URL: ${input.prUrl} (expected ` +
+          "https://github.com/<owner>/<repo>/pull/<number> or " +
+          "https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid>)",
       );
     }
 
@@ -415,8 +416,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         organizationId,
         url: pr.url,
         prNumber: pr.number,
-        repoOwner: pr.owner,
-        repoName: pr.repo,
+        repo: pr.repo,
         connectionId: null,
       });
       // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.

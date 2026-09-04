@@ -1,4 +1,5 @@
 import { type UIEvent, useState } from "react";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { getInitials } from "@/lib/get-initials";
@@ -46,7 +47,7 @@ interface Props {
    *  seed generated branch names. */
   userLabel: string | null | undefined;
   virtualMcpId: string;
-  connectionId: string | null;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
@@ -80,7 +81,7 @@ export function BranchPickerLegacy({
   userLabel,
   // Kept on Props for a uniform pill contract; unused here directly.
   virtualMcpId: _virtualMcpId,
-  connectionId,
+  target,
   owner,
   repo,
   sandboxMap,
@@ -114,7 +115,7 @@ export function BranchPickerLegacy({
     orgId,
     orgSlug,
     userId,
-    connectionId,
+    target,
     sandboxMap,
     owner,
     repo,
@@ -138,7 +139,7 @@ export function BranchPickerLegacy({
   } = useOpenPrs({
     orgId,
     orgSlug,
-    connectionId: connectionId ?? "",
+    target,
     owner,
     repo,
     enabled: open && tab === "prs",

@@ -2,40 +2,50 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
-import type { ConnectionEntity } from "@/tools/connection/schema";
-import { clientFromConnection } from "@/mcp-clients";
+import {
+  GitProviderError,
+  changeRequestClientForOrigin,
+  type ChangeRequest,
+  type ChangeRequestClient,
+  type ChangeRequestDetail,
+  type CheckRun,
+  type ChecksSummary,
+} from "@/git-providers";
 import type { TaskBoardItemPrRef } from "@/storage/types";
-import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import {
   LANES,
   shippedLane,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import { repoIdentityKey } from "@decocms/shared/git-providers";
 import { retry, RetryError } from "@decocms/shared/std";
 import { TaskBoardItemPrSchema } from "./schema";
 import { cardWorkLanded } from "./archive-merged";
 import { recordTaskActivity } from "./activity";
+import { originOf } from "./change-request-extract";
 import { inReviewPhase, movesForward } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { readPrStateThrottled } from "./dbos-github-read";
+import { getPrCardCache, getPrReadCache } from "./pr-cache";
 
-/** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
-const PR_FETCH_TIMEOUT_MS = 8000;
+export type { ChecksSummary as ChecksStatus };
 
 /**
- * GitHub answers "too many requests" — the primary or (more often here) the
- * SECONDARY rate limit, which punishes bursts of concurrent calls rather than a
- * raw hourly count. Retrying that is not a retry, it's the burst: it triples the
- * very thing being limited, and the retried calls are what keep the limit shut.
- * So a rate-limit answer ends the attempt immediately and the cache below serves
- * the last good value instead.
+ * The provider answered "too many requests" — the primary or (more often here)
+ * the SECONDARY rate limit, which punishes bursts of concurrent calls rather
+ * than a raw hourly count. Retrying that is not a retry, it's the burst: it
+ * triples the very thing being limited, and the retried calls are what keep
+ * the limit shut. So a rate-limit answer ends the attempt immediately and the
+ * cache below serves the last good value instead.
  *
- * Matched on the message because the answer arrives as an MCP tool result
- * (`isError` + text), not an HTTP status we can read. Exported for the unit test.
+ * A provider client raises `GitProviderError`, which says so outright. The
+ * message match is the fallback for the paths that don't (GraphQL's transport
+ * throws a plain `Error`). Exported for the unit test.
  */
 export function isRateLimitError(err: unknown): boolean {
+  if (err instanceof GitProviderError && err.isRateLimited) return true;
   const message = err instanceof Error ? err.message : String(err);
   // Scrub the request URL first: a `429` in `…/pulls/429/merge` is not a status.
   const withoutUrls = message.replace(/https?:\/\/\S+/gi, " ");
@@ -43,24 +53,20 @@ export function isRateLimitError(err: unknown): boolean {
 }
 
 /**
- * Drop this connection's cached PR reads. Call it after WRITING to GitHub
- * through the connection (a merge), so the next poll sees the new state instead
- * of serving the pre-merge one for the rest of the revalidate window — the card
- * only moves to Done once a poll observes `merged`, and a minute of "did my ship
- * button work?" is exactly the confusion this cache must not introduce.
+ * Drop this repository's cached reads. Call it after WRITING to the provider
+ * (a merge), so the next poll sees the new state instead of serving the
+ * pre-merge one for the rest of the revalidate window — the card only moves to
+ * Done once a poll observes a merge, and a minute of "did my ship button
+ * work?" is exactly the confusion this cache must not introduce.
  */
-import { getPrCardCache, getPrReadCache } from "./pr-cache";
-
-export function invalidatePrReads(connectionId: string): Promise<void> {
-  return getPrReadCache().invalidate(connectionId);
+export function invalidatePrReads(namespace: string): Promise<void> {
+  return getPrReadCache().invalidate(namespace);
 }
 
 /**
  * Drop an org's cached PR CARDS. Called after a write that changes what a card
  * shows (a merge), so the next poll rebuilds it instead of serving the
- * pre-merge card for the rest of the revalidate window — the task only moves to
- * Done once a poll observes `merged`, and "did my ship button work?" is exactly
- * the confusion this cache must not introduce.
+ * pre-merge card for the rest of the revalidate window.
  *
  * Org-wide rather than per task: a merge is rare, the rebuild is one poll's
  * work, and a card keyed to the wrong task is worse than a cold one.
@@ -74,284 +80,80 @@ const prLabel = (pr: TaskBoardItemPrRef) =>
   `${pr.repoOwner}/${pr.repoName}#${pr.number}`;
 
 /**
- * One cached, best-effort GitHub read for a PR. Best-effort in the same sense as
- * the rest of this file: `null` on any failure, so the card still renders.
- *
- * `callTool` RESOLVES (doesn't reject) on an upstream MCP error, so an `isError`
- * result is rethrown here — otherwise the cache would happily store GitHub's
- * "too many requests" as the PR's state and serve it for half an hour.
- *
- * Takes a `getClient` THUNK, not a client. The cache only calls `fetchLive` on a
- * miss or a background revalidation, so on a warm card the client is never
- * built — and building one is not free: the per-request pool bakes a fresh
- * Studio token, which costs a `downstream_tokens` read plus an eager MCP
- * `initialize` handshake (~80-120ms) before any tool call can go out. Handed a
- * ready client instead, every poll paid that round-trip to then answer entirely
- * from cache.
+ * The cache namespace for one repository's reads. The repository, not the
+ * credential: two agents in an org reading the same change request must share
+ * one entry, and the answer does not depend on which of the org's credentials
+ * asked.
  */
-type GetPrClient = () => Promise<
-  Awaited<ReturnType<typeof clientFromConnection>>
->;
+export const readNamespace = (pr: TaskBoardItemPrRef) =>
+  repoIdentityKey(originOf(pr).repo);
 
 /**
- * Memoizes `open`'s in-flight/resolved promise so concurrent callers share one
- * attempt — but clears the memo on failure, so the NEXT `get()` actually
- * retries `open()` instead of replaying the same rejection forever. Without
- * this, `retry()`'s attempts around a `get()` call are hollow once the first
- * attempt fails: each "retry" just re-awaits the already-rejected promise, so
- * a transient failure never gets a real second try. Exported for the unit
- * test.
- */
-export function lazyOnce<T>(open: () => Promise<T>): {
-  get: () => Promise<T>;
-  current: () => T | null;
-} {
-  let value: T | null = null;
-  let promise: Promise<T> | null = null;
-  return {
-    get: () => {
-      promise ??= open()
-        .then((v) => {
-          value = v;
-          return v;
-        })
-        .catch((err) => {
-          promise = null;
-          throw err;
-        });
-      return promise;
-    },
-    current: () => value,
-  };
-}
-
-/**
- * A GitHub MCP client for `conn`, opened AT MOST ONCE and only if a read
- * actually misses the SWR cache.
+ * One cached, best-effort provider read. Best-effort in the same sense as the
+ * rest of this file: `null` on any failure, so the card still renders.
  *
- * Opening one is not free: the per-request pool bakes a fresh Studio token, so
- * it costs a `downstream_tokens` read plus an eager MCP `initialize` handshake
- * (~80-120ms) before any tool call can go out. Every read below is cached, so a
- * warm card would otherwise pay that round-trip only to answer from cache.
- *
- * `closeWhenIdle` closes once the cache's background revalidations settle — and
- * does nothing at all when nothing was ever opened.
+ * The value stored is the NEUTRAL shape, not the provider's payload — which is
+ * both smaller (a provider's change-request JSON runs past the cache's value
+ * cap on a busy repository, and a rejected put means that change request
+ * misses forever) and the only thing that could be shared between two
+ * providers' answers.
  */
-function lazyPrClient(
-  conn: ConnectionEntity,
-  ctx: StudioContext,
-): { get: GetPrClient; closeWhenIdle: (pending: Promise<void>[]) => void } {
-  const { get, current } = lazyOnce(() =>
-    clientFromConnection(conn, ctx, true),
-  );
-  return {
-    get,
-    // Do NOT await this — the whole point of serving a stale value is to return
-    // without waiting on GitHub. Closing eagerly (which this did) killed every
-    // revalidation the moment it started, so a cached entry could never
-    // refresh: a PR read before its deploy comment existed showed no preview
-    // and no checks until the entry aged out half an hour later.
-    closeWhenIdle: (pending) => {
-      void Promise.allSettled(pending).then(() =>
-        current()
-          ?.close()
-          .catch(() => {}),
-      );
-    },
-  };
-}
-
-async function cachedPrRead(
-  getClient: GetPrClient,
-  connectionId: string,
-  name: string,
-  args: Record<string, unknown>,
+async function cachedRead<T>(
+  namespace: string,
+  key: string,
   describe: string,
-  pending: Promise<void>[],
-): Promise<Record<string, unknown> | null> {
+  fetchLive: () => Promise<T>,
+): Promise<T | null> {
   try {
     const raw = await getPrReadCache().fetch({
-      namespace: connectionId,
-      key: JSON.stringify({ name, args }),
+      namespace,
+      key,
       fetchLive: () =>
-        retry(
-          async () => {
-            const result = await (await getClient()).callTool(
-              { name, arguments: args },
-              undefined,
-              {
-                timeout: PR_FETCH_TIMEOUT_MS,
-              },
-            );
-            if (
-              result &&
-              typeof result === "object" &&
-              (result as { isError?: boolean }).isError
-            ) {
-              throw new Error(
-                (result as { content?: Array<{ text?: string }> }).content?.[0]
-                  ?.text ?? `${name} returned isError`,
-              );
-            }
-            return result;
-          },
-          {
-            maxAttempts: 3,
-            minTimeout: 300,
-            maxTimeout: 3000,
-            jitter: 1,
-            isRetriable: (err) => !isRateLimitError(err),
-          },
-        ),
-      // A background revalidation calls `getClient` AFTER this returns the stale
-      // value — so the caller must keep the client open until it settles.
-      onRevalidation: (promise) => pending.push(promise),
+        retry(fetchLive, {
+          maxAttempts: 3,
+          minTimeout: 300,
+          maxTimeout: 3000,
+          jitter: 1,
+          isRetriable: (err) => !isRateLimitError(err),
+        }),
+      /**
+       * Nothing to hold open: the provider clients are stateless HTTP, so a
+       * background revalidation needs no resource kept alive for it — which is
+       * what the MCP path had to arrange, and got wrong twice.
+       */
+      onRevalidation: () => {},
     });
-    return toolResultJson(raw);
+    return (raw ?? null) as T | null;
   } catch (err) {
     const cause = err instanceof RetryError ? err.cause : err;
-    console.error(`[task-board] ${name} failed for ${describe}:`, cause);
+    console.error(`[task-board] ${key} failed for ${describe}:`, cause);
     return null;
   }
 }
 
 /**
- * The GitHub MCP connection to fetch/merge a PR through: the one that opened it
- * when known (MCP path), else pick from the org's `mcp-github` connections
- * (bash path, where no connection was recorded).
- *
- * The pick matters once an org has repo-scoped connections (imported repos /
- * Code Agents): a repo-scoped child's installation only reaches ITS repo, so
- * using it for a different repo's PR fails (empty live state → the card loses
- * its open/checks/preview and the ship button). So prefer, in order: a
- * repo-scoped connection matching THIS PR's repo (guaranteed access), then the
- * broad org-level connection (no `repoScope`, user OAuth over every repo).
- *
- * There is deliberately NO "any active one" last resort when a repo is named. A
- * connection scoped to a DIFFERENT repo cannot reach this PR — its installation
- * token is repo-scoped — so returning it buys nothing and costs everything: the
- * caller can't tell "GitHub said no" from "we asked the wrong GitHub", the live
- * state comes back all-null, and the card silently parks In Review forever. This
- * is not hypothetical — deleting the org's connection for the repo its PRs were
- * opened against stranded 40+ approved cards, because the resolver kept handing
- * back a connection for an unrelated repo. Returning null instead makes the
- * miss loud (`resolveGithubConnection` returning null is logged at each call
- * site) and points at the real fix: connect the repo.
+ * The client that can read `pr`, or null when this org has no credential for
+ * its repository. Logged at each call site, because "we asked the wrong
+ * provider" and "the provider said no" have to stay distinguishable — a card
+ * whose repository lost its credential must look broken, not empty.
  */
-export async function resolveGithubConnection(
+function clientFor(
   ctx: StudioContext,
   orgId: string,
-  connectionId: string | null,
-  repo?: { owner: string; name: string },
-): Promise<ConnectionEntity | null> {
-  if (connectionId) {
-    // Org-scope the lookup: this connection's GitHub installation is used to
-    // MERGE PRs, so never resolve one from another org (defense-in-depth against
-    // a foreign/colliding connectionId reaching a write path).
-    const conn = await ctx.storage.connections.findById(connectionId, orgId);
-    if (conn && conn.status === "active") return conn;
-  }
-  const { items } = await ctx.storage.connections.list(orgId, {
-    slug: "mcp-github",
-  });
-  return pickGithubConnection(
-    items.filter((c) => c.status === "active"),
-    repo,
+  pr: TaskBoardItemPrRef,
+): Promise<ChangeRequestClient | null> {
+  return changeRequestClientForOrigin(ctx, orgId, originOf(pr)).catch(
+    (err: unknown) => {
+      console.error(`[task-board] no client for ${prLabel(pr)}:`, err);
+      return null;
+    },
   );
 }
 
-/**
- * The pick itself, pure so the fallback ladder is unit-testable — the rule that
- * a repo-scoped connection for a DIFFERENT repo is never a substitute is the
- * whole point of this function and is invisible from any integration test that
- * doesn't happen to have two scoped connections lying around.
- */
-export function pickGithubConnection<
-  T extends { metadata?: Record<string, unknown> | null },
->(active: T[], repo?: { owner: string; name: string }): T | null {
-  const broad = active.find((c) => getRepoScope(c) === null) ?? null;
-  if (!repo) return broad ?? active[0] ?? null;
-  const matching = active.find((c) => {
-    const scope = getRepoScope(c);
-    return scope?.owner === repo.owner && scope?.repo === repo.name;
-  });
-  // The broad org-level connection (user OAuth, every repo the user can see) is
-  // the only legitimate stand-in for a repo we have no scoped connection to.
-  return matching ?? broad;
-}
-
-/** Normalize a CallToolResult to its JSON object (structuredContent, else the
- *  text content parsed as JSON). Null on error/empty — inlined so a tool never
- *  imports web helpers. */
-function toolResultJson(result: unknown): Record<string, unknown> | null {
-  if (!result || typeof result !== "object") return null;
-  const r = result as {
-    isError?: boolean;
-    structuredContent?: unknown;
-    content?: Array<{ type?: string; text?: string }>;
-  };
-  if (r.isError) return null;
-  if (
-    r.structuredContent &&
-    typeof r.structuredContent === "object" &&
-    Object.keys(r.structuredContent).length > 0
-  ) {
-    return r.structuredContent as Record<string, unknown>;
-  }
-  const text = r.content?.find((c) => c.type === "text")?.text;
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-export type ChecksStatus = "pending" | "passing" | "failing" | null;
-
-/** One CI check on the PR, for the card's expandable checks footer. `summary`
- *  is the check-run's output markdown, fetched only for FAILING runs (the ones
- *  worth reading) via `GET_CHECK_RUN`; null otherwise. */
-export type PrCheck = {
-  name: string;
-  status: string;
-  conclusion: string | null;
-  detailsUrl: string | null;
-  summary: string | null;
-};
-
-type PrLiveState = {
-  title: string | null;
-  body: string | null;
-  state: "open" | "closed" | null;
-  draft: boolean | null;
-  merged: boolean | null;
-  /** GitHub's `mergeable`: false = conflicts with base, true = clean, null =
-   *  not computed yet / unknown. */
-  mergeable: boolean | null;
-  checksStatus: ChecksStatus;
-  checks: PrCheck[];
-  previewUrl: string | null;
-};
-
-/** The live fields before GitHub has answered — also what the card cache serves
- *  as its placeholder while the real read runs. */
-const NO_LIVE_STATE: PrLiveState = {
-  title: null,
-  body: null,
-  state: null,
-  draft: null,
-  merged: null,
-  mergeable: null,
-  checksStatus: null,
-  checks: [],
-  previewUrl: null,
-};
-
 /** Whether `url`'s HOST is a known preview-deploy host — a strict hostname
- *  check, NOT a substring match. The preview is lifted from PR comments,
- *  which external contributors can write, and the result is shown as a
- *  trusted "Open preview" button AND handed to the autonomous QA reviewer to
+ *  check, NOT a substring match. The preview is lifted from comments, which
+ *  external contributors can write, and the result is shown as a trusted
+ *  "Open preview" button AND handed to the autonomous QA reviewer to
  *  navigate. So a decoy like `https://evil.example.com/x?y=.decocdn.com` must
  *  be rejected. Exported for the unit test. */
 export function isTrustedPreviewHost(url: string): boolean {
@@ -371,95 +173,64 @@ export function isTrustedPreviewHost(url: string): boolean {
   );
 }
 
-/** Pull the preview URL out of a combined-status response's `statuses[]` (a
- *  status whose `target_url` is a trusted preview host). Kept as a cheap
- *  fallback — most providers post the preview in a comment, not a status, so
- *  this usually finds nothing. `null` when none is posted. */
-export function extractPreviewUrl(
-  obj: Record<string, unknown> | null,
-): string | null {
-  if (!obj || !Array.isArray(obj.statuses)) return null;
-  const previews = obj.statuses
-    .map((s) =>
-      s && typeof s === "object"
-        ? (s as { target_url?: unknown; state?: unknown })
-        : null,
-    )
-    .filter(
-      (s): s is { target_url: string; state?: unknown } =>
-        !!s &&
-        typeof s.target_url === "string" &&
-        isTrustedPreviewHost(s.target_url),
-    );
-  if (previews.length === 0) return null;
-  return (
-    previews.find((s) => s.state === "success")?.target_url ??
-    previews[0]!.target_url
-  );
-}
-
 /** deco's Cloudflare account subdomain — the middle label of every
  *  `*.workers.dev` preview host these sites deploy to.
  *  ponytail: hardcoded; make it configurable if sites land in another account. */
 const WORKERS_DEV_SUBDOMAIN = "deco-cx";
 
-export function extractPreviewUrlFromCheckRuns(raw: unknown): string | null {
-  const runs = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
-      ? (raw as { check_runs: unknown[] }).check_runs
-      : [];
-  for (const r of runs) {
-    if (!r || typeof r !== "object") continue;
-    const o = r as { name?: unknown; output?: { summary?: unknown } };
-    const worker =
-      typeof o.name === "string"
-        ? /^Workers Builds:\s*([a-z0-9][a-z0-9-]*)\s*$/i.exec(o.name)?.[1]
-        : null;
-    if (!worker) continue;
-    const summary = o.output?.summary;
-    if (typeof summary !== "string") continue;
-    const version = /Version ID:\s*([0-9a-f]{8})/i.exec(summary)?.[1];
-    if (!version) continue;
+/**
+ * The preview URL a CI run points at. Two shapes, both real:
+ *
+ * - Cloudflare's "Workers Builds: <worker>" run reports the deployed version
+ *   in its own summary, which is exact and present even when its comment omits
+ *   the preview column;
+ * - every other provider just links the deploy from the run (a check run's
+ *   details URL, a commit status's target URL).
+ *
+ * Exported for the pure-logic unit test.
+ */
+export function previewUrlFromChecks(runs: CheckRun[]): string | null {
+  for (const run of runs) {
+    const worker = /^Workers Builds:\s*([a-z0-9][a-z0-9-]*)\s*$/i.exec(
+      run.name,
+    )?.[1];
+    const version = run.summary
+      ? /Version ID:\s*([0-9a-f]{8})/i.exec(run.summary)?.[1]
+      : null;
+    if (!worker || !version) continue;
     const url = `https://${version}-${worker}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`;
     if (isTrustedPreviewHost(url)) return url;
   }
-  return null;
+  // A successful run's own link, preferred over an in-flight one's.
+  const linked = runs.filter(
+    (run) => run.url !== null && isTrustedPreviewHost(run.url),
+  );
+  const success = linked.find((run) => run.conclusion === "success");
+  return success?.url ?? linked[0]?.url ?? null;
 }
 
 /**
- * Pull the preview URL out of a PR's comments — where the deploy bot
- * actually posts it. Known shapes: Cloudflare Workers'
- * `cloudflare-workers-and-pages[bot]` (a table with a "Commit Preview URL" AND a
- * "Branch Preview URL" — prefer the branch one, stable across the PR's commits),
- * deco.cx's `decobot` (a single "Visit Preview" markdown link), and Vercel's
- * `[Preview](url)` markdown link. Accepts the raw `get_comments` result (an
- * array, or `{ comments }`/`{ items }`), sorts newest-first by `updated_at`
- * (falling back to `created_at`, then array order, when absent) so a stale
- * early comment can't win over a later re-deploy. Sorting by `updated_at`
- * rather than `created_at` matters because Vercel/Cloudflare edit a single
- * sticky comment in place on each push — `created_at` stays frozen at the
- * comment's first post, so ranking by it could let an unrelated LATER human
- * comment (that happens to mention a matching host) outrank the bot's
- * freshly-edited one. Scans each body; `null` when none is found. Exported
- * for the pure-logic unit test.
+ * Pull the preview URL out of the change request's comments — where the deploy
+ * bot actually posts it. Known shapes: Cloudflare Workers'
+ * `cloudflare-workers-and-pages[bot]` (a table with a "Commit Preview URL" AND
+ * a "Branch Preview URL" — prefer the branch one, stable across the change
+ * request's commits), deco.cx's `decobot` (a single "Visit Preview" markdown
+ * link), and Vercel's `[Preview](url)` markdown link.
+ *
+ * Sorted newest-first by `updatedAt` (falling back to `createdAt`, then array
+ * order), so a stale early comment can't win over a later re-deploy. By
+ * `updatedAt` rather than `createdAt` because Vercel and Cloudflare edit ONE
+ * sticky comment in place on each push: `createdAt` stays frozen at its first
+ * post, so ranking by it could let an unrelated later human comment (that
+ * happens to mention a matching host) outrank the bot's freshly edited one.
+ * Exported for the pure-logic unit test.
  */
-export function extractPreviewUrlFromComments(raw: unknown): string | null {
-  const list = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { comments?: unknown })?.comments)
-      ? (raw as { comments: unknown[] }).comments
-      : Array.isArray((raw as { items?: unknown })?.items)
-        ? (raw as { items: unknown[] }).items
-        : [];
-  const recency = (c: unknown): number => {
-    const obj = c as { updated_at?: unknown; created_at?: unknown };
-    return (
-      Date.parse(obj?.updated_at as string) ||
-      Date.parse(obj?.created_at as string)
-    );
-  };
-  const sorted = list
+export function previewUrlFromComments(
+  comments: { body: string; createdAt?: string; updatedAt?: string }[],
+): string | null {
+  const recency = (c: { createdAt?: string; updatedAt?: string }): number =>
+    Date.parse(c.updatedAt ?? "") || Date.parse(c.createdAt ?? "");
+  const sorted = comments
     .map((c, index) => ({ c, index }))
     .sort((a, b) => {
       const aTime = recency(a.c);
@@ -468,14 +239,11 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
       return bTime - aTime;
     })
     .map(({ c }) => c);
-  for (const c of sorted) {
-    const body =
-      c && typeof (c as { body?: unknown }).body === "string"
-        ? (c as { body: string }).body
-        : "";
+  for (const comment of sorted) {
+    const body = comment.body;
     if (!body) continue;
     // Cloudflare's comment carries both a per-commit and a per-branch preview —
-    // prefer the branch URL, which stays valid as the PR gets new commits.
+    // prefer the branch URL, which stays valid as the branch gets new commits.
     const branch = body.match(/href=['"]([^'"]+)['"][^>]*>\s*Branch Preview/i);
     if (branch?.[1] && isTrustedPreviewHost(branch[1])) return branch[1];
     const url = (body.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find((u) =>
@@ -486,620 +254,252 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
   return null;
 }
 
-/** Pull the preview URL out of a `GET_PREVIEW_DEPLOYMENT` result — the newest
- *  successful GitHub Deployment status's `environmentUrl`, gated through the
- *  same trusted-host check as the other two sources. Some hosts (VTEX FastStore
- *  WebOps) publish the preview ONLY as a deployment — not a status `target_url`
- *  and not a bot comment — so this is the third and last source tried. `null`
- *  when the commit has no deployment with a published url yet (an in-flight
- *  deploy) or the url isn't a trusted host. Exported for the pure-logic unit
- *  test. */
-export function extractPreviewUrlFromDeployment(
-  obj: Record<string, unknown> | null,
-): string | null {
-  const url =
-    obj && typeof obj.environmentUrl === "string" ? obj.environmentUrl : null;
-  return url && isTrustedPreviewHost(url) ? url : null;
-}
-
 /** A git commit sha, validated 7–40 hex — also what keeps a malformed value
- *  from reaching the GitHub query the deployment lookup builds from it. */
-function asHeadSha(sha: unknown): string | null {
+ *  from reaching the deployment lookup built from it. */
+export function asHeadSha(sha: unknown): string | null {
   return typeof sha === "string" && /^[0-9a-fA-F]{7,40}$/.test(sha)
     ? sha
     : null;
 }
 
-/** The PR head commit sha from a `pull_request_read get` response's `head.sha`
- *  — the documented, stable source (present regardless of CI), preferred over
- *  {@link headShaFromStatus}. `null` when absent or not a hex sha. Exported for
- *  the pure-logic unit test. */
-export function headShaFromPrGet(
-  obj: Record<string, unknown> | null,
-): string | null {
-  const head = obj?.head as { sha?: unknown } | undefined;
-  return asHeadSha(head?.sha);
-}
+/** One linked change request, as the card renders it. */
+type PrLiveState = {
+  title: string | null;
+  body: string | null;
+  state: "open" | "closed" | null;
+  draft: boolean | null;
+  merged: boolean | null;
+  /** false = conflicts with base, true = clean, null = not computed yet. */
+  mergeable: boolean | null;
+  checksStatus: ChecksSummary;
+  checks: PrCheck[];
+  previewUrl: string | null;
+};
 
-/** The PR head commit sha from a combined-status response (`get_status` returns
- *  the head commit's status, which carries its `sha`). A fallback for
- *  {@link headShaFromPrGet} when the `get` read is the one that flaked. `null`
- *  when absent or not a hex sha. Exported for the pure-logic unit test. */
-export function headShaFromStatus(
-  statusObj: Record<string, unknown> | null,
-): string | null {
-  return asHeadSha(statusObj?.sha);
-}
-
-/** Map a GitHub combined-status `state` to our three-value checks summary.
- *  A response with no statuses (`total_count === 0`) reads as "no checks",
- *  not "pending" — a PR without CI shouldn't look stuck. Exported for the
- *  pure-logic unit test. */
-export function toChecksStatus(
-  obj: Record<string, unknown> | null,
-): ChecksStatus {
-  if (!obj) return null;
-  const total = typeof obj.total_count === "number" ? obj.total_count : null;
-  if (total === 0) return null;
-  switch (obj.state) {
-    case "success":
-      return "passing";
-    case "failure":
-    case "error":
-      return "failing";
-    case "pending":
-      return "pending";
-    default:
-      return null;
-  }
-}
-
-/** Check-run conclusions that mean the run failed. */
-const FAILED_CHECK_CONCLUSIONS = new Set([
-  "failure",
-  "cancelled",
-  "timed_out",
-  "action_required",
-  "startup_failure",
-  "stale",
-]);
-
-/** Map GitHub check-runs (Checks API) to our three-value summary. Repos on
- *  GitHub Actions post check-runs, NOT legacy commit statuses (which
- *  `toChecksStatus` reads), so this is often the only signal — e.g. a deco site
- *  whose combined status is empty but whose "Deco / QA" check-run failed.
- *  Accepts the raw `get_check_runs` result (`{ check_runs }` or an array).
- *  `null` when there are no check-runs. Exported for the unit test. */
-export function toCheckRunsStatus(raw: unknown): ChecksStatus {
-  const runs = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
-      ? (raw as { check_runs: unknown[] }).check_runs
-      : [];
-  if (runs.length === 0) return null;
-  let failing = false;
-  let pending = false;
-  for (const r of runs) {
-    if (!r || typeof r !== "object") continue;
-    const status = (r as { status?: unknown }).status;
-    const conclusion = (r as { conclusion?: unknown }).conclusion;
-    if (status !== "completed") {
-      pending = true;
-    } else if (
-      typeof conclusion === "string" &&
-      FAILED_CHECK_CONCLUSIONS.has(conclusion)
-    ) {
-      failing = true;
-    }
-  }
-  if (failing) return "failing";
-  if (pending) return "pending";
-  return "passing";
-}
-
-/** Combine two checks summaries, worst-first: failing > pending > passing >
- *  null. A PR's CI can live in BOTH the legacy Status API and the Checks API
- *  (e.g. a Cloudflare deploy status + a GitHub Actions check-run), so we read
- *  both and merge. Exported for the unit test. */
-export function mergeChecksStatus(
-  a: ChecksStatus,
-  b: ChecksStatus,
-): ChecksStatus {
-  if (a === "failing" || b === "failing") return "failing";
-  if (a === "pending" || b === "pending") return "pending";
-  if (a === "passing" || b === "passing") return "passing";
-  return null;
-}
-
-type RawCheckRun = {
-  id: number | null;
+/** One CI check on the change request, for the card's expandable footer.
+ *  `summary` is the run's own report, fetched only for FAILING runs (the ones
+ *  worth reading); null otherwise. */
+export type PrCheck = {
   name: string;
   status: string;
   conclusion: string | null;
   detailsUrl: string | null;
+  summary: string | null;
 };
 
-/** Parse a `get_check_runs` result into a flat list. Exported for the test. */
-export function parseCheckRuns(raw: unknown): RawCheckRun[] {
-  const runs = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
-      ? (raw as { check_runs: unknown[] }).check_runs
-      : [];
-  const out: RawCheckRun[] = [];
-  for (const r of runs) {
-    if (!r || typeof r !== "object") continue;
-    const o = r as Record<string, unknown>;
-    out.push({
-      id: typeof o.id === "number" ? o.id : null,
-      name: typeof o.name === "string" ? o.name : "",
-      status: typeof o.status === "string" ? o.status : "completed",
-      conclusion: typeof o.conclusion === "string" ? o.conclusion : null,
-      detailsUrl:
-        typeof o.html_url === "string"
-          ? o.html_url
-          : typeof o.details_url === "string"
-            ? o.details_url
-            : null,
-    });
-  }
-  return out;
-}
+/** The live fields before the provider has answered — also what the card cache
+ *  serves as its placeholder while the real read runs. */
+const NO_LIVE_STATE: PrLiveState = {
+  title: null,
+  body: null,
+  state: null,
+  draft: null,
+  merged: null,
+  mergeable: null,
+  checksStatus: null,
+  checks: [],
+  previewUrl: null,
+};
 
-/** True when a check-run finished in a failing state. */
-function isFailingRun(r: RawCheckRun): boolean {
-  return (
-    r.status === "completed" &&
-    r.conclusion != null &&
-    FAILED_CHECK_CONCLUSIONS.has(r.conclusion)
-  );
-}
-
-/** Fetch a check-run's output markdown via the github MCP `GET_CHECK_RUN` tool
- *  (the list tool omits `output`). Best-effort: null on any failure. */
-async function fetchCheckRunSummary(
-  getClient: GetPrClient,
-  connectionId: string,
-  pr: TaskBoardItemPrRef,
-  checkRunId: number,
-  pending: Promise<void>[],
-): Promise<string | null> {
-  const obj = await cachedPrRead(
-    getClient,
-    connectionId,
-    "GET_CHECK_RUN",
-    { owner: pr.repoOwner, repo: pr.repoName, checkRunId },
-    `${prLabel(pr)} check-run ${checkRunId}`,
-    pending,
-  );
-  const output = obj?.output as
-    | { summary?: unknown; text?: unknown }
-    | undefined;
-  const summary = typeof output?.summary === "string" ? output.summary : null;
-  const text = typeof output?.text === "string" ? output.text : null;
-  return summary ?? text ?? null;
-}
-
-/** Just the PR's checks summary (combined status ∪ check-runs) — used to gate
- *  the merge (don't ship on red/pending CI). Best-effort: null when it can't be
- *  determined (which does NOT block the merge — only a definite failing/pending
- *  does). */
-export async function fetchPrChecksStatus(
-  ctx: StudioContext,
-  orgId: string,
-  pr: TaskBoardItemPrRef,
-): Promise<ChecksStatus> {
-  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
-    owner: pr.repoOwner,
-    name: pr.repoName,
-  });
-  if (!conn) return null;
-  const client = await clientFromConnection(conn, ctx, true);
-  const read = async (method: "get_status" | "get_check_runs") =>
-    toolResultJson(
-      await client.callTool(
-        {
-          name: "pull_request_read",
-          arguments: {
-            method,
-            owner: pr.repoOwner,
-            repo: pr.repoName,
-            pullNumber: pr.number,
-          },
-        },
-        undefined,
-        { timeout: PR_FETCH_TIMEOUT_MS },
-      ),
-    );
-  try {
-    let status: ChecksStatus = null;
-    try {
-      status = toChecksStatus(await read("get_status"));
-    } catch {
-      // best-effort
-    }
-    try {
-      status = mergeChecksStatus(
-        status,
-        toCheckRunsStatus(await read("get_check_runs")),
-      );
-    } catch {
-      // best-effort
-    }
-    return status;
-  } finally {
-    await client.close().catch(() => {});
-  }
-}
-
-/** Map a `pull_request_read get` response to whether the PR conflicts with its
- *  base branch. `true` = conflicts; `false` = mergeable, OR the PR is not open
- *  (a merged/closed PR reports no mergeability but is never "conflicting");
- *  `null` = GitHub hasn't computed mergeability yet (it's async) or the read
- *  gave nothing — an unknown must NEVER read as a conflict, so the caller only
- *  acts on an explicit `true`. Pure — unit-tested; the single home for the
- *  mergeability polarity, so the two callers can't drift.
+/**
+ * The card's `state`/`merged` pair, from the neutral three-value state.
  *
- *  `mergeable_state` is the field that actually arrives: `pull_request_read`
- *  returns github-mcp's `MinimalPullRequest`, which has no `mergeable`. Reading
- *  only that boolean yielded `null` for every PR ever, so the conflict
- *  auto-resolution it gates never fired once in production — zero
- *  `merge_conflict_resolution` rows across every org, while an approved,
- *  conflicting PR retried the same 405 every five minutes for two days. The
- *  boolean is still read first: a non-minimal response (a direct GitHub
- *  payload, a different MCP server) carries it and it is the richer signal.
- *
- *  Of the `mergeable_state` values only `dirty` means conflicts; `unknown`/`""`
- *  is GitHub still computing, and the rest (`blocked`, `behind`, `unstable`, …)
- *  are for the checks gate to judge, not this. */
-export function conflictFromPrGet(
-  obj: Record<string, unknown> | null,
-): boolean | null {
-  if (!obj) return null;
-  if (obj.state !== "open") return false;
-  if (typeof obj.mergeable === "boolean") return !obj.mergeable;
-  const state = obj.mergeable_state;
-  if (typeof state !== "string" || state === "" || state === "unknown") {
-    return null;
-  }
-  return state === "dirty";
+ * The wire shape keeps them separate because `merged` alone cannot answer
+ * `cardWorkLanded`: a closed-unmerged change request and an open one both
+ * report false, and only the first is settled.
+ */
+export function cardLifecycle(state: ChangeRequest["state"]): {
+  state: "open" | "closed" | null;
+  merged: boolean;
+} {
+  if (state === "merged") return { state: "closed", merged: true };
+  return { state, merged: false };
 }
 
-/** Whether the PR conflicts with its base branch — the definite "can't merge"
- *  signal used to gate conflict auto-resolution. Reads the same `get` the
- *  live-state fetch uses; best-effort (null on any failure). */
-export async function fetchPrConflict(
-  ctx: StudioContext,
-  orgId: string,
+/** The card's per-check rows, with a report only where one is worth reading. */
+async function checkRows(
+  client: ChangeRequestClient,
+  namespace: string,
   pr: TaskBoardItemPrRef,
-): Promise<boolean | null> {
-  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
-    owner: pr.repoOwner,
-    name: pr.repoName,
-  });
-  if (!conn) return null;
-  const client = await clientFromConnection(conn, ctx, true);
-  try {
-    return conflictFromPrGet(
-      toolResultJson(
-        await client.callTool(
-          {
-            name: "pull_request_read",
-            arguments: {
-              method: "get",
-              owner: pr.repoOwner,
-              repo: pr.repoName,
-              pullNumber: pr.number,
-            },
-          },
-          undefined,
-          { timeout: PR_FETCH_TIMEOUT_MS },
-        ),
-      ),
-    );
-  } catch {
-    return null;
-  } finally {
-    await client.close().catch(() => {});
-  }
-}
-
-/** Fetch the PR's live CI + preview extras via the GitHub MCP
- *  `pull_request_read` tool: the combined Status API AND the Checks API (repos
- *  differ in which they post to), merged into one checks summary, plus the deco
- *  deploy preview URL. Best-effort: any failure yields nulls. */
-async function fetchPrStatusExtras(
-  getClient: GetPrClient,
-  connectionId: string,
-  pr: TaskBoardItemPrRef,
-  pending: Promise<void>[],
-  prGet: Promise<Record<string, unknown> | null>,
-): Promise<{
-  checksStatus: ChecksStatus;
-  checks: PrCheck[];
-  previewUrl: string | null;
-}> {
-  const read = (method: "get_status" | "get_check_runs" | "get_comments") =>
-    cachedPrRead(
-      getClient,
-      connectionId,
-      "pull_request_read",
-      {
-        method,
-        owner: pr.repoOwner,
-        repo: pr.repoName,
-        pullNumber: pr.number,
-      },
-      `${prLabel(pr)} (${method})`,
-      pending,
-    );
-  // The three reads are independent — run them CONCURRENTLY. Serial was the
-  // slowness (each is a remote MCP → GitHub round-trip, ~1.5-2s; the card made
-  // 4-5 of them in a row).
-  const [statusObj, runsRaw, commentsRaw] = await Promise.all([
-    read("get_status"),
-    read("get_check_runs"),
-    read("get_comments"),
-  ]);
-  // Combined Status API ∪ Checks API → one summary.
-  const checksStatus = mergeChecksStatus(
-    toChecksStatus(statusObj),
-    toCheckRunsStatus(runsRaw),
-  );
-  // Preview: the Workers Builds version (exact, and present even when
-  // Cloudflare's PR comment omits its Preview URL column), else a status
-  // `target_url` (rare), else the deploy bot's PR comment.
-  let previewUrl =
-    extractPreviewUrlFromCheckRuns(runsRaw) ??
-    extractPreviewUrl(statusObj) ??
-    extractPreviewUrlFromComments(commentsRaw);
-  // TODO(e2e): cover the miss-path gate + head-sha threading below (only the pure extractors are unit-tested).
-  if (!previewUrl) {
-    // Last resort: a GitHub Deployment env url (VTEX FastStore posts it only there), scanned only on the miss path once the head sha is known.
-    const headSha =
-      headShaFromPrGet(await prGet) ?? headShaFromStatus(statusObj);
-    if (headSha) {
-      previewUrl = extractPreviewUrlFromDeployment(
-        await cachedPrRead(
-          getClient,
-          connectionId,
-          "GET_PREVIEW_DEPLOYMENT",
-          { owner: pr.repoOwner, repo: pr.repoName, sha: headSha },
-          `${prLabel(pr)} (deployment preview)`,
-          pending,
-        ),
-      );
-    }
-  }
-  // Per-check list for the footer; pull the output markdown only for failing
-  // runs (bounded, in parallel).
-  const checks = await Promise.all(
-    parseCheckRuns(runsRaw).map(
-      async (r): Promise<PrCheck> => ({
-        name: r.name,
-        status: r.status,
-        conclusion: r.conclusion,
-        detailsUrl: r.detailsUrl,
+  runs: CheckRun[],
+): Promise<PrCheck[]> {
+  const failing = (run: CheckRun) =>
+    run.state === "completed" &&
+    run.conclusion !== null &&
+    run.conclusion !== "success" &&
+    run.conclusion !== "skipped" &&
+    run.conclusion !== "neutral";
+  return await Promise.all(
+    runs.map(
+      async (run): Promise<PrCheck> => ({
+        name: run.name,
+        status: run.state,
+        conclusion: run.conclusion,
+        detailsUrl: run.url,
         summary:
-          isFailingRun(r) && r.id != null
-            ? await fetchCheckRunSummary(
-                getClient,
-                connectionId,
-                pr,
-                r.id,
-                pending,
+          run.summary ??
+          (failing(run) && run.id !== null
+            ? await cachedRead(
+                namespace,
+                `check-log:${run.id}`,
+                `${prLabel(pr)} check ${run.id}`,
+                () => client.readCheckLog(run.id as string),
               )
-            : null,
+            : null),
       }),
     ),
   );
-  return { checksStatus, checks, previewUrl };
 }
 
-/** Fetch a PR's live state via the GitHub MCP `pull_request_read` tool.
- *  Best-effort: any failure yields nulls so the modal still shows the link. */
 /**
- * Is there a PR to dispatch a reviewer at? A PR we positively know is closed or
- * merged is done with; anything else — open, or unknown because GitHub was quiet
- * — is a candidate.
+ * Everything the card shows for one linked change request. Best-effort: any
+ * failure yields nulls so the modal still shows the link.
  *
- * Check status does NOT gate this: the reviewer runs WITHOUT waiting for CI. It
- * reads the diff and exercises the deploy preview, so we start it as soon as
- * there's a PR rather than sitting on a slow or stuck check. Shipping stays safe — the MERGE is gated on green checks
- * separately (`mergeLinkedPr` → `fetchPrChecksStatus`), so nothing merges on red
- * no matter what a reviewer decided.
- *
- * `fetchPrLiveState` is best-effort: every field comes back `null` when the
- * GitHub call fails, which must read as "we could not ask", not "no PR" — a
- * version that required `state === "open"` answered "not ready" for EVERY card
- * the moment GitHub went quiet and silently froze dispatch. Shared with
- * `review-sweeper.ts` so both dispatch paths agree on when a PR is reviewable.
+ * ONE detailed read covers the lifecycle, the mergeability, every CI run and
+ * every comment — where the MCP path made four to six calls whose answers
+ * described four to six different moments. The deployment lookup is the only
+ * extra, and only on the miss path.
  */
-export const prReadyForReview = (
-  prs: {
-    state: string | null;
-    merged: boolean | null;
-  }[],
-): boolean => reviewCandidates(prs).length > 0;
-
-/** The PRs a reviewer would be dispatched at: a PR is a candidate unless we
- *  positively know it's finished with. One definition, so the readiness gate and
- *  the preview-freshness gate below can't disagree about which PR is in play. */
-const reviewCandidates = <
-  T extends { state: string | null; merged: boolean | null },
->(
-  prs: T[],
-): T[] => prs.filter((p) => p.state !== "closed" && p.merged !== true);
-
-/**
- * Does the deploy preview show the PR's HEAD commit? Pure — unit-tested.
- *
- * Only a definite `failing`/`pending` holds QA back. Everything else — no CI
- * configured, GitHub unreadable, or a field a mid-deploy DBOS replay recorded
- * before it existed — is trusted, the same way every other read here treats "we
- * could not ask" as "do not block".
- *
- * It matters because a preview URL outlives the build that produced it. The URL
- * is lifted from a commit status or the deploy bot's PR comment, and the
- * hostname is per-PR (`pr336-<site>.workers.dev`), not per-commit — so when a
- * deploy fails, that URL keeps serving the last build that SUCCEEDED, with a
- * cheerful 200. QA then exercises code the author didn't write, finds the
- * behaviour absent, and requests changes. The verdict looks exactly like a real
- * one, and the Super Agent cannot fix it by changing the code.
- *
- * That is not hypothetical: a site's Workers build broke account-wide for
- * everything after 16:30 one afternoon, and six cards were on course to spend a
- * second five-bounce budget being rejected against the previous night's bytes.
- *
- * Checks are the signal because GitHub attaches them to a COMMIT: head's deploy
- * being green is what makes the preview head's.
- */
-export function previewMatchesHead(
-  prs: {
-    state: string | null;
-    merged: boolean | null;
-    checksStatus: ChecksStatus;
-  }[],
-): boolean {
-  return reviewCandidates(prs).every(
-    (p) => p.checksStatus !== "failing" && p.checksStatus !== "pending",
-  );
-}
-
 async function fetchPrLiveState(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
 ): Promise<PrLiveState> {
-  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
-    owner: pr.repoOwner,
-    name: pr.repoName,
-  });
-  if (!conn) return NO_LIVE_STATE;
-  const { get: getClient, closeWhenIdle } = lazyPrClient(conn, ctx);
-  // Background revalidations started by the read cache below run on the client,
-  // so it may not be closed until they settle — see the `finally`.
-  const pending: Promise<void>[] = [];
-  try {
-    // Fetch the PR's basic state AND its checks/preview extras CONCURRENTLY.
-    // An open PR (the common case in the review dialog) is fully populated in a
-    // single round-trip window instead of ~5 serial hops; a merged/closed PR
-    // wastes the extras, but that's rare here and best-effort.
-    // One `get`, shared: it populates the PR fields and feeds the deployment preview its head sha (stable, unlike the flakier `get_status`).
-    const prGet = cachedPrRead(
-      getClient,
-      conn.id,
-      "pull_request_read",
-      {
-        method: "get",
-        owner: pr.repoOwner,
-        repo: pr.repoName,
-        pullNumber: pr.number,
-      },
-      `${prLabel(pr)} (get)`,
-      pending,
-    );
-    const [obj, extras] = await Promise.all([
-      prGet,
-      fetchPrStatusExtras(getClient, conn.id, pr, pending, prGet),
-    ]);
-    if (!obj) return NO_LIVE_STATE;
-    const rawState = obj.state;
-    const isOpen = rawState === "open";
-    const conflict = conflictFromPrGet(obj);
+  const client = await clientFor(ctx, orgId, pr);
+  if (!client) return NO_LIVE_STATE;
+  const namespace = readNamespace(pr);
+  const detail = await cachedRead<ChangeRequestDetail | null>(
+    namespace,
+    `detail:${pr.number}`,
+    prLabel(pr),
+    () => client.readDetailed({ number: pr.number }),
+  );
+  if (!detail) return NO_LIVE_STATE;
+
+  const { state, merged } = cardLifecycle(detail.state);
+  const isOpen = state === "open";
+  if (!isOpen) {
     return {
-      title: typeof obj.title === "string" ? obj.title : null,
-      body: typeof obj.body === "string" ? obj.body : null,
-      state: rawState === "closed" ? "closed" : isOpen ? "open" : null,
-      draft: typeof obj.draft === "boolean" ? obj.draft : null,
-      merged: typeof obj.merged === "boolean" ? obj.merged : null,
-      // Same reducer as the auto-resolution gate, so the two can't drift.
-      mergeable: isOpen && conflict !== null ? !conflict : null,
-      // Checks/preview only mean something for an open PR.
-      checksStatus: isOpen ? extras.checksStatus : null,
-      checks: isOpen ? extras.checks : [],
-      previewUrl: isOpen ? extras.previewUrl : null,
+      ...NO_LIVE_STATE,
+      title: detail.title,
+      body: detail.body,
+      state,
+      draft: detail.draft,
+      merged,
     };
-  } catch {
-    return NO_LIVE_STATE;
-  } finally {
-    closeWhenIdle(pending);
   }
+
+  let previewUrl =
+    previewUrlFromChecks(detail.checkRuns) ??
+    previewUrlFromComments(detail.comments);
+  if (!previewUrl) {
+    /**
+     * Last resort: a deployment's own environment URL. Some hosts (VTEX
+     * FastStore WebOps) publish the preview ONLY there — not as a run's link
+     * and not as a bot comment — so it is the third and last source tried,
+     * and only once the head sha is known.
+     */
+    const headSha = asHeadSha(detail.headSha);
+    const deployed = headSha
+      ? await cachedRead<string | null>(
+          namespace,
+          `deployed:${headSha}`,
+          `${prLabel(pr)} (deployment preview)`,
+          () => client.readDeployedUrl(headSha),
+        )
+      : null;
+    previewUrl = deployed && isTrustedPreviewHost(deployed) ? deployed : null;
+  }
+
+  return {
+    title: detail.title,
+    body: detail.body,
+    state,
+    draft: detail.draft,
+    merged,
+    // Same field the conflict gate reads, so the two can't drift.
+    mergeable: detail.conflicting === null ? null : !detail.conflicting,
+    checksStatus: detail.checks,
+    checks: await checkRows(client, namespace, pr, detail.checkRuns),
+    previewUrl,
+  };
 }
 
 /**
- * ONE `pull_request_read get`, the whole call. Deliberately NOT
- * `fetchPrLiveState`, which also fetches checks/preview extras (~5 calls per
- * PR): the sweeps read every candidate PR in one go, and that multiplier is
- * exactly what took out the GitHub App's rate limit once already (see
- * `review-sweeper.ts`).
+ * ONE cheap read, the whole call. Deliberately NOT the detailed one, which
+ * also fetches every CI run and comment: the sweeps read every candidate in
+ * one go, and that multiplier is exactly what took out the GitHub App's rate
+ * limit once already (see `review-sweeper.ts`).
  *
  * Null on any failure, and never read as an answer by callers — an unreachable
- * GitHub means "we could not ask", not "no".
+ * provider means "we could not ask", not "no".
  */
-async function fetchPrGet(
+async function readChangeRequest(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
   label: string,
-): Promise<Record<string, unknown> | null> {
-  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
-    owner: pr.repoOwner,
-    name: pr.repoName,
-  });
-  if (!conn) return null;
-  const { get: getClient, closeWhenIdle } = lazyPrClient(conn, ctx);
-  const pending: Promise<void>[] = [];
-  try {
-    return await cachedPrRead(
-      getClient,
-      conn.id,
-      "pull_request_read",
-      {
-        method: "get",
-        owner: pr.repoOwner,
-        repo: pr.repoName,
-        pullNumber: pr.number,
-      },
-      `${prLabel(pr)} (${label})`,
-      pending,
-    );
-  } catch {
-    return null;
-  } finally {
-    closeWhenIdle(pending);
-  }
+): Promise<ChangeRequest | null> {
+  const client = await clientFor(ctx, orgId, pr);
+  if (!client) return null;
+  return cachedRead<ChangeRequest | null>(
+    readNamespace(pr),
+    `read:${pr.number}`,
+    `${prLabel(pr)} (${label})`,
+    () => client.read(pr.number),
+  );
 }
 
-/** Just "is this PR merged?", for the archive sweep. */
+/** Just the checks summary — used to gate the merge (don't ship on red or
+ *  pending CI). Best-effort: null when it can't be determined, which does NOT
+ *  block the merge — only a definite failing/pending does. */
+export async function fetchPrChecksStatus(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<ChecksSummary> {
+  const client = await clientFor(ctx, orgId, pr);
+  if (!client) return null;
+  const detail = await cachedRead<ChangeRequestDetail | null>(
+    readNamespace(pr),
+    `detail:${pr.number}`,
+    prLabel(pr),
+    () => client.readDetailed({ number: pr.number }),
+  );
+  return detail?.checks ?? null;
+}
+
+/** Whether the change request conflicts with its base branch — the definite
+ *  "can't merge" signal used to gate conflict auto-resolution. Best-effort
+ *  (null on any failure). */
+export async function fetchPrConflict(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<boolean | null> {
+  const cr = await readChangeRequest(ctx, orgId, pr, "conflict");
+  return cr?.conflicting ?? null;
+}
+
+/** Just "is this merged?", for the archive sweep. */
 export async function fetchPrLanding(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
 ): Promise<{ state: "open" | "closed" | null; merged: boolean | null }> {
-  const obj = await fetchPrGet(ctx, orgId, pr, "landing");
-  return {
-    // `merged` alone cannot answer `cardWorkLanded`: a closed-unmerged PR and an
-    // open one both report false, and only the first is settled. Both fields
-    // come off the one `get` this already pays for.
-    state:
-      obj?.state === "closed"
-        ? "closed"
-        : obj?.state === "open"
-          ? "open"
-          : null,
-    merged: typeof obj?.merged === "boolean" ? obj.merged : null,
-  };
+  const cr = await readChangeRequest(ctx, orgId, pr, "landing");
+  if (!cr) return { state: null, merged: null };
+  return cardLifecycle(cr.state);
 }
 
 /**
- * Exactly what `prReadyForReview` reads, and nothing else.
+ * Exactly what {@link prReadyForReview} reads, and nothing else.
  *
- * The review sweep used to call `fetchPrLiveState` here — four GitHub calls per
- * PR plus one per failing check — for two booleans. It has cost that since
- * before the check gate was dropped from the dispatch decision, and a red PR
- * parked In Review is swept forever, so it paid the per-failure summaries on
- * every pass in perpetuity.
+ * The review sweep used to call the detailed read here — four provider calls
+ * per change request plus one per failing check — for two booleans. It paid
+ * that since before the check gate was dropped from the dispatch decision, and
+ * a red one parked In Review is swept forever, so it paid the per-failure
+ * reports on every pass in perpetuity.
  */
 export async function fetchPrCandidateState(
   ctx: StudioContext,
@@ -1108,78 +508,150 @@ export async function fetchPrCandidateState(
 ): Promise<{
   state: "open" | "closed" | null;
   merged: boolean | null;
-  checksStatus: ChecksStatus;
+  checksStatus: ChecksSummary;
   conflict: boolean | null;
 }> {
-  const obj = await fetchPrGet(ctx, orgId, pr, "candidate");
+  const cr = await readChangeRequest(ctx, orgId, pr, "candidate");
+  if (!cr) {
+    return { state: null, merged: null, checksStatus: null, conflict: null };
+  }
   return {
-    state:
-      obj?.state === "closed"
-        ? "closed"
-        : obj?.state === "open"
-          ? "open"
-          : null,
-    merged: typeof obj?.merged === "boolean" ? obj.merged : null,
-    checksStatus: checksFromMergeableState(obj?.mergeable_state),
-    // Rides the same `get` — the sweep's conflict signal costs nothing extra.
-    conflict: conflictFromPrGet(obj),
+    ...cardLifecycle(cr.state),
+    // Both ride the same read — the sweep's CI and conflict signals cost nothing extra.
+    checksStatus: cr.checks,
+    conflict: cr.conflicting,
   };
 }
 
 /**
- * GitHub's `mergeable_state`, read as a checks summary. Pure — unit-tested.
+ * The head branch name, or null when the provider can't be reached.
  *
- * It exists so the SWEEP can tell whether head's checks are green without
- * paying for the two check reads `fetchPrStatusExtras` makes. `mergeable_state`
- * rides along on the `get` the sweep already does, and this sweep's GitHub
- * budget is not notional — a per-card multiplier here is what held the App's
- * rate limit shut for 17 hours once (see `review-sweeper.ts`).
- *
- * Only the two unambiguous values are mapped. `blocked` is deliberately NOT
- * `pending`: it also covers a missing required review, which says nothing about
- * CI, and reading it as a red check would hold QA back on a PR whose deploy is
- * perfectly fine. Everything else — `dirty` (a conflict), `behind`, `unknown`,
- * absent — says nothing about checks and answers `null`.
+ * Read live rather than stored on the row deliberately: `task_board_item_prs`
+ * is written from three places (the provider tool hook, a bash-output scan,
+ * and the sweeper's closing-message scan) and only one of them ever knows the
+ * branch. The provider always does. Null is a first-class answer — the caller
+ * falls back to today's fresh-branch behaviour rather than guessing a ref and
+ * pushing work somewhere nobody is looking.
  */
-export function checksFromMergeableState(state: unknown): ChecksStatus {
-  if (state === "clean") return "passing";
-  if (state === "unstable") return "failing";
-  return null;
+export async function fetchPrHeadRef(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<string | null> {
+  const cr = await readChangeRequest(ctx, orgId, pr, "head ref");
+  /**
+   * Only an OPEN change request's branch is worth reusing: pushing to a merged
+   * or closed one's branch updates nothing anyone will look at, and the
+   * re-run's work would be invisible.
+   */
+  if (!cr || cr.state !== "open") return null;
+  return cr.head.length > 0 ? cr.head : null;
 }
 
 /**
- * Index of the PR the automation should act on, given each linked PR's live
- * state in `listPrs` order (newest first): the newest one not definitively
- * closed, falling back to the newest.
+ * Is there a change request to dispatch a reviewer at? One we positively know
+ * is closed or merged is done with; anything else — open, or unknown because
+ * the provider was quiet — is a candidate.
  *
- * `null` (GitHub unreadable) counts as usable — a blip must not silently
- * redirect a merge to an older PR. `states` may be shorter than the PR list,
+ * Check status does NOT gate this: the reviewer runs WITHOUT waiting for CI.
+ * It reads the diff and exercises the deploy preview, so we start it as soon
+ * as there is something to review rather than sitting on a slow or stuck
+ * check. Shipping stays safe — the MERGE is gated on green checks separately
+ * (`mergeLinkedPr` → `fetchPrChecksStatus`), so nothing merges on red no
+ * matter what a reviewer decided.
+ *
+ * The live read is best-effort: every field comes back `null` when the
+ * provider call fails, which must read as "we could not ask", not "nothing
+ * there" — a version that required `state === "open"` answered "not ready" for
+ * EVERY card the moment GitHub went quiet and silently froze dispatch. Shared
+ * with `review-sweeper.ts` so both dispatch paths agree.
+ */
+export const prReadyForReview = (
+  prs: {
+    state: string | null;
+    merged: boolean | null;
+  }[],
+): boolean => reviewCandidates(prs).length > 0;
+
+/** The change requests a reviewer would be dispatched at: one is a candidate
+ *  unless we positively know it's finished with. One definition, so the
+ *  readiness gate and the preview-freshness gate below can't disagree about
+ *  which one is in play. */
+const reviewCandidates = <
+  T extends { state: string | null; merged: boolean | null },
+>(
+  prs: T[],
+): T[] => prs.filter((p) => p.state !== "closed" && p.merged !== true);
+
+/**
+ * Does the deploy preview show the head commit? Pure — unit-tested.
+ *
+ * Only a definite `failing`/`pending` holds QA back. Everything else — no CI
+ * configured, the provider unreadable, or a field a mid-deploy DBOS replay
+ * recorded before it existed — is trusted, the same way every other read here
+ * treats "we could not ask" as "do not block".
+ *
+ * It matters because a preview URL outlives the build that produced it. The
+ * URL is lifted from a CI run or the deploy bot's comment, and the hostname is
+ * per-change-request (`pr336-<site>.workers.dev`), not per-commit — so when a
+ * deploy fails, that URL keeps serving the last build that SUCCEEDED, with a
+ * cheerful 200. QA then exercises code the author didn't write, finds the
+ * behaviour absent, and requests changes. The verdict looks exactly like a
+ * real one, and the Super Agent cannot fix it by changing the code.
+ *
+ * That is not hypothetical: a site's Workers build broke account-wide for
+ * everything after 16:30 one afternoon, and six cards were on course to spend
+ * a second five-bounce budget being rejected against the previous night's
+ * bytes.
+ *
+ * Checks are the signal because both providers attach them to a COMMIT: head's
+ * deploy being green is what makes the preview head's.
+ */
+export function previewMatchesHead(
+  prs: {
+    state: string | null;
+    merged: boolean | null;
+    checksStatus: ChecksSummary;
+  }[],
+): boolean {
+  return reviewCandidates(prs).every(
+    (p) => p.checksStatus !== "failing" && p.checksStatus !== "pending",
+  );
+}
+
+/**
+ * Index of the change request the automation should act on, given each linked
+ * one's live state in `listPrs` order (newest first): the newest not
+ * definitively closed, falling back to the newest.
+ *
+ * `null` (the provider unreadable) counts as usable — a blip must not silently
+ * redirect a merge to an older one. `states` may be shorter than the list,
  * since {@link pickActivePr} stops reading at the first usable one.
  */
 export function pickActivePrIndex(
   states: readonly ("open" | "closed" | null)[],
 ): number {
   const i = states.findIndex((state) => state !== "closed");
-  // Every PR read closed — the newest is still the best guess, and the merged
+  // Every one read closed — the newest is still the best guess, and the merged
   // ones are handled by the reconcile-to-Done path.
   return i === -1 ? 0 : i;
 }
 
 /**
- * Which of a task's linked PRs the automation should act on.
+ * Which of a task's linked change requests the automation should act on.
  *
  * `listPrs` is newest-first, and taking `[0]` blindly is wrong once a task has
- * more than one PR — a bounce that opens a fresh PR instead of pushing to the
+ * more than one — a bounce that opens a fresh one instead of pushing to the
  * reviewed one leaves the newest link pointing at an abandoned branch, so the
  * merge gate reads ITS red checks and reports `checks_failing` forever while
- * the approved, green PR sits unmerged.
+ * the approved, green one sits unmerged.
  *
  * `ctx` is unused here on purpose — kept so callers don't need a special case
  * — the read goes through `readPrStateThrottled`, the same rate-limited DBOS
  * queue the review sweep's own candidate pass uses. This runs on every merge
  * attempt and every review decision, not just the sweep's own timer tick, so
- * calling `fetchPrCandidateState` straight at GitHub here would reopen the
- * exact unbounded-reads problem the queue exists to cap.
+ * calling `fetchPrCandidateState` straight at the provider here would reopen
+ * the exact unbounded-reads problem the queue exists to cap.
  */
 export async function pickActivePr(
   _ctx: StudioContext,
@@ -1191,8 +663,10 @@ export async function pickActivePr(
   for (const pr of prs) {
     const { state } = await readPrStateThrottled(orgId, pr);
     states.push(state);
-    // Stop at the first usable PR: the common case is one extra read, not one
-    // per link, which is what the GitHub rate limit cares about.
+    /**
+     * Stop at the first usable one: the common case is one extra read, not one
+     * per link, which is what a provider's rate limit cares about.
+     */
     if (state !== "closed") break;
   }
   return prs[pickActivePrIndex(states)];
@@ -1201,16 +675,17 @@ export async function pickActivePr(
 export const TASK_BOARD_ITEM_PRS_GET = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:
-    "Get the GitHub pull requests linked to a task board item, each enriched " +
-    "with live state (title, open/closed, draft, merged) fetched from GitHub.",
+    "Get the change requests (GitHub pull requests, GitLab merge requests) " +
+    "linked to a task board item, each enriched with live state (title, " +
+    "open/closed, draft, merged) fetched from its provider.",
   annotations: {
     title: "Get Task Board Item Pull Requests",
     // Not read-only: as a side effect it moves a task to Done when it observes a
-    // merged PR (see the reconcile below). Idempotent — converges to Done.
+    // merge (see the reconcile below). Idempotent — converges to Done.
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    // Reaches out to GitHub for live PR state.
+    // Reaches out to the provider for live state.
     openWorldHint: true,
   },
   inputSchema: z.object({ taskBoardItemId: z.string() }),
@@ -1234,7 +709,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       taskBoardItemId,
       organizationId,
     );
-    // One GitHub round-trip per linked PR, in parallel, each best-effort.
+    // One provider round-trip per linked change request, in parallel, each best-effort.
     const assemble = () =>
       Promise.all(
         linked.map(async (pr) => {
@@ -1250,17 +725,13 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
         }),
       );
 
-    // Serve the assembled card, not the raw reads it was built from. The read
-    // cache underneath still helps the sweeps, but it could not make THIS fast:
-    // it stores raw GitHub payloads, and a busy PR's `get_comments` runs past
-    // the value cap, so its put is rejected and that PR misses on every read
-    // forever. A card is a few hundred bytes, so it always stores — and one KV
-    // get replaces the four-to-six this made per PR.
-    //
-    // And on a cold card it does NOT block: the database already holds the
-    // repo, the number and the link, so that goes back immediately and GitHub's
-    // half (title, checks, preview) lands in KV for the next poll. Waiting on
-    // GitHub for what we already have was the ~2s.
+    /**
+     * Serve the assembled card, not the reads it was built from. And on a cold
+     * card it does NOT block: the database already holds the repo, the number
+     * and the link, so that goes back immediately and the provider's half
+     * (title, checks, preview) lands in KV for the next poll. Waiting on the
+     * provider for what we already have was the ~2s.
+     */
     const { value: prs, live } = await getPrCardCache().fetchOrPlaceholder({
       namespace: organizationId,
       key: taskBoardItemId,
@@ -1275,22 +746,25 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       })),
     });
 
-    // Everything below reconciles the TASK from what GitHub said about its PRs.
-    // On the placeholder we have not asked yet, and all-null does not mean
-    // "open, unmerged, no checks" — it means "unknown". Acting on it would hand
-    // a card to the reviewer, or move it to Done, on the strength of a database
-    // row. The next poll (seconds away) runs them on the real thing.
+    /**
+     * Everything below reconciles the TASK from what the provider said. On the
+     * placeholder we have not asked yet, and all-null does not mean "open,
+     * unmerged, no checks" — it means "unknown". Acting on it would hand a
+     * card to the reviewer, or move it to Done, on the strength of a database
+     * row. The next poll (seconds away) runs them on the real thing.
+     */
     if (!live) return { prs };
 
-    // Auto-hand-off to the reviewer: once the Super Agent's PR is In Review and
-    // its checks are green — OR it has no checks at all — delegate to the
-    // reviewer, if the org has it turned on. Only a pending
-    // or failing run blocks the hand-off; a PR without CI (`checksStatus ===
-    // null`) shouldn't sit in review forever. Like the merge→done reconcile
-    // below this is reconcile-on-view (no PR webhook), driven by the modal's 10s
-    // poll. Gated on assignee === Super Agent so it never fires for a human's
-    // manual review; `enqueueEnabledReviewers` is itself idempotent per reviewer
-    // per review cycle, so re-polling won't spawn duplicate reviewer runs.
+    /**
+     * Auto-hand-off to the reviewer: once the Super Agent's change request is
+     * In Review and its checks are green — OR it has none at all — delegate to
+     * the reviewer, if the org has it turned on. Only a pending or failing run
+     * blocks the hand-off. Like the merge→done reconcile below this is
+     * reconcile-on-view (no provider webhook), driven by the modal's 10s poll.
+     * Gated on assignee === Super Agent so it never fires for a human's manual
+     * review; `enqueueEnabledReviewers` is itself idempotent per reviewer per
+     * review cycle, so re-polling won't spawn duplicate reviewer runs.
+     */
     const reviewLane = LANES.review;
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
     if (
@@ -1306,27 +780,28 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       });
     }
 
-    // Auto-resolve a merge conflict on an approved PR: once every enabled
-    // reviewer approved but the PR can't merge because it conflicts with its
-    // base branch, hand it back to the Super Agent to resolve (gated on the
-    // org's `auto_merge` flag, checked inside the reaction). This is the
-    // poll-driven safety net — a conflict often appears AFTER approval (the base
-    // branch moved on), which the merge attempt at approval time can't see. Run
-    // the same `conflictFromPrGet` mapping the review-decision path uses (only an
-    // explicit conflict triggers; null/unknown never does). The reaction is
-    // idempotent (it bounces the task to In Progress, so the next poll skips).
-    const openPrConflict = openPr
-      ? conflictFromPrGet({ state: openPr.state, mergeable: openPr.mergeable })
-      : null;
+    /**
+     * Auto-resolve a merge conflict on an approved change request: once every
+     * enabled reviewer approved but it can't merge because it conflicts with
+     * its base branch, hand it back to the Super Agent to resolve (gated on
+     * the org's `auto_merge` flag, checked inside the reaction). This is the
+     * poll-driven safety net — a conflict often appears AFTER approval (the
+     * base branch moved on), which the merge attempt at approval time can't
+     * see. Only an explicit conflict triggers; null/unknown never does. The
+     * reaction is idempotent (it bounces the task to In Progress, so the next
+     * poll skips).
+     */
     if (
       item &&
       item.status === reviewLane &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       openPr &&
-      openPrConflict === true
+      openPr.mergeable === false
     ) {
-      // Act on the PR the conflict was detected on (`openPr`), not a re-derived
-      // "newest" — a task can have more than one linked PR.
+      /**
+       * Act on the one the conflict was detected on (`openPr`), not a
+       * re-derived "newest" — a task can have more than one linked.
+       */
       await reactToApprovedPrConflict(ctx, organizationId, item, {
         pr: { number: openPr.number, url: openPr.url },
         conflict: true,
@@ -1335,10 +810,13 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       });
     }
 
-    // ponytail: reconcile-on-view — there's no GitHub PR webhook, so a merged PR
-    // only advances the card when someone opens this modal. Upgrade path:
-    // a `pull_request` webhook calling the same forward move. Best-effort; a
-    // failure must never break the read. Forward-only via `movesForward`.
+    /**
+     * ponytail: reconcile-on-view — there's no provider webhook, so a merged
+     * change request only advances the card when someone opens this modal.
+     * Upgrade path: a `pull_request`/`merge_request` webhook calling the same
+     * forward move. Best-effort; a failure must never break the read.
+     * Forward-only via `movesForward`.
+     */
     if (cardWorkLanded(prs)) {
       try {
         // Inside the try: this block is best-effort and must not fail the read.
@@ -1362,7 +840,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
           // Every other path that moves a card to Done (the review-decision
           // auto-merge, "Ship to production") logs a `status_changed` timeline
           // entry — this reconcile silently skipped it, so a task auto-completed
-          // by a human merging its PR directly on GitHub left no trace of the
+          // by a human merging directly on the provider left no trace of the
           // move in the Activity feed.
           await recordTaskActivity(ctx, {
             taskBoardItemId,
@@ -1380,53 +858,3 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     return { prs };
   },
 });
-
-/**
- * The PR's head branch name (`head.ref`), or null when GitHub can't be reached.
- *
- * Read live rather than stored on the row deliberately: `task_board_item_prs`
- * is written from three places (the MCP `onPrOpened` hook, a bash-output scan,
- * and the sweeper's closing-message scan) and only one of them ever knows the
- * branch. GitHub always does. Null is a first-class answer — the caller falls
- * back to today's fresh-branch behavior rather than guessing a ref and pushing
- * work somewhere nobody is looking.
- */
-export async function fetchPrHeadRef(
-  ctx: StudioContext,
-  orgId: string,
-  pr: TaskBoardItemPrRef,
-): Promise<string | null> {
-  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
-    owner: pr.repoOwner,
-    name: pr.repoName,
-  });
-  if (!conn) return null;
-  const client = await clientFromConnection(conn, ctx, true);
-  try {
-    const obj = toolResultJson(
-      await client.callTool(
-        {
-          name: "pull_request_read",
-          arguments: {
-            method: "get",
-            owner: pr.repoOwner,
-            repo: pr.repoName,
-            pullNumber: pr.number,
-          },
-        },
-        undefined,
-        { timeout: PR_FETCH_TIMEOUT_MS },
-      ),
-    );
-    // Only an OPEN PR's branch is worth reusing: pushing to a merged or closed
-    // PR's branch updates nothing anyone will look at, and the re-run's work
-    // would be invisible.
-    if (!obj || obj.state !== "open") return null;
-    const ref = (obj.head as { ref?: unknown } | undefined)?.ref;
-    return typeof ref === "string" && ref.length > 0 ? ref : null;
-  } catch {
-    return null;
-  } finally {
-    await client.close().catch(() => {});
-  }
-}

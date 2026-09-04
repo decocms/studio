@@ -19,10 +19,10 @@ import {
 } from "./run-reactions";
 import {
   allEnabledReviewersVerifiedApproved,
-  conflictSignal,
+  conflictFromOutcome,
   mergeLinkedPr,
 } from "./merge-pr";
-import { fetchPrConflict, pickActivePr } from "./prs-get";
+import { pickActivePr } from "./prs-get";
 import { verifyReviewToken } from "./review-token";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
@@ -360,10 +360,12 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       const resolving = pr
         ? await reactToApprovedPrConflict(ctx, organizationId, current, {
             pr: { number: pr.number, url: pr.url },
-            conflict: conflictSignal(
-              await fetchPrConflict(ctx, organizationId, pr),
-              outcome,
-            ),
+            /**
+             * The merge attempt already classified its own refusal, so this
+             * costs no extra provider read — where it used to pay a
+             * mergeability call on every approval.
+             */
+            conflict: conflictFromOutcome(outcome),
           }).catch((err) => {
             // Same paywall exception as above — a TaskQuotaError must
             // surface, not be swallowed as a routine auto-resolve failure.
