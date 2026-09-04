@@ -248,6 +248,7 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "More actions",
   "sandbox.itemActions.rename": "Rename",
   "sandbox.itemActions.viewJson": "View JSON",
+  "sandbox.itemRow.selectItem": "Select {title}",
   "sandbox.listBlocks.addCard": "Add card",
   "sandbox.listBlocks.addItem": "Add item",
   "sandbox.listBlocks.addStat": "Add stat",
