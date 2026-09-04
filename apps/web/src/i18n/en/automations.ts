@@ -86,6 +86,7 @@ export const automations = {
   "automations.automationDetail.addStarter": "Add a starter",
   "automations.automationDetail.advanced": "Advanced",
   "automations.automationDetail.automationNamePlaceholder": "Automation name",
+  "automations.automationDetail.breadcrumbFallback": "Automation",
   "automations.automationDetail.backToList": "Back to list",
   "automations.automationDetail.failedToAddStarter": "Failed to add starter",
   "automations.automationDetail.improve": "Improve",

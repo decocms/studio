@@ -257,8 +257,16 @@ export function HeaderActions({ virtualMcpId }: Props) {
   if (attachment.status === "detached") {
     return (
       <WithTooltip label={t("thread.headerActions.githubConnectionRemoved")}>
-        <Button size="sm" variant="outline" disabled>
-          {t("thread.headerActions.reconnectGithub")}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled
+          aria-label={t("thread.headerActions.reconnectGithub")}
+        >
+          <GitHubIcon size={16} />
+          <span className="@max-3xl/panel-header:sr-only">
+            {t("thread.headerActions.reconnectGithub")}
+          </span>
         </Button>
       </WithTooltip>
     );
@@ -504,6 +512,14 @@ function HeaderButtonRenderer(props: {
     savingBlocksAction ||
     !action;
   const loading = Boolean(button.loading) || mergePending;
+  const statusIcon =
+    !action && !loading ? (
+      button.label === t("thread.headerActions.upToDate") ? (
+        <CheckCircle className="size-4" />
+      ) : (
+        <AlertTriangle className="size-4" />
+      )
+    ) : null;
   const tooltip = chatBlocksAction
     ? t("thread.headerActions.chatIsRunning")
     : savingBlocksAction
@@ -536,7 +552,10 @@ function HeaderButtonRenderer(props: {
       variant={button.variant}
       disabled={disabled}
       loading={loading}
-      {...(action && !loading ? { icon: actionIcon(action) } : {})}
+      {...(!loading && (action || statusIcon)
+        ? { icon: action ? actionIcon(action) : statusIcon }
+        : {})}
+      labelClassName="@max-3xl/panel-header:sr-only"
       {...(tooltip ? { tooltip } : {})}
       items={items}
       menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}

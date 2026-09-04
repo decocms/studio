@@ -54,6 +54,7 @@ import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { ArchivedOrgScreen } from "../components/archived-org-screen";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+import { RouteNavigationFocus } from "./route-navigation-focus";
 
 /** What `getFullOrganization` resolves to — named so the cache seed below can
  *  be typed against it in one place. */
@@ -426,6 +427,7 @@ function ShellLayoutContent() {
   return (
     <ShellProjectProvider org={{ ...activeOrg, logo: activeOrg.logo ?? null }}>
       <PostHogGroupSync activeOrg={activeOrg} />
+      <RouteNavigationFocus />
       <Outlet />
 
       <div className="fixed bottom-6 right-6 z-50 flex w-[min(360px,calc(100vw-3rem))] flex-col gap-3">

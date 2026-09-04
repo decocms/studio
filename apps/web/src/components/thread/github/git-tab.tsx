@@ -155,9 +155,9 @@ function GitTabContent(props: ContentProps) {
               <> · {t("thread.gitTab.by", { author: pr.author })}</>
             )}
           </div>
-          <h1 className="text-lg font-semibold">
+          <h2 className="text-lg font-semibold">
             {decodeHtmlEntities(pr.title)}
-          </h1>
+          </h2>
           {pr.body && (
             <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
               <MemoizedMarkdown

@@ -69,12 +69,22 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
     <Page>
       {searchInput && (
         <Main.Topbar.Center.Portal>
-          <div className="hidden md:block">{searchInput}</div>
+          <div
+            data-responsive-focus-group="automations-search"
+            className="hidden md:block"
+          >
+            {searchInput}
+          </div>
         </Main.Topbar.Center.Portal>
       )}
       {searchInput && (
         <Main.Subheader.Portal>
-          <div className="w-full md:hidden [&>*]:w-full">{searchInput}</div>
+          <div
+            data-responsive-focus-group="automations-search"
+            className="w-full md:hidden [&>*]:w-full"
+          >
+            {searchInput}
+          </div>
         </Main.Subheader.Portal>
       )}
       <Main.Topbar.Right.Portal>{newButton}</Main.Topbar.Right.Portal>

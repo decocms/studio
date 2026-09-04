@@ -2,9 +2,11 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   createContext,
   use,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type Dispatch,
+  type MutableRefObject,
   type RefCallback,
   type ReactNode,
   type SetStateAction,
@@ -12,17 +14,30 @@ import {
 import { createPortal } from "react-dom";
 
 type MainTopbarRegion = "left" | "center" | "right";
-type MainPortalRegion = MainTopbarRegion | "subheader";
+type MainPortalRegion =
+  | MainTopbarRegion
+  | "breadcrumb-parent"
+  | "subheader"
+  | "subheader-center"
+  | "title";
 
-type PortalTarget = HTMLDivElement | null;
+type PortalTarget = HTMLElement | null;
 type PortalTargetSetter = Dispatch<SetStateAction<PortalTarget>>;
 
 interface MainTopbarContextValue {
+  breadcrumbParentFocusRevision: MutableRefObject<number>;
   targets: Record<MainPortalRegion, PortalTarget>;
+  breadcrumbParentPortalContent: PortalTarget;
+  titlePortalContent: PortalTarget;
+  setBreadcrumbParentTarget: PortalTargetSetter;
+  setBreadcrumbParentPortalContent: PortalTargetSetter;
   setLeftTarget: PortalTargetSetter;
   setCenterTarget: PortalTargetSetter;
   setRightTarget: PortalTargetSetter;
   setSubheaderTarget: PortalTargetSetter;
+  setSubheaderCenterTarget: PortalTargetSetter;
+  setTitleTarget: PortalTargetSetter;
+  setTitlePortalContent: PortalTargetSetter;
 }
 
 const MainTopbarContext = createContext<MainTopbarContextValue | null>(null);
@@ -43,11 +58,11 @@ function useMainTopbarContext(): MainTopbarContextValue {
  * otherwise depend on ref commit order.
  */
 function usePortalTargetRef(
-  region: MainPortalRegion,
+  region: string,
   setTarget: PortalTargetSetter,
-): RefCallback<HTMLDivElement> {
-  const [targetRef] = useState<RefCallback<HTMLDivElement>>(
-    () => (node: HTMLDivElement | null) => {
+): RefCallback<HTMLElement> {
+  const [targetRef] = useState<RefCallback<HTMLElement>>(
+    () => (node: HTMLElement | null) => {
       if (!node) return;
 
       setTarget((current) => {
@@ -68,6 +83,101 @@ function usePortalTargetRef(
   return targetRef;
 }
 
+type BreadcrumbParentFocusDestination = "dynamic" | "static";
+
+function scheduleBreadcrumbParentFocusHandoff(
+  root: HTMLElement,
+  source: HTMLElement,
+  destination: BreadcrumbParentFocusDestination,
+  isCurrent: () => boolean,
+): void {
+  requestAnimationFrame(() => {
+    if (!isCurrent() || !root.isConnected) return;
+    const active = document.activeElement;
+    if (active !== source && active !== document.body) return;
+
+    const selectors =
+      destination === "dynamic"
+        ? [
+            '[data-slot="main-breadcrumb-dynamic-parent"] a[href]',
+            '[data-slot="main-breadcrumb-dynamic-parent"] button:not([disabled])',
+          ]
+        : [
+            '[data-slot="main-breadcrumb-ancestor"] a[href]',
+            '[data-slot="main-breadcrumb-ancestor"] button:not([disabled])',
+            '[data-slot="main-breadcrumb-overflow-trigger"]',
+            '[data-slot="main-breadcrumb-scope"] a[href]',
+            '[data-slot="main-breadcrumb-scope"] button:not([disabled])',
+          ];
+    const target = selectors
+      .map((selector) => root.querySelector<HTMLElement>(selector))
+      .find((candidate) => candidate && candidate.getClientRects().length > 0);
+    target?.focus({ preventScroll: true });
+  });
+}
+
+/** Preserve breadcrumb focus when an async route parent replaces its fallback. */
+function useBreadcrumbParentPortalContentRef(
+  setTarget: PortalTargetSetter,
+  focusHandoffRevision: MutableRefObject<number>,
+): RefCallback<HTMLElement> {
+  const [contentRef] = useState<RefCallback<HTMLElement>>(
+    () => (node: HTMLElement | null) => {
+      if (!node) return;
+
+      const root = node.closest<HTMLElement>('[data-slot="main"]');
+      const active =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      const staticSource = active?.closest(
+        '[data-slot="main-breadcrumb-ancestor"]',
+      )
+        ? active
+        : null;
+      const attachedPathname = window.location.pathname;
+      const attachRevision = ++focusHandoffRevision.current;
+
+      setTarget((current) => {
+        if (current && current !== node) {
+          throw new Error(
+            "Main.breadcrumb-parent-portal-content can only have one live portal target",
+          );
+        }
+        return node;
+      });
+      if (root && staticSource) {
+        scheduleBreadcrumbParentFocusHandoff(
+          root,
+          staticSource,
+          "dynamic",
+          () => focusHandoffRevision.current === attachRevision,
+        );
+      }
+
+      return () => {
+        const focused =
+          document.activeElement instanceof HTMLElement &&
+          node.contains(document.activeElement)
+            ? document.activeElement
+            : null;
+        const cleanupRevision = ++focusHandoffRevision.current;
+        setTarget((current) => (current === node ? null : current));
+        if (root && focused && window.location.pathname === attachedPathname) {
+          scheduleBreadcrumbParentFocusHandoff(
+            root,
+            focused,
+            "static",
+            () => focusHandoffRevision.current === cleanupRevision,
+          );
+        }
+      };
+    },
+  );
+
+  return contentRef;
+}
+
 function MainRoot({
   children,
   className,
@@ -77,20 +187,41 @@ function MainRoot({
   const [centerTarget, setCenterTarget] = useState<PortalTarget>(null);
   const [rightTarget, setRightTarget] = useState<PortalTarget>(null);
   const [subheaderTarget, setSubheaderTarget] = useState<PortalTarget>(null);
+  const [subheaderCenterTarget, setSubheaderCenterTarget] =
+    useState<PortalTarget>(null);
+  const [breadcrumbParentTarget, setBreadcrumbParentTarget] =
+    useState<PortalTarget>(null);
+  const breadcrumbParentFocusRevision = useRef(0);
+  const [breadcrumbParentPortalContent, setBreadcrumbParentPortalContent] =
+    useState<PortalTarget>(null);
+  const [titleTarget, setTitleTarget] = useState<PortalTarget>(null);
+  const [titlePortalContent, setTitlePortalContent] =
+    useState<PortalTarget>(null);
 
   return (
     <MainTopbarContext
       value={{
+        breadcrumbParentFocusRevision,
         targets: {
+          "breadcrumb-parent": breadcrumbParentTarget,
           left: leftTarget,
           center: centerTarget,
           right: rightTarget,
           subheader: subheaderTarget,
+          "subheader-center": subheaderCenterTarget,
+          title: titleTarget,
         },
+        breadcrumbParentPortalContent,
+        titlePortalContent,
+        setBreadcrumbParentTarget,
+        setBreadcrumbParentPortalContent,
         setLeftTarget,
         setCenterTarget,
         setRightTarget,
         setSubheaderTarget,
+        setSubheaderCenterTarget,
+        setTitleTarget,
+        setTitlePortalContent,
       }}
     >
       <div
@@ -138,7 +269,7 @@ function MainTopbarLeft({
       {...props}
       data-slot="main-topbar-left"
       className={cn(
-        "col-start-1 row-start-1 flex min-w-0 items-center gap-1 overflow-hidden justify-self-stretch",
+        "@container [container-name:main-topbar-left] col-start-1 row-start-1 flex min-w-0 items-center gap-1 overflow-hidden justify-self-stretch",
         className,
       )}
     >
@@ -290,6 +421,30 @@ function MainSubheaderPortal({ children }: { children: ReactNode }) {
   return target ? createPortal(children, target) : null;
 }
 
+function MainSubheaderCenterTarget(props: MainTopbarTargetProps) {
+  const { setSubheaderCenterTarget } = useMainTopbarContext();
+  const targetRef = usePortalTargetRef(
+    "subheader-center",
+    setSubheaderCenterTarget,
+  );
+
+  return (
+    <div
+      {...props}
+      ref={targetRef}
+      data-slot="main-subheader-center-portal-target"
+      className={cn("contents", props.className)}
+    />
+  );
+}
+
+function MainSubheaderCenterPortal({ children }: { children: ReactNode }) {
+  const { targets } = useMainTopbarContext();
+  const target = targets["subheader-center"];
+
+  return target ? createPortal(children, target) : null;
+}
+
 function MainContent({
   children,
   className,
@@ -313,6 +468,63 @@ function MainDrawer({ children }: { children?: ReactNode }) {
   return children;
 }
 
+interface MainBreadcrumbParentTargetRenderState {
+  /** A route contribution is mounted in this target. */
+  present: boolean;
+  /** Keep this node mounted even while `present` is false. */
+  target: ReactNode;
+}
+
+function MainBreadcrumbParentTarget({
+  children,
+}: {
+  children: (state: MainBreadcrumbParentTargetRenderState) => ReactNode;
+}) {
+  const { breadcrumbParentPortalContent, setBreadcrumbParentTarget } =
+    useMainTopbarContext();
+  const targetRef = usePortalTargetRef(
+    "breadcrumb-parent",
+    setBreadcrumbParentTarget,
+  );
+
+  return children({
+    present: Boolean(breadcrumbParentPortalContent),
+    target: (
+      <span
+        ref={targetRef}
+        data-slot="main-breadcrumb-parent-portal-target"
+        className="contents"
+      />
+    ),
+  });
+}
+
+function MainBreadcrumbParentPortal({ children }: { children: ReactNode }) {
+  const {
+    breadcrumbParentFocusRevision,
+    targets,
+    setBreadcrumbParentPortalContent,
+  } = useMainTopbarContext();
+  const contentRef = useBreadcrumbParentPortalContentRef(
+    setBreadcrumbParentPortalContent,
+    breadcrumbParentFocusRevision,
+  );
+  const target = targets["breadcrumb-parent"];
+
+  return target
+    ? createPortal(
+        <span
+          ref={contentRef}
+          data-slot="main-breadcrumb-parent-portal-content"
+          className="contents"
+        >
+          {children}
+        </span>,
+        target,
+      )
+    : null;
+}
+
 function MainTitle({
   children,
   className,
@@ -332,7 +544,63 @@ function MainTitle({
   );
 }
 
+type MainTitleTargetProps = Omit<
+  ComponentPropsWithoutRef<"span">,
+  "children"
+> & {
+  fallback: ReactNode;
+};
+
+function MainTitleTarget({
+  fallback,
+  className,
+  ...props
+}: MainTitleTargetProps) {
+  const { setTitleTarget, titlePortalContent } = useMainTopbarContext();
+  const targetRef = usePortalTargetRef("title", setTitleTarget);
+
+  return (
+    <>
+      {titlePortalContent ? null : fallback}
+      <span
+        {...props}
+        ref={targetRef}
+        data-slot="main-title-portal-target"
+        className={cn("contents", className)}
+      />
+    </>
+  );
+}
+
+function MainTitlePortal({ children }: { children: ReactNode }) {
+  const { targets, setTitlePortalContent } = useMainTopbarContext();
+  const contentRef = usePortalTargetRef(
+    "title-portal-content",
+    setTitlePortalContent,
+  );
+  const target = targets.title;
+
+  return target
+    ? createPortal(
+        <span
+          ref={contentRef}
+          data-slot="main-title-portal-content"
+          className="contents"
+        >
+          {children}
+        </span>,
+        target,
+      )
+    : null;
+}
+
 export const Main = Object.assign(MainRoot, {
+  Breadcrumb: {
+    Parent: {
+      Portal: MainBreadcrumbParentPortal,
+      Target: MainBreadcrumbParentTarget,
+    },
+  },
   Topbar: Object.assign(MainTopbar, {
     Left: Object.assign(MainTopbarLeft, {
       Portal: MainTopbarLeftPortal,
@@ -349,8 +617,15 @@ export const Main = Object.assign(MainRoot, {
   }),
   Subheader: Object.assign(MainSubheader, {
     Portal: MainSubheaderPortal,
+    Center: {
+      Portal: MainSubheaderCenterPortal,
+      Target: MainSubheaderCenterTarget,
+    },
   }),
   Content: MainContent,
   Drawer: MainDrawer,
-  Title: MainTitle,
+  Title: Object.assign(MainTitle, {
+    Portal: MainTitlePortal,
+    Target: MainTitleTarget,
+  }),
 });

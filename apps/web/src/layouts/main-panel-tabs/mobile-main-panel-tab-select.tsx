@@ -44,20 +44,12 @@ type ViewOption = { value: string; title: string; icon: TabIcon };
 
 export function resolveMobileMainPanelTriggerOption({
   options,
-  activeTab,
-  selection,
+  value,
 }: {
   options: readonly ViewOption[];
-  activeTab: string;
-  selection: { value: string; surface: MobileWorkspaceSurface };
+  value: string;
 }): ViewOption | undefined {
-  const displayedValue =
-    selection.surface === "chat" ? activeTab : selection.value;
-
-  return (
-    options.find(({ value }) => value === displayedValue) ??
-    options.find(({ value }) => value === selection.value)
-  );
+  return options.find((option) => option.value === value);
 }
 
 const CHAT_ICON: TabIcon = { kind: "component", Component: MessageCircle01 };
@@ -189,8 +181,7 @@ export function MobileMainPanelTabSelect({
   const currentValue = selection.value;
   const triggerOption = resolveMobileMainPanelTriggerOption({
     options,
-    activeTab,
-    selection,
+    value: currentValue,
   });
   const label =
     triggerOption?.title ??
@@ -253,6 +244,8 @@ export function MobileMainPanelTabSelect({
         of `card-shadow-none`, which is not a real utility.
       */}
       <SelectTrigger
+        data-route-focus-source="mobile-view-select"
+        data-responsive-focus-group="main-route-navigation"
         aria-label={t("mainPanelTabs.mobileMainPanelTabSelect.view")}
         className="h-10! w-full min-w-0 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1.5 text-xs shadow-none [--card-shadow:none]"
       >
@@ -265,7 +258,11 @@ export function MobileMainPanelTabSelect({
           <span className="min-w-0 truncate">{label}</span>
         </span>
       </SelectTrigger>
-      <SelectContent align="end" className="w-56">
+      <SelectContent
+        data-route-focus-source="mobile-view-select"
+        align="end"
+        className="w-56"
+      >
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             <span className="flex min-w-0 items-center gap-2">

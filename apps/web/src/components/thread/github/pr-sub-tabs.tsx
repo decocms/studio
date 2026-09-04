@@ -63,9 +63,9 @@ export function PrSubTabs({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 space-y-3 pb-4">
         <div className="space-y-1">
-          <h1 className="text-lg font-semibold leading-tight">
+          <h2 className="text-lg font-semibold leading-tight">
             {decodeHtmlEntities(pr.title)}
-          </h1>
+          </h2>
           <div className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
             <a
               href={pr.htmlUrl}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type Ref, useImperativeHandle, useRef, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -50,9 +50,10 @@ export interface DrawerToolbarProps {
   scripts: string[];
   active: string;
   scriptTabs: string[];
+  closingScriptTabs: ReadonlySet<string>;
   onSelectTab: (tab: string) => void;
   onAddScript: (name: string) => void;
-  onCloseScript: (name: string) => void;
+  onCloseScript: (name: string, closeButton: HTMLButtonElement) => void;
   // Per-script controls on the right. Only render when the active tab is a
   // script tab (not setup); drawer.tsx owns the gating.
   showScriptControls: boolean;
@@ -62,11 +63,44 @@ export interface DrawerToolbarProps {
   onStopActiveScript: () => void;
 }
 
-export function DrawerToolbar(props: DrawerToolbarProps) {
+export interface DrawerToolbarHandle {
+  /** Focus the requested tab, falling back to Setup if it no longer exists. */
+  focusTab: (tab: string) => void;
+}
+
+function canReceiveFocus(
+  element: HTMLButtonElement | null | undefined,
+): element is HTMLButtonElement {
+  return Boolean(
+    element?.isConnected &&
+      !element.disabled &&
+      element.getClientRects().length > 0,
+  );
+}
+
+export function DrawerToolbar({
+  ref,
+  ...props
+}: DrawerToolbarProps & { ref?: Ref<DrawerToolbarHandle> }) {
   const t = useT();
+  const setupTabRef = useRef<HTMLButtonElement>(null);
+  const scriptTabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const addableScripts = props.scripts.filter(
     (s) => !props.scriptTabs.includes(s),
   );
+
+  useImperativeHandle(ref, () => ({
+    focusTab: (tab) => {
+      const requested =
+        tab === DEFAULT_TAB
+          ? setupTabRef.current
+          : scriptTabRefs.current.get(tab);
+      const target = canReceiveFocus(requested)
+        ? requested
+        : setupTabRef.current;
+      if (canReceiveFocus(target)) target.focus();
+    },
+  }));
 
   // The setup tab doubles as the drawer toggle. When already active, clicking
   // toggles open/closed; otherwise it selects setup (which opens the drawer).
@@ -106,6 +140,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
       </Tooltip>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         <SetupTab
+          tabRef={setupTabRef}
           active={props.active === DEFAULT_TAB}
           open={props.open}
           onClick={handleSetupClick}
@@ -114,12 +149,17 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
         {props.scriptTabs.map((tabName) => (
           <TabButton
             key={tabName}
+            tabRef={(button) => {
+              if (button) scriptTabRefs.current.set(tabName, button);
+              else scriptTabRefs.current.delete(tabName);
+            }}
             active={props.active === tabName}
+            closeDisabled={props.closingScriptTabs.has(tabName)}
             onClick={() => {
               if (props.active === tabName) props.onToggle();
               else props.onSelectTab(tabName);
             }}
-            onClose={() => props.onCloseScript(tabName)}
+            onClose={(closeButton) => props.onCloseScript(tabName, closeButton)}
             t={t}
           >
             {tabName}
@@ -156,11 +196,13 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
  * SandboxActionControls so the tab itself never reshapes based on status.
  */
 function SetupTab({
+  tabRef,
   active,
   open,
   onClick,
   t,
 }: {
+  tabRef: Ref<HTMLButtonElement>;
   active: boolean;
   open: boolean;
   onClick: () => void;
@@ -168,6 +210,7 @@ function SetupTab({
 }) {
   return (
     <button
+      ref={tabRef}
       type="button"
       aria-pressed={active && open}
       aria-expanded={active && open}
@@ -282,15 +325,19 @@ function SandboxActionControls({
 }
 
 function TabButton({
+  tabRef,
   active,
+  closeDisabled,
   onClick,
   onClose,
   children,
   t,
 }: {
+  tabRef: Ref<HTMLButtonElement>;
   active: boolean;
+  closeDisabled: boolean;
   onClick: () => void;
-  onClose?: () => void;
+  onClose?: (closeButton: HTMLButtonElement) => void;
   children: React.ReactNode;
   t: import("@/i18n/use-t.ts").TFunction;
 }) {
@@ -304,6 +351,7 @@ function TabButton({
       )}
     >
       <button
+        ref={tabRef}
         type="button"
         onClick={onClick}
         className={cn(
@@ -319,9 +367,13 @@ function TabButton({
       {onClose && (
         <button
           type="button"
+          aria-disabled={closeDisabled || undefined}
+          aria-busy={closeDisabled || undefined}
           aria-label={t("sandbox.toolbar.closeTab", { tab: String(children) })}
-          onClick={onClose}
-          className="pr-1.5 text-muted-foreground hover:text-foreground"
+          onClick={(event) => {
+            if (!closeDisabled) onClose(event.currentTarget);
+          }}
+          className="pr-1.5 text-muted-foreground hover:text-foreground aria-disabled:cursor-wait aria-disabled:opacity-50"
         >
           <X className="size-3.5" />
         </button>

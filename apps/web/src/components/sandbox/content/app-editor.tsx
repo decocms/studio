@@ -161,7 +161,7 @@ export function AppEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6 @max-sm/cms-content:px-3">
         {headerCrumbs.length > 0 ? (
           <nav
             aria-label={t("sandbox.appEditor.editingBreadcrumb")}
@@ -210,7 +210,7 @@ export function AppEditor({
         <SaveStatus isPending={isPending} isError={false} />
       </div>
       <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
-        <div className="px-6 py-6">
+        <div className="px-6 py-6 @max-sm/cms-content:px-4">
           <div className="mx-auto max-w-xl">
             {hasEditableFields ? (
               <SchemaForm

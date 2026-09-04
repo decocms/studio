@@ -96,6 +96,8 @@ export function MainPanelTabsBar({
    */
   return (
     <div
+      data-route-focus-source="route"
+      data-responsive-focus-group="main-route-navigation"
       className="flex items-center min-w-0 gap-0.5 overflow-x-auto no-scrollbar"
       data-tour={LAYOUT_TOUR_ANCHORS.surfaceTabs}
     >

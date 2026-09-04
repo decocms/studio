@@ -6,15 +6,19 @@ import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { useSandboxEvents } from "../../hooks/use-sandbox-events";
-import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
+import {
+  DEFAULT_TAB,
+  DrawerToolbar,
+  type DrawerStatus,
+  type DrawerToolbarHandle,
+} from "./toolbar";
 import { SandboxTerminal } from "./terminal";
 import {
   clampDrawerHeight,
   drawerHeightForKey,
-  DRAWER_MIN_HEIGHT,
-  DRAWER_TOP_RESERVE,
   resolveDrawerResizeMetrics,
 } from "./resize";
+import { activeTabAfterScriptClose } from "./script-tab-state";
 
 export interface PreviewDrawerProps {
   vmId: string | null;
@@ -41,6 +45,13 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   const [active, setActive] = useState<string>(DEFAULT_TAB);
   const [scriptTabs, setScriptTabs] = useState<string[]>([]);
   const [killingScripts, setKillingScripts] = useState<Set<string>>(new Set());
+  const [closingScriptTabs, setClosingScriptTabs] = useState<Set<string>>(
+    new Set(),
+  );
+  const closingScriptTabsRef = useRef<Map<string, number>>(new Map());
+  const scriptTabVersionsRef = useRef<Map<string, number>>(new Map());
+  const toolbarRef = useRef<DrawerToolbarHandle>(null);
+  const activeTabRef = useRef(DEFAULT_TAB);
 
   // Once-per-VM auto-open of dev/start. Render-time setState gated by a ref
   // so a second render after the first scripts event becomes a no-op. The
@@ -56,6 +67,8 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (starter) {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       scriptsAppliedRef.current = true;
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- active event-state mirror for delayed close completions
+      activeTabRef.current = starter;
       setScriptTabs((prev) =>
         prev.includes(starter) ? prev : [...prev, starter],
       );
@@ -83,6 +96,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // Tab click also opens the drawer when collapsed. Once open, subsequent
   // tab clicks just switch tabs.
   const handleSelectTab = (tab: string) => {
+    activeTabRef.current = tab;
     setActive(tab);
     if (!props.open) props.onOpenChange(true);
   };
@@ -126,24 +140,97 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   };
 
   const handleAddScript = async (name: string) => {
+    // A same-name tab opened after an older close request is a new incarnation.
+    // That older response may stop its own process, but must never remove this
+    // newer UI handle.
+    scriptTabVersionsRef.current.set(
+      name,
+      (scriptTabVersionsRef.current.get(name) ?? 0) + 1,
+    );
     setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    activeTabRef.current = name;
     setActive(name);
     props.onOpenChange(true);
     await runExec(name, t("sandbox.drawer.failedToRun", { name }));
   };
 
-  // × on a script tab: kill the process AND drop the tab. Active tab
-  // falls back to setup.
-  const handleCloseScript = async (name: string) => {
-    await killScript(name);
-    setScriptTabs((prev) => prev.filter((t) => t !== name));
-    if (active === name) setActive(DEFAULT_TAB);
+  // × on a script tab: kill the process AND drop the tab only once the
+  // daemon confirms the kill. The functional active-state update is important:
+  // a user may select another tab while this request is in flight.
+  const handleCloseScript = async (
+    name: string,
+    closeButton: HTMLButtonElement,
+  ) => {
+    // State disables the control on the next commit; the ref closes the smaller
+    // same-tick gap where two events can enter before that commit. Check before
+    // installing focus-intent listeners so a rejected duplicate owns nothing.
+    if (closingScriptTabsRef.current.has(name)) return;
+    const version = scriptTabVersionsRef.current.get(name) ?? 0;
+    closingScriptTabsRef.current.set(name, version);
+    const closeOwnedFocus = document.activeElement === closeButton;
+    let focusHandoffCancelled = false;
+    const cancelForPointerIntent = (event: PointerEvent) => {
+      if (event.target !== closeButton) focusHandoffCancelled = true;
+    };
+    const cancelForKeyboardIntent = (event: KeyboardEvent) => {
+      if (event.key === "Tab" || document.activeElement !== closeButton) {
+        focusHandoffCancelled = true;
+      }
+    };
+    if (closeOwnedFocus) {
+      document.addEventListener("pointerdown", cancelForPointerIntent, true);
+      document.addEventListener("keydown", cancelForKeyboardIntent, true);
+    }
+    setClosingScriptTabs((prev) => new Set(prev).add(name));
+    try {
+      const res = await killScript(name);
+      // Missing sandbox identity is a programming/setup state. Keep the tab so
+      // the user does not lose the only handle for retrying once it is ready.
+      if (res === null) return;
+      if (!res.ok) throw new Error(`Kill failed: ${res.statusText}`);
+      if ((scriptTabVersionsRef.current.get(name) ?? 0) !== version) return;
+      const shouldRestoreFocus = closeOwnedFocus && !focusHandoffCancelled;
+      scriptTabVersionsRef.current.set(name, version + 1);
+      setScriptTabs((prev) => prev.filter((tab) => tab !== name));
+      const focusTarget = activeTabAfterScriptClose(
+        activeTabRef.current,
+        name,
+        DEFAULT_TAB,
+      );
+      activeTabRef.current = focusTarget;
+      setActive((current) =>
+        activeTabAfterScriptClose(current, name, DEFAULT_TAB),
+      );
+      if (shouldRestoreFocus) {
+        // Browser focus fallout from removing the active control finishes after
+        // the commit. Focus the surviving active tab on the following frame.
+        // `shouldRestoreFocus` was captured before removal, so an intermediate
+        // browser fallback (often the add-script trigger) is not user intent.
+        requestAnimationFrame(() => {
+          toolbarRef.current?.focusTab(focusTarget);
+        });
+      }
+    } catch {
+      toast.error(t("sandbox.drawer.failedToStop", { name }));
+    } finally {
+      document.removeEventListener("pointerdown", cancelForPointerIntent, true);
+      document.removeEventListener("keydown", cancelForKeyboardIntent, true);
+      if (closingScriptTabsRef.current.get(name) === version) {
+        closingScriptTabsRef.current.delete(name);
+        setClosingScriptTabs((prev) => {
+          const next = new Set(prev);
+          next.delete(name);
+          return next;
+        });
+      }
+    }
   };
 
   // Per-script Run/Restart on the active tab — does NOT add or remove the
   // tab; just (re)starts the process. Restart is the same call as Run; the
   // daemon's task-manager replaces the existing task with the same logName.
   const handleRunActive = async () => {
+    if (closingScriptTabsRef.current.has(active)) return;
     const wasRunning = vmEvents.activeProcesses.includes(active);
     const failureMessage = wasRunning
       ? t("sandbox.drawer.failedToRestart", { name: active })
@@ -154,7 +241,12 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // Per-script Stop on the active tab. Marks the script as killing so the
   // toolbar shows "Stopping…"; the prune above clears it once SSE confirms.
   const handleStopActive = async () => {
-    if (killingScripts.has(active)) return;
+    if (
+      killingScripts.has(active) ||
+      closingScriptTabsRef.current.has(active)
+    ) {
+      return;
+    }
     setKillingScripts((prev) => new Set(prev).add(active));
     try {
       const res = await killScript(active);
@@ -183,6 +275,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   const scriptIsRunning =
     isScriptTab && vmEvents.activeProcesses.includes(active);
   const scriptIsKilling = isScriptTab && killingScripts.has(active);
+  const scriptClosePending = isScriptTab && closingScriptTabs.has(active);
 
   // Drag-to-resize the open drawer. The height is applied imperatively to the
   // drawer element during the drag (no per-frame React render, so the xterm
@@ -198,6 +291,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const [resizeMetrics, setResizeMetrics] = useState<{
     height: number;
+    minHeight: number;
     maxHeight: number;
   } | null>(null);
 
@@ -211,9 +305,9 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     [],
   );
 
-  // The ARIA range needs the live pane bound, which CSS alone cannot expose.
-  // Observe only the parent pane—not the drawer—so pointer dragging remains an
-  // imperative, render-free path while window/layout resizes stay accurate.
+  // CSS and the ARIA separator share one live range. Observe the pane for new
+  // bounds and the drawer for the clamped rendered value; pointer dragging
+  // remains render-free because resize callbacks are ignored during a gesture.
   useLayoutEffect(() => {
     if (!props.open) {
       resizeCleanupRef.current?.();
@@ -226,13 +320,16 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (!drawer || !pane) return;
 
     const measure = () => {
+      if (resizeCleanupRef.current) return;
       const paneHeight = pane.getBoundingClientRect().height;
       const next = resolveDrawerResizeMetrics(
         drawer.getBoundingClientRect().height,
         paneHeight,
       );
       setResizeMetrics((current) =>
-        current?.height === next.height && current.maxHeight === next.maxHeight
+        current?.height === next.height &&
+        current.minHeight === next.minHeight &&
+        current.maxHeight === next.maxHeight
           ? current
           : next,
       );
@@ -241,6 +338,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(pane);
+    observer.observe(drawer);
     return () => observer.disconnect();
   }, [props.open, props.height]);
 
@@ -321,17 +419,17 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   return (
     <div
       ref={drawerRef}
-      className="flex shrink-0 flex-col"
+      className="flex shrink-0 flex-col overflow-hidden"
       style={{
         height: props.open ? (props.height ?? "50%") : "auto",
-        minHeight: props.open ? DRAWER_MIN_HEIGHT : undefined,
-        // Cap relative to the pane so a persisted px height from a taller
-        // window can never swallow the tab body above when the window shrinks.
-        // `max(MIN, …)` keeps the same floor as `clampDrawerHeight` so a pane
-        // shorter than the reserve can't collapse the drawer past the min.
-        maxHeight: props.open
-          ? `max(${DRAWER_MIN_HEIGHT}px, calc(100% - ${DRAWER_TOP_RESERVE}px))`
-          : undefined,
+        minHeight:
+          props.open && resizeMetrics
+            ? `${resizeMetrics.minHeight}px`
+            : undefined,
+        maxHeight:
+          props.open && resizeMetrics
+            ? `${resizeMetrics.maxHeight}px`
+            : undefined,
       }}
     >
       {props.open && resizeMetrics && (
@@ -340,10 +438,12 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
           onKeyDown={handleResizeKeyDown}
           label={t("sandbox.preview.resizeTerminal")}
           value={resizeMetrics.height}
+          min={resizeMetrics.minHeight}
           max={resizeMetrics.maxHeight}
         />
       )}
       <DrawerToolbar
+        ref={toolbarRef}
         status={props.status}
         open={props.open}
         onToggle={handleToggle}
@@ -359,12 +459,13 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
         scripts={props.scripts}
         active={active}
         scriptTabs={scriptTabs}
+        closingScriptTabs={closingScriptTabs}
         onSelectTab={handleSelectTab}
         onAddScript={handleAddScript}
         onCloseScript={handleCloseScript}
         showScriptControls={isScriptTab}
         scriptIsRunning={scriptIsRunning}
-        scriptIsKilling={scriptIsKilling}
+        scriptIsKilling={scriptIsKilling || scriptClosePending}
         onRunActiveScript={handleRunActive}
         onStopActiveScript={handleStopActive}
       />
@@ -375,6 +476,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
             active={active}
             hasData={vmEvents.hasData(active)}
             onRunActive={handleRunActive}
+            runDisabled={scriptClosePending}
           />
         </div>
       )}
@@ -400,11 +502,13 @@ function DrawerBody({
   active,
   hasData,
   onRunActive,
+  runDisabled,
 }: {
   vmId: string | null;
   active: string;
   hasData: boolean;
   onRunActive: () => void;
+  runDisabled: boolean;
 }) {
   const t = useT();
   // When the sandbox isn't running, the preview area shows a starting card
@@ -419,8 +523,9 @@ function DrawerBody({
       <p>{t("sandbox.drawer.scriptNotRunning", { name: active })}</p>
       <button
         type="button"
+        disabled={runDisabled}
         onClick={onRunActive}
-        className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
+        className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Play className="size-3.5" /> {t("sandbox.drawer.run")}
       </button>
@@ -442,12 +547,14 @@ function ResizeHandle({
   onKeyDown,
   label,
   value,
+  min,
   max,
 }: {
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   label: string;
   value: number;
+  min: number;
   max: number;
 }) {
   return (
@@ -456,7 +563,7 @@ function ResizeHandle({
       tabIndex={0}
       aria-orientation="horizontal"
       aria-label={label}
-      aria-valuemin={DRAWER_MIN_HEIGHT}
+      aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={value}
       onPointerDown={onPointerDown}

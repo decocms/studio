@@ -130,20 +130,25 @@ export function PostEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-        <span className="truncate text-sm font-medium">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6 @max-sm/cms-content:px-3">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {str(post.title) || t("sandbox.postEditor.untitledPost")}
         </span>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3 @max-sm/cms-content:gap-1.5">
           {hasErrors && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                <span
+                  className="flex items-center gap-1.5 text-xs font-medium text-destructive"
+                  aria-label={missingLabel}
+                >
                   <AlertCircle size={14} />
-                  {missing.length}{" "}
-                  {missing.length === 1
-                    ? t("sandbox.postEditor.issueSingular")
-                    : t("sandbox.postEditor.issuePlural")}
+                  <span className="@max-sm/cms-content:hidden">
+                    {missing.length}{" "}
+                    {missing.length === 1
+                      ? t("sandbox.postEditor.issueSingular")
+                      : t("sandbox.postEditor.issuePlural")}
+                  </span>
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">{missingLabel}</TooltipContent>
@@ -155,6 +160,7 @@ export function PostEditor({
             variant="outline"
             size="sm"
             disabled={!previewUrl || hasErrors}
+            aria-label={t("sandbox.postEditor.seePreview")}
             title={
               hasErrors
                 ? missingLabel
@@ -169,19 +175,21 @@ export function PostEditor({
             }}
           >
             <LinkExternal01 size={14} />
-            {t("sandbox.postEditor.seePreview")}
+            <span className="@max-sm/cms-content:hidden">
+              {t("sandbox.postEditor.seePreview")}
+            </span>
           </Button>
         </div>
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl px-8 py-8">
+        <div className="mx-auto max-w-4xl px-8 py-8 @max-md/cms-content:px-4 @max-md/cms-content:py-5">
           {/* Title — wraps onto multiple lines instead of truncating */}
           <EditableText
             value={str(post.title)}
             onChange={(v) => setField("title", v)}
             placeholder={t("sandbox.postEditor.postTitlePlaceholder")}
-            className="py-1 text-4xl font-bold text-foreground"
+            className="py-1 text-4xl font-bold text-foreground @max-sm/cms-content:text-3xl"
           />
 
           {/* Content and Settings are sibling tabs; the body is the default */}
@@ -198,7 +206,7 @@ export function PostEditor({
             </TabsList>
 
             <TabsContent value="content">
-              <div className="rounded-xl border bg-card p-8 shadow-sm">
+              <div className="rounded-xl border bg-card p-8 shadow-sm @max-md/cms-content:p-4">
                 <BlockDocument
                   value={asBlocks(post.sections)}
                   onChange={(next) => setField("sections", next)}
@@ -210,7 +218,7 @@ export function PostEditor({
             </TabsContent>
 
             <TabsContent value="settings">
-              <div className="rounded-xl border bg-card p-6 shadow-sm">
+              <div className="rounded-xl border bg-card p-6 shadow-sm @max-md/cms-content:p-4">
                 <PostSettings
                   post={post}
                   decofile={decofile}
@@ -359,7 +367,7 @@ function PostSettings({
           rows={2}
         />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 @max-sm/cms-content:grid-cols-1">
         <div className="space-y-2">
           <Label htmlFor="post-slug">{t("sandbox.postEditor.slugLabel")}</Label>
           <Input

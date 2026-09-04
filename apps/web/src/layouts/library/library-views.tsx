@@ -1,8 +1,16 @@
-import type { ComponentType, SVGProps } from "react";
+import { Fragment, type ComponentType, type SVGProps } from "react";
 import { useProjectContext } from "@/sdk";
-import { ChevronRight, Stars01, Upload01, Zap } from "@untitledui/icons";
+import { Home02, Stars01, Upload01, Zap } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@decocms/ui/components/breadcrumb.tsx";
 import {
   HOME_MOUNT_PATH,
   homeDisplayName,
@@ -248,9 +256,9 @@ function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
 
 /**
  * Location trail — the only place the current folder is named (there's no page
- * heading duplicating it). The org's home volume IS the top of the tree, so its
- * segment folds into the root crumb, which is labelled with the org itself; the
- * sibling volumes (uploads/outputs/public) hang off that crumb.
+ * heading duplicating it). The home volume is the top of the tree, represented
+ * by the same accessible Home icon as route breadcrumbs; the sibling volumes
+ * (uploads/outputs/public) hang off that crumb without repeating the org name.
  */
 export function Breadcrumbs({
   segments,
@@ -259,51 +267,61 @@ export function Breadcrumbs({
   segments: string[];
   onNavigate: (path: string) => void;
 }) {
-  const { org } = useProjectContext();
+  const t = useT();
+  const homeLabel = t("sidebar.navDestinations.home");
   const rest = segments[0] === HOME_MOUNT_PATH ? segments.slice(1) : segments;
   const offset = segments.length - rest.length;
   const atRoot = rest.length === 0;
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
-      {atRoot ? (
-        <span className="truncate font-medium text-foreground">
-          {homeDisplayName(org.slug)}
-        </span>
-      ) : (
-        <button
-          type="button"
-          className="truncate text-muted-foreground hover:text-foreground hover:underline"
-          onClick={() => onNavigate(HOME_MOUNT_PATH)}
-        >
-          {homeDisplayName(org.slug)}
-        </button>
-      )}
-      {rest.map((seg, i) => {
-        const prefix = segments.slice(0, offset + i + 1).join("/");
-        const isLast = i === rest.length - 1;
-        return (
-          <span key={prefix} className="flex min-w-0 items-center gap-1">
-            <ChevronRight
-              size={12}
-              className="shrink-0 text-muted-foreground"
-            />
-            {isLast ? (
-              <span className="truncate font-medium text-foreground">
-                {segmentLabel(seg)}
-              </span>
-            ) : (
+    <Breadcrumb aria-label={t("library.libraryViews.folderLocation")}>
+      <BreadcrumbList className="flex-wrap gap-1 sm:gap-1">
+        {atRoot ? (
+          <BreadcrumbItem>
+            <BreadcrumbPage aria-label={homeLabel} title={homeLabel}>
+              <Home02 size={14} aria-hidden="true" />
+            </BreadcrumbPage>
+          </BreadcrumbItem>
+        ) : (
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
               <button
                 type="button"
-                className="truncate text-muted-foreground hover:text-foreground hover:underline"
-                onClick={() => onNavigate(prefix)}
+                aria-label={homeLabel}
+                title={homeLabel}
+                className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                onClick={() => onNavigate(HOME_MOUNT_PATH)}
               >
-                {segmentLabel(seg)}
+                <Home02 size={14} aria-hidden="true" />
               </button>
-            )}
-          </span>
-        );
-      })}
-    </div>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+        )}
+        {rest.map((seg, i) => {
+          const prefix = segments.slice(0, offset + i + 1).join("/");
+          const isLast = i === rest.length - 1;
+          return (
+            <Fragment key={prefix}>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                {isLast ? (
+                  <BreadcrumbPage>{segmentLabel(seg)}</BreadcrumbPage>
+                ) : (
+                  <BreadcrumbLink asChild>
+                    <button
+                      type="button"
+                      className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                      onClick={() => onNavigate(prefix)}
+                    >
+                      {segmentLabel(seg)}
+                    </button>
+                  </BreadcrumbLink>
+                )}
+              </BreadcrumbItem>
+            </Fragment>
+          );
+        })}
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }
 

@@ -7,6 +7,7 @@ import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
   decofileWriteMutationKey,
+  type DecofileDraft,
   patchDecofile,
   setDecofileDraft,
   throwResponseError,
@@ -15,6 +16,7 @@ import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
+import { BlockSaveRevisionTracker } from "./block-save-revision";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -23,6 +25,25 @@ interface UseSaveBlockParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+}
+
+const revisionTrackers = new WeakMap<object, BlockSaveRevisionTracker>();
+
+function revisionTrackerFor(queryClient: object): BlockSaveRevisionTracker {
+  let tracker = revisionTrackers.get(queryClient);
+  if (!tracker) {
+    tracker = new BlockSaveRevisionTracker();
+    revisionTrackers.set(queryClient, tracker);
+  }
+  return tracker;
+}
+
+function saveMutationScopeKey({
+  orgSlug,
+  virtualMcpId,
+  branch,
+}: UseSaveBlockParams): string {
+  return JSON.stringify(["decofile-save", orgSlug, virtualMcpId, branch]);
 }
 
 export function useSaveBlock({
@@ -38,22 +59,31 @@ export function useSaveBlock({
   // on the branch) instead of the sandbox working tree. The server owns the
   // key -> file mapping, so no path construction here.
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
+  const mutationScopeKey = saveMutationScopeKey({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
+  const revisionTracker = revisionTrackerFor(queryClient);
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
+    // React Query registers later optimistic revisions immediately, but starts
+    // their network writes serially. This gives every renderer/hook instance
+    // for the same branch one authoritative server-write order.
+    scope: { id: mutationScopeKey },
     mutationFn: async ({
       blockKey,
       data,
     }: {
       blockKey: string;
       data: unknown;
-    }) => {
+    }): Promise<DecofileDraft | null> => {
       if (fastPreviewActive) {
         const draft = await patchDecofile(
           { orgSlug, virtualMcpId, branch },
           { set: { [blockKey]: data } },
         );
-        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
         /**
          * The landed commit moved the branch head — refresh the header's
          * branch meta now. This write is the ONLY in-app head mutation, which
@@ -85,16 +115,26 @@ export function useSaveBlock({
         },
       );
       if (!res.ok) return throwResponseError(res, "Write");
-      return res.json();
+      await res.json();
+      return null;
     },
     onMutate: async ({ blockKey, data }) => {
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       const queryKey = KEYS.decofile(cacheKey);
-      await queryClient.cancelQueries({ queryKey });
       const previous =
         queryClient.getQueryData<Record<string, unknown>>(queryKey);
-      const hadKey = !!previous && blockKey in previous;
-      const previousValue = previous?.[blockKey];
+      const baseline = {
+        exists: !!previous && blockKey in previous,
+        value: previous?.[blockKey],
+      };
+      const revision = revisionTracker.begin(
+        `${mutationScopeKey}:${JSON.stringify(blockKey)}`,
+        baseline,
+      );
+      await queryClient.cancelQueries({ queryKey });
+      if (!revisionTracker.isLatest(revision)) {
+        return { queryKey, blockKey, revision };
+      }
       queryClient.setQueryData(
         queryKey,
         (current: Record<string, unknown> | undefined) => ({
@@ -102,24 +142,45 @@ export function useSaveBlock({
           [blockKey]: data,
         }),
       );
-      return { queryKey, blockKey, hadKey, previousValue };
+      return { queryKey, blockKey, revision };
     },
-    // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
+    // Older optimistic revisions never overwrite a newer one. If the newest
+    // fails, restore the latest value that really reached the server rather
+    // than a failed predecessor's optimistic snapshot.
     onError: (_error, _variables, context) => {
       if (!context) return;
+      const rollback = revisionTracker.rollbackFor(context.revision);
+      if (!rollback) return;
       queryClient.setQueryData(
         context.queryKey,
         (current: Record<string, unknown> | undefined) => {
-          if (!current) return current;
-          if (!context.hadKey) {
+          if (!rollback.exists) {
+            if (!current) return current;
             const { [context.blockKey]: _removed, ...rest } = current;
             return rest;
           }
-          return { ...current, [context.blockKey]: context.previousValue };
+          return { ...current, [context.blockKey]: rollback.value };
         },
       );
     },
-    onSuccess: (_result, { blockKey, data }) => {
+    onSuccess: (draft, { blockKey, data }, context) => {
+      // Scope serialization means successful server writes settle in the exact
+      // order in which they moved this branch head. Publish every successful
+      // draft in that order, independent of the per-block optimistic fence.
+      // A later failed write publishes nothing, so the last committed head
+      // remains visible even when different blocks are interleaved.
+      if (draft) {
+        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+      }
+      if (
+        !context ||
+        !revisionTracker.recordSuccess(context.revision, {
+          exists: true,
+          value: data,
+        })
+      ) {
+        return;
+      }
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       queryClient.setQueryData(
         KEYS.decofile(cacheKey),
@@ -128,6 +189,9 @@ export function useSaveBlock({
           [blockKey]: data,
         }),
       );
+    },
+    onSettled: (_data, _error, _variables, context) => {
+      if (context) revisionTracker.settle(context.revision);
     },
   });
 }
@@ -158,24 +222,48 @@ export function useDebouncedSaveBlock(
 ) {
   const saveBlock = useSaveBlock(params);
   const t = useT();
-  const pendingRef = useRef<Map<string, SaveData>>(new Map());
+  const runtimeRef = useRef({
+    mutate: saveBlock.mutate,
+    onSaved: opts?.onSaved,
+    scopeKey: saveMutationScopeKey(params),
+    t,
+  });
+  // Old Monaco callbacks and PageJsonPanel's intentionally stable ref-cleanup
+  // may retain the first `save`/`flush` closure. All work they enqueue reads
+  // this current runtime, while already-pending work keeps the scope it was
+  // created for so a branch change can never redirect it.
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- latest runtime mirror for stable editor/ref callbacks
+  runtimeRef.current = {
+    mutate: saveBlock.mutate,
+    onSaved: opts?.onSaved,
+    scopeKey: saveMutationScopeKey(params),
+    t,
+  };
+
+  interface PendingSave {
+    blockKey: string;
+    data: SaveData;
+    runtime: typeof runtimeRef.current;
+  }
+  const pendingRef = useRef<Map<string, PendingSave>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
 
-  const runPendingSave = (blockKey: string) => {
-    const pending = pendingRef.current.get(blockKey);
+  const runPendingSave = (pendingKey: string) => {
+    const pending = pendingRef.current.get(pendingKey);
     if (!pending) return;
-    const resolved = typeof pending === "function" ? pending() : pending;
-    pendingRef.current.delete(blockKey);
+    const resolved =
+      typeof pending.data === "function" ? pending.data() : pending.data;
+    pendingRef.current.delete(pendingKey);
     if (!resolved) return;
-    saveBlock.mutate(
-      { blockKey, data: resolved },
+    pending.runtime.mutate(
+      { blockKey: pending.blockKey, data: resolved },
       {
-        onSuccess: () => opts?.onSaved?.(),
+        onSuccess: () => pending.runtime.onSaved?.(),
         onError: (err) =>
           toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
+            pending.runtime.t("sectionsEditor.sectionsEditor.saveFailed", {
               error: err.message,
             }),
           ),
@@ -188,8 +276,8 @@ export function useDebouncedSaveBlock(
       clearTimeout(timer);
     }
     timersRef.current.clear();
-    for (const blockKey of [...pendingRef.current.keys()]) {
-      runPendingSave(blockKey);
+    for (const pendingKey of [...pendingRef.current.keys()]) {
+      runPendingSave(pendingKey);
     }
   };
 
@@ -207,14 +295,16 @@ export function useDebouncedSaveBlock(
   }, []);
 
   const save = (blockKey: string, data: SaveData) => {
-    pendingRef.current.set(blockKey, data);
-    const existing = timersRef.current.get(blockKey);
+    const runtime = runtimeRef.current;
+    const pendingKey = `${runtime.scopeKey}:${JSON.stringify(blockKey)}`;
+    pendingRef.current.set(pendingKey, { blockKey, data, runtime });
+    const existing = timersRef.current.get(pendingKey);
     if (existing) clearTimeout(existing);
     timersRef.current.set(
-      blockKey,
+      pendingKey,
       setTimeout(() => {
-        timersRef.current.delete(blockKey);
-        runPendingSave(blockKey);
+        timersRef.current.delete(pendingKey);
+        runPendingSave(pendingKey);
       }, AUTOSAVE_DELAY),
     );
   };

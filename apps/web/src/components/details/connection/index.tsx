@@ -2,6 +2,7 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { Main } from "@/components/main";
 import { recordToEnvVars } from "@/components/env-vars-editor";
 import {
   buildCustomStdioParameters,
@@ -426,8 +427,16 @@ function ConnectionInspectorViewWithConnection({
     }
   };
 
+  const firstConnection = siblings[0] ?? connection;
+  const displayTitle = firstConnection.app_name
+    ? firstConnection.title.replace(/\s*\(\d+\)\s*$/, "")
+    : firstConnection.title;
+
   return (
     <>
+      <Main.Title.Portal>
+        <span title={displayTitle}>{displayTitle}</span>
+      </Main.Title.Portal>
       <DeleteConnectionDialogs {...deleteConnection} />
 
       {/* Settings Sheet */}
@@ -556,12 +565,7 @@ function ConnectionInspectorViewWithConnection({
         <div className="flex flex-col h-full overflow-hidden">
           <ConnectionDetailHeader
             connection={connection}
-            displayTitle={(() => {
-              const first = siblings[0] ?? connection;
-              return first.app_name
-                ? first.title.replace(/\s*\(\d+\)\s*$/, "")
-                : first.title;
-            })()}
+            displayTitle={displayTitle}
           />
           <div className="flex-1 overflow-auto @container">
             <div className="grid grid-cols-1 @3xl:grid-cols-2 gap-5 p-6">

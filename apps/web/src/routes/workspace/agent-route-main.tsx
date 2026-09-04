@@ -3,7 +3,15 @@ import { useWorkspace } from "@/layouts/agent-shell-layout/workspace-context";
 import { DevAgentControl } from "@/components/dev-agent/dev-agent-control";
 import { useRouteMainTitle } from "@/hooks/use-route-main-title";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
-import { useVirtualMCP } from "@/sdk";
+import {
+  getDecopilotId,
+  getWellKnownDecopilotVirtualMCP,
+  useProjectContext,
+  useVirtualMCP,
+} from "@/sdk";
+import { useT } from "@/i18n/use-t";
+import { agentMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
+import type { MainBreadcrumbNavigableItem } from "@/components/main-breadcrumb";
 import {
   WorkspaceRouteMain,
   type WorkspaceRouteMainProps,
@@ -15,20 +23,54 @@ import {
  * primitive never guesses its composition from router params.
  */
 export function AgentRouteMain(
-  props: Omit<WorkspaceRouteMainProps, "leading">,
+  props: Omit<WorkspaceRouteMainProps, "breadcrumbAncestors" | "leading"> & {
+    /** The agent itself is current on its canonical overview route. */
+    agentRoot?: boolean;
+    /** Semantic route levels nested below the agent. */
+    breadcrumbAncestors?: readonly MainBreadcrumbNavigableItem[];
+  },
 ) {
+  const { agentRoot = false, breadcrumbAncestors = [], ...routeProps } = props;
+  const t = useT();
   const workspace = useWorkspace();
+  const { org } = useProjectContext();
   const agentId = useRouteVirtualMcpId();
   const agent = useVirtualMCP(agentId);
+  const breadcrumbAgent =
+    agent ??
+    (agentId === getDecopilotId(org.id)
+      ? getWellKnownDecopilotVirtualMCP(org.id)
+      : {
+          id: agentId,
+          title: t("taskBoard.taskDialog.projectLabel"),
+          icon: null,
+        });
   const fixedRouteTitle = useRouteMainTitle();
-  const routeTitle = props.title?.trim() || fixedRouteTitle;
+  const projectTitle =
+    breadcrumbAgent.title.trim() || t("taskBoard.taskDialog.projectLabel");
+  const routeTitle = agentRoot
+    ? projectTitle
+    : routeProps.title?.trim() || fixedRouteTitle;
 
   return (
     <WorkspaceRouteMain
-      {...props}
+      {...routeProps}
+      title={routeTitle}
+      breadcrumbAncestors={
+        agentRoot
+          ? undefined
+          : [
+              agentMainBreadcrumbItem(
+                org.slug,
+                breadcrumbAgent,
+                t("taskBoard.taskDialog.projectLabel"),
+              ),
+              ...breadcrumbAncestors,
+            ]
+      }
       actions={
         <>
-          {props.actions}
+          {routeProps.actions}
           {agent ? <DevAgentControl virtualMcp={agent} /> : null}
         </>
       }

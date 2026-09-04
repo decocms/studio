@@ -219,10 +219,20 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <Main.Topbar.Center.Portal>
-        <div className="hidden md:block">{searchInput}</div>
+        <div
+          data-responsive-focus-group="assets-search"
+          className="hidden md:block"
+        >
+          {searchInput}
+        </div>
       </Main.Topbar.Center.Portal>
       <Main.Subheader.Portal>
-        <div className="w-full md:hidden [&>*]:w-full">{searchInput}</div>
+        <div
+          data-responsive-focus-group="assets-search"
+          className="w-full md:hidden [&>*]:w-full"
+        >
+          {searchInput}
+        </div>
       </Main.Subheader.Portal>
       <Main.Topbar.Right.Portal>{uploadButton}</Main.Topbar.Right.Portal>
       <div className="flex shrink-0 items-center justify-between gap-3">

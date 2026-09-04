@@ -21,6 +21,7 @@ export function CreatePageModal({
   error,
   templates,
   onSubmit,
+  onAfterCloseAutoFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -36,6 +37,8 @@ export function CreatePageModal({
     path: string;
     templateKey: string | null;
   }) => void | Promise<void>;
+  /** Optional focus handoff for hosts that launch this from another layer. */
+  onAfterCloseAutoFocus?: () => void;
 }) {
   const t = useT();
   const [name, setName] = useState(
@@ -90,7 +93,14 @@ export function CreatePageModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onCloseAutoFocus={(event) => {
+          if (!onAfterCloseAutoFocus) return;
+          event.preventDefault();
+          onAfterCloseAutoFocus();
+        }}
+      >
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>

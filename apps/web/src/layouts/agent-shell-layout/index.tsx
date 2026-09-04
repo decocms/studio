@@ -1,23 +1,21 @@
 /**
  * Agent Shell Layout
  *
- * Desktop layout — each panel owns its own 48px header (no shared top bar):
+ * Responsive layout — each panel owns its own 48px header (no shared top bar):
  *   AgentInsetProvider
  *   • useVirtualMCP (suspends here)
  *   • Chat.Provider
  *     └── VmEventsBridge
  *         └── ActiveTaskRuntimeProvider
  *             └── WorkspacePanelGroup
- *                 ├── Chat panel  (header: Chat toggle)
- *                 └── Main panel  (header: view tabs + toggles, Preview
+ *                 ├── Main panel  (header: view tabs + toggles, Preview
  *                     controls, publish). Buttons relocate between the two
  *                     headers so nothing disappears when a panel is closed.
+ *                 └── Chat panel  (header: threads + new chat)
  *
- * Mobile layout (one visible surface at a time):
- *   Chat.Provider
- *   └── VmEventsBridge
- *       └── ActiveTaskRuntimeProvider
- *           └── route-owned Main (including its topbar) OR chat + its header
+ * Mobile changes which persistent panel is visible, never which provider or
+ * Outlet tree is mounted. This keeps editor and composer state intact across
+ * the responsive breakpoint.
  */
 
 import {
@@ -73,7 +71,6 @@ import {
 } from "@/components/thread/github/use-version-gate";
 import { useT } from "@/i18n/use-t.ts";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
-import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { MainPanelTabsProvider } from "@/layouts/main-panel-tabs/main-panel-tabs-context";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -98,13 +95,10 @@ import { AGENT_ROUTE, DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
-import { SidePanel } from "./side-panel";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
 import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard";
 import { WorkspaceProvider } from "./workspace-context";
-import { PanelHeader } from "./panel-header";
-import { SidebarTriggerButton } from "@/layouts/shell-controls";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -461,24 +455,36 @@ function VmEventsBridge({
 
 type TaskLayout = ReturnType<typeof useWorkspaceLayoutState>;
 
-function DesktopTaskWorkspace({
+function TaskWorkspace({
   virtualMcpId,
   layout,
   onNewTaskRef,
   mainContent,
+  mobile,
 }: {
   virtualMcpId: string;
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
   mainContent: ReactNode;
+  mobile: boolean;
 }) {
+  const mobileSurface = mobile
+    ? resolveMobileSurface({
+        visibility: {
+          sidePanelOpen: layout.sidePanelOpen,
+          mainOpen: layout.mainOpen,
+        },
+        sidePanelParamPresent: layout.sidePanelParamPresent,
+      })
+    : undefined;
+
   return (
     <WorkspaceProvider value={layout}>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
       />
-      {/* Chat and each routed Main surface own their respective topbars.
+      {/* Each routed Main surface and Chat own their respective topbars.
           Everything lives under SandboxEventsProvider — useMainPanelTabs gates
           Content on lifecycle.phase === "running" + decofile. */}
       <MainPanelBoundary>
@@ -490,65 +496,8 @@ function DesktopTaskWorkspace({
           toggleMain={layout.toggleMain}
           chatContent={<ActiveTaskBoundary />}
           mainContent={mainContent}
+          mobileSurface={mobileSurface}
         />
-      </MainPanelBoundary>
-    </WorkspaceProvider>
-  );
-}
-
-function MobileTaskWorkspace({
-  layout,
-  onNewTaskRef,
-  mainContent,
-}: {
-  layout: TaskLayout;
-  onNewTaskRef: React.MutableRefObject<(() => void) | null>;
-  mainContent: ReactNode;
-}) {
-  const t = useT();
-  const mobileSurface = resolveMobileSurface({
-    visibility: {
-      sidePanelOpen: layout.sidePanelOpen,
-      mainOpen: layout.mainOpen,
-    },
-    sidePanelParamPresent: layout.sidePanelParamPresent,
-  });
-
-  return (
-    <WorkspaceProvider value={layout}>
-      <NewTaskBridge
-        onNewTaskRef={onNewTaskRef}
-        createNewTask={layout.createNewTask}
-      />
-      <MainPanelBoundary>
-        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-          {mobileSurface === "chat" && (
-            <PanelHeader className="border-b border-border/60 bg-background px-1.5">
-              <SidebarTriggerButton />
-              <MobileMainPanelTabSelect />
-            </PanelHeader>
-          )}
-          {mobileSurface === "main" ? (
-            <ErrorBoundary
-              fallback={
-                <div
-                  role="alert"
-                  className="flex-1 flex items-center justify-center text-sm text-muted-foreground"
-                >
-                  {t("agentShellLayout.agentShellLayout.somethingWentWrong")}
-                </div>
-              }
-            >
-              <MainPanelBoundary>
-                <div data-testid="main-panel" className="h-full">
-                  {mainContent}
-                </div>
-              </MainPanelBoundary>
-            </ErrorBoundary>
-          ) : (
-            <SidePanel chatContent={<ActiveTaskBoundary />} />
-          )}
-        </div>
       </MainPanelBoundary>
     </WorkspaceProvider>
   );
@@ -817,50 +766,11 @@ function AgentInsetProvider() {
     );
   }
 
-  // Mobile layout — unchanged semantics, just inlined here for clarity.
-  if (isMobile) {
-    return (
-      <InsetContext value={insetContextValue}>
-        <div className="flex flex-col flex-1 min-w-0 bg-background min-h-0">
-          <Chat.Provider
-            key={chatVirtualMcpId}
-            virtualMcpId={chatVirtualMcpId}
-            task={ensureState.status === "ready" ? ensureState.task : null}
-          >
-            <VmEventsBridge
-              virtualMcpId={virtualMcpId}
-              hasActiveGithubRepo={hasActiveGithubRepo}
-              sandboxMap={entity?.metadata?.sandboxMap}
-            >
-              <ActiveTaskRuntimeProvider
-                key={layout.providerKey}
-                threadId={layout.threadId}
-              >
-                <MainPanelBoundary>
-                  <MainPanelTabsProvider
-                    virtualMcpId={chatVirtualMcpId}
-                    taskId={layout.threadId}
-                  >
-                    <MobileTaskWorkspace
-                      layout={layout}
-                      onNewTaskRef={onNewTask}
-                      mainContent={<Outlet />}
-                    />
-                  </MainPanelTabsProvider>
-                </MainPanelBoundary>
-              </ActiveTaskRuntimeProvider>
-            </VmEventsBridge>
-          </Chat.Provider>
-        </div>
-      </InsetContext>
-    );
-  }
-
-  // Desktop — portal toggle buttons into outer toolbar, render chat+main group.
-  // The org-wide tasks column is owned by org-shell-layout, outside this
-  // Suspense boundary, so it stays mounted while this task-scoped content loads.
+  // One provider and Outlet tree serves both responsive modes. Crossing the
+  // mobile breakpoint may change panel visibility and chrome, but it must not
+  // remount an editor with an unsaved buffer or a chat with a draft message.
   return (
-    <div className="flex-1 min-w-0 flex flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background md:bg-transparent">
       <InsetContext value={insetContextValue}>
         <Chat.Provider
           key={chatVirtualMcpId}
@@ -872,10 +782,8 @@ function AgentInsetProvider() {
             hasActiveGithubRepo={hasActiveGithubRepo}
             sandboxMap={entity?.metadata?.sandboxMap}
           >
-            {/* The toggles, tabs, header, and main panel all render inside the
-                selected active-task runtime via DesktopTaskWorkspace. The
-                runtime-setup prompt lives only in the side panel; the tabs
-                stay navigable regardless. */}
+            {/* The org-wide tasks column lives above this Suspense boundary.
+                The selected task runtime owns both persistent panels. */}
             <ActiveTaskRuntimeProvider
               key={layout.providerKey}
               threadId={layout.threadId}
@@ -885,11 +793,12 @@ function AgentInsetProvider() {
                   virtualMcpId={virtualMcpId}
                   taskId={layout.threadId}
                 >
-                  <DesktopTaskWorkspace
+                  <TaskWorkspace
                     virtualMcpId={virtualMcpId}
                     layout={layout}
                     onNewTaskRef={onNewTask}
                     mainContent={<Outlet />}
+                    mobile={isMobile}
                   />
                 </MainPanelTabsProvider>
               </MainPanelBoundary>

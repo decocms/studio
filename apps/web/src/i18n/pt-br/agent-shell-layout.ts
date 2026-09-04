@@ -22,4 +22,6 @@ export const agentShellLayout = {
   "agentShellLayout.toggleButtons.hidePanel": "Ocultar painel",
   "agentShellLayout.toggleButtons.showChat": "Mostrar chat",
   "agentShellLayout.toggleButtons.showPanel": "Mostrar painel",
+  "agentShellLayout.workspace.resizePanels":
+    "Redimensionar painéis principal e de chat",
 } satisfies Record<keyof typeof agentShellLayoutEn, string>;

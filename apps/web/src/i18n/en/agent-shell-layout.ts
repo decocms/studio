@@ -19,4 +19,5 @@ export const agentShellLayout = {
   "agentShellLayout.toggleButtons.hidePanel": "Hide panel",
   "agentShellLayout.toggleButtons.showChat": "Show chat",
   "agentShellLayout.toggleButtons.showPanel": "Show panel",
+  "agentShellLayout.workspace.resizePanels": "Resize main and chat panels",
 } as const;

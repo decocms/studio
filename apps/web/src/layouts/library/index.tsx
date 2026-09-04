@@ -478,10 +478,20 @@ export function LibraryPage({
         </div>
       )}
       <Main.Topbar.Center.Portal>
-        <div className="hidden md:block">{searchInput}</div>
+        <div
+          data-responsive-focus-group="library-search"
+          className="hidden md:block"
+        >
+          {searchInput}
+        </div>
       </Main.Topbar.Center.Portal>
       <Main.Subheader.Portal>
-        <div className="w-full md:hidden [&>*]:w-full">{searchInput}</div>
+        <div
+          data-responsive-focus-group="library-search"
+          className="w-full md:hidden [&>*]:w-full"
+        >
+          {searchInput}
+        </div>
       </Main.Subheader.Portal>
       <Main.Topbar.Right.Portal>{topbarActions}</Main.Topbar.Right.Portal>
       <input

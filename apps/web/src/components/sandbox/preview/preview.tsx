@@ -1,5 +1,12 @@
-import { useState, useRef, useEffect, type CSSProperties } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useEffectEvent,
+  type CSSProperties,
+} from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -13,6 +20,7 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 import {
+  ArrowLeft,
   CursorClick01,
   LinkExternal01,
   ChevronDown,
@@ -32,6 +40,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@decocms/ui/components/popover.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { Main } from "@/components/main";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
@@ -131,11 +144,28 @@ import {
   type PreviewEditingMode,
 } from "./editing-mode";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
+import { useElementWidth } from "@/hooks/use-element-width";
+import {
+  FOCUSABLE_HANDOFF_TARGET,
+  useFocusHandoffRef,
+} from "@/hooks/use-focus-handoff-ref";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
 
 type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
+
+function focusVisibleElement(element: HTMLElement | null): boolean {
+  if (
+    !element?.isConnected ||
+    element.getClientRects().length === 0 ||
+    element.closest("[inert]")
+  ) {
+    return false;
+  }
+  element.focus();
+  return document.activeElement === element;
+}
 
 /**
  * Logical viewport dimensions per device, matching the legacy admin. The iframe
@@ -156,6 +186,10 @@ const PREVIEW_VIEWPORTS: Record<
 
 /** Px inset so the scaled frame's border doesn't sit flush against the canvas edge. */
 const PREVIEW_OFFSET = 1;
+/** Below this actual panel width, Blocks and canvas become a drill-in flow. */
+const COMPACT_PREVIEW_WORKSPACE_WIDTH = 720;
+
+type CompactPreviewStage = "canvas" | "blocks";
 
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
 
@@ -259,11 +293,6 @@ function pageMatchScore(name: string, path: string, q: string): number {
  * Reload the iframe in place; falls back to reassigning `src` when the
  * iframe's live location is cross-origin (sandbox preview domain) and
  * `.reload()` throws.
-
-/**
- * Reload the iframe in place; falls back to reassigning `src` when the
- * iframe's live location is cross-origin (sandbox preview domain) and
- * `.reload()` throws.
  */
 function reloadIframeOrFallback(
   iframe: HTMLIFrameElement,
@@ -278,6 +307,30 @@ function reloadIframeOrFallback(
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
+  const [previewWorkspaceWidth, previewWorkspaceRef] = useElementWidth();
+  const isCompactPreviewWorkspace =
+    previewWorkspaceWidth >= 0 &&
+    previewWorkspaceWidth < COMPACT_PREVIEW_WORKSPACE_WIDTH;
+  const [compactPreviewStage, setCompactPreviewStage] =
+    useState<CompactPreviewStage>("canvas");
+  const blocksStageBackRef = useRef<HTMLButtonElement>(null);
+  const canvasStageBlocksRef = useRef<HTMLButtonElement>(null);
+
+  function focusCompactStage(stage: CompactPreviewStage) {
+    requestAnimationFrame(() => {
+      if (stage === "blocks") {
+        blocksStageBackRef.current?.focus();
+      } else {
+        canvasStageBlocksRef.current?.focus();
+      }
+    });
+  }
+
+  function showCompactPreviewStage(stage: CompactPreviewStage) {
+    setCompactPreviewStage(stage);
+    focusCompactStage(stage);
+  }
+
   const isDesktopApp = useIsDesktopApp();
   const isMobile = useIsMobile();
   const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
@@ -316,19 +369,54 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     seq: number;
   } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
+  const blocksFocusRootRef = useRef<HTMLDivElement>(null);
+  const blocksStageBackHandoffRef = useFocusHandoffRef(
+    blocksStageBackRef,
+    { ref: blocksFocusRootRef, selector: FOCUSABLE_HANDOFF_TARGET },
+    { ref: previewIframeRef },
+  );
+  const canvasStageBlocksHandoffRef = useFocusHandoffRef(canvasStageBlocksRef, {
+    ref: previewIframeRef,
+  });
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
   // Raw Page JSON side panel open state; the page it shows follows currentPageKey.
   const [jsonPanelOpen, setJsonPanelOpen] = useState(false);
   const jsonPanelHandleRef = useRef<PageJsonPanelHandle>(null);
-  const closeJsonPanel = () => {
+  const jsonPanelTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const pagesTriggerRef = useRef<HTMLButtonElement>(null);
+  const compactJsonReturnStageRef = useRef<CompactPreviewStage | null>(null);
+  const dismissJsonPanel = () => {
     jsonPanelHandleRef.current?.flush();
     setJsonPanelOpen(false);
+    jsonPanelTriggerRef.current = null;
+    compactJsonReturnStageRef.current = null;
   };
-  const toggleJsonPanel = () =>
-    setJsonPanelOpen((open) => {
-      if (open) jsonPanelHandleRef.current?.flush();
-      return !open;
-    });
+  const closeJsonPanel = () => {
+    const trigger = jsonPanelTriggerRef.current;
+    const returnStage = compactJsonReturnStageRef.current;
+    dismissJsonPanel();
+    if (isCompactPreviewWorkspace) {
+      showCompactPreviewStage(returnStage ?? "blocks");
+    } else {
+      requestAnimationFrame(() => {
+        if (focusVisibleElement(trigger)) return;
+        if (focusVisibleElement(pagesTriggerRef.current)) return;
+        focusVisibleElement(previewIframeRef.current);
+      });
+    }
+  };
+  const toggleJsonPanel = (trigger: HTMLButtonElement) => {
+    if (jsonPanelOpen) {
+      closeJsonPanel();
+      return;
+    }
+    jsonPanelTriggerRef.current = trigger;
+    if (isCompactPreviewWorkspace) {
+      compactJsonReturnStageRef.current = compactPreviewStage;
+      setCompactPreviewStage("canvas");
+    }
+    setJsonPanelOpen(true);
+  };
   // Live canvas size, used to scale the fixed-width frame to fit.
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   /** Origin most recently confirmed registered with the native shell via
@@ -341,8 +429,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
   const [pagesSearch, setPagesSearch] = useState("");
-  const pagesContainerRef = useRef<HTMLDivElement>(null);
+  const [pagesCollisionBoundary, setPagesCollisionBoundary] =
+    useState<Element | null>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
+  const launchingCreatePageRef = useRef(false);
+  const closeCreatePageDialog = () => {
+    setCreatePageDialogOpen(false);
+  };
   const [createPageError, setCreatePageError] = useState<string | undefined>();
   const [activeGlobalSection, setActiveGlobalSection] =
     useState<GlobalSectionEntry | null>(null);
@@ -802,6 +895,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         params,
       });
     } else if (sharedTarget.kind === "loader") {
+      dismissJsonPanel();
+      setCompactPreviewStage("blocks");
       intendedPathRef.current = null;
       setActiveGlobalSection(null);
       setActiveLoaderKey(sharedTarget.key);
@@ -811,6 +906,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         (candidate) => candidate.key === sharedTarget.key,
       );
       if (section) {
+        dismissJsonPanel();
+        setCompactPreviewStage("blocks");
         intendedPathRef.current = null;
         const livePageRt = findLivePageResolveType(meta);
         setActiveLoaderKey(null);
@@ -1047,29 +1144,32 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     blocksEditingEnabled,
   });
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
-  useEffect(() => {
-    const allowedOrigin = editorBridgeOrigin;
-    if (!allowedOrigin) return;
-    const handler = (e: MessageEvent) => {
-      if (e.origin !== allowedOrigin) return;
-      if (e.data?.type === "visual-editor::element-clicked") {
-        const result = VisualEditorPayloadSchema.safeParse(e.data.payload);
+  const handleEditorBridgeMessage = useEffectEvent(
+    (event: MessageEvent, allowedOrigin: string) => {
+      if (event.data?.type === "visual-editor::element-clicked") {
+        const result = VisualEditorPayloadSchema.safeParse(event.data.payload);
         if (result.success) setVisualElement(result.data);
-      } else if (e.data?.type === "cms-editor::section-clicked") {
-        const result = CmsEditorPayloadSchema.safeParse(e.data.payload);
-        if (result.success)
+      } else if (event.data?.type === "cms-editor::section-clicked") {
+        const result = CmsEditorPayloadSchema.safeParse(event.data.payload);
+        if (result.success) {
           setCmsSelectedSection({
             index: result.data.sectionIndex,
             seq: result.data.clickSeq,
           });
-      } else if (e.data?.type === "cms-editor::render-start") {
+          // Compact Preview is canvas-first. A click-through is an explicit
+          // request to edit, so reveal the mounted Blocks stage and put its
+          // return control in the keyboard sequence.
+          setCompactPreviewStage("blocks");
+          requestAnimationFrame(() => blocksStageBackRef.current?.focus());
+        }
+      } else if (event.data?.type === "cms-editor::render-start") {
         beginNavigation();
-      } else if (e.data?.type === "cms-editor::render-end") {
+      } else if (event.data?.type === "cms-editor::render-end") {
         endNavigation();
-        // The in-place swap keeps stale label/kind/key data; resend it.
-        const win = previewIframeRef.current?.contentWindow;
-        win?.postMessage(
+        // In-place rendering preserves the editor script but replaces the
+        // section sequence. Refresh its alignment metadata before the next
+        // hover/click so it cannot select a stale section index.
+        previewIframeRef.current?.contentWindow?.postMessage(
           {
             type: "cms-editor::set-labels",
             labels: cmsSectionLabels,
@@ -1078,9 +1178,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           },
           allowedOrigin,
         );
-      } else if (e.data?.type === "cms-editor::render-error") {
+      } else if (event.data?.type === "cms-editor::render-error") {
         endNavigation();
       }
+    },
+  );
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
+  useEffect(() => {
+    const allowedOrigin = editorBridgeOrigin;
+    if (!allowedOrigin) return;
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== allowedOrigin) return;
+      handleEditorBridgeMessage(event, allowedOrigin);
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
@@ -1148,6 +1258,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     // The JSON side panel only makes sense next to the Blocks editor.
     if (mode !== "blocks") closeJsonPanel();
     setEditingMode(mode);
+    if (mode !== "blocks") setCompactPreviewStage("canvas");
     setVisualElement(null);
     setCmsSelectedSection(null);
     // A loader has no canvas, so leaving Blocks deselects it back to the page.
@@ -1272,6 +1383,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       toast.error(t("sandbox.preview.previewMetadataNotReady"));
       return;
     }
+    dismissJsonPanel();
+    setCompactPreviewStage("blocks");
     beginNavigation();
     intendedPathRef.current = null;
     const livePageRt = findLivePageResolveType(meta);
@@ -1290,10 +1403,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Loaders open full-width in the Blocks panel (form + Run), no canvas.
   const navigatePreviewToLoader = (loader: SavedRunnableEntry) => {
     if (!blocksEditingEnabled) return;
+    dismissJsonPanel();
+    setCompactPreviewStage("blocks");
     setActiveGlobalSection(null);
     setActiveLoaderKey(loader.key);
     setDirectPreviewUrl(null);
     activateEditingMode("blocks");
+    showCompactPreviewStage("blocks");
     workspace.selectTarget({ kind: "loader", key: loader.key });
   };
 
@@ -1336,7 +1452,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         path: trimmedPath,
         template,
       });
-      setCreatePageDialogOpen(false);
+      closeCreatePageDialog();
       toast.success(t("sandbox.preview.pageCreated", { name }));
       await sleep(DEV_SERVER_SETTLE_MS);
       navigatePreviewToPage({
@@ -1345,6 +1461,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         path: result.path,
       });
       activateEditingMode("blocks");
+      showCompactPreviewStage("blocks");
     } catch (error) {
       setCreatePageError(
         error instanceof Error
@@ -1391,112 +1508,145 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           that also hosts "Create page". Disabled projects get the iframe's
           domain as plain text. */}
       {pageSelectorVisible ? (
-        <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
-          <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
-            {/* Not a <button>: path-template pages render `:param`
+        <div
+          ref={(node) => {
+            if (!node) return;
+            setPagesCollisionBoundary(
+              node.closest('[data-testid="main-panel"]'),
+            );
+          }}
+          className="relative min-w-0 w-64 shrink @max-3xl/main-topbar:w-40 @max-xl/main-topbar:w-28"
+        >
+          <Popover
+            open={pagesOpen}
+            onOpenChange={(open) => {
+              setPagesOpen(open);
+              if (!open) setPagesSearch("");
+            }}
+          >
+            <PopoverAnchor asChild>
+              <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
+                {/* Not a <button>: path-template pages render `:param`
                   inputs inline, and inputs can't nest inside a button.
                   Keyboard toggling stays on the chevron button. */}
-            <div
-              className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
-              onClick={() => setPagesOpen((prev) => !prev)}
-            >
-              {activeGlobalSection && (
-                <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                  <Globe02 size={11} />
-                  Global
-                </span>
-              )}
-              {activeLoader && (
-                <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  <Database01 size={11} />
-                  {t("sandbox.preview.loaderBadge")}
-                </span>
-              )}
-              {/* Page name in focus, followed by the route path.
+                <div
+                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
+                  onClick={() => setPagesOpen((prev) => !prev)}
+                >
+                  {activeGlobalSection && (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                      <Globe02 size={11} />
+                      {t("sandbox.preview.globalBadge")}
+                    </span>
+                  )}
+                  {activeLoader && (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      <Database01 size={11} />
+                      {t("sandbox.preview.loaderBadge")}
+                    </span>
+                  )}
+                  {/* Page name in focus, followed by the route path.
                       Path-template segments (`:param`/`*`) stay editable
                       inputs; plain paths render as muted text. */}
-              <span
-                className={cn(
-                  "text-[13px] font-medium text-foreground",
-                  // A real page name keeps priority — the route path (flex-1,
-                  // below) is the first to truncate. But the name still carries
-                  // `min-w-0 truncate` so, once the path is fully shed, the name
-                  // clips with an ellipsis instead of sliding under the chevron.
-                  currentPageName == null
-                    ? "min-w-0 flex-1 truncate"
-                    : "min-w-0 shrink truncate",
-                )}
-              >
-                {currentPageName ?? previewLabel}
-              </span>
-              {!activeGlobalSection &&
-                !activeLoaderKey &&
-                currentPageName != null &&
-                currentPath && (
-                  <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
-                    {splitPathTemplate(currentPath).map((token, i) => {
-                      if (token.type === "text") {
-                        return (
-                          <span
-                            key={`text-${i}`}
-                            className={cn(
-                              i === 0 ? "min-w-0 truncate" : "shrink-0",
-                            )}
-                          >
-                            {token.text}
-                          </span>
-                        );
-                      }
-                      const sources = pathParamSources[token.name];
-                      // Params with a source render as a modal chip; rest inline.
-                      if (sources && pickerSandboxRef) {
-                        return (
-                          <PathParamPickerChip
-                            key={`${currentPageKey}:${token.name}`}
-                            sources={sources}
-                            template={currentPath}
-                            paramName={token.name}
-                            value={pathParamValues[token.name] ?? ""}
-                            sandboxRef={pickerSandboxRef}
-                            onCommit={(value) =>
-                              setPathParamValue(token.name, value)
-                            }
-                          />
-                        );
-                      }
-                      return (
-                        <PathParamInput
-                          key={`${currentPageKey}:${token.name}`}
-                          name={token.name}
-                          value={pathParamValues[token.name] ?? ""}
-                          onCommit={(value) =>
-                            setPathParamValue(token.name, value)
-                          }
-                        />
-                      );
-                    })}
+                  <span
+                    className={cn(
+                      "text-[13px] font-medium text-foreground",
+                      // A real page name keeps priority — the route path (flex-1,
+                      // below) is the first to truncate. But the name still carries
+                      // `min-w-0 truncate` so, once the path is fully shed, the name
+                      // clips with an ellipsis instead of sliding under the chevron.
+                      currentPageName == null
+                        ? "min-w-0 flex-1 truncate"
+                        : "min-w-0 shrink truncate",
+                    )}
+                  >
+                    {currentPageName ?? previewLabel}
                   </span>
-                )}
-            </div>
-            <button
-              type="button"
-              className="flex h-full shrink-0 items-center pl-1 pr-2"
-              onClick={() => setPagesOpen((prev) => !prev)}
-              aria-label={t("sandbox.preview.choosePage")}
-              aria-expanded={pagesOpen}
-            >
-              <ChevronDown
-                size={12}
-                className={cn(
-                  "shrink-0 text-muted-foreground transition-transform",
-                  pagesOpen && "rotate-180",
-                )}
-              />
-            </button>
-          </div>
+                  {!activeGlobalSection &&
+                    !activeLoaderKey &&
+                    currentPageName != null &&
+                    currentPath && (
+                      <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                        {splitPathTemplate(currentPath).map((token, i) => {
+                          if (token.type === "text") {
+                            return (
+                              <span
+                                key={`text-${i}`}
+                                className={cn(
+                                  i === 0 ? "min-w-0 truncate" : "shrink-0",
+                                )}
+                              >
+                                {token.text}
+                              </span>
+                            );
+                          }
+                          const sources = pathParamSources[token.name];
+                          // Params with a source render as a modal chip; rest inline.
+                          if (sources && pickerSandboxRef) {
+                            return (
+                              <PathParamPickerChip
+                                key={`${currentPageKey}:${token.name}`}
+                                sources={sources}
+                                template={currentPath}
+                                paramName={token.name}
+                                value={pathParamValues[token.name] ?? ""}
+                                sandboxRef={pickerSandboxRef}
+                                onCommit={(value) =>
+                                  setPathParamValue(token.name, value)
+                                }
+                              />
+                            );
+                          }
+                          return (
+                            <PathParamInput
+                              key={`${currentPageKey}:${token.name}`}
+                              name={token.name}
+                              value={pathParamValues[token.name] ?? ""}
+                              onCommit={(value) =>
+                                setPathParamValue(token.name, value)
+                              }
+                            />
+                          );
+                        })}
+                      </span>
+                    )}
+                </div>
+                <button
+                  ref={pagesTriggerRef}
+                  type="button"
+                  className="flex h-full shrink-0 items-center pl-1 pr-2"
+                  onClick={() => setPagesOpen((prev) => !prev)}
+                  aria-label={t("sandbox.preview.choosePage")}
+                  aria-expanded={pagesOpen}
+                >
+                  <ChevronDown
+                    size={12}
+                    className={cn(
+                      "shrink-0 text-muted-foreground transition-transform",
+                      pagesOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+              </div>
+            </PopoverAnchor>
 
-          {pagesOpen && (
-            <div className="absolute left-1/2 top-full z-50 mt-1.5 w-[500px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border bg-popover shadow-lg">
+            <PopoverContent
+              data-slot="cms-page-menu"
+              align="center"
+              side="bottom"
+              sideOffset={6}
+              collisionBoundary={pagesCollisionBoundary ?? undefined}
+              collisionPadding={8}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                if (launchingCreatePageRef.current) {
+                  launchingCreatePageRef.current = false;
+                  return;
+                }
+                pagesTriggerRef.current?.focus();
+              }}
+              className="flex max-h-[calc(var(--radix-popover-content-available-height)-0.5rem)] w-[min(500px,calc(var(--radix-popover-content-available-width)-1rem))] flex-col overflow-hidden p-0"
+            >
               <div className="px-2 h-10 flex items-center gap-2 border-b">
                 <SearchLg
                   size={14}
@@ -1523,7 +1673,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     navigatePreviewToPage(target);
                   }}
                   placeholder={t("sandbox.preview.searchPagesAndComponents")}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   autoFocus
                 />
               </div>
@@ -1531,8 +1681,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 <button
                   type="button"
                   className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
+                  onClick={() => {
+                    launchingCreatePageRef.current = true;
                     setPagesOpen(false);
                     setPagesSearch("");
                     setCreatePageError(undefined);
@@ -1556,7 +1706,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     : t("sandbox.preview.noSearchResults")}
                 </div>
               ) : (
-                <div className="max-h-80 overflow-y-auto overscroll-contain">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                   {filteredPages.length > 0 && (
                     <div className="p-1.5">
                       {filteredPages.map((page) => (
@@ -1564,8 +1714,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           key={page.key}
                           type="button"
                           className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
+                          onClick={() => {
                             setPagesOpen(false);
                             setPagesSearch("");
                             navigatePreviewToPage(page);
@@ -1578,7 +1727,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {page.name}
                           </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
+                          <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground @max-xl/main-topbar:hidden">
                             {page.path}
                           </span>
                         </button>
@@ -1600,8 +1749,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           key={section.key}
                           type="button"
                           className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
+                          onClick={() => {
                             setPagesOpen(false);
                             setPagesSearch("");
                             navigatePreviewToGlobalSection(section);
@@ -1614,7 +1762,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {section.name}
                           </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
+                          <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground @max-xl/main-topbar:hidden">
                             {section.resolveType
                               .split("/")
                               .pop()
@@ -1641,8 +1789,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           key={loader.key}
                           type="button"
                           className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
+                          onClick={() => {
                             setPagesOpen(false);
                             setPagesSearch("");
                             navigatePreviewToLoader(loader);
@@ -1655,7 +1802,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {loader.title}
                           </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
+                          <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground @max-xl/main-topbar:hidden">
                             {loader.resolveType
                               .split("/")
                               .pop()
@@ -1667,8 +1814,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   )}
                 </div>
               )}
-            </div>
-          )}
+            </PopoverContent>
+          </Popover>
         </div>
       ) : (
         <span className="min-w-0 truncate px-2 text-[13px] text-muted-foreground">
@@ -1696,7 +1843,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Desktop composition (portaled into the panel header's centre slot).
   const urlControls = urlGroup ? (
-    <div className="flex min-w-0 items-center gap-0.5">{urlGroup}</div>
+    <div
+      data-responsive-focus-group="preview-url-controls"
+      className="flex min-w-0 items-center gap-0.5"
+    >
+      {urlGroup}
+    </div>
   ) : null;
   const canVisualEdit = display.mode === "sandbox";
 
@@ -1779,9 +1931,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // A loader has no canvas, so its desktop Blocks form uses the whole panel.
   const blocksFullWidth =
     !!activeLoaderKey && effectiveEditingMode === "blocks";
+  const jsonPanelVisible = jsonPanelOpen && !!currentPageKey;
+  const compactBlocksStageActive =
+    isCompactPreviewWorkspace &&
+    !jsonPanelVisible &&
+    effectiveEditingMode === "blocks" &&
+    compactPreviewStage === "blocks";
+  const blocksStageIsolated = blocksFullWidth || compactBlocksStageActive;
+  const stagedPanelLayout = blocksFullWidth || isCompactPreviewWorkspace;
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div ref={previewWorkspaceRef} className="flex h-full w-full flex-col">
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
@@ -1799,292 +1959,369 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ) : null,
         )}
       {urlControls && !isMobile && (
-        <Main.Topbar.Center.Portal>{urlControls}</Main.Topbar.Center.Portal>
+        <Main.Subheader.Center.Portal>
+          {urlControls}
+        </Main.Subheader.Center.Portal>
       )}
       {urlGroup && isMobile && (
-        <div className="flex h-10 shrink-0 items-center justify-center gap-0.5 border-b border-border/60 bg-background px-2">
+        <div
+          data-responsive-focus-group="preview-url-controls"
+          className="flex h-10 shrink-0 items-center justify-center gap-0.5 border-b border-border/60 bg-background px-2"
+        >
           {urlGroup}
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden">
-        {blocksFullWidth ? (
-          <div className="relative h-full min-h-0 overflow-hidden">
-            <BlocksPanel
-              virtualMcpId={virtualMcpId}
-              externalSelection={cmsSelectedSection}
-              onViewJsonFile={toggleJsonPanel}
-            />
-            {jsonPanelOpen && currentPageKey && (
-              <div className="absolute inset-0 z-10">
-                <PageJsonPanel
-                  ref={jsonPanelHandleRef}
-                  virtualMcpId={virtualMcpId}
-                  pageKey={currentPageKey}
-                  onClose={closeJsonPanel}
-                />
-              </div>
+      {isCompactPreviewWorkspace &&
+        effectiveEditingMode === "blocks" &&
+        !blocksFullWidth &&
+        !jsonPanelVisible && (
+          <div
+            data-testid="preview-compact-stage-controls"
+            className="flex h-9 shrink-0 items-center border-b border-border/60 bg-background px-1"
+          >
+            {compactPreviewStage === "blocks" ? (
+              <Button
+                ref={blocksStageBackHandoffRef}
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                aria-controls="preview-canvas"
+                onClick={() => showCompactPreviewStage("canvas")}
+              >
+                <ArrowLeft size={14} />
+                {t("sandbox.preview.backToPreview")}
+              </Button>
+            ) : (
+              <Button
+                ref={canvasStageBlocksHandoffRef}
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-8 px-2 text-xs"
+                aria-controls="preview-blocks-editor"
+                onClick={() => showCompactPreviewStage("blocks")}
+              >
+                <LayoutAlt01 size={14} />
+                {t("sandbox.preview.editBlocks")}
+              </Button>
             )}
           </div>
-        ) : (
-          <ResizablePanelGroup
-            orientation="horizontal"
-            disabled={effectiveEditingMode !== "blocks"}
+        )}
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          disabled={effectiveEditingMode !== "blocks" || stagedPanelLayout}
+          className="relative"
+        >
+          <ResizablePanel
+            ref={blocksPanelRef}
+            id="preview-blocks-editor"
+            defaultSize={effectiveEditingMode === "blocks" ? "30%" : "0%"}
+            minSize="20%"
+            collapsible
+            collapsedSize="0%"
+            aria-hidden={stagedPanelLayout && !blocksStageIsolated}
+            onFocusCapture={() => {
+              if (!isCompactPreviewWorkspace) {
+                setCompactPreviewStage("blocks");
+              }
+            }}
+            className={cn(
+              "min-w-0 overflow-hidden",
+              stagedPanelLayout &&
+                (blocksStageIsolated
+                  ? "absolute inset-0 z-10"
+                  : "invisible pointer-events-none absolute inset-0"),
+            )}
           >
-            <ResizablePanel
-              ref={blocksPanelRef}
-              id="preview-blocks-editor"
-              defaultSize={effectiveEditingMode === "blocks" ? "30%" : "0%"}
-              minSize="20%"
-              collapsible
-              collapsedSize="0%"
-              className="min-w-0 overflow-hidden"
-            >
-              {effectiveEditingMode === "blocks" && (
+            {effectiveEditingMode === "blocks" && (
+              <div
+                ref={blocksFocusRootRef}
+                className="h-full min-h-0 overflow-hidden"
+              >
                 <BlocksPanel
                   virtualMcpId={virtualMcpId}
                   externalSelection={cmsSelectedSection}
                   onViewJsonFile={toggleJsonPanel}
                 />
-              )}
-            </ResizablePanel>
-            {effectiveEditingMode === "blocks" && (
-              <ResizableHandle withHandle />
+              </div>
             )}
-            <ResizablePanel
-              id="preview-canvas"
-              defaultSize={effectiveEditingMode === "blocks" ? "70%" : "100%"}
-              minSize="35%"
-              className="min-w-0 overflow-hidden"
+          </ResizablePanel>
+          {effectiveEditingMode === "blocks" && (
+            <ResizableHandle
+              withHandle
+              className={cn(stagedPanelLayout && "hidden")}
+            />
+          )}
+          <ResizablePanel
+            id="preview-canvas"
+            defaultSize={effectiveEditingMode === "blocks" ? "70%" : "100%"}
+            minSize="35%"
+            aria-hidden={stagedPanelLayout && blocksStageIsolated}
+            onFocusCapture={() => {
+              if (!isCompactPreviewWorkspace) {
+                setCompactPreviewStage("canvas");
+              }
+            }}
+            className={cn(
+              "min-w-0 overflow-hidden",
+              stagedPanelLayout &&
+                (blocksStageIsolated
+                  ? "invisible pointer-events-none absolute inset-0"
+                  : "absolute inset-0 z-10"),
+            )}
+          >
+            <ResizablePanelGroup
+              orientation="horizontal"
+              disabled={
+                !(jsonPanelOpen && currentPageKey) || isCompactPreviewWorkspace
+              }
+              className="relative"
             >
-              <ResizablePanelGroup
-                orientation="horizontal"
-                disabled={!(jsonPanelOpen && currentPageKey)}
-              >
-                {jsonPanelOpen && currentPageKey && (
-                  <>
-                    <ResizablePanel
-                      id="preview-json-editor"
-                      defaultSize="43%"
-                      minSize="20%"
-                      className="min-w-0 overflow-hidden"
-                    >
-                      <PageJsonPanel
-                        ref={jsonPanelHandleRef}
-                        virtualMcpId={virtualMcpId}
-                        pageKey={currentPageKey}
-                        onClose={closeJsonPanel}
-                      />
-                    </ResizablePanel>
-                    <ResizableHandle withHandle />
-                  </>
-                )}
-                <ResizablePanel
-                  id="preview-canvas-inner"
-                  minSize="30%"
-                  className="min-w-0 overflow-hidden"
-                >
-                  <div
-                    ref={(node) => {
-                      if (!node) return;
-                      const measure = () =>
-                        setCanvasSize((prev) =>
-                          prev.width === node.clientWidth &&
-                          prev.height === node.clientHeight
-                            ? prev
-                            : {
-                                width: node.clientWidth,
-                                height: node.clientHeight,
-                              },
-                        );
-                      measure();
-                      const observer = new ResizeObserver(measure);
-                      observer.observe(node);
-                      return () => observer.disconnect();
-                    }}
+              {jsonPanelOpen && currentPageKey && (
+                <>
+                  <ResizablePanel
+                    id="preview-json-editor"
+                    defaultSize="43%"
+                    minSize="20%"
                     className={cn(
-                      // `overflow-clip`, not `hidden`: the scaled frame's layout box outgrows this container, and a scroll port would let the browser scroll it to reveal a focused descendant (section select), jumping the preview up.
-                      "h-full relative overflow-clip flex justify-center",
-                      previewSurfaceActive && !previewFluid && "bg-muted/30",
+                      "min-w-0 overflow-hidden",
+                      isCompactPreviewWorkspace && "absolute inset-0 z-10",
                     )}
                   >
-                    {/* Asymptotic "commit ramp" progress: brand lime fill over a
+                    <PageJsonPanel
+                      ref={jsonPanelHandleRef}
+                      virtualMcpId={virtualMcpId}
+                      pageKey={currentPageKey}
+                      onClose={closeJsonPanel}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle
+                    withHandle
+                    className={cn(isCompactPreviewWorkspace && "hidden")}
+                  />
+                </>
+              )}
+              <ResizablePanel
+                id="preview-canvas-inner"
+                minSize="30%"
+                aria-hidden={
+                  isCompactPreviewWorkspace &&
+                  !!(jsonPanelOpen && currentPageKey)
+                }
+                className={cn(
+                  "min-w-0 overflow-hidden",
+                  isCompactPreviewWorkspace &&
+                    (jsonPanelOpen && currentPageKey
+                      ? "invisible pointer-events-none absolute inset-0"
+                      : "absolute inset-0 z-10"),
+                )}
+              >
+                <div
+                  ref={(node) => {
+                    if (!node) return;
+                    const measure = () =>
+                      setCanvasSize((prev) =>
+                        prev.width === node.clientWidth &&
+                        prev.height === node.clientHeight
+                          ? prev
+                          : {
+                              width: node.clientWidth,
+                              height: node.clientHeight,
+                            },
+                      );
+                    measure();
+                    const observer = new ResizeObserver(measure);
+                    observer.observe(node);
+                    return () => observer.disconnect();
+                  }}
+                  className={cn(
+                    // `overflow-clip`, not `hidden`: the scaled frame's layout box outgrows this container, and a scroll port would let the browser scroll it to reveal a focused descendant (section select), jumping the preview up.
+                    "h-full relative overflow-clip flex justify-center",
+                    previewSurfaceActive && !previewFluid && "bg-muted/30",
+                  )}
+                >
+                  {/* Asymptotic "commit ramp" progress: brand lime fill over a
                     transparent track — no strip across the site, just the
                     moving edge itself, with a soft same-color glow for
                     presence on busy content. */}
-                    {(navigating || decofileWriting) &&
-                      previewSurfaceActive && (
-                        <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
-                          <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
-                        </div>
-                      )}
+                  {(navigating || decofileWriting) && previewSurfaceActive && (
+                    <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
+                    </div>
+                  )}
 
-                    {display.showBlockingOverlay && (
-                      <div className="absolute inset-0 z-30">
-                        <SandboxStateCard
-                          kind="starting"
-                          progress={progress}
-                          claimPhase={claimPhase}
-                        />
-                      </div>
-                    )}
-
-                    {previewState.kind === "suspended" && (
-                      <div className="absolute inset-0 z-30">
-                        <SandboxStateCard
-                          kind="suspended"
-                          onResume={lifecycle.resume}
-                        />
-                      </div>
-                    )}
-
-                    {previewState.kind === "errored" && (
-                      <div className="absolute inset-0 z-30">
-                        <SandboxStateCard
-                          kind="errored"
-                          error={previewState.error}
-                          onRetry={lifecycle.retry}
-                          connectionsHref={`/${org.slug}/settings/connections`}
-                        />
-                      </div>
-                    )}
-
-                    {display.showWakingPill && (
-                      <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
-                        <Spinner className="size-4.5 mt-0.5 shrink-0 text-muted-foreground" />
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium text-foreground">
-                            {t("sandbox.preview.startingPreview")}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {t("sandbox.preview.startingPreviewHint")}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {effectiveEditingMode === "visual" && !visualElement && (
-                      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
-                        <CursorClick01 size={12} />
-                        {t("sandbox.preview.clickElementToAsk")}
-                      </div>
-                    )}
-                    {effectiveEditingMode === "visual" && visualElement && (
-                      <VisualEditorPrompt
-                        element={visualElement}
-                        onDismiss={() => setVisualElement(null)}
+                  {display.showBlockingOverlay && (
+                    <div className="absolute inset-0 z-30">
+                      <SandboxStateCard
+                        kind="starting"
+                        progress={progress}
+                        claimPhase={claimPhase}
                       />
-                    )}
+                    </div>
+                  )}
 
-                    {floatingPreviewControls}
+                  {previewState.kind === "suspended" && (
+                    <div className="absolute inset-0 z-30">
+                      <SandboxStateCard
+                        kind="suspended"
+                        onResume={lifecycle.resume}
+                      />
+                    </div>
+                  )}
 
-                    {previewSurfaceActive && iframeSrc && (
-                      <div
-                        className={cn(
-                          "shrink-0",
-                          !previewFluid &&
-                            "border-x border-border bg-background shadow-sm",
-                        )}
-                        style={previewFrameStyle}
-                      >
-                        <iframe
-                          // Key on the iframe base: remount when the base URL changes
-                          // (branch switch, or the production→sandbox swap once the dev
-                          // server is up). Path navigation is driven by `iframeSrc`.
-                          key={display.iframeBase}
-                          ref={previewIframeRef}
-                          src={iframeSrc}
-                          className="w-full h-full border-0"
-                          title={t("sandbox.preview.devServerPreviewTitle")}
-                          onError={iframeRecovery.handleError}
-                          onLoad={() => {
-                            // A load reached the frame — cancel the recovery watchdog
-                            // and reset its backoff before anything else.
-                            iframeRecovery.handleLoad();
-                            // The page finished loading — always clear the navigation
-                            // indicator first, before any of the early returns below.
-                            endNavigation();
-                            // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
-                            if (display.mode !== "sandbox") {
-                              if (
-                                display.mode === "production" &&
-                                !display.showWakingPill &&
-                                effectiveEditingMode === "blocks"
-                              ) {
-                                injectCmsEditor();
-                              }
-                              return;
+                  {previewState.kind === "errored" && (
+                    <div className="absolute inset-0 z-30">
+                      <SandboxStateCard
+                        kind="errored"
+                        error={previewState.error}
+                        onRetry={lifecycle.retry}
+                        connectionsHref={`/${org.slug}/settings/connections`}
+                      />
+                    </div>
+                  )}
+
+                  {display.showWakingPill && (
+                    <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
+                      <Spinner className="size-4.5 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium text-foreground">
+                          {t("sandbox.preview.startingPreview")}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {t("sandbox.preview.startingPreviewHint")}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {effectiveEditingMode === "visual" && !visualElement && (
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
+                      <CursorClick01 size={12} />
+                      {t("sandbox.preview.clickElementToAsk")}
+                    </div>
+                  )}
+                  {effectiveEditingMode === "visual" && visualElement && (
+                    <VisualEditorPrompt
+                      element={visualElement}
+                      onDismiss={() => setVisualElement(null)}
+                    />
+                  )}
+
+                  {floatingPreviewControls}
+
+                  {previewSurfaceActive && iframeSrc && (
+                    <div
+                      className={cn(
+                        "shrink-0",
+                        !previewFluid &&
+                          "border-x border-border bg-background shadow-sm",
+                      )}
+                      style={previewFrameStyle}
+                    >
+                      <iframe
+                        // Key on the iframe base: remount when the base URL changes
+                        // (branch switch, or the production→sandbox swap once the dev
+                        // server is up). Path navigation is driven by `iframeSrc`.
+                        key={display.iframeBase}
+                        ref={previewIframeRef}
+                        src={iframeSrc}
+                        className="w-full h-full border-0"
+                        title={t("sandbox.preview.devServerPreviewTitle")}
+                        onError={iframeRecovery.handleError}
+                        onLoad={() => {
+                          // A load reached the frame — cancel the recovery watchdog
+                          // and reset its backoff before anything else.
+                          iframeRecovery.handleLoad();
+                          // The page finished loading — always clear the navigation
+                          // indicator first, before any of the early returns below.
+                          endNavigation();
+                          // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                          if (display.mode !== "sandbox") {
+                            if (
+                              display.mode === "production" &&
+                              !display.showWakingPill &&
+                              effectiveEditingMode === "blocks"
+                            ) {
+                              injectCmsEditor();
                             }
-                            // This is the VM dev-server preview (sandboxed running app),
-                            // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
-                            track("vm_preview_loaded", {
-                              view_mode: effectiveEditingMode,
-                              vm_id: vmEntry?.sandboxHandle ?? null,
-                              // Intentionally excluding the full previewUrl — it can contain
-                              // ephemeral tokens / user data in the query string.
-                            });
-                            // Sync currentPath when the user navigates inside the iframe.
-                            // Skip while a programmatic navigation is pending — stale
-                            // onLoad events from the previous URL would reset us to "/".
-                            if (!activeGlobalSection) {
-                              try {
-                                const iframePath =
-                                  previewIframeRef.current?.contentWindow
-                                    ?.location?.pathname;
-                                if (!iframePath) return;
-                                const intended = intendedPathRef.current;
-                                if (intended !== null) {
-                                  intendedPathRef.current = null;
-                                  // Stale onLoad from the previous URL — ignore.
-                                  if (
-                                    normPath(iframePath) !== normPath(intended)
-                                  ) {
-                                    return;
-                                  }
-                                }
-                                // Keep the template as currentPath when the loaded
-                                // path is just the template with params filled in —
-                                // otherwise the page match and param inputs are lost.
+                            return;
+                          }
+                          // This is the VM dev-server preview (sandboxed running app),
+                          // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
+                          track("vm_preview_loaded", {
+                            view_mode: effectiveEditingMode,
+                            vm_id: vmEntry?.sandboxHandle ?? null,
+                            // Intentionally excluding the full previewUrl — it can contain
+                            // ephemeral tokens / user data in the query string.
+                          });
+                          // Sync currentPath when the user navigates inside the iframe.
+                          // Skip while a programmatic navigation is pending — stale
+                          // onLoad events from the previous URL would reset us to "/".
+                          if (!activeGlobalSection) {
+                            try {
+                              const iframePath =
+                                previewIframeRef.current?.contentWindow
+                                  ?.location?.pathname;
+                              if (!iframePath) return;
+                              const intended = intendedPathRef.current;
+                              if (intended !== null) {
+                                intendedPathRef.current = null;
+                                // Stale onLoad from the previous URL — ignore.
                                 if (
-                                  normPath(iframePath) ===
-                                  normPath(resolvedPath)
+                                  normPath(iframePath) !== normPath(intended)
                                 ) {
                                   return;
                                 }
-                                setCurrentPath(iframePath);
-                                persistLastPage({
-                                  path: iframePath,
-                                  pageKey: pinnedPageKey,
-                                  params: pathParamValues,
-                                });
-                              } catch {
-                                // Cross-origin — can't read, keep current value
                               }
+                              // Keep the template as currentPath when the loaded
+                              // path is just the template with params filled in —
+                              // otherwise the page match and param inputs are lost.
+                              if (
+                                normPath(iframePath) === normPath(resolvedPath)
+                              ) {
+                                return;
+                              }
+                              setCurrentPath(iframePath);
+                              persistLastPage({
+                                path: iframePath,
+                                pageKey: pinnedPageKey,
+                                params: pathParamValues,
+                              });
+                            } catch {
+                              // Cross-origin — can't read, keep current value
                             }
-                            if (effectiveEditingMode === "visual") {
-                              injectVisualEditor();
-                            }
-                            if (effectiveEditingMode === "blocks") {
-                              injectCmsEditor();
-                            }
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        )}
+                          }
+                          if (effectiveEditingMode === "visual") {
+                            injectVisualEditor();
+                          }
+                          if (effectiveEditingMode === "blocks") {
+                            injectCmsEditor();
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
       <CreatePageModal
         open={createPageDialogOpen}
-        onOpenChange={setCreatePageDialogOpen}
+        onOpenChange={(open) => {
+          if (open) setCreatePageDialogOpen(true);
+          else closeCreatePageDialog();
+        }}
         isPending={createPage.isPending}
         error={createPageError}
         templates={pages}
         onSubmit={handleCreatePage}
+        onAfterCloseAutoFocus={() => pagesTriggerRef.current?.focus()}
       />
     </div>
   );

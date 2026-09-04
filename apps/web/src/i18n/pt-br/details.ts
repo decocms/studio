@@ -136,7 +136,6 @@ export const details = {
   "details.tool.connectionNotFound": "Conexão não encontrada",
   "details.tool.connectionNotFoundMessage":
     "Esta conexão pode ter sido excluída ou você pode não ter acesso a ela.",
-  "details.tool.connections": "Conexões",
   "details.tool.copiedToClipboard": "Copiado para a área de transferência",
   "details.tool.enter": "Insira {key}...",
   "details.tool.enterAsJson": "Insira {key} como JSON...",

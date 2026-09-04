@@ -4,10 +4,14 @@ import type * as React from "react";
 
 import { cn } from "../lib/utils.ts";
 
-function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
+function Breadcrumb({
+  className,
+  "aria-label": ariaLabel = "breadcrumb",
+  ...props
+}: React.ComponentProps<"nav">) {
   return (
     <nav
-      aria-label="breadcrumb"
+      aria-label={ariaLabel}
       data-slot="breadcrumb"
       className={cn("min-w-0 overflow-hidden", className)}
       {...props}
@@ -63,8 +67,6 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
       data-slot="breadcrumb-page"
-      role="link"
-      aria-disabled="true"
       aria-current="page"
       className={cn("text-foreground font-medium truncate", className)}
       {...props}

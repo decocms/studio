@@ -132,7 +132,6 @@ export const details = {
   "details.tool.connectionNotFound": "Connection not found",
   "details.tool.connectionNotFoundMessage":
     "This connection may have been deleted or you may not have access.",
-  "details.tool.connections": "Connections",
   "details.tool.copiedToClipboard": "Copied to clipboard",
   "details.tool.enter": "Enter {key}...",
   "details.tool.enterAsJson": "Enter {key} as JSON...",

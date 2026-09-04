@@ -955,6 +955,8 @@ export function TaskBoardPage() {
       ? routeParams.taskKey
       : undefined;
   const openItem = findTaskByKeyOrId(items, openTaskKey) ?? null;
+  const taskReturnFocusRef = useRef<HTMLElement | null>(null);
+  const boardFocusRef = useRef<HTMLDivElement>(null);
   /** A deleted (or never-visible) card leaves the segment dangling; land on
    *  the board rather than an empty pane. */
   const staleTaskKey = !!openTaskKey && !openItem && !isLoading;
@@ -977,6 +979,34 @@ export function TaskBoardPage() {
         search: (prev: Record<string, unknown>) => prev,
         replace: true,
       });
+  };
+
+  /**
+   * A route transition removes the focused task card from the accessibility
+   * tree with `display: none`. Once the detail page has detached and the board
+   * is visible again, return to that exact card; a deep link or a removed card
+   * falls back to the board region. Visibility checks also make React Strict
+   * Mode's callback-ref rehearsal and task-to-task transitions harmless.
+   */
+  const restoreBoardFocus = () => {
+    const origin = taskReturnFocusRef.current;
+    requestAnimationFrame(() => {
+      const focus = (target: HTMLElement | null): boolean => {
+        if (
+          !target?.isConnected ||
+          target.getClientRects().length === 0 ||
+          target.closest("[inert]")
+        ) {
+          return false;
+        }
+        target.focus();
+        return document.activeElement === target;
+      };
+
+      if (focus(origin) || focus(boardFocusRef.current)) {
+        taskReturnFocusRef.current = null;
+      }
+    });
   };
 
   // Start a fresh chat on the default Decopilot agent, seeded with the task's
@@ -1080,6 +1110,12 @@ export function TaskBoardPage() {
    * does not declare is dropped by its schema.
    */
   const openTask = (item: TaskBoardItem) => {
+    const activeElement = document.activeElement;
+    taskReturnFocusRef.current =
+      activeElement instanceof HTMLElement &&
+      boardFocusRef.current?.contains(activeElement)
+        ? activeElement
+        : null;
     navigate({
       to: DESTINATION_ROUTE.tasks,
       params: { org: org.slug, taskKey: taskRouteSegment(org.slug, item) },
@@ -1339,7 +1375,13 @@ export function TaskBoardPage() {
           horizontal board scroll and dnd-kit's state all survive the trip into
           a card and back. `useFlipLanes` is told to stop measuring — a
           display:none board reports every card at 0×0. */}
-      <div className={cn("flex min-h-0 flex-1 flex-col", openItem && "hidden")}>
+      <div
+        ref={boardFocusRef}
+        role="region"
+        aria-label={t("taskBoard.taskBoard.tasksTitle")}
+        tabIndex={-1}
+        className={cn("flex min-h-0 flex-1 flex-col", openItem && "hidden")}
+      >
         {boardContent}
       </div>
 
@@ -1350,6 +1392,7 @@ export function TaskBoardPage() {
           key={openItem.id}
           item={openItem}
           onClose={() => closeTask()}
+          onAfterPageUnmount={restoreBoardFocus}
           isSaving={actions.update.isPending}
           onSubmit={(input) => {
             if (blockSuperAgentWithoutGithub(input.assigneeId)) {

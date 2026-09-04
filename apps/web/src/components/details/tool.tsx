@@ -25,15 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { Link, useSearch } from "@tanstack/react-router";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@decocms/ui/components/breadcrumb.tsx";
+import { useSearch } from "@tanstack/react-router";
 import {
   AlertCircle,
   Box,
@@ -65,6 +57,9 @@ import {
 } from "@/sdk";
 import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { Main } from "@/components/main";
+import { MainBreadcrumb } from "@/components/main-breadcrumb";
+import { connectionMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
 import { ToolAnnotationBadges } from "@/components/tools/tools-list.tsx";
 import {
   useOptionalChatStream,
@@ -81,12 +76,6 @@ export interface ToolDetailsViewProps {
   onBack: () => void;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
 }
-
-const beautifyToolName = (toolName: string) => {
-  return toolName
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toLocaleLowerCase());
-};
 
 function ToolDetailsContent({
   toolName,
@@ -366,45 +355,6 @@ function ToolDetailsAuthenticated({
     setExecutionError(null);
     setStats(null);
   };
-
-  const displayToolName = tool?.name ?? beautifyToolName(toolName);
-
-  const breadcrumb = (
-    <Breadcrumb>
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to="/$org/settings/connections" params={{ org: org.slug }}>
-              {t("details.tool.connections")}
-            </Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        {connection && (
-          <>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link
-                  to="/$org/settings/connections/$appSlug"
-                  params={{
-                    org: org.slug,
-                    appSlug: getConnectionSlug(connection),
-                  }}
-                  search={{ tab: "tools" }}
-                >
-                  {connection.title}
-                </Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-          </>
-        )}
-        <BreadcrumbItem>
-          <BreadcrumbPage>{displayToolName}</BreadcrumbPage>
-        </BreadcrumbItem>
-      </BreadcrumbList>
-    </Breadcrumb>
-  );
 
   const instanceSelector = siblings.length > 1 && (
     <Select value={connectionId} onValueChange={onSelectInstance}>
@@ -727,7 +677,7 @@ function ToolDetailsAuthenticated({
   );
 
   return (
-    <ViewLayout breadcrumb={breadcrumb}>
+    <ViewLayout>
       <div className="flex flex-col h-full overflow-hidden @container">
         {/* Header */}
         <div className="flex flex-col gap-3 py-7 px-8 bg-background border-b border-border shrink-0">
@@ -739,9 +689,9 @@ function ToolDetailsAuthenticated({
               size="xl"
               className="shrink-0"
             />
-            <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
               {toolName}
-            </h1>
+            </h2>
             {/* MCP Status */}
             <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
               {toolsQuery.isSuccess ? (
@@ -806,6 +756,7 @@ export function ToolDetailsView({
   onBack,
 }: ToolDetailsViewProps) {
   const t = useT();
+  const { org } = useProjectContext();
   const [selectedConnectionId, setSelectedConnectionId] = useState(
     siblings[0]?.id ?? "",
   );
@@ -816,37 +767,60 @@ export function ToolDetailsView({
     "";
 
   const connection = useConnection(connectionId || undefined);
+  const titlePortal = (
+    <Main.Title.Portal>
+      <span title={toolName}>{toolName}</span>
+    </Main.Title.Portal>
+  );
+  const connectionParentPortal = connection ? (
+    <MainBreadcrumb.Parent.Portal
+      item={connectionMainBreadcrumbItem(
+        org.slug,
+        getConnectionSlug(connection),
+        connection,
+        "tools",
+      )}
+    />
+  ) : null;
 
   if (!connection || !connectionId) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <h3 className="text-lg font-semibold">
-            {t("details.tool.connectionNotFound")}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {t("details.tool.connectionNotFoundMessage")}
-          </p>
+      <>
+        {connectionParentPortal}
+        {titlePortal}
+        <div className="flex h-full items-center justify-center">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <h3 className="text-lg font-semibold">
+              {t("details.tool.connectionNotFound")}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t("details.tool.connectionNotFoundMessage")}
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-full items-center justify-center">
-          <Spinner className="size-8 text-muted-foreground" />
-        </div>
-      }
-    >
-      <ToolDetailsContent
-        toolName={toolName}
-        connectionId={connectionId}
-        siblings={siblings}
-        onSelectInstance={setSelectedConnectionId}
-        onBack={onBack}
-      />
-    </Suspense>
+    <>
+      {connectionParentPortal}
+      {titlePortal}
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center">
+            <Spinner className="size-8 text-muted-foreground" />
+          </div>
+        }
+      >
+        <ToolDetailsContent
+          toolName={toolName}
+          connectionId={connectionId}
+          siblings={siblings}
+          onSelectInstance={setSelectedConnectionId}
+          onBack={onBack}
+        />
+      </Suspense>
+    </>
   );
 }

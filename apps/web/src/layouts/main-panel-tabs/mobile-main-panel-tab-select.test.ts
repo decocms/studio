@@ -118,7 +118,7 @@ describe("resolveMobileMainPanelSelection", () => {
 });
 
 describe("resolveMobileMainPanelTriggerOption", () => {
-  test("keeps the matched dynamic route in the trigger while Chat is visible", () => {
+  test("renders the controlled Chat option while Chat is visible", () => {
     const options = resolveMobileMainPanelViewOptions({
       tabs: [],
       activeTab: "overview",
@@ -142,10 +142,9 @@ describe("resolveMobileMainPanelTriggerOption", () => {
     expect(
       resolveMobileMainPanelTriggerOption({
         options,
-        activeTab: "overview",
-        selection,
+        value: selection.value,
       }),
-    ).toMatchObject({ value: "overview", title: "Project Alpha" });
+    ).toMatchObject({ value: "chat", title: "Chat" });
   });
 });
 

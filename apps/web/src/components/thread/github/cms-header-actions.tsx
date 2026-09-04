@@ -27,7 +27,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
+import {
+  CheckCircle,
+  Code01,
+  GitPullRequest,
+  RefreshCw01,
+  Rocket02,
+} from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
@@ -307,8 +313,16 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         <Tooltip>
           <TooltipTrigger asChild>
             <span>
-              <Button size="sm" variant="outline" disabled>
-                {t("thread.headerActions.reconnectGithub")}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled
+                aria-label={t("thread.headerActions.reconnectGithub")}
+              >
+                <GitHubIcon size={16} />
+                <span className="@max-3xl/panel-header:sr-only">
+                  {t("thread.headerActions.reconnectGithub")}
+                </span>
               </Button>
             </span>
           </TooltipTrigger>
@@ -424,7 +438,16 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       variant={button.variant}
       disabled={Boolean(button.disabled) || !action}
       loading={Boolean(button.loading)}
-      {...(action && !button.loading ? { icon: actionIcon(action) } : {})}
+      {...(!button.loading
+        ? {
+            icon: action ? (
+              actionIcon(action)
+            ) : (
+              <CheckCircle className="size-4" />
+            ),
+          }
+        : {})}
+      labelClassName="@max-3xl/panel-header:sr-only"
       {...(button.tooltip ? { tooltip: button.tooltip } : {})}
       items={items}
       menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
@@ -490,8 +513,12 @@ function CmsUnavailable({
               variant="outline"
               disabled={!onStartCodingSession}
               onClick={onStartCodingSession}
+              aria-label={t("sandbox.cmsUnavailable.startCodingSession")}
             >
-              {t("sandbox.cmsUnavailable.startCodingSession")}
+              <Code01 className="size-4" />
+              <span className="@max-3xl/panel-header:sr-only">
+                {t("sandbox.cmsUnavailable.startCodingSession")}
+              </span>
             </Button>
           </span>
         </TooltipTrigger>

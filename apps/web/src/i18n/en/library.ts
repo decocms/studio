@@ -130,6 +130,7 @@ export const library = {
   "library.libraryViews.failedToLoad": "Failed to load",
   "library.libraryViews.files": "Files",
   "library.libraryViews.filesCount": "{count} files",
+  "library.libraryViews.folderLocation": "Folder location",
   "library.libraryViews.folders": "Folders",
   "library.libraryViews.noFilesMatch": 'No files match "{query}".',
   "library.libraryViews.noPublicSkillSetsConfigured":

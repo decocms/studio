@@ -22,10 +22,10 @@ export function WorkspaceMainLeading({
       </div>
       <div className="hidden md:block">
         <PanelCollapseToggle
-          side="left"
-          open={workspace.sidePanelOpen}
-          disabled={!workspace.mainOpen}
-          onToggle={workspace.toggleSidePanel}
+          panel="main"
+          open={workspace.mainOpen}
+          disabled={!workspace.sidePanelOpen}
+          onToggle={workspace.toggleMain}
         />
       </div>
       {children}
@@ -41,10 +41,10 @@ export function WorkspaceMainTrailing({ children }: { children?: ReactNode }) {
       {children}
       <div className="hidden md:block">
         <PanelCollapseToggle
-          side="right"
-          open={workspace.mainOpen}
-          disabled={!workspace.sidePanelOpen}
-          onToggle={workspace.toggleMain}
+          panel="chat"
+          open={workspace.sidePanelOpen}
+          disabled={!workspace.mainOpen}
+          onToggle={workspace.toggleSidePanel}
         />
       </div>
     </>

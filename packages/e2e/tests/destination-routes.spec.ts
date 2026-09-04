@@ -18,7 +18,7 @@
  * `plugins/ban-e2e-app-imports.js`).
  */
 
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { connectDevDb } from "../fixtures/db";
 import {
   callSelfMcpTool,
@@ -41,6 +41,24 @@ const mainTopbar = (page: Page) =>
 const mainTopbarRegion = (page: Page, region: "left" | "center" | "right") =>
   mainTopbar(page).locator(`[data-slot="main-topbar-${region}"]`);
 
+/** Resolve a parent from the adaptive trail without assuming it fits inline. */
+async function breadcrumbParent(
+  page: Page,
+  breadcrumb: Locator,
+  name: string,
+): Promise<{ link: Locator; overflowed: boolean }> {
+  const direct = breadcrumb.getByRole("link", { name, exact: true });
+  if (await direct.isVisible()) return { link: direct, overflowed: false };
+
+  await breadcrumb
+    .getByRole("button", { name: "Show parent pages", exact: true })
+    .click();
+  return {
+    link: page.getByRole("menuitem", { name, exact: true }),
+    overflowed: true,
+  };
+}
+
 /** Exercise the narrowest supported shell in a non-English locale. The key
  *  and stored value are deliberately inlined: this black-box suite owns the
  *  browser contract and must not import application source. */
@@ -58,6 +76,23 @@ async function usePortugueseMobileViewport(page: Page): Promise<void> {
       /* Sandboxed child frames may have no storage; the app frame does. */
     }
   });
+}
+
+/** Add a same-document browser-history entry and let the mounted router handle
+ * it. Panel buttons intentionally replace layout state, so this helper creates
+ * the Back/Forward condition without importing or reaching into app code. */
+async function pushSearchHistory(
+  page: Page,
+  updates: Record<string, string | null>,
+): Promise<void> {
+  await page.evaluate((next) => {
+    const url = new URL(window.location.href);
+    for (const [key, value] of Object.entries(next)) {
+      if (value === null) url.searchParams.delete(key);
+      else url.searchParams.set(key, value);
+    }
+    window.history.pushState(window.history.state, "", url);
+  }, updates);
 }
 
 /**
@@ -278,12 +313,24 @@ test.describe("destination routes", () => {
       { path: `/${orgSlug}/library`, title: "Library" },
       { path: `/${orgSlug}/discover`, title: "Discover" },
       {
+        path: `/${orgSlug}/agents/${agentId}`,
+        title: "route topbar e2e",
+        projectScoped: true,
+      },
+      {
+        path: `/${orgSlug}/agents/${agentId}/site-editor`,
+        title: "Site Editor",
+        projectScoped: true,
+      },
+      {
         path: `/${orgSlug}/agents/${agentId}/settings`,
         title: "Settings",
+        projectScoped: true,
       },
       {
         path: `/${orgSlug}/agents/${agentId}/automations`,
         title: "Automations",
+        projectScoped: true,
       },
     ] as const;
 
@@ -299,6 +346,38 @@ test.describe("destination routes", () => {
           exact: true,
         }),
       ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      const breadcrumb = mainTopbarRegion(page, "left").getByRole(
+        "navigation",
+        { name: "Breadcrumb", exact: true },
+      );
+      await expect(breadcrumb).toHaveCount(1);
+      /* The final route is the adjacent page title, not a repeated last crumb. */
+      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
+      await expect(breadcrumb).not.toContainText(route.title);
+      const scopeLink = breadcrumb.getByRole("link").first();
+      await expect(scopeLink).toHaveText("");
+      await expect(scopeLink).toHaveAttribute("aria-label", /\S/);
+      await expect(scopeLink).toHaveAttribute(
+        "href",
+        new RegExp(`/${orgSlug}/home$`),
+      );
+      if ("projectScoped" in route && route.projectScoped) {
+        if (route.path.endsWith(`/agents/${agentId}`)) {
+          await expect(breadcrumb.getByRole("link")).toHaveCount(1);
+        } else {
+          const projectParent = await breadcrumbParent(
+            page,
+            breadcrumb,
+            "route topbar e2e",
+          );
+          await expect(projectParent.link).toBeVisible();
+          const href = await projectParent.link.getAttribute("href");
+          expect(new URL(href ?? "", page.url()).pathname).toBe(
+            `/${orgSlug}/agents/${agentId}`,
+          );
+          if (projectParent.overflowed) await page.keyboard.press("Escape");
+        }
+      }
     }
 
     /** The list body owns this action, but its portal must place the rendered
@@ -316,9 +395,30 @@ test.describe("destination routes", () => {
     ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
     await page.goto(`/${orgSlug}/library`);
-    await expect(
-      mainTopbarRegion(page, "center").getByPlaceholder("Search all files…"),
-    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    const desktopLibrarySearch = mainTopbarRegion(
+      page,
+      "center",
+    ).getByPlaceholder("Search all files…");
+    await expect(desktopLibrarySearch).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await desktopLibrarySearch.focus();
+    await page.setViewportSize({ width: 767, height: 720 });
+    const mobileLibrarySearch = mainPanel(page)
+      .locator('[data-slot="main-subheader"]')
+      .getByPlaceholder("Search all files…");
+    await expect(mobileLibrarySearch).toBeFocused();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(desktopLibrarySearch).toBeFocused();
+    const folderBreadcrumb = page.getByRole("navigation", {
+      name: "Folder location",
+      exact: true,
+    });
+    const folderHome = folderBreadcrumb.locator(
+      '[data-slot="breadcrumb-page"]',
+    );
+    await expect(folderHome).toHaveText("");
+    await expect(folderHome).toHaveAttribute("aria-label", "Home");
     const libraryActions = mainTopbarRegion(page, "right");
     const libraryControls = ["Refresh", "New folder", "Upload file"].map(
       (name) =>
@@ -342,6 +442,11 @@ test.describe("destination routes", () => {
 
     await page.goto(`/${orgSlug}/library?path=public`);
     const readOnlyActions = mainTopbarRegion(page, "right");
+    const folderHomeLink = folderBreadcrumb.getByRole("button", {
+      name: "Home",
+      exact: true,
+    });
+    await expect(folderHomeLink).toHaveText("");
     await expect(
       readOnlyActions.getByRole("button", { name: "Refresh", exact: true }),
     ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
@@ -354,6 +459,234 @@ test.describe("destination routes", () => {
     await expect(
       readOnlyActions.getByRole("button", { name: "Upload file", exact: true }),
     ).toHaveCount(0);
+  });
+
+  test("every Settings sidebar destination owns a semantic breadcrumb", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const destinations = [
+      ["general", "General"],
+      ["profile", "Profile & Preferences"],
+      ["ai-providers", "AI Providers"],
+      ["connect", "Connect"],
+      ["task-board", "Board"],
+      ["connections", "Connections"],
+      ["agents", "Projects"],
+      ["automations", "Automations"],
+      ["skills", "Skills"],
+      ["monitor", "Monitor"],
+      ["members", "Members"],
+      ["secrets", "Secrets"],
+      ["buckets", "Buckets"],
+      ["store", "Store"],
+      ["sso", "Security"],
+    ] as const;
+
+    for (const [segment, title] of destinations) {
+      const path = `/${orgSlug}/settings/${segment}`;
+      await page.goto(path);
+      const breadcrumb = page.getByRole("navigation", {
+        name: "Breadcrumb",
+        exact: true,
+      });
+      await expect(breadcrumb).toHaveCount(1, { timeout: SHELL_TIMEOUT_MS });
+      await expect(
+        page.locator('[data-slot="main-topbar-left"]').getByRole("heading", {
+          level: 1,
+          name: title,
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
+      await expect(breadcrumb).not.toContainText(title);
+      await expect(breadcrumb.getByRole("link").first()).toHaveAttribute(
+        "href",
+        new RegExp(`/${orgSlug}/home$`),
+      );
+      await expect(
+        breadcrumb.getByRole("link", { name: "Settings", exact: true }),
+      ).toHaveAttribute("href", new RegExp(`/${orgSlug}/settings/general$`));
+      expect(new URL(page.url()).pathname).toBe(path);
+    }
+  });
+
+  test("Settings detail breadcrumbs use route titles while data is unavailable", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const cases = [
+      {
+        path: `/${orgSlug}/settings/connections/unavailable-provider`,
+        title: "unavailable-provider",
+      },
+      {
+        path: `/${orgSlug}/settings/connections/unavailable-provider/unknown/draft%20item`,
+        title: "draft item",
+      },
+    ];
+
+    for (const route of cases) {
+      await page.goto(route.path);
+      const topbarLeft = page.locator('[data-slot="main-topbar-left"]');
+      await expect(
+        topbarLeft.getByRole("heading", {
+          level: 1,
+          name: route.title,
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+      const breadcrumb = topbarLeft.getByRole("navigation", {
+        name: "Breadcrumb",
+        exact: true,
+      });
+      await expect(breadcrumb).not.toContainText(route.title);
+      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
+      const connectionsParent = await breadcrumbParent(
+        page,
+        breadcrumb,
+        "Connections",
+      );
+      await expect(connectionsParent.link).toHaveAttribute(
+        "href",
+        new RegExp(`/${orgSlug}/settings/connections$`),
+      );
+      if (connectionsParent.overflowed) await page.keyboard.press("Escape");
+    }
+  });
+
+  test("a tool detail contributes its connection parent without repeating the current page", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const connectionTitle = `Breadcrumb connection ${crypto.randomUUID()}`;
+    await createHttpConnection(page.context().request, orgSlug, {
+      title: connectionTitle,
+      url: `http://127.0.0.1:1/breadcrumb-${crypto.randomUUID()}`,
+    });
+
+    await page.goto(`/${orgSlug}/settings/connections?tab=connected`);
+    const connectionCard = page.getByRole("button").filter({
+      has: page.getByRole("heading", {
+        level: 3,
+        name: connectionTitle,
+        exact: true,
+      }),
+    });
+    await expect(connectionCard).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await connectionCard.click();
+    await page.waitForURL(
+      (url) => url.pathname.startsWith(`/${orgSlug}/settings/connections/`),
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    const connectionPath = new URL(page.url()).pathname;
+
+    const toolTitle = "Run 100% safely";
+    await page.goto(`${connectionPath}/tools/${encodeURIComponent(toolTitle)}`);
+
+    const topbarLeft = page.locator('[data-slot="main-topbar-left"]');
+    const breadcrumb = topbarLeft.getByRole("navigation", {
+      name: "Breadcrumb",
+      exact: true,
+    });
+    await expect(
+      topbarLeft.getByRole("heading", {
+        level: 1,
+        name: toolTitle,
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(topbarLeft.locator("h1")).toHaveCount(1);
+    await expect(breadcrumb).not.toContainText(toolTitle);
+    await expect(
+      breadcrumb.getByRole("link", {
+        name: connectionTitle,
+        exact: true,
+      }),
+    ).toHaveAttribute("href", /\/settings\/connections\/[^?]+\?tab=tools$/);
+    await expect(
+      page.getByRole("navigation", {
+        name: "Resource breadcrumb",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+
+    await breadcrumb
+      .getByRole("button", { name: "Show parent pages", exact: true })
+      .click();
+    await expect(
+      page.getByRole("menuitem", { name: "Settings", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Connections", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    const appSlug = connectionPath.split("/").at(-1);
+    if (!appSlug) throw new Error("Connection route has no app slug");
+    let releaseConnectionList!: () => void;
+    let heldConnectionList = false;
+    const connectionListGate = new Promise<void>((resolve) => {
+      releaseConnectionList = resolve;
+    });
+    const mcpPattern = "**/api/*/tools/COLLECTION_CONNECTIONS_LIST";
+    await page.addInitScript(() => {
+      localStorage.removeItem("studio:rq-cache");
+    });
+    await page.route(mcpPattern, async (route) => {
+      const body = route.request().postData() ?? "";
+      let requestedSlug: unknown;
+      try {
+        const payload: unknown = JSON.parse(body);
+        requestedSlug =
+          typeof payload === "object" && payload && "slug" in payload
+            ? payload.slug
+            : undefined;
+      } catch {
+        requestedSlug = undefined;
+      }
+      if (!heldConnectionList && requestedSlug === appSlug) {
+        heldConnectionList = true;
+        await connectionListGate;
+      }
+      await route.continue();
+    });
+
+    try {
+      const toolUrl = `${connectionPath}/tools/${encodeURIComponent(toolTitle)}`;
+      await page.goto(toolUrl);
+      await expect
+        .poll(() => heldConnectionList, { timeout: SHELL_TIMEOUT_MS })
+        .toBe(true);
+
+      const staticConnections = breadcrumb.getByRole("link", {
+        name: "Connections",
+        exact: true,
+      });
+      await expect(staticConnections).toBeVisible();
+      await staticConnections.focus();
+      releaseConnectionList();
+
+      const loadedConnection = breadcrumb.getByRole("link", {
+        name: connectionTitle,
+        exact: true,
+      });
+      await expect(loadedConnection).toBeFocused({
+        timeout: SHELL_TIMEOUT_MS,
+      });
+      await loadedConnection.press("Enter");
+      await page.waitForURL((url) => url.pathname === connectionPath, {
+        timeout: SHELL_TIMEOUT_MS,
+      });
+      await expect(
+        page.locator('[data-slot="main-topbar-left"]').getByRole("heading", {
+          level: 1,
+          name: connectionTitle,
+          exact: true,
+        }),
+      ).toBeFocused({ timeout: SHELL_TIMEOUT_MS });
+    } finally {
+      releaseConnectionList();
+      await page.unroute(mcpPattern);
+    }
   });
 
   test("the org landing resolves into a destination", async ({
@@ -706,9 +1039,71 @@ test.describe("destination routes", () => {
     await expect(page.getByTestId("workspace-panel-separator")).toHaveCount(1);
     expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
 
+    /* Main is the primary reading surface and Chat is its right-hand
+       companion. Pin both DOM and visual order: keyboard traversal should
+       agree with what the user sees, not merely look reversed with CSS. */
+    const workspaceColumns = page.locator(
+      '[data-testid="workspace-main-panel"], [data-testid="workspace-panel-separator"], [data-testid="workspace-side-panel"]',
+    );
+    expect(
+      await workspaceColumns.evaluateAll((columns) =>
+        columns.map((column) => column.getAttribute("data-testid")),
+      ),
+    ).toEqual([
+      "workspace-main-panel",
+      "workspace-panel-separator",
+      "workspace-side-panel",
+    ]);
+    const mainColumnBox = await page
+      .getByTestId("workspace-main-panel")
+      .boundingBox();
+    const separatorBox = await page
+      .getByTestId("workspace-panel-separator")
+      .boundingBox();
+    const chatColumnBox = await page
+      .getByTestId("workspace-side-panel")
+      .boundingBox();
+    expect(mainColumnBox).not.toBeNull();
+    expect(separatorBox).not.toBeNull();
+    expect(chatColumnBox).not.toBeNull();
+    if (!mainColumnBox || !separatorBox || !chatColumnBox) {
+      throw new Error("Both workspace panels and their separator must exist");
+    }
+    expect(mainColumnBox.x).toBeLessThan(separatorBox.x);
+    expect(separatorBox.x).toBeLessThan(chatColumnBox.x);
+
+    /* Panel controls name their semantic target rather than the edge they
+       happen to occupy. They remain compact icon buttons in the crowded CMS
+       toolbar while exposing state and ownership to assistive technology. */
+    const hideMain = mainTopbarRegion(page, "left").getByRole("button", {
+      name: "Hide panel",
+      exact: true,
+    });
+    const hideChat = mainTopbarRegion(page, "right").getByRole("button", {
+      name: "Hide chat",
+      exact: true,
+    });
+    await expect(hideMain).toHaveAttribute(
+      "aria-controls",
+      "workspace-main-panel",
+    );
+    await expect(hideMain).toHaveAttribute("aria-expanded", "true");
+    await expect(hideMain).toHaveText("");
+    await expect(hideChat).toHaveAttribute(
+      "aria-controls",
+      "workspace-side-panel",
+    );
+    await expect(hideChat).toHaveAttribute("aria-expanded", "true");
+    await expect(hideChat).toHaveText("");
+
     /* Closing keeps the view in the path, so reopening returns to it. */
-    await page.goto(
-      `/${orgSlug}/agents/${projectId}/settings?sidepanel=true&mainpanel=false`,
+    await hideMain.click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.searchParams.get("sidepanel") === "true" &&
+        url.searchParams.get("mainpanel") === "false",
+      { timeout: SHELL_TIMEOUT_MS },
     );
     await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toHaveAttribute("aria-hidden", "true");
@@ -717,8 +1112,61 @@ test.describe("destination routes", () => {
        pointer drag, arrows, or Enter. It must be absent while URL state owns a
        single-panel layout, or the visual split can diverge from that state. */
     await expect(page.getByTestId("workspace-panel-separator")).toHaveCount(0);
+    const chatCard = page.getByTestId("side-panel");
+    const visibleChatButtons = await chatCard
+      .locator("button")
+      .evaluateAll((buttons) =>
+        buttons
+          .map((button) => button.getAttribute("aria-label"))
+          .filter((label) => label === "Show panel" || label === "Chats"),
+      );
+    expect(visibleChatButtons).toEqual(["Show panel", "Chats"]);
+    const showMain = chatCard.getByRole("button", {
+      name: "Show panel",
+      exact: true,
+    });
+    await expect(showMain).toHaveAttribute("aria-expanded", "false");
+    await expect(showMain).toBeFocused();
     expect(new URL(page.url()).pathname).toBe(
       `/${orgSlug}/agents/${projectId}/settings`,
+    );
+
+    /* Reopening must restore the same semantic and visual order. A panel
+       library can otherwise append the restored node after Chat even though
+       the first render was correct. */
+    await showMain.click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${projectId}/settings` &&
+        url.searchParams.get("sidepanel") === "true" &&
+        url.searchParams.get("mainpanel") !== "false",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(page.getByTestId("workspace-panel-separator")).toHaveCount(1);
+    await expect(hideMain).toBeFocused();
+    expect(
+      await workspaceColumns.evaluateAll((columns) =>
+        columns.map((column) => column.getAttribute("data-testid")),
+      ),
+    ).toEqual([
+      "workspace-main-panel",
+      "workspace-panel-separator",
+      "workspace-side-panel",
+    ]);
+    const reopenedMainBox = await page
+      .getByTestId("workspace-main-panel")
+      .boundingBox();
+    const reopenedChatBox = await page
+      .getByTestId("workspace-side-panel")
+      .boundingBox();
+    expect(reopenedMainBox).not.toBeNull();
+    expect(reopenedChatBox).not.toBeNull();
+    if (!reopenedMainBox || !reopenedChatBox) {
+      throw new Error("Reopened workspace panels must be measurable");
+    }
+    expect(reopenedMainBox.x + reopenedMainBox.width).toBeLessThanOrEqual(
+      reopenedChatBox.x,
     );
 
     /* A bookmark from before identity moved into the path lands on the same
@@ -933,7 +1381,9 @@ test.describe("destination routes", () => {
     );
     const threadId = await createThread(request, orgSlug, agentId);
 
-    await page.goto(`/${orgSlug}/agents/${agentId}`);
+    await page.goto(
+      `/${orgSlug}/agents/${agentId}?thread=${threadId}&sidepanel=true`,
+    );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     const declaredView = page.getByRole("button", {
       name: viewTitle,
@@ -954,6 +1404,54 @@ test.describe("destination routes", () => {
     await expect(
       page.getByRole("heading", { name: viewTitle, level: 1 }),
     ).toBeVisible();
+    const declaredViewBreadcrumb = mainTopbarRegion(page, "left").getByRole(
+      "navigation",
+      { name: "Breadcrumb", exact: true },
+    );
+    const agentParent = await breadcrumbParent(
+      page,
+      declaredViewBreadcrumb,
+      "colliding view e2e",
+    );
+    await expect(
+      declaredViewBreadcrumb.locator('[aria-current="page"]'),
+    ).toHaveCount(0);
+    await expect(declaredViewBreadcrumb).not.toContainText(viewTitle);
+
+    await agentParent.link.click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}` &&
+        url.searchParams.get("thread") === threadId &&
+        url.searchParams.get("sidepanel") === "true",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(chatPanel(page)).toBeVisible();
+
+    // The sidebar Overview row is a real link (open-in-new-tab semantics), but
+    // it must use the same agent-scoped search writer as every view button.
+    await declaredView.click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}/views/${viewId}` &&
+        url.searchParams.get("thread") === threadId,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    const projectOverview = page
+      .locator('[data-slot="sidebar"]')
+      .locator(`a[href^="/${orgSlug}/agents/${agentId}"]`)
+      .filter({ hasText: "Home" })
+      .first();
+    await expect(projectOverview).toBeVisible();
+    await projectOverview.click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/agents/${agentId}` &&
+        url.searchParams.get("thread") === threadId &&
+        url.searchParams.get("sidepanel") === "true",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(chatPanel(page)).toBeVisible();
 
     /* `/agents/<agent>/<view>` was a shipped project-first grammar. `monitor`
        used to be an unambiguous custom id, so the built-in CDN route must not
@@ -1118,7 +1616,7 @@ test.describe("destination routes", () => {
     );
   });
 
-  test("mobile Chat preserves a source-less agent Overview title", async ({
+  test("mobile View trigger names the selected Chat surface", async ({
     authedPage: { page, orgSlug },
   }) => {
     await usePortugueseMobileViewport(page);
@@ -1146,10 +1644,303 @@ test.describe("destination routes", () => {
       .click();
 
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await expect(mainPanel(page)).toHaveCount(0);
-    await expect(trigger).toContainText(projectTitle, {
+    await expect(mainPanel(page)).toBeHidden();
+    await expect(mainPanel(page)).toHaveAttribute("aria-hidden", "true");
+    await expect(trigger).toContainText("Chat", {
       timeout: SHELL_TIMEOUT_MS,
     });
+    await expect(trigger).not.toContainText(projectTitle);
+  });
+
+  test("keyboard navigation restores focus across mobile surface and route replacements", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+    const agentId = await createProject(
+      page.context().request,
+      orgSlug,
+      "mobile focus e2e",
+    );
+    await page.goto(`/${orgSlug}/agents/${agentId}/settings`);
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    const viewSelect = page.getByRole("combobox", {
+      name: "View",
+      exact: true,
+    });
+    await viewSelect.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("option", { name: "Chat", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(
+      (url) =>
+        url.searchParams.get("sidepanel") === "true" &&
+        url.searchParams.get("mainpanel") === "false",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(viewSelect).toBeFocused();
+
+    await page.keyboard.press("Enter");
+    await page.getByRole("option", { name: "Settings", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(
+      (url) =>
+        url.searchParams.get("sidepanel") === "false" &&
+        url.searchParams.get("mainpanel") === "true",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(viewSelect).toBeFocused();
+
+    await page.keyboard.press("Enter");
+    await page.getByRole("option", { name: "Tasks", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL((url) => url.pathname === `/${orgSlug}/tasks`, {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(
+      mainTopbarRegion(page, "left").getByRole("heading", {
+        level: 1,
+        name: "Tasks",
+        exact: true,
+      }),
+    ).toBeFocused();
+  });
+
+  test("keyboard tab and breadcrumb navigation focus the new desktop route heading", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const projectTitle = "desktop focus e2e";
+    const viewTitle = "Focus dashboard";
+    const viewId = "focus-dashboard";
+    const agentId = await createProject(
+      page.context().request,
+      orgSlug,
+      projectTitle,
+      { clonable: true, layoutTabs: [{ id: viewId, title: viewTitle }] },
+    );
+    await page.goto(`/${orgSlug}/agents/${agentId}`);
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    const homeBreadcrumb = mainTopbar(page).getByRole("link", {
+      name: "Home",
+      exact: true,
+    });
+    await homeBreadcrumb.focus();
+    await page.setViewportSize({ width: 320, height: 720 });
+    const responsiveViewSelect = page.getByRole("combobox", {
+      name: "View",
+      exact: true,
+    });
+    await expect(responsiveViewSelect).toBeFocused();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(homeBreadcrumb).toBeFocused();
+
+    const viewTab = mainTopbar(page).getByRole("button", {
+      name: viewTitle,
+      exact: true,
+    });
+    await viewTab.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(
+      (url) => url.pathname === `/${orgSlug}/agents/${agentId}/views/${viewId}`,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(
+      mainTopbarRegion(page, "left").getByRole("heading", {
+        level: 1,
+        name: viewTitle,
+        exact: true,
+      }),
+    ).toBeFocused();
+
+    const projectParent = mainTopbar(page).getByRole("link", {
+      name: projectTitle,
+      exact: true,
+    });
+    await projectParent.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(
+      (url) => url.pathname === `/${orgSlug}/agents/${agentId}`,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(
+      mainTopbarRegion(page, "left").getByRole("heading", {
+        level: 1,
+        name: projectTitle,
+        exact: true,
+      }),
+    ).toBeFocused();
+
+    // History navigation has no activating link to remember. If the previous
+    // heading is removed, the resolved destination heading becomes the focus
+    // target instead of leaving keyboard users at document.body.
+    await page.goBack();
+    await page.waitForURL(
+      (url) => url.pathname === `/${orgSlug}/agents/${agentId}/views/${viewId}`,
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(
+      mainTopbarRegion(page, "left").getByRole("heading", {
+        level: 1,
+        name: viewTitle,
+        exact: true,
+      }),
+    ).toBeFocused();
+  });
+
+  test("workspace history and breakpoints preserve a meaningful focus target", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const orgId = await findOrgId(page.context().request, orgSlug);
+    const agentId = await createProject(
+      page.context().request,
+      orgSlug,
+      "workspace focus e2e",
+      { clonable: true },
+    );
+    const threadId = await createThread(
+      page.context().request,
+      orgSlug,
+      agentId,
+    );
+    await populateThread(orgId, threadId, "Focus handoff chat context");
+
+    // Toggling the active Site Editor tab is a search-only navigation that
+    // collapses Main. Its visible semantic replacement lives in Chat.
+    await page.goto(
+      `/${orgSlug}/agents/${agentId}/site-editor?thread=${threadId}&sidepanel=true&mainpanel=true`,
+    );
+    const activePreviewTab = mainPanel(page).getByRole("button", {
+      name: "Preview",
+      exact: true,
+    });
+    await activePreviewTab.focus();
+    await pushSearchHistory(page, { mainpanel: "false" });
+    await page.waitForURL(
+      (url) => url.searchParams.get("mainpanel") === "false",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    const sidePanelCard = page.getByTestId("side-panel");
+    await expect(
+      sidePanelCard.getByRole("button", {
+        name: "Show panel",
+        exact: true,
+      }),
+    ).toBeFocused();
+
+    await page.goBack();
+    await page.waitForURL(
+      (url) => url.searchParams.get("mainpanel") === "true",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    const restoredHideMain = mainPanel(page).getByRole("button", {
+      name: "Hide panel",
+      exact: true,
+    });
+    await expect(restoredHideMain).toBeFocused();
+
+    await page.goForward();
+    await page.waitForURL(
+      (url) => url.searchParams.get("mainpanel") === "false",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(
+      sidePanelCard.getByRole("button", {
+        name: "Show panel",
+        exact: true,
+      }),
+    ).toBeFocused();
+
+    await page.goBack();
+    await page.waitForURL(
+      (url) => url.searchParams.get("mainpanel") === "true",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    const hideChat = mainPanel(page).getByRole("button", {
+      name: "Hide chat",
+      exact: true,
+    });
+    await hideChat.focus();
+    await pushSearchHistory(page, { sidepanel: "false" });
+    await page.waitForURL(
+      (url) => url.searchParams.get("sidepanel") === "false",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    const showChat = mainPanel(page).getByRole("button", {
+      name: "Show chat",
+      exact: true,
+    });
+    await expect(showChat).toBeFocused();
+
+    await page.goBack();
+    await page.waitForURL(
+      (url) => url.searchParams.get("sidepanel") === "true",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(hideChat).toBeFocused();
+
+    await page.goForward();
+    await page.waitForURL(
+      (url) => url.searchParams.get("sidepanel") === "false",
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(showChat).toBeFocused();
+
+    // Crossing into the one-surface mobile shell can make either persistent
+    // panel inert. Focus follows to the visible View switcher, then returns to
+    // the exact desktop node only if the user leaves that handoff untouched.
+    await page.goto(
+      `/${orgSlug}/agents/${agentId}/site-editor?thread=${threadId}&sidepanel=true&mainpanel=true`,
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const mainFocusProbe = mainPanel(page);
+    await mainFocusProbe.evaluate((element) => {
+      element.tabIndex = -1;
+      element.focus();
+    });
+    await expect(mainFocusProbe).toBeFocused();
+    await page.setViewportSize({ width: 767, height: 720 });
+    const mobileViewSelect = page.getByRole("combobox", {
+      name: "View",
+      exact: true,
+    });
+    await expect(mobileViewSelect).toBeFocused();
+    await expect(mainFocusProbe).toBeHidden();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(mainFocusProbe).toBeFocused();
+
+    // A newer explicit focus move cancels restoration to the desktop source.
+    await page.setViewportSize({ width: 767, height: 720 });
+    await expect(mobileViewSelect).toBeFocused();
+    const chatFocusProbe = chatPanel(page);
+    await chatFocusProbe.evaluate((element) => {
+      element.tabIndex = -1;
+      element.focus();
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(chatFocusProbe).toBeFocused();
+    await expect(mainFocusProbe).not.toBeFocused();
+
+    // With no explicit side-panel preference, Main wins on mobile. The same
+    // handoff works symmetrically for a focused Chat descendant.
+    await page.goto(
+      `/${orgSlug}/agents/${agentId}/site-editor?thread=${threadId}&mainpanel=true`,
+    );
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    const defaultChatFocusProbe = chatPanel(page);
+    await defaultChatFocusProbe.evaluate((element) => {
+      element.tabIndex = -1;
+      element.focus();
+    });
+    await expect(defaultChatFocusProbe).toBeFocused();
+    await page.setViewportSize({ width: 767, height: 720 });
+    await expect(mobileViewSelect).toBeFocused();
+    await expect(defaultChatFocusProbe).toBeHidden();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(defaultChatFocusProbe).toBeFocused();
   });
 
   test("Preview, Content, and Code are canonical Site Editor children", async ({

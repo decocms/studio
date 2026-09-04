@@ -47,6 +47,7 @@ import {
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 
 /** A project's curated app views. The metadata bag is `.loose()`, so this
  *  validates the shape rather than trusting it. */
@@ -117,6 +118,11 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       link: {
         to: AGENT_ROUTE.root,
         params: { org: params.org ?? "", agentId: project.id },
+        search: (previous) =>
+          resolvePanelNavigationSearch({
+            previous,
+            destination: "agent",
+          }),
       },
       isActive: (tabId) => tabId === "overview",
     });
@@ -227,8 +233,8 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
           dataTour={view.dataTour}
           isActive={onProject && view.isActive(activeTabId)}
           link={view.link}
-          /** Overview is a stable link. The remaining rows switch routes inside
-           * the already-mounted agent session, preserving its active chat. */
+          /** Overview remains a real link; every row uses the same canonical
+           * agent-search policy so the mounted session keeps its active chat. */
           onSelect={() => {
             track("project_nav_clicked", { surface: view.key });
             if (view.tabId) {

@@ -1,9 +1,10 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { Suspense, lazy, useState } from "react";
+import { type RefObject, Suspense, lazy, useRef, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
+  ArrowLeft,
   CornerUpRight,
   File02,
   Globe02,
@@ -34,6 +35,11 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useElementWidth } from "@/hooks/use-element-width";
+import {
+  FOCUSABLE_HANDOFF_TARGET,
+  useFocusHandoffRef,
+} from "@/hooks/use-focus-handoff-ref";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import {
   draftsModeEnabled,
@@ -129,6 +135,12 @@ import {
   GroupHeader,
   groupSavedSectionsByResolveType,
 } from "./section-group-header";
+import {
+  collectionStartStage,
+  type CollectionId,
+  type CompactContentStage,
+  isCompactContentWorkspace,
+} from "./compact-workspace";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -177,19 +189,6 @@ const PostCalendar = lazy(() =>
 const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
-
-export type CollectionId =
-  | "pages"
-  | "sections"
-  | "apps"
-  | "site"
-  | "seo"
-  | "calendar"
-  | "post-schedule"
-  | "loaders"
-  | "actions"
-  | "redirects"
-  | BlogKind;
 
 export type CollectionCounts = Record<
   | "pages"
@@ -306,6 +305,10 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
 const SCHEMA_POLL_INTERVAL_MS = 2000;
 const SCHEMA_POLL_MAX_ATTEMPTS = 15;
 
+function focusOnNextFrame(resolveTarget: () => HTMLElement | null): void {
+  requestAnimationFrame(() => resolveTarget()?.focus());
+}
+
 function liveMetaSchemaPollIntervalMs(
   query: Query<LiveMeta>,
   resolveType: string | undefined,
@@ -352,6 +355,22 @@ function ContentBrowserReady({
   sandboxWarming: boolean;
 }) {
   const t = useT();
+  const [workspaceWidth, workspaceRef] = useElementWidth();
+  const compactWorkspace = isCompactContentWorkspace(workspaceWidth);
+  const [compactStage, setCompactStage] =
+    useState<CompactContentStage>("collections");
+  const collectionsStageRef = useRef<HTMLDivElement>(null);
+  const itemsStageRef = useRef<HTMLDivElement>(null);
+  const detailStageRef = useRef<HTMLDivElement>(null);
+  const itemSearchRef = useRef<HTMLInputElement>(null);
+  const detailBackRef = useRef<HTMLButtonElement>(null);
+  const detailBackHandoffRef = useFocusHandoffRef(
+    detailBackRef,
+    { ref: itemsStageRef, selector: '[aria-current="true"]' },
+    { ref: detailStageRef, selector: FOCUSABLE_HANDOFF_TARGET },
+    { ref: itemSearchRef },
+    { ref: collectionsStageRef, selector: '[aria-current="page"]' },
+  );
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const readOnlyVm = useVirtualMCP(virtualMcpId);
   const isOnProduction = useIsOnProduction(readOnlyVm, branch);
@@ -383,6 +402,7 @@ function ContentBrowserReady({
     if (match) {
       setActiveCollection("pages");
       setSelection({ collection: "pages", key: match.key, path: match.path });
+      setCompactStage("detail");
     }
   }
   const [searchQuery, setSearchQuery] = useState("");
@@ -397,20 +417,51 @@ function ContentBrowserReady({
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
   );
-  // Category slug that pre-opens the bulk "Update category" panel (set when
-  // arriving from a category's "Add posts" / "Manage posts" action). While
-  // non-null the panel stays open even with zero posts selected.
+  // Category slug that preselects the bulk editor when arriving from a
+  // category's "Add posts" / "Manage posts" action.
   const [bulkCategorySeed, setBulkCategorySeed] = useState<string | null>(null);
+  const [bulkCategoryPanelOpen, setBulkCategoryPanelOpen] = useState(false);
+  const revealStage = (
+    stage: CompactContentStage,
+    resolveFocusTarget: () => HTMLElement | null,
+  ) => {
+    setCompactStage(stage);
+    if (compactWorkspace) focusOnNextFrame(resolveFocusTarget);
+  };
+  const showCollections = () => {
+    revealStage(
+      "collections",
+      () =>
+        collectionsStageRef.current?.querySelector<HTMLElement>(
+          '[aria-current="page"]',
+        ) ?? null,
+    );
+  };
+  const showItems = () => {
+    revealStage(
+      "items",
+      () =>
+        itemsStageRef.current?.querySelector<HTMLElement>(
+          '[aria-current="true"]',
+        ) ?? itemSearchRef.current,
+    );
+  };
+  const showDetail = () => {
+    revealStage("detail", () => detailBackRef.current);
+  };
   // Multi-select is implicit: selecting the first post (via the hover-revealed
-  // checkbox) enters "selection mode". Closing the panel (or applying) leaves
-  // it and drops the seed.
+  // checkbox) enters "selection mode". The editor opens only through the
+  // explicit toolbar action, so picking one post never hides the remaining
+  // rows. Closing the panel (or applying) leaves selection mode.
   const clearSelection = () => {
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
+    setBulkCategoryPanelOpen(false);
   };
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
+    showDetail();
   };
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
@@ -424,6 +475,7 @@ function ContentBrowserReady({
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
+    setBulkCategoryPanelOpen(false);
   }
 
   const {
@@ -551,11 +603,10 @@ function ContentBrowserReady({
     .filter((c) => c.slug)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // The bulk "Update category" panel shows while posts are selected, or while
-  // a category seed forces it open (arriving from the category editor).
-  const bulkPanelOpen =
-    activeCollection === "posts" &&
-    (selectedPostKeys.size > 0 || bulkCategorySeed !== null);
+  // The bulk editor is entered explicitly from the post selection toolbar.
+  // A category seed can mount it ahead of time while the post list remains the
+  // active compact stage, preserving both the seed and subsequent selection.
+  const bulkPanelOpen = activeCollection === "posts" && bulkCategoryPanelOpen;
   // Posts the panel will act on (selection order is irrelevant — list order
   // mirrors the decofile scan, same as the list pane).
   const selectedPostsMeta = bulkPanelOpen
@@ -617,7 +668,7 @@ function ContentBrowserReady({
         data: { ...fullPageData, sections: updatedSections },
       });
       toast.success(`Variant added to "${page.name}"`);
-      setSelection({ collection: "pages", key: page.key, path: page.path });
+      selectItem({ collection: "pages", key: page.key, path: page.path });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not add variant");
     }
@@ -677,7 +728,7 @@ function ContentBrowserReady({
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Created "${values.name}"`);
-        setSelection({ collection: "pages", key, path: values.path });
+        selectItem({ collection: "pages", key, path: values.path });
       } else if (mode === "duplicate" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
@@ -691,7 +742,7 @@ function ContentBrowserReady({
         });
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Duplicated as "${values.name}"`);
-        setSelection({ collection: "pages", key, path: values.path });
+        selectItem({ collection: "pages", key, path: values.path });
       } else if (mode === "rename" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
@@ -752,7 +803,7 @@ function ContentBrowserReady({
     toast.success(
       t("sandbox.contentBrowser.createdSection", { name: blockId }),
     );
-    setSelection({ collection: "sections", key: blockId });
+    selectItem({ collection: "sections", key: blockId });
   };
 
   // Persist nested saved-block references created from within the section form.
@@ -774,7 +825,7 @@ function ContentBrowserReady({
       toast.success(
         t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
       );
-      setSelection({ collection: "sections", key: newKey });
+      selectItem({ collection: "sections", key: newKey });
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -826,7 +877,7 @@ function ContentBrowserReady({
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
       toast.success("Created redirect");
-      setSelection({ collection: "redirects", key });
+      selectItem({ collection: "redirects", key });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not create redirect",
@@ -841,7 +892,7 @@ function ContentBrowserReady({
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
       toast.success(`Created ${BLOG_SINGULAR[kind]}`);
-      setSelection({ collection: kind, key });
+      selectItem({ collection: kind, key });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not create");
     }
@@ -856,8 +907,7 @@ function ContentBrowserReady({
       toast.success(t("sandbox.postCalendar.createdScheduledPost"));
       setActiveCollection("posts");
       setPrevCollection("posts");
-      setSelection({ collection: "posts", key });
-      setOpenPageSeoKey(null);
+      selectItem({ collection: "posts", key });
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -909,7 +959,7 @@ function ContentBrowserReady({
         data: buildBlogBlock(key, entry.kind, payload),
       });
       toast.success(`Duplicated "${entry.label}"`);
-      setSelection({ collection: entry.kind, key });
+      selectItem({ collection: entry.kind, key });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Duplicate failed");
     }
@@ -928,11 +978,10 @@ function ContentBrowserReady({
     });
   };
 
-  // Land on the unfiltered posts list with the bulk "Update category" panel
-  // already open and the clicked category pre-selected (from the category
-  // editor's "Add posts" / "Manage posts" actions). Sync `prevCollection` here
-  // so the collection-change reset above doesn't immediately clear what we're
-  // setting.
+  // Land on the unfiltered posts list in selection mode with the clicked
+  // category pre-selected. The panel is mounted so its form state survives,
+  // but compact workspaces stay on the list until the explicit toolbar action.
+  // Sync `prevCollection` so the collection-change reset doesn't clear this.
   const handleManagePosts = (slug: string) => {
     setActiveCollection("posts");
     setPrevCollection("posts");
@@ -945,6 +994,17 @@ function ContentBrowserReady({
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(slug || null);
+    setBulkCategoryPanelOpen(true);
+    setCompactStage("items");
+    if (compactWorkspace) {
+      focusOnNextFrame(() => itemSearchRef.current);
+    }
+  };
+
+  const openBulkCategoryEditor = () => {
+    if (selectedPostKeys.size === 0) return;
+    setBulkCategoryPanelOpen(true);
+    showDetail();
   };
 
   // Apply a pure category mutation to every selected post and persist
@@ -991,6 +1051,7 @@ function ContentBrowserReady({
           (unchanged > 0 ? ` (${unchanged} already set)` : ""),
       );
       clearSelection();
+      showItems();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk update failed");
     }
@@ -1017,6 +1078,7 @@ function ContentBrowserReady({
           setSelection(null);
         }
         clearSelection();
+        showItems();
         setDeleteTarget(null);
         return;
       }
@@ -1057,6 +1119,7 @@ function ContentBrowserReady({
         selection.key === key
       ) {
         setSelection(null);
+        showItems();
       }
       setDeleteTarget(null);
     } catch (err) {
@@ -1073,25 +1136,78 @@ function ContentBrowserReady({
       : deleteTarget?.kind === "blog-bulk"
         ? `${deleteTarget.count} ${deleteTarget.count === 1 ? "post" : "posts"}`
         : (deleteTarget?.kind ?? "item");
+  const collectionStage = collectionStartStage(activeCollection);
+  const collectionsStageClassName = compactWorkspace
+    ? compactStage === "collections"
+      ? "flex min-h-0 min-w-0 flex-1"
+      : "hidden"
+    : "contents";
+  const itemsStageClassName = compactWorkspace
+    ? compactStage === "items"
+      ? "flex min-h-0 min-w-0 flex-1"
+      : "hidden"
+    : "contents";
+  const detailStageClassName = compactWorkspace
+    ? compactStage === "detail"
+      ? "flex min-h-0 min-w-0 flex-1 flex-col"
+      : "hidden"
+    : "contents";
+  const detailBackLabel = t(
+    collectionStage === "detail"
+      ? "sandbox.contentBrowser.backToCollections"
+      : "sandbox.contentBrowser.backToItems",
+  );
   return (
-    <div className="flex h-full w-full">
-      <CollectionsSidebar
-        active={activeCollection}
-        counts={counts}
-        showBlog={showBlog}
-        onSelect={(id) => {
-          setActiveCollection(id);
-          setSelection(null);
-          setOpenPageSeoKey(null);
+    <div
+      ref={workspaceRef}
+      className="@container [container-name:cms-content] flex h-full min-w-0 w-full overflow-hidden"
+    >
+      <div
+        ref={collectionsStageRef}
+        data-content-stage="collections"
+        className={collectionsStageClassName}
+        onFocusCapture={() => {
+          if (!compactWorkspace) setCompactStage("collections");
         }}
-      />
-      {activeCollection !== "seo" &&
-        activeCollection !== "site" &&
-        activeCollection !== "calendar" &&
-        activeCollection !== "post-schedule" &&
-        activeCollection !== "loaders" &&
-        activeCollection !== "actions" && (
+      >
+        <CollectionsSidebar
+          active={activeCollection}
+          counts={counts}
+          showBlog={showBlog}
+          className={cn(compactWorkspace && "min-w-0 w-full border-r-0")}
+          onSelect={(id) => {
+            setActiveCollection(id);
+            if (id !== activeCollection) {
+              setSelection(null);
+              setOpenPageSeoKey(null);
+            }
+            const nextStage = collectionStartStage(id);
+            setCompactStage(nextStage);
+            if (!compactWorkspace) return;
+            focusOnNextFrame(() =>
+              nextStage === "items"
+                ? itemSearchRef.current
+                : detailBackRef.current,
+            );
+          }}
+        />
+      </div>
+      {collectionStage === "items" && (
+        <div
+          ref={itemsStageRef}
+          data-content-stage="items"
+          className={itemsStageClassName}
+          onFocusCapture={() => {
+            if (!compactWorkspace) setCompactStage("items");
+          }}
+        >
           <ItemList
+            compact={compactWorkspace}
+            className={cn(
+              compactWorkspace && "min-w-0 w-full flex-1 border-r-0",
+            )}
+            searchInputRef={itemSearchRef}
+            onBack={showCollections}
             activeCollection={activeCollection}
             pages={pages}
             redirects={redirects}
@@ -1125,7 +1241,11 @@ function ContentBrowserReady({
             onTogglePostSelect={togglePostSelection}
             onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
             onClearPostSelection={() => setSelectedPostKeys(new Set())}
-            onExitPostSelection={clearSelection}
+            onExitPostSelection={() => {
+              clearSelection();
+              showItems();
+            }}
+            onUpdatePostCategories={openBulkCategoryEditor}
             onBulkDeletePosts={() =>
               setDeleteTarget({
                 kind: "blog-bulk",
@@ -1156,7 +1276,7 @@ function ContentBrowserReady({
                 key: page.key,
                 path: page.path,
               } as const;
-              setSelection(target);
+              selectItem(target);
               setOpenPageSeoKey(page.key);
             }}
             onViewPageJson={(page) => setJsonPageKey(page.key)}
@@ -1182,237 +1302,267 @@ function ContentBrowserReady({
               })
             }
           />
-        )}
-      <ReadOnlyPane
-        readOnly={readOnly}
-        virtualMcpId={virtualMcpId}
-        className="flex-1 min-w-0"
+        </div>
+      )}
+      <div
+        ref={detailStageRef}
+        data-content-stage="detail"
+        className={detailStageClassName}
+        onFocusCapture={() => {
+          if (!compactWorkspace) setCompactStage("detail");
+        }}
       >
-        {activeCollection === "loaders" || activeCollection === "actions" ? (
-          <RunnableBlocksBrowser
-            orgSlug={orgSlug}
-            virtualMcpId={virtualMcpId}
-            branch={branch}
-            previewUrl={previewUrl}
-            meta={meta}
-            decofile={decofile}
-            kind={activeCollection}
-          />
-        ) : (
-          <Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center">
-                <Spinner className="size-5 text-muted-foreground" />
-              </div>
-            }
-          >
-            {activeCollection === "calendar" ? (
-              <VariantCalendar decofile={decofile} />
-            ) : activeCollection === "post-schedule" ? (
-              <PostCalendar
-                decofile={decofile}
-                support={blogSupport}
-                isCreating={saveBlock.isPending}
-                onCreate={(day) => void handleCreateScheduledPost(day)}
-                onReschedule={(key, day) => void handleReschedulePost(key, day)}
-                onSelect={(key) => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection({ collection: "posts", key });
-                  setOpenPageSeoKey(null);
-                }}
-              />
-            ) : activeCollection === "site" ? (
-              siteApp ? (
-                <AppEditor
-                  key={`site:${siteApp.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={siteApp.key}
-                  block={decofile[siteApp.key] as Record<string, unknown>}
+        {compactWorkspace && (
+          <div className="flex h-12 shrink-0 items-center border-b px-2">
+            <Button
+              ref={detailBackHandoffRef}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 min-w-0 gap-1.5 px-2"
+              onClick={
+                collectionStage === "detail" ? showCollections : showItems
+              }
+            >
+              <ArrowLeft size={14} className="shrink-0" />
+              <span className="truncate">{detailBackLabel}</span>
+            </Button>
+          </div>
+        )}
+        <ReadOnlyPane
+          readOnly={readOnly}
+          virtualMcpId={virtualMcpId}
+          className="flex-1 min-h-0 min-w-0"
+        >
+          {activeCollection === "loaders" || activeCollection === "actions" ? (
+            <RunnableBlocksBrowser
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              previewUrl={previewUrl}
+              meta={meta}
+              decofile={decofile}
+              kind={activeCollection}
+            />
+          ) : (
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center">
+                  <Spinner className="size-5 text-muted-foreground" />
+                </div>
+              }
+            >
+              {activeCollection === "calendar" ? (
+                <VariantCalendar decofile={decofile} />
+              ) : activeCollection === "post-schedule" ? (
+                <PostCalendar
                   decofile={decofile}
-                  meta={meta}
-                  title="Site"
-                  excludeFields={["seo"]}
-                  schemaPending={isAppSchemaLoading(siteApp.resolveType, [
-                    "seo",
-                  ])}
-                  previewBaseUrl={previewUrl}
-                />
-              ) : (
-                <EmptyMessage
-                  title="Site settings not found"
-                  description="This project doesn't have a site app block (site/apps/site.ts)."
-                />
-              )
-            ) : activeCollection === "seo" ? (
-              <SeoEditor
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                decofile={decofile}
-                meta={meta}
-                target={{ kind: "site" }}
-                previewBaseUrl={sitePreviewUrl}
-              />
-            ) : activeCollection === "sections" ? (
-              <SectionsRightPane
-                selection={
-                  selection?.collection === "sections" ||
-                  selection?.collection === "available-section"
-                    ? selection
-                    : null
-                }
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                previewUrl={previewUrl}
-                meta={meta}
-                decofile={decofile}
-                isCreating={saveBlock.isPending}
-                onCreateAvailable={handleCreateAvailableSection}
-                onSaveReferencedBlock={saveReferencedBlock}
-              />
-            ) : bulkPanelOpen ? (
-              // Posts selection mode: the bulk "Update category" panel takes
-              // over the right pane (rows toggle selection, not the editor).
-              // Keyed by seed so arriving from a category remounts the panel
-              // with that category pre-selected.
-              <BulkCategoryPanel
-                key={bulkCategorySeed ?? "selection"}
-                posts={selectedPostsMeta}
-                categories={bulkCategoryChoices}
-                initialSlug={bulkCategorySeed}
-                isPending={saveBlock.isPending}
-                onApply={(mode, category) =>
-                  void runBulkCategoryUpdate(mode, category)
-                }
-                onClose={clearSelection}
-              />
-            ) : selection && selection.collection !== "available-section" ? (
-              selection.collection === "apps" ? (
-                <AppEditor
-                  key={`app:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  previewBaseUrl={previewUrl}
-                  schemaPending={isAppSchemaLoading(
-                    typeof (decofile[selection.key] as Record<string, unknown>)
-                      ?.__resolveType === "string"
-                      ? String(
-                          (decofile[selection.key] as Record<string, unknown>)
-                            .__resolveType,
-                        )
-                      : undefined,
-                  )}
-                />
-              ) : selection.collection === "posts" ? (
-                <PostEditor
-                  key={`post:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  previewBaseUrl={sitePreviewUrl}
-                />
-              ) : selection.collection === "categories" ? (
-                <CategoryEditor
-                  key={`category:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  onManagePosts={handleManagePosts}
-                  onOpenPost={(key) => {
+                  support={blogSupport}
+                  isCreating={saveBlock.isPending}
+                  onCreate={(day) => void handleCreateScheduledPost(day)}
+                  onReschedule={(key, day) =>
+                    void handleReschedulePost(key, day)
+                  }
+                  onSelect={(key) => {
                     setActiveCollection("posts");
                     setPrevCollection("posts");
-                    setSelection({ collection: "posts", key });
-                    setOpenPageSeoKey(null);
+                    selectItem({ collection: "posts", key });
                   }}
+                />
+              ) : activeCollection === "site" ? (
+                siteApp ? (
+                  <AppEditor
+                    key={`site:${siteApp.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={siteApp.key}
+                    block={decofile[siteApp.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    title="Site"
+                    excludeFields={["seo"]}
+                    schemaPending={isAppSchemaLoading(siteApp.resolveType, [
+                      "seo",
+                    ])}
+                    previewBaseUrl={previewUrl}
+                  />
+                ) : (
+                  <EmptyMessage
+                    title="Site settings not found"
+                    description="This project doesn't have a site app block (site/apps/site.ts)."
+                  />
+                )
+              ) : activeCollection === "seo" ? (
+                <SeoEditor
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  decofile={decofile}
+                  meta={meta}
+                  target={{ kind: "site" }}
                   previewBaseUrl={sitePreviewUrl}
                 />
-              ) : selection.collection === "authors" ? (
-                <RecordEditor
-                  key={`authors:${selection.key}`}
+              ) : activeCollection === "sections" ? (
+                <SectionsRightPane
+                  selection={
+                    selection?.collection === "sections" ||
+                    selection?.collection === "available-section"
+                      ? selection
+                      : null
+                  }
                   orgSlug={orgSlug}
                   virtualMcpId={virtualMcpId}
                   branch={branch}
-                  kind="authors"
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
+                  previewUrl={previewUrl}
+                  meta={meta}
+                  decofile={decofile}
+                  isCreating={saveBlock.isPending}
+                  onCreateAvailable={handleCreateAvailableSection}
+                  onSaveReferencedBlock={saveReferencedBlock}
                 />
-              ) : selection.collection === "redirects" ? (
-                <RedirectEditor
-                  key={`redirect:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
+              ) : bulkPanelOpen ? (
+                // The explicit "Update category" action opens this editor.
+                // Keyed by seed so arriving from a category remounts the panel
+                // with that category pre-selected.
+                <BulkCategoryPanel
+                  key={bulkCategorySeed ?? "selection"}
+                  posts={selectedPostsMeta}
+                  categories={bulkCategoryChoices}
+                  initialSlug={bulkCategorySeed}
+                  isPending={saveBlock.isPending}
+                  onApply={(mode, category) =>
+                    void runBulkCategoryUpdate(mode, category)
+                  }
+                  onClose={() => {
+                    clearSelection();
+                    showItems();
+                  }}
                 />
+              ) : selection && selection.collection !== "available-section" ? (
+                selection.collection === "apps" ? (
+                  <AppEditor
+                    key={`app:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    previewBaseUrl={previewUrl}
+                    schemaPending={isAppSchemaLoading(
+                      typeof (
+                        decofile[selection.key] as Record<string, unknown>
+                      )?.__resolveType === "string"
+                        ? String(
+                            (decofile[selection.key] as Record<string, unknown>)
+                              .__resolveType,
+                          )
+                        : undefined,
+                    )}
+                  />
+                ) : selection.collection === "posts" ? (
+                  <PostEditor
+                    key={`post:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    previewBaseUrl={sitePreviewUrl}
+                  />
+                ) : selection.collection === "categories" ? (
+                  <CategoryEditor
+                    key={`category:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    onManagePosts={handleManagePosts}
+                    onOpenPost={(key) => {
+                      setActiveCollection("posts");
+                      setPrevCollection("posts");
+                      selectItem({ collection: "posts", key });
+                    }}
+                    previewBaseUrl={sitePreviewUrl}
+                  />
+                ) : selection.collection === "authors" ? (
+                  <RecordEditor
+                    key={`authors:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    kind="authors"
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                  />
+                ) : selection.collection === "redirects" ? (
+                  <RedirectEditor
+                    key={`redirect:${selection.key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={selection.key}
+                    block={decofile[selection.key] as Record<string, unknown>}
+                  />
+                ) : (
+                  <SectionsEditor
+                    key={
+                      selection.collection === "pages"
+                        ? `page:${selection.key}`
+                        : `section:${selection.key}`
+                    }
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    previewReady
+                    previewUrl={previewUrl ?? undefined}
+                    currentPath={
+                      selection.collection === "pages" ? selection.path : "/"
+                    }
+                    activePageBlockKey={
+                      selection.collection === "pages" ? selection.key : null
+                    }
+                    activeGlobalBlockKey={
+                      selection.collection === "sections" ? selection.key : null
+                    }
+                    initialEditSeo={
+                      selection.collection === "pages" &&
+                      openPageSeoKey === selection.key
+                    }
+                    onExitSeo={() => setOpenPageSeoKey(null)}
+                  />
+                )
               ) : (
-                <SectionsEditor
-                  key={
-                    selection.collection === "pages"
-                      ? `page:${selection.key}`
-                      : `section:${selection.key}`
+                <EmptyMessage
+                  title={`Select ${
+                    isBlogKind(activeCollection)
+                      ? `a ${BLOG_SINGULAR[activeCollection]}`
+                      : activeCollection === "pages"
+                        ? "a page"
+                        : activeCollection === "apps"
+                          ? "an app"
+                          : activeCollection === "redirects"
+                            ? "a redirect"
+                            : "a section"
+                  } to edit`}
+                  description={
+                    activeCollection === "apps"
+                      ? "Browse all apps and select an installed one to edit its settings."
+                      : 'Pick an item from the list, or click "+" to create one.'
                   }
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  previewReady
-                  previewUrl={previewUrl ?? undefined}
-                  currentPath={
-                    selection.collection === "pages" ? selection.path : "/"
-                  }
-                  activePageBlockKey={
-                    selection.collection === "pages" ? selection.key : null
-                  }
-                  activeGlobalBlockKey={
-                    selection.collection === "sections" ? selection.key : null
-                  }
-                  initialEditSeo={
-                    selection.collection === "pages" &&
-                    openPageSeoKey === selection.key
-                  }
-                  onExitSeo={() => setOpenPageSeoKey(null)}
                 />
-              )
-            ) : (
-              <EmptyMessage
-                title={`Select ${
-                  isBlogKind(activeCollection)
-                    ? `a ${BLOG_SINGULAR[activeCollection]}`
-                    : activeCollection === "pages"
-                      ? "a page"
-                      : activeCollection === "apps"
-                        ? "an app"
-                        : activeCollection === "redirects"
-                          ? "a redirect"
-                          : "a section"
-                } to edit`}
-                description={
-                  activeCollection === "apps"
-                    ? "Browse all apps and select an installed one to edit its settings."
-                    : 'Pick an item from the list, or click "+" to create one.'
-                }
-              />
-            )}
-          </Suspense>
-        )}
-      </ReadOnlyPane>
+              )}
+            </Suspense>
+          )}
+        </ReadOnlyPane>
+      </div>
 
       {/* Page create/duplicate/rename dialog */}
       {pageDialog && (
@@ -1516,6 +1666,10 @@ function ContentBrowserReady({
 }
 
 function ItemList({
+  compact,
+  className,
+  searchInputRef,
+  onBack,
   activeCollection,
   pages,
   redirects,
@@ -1541,6 +1695,7 @@ function ItemList({
   onSelectAllPosts,
   onClearPostSelection,
   onExitPostSelection,
+  onUpdatePostCategories,
   onBulkDeletePosts,
   selection,
   onSelect,
@@ -1558,6 +1713,10 @@ function ItemList({
   onDuplicateBlog,
   onDeleteBlog,
 }: {
+  compact: boolean;
+  className?: string;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  onBack: () => void;
   activeCollection: CollectionId;
   pages: PageEntry[];
   redirects: RedirectEntry[];
@@ -1586,6 +1745,7 @@ function ItemList({
   onClearPostSelection: () => void;
   /** Leave selection mode entirely (also closes the bulk panel). */
   onExitPostSelection: () => void;
+  onUpdatePostCategories: () => void;
   onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
@@ -1603,6 +1763,11 @@ function ItemList({
   onDuplicateBlog: (entry: BlogEntry) => void;
   onDeleteBlog: (entry: BlogEntry) => void;
 }) {
+  const compactBackRef = useRef<HTMLButtonElement>(null);
+  const compactBackHandoffRef = useFocusHandoffRef(compactBackRef, {
+    ref: searchInputRef,
+  });
+  const t = useT();
   const q = searchQuery.toLowerCase();
   const filteredPages = pages.filter(
     (p) =>
@@ -1744,8 +1909,33 @@ function ItemList({
     activeCollection !== "apps" && activeCollection !== "sections";
 
   return (
-    <div className="shrink-0 border-r flex flex-col min-h-0 w-[300px]">
+    <div
+      className={cn(
+        "shrink-0 border-r flex flex-col min-h-0 w-[300px]",
+        className,
+      )}
+    >
       <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
+        {compact && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                ref={compactBackHandoffRef}
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0"
+                onClick={onBack}
+                aria-label={t("sandbox.contentBrowser.backToCollections")}
+              >
+                <ArrowLeft size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t("sandbox.contentBrowser.backToCollections")}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <div className="flex flex-1 items-center gap-2 pl-1">
           <SearchLg
             size={14}
@@ -1753,12 +1943,13 @@ function ItemList({
             aria-hidden
           />
           <input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={placeholder}
             aria-label={placeholder}
-            className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
         {showCreateButton && (
@@ -1783,6 +1974,7 @@ function ItemList({
             count={selectionCount}
             allSelected={allVisibleSelected}
             onToggleSelectAll={toggleSelectAll}
+            onUpdateCategory={onUpdatePostCategories}
             onDelete={onBulkDeletePosts}
             onExit={onExitPostSelection}
           />

@@ -146,4 +146,55 @@ test.describe("tab error boundary recovers on tab switch", () => {
       .getByRole("button", { name: /^sandbox$/i });
     await expect(sandboxToolbarTab).toBeVisible({ timeout: 60_000 });
   });
+
+  test("leaving a crashed task detail recovers the shared Tasks route", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const { item } = await callSelfMcpTool<{
+      item: { keySeq: number };
+    }>(page.context().request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+      title: "Boundary recovery task",
+    });
+    const prefix = orgSlug
+      .replace(/[^a-zA-Z]/g, "")
+      .toUpperCase()
+      .slice(0, 4);
+    const taskKey = `${prefix || "TASK"}-${String(item.keySeq).padStart(2, "0")}`;
+
+    await page.addInitScript((routeId) => {
+      (window as unknown as { __forceTabError?: string }).__forceTabError =
+        routeId;
+    }, `tasks:detail:${taskKey}`);
+    await page.goto(`/${orgSlug}/tasks/${taskKey}`);
+
+    const main = page.getByTestId("main-panel");
+    await expect(main.getByText(/something went wrong/i)).toBeVisible({
+      timeout: 60_000,
+    });
+    const breadcrumb = main.getByRole("navigation", {
+      name: "Breadcrumb",
+      exact: true,
+    });
+    const directTasks = breadcrumb.getByRole("link", {
+      name: "Tasks",
+      exact: true,
+    });
+    if (await directTasks.isVisible()) {
+      await directTasks.click();
+    } else {
+      await breadcrumb
+        .getByRole("button", { name: "Show parent pages" })
+        .click();
+      await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
+    }
+
+    await page.waitForURL((url) => url.pathname === `/${orgSlug}/tasks`, {
+      timeout: 60_000,
+    });
+    await expect(main.getByText(/something went wrong/i)).toHaveCount(0);
+    await expect(
+      page.getByText("Boundary recovery task", { exact: true }),
+    ).toBeVisible();
+  });
 });

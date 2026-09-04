@@ -8,6 +8,8 @@ export const header = {
   "header.orgSwitcher.invitedToJoin": "Invited to join",
   "header.orgSwitcher.joined": "Joined {name}",
   "header.orgSwitcher.unknownOrganization": "Unknown organization",
+  "header.mainBreadcrumb.ariaLabel": "Breadcrumb",
+  "header.mainBreadcrumb.showParents": "Show parent pages",
   "header.shellBreadcrumb.openAgentHome": "Open {name} home",
   "header.shellBreadcrumb.superAgentDefaultName": "Super Agent",
 } as const;
