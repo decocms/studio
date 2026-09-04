@@ -40,6 +40,24 @@ const sandboxGoneCode = "sandbox_gone"
 // shorten it.
 var takeoverTimeout = 10 * time.Second
 
+// How long a dispatch for a run that is already live waits for the incumbent
+// connection to close before treating itself as a takeover.
+//
+// The daemon has no attach verb: reconnecting and starting a competing turn are
+// the SAME wire call (`POST /dispatch`), so the only signal separating them is
+// whether the previous connection is still open. That signal describes a
+// socket, not a worker. When KEDA scales in the worker holding a run, DBOS
+// recovers the workflow and re-dispatches within a second or two — routinely
+// faster than the dying pod's TCP close is observed here. The daemon then saw a
+// live client, called it a second writer, SIGKILLed a healthy harness and
+// re-ran the turn.
+//
+// There is no second writer in that case, only a slow-closing one. Waiting
+// briefly costs a re-dispatch nothing (it is about to stream anyway) and turns
+// the common case back into a reattach. A genuine double-dispatch still
+// supersedes — it just does so this much later.
+var supersedeGrace = 5 * time.Second
+
 // How long a run whose client vanished keeps running, waiting to be reattached.
 //
 // A Studio replica is disposable — a rollout, a KEDA scale-in or a node
@@ -278,6 +296,11 @@ func NewRegistry() *Registry {
 func (reg *Registry) tombstoned(runId string) bool {
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
+	return reg.tombstonedLocked(runId)
+}
+
+// tombstonedLocked is `tombstoned` for a caller that already holds `reg.mu`.
+func (reg *Registry) tombstonedLocked(runId string) bool {
 	expiry, ok := reg.tombstones[runId]
 	if !ok {
 		return false
@@ -304,6 +327,9 @@ func (reg *Registry) tombstoned(runId string) bool {
 // after its own replica died is NOT that case — there is no second writer, only
 // a second reader — which is exactly what reattach distinguishes.
 //
+// A nil entry means the run was cancelled (tombstoned) while we waited: the
+// caller answers 410, exactly as the handler's pre-wait check would have.
+//
 // The returned wait function MUST be called before starting a harness: it blocks
 // until a displaced run's handler has returned (bounded by `takeoverTimeout`).
 func (reg *Registry) claimOrAttach(
@@ -316,10 +342,47 @@ func (reg *Registry) claimOrAttach(
 		return done, false, func() {}
 	}
 	prev := reg.activeRuns[runId]
-	if prev != nil && prev.isDetached() {
+	if prev != nil {
+		// Live-looking incumbent: give its connection a moment to finish dying
+		// before concluding this is a competing writer. See `supersedeGrace`.
+		// (Already-detached runs fall through this immediately.)
 		reg.mu.Unlock()
-		slog.Info("dispatch reattach", "harness", sandboxHarnessID, "run_id", runId)
-		return prev, false, func() {}
+		waitStart := time.Now()
+		waitForDetach(prev, supersedeGrace)
+		reg.mu.Lock()
+		// The wait is lock-free, so the decision is made from the registry as
+		// it is NOW, never from the pointer we waited on — `prev` may even have
+		// been replaced by an entirely different dispatch:
+		//   - tombstoned       → cancelled while we waited; not ours to start
+		//   - in finishedRuns  → it ended detached; collect its frames
+		//   - gone from the map → it ended with its client still reading, so
+		//     the terminal was already delivered; this dispatch is a new turn
+		//   - still there      → detached ? reattach : genuine second writer
+		//
+		// The tombstone re-read is what the grace makes necessary: DELETE is
+		// exactly the thing that ends the wait early (cancelling closes
+		// `prev.done`), so a stop pressed during the grace would otherwise be
+		// answered by STARTING the run it just cancelled. The pre-wait check in
+		// the handler covers only the instant before this.
+		if reg.tombstonedLocked(runId) {
+			reg.mu.Unlock()
+			return nil, false, func() {}
+		}
+		if done, ok := reg.finishedRuns[runId]; ok {
+			reg.mu.Unlock()
+			return done, false, func() {}
+		}
+		prev = reg.activeRuns[runId]
+		if prev != nil && prev.isDetached() {
+			reg.mu.Unlock()
+			slog.Info("dispatch reattach", "harness", sandboxHarnessID, "run_id", runId)
+			return prev, false, func() {}
+		}
+		if prev != nil {
+			slog.Info("dispatch incumbent still attached; taking over",
+				"harness", sandboxHarnessID, "run_id", runId,
+				"waited_ms", time.Since(waitStart).Milliseconds())
+		}
 	}
 	created, cancel := newCancel()
 	created.cancel = cancel
@@ -340,6 +403,32 @@ func (reg *Registry) claimOrAttach(
 			// means two harnesses may briefly share the checkout.
 			slog.Error("dispatch takeover timed out; previous run may still be writing",
 				"run_id", runId, "waited_s", int(takeoverTimeout.Seconds()))
+		}
+	}
+}
+
+// waitForDetach blocks until `entry` loses its client or finishes, up to
+// `limit`. It reports nothing: the caller re-reads the registry under the lock
+// afterwards, because by then `entry` may have been released, replaced, or
+// moved to finishedRuns — and only the map says which.
+//
+// Polled rather than signalled on purpose: detaching happens under the run's
+// own mutex from two places (a failed frame write, the handler returning), and
+// a condition variable there would put the notify inside the write path of
+// every frame. The wait is seconds long and happens once per re-dispatch.
+func waitForDetach(entry *activeRun, limit time.Duration) {
+	deadline := time.Now().Add(limit)
+	for {
+		if entry.isDetached() {
+			return
+		}
+		select {
+		case <-entry.done:
+			return
+		case <-time.After(50 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			return
 		}
 	}
 }
@@ -387,9 +476,15 @@ func (reg *Registry) displaced(runId string, entry *activeRun) bool {
 // collects the real result, instead of finding nothing and re-running a turn
 // that had already completed.
 func (reg *Registry) release(runId string, entry *activeRun) {
+	// All of it under `reg.mu`, including `close(done)`. A dispatch deciding
+	// what to do about this run holds that same lock, so it cannot observe the
+	// half-retired state in between — a run marked finished but still listed in
+	// `activeRuns` reads as "attached", and taking it over there would discard a
+	// terminal that had already been produced.
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
 	entry.markFinished()
 	retain := entry.hasPending()
-	reg.mu.Lock()
 	if reg.activeRuns[runId] == entry {
 		delete(reg.activeRuns, runId)
 		if retain {
@@ -403,7 +498,6 @@ func (reg *Registry) release(runId string, entry *activeRun) {
 			})
 		}
 	}
-	reg.mu.Unlock()
 	close(entry.done)
 }
 
@@ -544,6 +638,12 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		ctx, cancel := context.WithCancel(context.Background())
 		return &activeRun{ctx: ctx, done: make(chan struct{})}, cancel
 	})
+	if entry == nil {
+		// Cancelled during the supersede grace — same answer as the pre-wait
+		// tombstone check above, just decided later.
+		jsonError(w, 410, map[string]string{"error": "tombstoned"})
+		return
+	}
 	slog.Info("dispatch received", "harness", sandboxHarnessID, "run_id", runId,
 		"fresh", fresh)
 
