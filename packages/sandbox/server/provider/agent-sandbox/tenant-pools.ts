@@ -85,25 +85,17 @@ export function repoKeyFromCloneUrl(cloneUrl: string): string | null {
  * served*, never a request field — the operator has no notion of a tenant and
  * will happily bind any pool a claim names, so the claim (built server-side)
  * is the only thing keeping one org's warm pods away from another's.
+ *
+ * Purpose is deliberately not a factor: a `harness-run` used to be excluded
+ * because it posts `cloneOnly`, which stops the pod's dev task. The fix is to
+ * drop `cloneOnly` once such a run actually binds a pool pod (see
+ * `workloadConfigPayload` in runner.ts), not to send it to a cold pod.
  */
 export function resolveTenantPool(
   pools: readonly TenantPool[],
-  claim: {
-    orgId: string | undefined;
-    cloneUrl: string | undefined;
-    /**
-     * A `harness-run` claim must never take a tenant pod. It doesn't want a dev
-     * server, and binding one is actively destructive: Studio posts `cloneOnly`
-     * + the thread branch, the daemon classifies `branch-change`, and its clone
-     * step stops the dev task — so a dispatch would consume a warm slot AND
-     * de-warm the pod it took. It gets its own pool instead (see
-     * `claimTemplateName`), which is exactly what an empty pod is for.
-     */
-    purpose?: SandboxPurpose;
-  },
+  claim: { orgId: string | undefined; cloneUrl: string | undefined },
 ): TenantPool | null {
   const { orgId, cloneUrl } = claim;
-  if (claim.purpose === "harness-run") return null;
   if (!orgId || !cloneUrl) return null;
   const repoKey = repoKeyFromCloneUrl(cloneUrl);
   if (!repoKey) return null;
@@ -144,17 +136,23 @@ export function claimWarmPoolName(
  * that is where prod's 4Gi OOMKills happened, and a SandboxClaim cannot
  * override resources, so the ceiling can only come from another template.
  *
- * The returned name is also the warm pool's name (the chart names pool after
- * template), so it feeds `claimWarmPoolName`: naming the pool built from this
- * template is what lets the claim bind a warm pod at all. It is not what keeps
- * the ceiling right — operator v0.4.5 matches warm pods by template hash, so a
- * mismatched pool costs a warm bind (cold pod), never a wrong-size pod.
+ * A claim that matched a TENANT POOL also names `-medium`, because the chart
+ * now renders tenant pools from that template. This has to agree: operator
+ * v0.4.5 binds warm pods by template hash, so a claim naming a template the
+ * pool wasn't built from gets a cold pod and no error. That mismatch is
+ * precisely why task runs kept starting cold with warm tenant pods idle.
+ *
+ * The returned name is also the warm pool's name for the GENERIC pools (the
+ * chart names those after their template), so it feeds `claimWarmPoolName`.
  */
 export function claimTemplateName(
   purpose: SandboxPurpose | undefined,
   templateName: string,
+  tenantPool?: TenantPool | null,
 ): string {
-  return purpose === "harness-run" ? `${templateName}-medium` : templateName;
+  return purpose === "harness-run" || tenantPool
+    ? `${templateName}-medium`
+    : templateName;
 }
 
 /** Result of the last `-medium` template lookup, cached for `ttlMs`. */
@@ -179,6 +177,8 @@ export interface MediumTemplateProbe {
  */
 export async function resolveClaimTemplateName(args: {
   purpose: SandboxPurpose | undefined;
+  /** Set when the claim matched a tenant pool — see `claimTemplateName`. */
+  tenantPool?: TenantPool | null;
   templateName: string;
   probe: MediumTemplateProbe | null;
   now: number;
@@ -186,7 +186,11 @@ export async function resolveClaimTemplateName(args: {
   exists: (name: string) => Promise<boolean>;
   onAbsent?: (name: string) => void;
 }): Promise<{ name: string; probe: MediumTemplateProbe | null }> {
-  const wanted = claimTemplateName(args.purpose, args.templateName);
+  const wanted = claimTemplateName(
+    args.purpose,
+    args.templateName,
+    args.tenantPool,
+  );
   if (wanted === args.templateName) return { name: wanted, probe: args.probe };
   const fresh =
     args.probe !== null && args.now - args.probe.checkedAt < args.ttlMs

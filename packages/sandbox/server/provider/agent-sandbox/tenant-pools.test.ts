@@ -86,24 +86,17 @@ describe("resolveTenantPool", () => {
     ).toBe("tenant-acme-site");
   });
 
-  it("a harness-run claim never takes a tenant pod", () => {
-    // The Claude Code dispatch path. It wants no dev server, and binding a warm
-    // pod would stop the one already running on it.
+  // Purpose no longer excludes a run; org+repo isolation must not relax with it.
+  it("still refuses another org's pool and another repo's pool", () => {
+    expect(
+      resolveTenantPool(POOLS, { orgId: "org-other", cloneUrl: url }),
+    ).toBeNull();
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
-        cloneUrl: url,
-        purpose: "harness-run",
+        cloneUrl: "https://github.com/acme/other-repo.git",
       }),
     ).toBeNull();
-    // ...but an explicit `interactive` is a normal claim.
-    expect(
-      resolveTenantPool(POOLS, {
-        orgId: "org-acme",
-        cloneUrl: url,
-        purpose: "interactive",
-      })?.name,
-    ).toBe("tenant-acme-site");
   });
 
   it("a user of another org never resolves this pool", () => {
@@ -318,5 +311,24 @@ describe("poolsMatchingPush", () => {
     expect(poolsMatchingPush(POOLS, "acme/other", "refs/heads/main")).toEqual(
       [],
     );
+  });
+});
+
+describe("claimTemplateName with a tenant pool", () => {
+  const pool = POOLS[0]!;
+
+  // The operator binds warm pods by TEMPLATE HASH, so a claim naming a template
+  // the pool's pods were not built from gets a cold pod and no error. The chart
+  // renders tenant pools from `-medium` (the template harness runs already
+  // claim), so both kinds must name it or the pool is unreachable — which is
+  // exactly how four warm pods sat idle while every task run started cold.
+  it("names -medium for a tenant-pool claim, whatever the purpose", () => {
+    expect(claimTemplateName("interactive", "sbx", pool)).toBe("sbx-medium");
+    expect(claimTemplateName("harness-run", "sbx", pool)).toBe("sbx-medium");
+  });
+
+  it("leaves a non-pool interactive claim on the default template", () => {
+    expect(claimTemplateName("interactive", "sbx", null)).toBe("sbx");
+    expect(claimTemplateName(undefined, "sbx")).toBe("sbx");
   });
 });

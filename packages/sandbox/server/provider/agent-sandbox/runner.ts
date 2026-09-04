@@ -1283,9 +1283,11 @@ export class AgentSandboxProvider {
    */
   private async resolveTemplateName(
     purpose: EnsureOptions["purpose"],
+    tenantPool: TenantPool | null,
   ): Promise<string> {
     const { name, probe } = await resolveClaimTemplateName({
       purpose,
+      tenantPool,
       templateName: this.sandboxTemplateName,
       probe: this.mediumTemplateProbe,
       now: Date.now(),
@@ -1318,7 +1320,6 @@ export class AgentSandboxProvider {
     const tenantPool = resolveTenantPool(this.tenantPools, {
       orgId: opts.tenant?.orgId,
       cloneUrl: opts.repo?.cloneUrl,
-      purpose: opts.purpose,
     });
     const envEntries = warmPoolMode
       ? []
@@ -1381,11 +1382,18 @@ export class AgentSandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
+    // Resolved BEFORE the template, because a tenant-pool claim must name the
+    // template that pool's pods were built from — the operator binds warm pods
+    // by template hash and a mismatch silently yields a cold pod.
+    const pool = resolveTenantPool(this.tenantPools, {
+      orgId: opts.tenant?.orgId,
+      cloneUrl: opts.repo?.cloneUrl,
+    });
     const claim = this.buildClaim(
       handle,
       opts,
       { token, daemonBootId, workdir },
-      await this.resolveTemplateName(opts.purpose),
+      await this.resolveTemplateName(opts.purpose, pool),
     );
     try {
       await createSandboxClaim(this.kubeConfig, this.namespace, claim);
@@ -1478,7 +1486,12 @@ export class AgentSandboxProvider {
       handle,
     );
     const daemonUrl = `http://127.0.0.1:${daemonForward.localPort}`;
-    const configPayload = this.workloadConfigPayload(opts);
+    // Cold Sandboxes are named after the claim, adopted ones after their pool.
+    const boundToPoolPod = adoptedSandboxName !== handle;
+    const configPayload = this.workloadConfigPayload(
+      opts,
+      pool !== null && boundToPoolPod,
+    );
     // Warm-pool path: pod boots with the SandboxTemplate's sentinel token;
     // studio authenticates the first /config call with the sentinel and
     // rotates to `token` (per-claim) atomically with the workload patch.
@@ -1552,7 +1565,10 @@ export class AgentSandboxProvider {
    * Daemon `/config` payload from ensure opts. Shared by fresh provision and
    * warm-pool re-bootstrap so a recreated pool pod re-clones the same workload.
    */
-  private workloadConfigPayload(opts: EnsureOptions | null) {
+  private workloadConfigPayload(
+    opts: EnsureOptions | null,
+    tenantPoolPodBound: boolean,
+  ) {
     return buildConfigPayload({
       runtime: opts?.workload?.runtime ?? "node",
       packageManager: opts?.workload?.packageManager
@@ -1569,7 +1585,11 @@ export class AgentSandboxProvider {
       tenant: opts?.tenant ?? undefined,
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
       // previous claim's clone-only config gets it cleared on a normal one.
-      ...(opts ? { cloneOnly: opts.cloneOnly === true } : {}),
+      //
+      // Dropped on a bound tenant-pool pod: its clone step would stop the warm dev task.
+      ...(opts
+        ? { cloneOnly: opts.cloneOnly === true && !tenantPoolPodBound }
+        : {}),
     });
   }
 
@@ -2011,7 +2031,8 @@ export class AgentSandboxProvider {
     ensureOpts: EnsureOptions | null,
   ): Promise<boolean> {
     if (this.sentinelToken === null) return false;
-    const payload = this.workloadConfigPayload(ensureOpts) ?? {};
+    // A recreated pool pod is empty — nothing warm to preserve.
+    const payload = this.workloadConfigPayload(ensureOpts, false) ?? {};
     try {
       await postConfig(daemonUrl, this.sentinelToken, payload, {
         rotateToken: token,
