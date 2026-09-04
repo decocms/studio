@@ -6,6 +6,8 @@
  * Claude, Cursor and Codex; the pill teases all three as logos. The marks are
  * decorative — the sentence beside them already names the action, so the row
  * is `aria-hidden` and the link's accessible name stays the sentence.
+ * Desktop only: it offers to install a CLI on the machine you are sitting at,
+ * which is not the phone you are holding.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -43,7 +45,7 @@ export function ConnectPill() {
       to="/$org/settings/connect"
       params={{ org: org.slug }}
       onClick={() => track("connect_clients_opened", { source: "org_home" })}
-      className="group inline-flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-border bg-card py-1.5 pl-4 pr-2.5 text-sm transition-colors hover:bg-accent/60"
+      className="group hidden max-w-full md:inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-border bg-card py-1.5 pl-4 pr-2.5 text-sm transition-colors hover:bg-accent/60"
     >
       <span className="font-medium text-foreground">
         {t("home.orgHome.connectPill")}
