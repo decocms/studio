@@ -74,6 +74,23 @@ describe("buildFeed", () => {
     expect(ids(feed)).toEqual(["mine"]);
   });
 
+  /** REGRESSION. A repo-less project is keyed by its `vir_…` id; the day a
+   *  repository lands on it, its bucket re-keys to `owner/name` (same rule
+   *  `entryForFilter` documents). A filter picked before the rekey used to
+   *  compare a card's CURRENT bucket id against the STALE id straight from
+   *  state and find nothing — an empty feed under a header that still named
+   *  the project correctly. */
+  it("keeps narrowing to a bucket re-keyed since the filter was picked", () => {
+    const beforeRekey = buildProjectIndex([project("p_a", "alpha")]);
+    const afterRekey = buildProjectIndex([A]);
+    const cards = [
+      task("mine", "2026-01-01T00:00:00Z", { virtualMcpId: "p_a" }),
+    ];
+
+    expect(ids(buildFeed(beforeRekey, cards, "p_a"))).toEqual(["mine"]);
+    expect(ids(buildFeed(afterRekey, cards, "p_a"))).toEqual(["mine"]);
+  });
+
   it("carries the project on every entry, so a card can name it", () => {
     const feed = buildFeed(
       buildProjectIndex([A]),

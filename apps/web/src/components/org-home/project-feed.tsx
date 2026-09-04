@@ -105,13 +105,20 @@ export function buildFeed(
   tasks: TaskBoardItem[],
   bucketId: string | null,
 ): FeedEntry[] {
+  /** Resolved ONCE, the way `ProjectFilter` resolves it for the header — a
+   *  bucket's id is not stable for the lifetime of a link (a repo-less
+   *  project re-keyed to `owner/name` once a repository landed). Comparing
+   *  a task's CURRENT bucket id against the stale id straight from state
+   *  found nothing after a rekey, even though the header still named the
+   *  bucket correctly via this same lookup. */
+  const filterEntry = bucketId ? entryForFilter(bucketId, index) : undefined;
   const entries: FeedEntry[] = [];
   for (const task of tasks) {
     /** Deleted work is not activity; every other lane belongs here. */
     if (task.status === "archived") continue;
     const bucket = entryForTask(task, index);
     if (!bucket) continue;
-    if (bucketId && bucket.id !== bucketId) continue;
+    if (bucketId && bucket !== filterEntry) continue;
     entries.push({ task, bucket, project: projectForTask(task, index) });
   }
 
