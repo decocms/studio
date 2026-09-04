@@ -23,7 +23,6 @@ import { useDeferredValue, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChartSquare02,
   Columns03,
   Folder,
   Home02,
@@ -177,13 +176,6 @@ export function CommandPalette({
       label: t("sidebar.navDestinations.home"),
       icon: <Home02 />,
       to: DESTINATION_ROUTE.home,
-      params: orgParams,
-    },
-    {
-      key: "reports",
-      label: t("sidebar.navDestinations.reports"),
-      icon: <BarChartSquare02 />,
-      to: DESTINATION_ROUTE.reports,
       params: orgParams,
     },
     {

@@ -3,12 +3,11 @@ import { NAV_DESTINATION_KEYS, SETTINGS_DESTINATION } from "./nav-destinations";
 
 describe("organization navigation", () => {
   test("keeps every organization-owned destination in a stable order", () => {
-    expect(NAV_DESTINATION_KEYS).toEqual([
-      "overview",
-      "reports",
-      "board",
-      "files",
-    ]);
+    expect(NAV_DESTINATION_KEYS).toEqual(["overview", "board", "files"]);
+  });
+
+  test("does not offer Reports at organization scope", () => {
+    expect(NAV_DESTINATION_KEYS).not.toContain("reports");
   });
 
   test("keeps Settings separate and preserves its analytics key", () => {

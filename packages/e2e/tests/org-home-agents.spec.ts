@@ -112,6 +112,23 @@ test.describe("org home — the agent roster", () => {
     await expect(
       page.getByRole("button", { name: "Import from GitHub" }),
     ).toBeVisible();
+
+    /* A store diagnostic belongs to the project that claimed the site, so the
+       organization spine offers Home, Tasks and Library and no Reports row —
+       Reports is reached from a project, never from here. */
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    await expect(
+      sidebar.getByRole("link", { name: "Home", exact: true }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole("link", { name: "Tasks", exact: true }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole("link", { name: "Library", exact: true }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole("link", { name: "Reports", exact: true }),
+    ).toHaveCount(0);
   });
 
   test("the command palette New project action opens organization Home", async ({
@@ -133,6 +150,10 @@ test.describe("org home — the agent roster", () => {
     await expect(palette).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(
       palette.getByRole("option", { name: "Discover", exact: true }),
+    ).toHaveCount(0);
+    /* Same reason the sidebar drops it: Reports is a project destination. */
+    await expect(
+      palette.getByRole("option", { name: "Reports", exact: true }),
     ).toHaveCount(0);
     await palette
       .getByRole("option", { name: "New project", exact: true })

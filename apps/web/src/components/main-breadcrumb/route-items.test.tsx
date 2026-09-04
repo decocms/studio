@@ -1,16 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { AgentAvatar } from "@/components/agent-icon";
+import { Home02 } from "@untitledui/icons";
 import { projectMainBreadcrumbItem } from "./route-items";
 
 describe("projectMainBreadcrumbItem", () => {
-  test("uses the project avatar as the root control and links project Home", () => {
+  test("uses a Home control, not the project avatar, and links project Home", () => {
     const item = projectMainBreadcrumbItem(
       "acme",
-      {
-        id: "vir_store",
-        title: "Storefront",
-        icon: "https://example.test/icon.png",
-      },
+      { id: "vir_store", title: "Storefront" },
       "Project",
     );
 
@@ -22,6 +18,16 @@ describe("projectMainBreadcrumbItem", () => {
         params: { org: "acme", agentId: "vir_store" },
       },
     });
-    expect(item.icon).toMatchObject({ type: AgentAvatar });
+    expect(item.icon).toMatchObject({ type: Home02 });
+  });
+
+  test("falls back to the supplied label when the project has a blank title", () => {
+    const item = projectMainBreadcrumbItem(
+      "acme",
+      { id: "vir_store", title: "   " },
+      "Project",
+    );
+
+    expect(item.label).toBe("Project");
   });
 });

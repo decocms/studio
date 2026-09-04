@@ -3,7 +3,7 @@
 
 import type { LinkProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { BarChartSquare02, Columns03, Folder, Home02 } from "@untitledui/icons";
+import { Columns03, Folder, Home02 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import {
@@ -28,13 +28,14 @@ interface NavDestination {
 
 export const SETTINGS_DESTINATION = "settings";
 
-/** Render order for the organization navigation spine. */
-export const NAV_DESTINATION_KEYS = [
-  "overview",
-  "reports",
-  "board",
-  "files",
-] as const;
+/** Render order for the organization navigation spine.
+ *
+ * Reports is deliberately absent: a store diagnostic is owned by the project
+ * that claimed the site, so it is a row on that project's spine (`ProjectNav`)
+ * and never an organization-wide destination. `/$org/reports` stays mounted for
+ * durable links and legacy redirects; nothing at organization scope offers it.
+ */
+export const NAV_DESTINATION_KEYS = ["overview", "board", "files"] as const;
 
 type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
 
@@ -53,14 +54,6 @@ function useNavDestinations(): NavDestination[] {
         leafPath === DESTINATION_ROUTE.orgIndex,
       trackAs: "overview",
       link: { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
-    },
-    reports: {
-      key: "reports",
-      label: t("sidebar.navDestinations.reports"),
-      icon: <BarChartSquare02 size={16} />,
-      isActive: leafPath === DESTINATION_ROUTE.reports,
-      trackAs: "reports",
-      link: { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
     },
     board: {
       key: "board",

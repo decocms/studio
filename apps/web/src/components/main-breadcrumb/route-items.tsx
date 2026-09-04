@@ -1,4 +1,3 @@
-import { AgentAvatar } from "@/components/agent-icon";
 import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 import type { OrganizationData } from "@/sdk/context/project-context";
 import { Home02 } from "@untitledui/icons";
@@ -26,16 +25,23 @@ export function organizationMainBreadcrumbItem(
   };
 }
 
+/**
+ * A project workspace is its own home, so its scope control is the same Home
+ * affordance the organization uses rather than the project's avatar: inside
+ * `/$org/projects/$agentId` the sidebar already names the project, and the mark
+ * repeated it while reading like an entity chip instead of a way back. The
+ * label still supplies the accessible name, so the icon stays decorative.
+ */
 export function projectMainBreadcrumbItem(
   orgSlug: string,
-  agent: { id: string; title: string; icon?: string | null },
+  agent: { id: string; title: string },
   fallbackLabel: string,
 ): MainBreadcrumbNavigableItem {
   const label = agent.title.trim() || fallbackLabel;
   return {
     id: `project:${agent.id}`,
     label,
-    icon: <AgentAvatar icon={agent.icon ?? null} name={label} size="xs" />,
+    icon: <Home02 size={14} />,
     link: {
       to: "/$org/projects/$agentId",
       params: { org: orgSlug, agentId: agent.id },

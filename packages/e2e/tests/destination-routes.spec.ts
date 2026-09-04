@@ -403,7 +403,11 @@ test.describe("destination routes", () => {
         "navigation",
         { name: "Breadcrumb", exact: true },
       );
-      const scopeIsCurrent = route.path === `/${orgSlug}/home`;
+      /* A scope's own Home is its current destination — true for the
+         organization and, identically, for a project workspace root. */
+      const scopeIsCurrent =
+        route.path === `/${orgSlug}/home` ||
+        route.path === `/${orgSlug}/projects/${agentId}`;
       await expect(breadcrumb).toHaveCount(scopeIsCurrent ? 0 : 1);
       await expect(
         mainTopbarRegion(page, "left").locator(
@@ -411,13 +415,13 @@ test.describe("destination routes", () => {
         ),
       ).toHaveCount(scopeIsCurrent ? 0 : 1);
       if (scopeIsCurrent) {
-        /* Organization Home keeps one semantic heading for focus and screen
+        /* A scope Home keeps one semantic heading for focus and screen
            readers, but renders no visual breadcrumb or icon-only duplicate. */
         await expect(
           mainTopbarRegion(page, "left")
             .getByRole("heading", {
               level: 1,
-              name: "Home",
+              name: route.title,
               exact: true,
             })
             .locator("svg"),
@@ -433,9 +437,9 @@ test.describe("destination routes", () => {
         await expect(scopeLink).toHaveAttribute("aria-label", /\S/);
         await expect(scopeLink.locator("svg")).toHaveCount(1);
         if (projectScoped) {
-          /* Project routes replace the generic organization Home button with
-             the project's own avatar. It is the breadcrumb root, stays
-             icon-only, and always returns to that project's Home. */
+          /* Project routes keep the same Home affordance but re-point it: the
+             root is the PROJECT's Home, named by the project and never by the
+             organization, and it stays icon-only. */
           await expect(scopeLink).toHaveAttribute(
             "aria-label",
             "route topbar e2e",

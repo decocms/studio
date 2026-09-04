@@ -281,11 +281,11 @@ function NavigableItem({
  * Only navigable parents live inside the breadcrumb landmark. The current
  * route remains a sibling page title instead of repeating the final breadcrumb
  * segment. The nearest parent stays visible while earlier ancestors remain
- * actionable from one stable overflow menu. The organization scope is an
- * accessible Home icon, avoiding a second copy of the organization name beside
- * the persistent sidebar. When that scope is itself current, the whole visual
- * trail is omitted; a visually hidden heading remains as the route's semantic
- * title and focus destination.
+ * actionable from one stable overflow menu. The scope — an organization or a
+ * project — is an accessible Home icon, avoiding a second copy of a name the
+ * persistent sidebar already carries. When that scope is itself current, the
+ * whole visual trail is omitted; a visually hidden heading remains as the
+ * route's semantic title and focus destination.
  */
 function MainBreadcrumbRoot({
   scope,

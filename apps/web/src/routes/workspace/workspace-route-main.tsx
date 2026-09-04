@@ -33,10 +33,15 @@ export interface WorkspaceRouteMainProps {
   breadcrumbAncestors?: readonly MainBreadcrumbNavigableItem[];
   /**
    * Root control for this route's breadcrumb. Organization routes default to
-   * Home; project routes replace it with the project's own icon and root link.
+   * organization Home; project routes keep the same Home affordance and point
+   * it at the project's own root instead.
    */
   breadcrumbScope?: MainBreadcrumbNavigableItem;
-  /** The current destination is the scope itself, as on organization Home. */
+  /**
+   * The current destination is the scope itself, as on organization Home and a
+   * project's own Home. The visual trail is then omitted entirely: only the
+   * route's semantic heading remains.
+   */
   breadcrumbScopeIsCurrent?: boolean;
   /**
    * Identity of the rendered route payload for error recovery. Defaults to the

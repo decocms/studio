@@ -25,9 +25,16 @@ import {
 export function AgentRouteMain(
   props: Omit<
     WorkspaceRouteMainProps,
-    "breadcrumbAncestors" | "breadcrumbScope" | "leading"
+    | "breadcrumbAncestors"
+    | "breadcrumbScope"
+    | "breadcrumbScopeIsCurrent"
+    | "leading"
   > & {
-    /** Use the project's name as the current title on its overview route. */
+    /**
+     * The project's own overview route. Its title is the project's name, and
+     * its scope IS its current destination, so the trail collapses to the
+     * semantic heading exactly as organization Home does.
+     */
     agentRoot?: boolean;
     /** Semantic route levels nested below the agent. */
     breadcrumbAncestors?: readonly MainBreadcrumbNavigableItem[];
@@ -43,11 +50,7 @@ export function AgentRouteMain(
     agent ??
     (agentId === getDecopilotId(org.id)
       ? getWellKnownDecopilotVirtualMCP(org.id)
-      : {
-          id: agentId,
-          title: t("taskBoard.taskDialog.projectLabel"),
-          icon: null,
-        });
+      : { id: agentId, title: t("taskBoard.taskDialog.projectLabel") });
   const fixedRouteTitle = useRouteMainTitle();
   const projectTitle =
     breadcrumbAgent.title.trim() || t("taskBoard.taskDialog.projectLabel");
@@ -65,6 +68,7 @@ export function AgentRouteMain(
       {...routeProps}
       title={routeTitle}
       breadcrumbScope={projectScope}
+      breadcrumbScopeIsCurrent={agentRoot}
       breadcrumbAncestors={breadcrumbAncestors}
       actions={
         <>

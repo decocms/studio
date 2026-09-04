@@ -1,6 +1,5 @@
 import { Navigate } from "@tanstack/react-router";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useT } from "@/i18n/use-t.ts";
+import { SplashScreen } from "@/components/splash-screen";
 import { authClient } from "@/lib/auth-client";
 
 function RedirectToLogin() {
@@ -34,31 +33,26 @@ function RedirectToLogin() {
  *
  * An if/else over `useSession()` cannot have either failure: one branch runs.
  *
- * The loading branch is a plain centred spinner rather than a `SplashScreen` —
- * this was one of the five sites that each mounted their own splash mid-boot
- * and restarted its animation, and the app has one splash now. Under `BootGate`
- * it cannot fire during boot anyway; it is for what happens afterwards.
+ * The loading branch is the `SplashScreen`, because this branch is still boot.
+ * It is the ONE exception to "nothing below the boot boundary renders a splash"
+ * (`layouts/boot-gate.tsx`), and it is not a relay: `BootGate` holds the splash
+ * until the session settles, so the only way to reach this branch is the gate's
+ * fail-open deadline — the session never answered, and the app mounted anyway
+ * so `/login` and the error boundaries exist. Boot has not finished at that
+ * point, and the honest picture of "still starting" is the splash. A bare
+ * spinner alone on the viewport was read as a broken page, which is the bug
+ * this replaced; the animation restarting once on that rare path is the price.
  */
 export default function RequiredAuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const t = useT();
   const { data: session, isPending } = authClient.useSession();
 
   if (session) return <>{children}</>;
 
-  if (isPending) {
-    return (
-      <div className="flex min-h-dvh w-full items-center justify-center">
-        <Spinner
-          className="size-5 text-muted-foreground"
-          label={t("common.loading")}
-        />
-      </div>
-    );
-  }
+  if (isPending) return <SplashScreen />;
 
   return <RedirectToLogin />;
 }
