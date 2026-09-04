@@ -216,7 +216,7 @@ export function buildClaudeCodeTaskPrompt(
   lines.push(
     "",
     repo
-      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch — dependencies may already be installed too (see below). \`git\` and \`gh\` are authenticated. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. \`git\` and \`gh\` are authenticated. ${SHALLOW_CHECKOUT_NOTE}`
       : [
           "Your working directory is EMPTY: this organization has several repositories, so " +
             "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
@@ -288,21 +288,10 @@ export function buildClaudeCodeTaskPrompt(
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
     `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
-    // Deliberately a CHECK, not an assertion either way. This prompt is built at
-    // ENQUEUE; the pod is claimed later at dispatch, and which kind it gets is
-    // not knowable here: a `harness-run` claim that lands on its org's tenant
-    // warm pool adopts a pod already cloned, installed and serving (#7016),
-    // while an empty pool still yields a bare `cloneOnly` checkout. Both
-    // assertions have now been shipped and both were false half the time — the
-    // "the dev server hot-reloads" version had runs polling a port nothing
-    // listened on for minutes, guessing `sleep 90`, and starting a second
-    // server. A port check is one command and is right in both worlds.
-    "- A dev server MAY already be running (a warm pod comes cloned, installed and serving). Check first — `ss -ltnp` for a listening port, then `curl` it. If one answers, use it; it hot-reloads your edits. If not, this sandbox is a bare checkout with nothing installed: usually you don't need a server at all — read the code path end to end, run the repo's tests, `curl` the LIVE site. Starting one from cold takes several minutes, so launch it ONCE in the background and poll until it answers.",
-    // The sandbox image bakes in chromium + a global playwright-core and wraps
-    // them as `qa-screenshot` (packages/sandbox/image/Dockerfile). Nothing told
-    // this run about it, so a UI task would `ls node_modules/.bin | grep
-    // playwright`, find nothing in the USER's repo, conclude no browser exists,
-    // and either hand-roll a CDP client or give up on looking at the change.
+    // The sandbox's state — installed or not, dev server or not — is NOT
+    // stated here. It is decided by the claim, minutes after this string is
+    // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends
+    // the true answer at dispatch.
     '- A browser is installed globally, NOT in the repo\'s `node_modules` — don\'t go looking for playwright there. `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders any URL (localhost included) in headless Chromium, runs the page\'s JS, and writes a file you must then `Read` — a screenshot you never opened is not verification. To INTERACT (click, fill, `document.elementFromPoint`), write a throwaway node script: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`.',
     // How the board finds the PR now: it looks GitHub up by the branch this
     // checkout is on (`pr-by-branch.ts`), so the one thing the run must not do

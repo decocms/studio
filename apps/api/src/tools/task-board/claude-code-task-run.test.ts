@@ -54,14 +54,17 @@ describe("buildClaudeCodeTaskPrompt", () => {
   });
 
   // Inverted: the prompt used to assert "Nothing is installed and NO dev server
-  // is running". Since #7016 a run can adopt its org's warm tenant pod, which
-  // arrives cloned, installed and serving — and which pod it gets is decided at
-  // dispatch, after this prompt is built. So it must ask, not assert.
-  test("tells the run to check for a dev server rather than asserting one way", () => {
+  // is running". Since #7016 a run can adopt its org's warm tenant pod — cloned,
+  // installed and serving — and which pod it gets is decided by the claim, long
+  // after this string is built. So the sandbox's state is stated at DISPATCH
+  // (`sandboxStateInstruction`) and must not appear here at all.
+  test("says nothing about installs or the dev server", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
-    expect(prompt).toContain("MAY already be running");
-    expect(prompt).toContain("ss -ltnp");
-    expect(prompt).not.toContain("NO dev server is running");
+    expect(prompt).not.toContain("dev server");
+    expect(prompt).not.toContain("dependencies");
+    // The globally-installed browser is a property of the IMAGE, true of both
+    // kinds of pod, so that one line legitimately stays.
+    expect(prompt).not.toContain("nothing is installed");
   });
 
   test("says it runs autonomously", () => {

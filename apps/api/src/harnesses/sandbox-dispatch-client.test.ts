@@ -10,6 +10,7 @@ import {
   harnessRunsInSandbox,
   isRunSuperseded,
   isStudioOwnedConnection,
+  sandboxStateInstruction,
   selectRunConnections,
   isUnreachableStatus,
   ndjsonLines,
@@ -825,5 +826,32 @@ describe("describeTermination — eviction", () => {
     expect(
       describeTermination({ reason: "Evicted", oomKilled: false }),
     ).toContain("same limit");
+  });
+});
+
+describe("sandboxStateInstruction", () => {
+  // The whole point is that Studio ANSWERS this rather than making the model
+  // find out: both wrong guesses cost the run minutes (a needless cold start,
+  // or polling a port nothing listens on).
+  test("a warm pod is told not to install or start a second server", () => {
+    const text = sandboxStateInstruction(true);
+    expect(text).toContain("WARM");
+    expect(text).toContain("already running");
+    expect(text).not.toContain("cold start");
+  });
+
+  test("a cold pod is told nothing is installed", () => {
+    const text = sandboxStateInstruction(false);
+    expect(text).toContain("CHECKOUT");
+    expect(text).toContain("nothing is installed");
+    expect(text).toContain("cold start");
+  });
+
+  // No hedging in either branch — a "may be running" would put the model right
+  // back to checking, which is what this replaced.
+  test("neither branch hedges", () => {
+    for (const warm of [true, false]) {
+      expect(sandboxStateInstruction(warm)).not.toContain("may");
+    }
   });
 });

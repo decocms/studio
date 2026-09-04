@@ -544,6 +544,10 @@ export class SandboxDispatchClient {
     // targets the pod that survived the continuation rather than one already
     // replaced. Written per attempt; read once, after the run settles.
     let lastHandle: string | null = null;
+    // Which kind of pod this attempt bound, known only once `ensureSandbox`
+    // returns — see `sandboxStateInstruction`. Re-read per attempt: a
+    // continuation lands on a replacement pod, which may be the other kind.
+    let warmPoolAdopted = false;
     const dispatchOnce = (
       resume: { reason: string } | null,
     ): AsyncIterable<UIMessageChunk> =>
@@ -559,6 +563,9 @@ export class SandboxDispatchClient {
             // this rides the org `/watch`. Only on a cold start — an
             // interactive agent keeps its pod between turns, and announcing a
             // boot on every message made a warm resume look like a re-boot.
+            onBound: (info) => {
+              warmPoolAdopted = info.warmPoolAdopted;
+            },
             onColdStart: () =>
               publishRunStatusStage({
                 streamBuffer,
@@ -573,11 +580,25 @@ export class SandboxDispatchClient {
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
         await pushSandboxEnv(provider, sandbox.sandboxHandle, runEnv);
+        // Assembled HERE, not at enqueue: the prompt is written before a pod
+        // exists, and which kind this run gets is decided by the claim above.
+        const boundInput = {
+          ...wireInput,
+          agent: {
+            ...wireInput.agent,
+            instructions: [
+              wireInput.agent.instructions,
+              sandboxStateInstruction(warmPoolAdopted),
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+          },
+        };
         yield* withModelMetadata(
           dispatchToDaemon({
             provider,
             handle: sandbox.sandboxHandle,
-            input: resume ? { ...wireInput, resume } : wireInput,
+            input: resume ? { ...boundInput, resume } : boundInput,
             runId,
             signal: input.signal,
           }),
@@ -719,6 +740,38 @@ export async function* dispatchWithContinuation(args: {
       resume = { reason: resumeReason(err.message, infra) };
     }
   }
+}
+
+/**
+ * What the harness is told about the pod it is running in — the one fact about
+ * this sandbox no model can cheaply work out for itself.
+ *
+ * Since the tenant warm pool started serving task runs, the two possible
+ * sandboxes are opposites: an adopted pool pod is cloned, installed and already
+ * serving, while a cold pod is a bare checkout with nothing installed. The
+ * dispatch prompt used to ASSERT one of them, and both assertions have shipped
+ * and both were wrong half the time — the "the dev server hot-reloads" version
+ * had runs polling a port nothing listened on for minutes, guessing `sleep 90`,
+ * and starting a second server on top of the first.
+ *
+ * Studio decides which pod the run gets, so Studio states it. Deliberately not
+ * "check whether a dev server is running": making the model find out costs it
+ * turns to learn something already known here, and a wrong guess is expensive
+ * in both directions.
+ *
+ * Exported for the unit test — it is the whole contract.
+ */
+export function sandboxStateInstruction(warmPoolAdopted: boolean): string {
+  return warmPoolAdopted
+    ? "Your sandbox is WARM: the repository is cloned, its dependencies are " +
+        "already installed, and the dev server is already running and " +
+        "hot-reloading your edits. Do not install anything and do not start a " +
+        "second server — find the running one's port (`ss -ltnp`) and use it."
+    : "Your sandbox is a bare CHECKOUT: nothing is installed and no dev server " +
+        "is running. Usually you don't need one — read the code path end to " +
+        "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
+        "change rendered, install and start the server ONCE in the background " +
+        "and poll until it answers; it is a cold start, so expect minutes.";
 }
 
 /**
