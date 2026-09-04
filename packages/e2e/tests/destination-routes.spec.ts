@@ -314,6 +314,46 @@ test.describe("destination routes", () => {
         exact: true,
       }),
     ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    await page.goto(`/${orgSlug}/library`);
+    await expect(
+      mainTopbarRegion(page, "center").getByPlaceholder("Search all files…"),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    const libraryActions = mainTopbarRegion(page, "right");
+    const libraryControls = ["Refresh", "New folder", "Upload file"].map(
+      (name) =>
+        libraryActions.getByRole("button", {
+          name,
+          exact: true,
+        }),
+    );
+    for (const control of libraryControls) {
+      await expect(control).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    }
+
+    /* At medium desktop widths the chat/sidebar chrome is active but the
+       right grid column is narrow. Labels collapse to icons so no focusable
+       Library action can be clipped by the topbar's overflow boundary. */
+    await page.setViewportSize({ width: 900, height: 720 });
+    for (const control of libraryControls) {
+      await expect(control).toBeVisible();
+      await expect(control).toBeInViewport({ ratio: 1 });
+    }
+
+    await page.goto(`/${orgSlug}/library?path=public`);
+    const readOnlyActions = mainTopbarRegion(page, "right");
+    await expect(
+      readOnlyActions.getByRole("button", { name: "Refresh", exact: true }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      readOnlyActions.getByText("Read-only", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      readOnlyActions.getByRole("button", { name: "New folder", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      readOnlyActions.getByRole("button", { name: "Upload file", exact: true }),
+    ).toHaveCount(0);
   });
 
   test("the org landing resolves into a destination", async ({
@@ -1008,6 +1048,38 @@ test.describe("destination routes", () => {
     await create.click();
     await expect(
       page.getByRole("dialog", { name: "Nova tarefa", exact: true }),
+    ).toBeVisible();
+  });
+
+  test("the Portuguese Library topbar keeps every action reachable at 320px", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await usePortugueseMobileViewport(page);
+    await page.goto(`/${orgSlug}/library`);
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    const topbarActions = mainTopbarRegion(page, "right");
+    const controls = ["Atualizar", "Nova pasta", "Enviar arquivo"].map((name) =>
+      topbarActions.getByRole("button", {
+        name,
+        exact: true,
+      }),
+    );
+
+    for (const control of controls) {
+      await expect(control).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(control).toBeEnabled();
+      await expect(control).toBeInViewport({ ratio: 1 });
+    }
+
+    const subheader = mainPanel(page).locator('[data-slot="main-subheader"]');
+    const search = subheader.getByPlaceholder("Pesquisar todos os arquivos…");
+    await expect(search).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(search).toBeInViewport({ ratio: 1 });
+
+    await controls[1]?.click();
+    await expect(
+      page.getByRole("dialog", { name: "Nova pasta", exact: true }),
     ).toBeVisible();
   });
 
