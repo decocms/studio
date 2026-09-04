@@ -52,6 +52,9 @@ import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { ArchivedOrgScreen } from "../components/archived-org-screen";
+import { BlockedOrgScreen } from "../components/blocked-org-screen";
+import { useOrgNotice } from "../hooks/use-org-notice";
+import { isBillingEscapeHatch } from "../lib/org-block-escape";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 
 /** What `getFullOrganization` resolves to — named so the cache seed below can
@@ -365,6 +368,14 @@ function ShellLayoutContent() {
   const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
   const ssoBlocked = !!ssoStatus?.ssoRequired && !ssoStatus.authenticated;
 
+  /** A blocked org (billing notice) shows the notice instead of itself —
+   *  except on billing, which stays reachable so the org can settle it. The
+   *  server enforces the same block on writes; this is the screen for it. */
+  const { data: orgNotice } = useOrgNotice(orgSlug);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const orgBlocked =
+    orgNotice?.severity === "block" && !isBillingEscapeHatch(pathname);
+
   // Warm the self-MCP connection in parallel with the rest of shell bootstrap,
   // so the home's useMCPClient resolves without waiting on a fresh connect()
   // round-trip after it mounts. Non-suspense (useQuery) — this only pre-warms
@@ -381,7 +392,7 @@ function ShellLayoutContent() {
 
   /** Below this line the shell may return a gate screen instead of itself, and
    *  none of them mount the palette — so drop any flag ⌘K set on the way in. */
-  if (!activeOrg || isOrgArchived(activeOrg) || ssoBlocked) {
+  if (!activeOrg || isOrgArchived(activeOrg) || ssoBlocked || orgBlocked) {
     closeCommandPalette();
   }
 
@@ -401,6 +412,10 @@ function ShellLayoutContent() {
       localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     }
     return <ArchivedOrgScreen orgName={activeOrg.name} />;
+  }
+
+  if (orgBlocked && orgNotice) {
+    return <BlockedOrgScreen notice={orgNotice} orgSlug={activeOrg.slug} />;
   }
 
   if (ssoBlocked) {

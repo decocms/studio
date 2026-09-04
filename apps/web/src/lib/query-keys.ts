@@ -588,6 +588,10 @@ export const KEYS = {
   orgSsoStatus: (organizationId: string) =>
     ["org-sso-status", organizationId] as const,
 
+  // Billing notice pinned on the org by a deployment admin
+  orgNotice: (organizationId: string) =>
+    ["org-notice", organizationId] as const,
+
   // Store discovery (per-registry infinite query)
   storeDiscovery: (orgId: string, registryId: string) =>
     ["store-discovery", orgId, registryId] as const,
@@ -615,6 +619,9 @@ export const KEYS = {
   // An org's feature flags (stored + effective) in the deployment-admin editor.
   deploymentAdminOrgFlags: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "flags"] as const,
+  // An org's pinned billing notice in the deployment-admin editor.
+  deploymentAdminOrgNotice: (orgId: string) =>
+    ["deployment-admin", "orgs", orgId, "notice"] as const,
   // An org's owned site slugs (org_sites) in the deployment-admin editor.
   deploymentAdminOrgSites: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "sites"] as const,

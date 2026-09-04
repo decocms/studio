@@ -19,6 +19,7 @@ import {
   SidebarProvider,
 } from "@decocms/ui/components/sidebar.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { OrgNoticeBanner } from "@/components/org-notice-banner";
 import { StudioSidebar } from "@/components/sidebar";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
@@ -43,6 +44,7 @@ export default function OrgLayout() {
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
+        <OrgNoticeBanner />
         <SidebarLayout
           ref={wrapperRef}
           className="flex-1 bg-sidebar relative min-h-0"

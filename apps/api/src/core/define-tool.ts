@@ -12,6 +12,11 @@
 import { SpanStatusCode } from "@opentelemetry/api";
 import { z } from "zod";
 import type { StudioContext } from "./studio-context";
+import {
+  isOrgBlocked,
+  isToolAllowedWhileBlocked,
+  OrgBlockedError,
+} from "./org-notice-gate";
 
 // ============================================================================
 // Tool Definition Types
@@ -162,6 +167,20 @@ export function defineTool<
                 // Set tool name for audit logging and access control
                 ctx.toolName = definition.name;
                 ctx.access.setToolName?.(definition.name);
+
+                // A blocked org (see org-notice-gate) keeps only the tools its
+                // members need to read the notice and settle it. Allowlisted
+                // tools skip the lookup entirely.
+                const organizationId = ctx.organization?.id;
+                if (
+                  organizationId &&
+                  !isToolAllowedWhileBlocked(definition.name) &&
+                  (await isOrgBlocked(ctx.db, organizationId))
+                ) {
+                  throw new OrgBlockedError(
+                    `This organization is blocked: ${definition.name} is unavailable until the block is resolved`,
+                  );
+                }
 
                 // MCP protocol already validated input against JSON Schema
                 // We trust the validation and execute the handler directly
