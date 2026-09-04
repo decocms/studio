@@ -334,33 +334,34 @@ func (reg *Registry) claimOrAttach(
 		return done, false, func() {}
 	}
 	prev := reg.activeRuns[runId]
-	if prev != nil && prev.isDetached() {
-		reg.mu.Unlock()
-		slog.Info("dispatch reattach", "harness", sandboxHarnessID, "run_id", runId)
-		return prev, false, func() {}
-	}
 	if prev != nil {
 		// Live-looking incumbent: give its connection a moment to finish dying
 		// before concluding this is a competing writer. See `supersedeGrace`.
+		// (Already-detached runs fall through this immediately.)
 		reg.mu.Unlock()
-		if waitForDetach(prev, supersedeGrace) {
-			slog.Info("dispatch reattach after incumbent hung up",
-				"harness", sandboxHarnessID, "run_id", runId)
-			return prev, false, func() {}
-		}
-		slog.Info("dispatch incumbent still attached; taking over",
-			"harness", sandboxHarnessID, "run_id", runId,
-			"waited_s", int(supersedeGrace.Seconds()))
+		waitForDetach(prev, supersedeGrace)
 		reg.mu.Lock()
-		// Re-read: the wait is lock-free, so the map may have moved under it.
-		// A run that ENDED while we waited leaves nothing to displace, and one
-		// that was replaced is no longer ours to cancel.
+		// The wait is lock-free, so the decision is made from the registry as
+		// it is NOW, never from the pointer we waited on. Three outcomes, and
+		// `prev` may have been replaced by an entirely different dispatch:
+		//   - in finishedRuns  → it ended detached; collect its frames
+		//   - gone from the map → it ended with its client still reading, so
+		//     the terminal was already delivered; this dispatch is a new turn
+		//   - still there      → detached ? reattach : genuine second writer
 		if done, ok := reg.finishedRuns[runId]; ok {
 			reg.mu.Unlock()
 			return done, false, func() {}
 		}
-		if reg.activeRuns[runId] != prev {
-			prev = reg.activeRuns[runId]
+		prev = reg.activeRuns[runId]
+		if prev != nil && prev.isDetached() {
+			reg.mu.Unlock()
+			slog.Info("dispatch reattach", "harness", sandboxHarnessID, "run_id", runId)
+			return prev, false, func() {}
+		}
+		if prev != nil {
+			slog.Info("dispatch incumbent still attached; taking over",
+				"harness", sandboxHarnessID, "run_id", runId,
+				"waited_s", int(supersedeGrace.Seconds()))
 		}
 	}
 	created, cancel := newCancel()
@@ -387,28 +388,27 @@ func (reg *Registry) claimOrAttach(
 }
 
 // waitForDetach blocks until `entry` loses its client or finishes, up to
-// `limit`. Reports whether it can now be reattached to rather than displaced.
+// `limit`. It reports nothing: the caller re-reads the registry under the lock
+// afterwards, because by then `entry` may have been released, replaced, or
+// moved to finishedRuns — and only the map says which.
 //
 // Polled rather than signalled on purpose: detaching happens under the run's
 // own mutex from two places (a failed frame write, the handler returning), and
 // a condition variable there would put the notify inside the write path of
 // every frame. The wait is seconds long and happens once per re-dispatch.
-func waitForDetach(entry *activeRun, limit time.Duration) bool {
+func waitForDetach(entry *activeRun, limit time.Duration) {
 	deadline := time.Now().Add(limit)
 	for {
 		if entry.isDetached() {
-			return true
+			return
 		}
 		select {
 		case <-entry.done:
-			// It finished while we waited. `attach` replays whatever it
-			// buffered and reports that the run is over, which is the correct
-			// outcome for a re-dispatch that arrived just too late.
-			return true
+			return
 		case <-time.After(50 * time.Millisecond):
 		}
 		if time.Now().After(deadline) {
-			return false
+			return
 		}
 	}
 }

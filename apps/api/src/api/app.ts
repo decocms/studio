@@ -1413,20 +1413,35 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  // Backlog size (ENQUEUED count) for one DBOS queue, e.g. for a KEDA
-  // metrics-api trigger: `{ "queue_length": <n> }`. Restricted to the
-  // queues we actually register — DBOS.listQueuedWorkflows would happily
-  // query a made-up name and just return an empty list.
+  // Depth of one DBOS queue for a KEDA metrics-api trigger, split by what the
+  // two numbers mean for scaling:
+  //
+  //   queue_length — ENQUEUED, work waiting for any pod. Scales UP.
+  //   in_flight    — PENDING, runs executing on some pod right now. A FLOOR:
+  //                  targeted at the queue's `workerConcurrency`, it asks for
+  //                  exactly the replicas needed to hold the running work.
+  //
+  // Reporting only the backlog is what made KEDA scale in a busy worker: a run
+  // streams for minutes with nothing enqueued behind it, the trigger reads
+  // `0/5 (avg)`, and the pod holding a live DBOS workflow is the one taken away
+  // (prod 2026-09-04). The daemon can now reattach when that happens; this stops
+  // it happening for a queue that is merely busy rather than backed up.
+  //
+  // Restricted to the queues we actually register — DBOS.listQueuedWorkflows
+  // would happily query a made-up name and just return an empty list.
   app.get(`${SYSTEM_PATHS.DBOS_QUEUE_DEPTH_PREFIX}:queueName`, async (c) => {
     const queueName = c.req.param("queueName");
     if (!DBOS_QUEUE_NAMES.has(queueName)) {
       return c.json({ error: `Unknown queue: ${queueName}` }, 404);
     }
-    const queued = await DBOS.listQueuedWorkflows({
-      queueName,
-      status: "ENQUEUED",
+    const [enqueued, running] = await Promise.all([
+      DBOS.listQueuedWorkflows({ queueName, status: "ENQUEUED" }),
+      DBOS.listQueuedWorkflows({ queueName, status: "PENDING" }),
+    ]);
+    return c.json({
+      queue_length: enqueued.length,
+      in_flight: running.length,
     });
-    return c.json({ queue_length: queued.length });
   });
 
   // ============================================================================

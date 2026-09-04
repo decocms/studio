@@ -584,3 +584,72 @@ func TestRunFinishingDuringTheGraceIsCollectedNotRestarted(t *testing.T) {
 		t.Fatal("the re-dispatch must find the finished run")
 	}
 }
+
+// A run that finishes with its client STILL READING has already delivered its
+// terminal, and `release` keeps nothing (there is no buffer to hand on). A
+// dispatch arriving after that must start a new turn — adopting the drained
+// entry would stream zero frames and no terminal, and the thread would never
+// settle.
+func TestRunFinishingAttachedDuringTheGraceStartsAFreshRun(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = time.Second
+	defer func() { supersedeGrace = restore }()
+
+	reg := NewRegistry()
+	first, _ := attachedRun(reg, "run-1", func() {})
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		first.emit(terminalFrame("", ""))
+		reg.release("run-1", first)
+	}()
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		return &activeRun{done: make(chan struct{})}, func() {}
+	})
+	if !fresh || entry == first {
+		t.Fatal("a run whose terminal was already delivered must not be re-adopted")
+	}
+}
+
+// The wait is lock-free, so the incumbent can be replaced while it runs. The
+// replacement is judged on its own state: an already-detached one is another
+// reconnect and must be adopted, not SIGKILLed — the very thing the grace
+// exists to prevent, one race narrower.
+func TestReplacementIncumbentThatIsDetachedIsAdoptedNotKilled(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = time.Second
+	defer func() { supersedeGrace = restore }()
+
+	reg := NewRegistry()
+	first, firstSink := attachedRun(reg, "run-1", func() {})
+	cancelled := make(chan struct{})
+	second, sink := newDetachedRun(func() { close(cancelled) })
+
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		reg.mu.Lock()
+		reg.activeRuns["run-1"] = second
+		reg.mu.Unlock()
+		first.detach(firstSink) // unblocks the wait; `first` is no longer the claim
+		second.detach(sink)
+	}()
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		return &activeRun{done: make(chan struct{})}, func() {}
+	})
+	if fresh || entry != second {
+		t.Fatal("a detached replacement must be reattached to, not displaced")
+	}
+	select {
+	case <-cancelled:
+		t.Fatal("the replacement's harness must not be killed")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func newDetachedRun(cancel func()) (*activeRun, *bodyWriter) {
+	entry := &activeRun{done: make(chan struct{}), cancel: cancel}
+	sink := newBodyWriter(httptest.NewRecorder())
+	entry.attach(sink)
+	return entry, sink
+}
