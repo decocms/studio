@@ -259,14 +259,23 @@ function PickerContent({
       shouldFilter={false}
       value={active}
       onValueChange={setActive}
-      className="max-h-[min(560px,70dvh)]"
+      /* The third term is what Radix measured between the trigger and the
+         viewport edge, so a picker opened low on a short screen ends where the
+         screen does instead of running off it. */
+      className="max-h-[min(560px,70dvh,var(--radix-popover-content-available-height,70dvh))]"
     >
       <CommandInput
         value={search}
         onValueChange={setSearch}
         placeholder={t("sidebar.picker.searchPlaceholder")}
       />
-      <CommandList>
+      {/* The list is the part that gives, so it owns the Command's height
+          budget rather than `CommandList`'s shared 300px default — which was
+          the smaller of the two and made the number above it a cap nothing
+          ever reached. `min-h-0` so it may shrink inside the flex column;
+          `flex-1` grows it only into space that exists, so a short list stays
+          short and the input and strip keep their own heights. */}
+      <CommandList className="max-h-none min-h-0 flex-1">
         {searching ? (
           <>
             {/* A failed search is not an empty one: saying "nothing matches"
@@ -550,7 +559,16 @@ export function OrgProjectPicker({
 
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
+      {/* `modal`, and it is load-bearing on touch. On mobile the sidebar IS a
+          Radix dialog (the sheet), whose scroll lock cancels every wheel and
+          touchmove that lands outside the dialog's own subtree — and this
+          popover is portalled to the body, so the list clipped at its max
+          height and would not move under a finger. A modal popover brings its
+          own lock, only the innermost lock acts, and that one counts the list
+          as scrollable. Cheaper than teaching the sheet about its portals, and
+          it restores the menu semantics this control inherited from the
+          dropdown it replaced. */}
+      <Popover open={open} onOpenChange={setOpen} modal>
         <PopoverTrigger asChild>{trigger}</PopoverTrigger>
         <PopoverContent
           side={collapsed ? "right" : "bottom"}
