@@ -5,6 +5,7 @@
  *  tabs merged into one page, so it shows NO strip and carries keys as a
  *  section. */
 
+import { sleep } from "@decocms/shared/std";
 import { expect, test } from "../fixtures/test";
 
 const SIDEBAR = '[data-slot="sidebar"]';
@@ -115,7 +116,7 @@ test.describe("settings tabs", () => {
     // is still loading — the whole page used to blank out at this moment.
     await page.route("**/api/*/mcp", async (route) => {
       if (route.request().postData()?.includes("FILE_CONFIG_LIST")) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await sleep(3000);
       }
       await route.continue();
     });
