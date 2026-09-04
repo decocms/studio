@@ -266,7 +266,6 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_PROMPT_UPSERT",
   "TASK_BOARD_PROMPT_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
-  "TASK_BOARD_ITEM_PR_LINK",
   "TASK_BOARD_PREVIEW_PROBE",
   "TASK_BOARD_ITEM_RERUN",
   "TASK_BOARD_RESOLVE_CONFLICT",
@@ -1268,11 +1267,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
-    name: "TASK_BOARD_ITEM_PR_LINK",
-    description: "Link a pull request a task run opened to its task board item",
-    category: "Task Board",
-  },
-  {
     name: "TASK_BOARD_PREVIEW_PROBE",
     description:
       "Check whether a pull request's deploy preview URL is currently reachable",
@@ -1480,7 +1474,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_PROMPT_UPSERT",
       "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
-      "TASK_BOARD_ITEM_PR_LINK",
       "TASK_BOARD_PREVIEW_PROBE",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_REVIEW_DECISION",

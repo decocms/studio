@@ -216,7 +216,7 @@ export function buildClaudeCodeTaskPrompt(
   lines.push(
     "",
     repo
-      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. \`git\` and \`gh\` are authenticated. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch — dependencies may already be installed too (see below). \`git\` and \`gh\` are authenticated. ${SHALLOW_CHECKOUT_NOTE}`
       : [
           "Your working directory is EMPTY: this organization has several repositories, so " +
             "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
@@ -283,31 +283,32 @@ export function buildClaudeCodeTaskPrompt(
         : "."),
     "- Change only what the task needs. Don't refactor around it.",
     // The two defects behind every card that burned its bounce budget.
-    "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is dead code, and it is the most common reason a task comes back rejected.",
+    "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is the most common reason a task comes back rejected.",
     // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
     `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
-    // A task run's pod is provisioned `harness-run`, which is `cloneOnly`: no
-    // install, no dev server (see `provisionSandbox` in tools/sandbox/start.ts).
-    // The line above used to assert "the dev server hot-reloads, so hit the
-    // route it renders" — an assurance that was simply false here, and runs
-    // acted on it: polling a port nothing listened on for minutes, guessing
-    // `sleep 90`, starting a second server because they assumed the first was
-    // someone else's, and in one case abandoning verification altogether.
-    // State the actual sandbox, and name the cost, so booting one is a
-    // deliberate choice rather than a surprise.
-    "- Nothing is installed and NO dev server is running — this sandbox is a checkout. Usually you don't need one: read the code path end to end, run the repo's tests, and `curl` the LIVE site for how it behaves today. Only start a dev server if you must see YOUR change rendered — it is a cold start, so expect several minutes: launch it ONCE in the background and poll until it answers rather than guessing a sleep.",
+    // Deliberately a CHECK, not an assertion either way. This prompt is built at
+    // ENQUEUE; the pod is claimed later at dispatch, and which kind it gets is
+    // not knowable here: a `harness-run` claim that lands on its org's tenant
+    // warm pool adopts a pod already cloned, installed and serving (#7016),
+    // while an empty pool still yields a bare `cloneOnly` checkout. Both
+    // assertions have now been shipped and both were false half the time — the
+    // "the dev server hot-reloads" version had runs polling a port nothing
+    // listened on for minutes, guessing `sleep 90`, and starting a second
+    // server. A port check is one command and is right in both worlds.
+    "- A dev server MAY already be running (a warm pod comes cloned, installed and serving). Check first — `ss -ltnp` for a listening port, then `curl` it. If one answers, use it; it hot-reloads your edits. If not, this sandbox is a bare checkout with nothing installed: usually you don't need a server at all — read the code path end to end, run the repo's tests, `curl` the LIVE site. Starting one from cold takes several minutes, so launch it ONCE in the background and poll until it answers.",
     // The sandbox image bakes in chromium + a global playwright-core and wraps
     // them as `qa-screenshot` (packages/sandbox/image/Dockerfile). Nothing told
     // this run about it, so a UI task would `ls node_modules/.bin | grep
     // playwright`, find nothing in the USER's repo, conclude no browser exists,
     // and either hand-roll a CDP client or give up on looking at the change.
-    '- For a VISUAL change that means LOOKING at it: `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders the page in headless Chromium — it reaches a dev server you started on localhost as well as any public URL, and unlike `curl` it runs the page\'s JS, so lazily-rendered sections are actually there. Then `Read` the file: a screenshot you never opened is not verification. It is already installed; do NOT look for playwright in the repo\'s `node_modules`. To INTERACT with a page — click, hit-test with `document.elementFromPoint`, fill a form — write a throwaway node script that requires the global playwright-core: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`. Screenshots alone are not the limit of what you can check.',
-    // The ONLY reliable way the board learns the PR: Claude Code opens it inside
-    // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
-    // dispatched from the linked PR, so skipping this strands the card.
-    `- As soon as \`gh pr create\` prints the URL, call \`mcp__studio__TASK_BOARD_ITEM_PR_LINK\` with that url. Do this even if you also mention the PR in a comment — the reviewers are dispatched from the linked PR, not from your message.`,
+    '- A browser is installed globally, NOT in the repo\'s `node_modules` — don\'t go looking for playwright there. `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders any URL (localhost included) in headless Chromium, runs the page\'s JS, and writes a file you must then `Read` — a screenshot you never opened is not verification. To INTERACT (click, fill, `document.elementFromPoint`), write a throwaway node script: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`.',
+    // How the board finds the PR now: it looks GitHub up by the branch this
+    // checkout is on (`pr-by-branch.ts`), so the one thing the run must not do
+    // is open the PR from some other branch. Replaces `TASK_BOARD_ITEM_PR_LINK`,
+    // which a run that died right after `gh pr create` could never call.
+    "- Open the pull request from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.",
     // Deliberately NOT "then move it to In Review". Linking the PR is what
     // starts the review (`openReviewCycleIfInProgress`), and the card stays In
     // Progress until the reviewer decides — an agent is still working on it.

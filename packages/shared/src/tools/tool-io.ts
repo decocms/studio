@@ -640,10 +640,6 @@ export interface StudioToolIO {
       }[];
     };
   };
-  TASK_BOARD_ITEM_PR_LINK: {
-    input: { url: string };
-    output: { url: string; prNumber: number; taskBoardItemIds: string[] };
-  };
   TASK_BOARD_PREVIEW_PROBE: {
     input: { url: string };
     output: { available: boolean; status: number | null };

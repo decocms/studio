@@ -40,12 +40,28 @@ describe("buildClaudeCodeTaskPrompt", () => {
   // review now, and the card stays In Progress until the REVIEWER decides — so
   // asking the model for that move would put the card in the wrong lane for
   // the whole time an agent is still working on it.
-  test("asks for a pull request and for the PR link, not a board move", () => {
+  // Inverted: the run used to be told to report its PR with
+  // `TASK_BOARD_ITEM_PR_LINK`. The board finds it by branch now
+  // (`pr-by-branch.ts`), so the prompt pins the BRANCH instead — asking for a
+  // tool that no longer exists would just burn a turn on `not_found`.
+  test("asks for a pull request on the given branch, not a board move", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("open a pull request");
-    expect(prompt).toContain("mcp__studio__TASK_BOARD_ITEM_PR_LINK");
+    expect(prompt).toContain("branch you were given");
+    expect(prompt).not.toContain("TASK_BOARD_ITEM_PR_LINK");
     expect(prompt).toContain("(task id: tbi_1)");
     expect(prompt).not.toContain('status "in_review"');
+  });
+
+  // Inverted: the prompt used to assert "Nothing is installed and NO dev server
+  // is running". Since #7016 a run can adopt its org's warm tenant pod, which
+  // arrives cloned, installed and serving — and which pod it gets is decided at
+  // dispatch, after this prompt is built. So it must ask, not assert.
+  test("tells the run to check for a dev server rather than asserting one way", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo);
+    expect(prompt).toContain("MAY already be running");
+    expect(prompt).toContain("ss -ltnp");
+    expect(prompt).not.toContain("NO dev server is running");
   });
 
   test("says it runs autonomously", () => {
@@ -225,7 +241,7 @@ describe("buildClaudeCodeTaskPrompt with no repo (several in the org)", () => {
 
   test("still says how to finish", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, null);
-    expect(prompt).toContain("TASK_BOARD_ITEM_PR_LINK");
+    expect(prompt).toContain("branch you were given");
     expect(prompt).toContain('move it to "done"');
   });
 });
