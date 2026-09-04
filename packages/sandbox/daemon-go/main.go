@@ -457,6 +457,14 @@ func envDuration(name string, def, min time.Duration) time.Duration {
 	return def
 }
 
+// restartOn5xx gates treating an all-5xx dev server as dead. Default off: a
+// user's app can legitimately 5xx from its own bug, and restarting that fixes
+// nothing, so this ships dormant and is enabled per-deployment.
+func restartOn5xx() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_RESTART_ON_5XX")))
+	return v == "1" || v == "true"
+}
+
 // envInt reads an int from env, clamped to at least min, def when unset/bad.
 func envInt(name string, def, min int) int {
 	if v := os.Getenv(name); v != "" {
@@ -484,7 +492,16 @@ func (d *daemon) devWatchTick() {
 	portKnown := sniffed != 0 || lastRunning != 0
 	// Read synchronously, not via a mirror an out-of-order callback could
 	// leave stale (see probe.Prober.Current).
-	serving := d.prober.Current().Status == probe.StatusOnline
+	probeState := d.prober.Current()
+	serving := probeState.Status == probe.StatusOnline
+	if serving && restartOn5xx() && probeState.HTTPStatus >= 500 {
+		// Reachable but serving nothing usable. A warm-pool pod has been handed
+		// over with a half-built framework directory (every route 5xx) and the
+		// watchdog sat it out, because "answered the request" was the whole
+		// liveness test. Treating that as dead lets the existing grace window
+		// and MaxRestarts budget rebuild it exactly once.
+		serving = false
+	}
 
 	d.devWatchMu.Lock()
 	action := d.devTracker.Observe(devwatch.Snapshot{
