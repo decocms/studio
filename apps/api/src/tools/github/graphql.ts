@@ -23,7 +23,7 @@ import {
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
 
-/** e2e seam, mirroring `decofile/github-git-data.ts`. Read per call site so a
+/** e2e seam, mirroring `git-providers/content/github.ts`. Read per call site so a
  *  long-lived dev server and a test webServer agree on one value. */
 function githubGraphqlUrl(): string {
   return process.env.GITHUB_GRAPHQL_URL ?? "https://api.github.com/graphql";
