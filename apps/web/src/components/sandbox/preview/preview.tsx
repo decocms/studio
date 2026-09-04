@@ -1082,16 +1082,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           });
       } else if (e.data?.type === "cms-editor::render-start") {
         beginNavigation();
-      } else if (
-        e.data?.type === "cms-editor::render-end" ||
-        e.data?.type === "cms-editor::render-error"
-      ) {
+      } else if (e.data?.type === "cms-editor::render-end") {
+        endNavigation();
+        // The in-place swap keeps stale label/kind/key data; resend it.
+        const win = previewIframeRef.current?.contentWindow;
+        win?.postMessage(
+          {
+            type: "cms-editor::set-labels",
+            labels: cmsSectionLabels,
+            kinds: cmsSectionKinds,
+            keys: cmsSectionKeys,
+          },
+          allowedOrigin,
+        );
+      } else if (e.data?.type === "cms-editor::render-error") {
         endNavigation();
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [editorBridgeOrigin]);
+  }, [editorBridgeOrigin, cmsSectionLabels, cmsSectionKinds, cmsSectionKeys]);
 
   // Target origin is pinned to the preview site itself: with "*" the parent
   // would still hand the editor script and page-structure metadata to
