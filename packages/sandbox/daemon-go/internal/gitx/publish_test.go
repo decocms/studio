@@ -119,6 +119,17 @@ func TestPublishAuthorsCommitAsOperator(t *testing.T) {
 	}
 }
 
+func TestIsTransientPushError(t *testing.T) {
+	transient := &GitError{Msg: "git push exited 128: fatal: unable to access 'https://...': Could not resolve host: github.com", Status: 128}
+	if !isTransientPushError(transient) {
+		t.Fatal("expected a DNS failure to be classified as transient")
+	}
+	permanent := &GitError{Msg: "git push exited 1: ! [rejected] feature/x -> feature/x (fetch first)", Status: 1}
+	if isTransientPushError(permanent) {
+		t.Fatal("a non-fast-forward rejection must not be retried as transient")
+	}
+}
+
 // Discarding a staged rename must restore the original file at its original
 // path, not delete it: the new path never existed at HEAD, so treating it as
 // merely "untracked" loses the content entirely once the old path is also

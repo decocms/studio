@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
 )
@@ -232,6 +233,36 @@ func expandUntrackedDirs(repoDir string, paths []string) []string {
 	return out
 }
 
+// transientPushErrors mirrors setup.transientErrors: the network failures a
+// retry can plausibly outlive, as opposed to an auth/permission/protected-branch
+// rejection where retrying wastes the shutdown-sync window for nothing.
+var transientPushErrors = []string{
+	"Could not resolve host",
+	"early EOF",
+	"unexpected disconnect",
+	"Connection reset by peer",
+	"Connection timed out",
+	"Operation too slow",
+	"transfer closed with",
+	"RPC failed",
+	"the remote end hung up",
+}
+
+const (
+	pushMaxRetries   = 2
+	pushRetryDelayMs = 2000
+)
+
+func isTransientPushError(err error) bool {
+	message := FormatGitError(err)
+	for _, e := range transientPushErrors {
+		if strings.Contains(message, e) {
+			return true
+		}
+	}
+	return false
+}
+
 var gitPushConfig = []string{"-c", "credential.helper=", "-c", "safe.directory=*"}
 
 func pushEnv(repoDir string) map[string]string {
@@ -249,9 +280,16 @@ func pushBranch(repoDir, branch string, reconcileRemote bool) error {
 	// --no-verify: a repo's pre-push script can hang the push, and the shutdown
 	// sync shares this path with no room to wait it out before SIGKILL.
 	args := append(append([]string{}, gitPushConfig...), "push", "--no-verify", "-u", "origin", branch)
-	_, err := Run(args, RunOpts{Cwd: repoDir, Env: pushEnv(repoDir)})
-	if err == nil {
-		return nil
+	var err error
+	for attempt := 0; ; attempt++ {
+		_, err = Run(args, RunOpts{Cwd: repoDir, Env: pushEnv(repoDir)})
+		if err == nil {
+			return nil
+		}
+		if attempt >= pushMaxRetries || !isTransientPushError(err) {
+			break
+		}
+		time.Sleep(pushRetryDelayMs * time.Millisecond)
 	}
 	// origin/<branch> diverged: a prior publish force-pushed a rebased history,
 	// or the sandbox was re-provisioned from base and lost the branch's local
