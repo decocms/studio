@@ -10,6 +10,7 @@ import {
 const BUDGET = {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
   CLAUDE_CODE_MAX_TURNS: null,
+  ENABLE_TOOL_SEARCH: "1",
 };
 
 describe("claudeCodeEnvFromCredential", () => {
@@ -252,5 +253,35 @@ describe("claudeCodeEnvFromCredential", () => {
       message = err instanceof Error ? err.message : String(err);
     }
     expect(message).not.toContain("secret-k");
+  });
+});
+
+describe("tool search", () => {
+  // The regression: an OpenRouter run loads every mounted MCP schema into the
+  // turn-1 prompt unless this is set, and one org's 22 connections came to
+  // ~1.5MB — every run failed on `Prompt is too long` before its first tool
+  // call. Every provider shape carries it; a first-party credential already
+  // defers by default, so it is a no-op there rather than a second code path.
+  test.each([
+    ["anthropic"],
+    ["openrouter"],
+    ["deco"],
+    [CLAUDE_SUBSCRIPTION_PROVIDER_ID],
+  ])("%s runs get ENABLE_TOOL_SEARCH", (providerId) => {
+    expect(
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" })
+        .ENABLE_TOOL_SEARCH,
+    ).toBe("1");
+  });
+
+  test("it is never deleted, so a pod cannot inherit it unset", () => {
+    for (const providerId of ["anthropic", "openrouter", "deco"]) {
+      for (const modelClass of ["default", "reviewer", "conflict"] as const) {
+        expect(
+          claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, modelClass)
+            .ENABLE_TOOL_SEARCH,
+        ).not.toBeNull();
+      }
+    }
   });
 });

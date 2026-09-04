@@ -308,11 +308,11 @@ export function buildOptions(args: {
  *   connected or failed instead of the `pending` a deferred server shows.
  *
  * Deferral is Claude Code's own behavior, not something requested here, and it
- * only applies when tool search is on — which it is NOT on a non-first-party
- * `ANTHROPIC_BASE_URL` (our OpenRouter path) unless `ENABLE_TOOL_SEARCH` is set
- * for that process. On those runs every org tool loads eagerly, so a big org is
- * still a big prompt. Setting it there is a decision about whether the proxy
- * forwards `tool_reference` blocks, which is not this file's to make.
+ * only applies when tool search is on — which the CLI turns OFF by default on a
+ * non-first-party `ANTHROPIC_BASE_URL` (our OpenRouter path). Studio therefore
+ * sets `ENABLE_TOOL_SEARCH` on every run's environment; without it a big org's
+ * schemas are all in the turn-1 prompt and the run dies on `Prompt is too long`
+ * before its first tool call. See `claude-code-env.ts`.
  *
  * Exported for the unit test, which owns the merge.
  */
