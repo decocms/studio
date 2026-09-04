@@ -106,6 +106,14 @@ describe("BrandContextSchema JSON field caps", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects an oversized id", () => {
+    // Regression: `id` was the one field on this schema left unbounded.
+    expect(
+      BrandContextSchema.safeParse(baseBrandContext({ id: "x".repeat(501) }))
+        .success,
+    ).toBe(false);
+  });
+
   it("rejects an oversized overview, name, domain, or logo URL", () => {
     expect(
       BrandContextSchema.safeParse(
