@@ -152,6 +152,17 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// Classify is exported and every other nil-config combination goes through a
+// nil-safe accessor; nil-before/nil-after used to reach a bare `after.Env`
+// field access and panic instead of returning no-op like nil/&TenantConfig{}
+// does.
+func TestClassifyNilAfterDoesNotPanic(t *testing.T) {
+	got := Classify(nil, nil)
+	if got.Kind != KindNoOp {
+		t.Fatalf("Classify(nil, nil) = %q, want %q", got.Kind, KindNoOp)
+	}
+}
+
 func TestClassifyEnvDiffKeys(t *testing.T) {
 	before := withEnv(&TenantConfig{}, map[string]string{"A": "1", "B": "2"})
 	after := withEnv(&TenantConfig{}, map[string]string{"A": "changed", "C": "3"})
