@@ -1,6 +1,66 @@
 import { describe, expect, it } from "bun:test";
-import { resolveGhsExpiry } from "./github-mint";
-import { GHS_TOKEN_LIFETIME_MS } from "./token-refresh";
+import { extractMintedToken, resolveGhsExpiry } from "./github-mint";
+import { GHS_TOKEN_LIFETIME_MS, RECONNECT_ERROR } from "./token-refresh";
+
+describe("extractMintedToken", () => {
+  it("returns the token and parsed expiry on a well-formed result", () => {
+    const result = extractMintedToken({
+      structuredContent: {
+        token: "ghs_abc",
+        expiresAt: "2026-01-01T00:00:00Z",
+      },
+    });
+    expect(result.accessToken).toBe("ghs_abc");
+    expect(result.expiresAt?.toISOString()).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("defaults expiresAt to null when absent", () => {
+    const result = extractMintedToken({
+      structuredContent: { token: "ghs_abc" },
+    });
+    expect(result.expiresAt).toBeNull();
+  });
+
+  it("throws when the tool reports isError", () => {
+    expect(() =>
+      extractMintedToken({
+        isError: true,
+        structuredContent: { token: "ghs_abc" },
+      }),
+    ).toThrow(RECONNECT_ERROR);
+  });
+
+  it("throws when token is missing", () => {
+    expect(() => extractMintedToken({ structuredContent: {} })).toThrow(
+      RECONNECT_ERROR,
+    );
+  });
+
+  it("throws when token is not a string (malformed tool response)", () => {
+    expect(() =>
+      extractMintedToken({
+        structuredContent: { token: { nested: "object" } as unknown as string },
+      }),
+    ).toThrow(RECONNECT_ERROR);
+  });
+
+  it("falls back to null expiry when expiresAt is not a string", () => {
+    const result = extractMintedToken({
+      structuredContent: {
+        token: "ghs_abc",
+        expiresAt: 12345 as unknown as string,
+      },
+    });
+    expect(result.expiresAt).toBeNull();
+  });
+
+  it("falls back to null expiry when expiresAt is an unparseable string", () => {
+    const result = extractMintedToken({
+      structuredContent: { token: "ghs_abc", expiresAt: "not-a-date" },
+    });
+    expect(result.expiresAt).toBeNull();
+  });
+});
 
 describe("resolveGhsExpiry", () => {
   const now = Date.now();
