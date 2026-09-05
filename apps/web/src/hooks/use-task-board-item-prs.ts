@@ -51,9 +51,9 @@ export function useTaskBoardItemPrs(itemId: string | undefined) {
     // cached data, so the parse doesn't run on every render.
     initialData: () =>
       itemId
-        ? ((readCachedTaskPrs(locator, itemId)?.data as
+        ? (readCachedTaskPrs(locator, itemId)?.data as
             | TaskBoardItemPr[]
-            | undefined) ?? undefined)
+            | undefined)
         : undefined,
     initialDataUpdatedAt: () =>
       itemId ? readCachedTaskPrs(locator, itemId)?.updatedAt : undefined,
