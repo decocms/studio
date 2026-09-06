@@ -38,6 +38,8 @@ mapping.json
 !.env.example
 !**/.env.example
 
+.env*
+
 # Editor directories and files
 !.vscode/extensions.json
 .idea
