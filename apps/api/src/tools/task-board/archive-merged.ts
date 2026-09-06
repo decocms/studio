@@ -19,6 +19,7 @@ import { LANES } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
+import { isTaggableMergedStatus } from "./lanes";
 import { fetchPrLanding } from "./prs-get";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
@@ -90,9 +91,9 @@ function repoLanded(prs: PrLanding[]): boolean {
 /**
  * Archive one candidate if its PRs are all merged. Returns whether it moved.
  *
- * Re-reads the card inside the org's context and re-checks `status === "done"`:
- * the sweep's work list is a snapshot, and a card someone dragged out of Done
- * (or another replica already archived) in the meantime must not be moved.
+ * Re-reads the card inside the org's context and re-checks it is still a
+ * shipped status: the sweep's work list is a snapshot, and a card someone
+ * dragged backward (or another replica already archived) must not be moved.
  */
 async function archiveIfMerged(
   ctx: StudioContext,
@@ -101,7 +102,7 @@ async function archiveIfMerged(
   prLanding: PrLandingReader,
 ): Promise<boolean> {
   const item = await ctx.storage.taskBoard.getById(itemId, organizationId);
-  if (!item || item.status !== "done") return false;
+  if (!item || !isTaggableMergedStatus(item.status)) return false;
 
   const prs = await ctx.storage.taskBoard.listPrs(itemId, organizationId);
   const landings = await Promise.all(
@@ -124,7 +125,11 @@ async function archiveIfMerged(
     taskBoardItemId: itemId,
     action: "status_changed",
     actorId: null,
-    data: { from: "done", to: archived, reason: "merged_pr_auto_archive" },
+    data: {
+      from: item.status,
+      to: archived,
+      reason: "merged_pr_auto_archive",
+    },
   });
   emitTaskBoardUpdated(organizationId, updated);
   return true;

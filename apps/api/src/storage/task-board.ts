@@ -789,7 +789,8 @@ export class TaskBoardStorage {
     const rows = await this.db
       .selectFrom("task_board_items as i")
       .select(["i.id", "i.organization_id as organizationId"])
-      .where("i.status", "=", "done")
+      // Not just Done — a delivery-lane org's shipped cards never reach it.
+      .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
       .where("i.updated_at", "<", settledBefore)
       .where((eb) =>
