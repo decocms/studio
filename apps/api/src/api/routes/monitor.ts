@@ -113,12 +113,19 @@ function windowDates(
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Longest preset span (`1y`) — a `custom` range past this would let an
+ *  authenticated user (for any site they own) run an arbitrarily large scan
+ *  against the shared ClickHouse warehouse on every request. */
+const MAX_CUSTOM_RANGE_DAYS = 366;
+
 /**
  * Resolve a range selection to a concrete window. `custom` reads validated
  * `since`/`until` (YYYY-MM-DD); otherwise a preset from RANGE_TO_WINDOW. Returns
- * null for an unknown preset or a malformed custom range so the caller 400s.
+ * null for an unknown preset, a malformed custom range, a reversed
+ * since/until, or a custom span past `MAX_CUSTOM_RANGE_DAYS` — so the caller
+ * 400s instead of running an unbounded query.
  */
-function resolveWindow(
+export function resolveWindow(
   range: string,
   sinceQ: string | undefined,
   untilQ: string | undefined,
@@ -137,10 +144,11 @@ function resolveWindow(
     ) {
       return null;
     }
-    const days = Math.max(
-      1,
-      Math.round((Date.parse(untilQ) - Date.parse(sinceQ)) / 86400000),
-    );
+    const sinceMs = Date.parse(sinceQ);
+    const untilMs = Date.parse(untilQ);
+    if (untilMs < sinceMs) return null;
+    const days = Math.max(1, Math.round((untilMs - sinceMs) / 86400000));
+    if (days > MAX_CUSTOM_RANGE_DAYS) return null;
     return {
       since: sinceQ,
       until: untilQ,
