@@ -37,6 +37,7 @@ import {
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { CONNECTION_DECRYPT_DISABLE_THRESHOLD } from "../core/constants";
 import {
+  clearDecryptFailure,
   isDecryptDisabled,
   markDecryptDisabled,
   recordDecryptFailure,
@@ -484,6 +485,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
 
   async delete(id: string): Promise<void> {
     await this.db.deleteFrom("connections").where("id", "=", id).execute();
+    // Drop the tracker entry so it doesn't linger in the bounded map until LRU-evicted.
+    clearDecryptFailure(id);
   }
 
   async testConnection(

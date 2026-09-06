@@ -95,6 +95,11 @@ export function recordDecryptSuccess(connectionId: string): void {
   entries.delete(connectionId);
 }
 
+/** Drop all tracked state for a connection. Call when the connection itself is deleted. */
+export function clearDecryptFailure(connectionId: string): void {
+  entries.delete(connectionId);
+}
+
 /** Reset all tracked state. Exposed for testing only. */
 export function resetAll(): void {
   entries.clear();
