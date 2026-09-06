@@ -28,7 +28,7 @@ describe("ORGANIZATION_UPDATE", () => {
   it("persists an explicit empty description instead of dropping it", async () => {
     const ctx = makeCtx();
 
-    await ORGANIZATION_UPDATE.handler({ id: "org-1", description: "" }, ctx);
+    await ORGANIZATION_UPDATE.handler({ description: "" }, ctx);
 
     expect(ctx.update).toHaveBeenCalledWith({
       organizationId: "org-1",
@@ -45,10 +45,7 @@ describe("ORGANIZATION_UPDATE", () => {
   it("still writes a non-empty description", async () => {
     const ctx = makeCtx();
 
-    await ORGANIZATION_UPDATE.handler(
-      { id: "org-1", description: "hello" },
-      ctx,
-    );
+    await ORGANIZATION_UPDATE.handler({ description: "hello" }, ctx);
 
     expect(ctx.update).toHaveBeenCalledWith({
       organizationId: "org-1",
@@ -65,10 +62,7 @@ describe("ORGANIZATION_UPDATE", () => {
   it("preserves unrelated metadata keys instead of dropping them", async () => {
     const ctx = makeCtx();
 
-    await ORGANIZATION_UPDATE.handler(
-      { id: "org-1", description: "hello" },
-      ctx,
-    );
+    await ORGANIZATION_UPDATE.handler({ description: "hello" }, ctx);
 
     const call = ctx.update.mock.calls[0]?.[0] as {
       data: { metadata: Record<string, unknown> };
@@ -76,14 +70,14 @@ describe("ORGANIZATION_UPDATE", () => {
     expect(call.data.metadata.archived).toBe(true);
   });
 
-  it("rejects updating an organization other than the authenticated one", async () => {
+  it("always targets the organization resolved from the request context", async () => {
     const ctx = makeCtx();
 
-    await expect(
-      ORGANIZATION_UPDATE.handler({ id: "org-2", name: "Evil" }, ctx),
-    ).rejects.toThrow(
-      "Organization ID does not match authenticated organization",
-    );
-    expect(ctx.update.mock.calls.length).toBe(0);
+    await ORGANIZATION_UPDATE.handler({ name: "Renamed" }, ctx);
+
+    expect(ctx.update).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      data: { name: "Renamed" },
+    });
   });
 });
