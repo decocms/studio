@@ -329,10 +329,13 @@ export class JetStreamKVPrCache {
     this.fallback.invalidate(namespace);
     if (!this.kv) return;
     try {
-      const keys = await this.kv.keys(`${namespace}.*`);
-      for await (const key of keys) {
-        await this.kv.delete(key).catch(() => {});
+      const kv = this.kv;
+      const keys: string[] = [];
+      for await (const key of await kv.keys(`${namespace}.*`)) {
+        keys.push(key);
       }
+      // Independent deletes — run concurrently, not one round-trip at a time.
+      await Promise.all(keys.map((key) => kv.delete(key).catch(() => {})));
     } catch {
       // best-effort: the TTL is the backstop.
     }
