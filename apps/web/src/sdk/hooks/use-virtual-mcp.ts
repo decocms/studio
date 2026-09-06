@@ -5,18 +5,25 @@
  * These hooks offer a reactive interface for accessing and manipulating virtual MCPs.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import { useProjectContext } from "../context";
 import {
+  collectionListPageQueryOptions,
+  collectionItemQueryOptions,
+  collectionListQueryOptions,
   useCollectionActions,
   useCollectionItem,
   useCollectionList,
   type CollectionFilter,
   type UseCollectionListOptions,
 } from "./use-collections";
-import { useMCPClient } from "./use-mcp-client";
+import {
+  mcpClientQueryOptions,
+  useMCPClient,
+  useMCPClientNonBlocking,
+} from "./use-mcp-client";
 import { SELF_MCP_ALIAS_ID } from "@decocms/shared/sdk/lib/constants";
 import { KEYS } from "@/lib/query-keys";
 
@@ -56,6 +63,139 @@ export function useVirtualMCPs(options: UseVirtualMCPsOptions = {}) {
     client,
     options,
   );
+}
+
+/**
+ * The org's virtual MCPs, read WITHOUT suspending — `[]` until it resolves and
+ * `[]` on failure.
+ *
+ * The sidebar's scope chip is gated on how many projects the org has, and the
+ * sidebar must paint before any fetch resolves. Sharing `useVirtualMCPs`'
+ * query key means this is usually a cache hit; when it isn't, the chip simply
+ * appears a beat late. Never use this where a missing list is an error state —
+ * it cannot tell "still loading" from "none".
+ */
+export function useVirtualMCPsNonBlocking(
+  options: UseVirtualMCPsOptions = {},
+): VirtualMCPEntity[] {
+  const { org } = useProjectContext();
+  /** Non-blocking all the way down. `useMCPClient` here SUSPENDED, which made
+   *  this hook's whole contract depend on a parent having warmed the client
+   *  first — true only by luck, and false in the sidebar. */
+  const client = useMCPClientNonBlocking({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const { data } = useQuery({
+    ...collectionListQueryOptions<VirtualMCPEntity>(
+      org.id,
+      "VIRTUAL_MCP",
+      client,
+      options,
+    ),
+    enabled: !!client,
+  });
+
+  return data ?? [];
+}
+
+/** One virtual MCP, read WITHOUT suspending — `null` until it resolves.
+ *
+ *  `ChatPrefsProvider` mounts ABOVE the sidebar and outside every Suspense
+ *  boundary in the shell, so a suspending read there blanks the whole app back
+ *  to the splash screen. Never use this where a missing entity is an error
+ *  state: it cannot tell "still loading" from "not found". */
+export function useVirtualMCPNonBlocking(
+  virtualMcpId: string | null | undefined,
+): VirtualMCPEntity | null {
+  const { org } = useProjectContext();
+  const client = useMCPClientNonBlocking({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const { data } = useQuery({
+    ...collectionItemQueryOptions<VirtualMCPEntity>(
+      org.id,
+      "VIRTUAL_MCP",
+      virtualMcpId ?? undefined,
+      client,
+    ),
+    enabled: !!client && !!virtualMcpId,
+  });
+
+  return data?.item ?? null;
+}
+
+/** The org's virtual MCPs, resolved OUTSIDE render — cache when warm, wire when
+ *  not. The click-time twin of {@link useVirtualMCPsNonBlocking}: same cache
+ *  entries, no suspend, no render-time data dependency. Both go through the
+ *  shared query-options builders so the keys cannot drift. */
+export async function fetchVirtualMCPs(
+  queryClient: QueryClient,
+  org: { id: string; slug: string },
+  options: UseVirtualMCPsOptions = {},
+): Promise<VirtualMCPEntity[]> {
+  const client = await queryClient.fetchQuery(
+    mcpClientQueryOptions({
+      connectionId: SELF_MCP_ALIAS_ID,
+      orgId: org.id,
+      orgSlug: org.slug,
+    }),
+  );
+  const listOptions = collectionListQueryOptions<VirtualMCPEntity>(
+    org.id,
+    "VIRTUAL_MCP",
+    client,
+    options,
+  );
+  /** `fetchQuery` returns the raw result — `select` is observer-level — so
+   *  apply the options' own select rather than re-deriving the extraction. */
+  return listOptions.select(await queryClient.fetchQuery(listOptions));
+}
+
+/**
+ * The same list, keeping the page counts the server returns.
+ *
+ * Shares `useVirtualMCPsNonBlocking`'s query key exactly — only the `select`
+ * differs — so asking for the count costs no extra request. Without this a
+ * truncated list is indistinguishable from a complete one.
+ */
+export function useVirtualMCPsPage(options: UseVirtualMCPsOptions = {}): {
+  items: VirtualMCPEntity[];
+  totalCount?: number;
+  hasMore?: boolean;
+} {
+  const { org } = useProjectContext();
+  /** Non-blocking, for the same reason as `useVirtualMCPsNonBlocking` above:
+   *  the sidebar's org/project picker calls this (for `hasMore` alone) and the
+   *  sidebar mounts with no Suspense boundary of its own, so a suspending read
+   *  escapes to the route boundary and replaces the PAINTED shell with the
+   *  panel spinner — the backwards transition the boundary exists to prevent. */
+  const client = useMCPClientNonBlocking({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const { data } = useQuery({
+    ...collectionListPageQueryOptions<VirtualMCPEntity>(
+      org.id,
+      "VIRTUAL_MCP",
+      client,
+      options,
+    ),
+    enabled: !!client,
+  });
+
+  return {
+    items: data?.items ?? [],
+    totalCount: data?.totalCount,
+    hasMore: data?.hasMore,
+  };
 }
 
 /**

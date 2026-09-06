@@ -1,4 +1,5 @@
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CreateConnectionDialog } from "@/components/connections/create-connection-dialog.tsx";
 import type { RegistryItem } from "@/components/store/types";
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
@@ -19,7 +20,6 @@ import {
 } from "@/sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Loading01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { track } from "@/lib/posthog-client";
@@ -92,6 +92,13 @@ export function AddConnectionDialog({
   const [connectingItemId, setConnectingItemId] = useState<string | null>(null);
   const [search, setSearch] = useState(initialSearch);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Dialog stays mounted across opens — reset the search term each time it opens.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSearch(initialSearch);
+  }
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const connectionActions = useConnectionActions();
@@ -303,10 +310,7 @@ export function AddConnectionDialog({
         <Suspense
           fallback={
             <div className="flex-1 flex items-center justify-center">
-              <Loading01
-                size={24}
-                className="animate-spin text-muted-foreground"
-              />
+              <Spinner className="size-6 text-muted-foreground" />
             </div>
           }
         >

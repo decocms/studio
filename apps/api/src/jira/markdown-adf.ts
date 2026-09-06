@@ -1,6 +1,6 @@
 /**
- * Board markdown → Atlassian Document Format, for the comments the sync
- * mirrors onto a Jira issue.
+ * Markdown → Atlassian Document Format, for the comments Studio posts on a
+ * Jira issue.
  *
  * Jira Cloud's v3 comment API takes ADF — not markdown, not the wiki markup of
  * the v2 API — so a comment posted as plain text shows the customer its own
@@ -135,8 +135,8 @@ interface Ctx {
   media: ReadonlyMap<string, AdfMedia>;
   /**
    * `mediaSingle` is a block node, so only a paragraph-bearing context can
-   * emit one. A heading or a table cell is inline-only and keeps the link —
-   * and reports nothing to `onImage`, so nothing is uploaded for it.
+   * emit one. A heading is inline-only and keeps the link — and reports nothing
+   * to `onImage`, so nothing is uploaded for it.
    */
   allowMedia: boolean;
   onImage?: (target: string) => void;
@@ -496,7 +496,9 @@ function splitRow(line: string): string[] | null {
 }
 
 /** Rows are padded and truncated to the header's width: ADF accepts a ragged
- *  table, but Jira's own editor then treats it as broken. */
+ *  table, but Jira's own editor then treats it as broken. A cell is block
+ *  content, so `liftMedia` applies as it does to a paragraph — a before/after
+ *  table of screenshots is the shape a QA comment posts. */
 function tableRow(
   cells: string[],
   cellType: string,
@@ -508,7 +510,7 @@ function tableRow(
     content: Array.from({ length: width }, (_unused, column) => ({
       type: cellType,
       attrs: {},
-      content: [paragraph(inlineNodes(cells[column] ?? "", inlineOnly(ctx)))],
+      content: liftMedia(inlineNodes(cells[column] ?? "", ctx)),
     })),
   };
 }

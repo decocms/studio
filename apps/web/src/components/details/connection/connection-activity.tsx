@@ -68,7 +68,29 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const stats = calculateStats(data?.logs ?? [], dateRange);
+  // Real error total from the backend's own count, same fix as data?.total above.
+  const { data: errorData } = useSuspenseQuery({
+    queryKey: KEYS.connectionActivityErrors(connectionId, timeframe, orgId),
+    queryFn: async () => {
+      return (await studio.call("MONITORING_LOGS_LIST", {
+        startDate: dateRange.startDate.toISOString(),
+        endDate: dateRange.endDate.toISOString(),
+        connectionId,
+        isError: true,
+        limit: 1,
+        offset: 0,
+      })) as BaseMonitoringLogsResponse;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const stats = calculateStats(
+    data?.logs ?? [],
+    dateRange,
+    undefined,
+    data?.total,
+    errorData?.total,
+  );
   const chartData = stats.data;
   const hasData = stats.totalCalls > 0;
   const topErrors = computeTopErrors(data?.logs ?? []);
@@ -233,11 +255,16 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
             {t("details.connectionActivity.activity")}
           </h3>
         </div>
-        <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+        <div
+          role="group"
+          aria-label={t("details.connectionActivity.timeframe")}
+          className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5"
+        >
           {TIMEFRAMES.map((tf) => (
             <button
               key={tf.value}
               type="button"
+              aria-pressed={timeframe === tf.value}
               onClick={() => setTimeframe(tf.value)}
               className={cn(
                 "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",

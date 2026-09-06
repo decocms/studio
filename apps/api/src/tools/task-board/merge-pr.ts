@@ -8,12 +8,12 @@ import {
   shippedLane,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { boardFor, shippedPatch } from "./board-handler";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import {
   type ChecksStatus,
   fetchPrChecksStatus,
   fetchPrConflict,
+  invalidatePrCards,
   invalidatePrReads,
   isRateLimitError,
   pickActivePr,
@@ -241,7 +241,13 @@ export async function mergeLinkedPr(
       const attempt = await attemptMerge(client, pr, mergeMethod);
       if (attempt.kind === "merged") {
         // Drop the polled read cache so the next poll sees `merged` → Done.
-        invalidatePrReads(conn.id);
+        // Awaited: the UI refetches as soon as this responds, and the KV delete
+        // is a round-trip — firing it and returning races the very poll it is
+        // meant to fix.
+        await Promise.all([
+          invalidatePrReads(conn.id),
+          invalidatePrCards(orgId),
+        ]);
         return { merged: true };
       }
       // A 429 says nothing about the method; re-asking IS the burst — stop.
@@ -462,11 +468,10 @@ export async function retryAutoMergeIfApproved(
   }
 
   const shipped = shippedLane(settings?.flags);
-  const board = await boardFor(ctx, orgId);
   const done = await ctx.storage.taskBoard.update(
     item.id,
     orgId,
-    shippedPatch(board, shipped),
+    { status: shipped },
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {

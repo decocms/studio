@@ -53,6 +53,12 @@ const ThreadListInputSchema = CollectionListInputSchema.extend({
     .string()
     .optional()
     .describe("Filter by agent (connection or virtual MCP) ID"),
+  source: z
+    .string()
+    .optional()
+    .describe(
+      "Filter by what started the run (`metadata.source`), e.g. `jira` for runs the Jira integration dispatched",
+    ),
 });
 
 /**
@@ -107,6 +113,7 @@ export const COLLECTION_THREADS_LIST = defineTool({
           agentId: input.agentId,
           includeArchived: input.where?.hidden,
           hasTrigger: input.where?.has_trigger,
+          source: input.source,
         });
 
     const hasMore = offset + limit < total;

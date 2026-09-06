@@ -1,5 +1,5 @@
-import { Suspense, lazy } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Suspense, lazy, type ReactNode } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useProjectContext } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useChatTask } from "@/components/chat/context";
@@ -22,7 +22,7 @@ import {
   BlocksEmptyState,
   BlocksErrorState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
-import { MainPanelLoading } from "@/layouts/main-panel-tabs/main-panel-loading";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 
 const SectionsEditor = lazy(() =>
   import("@/components/sections-editor/sections-editor").then((m) => ({
@@ -69,11 +69,6 @@ export function BlocksPanel({
     : null;
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
-  // No `frameworkKnownMissing` here on purpose: the sticky bit exists to stop
-  // the Preview toolbar's CMS controls flickering on transient read failures.
-  // This panel is already open, and showing the accurate "we couldn't read the
-  // decofile" card for a real failure is more useful than pinning it to the
-  // framework-missing card.
   const state = resolveBlocksTabState({
     lifecyclePhase: sandboxEvents.lifecycle.phase,
     decofile: toBlocksQueryState(decofile),
@@ -82,8 +77,14 @@ export function BlocksPanel({
     fastPreviewActive: useSessionRuntime(virtualMcpId).runtime === "cms",
   });
 
-  if (state.kind === "loading") return <MainPanelLoading />;
-  if (state.kind === "empty") return <BlocksEmptyState />;
+  const panel = (children: ReactNode) => (
+    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
+      {children}
+    </div>
+  );
+
+  if (state.kind === "loading") return panel(<PanelLoading />);
+  if (state.kind === "empty") return panel(<BlocksEmptyState />);
   if (state.kind === "error") {
     const retry = () => {
       if (state.source === "sandbox") {
@@ -92,8 +93,11 @@ export function BlocksPanel({
       }
       void Promise.all([decofile.refetch(), meta.refetch()]);
     };
-    return <BlocksErrorState source={state.source} onRetry={retry} />;
+    return panel(<BlocksErrorState source={state.source} onRetry={retry} />);
   }
+
+  const editorPanel = (children: ReactNode) =>
+    panel(<div className="h-full min-h-0">{children}</div>);
 
   // Blocks edits whatever page its sibling Preview canvas is on. The shared
   // workspace target is published by Preview; when Preview hasn't run yet,
@@ -102,21 +106,16 @@ export function BlocksPanel({
 
   // Loaders have their own editor (form + Run), not the sections editor.
   if (target?.kind === "loader" && decofile.data && meta.data) {
-    return (
-      <div
-        data-testid="blocks-panel"
-        className="h-full min-h-0 overflow-hidden"
-      >
-        <GlobalLoaderEditor
-          orgSlug={org.slug}
-          virtualMcpId={virtualMcpId}
-          branch={currentBranch ?? ""}
-          previewUrl={previewUrl ?? null}
-          meta={meta.data}
-          decofile={decofile.data}
-          blockKey={target.key}
-        />
-      </div>
+    return editorPanel(
+      <GlobalLoaderEditor
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? ""}
+        previewUrl={previewUrl ?? null}
+        meta={meta.data}
+        decofile={decofile.data}
+        blockKey={target.key}
+      />,
     );
   }
 
@@ -146,38 +145,33 @@ export function BlocksPanel({
       ? `section:${activeGlobalBlockKey}`
       : `path:${currentPath}`;
 
-  return (
-    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
-      <Suspense
-        fallback={
-          <div className="h-full flex items-center justify-center">
-            <Loading01
-              size={20}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
+  return editorPanel(
+    <Suspense
+      fallback={
+        <div className="h-full flex items-center justify-center">
+          <Spinner className="size-5 text-muted-foreground" />
+        </div>
+      }
+    >
+      <SectionsEditor
+        key={editorKey}
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? ""}
+        previewReady
+        previewUrl={previewUrl ?? undefined}
+        currentPath={currentPath}
+        activePageBlockKey={activePageBlockKey}
+        activeGlobalBlockKey={activeGlobalBlockKey}
+        externalSelection={activeGlobalBlockKey ? null : externalSelection}
+        initialEditSeo={
+          !!activePageBlockKey &&
+          workspace.state.editSeoPageKey === activePageBlockKey
         }
-      >
-        <SectionsEditor
-          key={editorKey}
-          orgSlug={org.slug}
-          virtualMcpId={virtualMcpId}
-          branch={currentBranch ?? ""}
-          previewReady
-          previewUrl={previewUrl ?? undefined}
-          currentPath={currentPath}
-          activePageBlockKey={activePageBlockKey}
-          activeGlobalBlockKey={activeGlobalBlockKey}
-          externalSelection={activeGlobalBlockKey ? null : externalSelection}
-          initialEditSeo={
-            !!activePageBlockKey &&
-            workspace.state.editSeoPageKey === activePageBlockKey
-          }
-          onExitSeo={workspace.consumeEditSeo}
-          onVariantPreviewOverride={workspace.setVariantOverride}
-          onViewJsonFile={onViewJsonFile}
-        />
-      </Suspense>
-    </div>
+        onExitSeo={workspace.consumeEditSeo}
+        onVariantPreviewOverride={workspace.setVariantOverride}
+        onViewJsonFile={onViewJsonFile}
+      />
+    </Suspense>,
   );
 }

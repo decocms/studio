@@ -8,8 +8,8 @@
  * Prettier/TS-diagnostics/save machinery.
  */
 
-import { Loading01 } from "@untitledui/icons";
 import { getLanguageFromPath } from "@/components/sandbox/preview/file-explorer/utils";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Editor } from "@/components/monaco/editor";
 import { usePreferences } from "@/hooks/use-preferences";
 
@@ -36,7 +36,7 @@ export function ReadOnlyCodeViewer({
       theme={isDark ? "vs-dark" : "light"}
       loading={
         <div className="flex h-full w-full items-center justify-center">
-          <Loading01 size={20} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-5 text-muted-foreground" />
         </div>
       }
       options={{

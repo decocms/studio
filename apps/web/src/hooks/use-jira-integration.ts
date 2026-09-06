@@ -1,7 +1,8 @@
 /**
- * Per-org Jira integration (`JIRA_*` tools) — managed from Settings → Jira.
- * One integration per org: credentials, one synced project, and the
- * per-tenant Jira-status → board-status mapping.
+ * Per-org Jira integration (`JIRA_*` tools) — managed from Settings → Tasks.
+ * One integration per org: credentials, the board it watches, the webhook
+ * that tells it when an issue moves, and the per-status rules that start an
+ * agent run when an issue enters a status.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,8 +14,6 @@ import { useStudioTools } from "@/lib/studio-tools";
 export type JiraIntegration = NonNullable<
   StudioToolIO["JIRA_INTEGRATION_GET"]["output"]["integration"]
 >;
-export type JiraSyncRunResult =
-  StudioToolIO["JIRA_SYNC_RUN"]["output"]["result"];
 
 export function useJiraIntegration() {
   const { org } = useProjectContext();
@@ -65,7 +64,7 @@ export function useJiraBoardColumns(boardId: string | null) {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   return useQuery({
-    queryKey: KEYS.jiraBoardColumns(org.id, boardId ?? ""),
+    queryKey: KEYS.jiraBoardColumns(org.id, boardId),
     enabled: boardId !== null,
     staleTime: 60_000,
     queryFn: async () =>
@@ -74,29 +73,47 @@ export function useJiraBoardColumns(boardId: string | null) {
   });
 }
 
-export function useRunJiraSync() {
+export type JiraAutomation =
+  StudioToolIO["JIRA_AUTOMATION_LIST"]["output"]["automations"][number];
+
+export function useJiraAutomations() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => (await studio.call("JIRA_SYNC_RUN", {})).result,
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: KEYS.jiraIntegration(org.id) }),
+  return useQuery({
+    queryKey: KEYS.jiraAutomations(org.id),
+    queryFn: async () =>
+      (await studio.call("JIRA_AUTOMATION_LIST", {})).automations,
   });
 }
 
 /**
- * Ask for a full re-scan. Returns as soon as the request is recorded — the
- * scan itself is the scheduler's, paced across ticks, because a whole board is
- * far more Jira reads than a request should hold open.
+ * Turn a status rule on, off, or reword it.
+ *
+ * `null` is off: the row is deleted rather than stored empty, so "no rule" has
+ * one representation. An empty prompt is stored as no prompt, which means the
+ * agent runs on its own instruction.
  */
-export function useRequestJiraResync() {
+export function useSetJiraAutomation() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => await studio.call("JIRA_RESYNC_REQUEST", {}),
+    mutationFn: async (input: {
+      jiraStatus: string;
+      prompt: string | null;
+    }) => {
+      if (input.prompt === null) {
+        await studio.call("JIRA_AUTOMATION_DELETE", {
+          jiraStatus: input.jiraStatus,
+        });
+        return;
+      }
+      await studio.call("JIRA_AUTOMATION_UPSERT", {
+        jiraStatus: input.jiraStatus,
+        prompt: input.prompt.trim() === "" ? undefined : input.prompt,
+      });
+    },
     onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: KEYS.jiraIntegration(org.id) }),
+      queryClient.invalidateQueries({ queryKey: KEYS.jiraAutomations(org.id) }),
   });
 }

@@ -3,6 +3,7 @@ import {
   getCommerceDiscoveryAgentId,
   WellKnownOrgMCPId,
 } from "@decocms/shared/sdk";
+import { agentPanelPath } from "@decocms/shared/organization-paths";
 import { Hono } from "hono";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -59,13 +60,14 @@ export const shareInviteBodySchema = z.object({
  *  Relative (path + query) so it is a safe `redirectTo` (login.tsx rejects
  *  absolute/protocol-relative targets). Exported for unit tests. */
 export function diagnosticDeepLinkPath(orgSlug: string, orgId: string): string {
-  const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId);
-  const search = new URLSearchParams({
-    connection: connectionId,
-    tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+  return agentPanelPath(orgSlug, {
+    projectId: getCommerceDiscoveryAgentId(orgId),
+    panel: "app",
+    search: {
+      connection: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
+      tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+    },
   });
-  const agentId = getCommerceDiscoveryAgentId(orgId);
-  return `/${orgSlug}/agents/${agentId}/app?${search.toString()}`;
 }
 
 export const createCommerceDiagnosticShareRoutes = () => {

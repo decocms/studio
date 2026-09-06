@@ -55,6 +55,13 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
       );
     }
 
+    // Validate organization ID matches context (mirrors member-add.ts/update.ts).
+    if (organizationId !== ctx.organization?.id) {
+      throw new Error(
+        "Organization ID does not match authenticated organization",
+      );
+    }
+
     // Validate the caller is allowed to assign every target role. `organizationId`
     // may be an explicit override (not the session's active org), and
     // `ctx.auth.user?.role` only ever reflects the active-org role — using it here

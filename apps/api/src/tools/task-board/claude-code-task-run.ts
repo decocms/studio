@@ -283,21 +283,21 @@ export function buildClaudeCodeTaskPrompt(
         : "."),
     "- Change only what the task needs. Don't refactor around it.",
     // The two defects behind every card that burned its bounce budget.
-    "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is dead code, and it is the most common reason a task comes back rejected.",
+    "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is the most common reason a task comes back rejected.",
     // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
-    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path (the dev server hot-reloads, so hit the route it renders) and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
-    // The sandbox image bakes in chromium + a global playwright-core and wraps
-    // them as `qa-screenshot` (packages/sandbox/image/Dockerfile). Nothing told
-    // this run about it, so a UI task would `ls node_modules/.bin | grep
-    // playwright`, find nothing in the USER's repo, conclude no browser exists,
-    // and either hand-roll a CDP client or give up on looking at the change.
-    "- For a VISUAL change that means LOOKING at it: `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders the page in headless Chromium — it reaches your own dev server on localhost, and unlike `curl` it runs the page's JS, so lazily-rendered sections are actually there. Then `Read` the file: a screenshot you never opened is not verification. It is already installed; do NOT look for playwright in the repo's `node_modules` or start a browser yourself.",
-    // The ONLY reliable way the board learns the PR: Claude Code opens it inside
-    // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
-    // dispatched from the linked PR, so skipping this strands the card.
-    `- As soon as \`gh pr create\` prints the URL, call \`mcp__studio__TASK_BOARD_ITEM_PR_LINK\` with that url. Do this even if you also mention the PR in a comment — the reviewers are dispatched from the linked PR, not from your message.`,
+    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+    // The sandbox's state — installed or not, dev server or not — is NOT
+    // stated here. It is decided by the claim, minutes after this string is
+    // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends
+    // the true answer at dispatch.
+    '- A browser is installed globally, NOT in the repo\'s `node_modules` — don\'t go looking for playwright there. `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders any URL (localhost included) in headless Chromium, runs the page\'s JS, and writes a file you must then `Read` — a screenshot you never opened is not verification. To INTERACT (click, fill, `document.elementFromPoint`), write a throwaway node script: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`.',
+    // How the board finds the PR now: it looks GitHub up by the branch this
+    // checkout is on (`pr-by-branch.ts`), so the one thing the run must not do
+    // is open the PR from some other branch. Replaces `TASK_BOARD_ITEM_PR_LINK`,
+    // which a run that died right after `gh pr create` could never call.
+    "- Open the pull request from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.",
     // Deliberately NOT "then move it to In Review". Linking the PR is what
     // starts the review (`openReviewCycleIfInProgress`), and the card stays In
     // Progress until the reviewer decides — an agent is still working on it.

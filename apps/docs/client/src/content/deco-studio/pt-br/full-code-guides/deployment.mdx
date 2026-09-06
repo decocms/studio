@@ -1,141 +1,95 @@
 ---
 title: Deployment
-description: Implante seu app de IA full-stack no Cloudflare Workers
+description: Compile e implante seu MCP App
 icon: Rocket
 ---
-
 import Callout from "../../../../components/ui/Callout.astro";
 
-## Comando de Deploy
-
-Quando estiver pronto para compartilhar seu app com o mundo (ou sua equipe), você vai implantá-lo no Cloudflare Workers via deco CLI.
-
+## Build
 
 ```bash
-npm run deploy
+bun run build
 ```
 
-É isso! Seu app vai ao ar na rede edge global do Cloudflare.
+Isso executa duas etapas:
 
-## O Que Acontece
+1. **`build:web`** — o Vite compila o app React em um bundle HTML de arquivo único (`dist/client/index.html`)
+2. **`build:server`** — o Bun empacota `api/main.ts` em `dist/server/main.js` (minificado, pronto para produção)
 
-**1. Build do frontend**
-- Vite empacota app React (`/view`) em arquivos estáticos otimizados
-- Output vai para `/view/dist`
+## Configuração do `app.json`
 
-**2. Build do worker**
-- TypeScript compila `server/main.ts`
-- Dependências empacotadas
-- Assets estáticos anexados usando Workers asset binding
+Atualize o `app.json` com os detalhes do seu app antes de publicar:
 
-**3. Upload para Cloudflare**
-- Usa `wrangler.toml` para configuração do projeto
-- Código do Worker implantado globalmente
-- Assets servidos da edge
-- Banco de dados (D1) provisionado automaticamente
-
-**4. URL Ativa**
-- Seu app vai ao ar em `https://<nome-do-app>.deco.page`
-- Endpoint MCP disponível em `https://<nome-do-app>.deco.page/mcp`
-
-<Callout type="success">
-  **Um repo, um deploy, uma URL.** Frontend, backend e banco de dados implantados juntos com contexto compartilhado e zero código de integração.
-</Callout>
-
-## Autenticação
-
-Primeiro deploy requer autenticação:
-
-```bash
-deco login
-# ou
-npx decocms login
+```json
+{
+  "scopeName": "your-org",
+  "name": "your-app",
+  "friendlyName": "Your App Name",
+  "description": "What your app does.",
+  "connection": {
+    "type": "HTTP",
+    "url": "https://your-app.deco.site/api/mcp",
+    "configSchema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}
 ```
 
-Abre o navegador para autenticar. Suas credenciais persistem localmente.
+- **`scopeName`** + **`name`** — identificador único na plataforma deco
+- **`connection.url`** — seu endpoint MCP implantado (deve terminar com `/api/mcp`)
+- **`configSchema`** — JSON Schema para as opções de configuração mostradas a quem instala seu app
 
-## Deploy CI/CD
+## Publicando no Deco Studio
 
-Para deploys automatizados, use um token de API:
+1. Atualize o `app.json` com o nome, a descrição e a URL de conexão implantada do seu app
+2. Faça push para o seu repositório
+3. Siga as instruções de publicação da plataforma deco para disponibilizar seu app
 
-```bash
-deco deploy -t <seu-token-de-api>
-```
+## CI/CD
 
-Obtenha tokens das configurações do seu workspace com permissão `HOSTING_APP_DEPLOY`.
+### GitHub Actions
 
-**Exemplo GitHub Actions:**
+O template inclui um workflow de CI (`.github/workflows/ci.yml`):
+
 ```yaml
-name: Deploy
-on:
-  push:
-    branches: [main]
+name: CI
+
+on: [push, pull_request]
 
 jobs:
-  deploy:
+  ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: '22'
-      - run: npm install
-      - run: npm run deploy
-        env:
-          DECO_TOKEN: ${{ secrets.DECO_TOKEN }}
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile
+      - run: bun run ci:check
+      - run: bun run check
+      - run: bun run build
 ```
 
-## Benefícios do Runtime Edge
+Isso roda em todo push e pull request:
+- **`bun run ci:check`** — lint e checagem de formatação com Biome
+- **`bun run check`** — checagem de tipos do TypeScript
+- **`bun run build`** — build de produção completo
 
-**Deploy global:**
-Código roda em 300+ cidades no mundo. Usuários conectam na localização edge mais próxima.
+## Testando Após o Deploy
 
-**Auto-scaling:**
-Cloudflare lida com picos de tráfego automaticamente. Sem planejamento de capacidade necessário.
-
-**Zero cold starts:**
-Workers ficam aquecidos. Primeira requisição é tão rápida quanto a centésima.
-
-**I/O eficiente:**
-Worker suspende durante chamadas `await` (fetch, queries de banco). Esperas de API externa não contam contra tempo de CPU, mantendo custos baixos mesmo com muitas dependências externas.
-
-## Testes Pós-Deploy
-
-Teste produção imediatamente após deploy:
-
-1. Abra `https://<nome-do-app>.deco.page`
-2. Verifique que o frontend carrega corretamente
-3. Teste chamadas de tools através da UI
-4. Verifique que integrações funcionam (produção pode usar credenciais diferentes do dev)
-5. Teste como um usuário final interagiria com o app
-6. Revise logs do Cloudflare Worker se problemas ocorrerem
-
-## Atualizações e Rollbacks
-
-**Deploy de atualizações:**
-```bash
-# Faça mudanças
-npm run deploy
-```
-
-Deploys rápidos significam que você pode iterar rapidamente.
-
-**Rollback:**
-```bash
-git checkout <commit-anterior>
-npm run deploy
-```
-
-Sem gerenciamento de versão integrado ainda. Use Git para rastrear mudanças e fazer redeploy de versões anteriores se necessário.
-
-<Callout type="warning">
-  **Variáveis de ambiente:** Configure secrets de produção em `wrangler.toml` ou no dashboard do Cloudflare. Nunca commite secrets no Git.
-</Callout>
-
-## Domínios Customizados
-
-Suporte a domínio customizado em breve. Por enquanto, apps são implantados em subdomínios `*.deco.page`.
-
----
-
-**Lembre-se:** Todo deploy é um novo começo. O banco de dados persiste, mas o código do Worker atualiza instantaneamente em todas as localizações edge.
+1. Acesse [admin.decocms.com](https://admin.decocms.com)
+2. Adicione a URL implantada + `/api/mcp` como uma integração customizada
+3. Teste as invocações de tools
+4. Verifique se as UIs do MCP App renderizam corretamente no client

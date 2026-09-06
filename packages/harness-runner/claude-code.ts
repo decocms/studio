@@ -308,11 +308,11 @@ export function buildOptions(args: {
  *   connected or failed instead of the `pending` a deferred server shows.
  *
  * Deferral is Claude Code's own behavior, not something requested here, and it
- * only applies when tool search is on — which it is NOT on a non-first-party
- * `ANTHROPIC_BASE_URL` (our OpenRouter path) unless `ENABLE_TOOL_SEARCH` is set
- * for that process. On those runs every org tool loads eagerly, so a big org is
- * still a big prompt. Setting it there is a decision about whether the proxy
- * forwards `tool_reference` blocks, which is not this file's to make.
+ * only applies when tool search is on — which the CLI turns OFF by default on a
+ * non-first-party `ANTHROPIC_BASE_URL` (our OpenRouter path). Studio therefore
+ * sets `ENABLE_TOOL_SEARCH` on every run's environment; without it a big org's
+ * schemas are all in the turn-1 prompt and the run dies on `Prompt is too long`
+ * before its first tool call. See `claude-code-env.ts`.
  *
  * Exported for the unit test, which owns the merge.
  */
@@ -413,13 +413,34 @@ const PROVIDER_BACKOFF_BASE_MS = 1_000;
  * Whether an SDK throw is the upstream provider failing rather than the request
  * being wrong.
  *
- * Matched on OpenRouter's own relay wording, not on the status code: a 400 whose
- * body describes the request (`messages.0: text content blocks must be
- * non-empty`) is a bug a retry would only repeat, and must stay fatal. Exported
- * for the unit test — pure.
+ * The wording alone no longer decides it. OpenRouter used to relay the
+ * upstream's own message (`messages.0: text content blocks must be non-empty`),
+ * which is what the status-blind match here was built on; it now flattens EVERY
+ * upstream rejection — a malformed request included — to the same
+ * `Provider returned error`, and moves the real reason into a `metadata` object
+ * the `claude` CLI drops before this ever sees it. Verified against all ten
+ * upstreams of `anthropic/claude-opus-5`: an empty text block and a 5th
+ * `cache_control` breakpoint both come back as `400 Provider returned error`
+ * from every one of them.
+ *
+ * So the status is the only signal left, and it is enough. OpenRouter fails
+ * over across upstreams on its own before answering (the relayed body carries
+ * the ones it already tried as `previous_errors`), so a 4xx that survived that
+ * is a request every upstream refused — retrying it burns the budget and the
+ * backoff to arrive at the identical 400. A 5xx or a 429 is the upstream, not
+ * the request, and is exactly what the retry exists for.
+ *
+ * Exported for the unit test — pure.
  */
 export function isTransientProviderRejection(message: string): boolean {
-  return /provider returned error/i.test(message);
+  if (!/provider returned error/i.test(message)) return false;
+  const status = Number(/\bAPI Error: (\d{3})\b/.exec(message)?.[1]);
+  // An unparseable status keeps the old benefit of the doubt: one wasted retry
+  // beats refusing a run over a message shape the CLI changed.
+  if (!Number.isInteger(status)) return true;
+  // 408/429 are the 4xx that mean "ask again", not "you asked wrong".
+  if (status === 408 || status === 429) return true;
+  return status >= 500 && status < 600;
 }
 
 /**

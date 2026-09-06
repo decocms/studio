@@ -17,6 +17,7 @@ import {
   type Workload,
 } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
 import { secondaryRepoDirNames } from "@decocms/shared/secondary-repo-dirs";
 import { sleep } from "@decocms/shared/std";
@@ -246,6 +247,17 @@ export async function ensureSandbox(
      * isn't happening. Best-effort: a throw here must not fail the ensure.
      */
     onColdStart?: () => Promise<void>;
+    /**
+     * The pod this call bound, once it is known: `warmPoolAdopted` means the
+     * tenant warm pool handed over a pod that is already cloned, installed and
+     * serving, rather than a bare `cloneOnly` checkout.
+     *
+     * A callback rather than a return field because `SandboxRecord` is
+     * persisted (thread + agent metadata) and this is a fact about ONE claim,
+     * not about the sandbox. Not fired on the resume fast path — no pod was
+     * bound there, so a caller keeps whatever it already assumed.
+     */
+    onBound?: (info: { warmPoolAdopted: boolean }) => void;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -310,7 +322,7 @@ export async function ensureSandbox(
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
   // Past the resume fast path: this call is a real boot, so tell the caller.
   await input.onColdStart?.().catch(() => {});
-  const { entry } = await provisionSandbox({
+  const { entry, warmPoolAdopted } = await provisionSandbox({
     ctx,
     userId,
     sandboxUserId,
@@ -324,6 +336,7 @@ export async function ensureSandbox(
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
   });
+  input.onBound?.({ warmPoolAdopted });
   return entry;
 }
 
@@ -402,9 +415,11 @@ async function buildExtraRepoOpts(args: {
   return out;
 }
 
-async function provisionSandbox(
-  params: StartParams,
-): Promise<{ entry: SandboxRecord; isNewVm: boolean }> {
+async function provisionSandbox(params: StartParams): Promise<{
+  entry: SandboxRecord;
+  isNewVm: boolean;
+  warmPoolAdopted: boolean;
+}> {
   const {
     ctx,
     userId,
@@ -646,7 +661,8 @@ async function provisionSandbox(
   // infrastructure.
   await waitForSchedulableCapacity(runner);
 
-  const sandbox = await runner.ensure(
+  const sandbox = await ensureOrRephrase(
+    runner,
     { userId: sandboxUserId, projectRef },
     {
       // Annotation only — the handle comes from `projectRef`, which already
@@ -730,7 +746,7 @@ async function provisionSandbox(
 
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
-  return { entry, isNewVm };
+  return { entry, isNewVm, warmPoolAdopted: sandbox.warmPoolAdopted };
 }
 
 /**
@@ -855,6 +871,36 @@ const CAPACITY_POLL_MS = 5_000;
  * everyone behind it. That is the trade — one run pays the readiness timeout
  * instead of every run in the burst.
  */
+/**
+ * `runner.ensure`, with daemon-config failures rephrased for the caller.
+ *
+ * A `ConfigRequestError` is the bootstrap handshake failing against the pod —
+ * most often a sentinel 401, meaning the pool handed out a pod already bound to
+ * another claim. The runner already tore the claim down, so the correct next
+ * step is another attempt on a different pod. Two callers need that said in
+ * words: the task board decides a retry by matching the message
+ * (`isTransientRunFailure` — "sandbox provisioning failed" is one of its
+ * patterns), and the agent gets this as a tool error, where the raw
+ * `/_sandbox/config returned 401: {"error":"unauthorized"}` reads as a bug in
+ * the tool call it just made and it stops using the filesystem instead of
+ * retrying. The status stays in the message for the logs; `cause` keeps the
+ * original for anything that wants it.
+ */
+async function ensureOrRephrase(
+  runner: AgentSandboxProvider,
+  ...args: Parameters<AgentSandboxProvider["ensure"]>
+): Promise<Awaited<ReturnType<AgentSandboxProvider["ensure"]>>> {
+  try {
+    return await runner.ensure(...args);
+  } catch (err) {
+    if (!(err instanceof ConfigRequestError)) throw err;
+    throw new Error(
+      `sandbox provisioning failed: the sandbox pod rejected the bootstrap handshake (HTTP ${err.status}). The claim was released; retrying gets a different pod.`,
+      { cause: err },
+    );
+  }
+}
+
 async function waitForSchedulableCapacity(
   runner: AgentSandboxProvider,
 ): Promise<void> {

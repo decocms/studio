@@ -1,8 +1,10 @@
 /**
  * Pure helpers for the tab id — the app's ONE name for a main-panel view.
  *
- * Tab id grammar:
- *   - Fixed system: "settings" | "automations" | "preview" | "git"
+ * View id grammar:
+ *   - Fixed system/destination: "overview" | "settings" | "automations" |
+ *     "site-editor" | "content" | "code" | "assets" | "hosting" | "e2e" |
+ *     "analytics" | "cdn" | "git"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
  *   - Agent-declared: <agentTab.id> (from virtualMcp.metadata.ui.layout.tabs)
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
@@ -12,9 +14,9 @@
  *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
  *   - Ephemeral Library file preview: "library-file:<encoded browse path>"
  *
- * A tab id is internal: the tab bar, the per-thread layout memory and the bar's
- * order storage speak it, and `panel-route.ts` is the single boundary that
- * writes it into the URL as `/agents/{-$project}/{-$panel}` and reads it back.
+ * A view id is internal: the sidebar, panel bar, and per-thread layout memory
+ * speak it, and `panel-route.ts` is the single boundary that writes it into the
+ * URL as `/agents/{-$project}/{-$panel}` and reads it back.
  * There is no closed sentinel any more — whether the panel is open is
  * `?mainpanel`, a separate boolean, so a closed panel still remembers its view.
  *
@@ -179,24 +181,43 @@ export const FIXED_SYSTEM_TABS = [
   "overview",
   "settings",
   "automations",
-  "preview",
+  "site-editor",
   "code",
   "content",
   "assets",
+  "hosting",
+  "e2e",
+  "analytics",
+  "cdn",
   "git",
 ] as const;
 
 const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
 
+/**
+ * Per-site, org/flag-gated tabs (Hosting · E2E · Deco Analytics · Monitor).
+ * Unlike the other fixed system tabs they are not available to every project,
+ * and they only ever appear alongside a project (never as a lone
+ * `/agents/<segment>` word), so they must be EXCLUDED from the global
+ * known-panel-segment set — otherwise a project whose slug is one of these words
+ * stops resolving as a project. See `panel-route.ts`.
+ */
+export const GATED_CONTROL_PLANE_TABS = new Set<string>([
+  "hosting",
+  "e2e",
+  "analytics",
+  "cdn",
+]);
+
 // Agent-independent overlays (Tasks `board`, Library `files`, the commerce
 // report's `connect-sources`, the empty `reports`) take over the panel and aren't
-// sandbox-backed views. Shared by the drawer-visibility check and the
-// in-panel-app navigate allowlist so the two stay in sync.
+// sandbox-backed views. Also the in-panel-app navigate allowlist.
 export const OVERLAY_TABS = new Set([
   "board",
   "files",
   "connect-sources",
   "reports",
+  "discover",
 ]);
 
 /**
@@ -223,6 +244,29 @@ export function isPerThreadTab(tabId: string): boolean {
 }
 
 /**
+ * Tab ids that were RENAMED, mapped old → new. Both readers of an id the app
+ * did not just mint — a `{-$panel}` URL segment (bookmarked, shared, or minted
+ * by the legacy `?main=` translator) and a stored
+ * `metadata.ui.layout.defaultMainView.type` (a DB row on every agent imported
+ * before the rename) — go through {@link normalizePanelSegment}, so the old
+ * name keeps resolving forever while nothing writes it again.
+ */
+const RENAMED_PANEL_SEGMENTS: ReadonlyMap<string, string> = new Map([
+  /** The one surface Preview, Content and Code are tabs on. */
+  ["preview", "site-editor"],
+]);
+
+/**
+ * The canonical tab id for a segment or a stored view type, accepting the
+ * legacy names in {@link RENAMED_PANEL_SEGMENTS}. Identity for everything else,
+ * so it is safe to run over any id — including the payload-carrying kinds and
+ * agent-declared tab ids, which are never renamed.
+ */
+export function normalizePanelSegment(segment: string): string {
+  return RENAMED_PANEL_SEGMENTS.get(segment) ?? segment;
+}
+
+/**
  * Legacy tab ids that were merged into the unified "settings" tab. Kept
  * here so saved defaults / URL state migrate cleanly.
  */
@@ -237,20 +281,54 @@ export function isLegacySettingsTab(tabId: string | undefined): boolean {
   return !!tabId && LEGACY_SETTINGS_TABS.has(tabId);
 }
 
+/**
+ * The view a link to this agent should land on, or `undefined` when it names
+ * none. `undefined` is meaningful: the caller sends those to Home rather than
+ * to a bare agent URL with no view.
+ *
+ * `resolveDefaultTabId` cannot answer this — it falls back to `settings` for an
+ * agent that named nothing, which is a sensible tab to RENDER but a wrong place
+ * to SEND someone from a card they clicked.
+ */
+/**
+ * Org-level destinations an agent may name as its main view. They are not
+ * `FIXED_SYSTEM_TABS` — they never appear on the tab bar — but the panel
+ * machinery renders them, so they are legal places to land.
+ */
+export const DESTINATION_MAIN_VIEWS: ReadonlySet<string> = new Set([
+  "overview",
+  "board",
+  "reports",
+]);
+
+export function landingTabIdFor(
+  metadata: EntityLayoutMetadata | null | undefined,
+): string | undefined {
+  const def = metadata?.defaultMainView ?? null;
+  /** `chat` is the retired "no main view" state; treat it as naming none. */
+  if (!def || def.type === "chat") return undefined;
+  return resolveDefaultTabId(metadata ?? null);
+}
+
 export function resolveDefaultTabId(
   metadata: EntityLayoutMetadata | null,
 ): string {
   const def = metadata?.defaultMainView ?? null;
   if (!def) return "settings";
 
+  /** Stored rows predate the renames — normalise before matching anything. */
+  const type = normalizePanelSegment(def.type);
+
   // Legacy tab ids (instructions/connections/layout) now live inside the
   // unified "settings" tab.
-  if (LEGACY_SETTINGS_TABS.has(def.type)) return "settings";
+  if (LEGACY_SETTINGS_TABS.has(type)) return "settings";
 
-  // Direct mapping for any fixed system tab id.
-  if (FIXED_SYSTEM_TAB_SET.has(def.type)) return def.type;
+  // A fixed project view, or a destination an agent may land on.
+  if (FIXED_SYSTEM_TAB_SET.has(type) || DESTINATION_MAIN_VIEWS.has(type)) {
+    return type;
+  }
 
-  if (def.type === "ext-app" || def.type === "ext-apps") {
+  if (type === "ext-app" || type === "ext-apps") {
     // Pinned view default: { type: "ext-apps", id: connectionId, toolName }.
     // Round-trip as the composite pinned-view tab id so the pinned-view
     // branch in MainPanelContent renders it without a metadata round-trip.
@@ -286,11 +364,13 @@ export function resolveActiveTabAndOpen(ctx: {
   routeDefaultMain?: string | null;
 }): { mainOpen: boolean; activeTab: string } {
   const def = ctx.routeDefaultMain || resolveDefaultTabId(ctx.metadata);
-  // Legacy ids coming from URL state migrate to the unified settings tab.
+  // URL-state ids: legacy ones fold into settings, renamed ones normalise.
   const named =
     ctx.panelTabId && LEGACY_SETTINGS_TABS.has(ctx.panelTabId)
       ? "settings"
-      : ctx.panelTabId;
+      : ctx.panelTabId
+        ? normalizePanelSegment(ctx.panelTabId)
+        : ctx.panelTabId;
 
   const view = ctx.metadata?.defaultMainView ?? null;
   const defaultIsChat = view == null || view.type === "chat";

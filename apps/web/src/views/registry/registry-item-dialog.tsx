@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -26,7 +27,6 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle,
-  Loading01,
   RefreshCcw01,
   X,
 } from "@untitledui/icons";
@@ -64,7 +64,19 @@ interface RegistryItemDialogProps {
 }
 
 const REMOTE_TYPES = new Set(["http", "sse", "stdio"]);
-const ID_PATTERN = /^[a-z0-9]+(?:[/-][a-z0-9._-]+)*$/;
+/**
+ * `owner/name`-ish ids: runs of alphanumerics joined by punctuation, optionally
+ * split into `/`-separated segments.
+ *
+ * Written so no two adjacent quantifiers can match the same character —
+ * `[a-z0-9]+`, `[._-]+` and `/` are mutually disjoint, so each position has one
+ * possible parse and a non-match fails in linear time. The previous form,
+ * `^[a-z0-9]+(?:[/-][a-z0-9._-]+)*$`, had `-` in BOTH the separator class and
+ * the body class, so a string like `0-` followed by many `--` had exponentially
+ * many ways to be split and took exponential time to reject.
+ */
+const ID_PATTERN =
+  /^[a-z0-9]+(?:[._-]+[a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-]+[a-z0-9]+)*)*$/;
 const DEFAULT_TAGS = [
   "internal",
   "automation",
@@ -945,7 +957,7 @@ export function RegistryItemDialog({
               disabled={discoverStatus === "loading"}
             >
               {discoverStatus === "loading" ? (
-                <Loading01 size={12} className="animate-spin" />
+                <Spinner className="size-3" />
               ) : (
                 <RefreshCcw01 size={12} />
               )}

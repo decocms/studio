@@ -62,6 +62,16 @@ const ThreadMetadataSchema = z
       .describe(
         "Session runtime, stamped once at creation and immutable afterwards: 'cms' is a sandbox-less content session, 'sandbox' a coding session with a pod. Absent only on threads created before the stamp existed.",
       ),
+    source: z
+      .enum(["jira"])
+      .optional()
+      .describe(
+        "What started the run: 'jira' for a run the Jira integration dispatched when an issue entered an automated status. Absent for a person's thread.",
+      ),
+    jira_issue_key: z
+      .string()
+      .optional()
+      .describe("The Jira issue a 'jira' run works on, e.g. EX-12."),
   })
   .catchall(z.unknown());
 

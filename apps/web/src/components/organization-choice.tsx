@@ -1,6 +1,7 @@
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Loading01, Plus } from "@untitledui/icons";
+import { Plus } from "@untitledui/icons";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -170,7 +171,7 @@ export function OrganizationChoice({
               >
                 {isJoining ? (
                   <span className="flex items-center gap-2">
-                    <Loading01 size={14} className="animate-spin" /> Joining...
+                    <Spinner className="size-3.5" /> Joining...
                   </span>
                 ) : (
                   "Join"
@@ -190,8 +191,7 @@ export function OrganizationChoice({
                 >
                   {isRequesting ? (
                     <span className="flex items-center gap-2">
-                      <Loading01 size={14} className="animate-spin" />{" "}
-                      Requesting...
+                      <Spinner className="size-3.5" /> Requesting...
                     </span>
                   ) : (
                     "Request to join"

@@ -8,71 +8,49 @@ import type {
 } from "@decocms/shared/tools/tool-io";
 import { useTaskBoardEvents } from "@/hooks/use-task-board-events";
 import { useDecopilotEvents } from "@/hooks/use-decopilot-events";
-import type { Sprint } from "@decocms/shared/sprints";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
 import { toast } from "sonner";
 
 type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 
-/**
- * What the board caches: the cards AND the sprints they can belong to.
- *
- * Both come from one `TASK_BOARD_ITEM_LIST` call, and a card carries only its
- * `sprintId` — caching the items alone would mean a second round trip (or a
- * second tool) just to turn that id into a name.
- */
+/** What the board caches: the cards, as one `TASK_BOARD_ITEM_LIST` answer. */
 type TaskBoardData = {
   items: TaskBoardItem[];
-  sprints: ToolOutput<"TASK_BOARD_ITEM_LIST">["sprints"];
-  /** The board's own columns. Studio's lanes for most orgs; an org that owns
-   *  its board sends its own, which is why the client cannot assume the set. */
-  columns: ToolOutput<"TASK_BOARD_ITEM_LIST">["columns"];
 };
 
-/**
- * The board's sprints, indexed by id, read from the same cached list the board
- * loads — so a card can name its sprint without the sprint being threaded down
- * through every lane and row.
- *
- * Shares `useTaskBoardItems`' query key and fetcher rather than calling that
- * hook itself: it also subscribes to the board's SSE streams, and one
- * subscription per rendered card is not what a lookup should cost.
- */
-export function useBoardSprintIndex(): Map<string, Sprint> {
-  const { locator } = useProjectContext();
-  const studio = useStudioTools();
-  const { data } = useQuery({
+/** The board list, as options rather than a hook, so a second reader can share
+ *  this query's CACHE without inheriting its live wiring. The org home reads it
+ *  with `useSuspenseQuery` (it needs the answer before it can choose a layout);
+ *  the board itself reads it below with the polling backstop and the SSE
+ *  upserts. Same key, one request, two reading styles. */
+export function taskBoardItemsQueryOptions(
+  locator: ReturnType<typeof useProjectContext>["locator"],
+  studio: ReturnType<typeof useStudioTools>,
+) {
+  return {
     queryKey: KEYS.taskBoardItems(locator),
-    queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints, columns } = await studio.call(
-        "TASK_BOARD_ITEM_LIST",
-        {},
-      );
-      return { items, sprints, columns };
-    },
-  });
-  return new Map((data?.sprints ?? []).map((sprint) => [sprint.id, sprint]));
-}
-
-export function useTaskBoardItems() {
-  const { org, locator } = useProjectContext();
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  const queryKey = KEYS.taskBoardItems(locator);
-
-  const query = useQuery({
-    queryKey,
-    queryFn: async (): Promise<TaskBoardData> => {
-      const { items, sprints, columns } = await studio.call(
-        "TASK_BOARD_ITEM_LIST",
-        {},
-      );
-      return { items, sprints, columns };
-    },
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
-  });
+    queryFn: async (): Promise<TaskBoardData> => {
+      const { items } = await studio.call("TASK_BOARD_ITEM_LIST", {});
+      return { items };
+    },
+  };
+}
+
+/**
+ * The live path for `KEYS.taskBoardItems` — SSE upserts and the linked-thread
+ * status patch, both writing the shared cache and reading none of it. Query-less
+ * on purpose, so every reader of that key mounts the same liveness: the board,
+ * and the org/project feed that reads the key through `useSuspenseQuery`. The
+ * watch connection is shared per org, so a second mount adds a handler, not a
+ * second stream.
+ */
+export function useTaskBoardLiveSync(): void {
+  const { org, locator } = useProjectContext();
+  const queryClient = useQueryClient();
+  const queryKey = KEYS.taskBoardItems(locator);
 
   // Live Super Agent transitions (todo → in_progress → in_review). Upsert the
   // pushed item into the cached list so the board moves cards without polling.
@@ -148,11 +126,16 @@ export function useTaskBoardItems() {
       );
     },
   });
+}
+
+export function useTaskBoardItems() {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const query = useQuery(taskBoardItemsQueryOptions(locator, studio));
+  useTaskBoardLiveSync();
 
   return {
     items: query.data?.items ?? [],
-    sprints: query.data?.sprints ?? [],
-    columns: query.data?.columns ?? [],
     isLoading: query.isLoading,
     error: query.error,
   };

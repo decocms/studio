@@ -11,6 +11,7 @@
  *     renders on the next pass.
  */
 import { siteUrlToHost } from "@decocms/shared/reports/site-url";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, useState, type ReactNode } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { authClient } from "@/lib/auth-client";
@@ -28,7 +29,6 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Loading01 } from "@untitledui/icons";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { CompanionConfigDialog, SaBindingDialog } from "./companion-card.tsx";
 import type { CompanionCardModel } from "./companions-core.ts";
@@ -68,7 +68,7 @@ function StatusDialog({
 function SpinnerRow({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-      <Loading01 size={16} className="animate-spin" />
+      <Spinner className="size-4" />
       <span>{label}</span>
     </div>
   );
@@ -211,14 +211,12 @@ function ConnectSourceDialogContent({
   );
 }
 
-/**
- * OAuth-lane connect in progress: fires `connect` once on mount (popup OAuth +
- * link write), showing a small progress dialog meanwhile. On success the
- * invalidations flip the card to linked and the parent re-renders straight
- * into the config dialog; on failure the error + retry stay here. Render-time
- * one-shot instead of a mount effect (no useEffect in this codebase), same
- * pattern as CmsAutoOpen in sandbox/preview/preview.tsx.
- */
+/** OAuth-lane connect in progress: fires `connect` once on mount (popup OAuth +
+ *  link write), showing a small progress dialog meanwhile. On success the
+ *  invalidations flip the card to linked and the parent re-renders straight
+ *  into the config dialog; on failure the error + retry stay here. Render-time
+ *  one-shot instead of a mount effect, since this codebase has no useEffect —
+ *  the same pattern `PathParamAutoFill` uses in sandbox/preview/preview.tsx. */
 function OauthConnectDialog({
   card,
   connecting,

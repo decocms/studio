@@ -1,11 +1,29 @@
 export const thread = {
   "thread.branchPicker.allLoaded": "All loaded",
+  "thread.branchPicker.branchTooltip": "branch: {branch}",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Couldn't load branches from GitHub. You can still pick from your branches.",
   "thread.branchPicker.couldntLoadPullRequests":
     "Couldn't load pull requests from GitHub.",
   "thread.branchPicker.createBranch": 'Create "{name}"',
+  "thread.branchPicker.advanced": "Advanced",
+  "thread.branchPicker.advancedBack": "Back",
+  "thread.branchPicker.cancel": "Cancel",
+  "thread.branchPicker.defaultVersionName": "Draft",
+  "thread.branchPicker.delete": "Delete",
+  "thread.branchPicker.deleteConfirm":
+    'Delete "{name}"? This can\'t be undone.',
+  "thread.branchPicker.deleteTitle": "Discard draft?",
+  "thread.branchPicker.live": "Production",
+  "thread.branchPicker.moreActions": "More actions",
+  "thread.branchPicker.newVersion": "New draft",
+  "thread.branchPicker.rename": "Rename",
+  "thread.branchPicker.save": "Save",
+  "thread.branchPicker.saveError": "Couldn't save the version. Try again.",
+  "thread.branchPicker.selectVersion": "Select a version",
+  "thread.branchPicker.newChatHint":
+    "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
   "thread.branchPicker.hiddenForkPrs":
     "{count} PR(s) from forks hidden — open on a branch in this repo",
   "thread.branchPicker.last7Days": "Last 7 days",
@@ -204,7 +222,6 @@ export const thread = {
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
   "thread.publishPopover.needsReviewGeneric":
     "These changes need a teammate's review before going live",
-  "thread.publishPopover.newPage": "New page",
   "thread.publishPopover.newPageSections": "New page with {count} sections",
   "thread.publishPopover.newPageSectionOne": "New page with 1 section",
   "thread.publishPopover.sectionsChanged": "{count} sections changed",
@@ -231,7 +248,6 @@ export const thread = {
   "thread.publishPopover.discardAll": "Discard all",
   "thread.publishPopover.discardAllConfirm":
     "Discard every change? This can't be undone.",
-  "thread.publishPopover.discardConfirm": "Discard {name}?",
   "thread.publishPopover.reviewNote": "Note for reviewers",
   "thread.publishPopover.reviewNotePlaceholder": "What changed and why…",
   "thread.publishPopover.reviewing": "Reviewing content…",

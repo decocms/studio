@@ -1,11 +1,14 @@
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
-import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
-import { FIXED_SYSTEM_TABS } from "@/layouts/main-panel-tabs/tab-id";
+import {
+  DESTINATION_MAIN_VIEWS,
+  FIXED_SYSTEM_TABS,
+  normalizePanelSegment,
+} from "@/layouts/main-panel-tabs/tab-id";
 import { useT } from "@/i18n/use-t.ts";
 import { Card, CardContent } from "@decocms/ui/components/card.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -27,8 +30,45 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useVirtualMCP } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
+import {
+  BarChartSquare02,
+  CheckDone01,
+  Columns03,
+  Globe02,
+  Home02,
+  Image01,
+  Lightning01,
+  Monitor01,
+  Server01,
+} from "@untitledui/icons";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import type { VirtualMcpFormReturn } from "./types";
+import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
+import {
+  availableProjectSidebarViews,
+  defaultMainViewAfterSidebarToggle,
+  effectiveProjectSidebarViews,
+  projectSidebarViewPresence,
+  resolveProjectSidebarViews,
+  selectedProjectSidebarViews,
+  toggleProjectSidebarView,
+  type ProjectSidebarViewId,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
+import {
+  useOptimisticProjectSidebarViews,
+  useOptimisticProjectSidebarViewsActions,
+} from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+
+/** The merged landing view: the surface Preview, Content and Code are tabs on. */
+const SITE_EDITOR_VIEW = "site-editor";
+
+/** Stored `defaultMainView.type` values that all mean "land on the Site
+ *  Editor" — its own id, and `content`, which was a sibling option before the
+ *  three views became tabs on one surface. */
+const SITE_EDITOR_VIEW_TYPES: ReadonlySet<string> = new Set([
+  SITE_EDITOR_VIEW,
+  "content",
+]);
 
 interface UITool {
   name: string;
@@ -52,6 +92,19 @@ interface ConnectionWithTools {
   uiTools: UITool[];
 }
 
+function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
+  if (viewId === "overview") return <Home02 size={16} />;
+  if (viewId === "reports") return <BarChartSquare02 size={16} />;
+  if (viewId === "board") return <Columns03 size={16} />;
+  if (viewId === "site-editor") return <Monitor01 size={16} />;
+  if (viewId === "assets") return <Image01 size={16} />;
+  if (viewId === "hosting") return <Server01 size={16} />;
+  if (viewId === "e2e") return <CheckDone01 size={16} />;
+  if (viewId === "analytics") return <BarChartSquare02 size={16} />;
+  if (viewId === "cdn") return <Globe02 size={16} />;
+  return <Lightning01 size={16} />;
+}
+
 export function LayoutTabContent({
   virtualMcpId,
   form,
@@ -65,6 +118,10 @@ export function LayoutTabContent({
   const studio = useStudioTools();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
+  const nativeViews = useProjectNativeViewPresence(virtualMcp);
+  const optimisticSidebarViews =
+    useOptimisticProjectSidebarViewsActions(virtualMcpId);
+  const pendingSidebarViews = useOptimisticProjectSidebarViews(virtualMcpId);
 
   const connectionIds = (virtualMcp?.connections ?? [])
     .map((c) => c.connection_id)
@@ -119,7 +176,12 @@ export function LayoutTabContent({
     connectionsWithTools ?? []
   ).filter((c) => c.uiTools.length > 0);
 
-  const fixedTabTypeSet = new Set<string>(FIXED_SYSTEM_TABS);
+  /** What `defaultMainView.type` may hold: a tab on the bar, or one of the
+   *  destinations an agent can land on instead. */
+  const fixedTabTypeSet = new Set<string>([
+    ...FIXED_SYSTEM_TABS,
+    ...DESTINATION_MAIN_VIEWS,
+  ]);
 
   // Layout state lives in the parent form under metadata.ui.{pinnedViews, layout}.
   // form.watch subscribes the component to changes from any source — direct user
@@ -128,29 +190,58 @@ export function LayoutTabContent({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  const formSidebarViews = effectiveProjectSidebarViews(
+    resolveProjectSidebarViews({
+      sidebarViews: form.watch("metadata.sidebarViews"),
+      ui: { layout: layoutMeta },
+    }),
+    form.watch("metadata.sidebarViewsVersion"),
+  );
+  // A Settings panel can remount while its previous instance is still saving.
+  // Pending edits and the item cache outlive that form, so they remain the
+  // switch authority instead of stale remounted defaults.
+  const sidebarViews =
+    pendingSidebarViews ??
+    (virtualMcp
+      ? effectiveProjectSidebarViews(
+          resolveProjectSidebarViews(virtualMcp.metadata),
+          virtualMcp.metadata.sidebarViewsVersion,
+        )
+      : formSidebarViews);
+  /** No main view: the chat is the whole workspace, so its switch is forced on
+   *  and locked. This was the old `chat` main view, which no longer exists. */
   // Convert the stored {type, id, toolName} object into the string composite
   // key used by the <Select> UI. Legacy tab types fold into "settings".
   const defaultMainView = (() => {
-    if (!currentDefaultMain || currentDefaultMain.type === "chat")
-      return "chat";
+    /** Chat is retired as a main view. An agent still stored on it — or on
+     *  nothing — selects no option, so the trigger shows its placeholder rather
+     *  than naming a view the agent does not actually open on. */
+    if (!currentDefaultMain || currentDefaultMain.type === "chat") return "";
+    /** Stored rows predate the `preview` → `site-editor` rename. */
+    const type = normalizePanelSegment(currentDefaultMain.type);
     if (
-      currentDefaultMain.type === "instructions" ||
-      currentDefaultMain.type === "connections" ||
-      currentDefaultMain.type === "layout"
+      type === "instructions" ||
+      type === "connections" ||
+      type === "layout"
     ) {
       return "settings";
     }
-    if (fixedTabTypeSet.has(currentDefaultMain.type)) {
-      return currentDefaultMain.type;
+    /** …and predate the merge, so a stored `content` selects the option that
+     *  now owns that surface rather than rendering a blank trigger. */
+    if (SITE_EDITOR_VIEW_TYPES.has(type)) return SITE_EDITOR_VIEW;
+    if (fixedTabTypeSet.has(type)) {
+      return type;
     }
-    return `${currentDefaultMain.type}:${currentDefaultMain.id ?? ""}:${currentDefaultMain.toolName ?? ""}`;
+    return `${type}:${currentDefaultMain.id ?? ""}:${currentDefaultMain.toolName ?? ""}`;
   })();
+
+  const noMainView = defaultMainView === "";
 
   // Inverse — converts the string composite key back to the stored object form.
   const parseDefaultMainView = (value: string) => {
     const [type, id, toolName] = value.split(":");
     if (!type) return null;
-    if (type === "chat") return { type };
+
     if (fixedTabTypeSet.has(type)) {
       return { type };
     }
@@ -206,7 +297,8 @@ export function LayoutTabContent({
     if (validPinned.length !== pinnedViews.length) {
       writePinned(validPinned);
 
-      // If the default view was an ext-app that got removed, reset to chat
+      // If the default view was an ext-app that got removed, use the permanent
+      // Settings view instead.
       if (
         currentDefaultMain?.type === "ext-apps" &&
         !validPinned.some(
@@ -215,7 +307,7 @@ export function LayoutTabContent({
             pv.toolName === currentDefaultMain.toolName,
         )
       ) {
-        writeLayout({ defaultMainView: { type: "chat" } });
+        writeLayout({ defaultMainView: { type: "settings" } });
       }
     }
   }
@@ -229,10 +321,10 @@ export function LayoutTabContent({
         (v) => !(v.connectionId === connectionId && v.toolName === toolName),
       );
       writePinned(nextPinned);
-      // If the unpinned view was the default, reset to chat
+      // If the unpinned view was the default, use the permanent Settings view.
       const unpinnedKey = `ext-apps:${connectionId}:${toolName}`;
       if (defaultMainView === unpinnedKey) {
-        writeLayout({ defaultMainView: { type: "chat" } });
+        writeLayout({ defaultMainView: { type: "settings" } });
       }
     } else {
       const toolTitle = connectionsData
@@ -289,6 +381,34 @@ export function LayoutTabContent({
     flushAndSave();
   };
 
+  const handleSidebarViewChange = (
+    viewId: ProjectSidebarViewId,
+    enabled: boolean,
+  ) => {
+    const nextSidebarViews = toggleProjectSidebarView(
+      sidebarViews,
+      viewId,
+      enabled,
+      1,
+    );
+    form.setValue("metadata.sidebarViews", nextSidebarViews, {
+      shouldDirty: true,
+    });
+    form.setValue("metadata.sidebarViewsVersion", 1, { shouldDirty: true });
+    optimisticSidebarViews.stage(nextSidebarViews, sidebarViews);
+    const nextDefaultMain = defaultMainViewAfterSidebarToggle(
+      currentDefaultMain,
+      viewId,
+      enabled,
+    );
+    if (nextDefaultMain !== currentDefaultMain) {
+      writeLayout({ defaultMainView: nextDefaultMain });
+    }
+    // The parent form subscription coalesces rapid adjacent switch changes and
+    // flushes the latest value on unmount. Starting a full metadata write for
+    // every click would let out-of-order responses revert the newest choice.
+  };
+
   const noConnections = connectionIds.length === 0;
   const noInteractiveTools =
     connectionsWithTools && connectionsData.length === 0;
@@ -297,33 +417,45 @@ export function LayoutTabContent({
   // either a Start Website template or a connected GitHub repo — matching
   // the gating in `use-main-panel-tabs.ts`.
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
+  const sidebarViewPresence = projectSidebarViewPresence(
+    hasClonableSource,
+    nativeViews.presence,
+  );
+  const availableSidebarViews =
+    availableProjectSidebarViews(sidebarViewPresence);
+  const enabledSidebarViews = selectedProjectSidebarViews(
+    sidebarViews,
+    sidebarViewPresence,
+    1,
+  );
+  const sidebarViewLabels: Record<ProjectSidebarViewId, string> = {
+    overview: t("sidebar.navDestinations.home"),
+    reports: t("sidebar.navDestinations.reports"),
+    board: t("sidebar.navDestinations.tasks"),
+    "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
+    assets: t("common.mainPanelTabs.assets"),
+    hosting: t("common.mainPanelTabs.hosting"),
+    e2e: t("common.mainPanelTabs.e2e"),
+    analytics: t("common.mainPanelTabs.analytics"),
+    cdn: t("common.mainPanelTabs.cdn"),
+    automations: t("virtualMcp.layoutTabContent.automations"),
+  };
 
-  // Build options for the default main view selector.
-  // Order mirrors the right-panel tab order in the unified chat layout:
-  // Chat (no main panel), then fixed system tabs, then pinned ext-apps.
-  const defaultMainOptions: { value: string; label: string }[] = [
-    { value: "chat", label: t("virtualMcp.layoutTabContent.chat") },
-    { value: "settings", label: t("virtualMcp.layoutTabContent.settings") },
-    {
-      value: "automations",
-      label: t("virtualMcp.layoutTabContent.automations"),
-    },
-  ];
-  if (hasClonableSource) {
+  /**
+   * Options in SIDEBAR order, so the list of places an agent can land reads the
+   * same here as in the nav a person actually uses: the org destinations
+   * (`NAV_DESTINATION_KEYS` — Home, Reports, Tasks; Library is org-only and
+   * never an agent's view), then the project rows, then Settings last.
+   */
+  const defaultMainOptions: { value: string; label: string }[] = [];
+  for (const viewId of enabledSidebarViews) {
+    // Pinned app rows sit before Automations in the actual sidebar, so append
+    // that final project row after the pinned-view loop below.
+    if (viewId === "automations") continue;
     defaultMainOptions.push({
-      value: "preview",
-      label: t("virtualMcp.layoutTabContent.preview"),
+      value: viewId,
+      label: sidebarViewLabels[viewId],
     });
-    // Content is only offerable while the agent has a CMS — `off` takes that
-    // tab off the bar, so landing on it is not a layout anyone can choose.
-    // Switching the mode to `off` rewrites an agent already set to it
-    // (`withCmsMode`), so the stored value can't outlive the option.
-    if (resolveCmsMode(layoutMeta) !== "off") {
-      defaultMainOptions.push({
-        value: "content",
-        label: t("virtualMcp.layoutTabContent.content"),
-      });
-    }
   }
   for (const pv of pinnedViews) {
     defaultMainOptions.push({
@@ -331,9 +463,22 @@ export function LayoutTabContent({
       label: pv.label || pv.toolName,
     });
   }
+  if (enabledSidebarViews.includes("automations")) {
+    defaultMainOptions.push({
+      value: "automations",
+      label: sidebarViewLabels.automations,
+    });
+  }
+  defaultMainOptions.push({
+    value: "settings",
+    label: t("virtualMcp.layoutTabContent.settings"),
+  });
 
-  const hasPinnedContent =
-    connectionsData.length > 0 || noConnections || noInteractiveTools;
+  const hasSidebarContent =
+    availableSidebarViews.length > 0 ||
+    connectionsData.length > 0 ||
+    noConnections ||
+    noInteractiveTools;
 
   return (
     <div className="flex flex-col gap-3">
@@ -358,7 +503,9 @@ export function LayoutTabContent({
               onValueChange={handleDefaultMainViewChange}
             >
               <SelectTrigger className="w-44 h-8 text-sm capitalize shrink-0">
-                <SelectValue />
+                <SelectValue
+                  placeholder={t("virtualMcp.layoutTabContent.noMainView")}
+                />
               </SelectTrigger>
               <SelectContent>
                 {defaultMainOptions.map((opt) => (
@@ -387,10 +534,8 @@ export function LayoutTabContent({
               <TooltipTrigger asChild>
                 <span className="shrink-0">
                   <Switch
-                    checked={
-                      defaultMainView === "chat" ? true : chatDefaultOpen
-                    }
-                    disabled={defaultMainView === "chat"}
+                    checked={noMainView ? true : chatDefaultOpen}
+                    disabled={noMainView}
                     onCheckedChange={(checked) => {
                       writeLayout({ chatDefaultOpen: checked });
                       flushAndSave();
@@ -398,7 +543,7 @@ export function LayoutTabContent({
                   />
                 </span>
               </TooltipTrigger>
-              {defaultMainView === "chat" && (
+              {noMainView && (
                 <TooltipContent side="top">
                   {t("virtualMcp.layoutTabContent.chatAlwaysShown")}
                 </TooltipContent>
@@ -407,20 +552,56 @@ export function LayoutTabContent({
           </div>
         </CardContent>
 
-        {hasPinnedContent && (
+        {hasSidebarContent && (
           <>
             <div className="border-t border-border -mx-6" />
             <CardContent className="p-0 space-y-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5 min-w-0">
                   <Label className="font-normal text-foreground">
-                    {t("virtualMcp.layoutTabContent.pinnedViews")}
+                    {t("virtualMcp.layoutTabContent.sidebarViews")}
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    {t("virtualMcp.layoutTabContent.pinnedViewsDescription")}
+                    {t("virtualMcp.layoutTabContent.sidebarViewsDescription")}
                   </p>
                 </div>
               </div>
+              {availableSidebarViews.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  {availableSidebarViews.map((viewId) => {
+                    const switchId = `sidebar-view-${viewId}`;
+                    return (
+                      <div
+                        key={viewId}
+                        className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border"
+                      >
+                        <Label
+                          htmlFor={switchId}
+                          className="min-w-0 flex flex-1 items-center gap-2 font-normal text-foreground"
+                        >
+                          <SidebarViewIcon viewId={viewId} />
+                          <span className="truncate">
+                            {sidebarViewLabels[viewId]}
+                          </span>
+                        </Label>
+                        <Switch
+                          id={switchId}
+                          checked={sidebarViews.includes(viewId)}
+                          onCheckedChange={(enabled) =>
+                            handleSidebarViewChange(viewId, enabled)
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {availableSidebarViews.length > 0 &&
+                (noConnections ||
+                  noInteractiveTools ||
+                  connectionsData.length > 0) && (
+                  <div className="border-t border-border -mx-6" />
+                )}
               {noConnections && (
                 <p className="text-xs text-muted-foreground">
                   {t("virtualMcp.layoutTabContent.addConnectionMessage")}

@@ -27,6 +27,10 @@ type Manager struct {
 	OnStartPhase func(status string, durationMs int64)
 
 	startAttemptAt time.Time
+	// startAttemptFailed records that the open attempt already reported
+	// "failed", so the same attempt is not reported twice while it stays open
+	// across a start-failed verdict (see Transition).
+	startAttemptFailed bool
 }
 
 func New(b Broadcaster) *Manager {
@@ -49,6 +53,7 @@ func (m *Manager) Current() events.LifecycleState {
 func (m *Manager) NoteStartAttempt() {
 	m.mu.Lock()
 	m.startAttemptAt = time.Now()
+	m.startAttemptFailed = false
 	m.mu.Unlock()
 }
 
@@ -56,6 +61,7 @@ func (m *Manager) NoteStartAttempt() {
 func (m *Manager) CancelStartAttempt() {
 	m.mu.Lock()
 	m.startAttemptAt = time.Time{}
+	m.startAttemptFailed = false
 	m.mu.Unlock()
 }
 
@@ -73,14 +79,28 @@ func (m *Manager) Transition(next events.LifecycleState) {
 	// two transitions racing cannot both report the same attempt.
 	var startStatus string
 	var startMs int64
-	if !m.startAttemptAt.IsZero() &&
-		(next.Phase == events.PhaseRunning || next.Phase == events.PhaseStartFailed) {
-		startStatus = "done"
-		if next.Phase == events.PhaseStartFailed {
-			startStatus = "failed"
+	if !m.startAttemptAt.IsZero() {
+		switch next.Phase {
+		case events.PhaseRunning:
+			startStatus = "done"
+			startMs = time.Since(m.startAttemptAt).Milliseconds()
+			m.startAttemptAt = time.Time{}
+			m.startAttemptFailed = false
+		case events.PhaseStartFailed:
+			// The attempt is reported failed but deliberately stays OPEN.
+			// start-failed is a verdict the watchdog reaches by giving up while
+			// the last respawn is still booting, and that boot can still serve
+			// minutes later. Closing the attempt here threw that boot's real
+			// duration away, so the one number that widens the watchdog's
+			// restart grace (see devwatch.RaiseRestartGrace) was never measured
+			// on exactly the sandboxes slow enough to need it. Held open, the
+			// late `running` closes it with the full boot.
+			if !m.startAttemptFailed {
+				startStatus = "failed"
+				startMs = time.Since(m.startAttemptAt).Milliseconds()
+				m.startAttemptFailed = true
+			}
 		}
-		startMs = time.Since(m.startAttemptAt).Milliseconds()
-		m.startAttemptAt = time.Time{}
 	}
 	startHook := m.OnStartPhase
 	m.mu.Unlock()

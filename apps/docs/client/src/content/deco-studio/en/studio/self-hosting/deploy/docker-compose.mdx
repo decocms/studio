@@ -51,7 +51,7 @@ open http://localhost:3000
 The `docker-compose.postgres.yml` file wires `DATABASE_URL` automatically from the `POSTGRES_*` variables, using the `postgres` service as the host.
 
 <Callout type="tip">
-  `BETTER_AUTH_SECRET` is the only strictly required variable for the app. The `POSTGRES_*` variables have defaults, but always set a real password.
+  `BETTER_AUTH_SECRET` falls back to an insecure dev-only default if unset — always set a real one. The `POSTGRES_*` variables also have defaults, but always set a real password.
 </Callout>
 
 ## Environment variables
@@ -60,13 +60,13 @@ Set these in `.env` alongside the compose file:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BETTER_AUTH_SECRET` | **required** | Authentication secret. Generate with `openssl rand -base64 32` |
+| `BETTER_AUTH_SECRET` | `local-dev-better-auth-secret-change-me` (insecure) | Authentication secret — always set a real one. Generate with `openssl rand -base64 32` |
 | `IMAGE_REPOSITORY` | `ghcr.io/decocms/studio/studio` | Image repository |
 | `IMAGE_TAG` | `latest` | Image tag |
 | `PORT` | `3000` | Port exposed on the host |
 | `BASE_URL` / `BETTER_AUTH_URL` | `http://localhost:3000` | Public URLs for the app |
 | `DATABASE_URL` | see below | PostgreSQL connection string |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio_user` / — / `studio_db` | Credentials for the bundled Postgres (postgres compose file only) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio` / `studio` / `studio` | Credentials for the bundled Postgres (postgres compose file only) |
 
 The container runs as user `1001:1001` and persists data to the `studio-data` volume; the bundled Postgres persists to `postgres-data`.
 

@@ -40,6 +40,52 @@ const sandboxGoneCode = "sandbox_gone"
 // shorten it.
 var takeoverTimeout = 10 * time.Second
 
+// How long a dispatch for a run that is already live waits for the incumbent
+// connection to close before treating itself as a takeover.
+//
+// The daemon has no attach verb: reconnecting and starting a competing turn are
+// the SAME wire call (`POST /dispatch`), so the only signal separating them is
+// whether the previous connection is still open. That signal describes a
+// socket, not a worker. When KEDA scales in the worker holding a run, DBOS
+// recovers the workflow and re-dispatches within a second or two — routinely
+// faster than the dying pod's TCP close is observed here. The daemon then saw a
+// live client, called it a second writer, SIGKILLed a healthy harness and
+// re-ran the turn.
+//
+// There is no second writer in that case, only a slow-closing one. Waiting
+// briefly costs a re-dispatch nothing (it is about to stream anyway) and turns
+// the common case back into a reattach. A genuine double-dispatch still
+// supersedes — it just does so this much later.
+var supersedeGrace = 5 * time.Second
+
+// How long a run whose client vanished keeps running, waiting to be reattached.
+//
+// A Studio replica is disposable — a rollout, a KEDA scale-in or a node
+// consolidation replaces it routinely — and each of those aborts the HTTP
+// request this run streams into. Killing the harness there threw away whole
+// turns that were minutes deep, on a sandbox pod that was never unhealthy: the
+// client moved, the work did not. So a lost client detaches instead, and the
+// re-dispatch that DBOS recovery sends reattaches to the SAME harness.
+//
+// The window only has to cover a replica coming back (pod termination grace
+// plus reschedule). Past it the run is genuinely abandoned and is cancelled, so
+// nothing outlives its consumer indefinitely. Variable only so the test can
+// shorten it.
+var detachGrace = 3 * time.Minute
+
+// How long a run that FINISHED while detached is kept so the reattaching
+// dispatch can still collect its frames and terminal. Without it a run that
+// completed in the gap looks to the successor like a run that never existed,
+// and the turn is re-executed from the top. Variable only so the test can
+// shorten it.
+var finishedRetention = 2 * time.Minute
+
+// Ceiling on frames buffered for a detached run. Tool results can be large and
+// this memory sits in the pod, so overflow gives up and cancels rather than
+// growing without bound — the run is then lost exactly as it would have been
+// before reattach existed, which is the honest fallback.
+const maxPendingBytes = 32 * 1024 * 1024
+
 // How often a quiet dispatch writes a keepalive byte. A run's whole output only
 // exists at its end, so a long tool call or a slow model puts zero bytes on the
 // wire for minutes; Studio's fetch then dies on the transport's idle timeout and
@@ -89,31 +135,172 @@ type RunInfo struct {
 	McpExpiresAt int64
 }
 
-// activeRun is one in-flight run: the handle to stop it, plus a channel closed
-// when its handler has actually returned. The channel is what makes a takeover
-// safe — a replacement run must not exec its harness until the displaced one's
-// process group is gone.
+// activeRun is one in-flight run. It owns the harness, not the HTTP handler
+// that started it: `done` closes when the harness goroutine exits, which is
+// what makes a takeover safe (a replacement must not exec until the displaced
+// process group is gone) and what a reattaching dispatch waits on.
+//
+// `sink` is the response body currently carrying the run's frames, or nil when
+// no client is attached. While detached the frames queue in `pending` and are
+// replayed to whoever attaches next.
 type activeRun struct {
+	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+
+	mu       sync.Mutex
+	sink     *bodyWriter
+	detached bool
+	pending  [][]byte
+	pendingN int
+	finished bool
+	reaper   *time.Timer
+}
+
+// emit delivers one frame to the attached client, or queues it when none is.
+// Returns false only when the run must stop: the buffer is full and there is
+// nobody to drain it.
+func (a *activeRun) emit(frame []byte) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.sink != nil {
+		if a.sink.write(frame) {
+			return true
+		}
+		// The write failed, so this client is gone. Detaching rather than
+		// ending the run is the whole point: its replacement is on the way.
+		a.detachLocked()
+	}
+	if a.pendingN+len(frame) > maxPendingBytes {
+		slog.Error("dispatch buffer full for detached run; cancelling",
+			"harness", sandboxHarnessID, "pending_bytes", a.pendingN)
+		return false
+	}
+	a.pending = append(a.pending, frame)
+	a.pendingN += len(frame)
+	return true
+}
+
+// keepaliveTo writes the idle byte only when a client is attached. A keepalive
+// exists to hold a connection open, so buffering one for a client that is not
+// there would spend the pending budget on padding.
+func (a *activeRun) keepaliveTo() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.sink == nil {
+		return true
+	}
+	if !a.sink.write([]byte("\n")) {
+		a.detachLocked()
+	}
+	return true
+}
+
+// attach makes `body` this run's client: everything buffered is replayed first,
+// in order, then live frames follow. Returns false when the run is already over
+// and the replay was all there is — the caller then just returns.
+func (a *activeRun) attach(body *bodyWriter) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, frame := range a.pending {
+		if !body.write(frame) {
+			return false
+		}
+	}
+	a.pending, a.pendingN = nil, 0
+	if a.finished {
+		return false
+	}
+	a.sink = body
+	a.detached = false
+	if a.reaper != nil {
+		a.reaper.Stop()
+		a.reaper = nil
+	}
+	return true
+}
+
+// detach releases `body` if it is still the attached sink. Called by the
+// handler before it returns, because net/http forbids writing to a
+// ResponseWriter once that happens — after this the harness buffers instead.
+func (a *activeRun) detach(body *bodyWriter) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.sink == body {
+		a.detachLocked()
+	}
+}
+
+func (a *activeRun) detachLocked() {
+	a.sink = nil
+	a.detached = true
+	if a.reaper == nil {
+		// Nobody came back for it: this is where an abandoned run is finally
+		// stopped, so a detached harness cannot outlive its consumer forever.
+		a.reaper = time.AfterFunc(detachGrace, func() {
+			slog.Info("dispatch detach grace expired; cancelling run",
+				"harness", sandboxHarnessID, "grace_s", int(detachGrace.Seconds()))
+			a.cancel()
+		})
+	}
+}
+
+// isDetached reports whether this run HAD a client and lost it — the only
+// state a new dispatch may reattach to. A run that has not been attached yet is
+// not detached: a second dispatch arriving then is a genuine double-dispatch and
+// must take it over, not adopt it.
+func (a *activeRun) isDetached() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.detached
+}
+
+// markFinished freezes the run: no more frames, and any client attaching later
+// gets the replay and nothing else.
+func (a *activeRun) markFinished() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.finished = true
+	a.sink = nil
+	a.detached = false
+	if a.reaper != nil {
+		a.reaper.Stop()
+		a.reaper = nil
+	}
+}
+
+func (a *activeRun) hasPending() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.pending) > 0
 }
 
 type Registry struct {
 	mu         sync.Mutex
 	activeRuns map[string]*activeRun
-	tombstones map[string]time.Time
+	// finishedRuns holds runs that completed with nobody attached, so the
+	// dispatch that arrives just after can still collect the result instead of
+	// re-running the turn. Cleared by a timer, never by size.
+	finishedRuns map[string]*activeRun
+	tombstones   map[string]time.Time
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		activeRuns: map[string]*activeRun{},
-		tombstones: map[string]time.Time{},
+		activeRuns:   map[string]*activeRun{},
+		finishedRuns: map[string]*activeRun{},
+		tombstones:   map[string]time.Time{},
 	}
 }
 
 func (reg *Registry) tombstoned(runId string) bool {
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
+	return reg.tombstonedLocked(runId)
+}
+
+// tombstonedLocked is `tombstoned` for a caller that already holds `reg.mu`.
+func (reg *Registry) tombstonedLocked(runId string) bool {
 	expiry, ok := reg.tombstones[runId]
 	if !ok {
 		return false
@@ -125,27 +312,88 @@ func (reg *Registry) tombstoned(runId string) bool {
 	return false
 }
 
-// claim makes this run the single writer for `runId`, displacing whatever run
-// held it. Returns the new entry and a wait function the caller MUST call
-// before starting its harness: it blocks until the displaced run's handler has
-// returned (bounded by `takeoverTimeout`).
+// claimOrAttach resolves what a dispatch for `runId` should do.
 //
-// Studio re-dispatches the same runId whenever the pod that owned the run died
-// and another picked the work up (DBOS recovery). Registering over the old
-// entry — what this used to do — dropped the old run's cancel on the floor and
-// left its `claude` running in the same checkout as the new one: two agents,
-// one worktree, and no way to stop the first.
-func (reg *Registry) claim(runId string, cancel context.CancelFunc) (*activeRun, func()) {
-	entry := &activeRun{cancel: cancel, done: make(chan struct{})}
+//   - no run under way          → a fresh run (`fresh` true); caller starts the harness
+//   - a run whose client is gone → REATTACH to it; the harness keeps running and
+//     the buffered frames replay to the new connection
+//   - a run finished while detached → reattach to the corpse, which replays its
+//     frames and terminal and ends
+//   - a run with a live client   → takeover, as before
+//
+// The takeover case is the one that must stay: two live dispatches for one
+// runId means a real double-dispatch, and letting both harnesses write the same
+// checkout is how two agents end up editing one worktree. Studio re-dispatching
+// after its own replica died is NOT that case — there is no second writer, only
+// a second reader — which is exactly what reattach distinguishes.
+//
+// A nil entry means the run was cancelled (tombstoned) while we waited: the
+// caller answers 410, exactly as the handler's pre-wait check would have.
+//
+// The returned wait function MUST be called before starting a harness: it blocks
+// until a displaced run's handler has returned (bounded by `takeoverTimeout`).
+func (reg *Registry) claimOrAttach(
+	runId string,
+	newCancel func() (*activeRun, context.CancelFunc),
+) (entry *activeRun, fresh bool, awaitTakeover func()) {
 	reg.mu.Lock()
+	if done, ok := reg.finishedRuns[runId]; ok {
+		reg.mu.Unlock()
+		return done, false, func() {}
+	}
 	prev := reg.activeRuns[runId]
-	reg.activeRuns[runId] = entry
+	if prev != nil {
+		// Live-looking incumbent: give its connection a moment to finish dying
+		// before concluding this is a competing writer. See `supersedeGrace`.
+		// (Already-detached runs fall through this immediately.)
+		reg.mu.Unlock()
+		waitStart := time.Now()
+		waitForDetach(prev, supersedeGrace)
+		reg.mu.Lock()
+		// The wait is lock-free, so the decision is made from the registry as
+		// it is NOW, never from the pointer we waited on — `prev` may even have
+		// been replaced by an entirely different dispatch:
+		//   - tombstoned       → cancelled while we waited; not ours to start
+		//   - in finishedRuns  → it ended detached; collect its frames
+		//   - gone from the map → it ended with its client still reading, so
+		//     the terminal was already delivered; this dispatch is a new turn
+		//   - still there      → detached ? reattach : genuine second writer
+		//
+		// The tombstone re-read is what the grace makes necessary: DELETE is
+		// exactly the thing that ends the wait early (cancelling closes
+		// `prev.done`), so a stop pressed during the grace would otherwise be
+		// answered by STARTING the run it just cancelled. The pre-wait check in
+		// the handler covers only the instant before this.
+		if reg.tombstonedLocked(runId) {
+			reg.mu.Unlock()
+			return nil, false, func() {}
+		}
+		if done, ok := reg.finishedRuns[runId]; ok {
+			reg.mu.Unlock()
+			return done, false, func() {}
+		}
+		prev = reg.activeRuns[runId]
+		if prev != nil && prev.isDetached() {
+			reg.mu.Unlock()
+			slog.Info("dispatch reattach", "harness", sandboxHarnessID, "run_id", runId)
+			return prev, false, func() {}
+		}
+		if prev != nil {
+			slog.Info("dispatch incumbent still attached; taking over",
+				"harness", sandboxHarnessID, "run_id", runId,
+				"waited_ms", time.Since(waitStart).Milliseconds())
+		}
+	}
+	created, cancel := newCancel()
+	created.cancel = cancel
+	reg.activeRuns[runId] = created
 	reg.mu.Unlock()
+
 	if prev == nil {
-		return entry, func() {}
+		return created, true, func() {}
 	}
 	prev.cancel()
-	return entry, func() {
+	return created, true, func() {
 		select {
 		case <-prev.done:
 			slog.Info("dispatch takeover", "run_id", runId)
@@ -155,6 +403,32 @@ func (reg *Registry) claim(runId string, cancel context.CancelFunc) (*activeRun,
 			// means two harnesses may briefly share the checkout.
 			slog.Error("dispatch takeover timed out; previous run may still be writing",
 				"run_id", runId, "waited_s", int(takeoverTimeout.Seconds()))
+		}
+	}
+}
+
+// waitForDetach blocks until `entry` loses its client or finishes, up to
+// `limit`. It reports nothing: the caller re-reads the registry under the lock
+// afterwards, because by then `entry` may have been released, replaced, or
+// moved to finishedRuns — and only the map says which.
+//
+// Polled rather than signalled on purpose: detaching happens under the run's
+// own mutex from two places (a failed frame write, the handler returning), and
+// a condition variable there would put the notify inside the write path of
+// every frame. The wait is seconds long and happens once per re-dispatch.
+func waitForDetach(entry *activeRun, limit time.Duration) {
+	deadline := time.Now().Add(limit)
+	for {
+		if entry.isDetached() {
+			return
+		}
+		select {
+		case <-entry.done:
+			return
+		case <-time.After(50 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			return
 		}
 	}
 }
@@ -196,12 +470,34 @@ func (reg *Registry) displaced(runId string, entry *activeRun) bool {
 // release retires this run's claim. Only clears the map when the entry is still
 // the current one — a run that was taken over must not delete its successor's
 // claim on the way out.
+//
+// A run that finished with nobody attached keeps its frames for
+// `finishedRetention`: the dispatch racing in behind a replica restart then
+// collects the real result, instead of finding nothing and re-running a turn
+// that had already completed.
 func (reg *Registry) release(runId string, entry *activeRun) {
+	// All of it under `reg.mu`, including `close(done)`. A dispatch deciding
+	// what to do about this run holds that same lock, so it cannot observe the
+	// half-retired state in between — a run marked finished but still listed in
+	// `activeRuns` reads as "attached", and taking it over there would discard a
+	// terminal that had already been produced.
 	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	entry.markFinished()
+	retain := entry.hasPending()
 	if reg.activeRuns[runId] == entry {
 		delete(reg.activeRuns, runId)
+		if retain {
+			reg.finishedRuns[runId] = entry
+			time.AfterFunc(finishedRetention, func() {
+				reg.mu.Lock()
+				if reg.finishedRuns[runId] == entry {
+					delete(reg.finishedRuns, runId)
+				}
+				reg.mu.Unlock()
+			})
+		}
 	}
-	reg.mu.Unlock()
 	close(entry.done)
 }
 
@@ -332,12 +628,48 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		return
 	}
 
-	ctx, cancel := context.WithCancel(r.Context())
-	entry, awaitTakeover := reg.claim(runId, cancel)
-	slog.Info("dispatch received", "harness", sandboxHarnessID, "run_id", runId)
-	awaitTakeover()
+	entry, fresh, awaitTakeover := reg.claimOrAttach(runId, func() (*activeRun, context.CancelFunc) {
+		// context.Background(), NOT r.Context(): binding the harness to the
+		// request meant a Studio replica going away — a rollout, a scale-in —
+		// SIGKILLed the `claude` process group on a healthy sandbox pod, and
+		// the turn was re-run from the top. The run is cancelled by a real
+		// decision now: a takeover, a DELETE, daemon shutdown, or nobody
+		// reattaching within `detachGrace`.
+		ctx, cancel := context.WithCancel(context.Background())
+		return &activeRun{ctx: ctx, done: make(chan struct{})}, cancel
+	})
+	if entry == nil {
+		// Cancelled during the supersede grace — same answer as the pre-wait
+		// tombstone check above, just decided later.
+		jsonError(w, 410, map[string]string{"error": "tombstoned"})
+		return
+	}
+	slog.Info("dispatch received", "harness", sandboxHarnessID, "run_id", runId,
+		"fresh", fresh)
 
-	reg.runHarness(ctx, w, deps, runId, entry, rebaseInput(input, deps.AppRoot))
+	writeResultHeaders(w)
+	sink := newBodyWriter(w)
+	// Replay first: a reattaching client needs the frames produced while it was
+	// away before it can follow the live ones. False means the replay was the
+	// whole run — it had already finished — so there is nothing to wait for.
+	if !entry.attach(sink) {
+		return
+	}
+	if fresh {
+		awaitTakeover()
+		go reg.runHarness(entry.ctx, deps, runId, entry, rebaseInput(input, deps.AppRoot))
+	}
+
+	select {
+	case <-entry.done:
+	case <-r.Context().Done():
+		// This client left; the run has NOT. Detach before returning — net/http
+		// forbids touching the ResponseWriter afterwards — and the harness
+		// buffers from here until someone reattaches.
+		entry.detach(sink)
+		slog.Info("dispatch client gone; run continues detached",
+			"harness", sandboxHarnessID, "run_id", runId)
+	}
 }
 
 // runHarness runs the harness for one run and streams its frames as this
@@ -352,7 +684,6 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 // while the first is a terminal it must report as-is.
 func (reg *Registry) runHarness(
 	ctx context.Context,
-	w http.ResponseWriter,
 	deps Deps,
 	runId string,
 	entry *activeRun,
@@ -360,19 +691,20 @@ func (reg *Registry) runHarness(
 ) {
 	defer reg.release(runId, entry)
 
-	// Headers and the keepalive FIRST — before `BeforeRun`, not after it.
+	// The keepalive starts FIRST — before `BeforeRun`, not after it.
 	//
 	// Studio calls the pod gone after `DAEMON_SILENCE_TIMEOUT_MS` (90s) without
 	// a byte, and `BeforeRun` legitimately waits on org-fs for up to its own
-	// ~90s budget plus a session copy. Preparing the workspace before opening
-	// the body spent that budget as silence on the wire, so a sandbox whose home
+	// ~90s budget plus a session copy. Preparing the workspace before writing
+	// anything spent that budget as silence on the wire, so a sandbox whose home
 	// volume was late lost its first turn to a "the pod died" verdict and had
 	// the turn continued elsewhere — on a pod that was fine. The keepalive is
 	// what makes waiting for the org's content safe to do at all.
-	writeResultHeaders(w)
-	body := newBodyWriter(w)
+	//
+	// The response headers are already written by the handler that started (or
+	// reattached to) this run: the body outlives any one of them.
 	startedAt := time.Now()
-	stopKeepalive := startKeepalive(ctx, body, runId)
+	stopKeepalive := startKeepalive(ctx, entry, runId)
 	defer stopKeepalive()
 
 	// Per-run workspace state, before the harness can touch the workspace.
@@ -394,7 +726,7 @@ func (reg *Registry) runHarness(
 	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {
-		body.write(terminalFrame("unknown_harness",
+		entry.emit(terminalFrame("unknown_harness",
 			"no harness runner configured (HARNESS_RUNNER_CMD unset)"))
 		return
 	}
@@ -419,7 +751,7 @@ func (reg *Registry) runHarness(
 			slog.Info("dispatch frame", "harness", sandboxHarnessID, "run_id", runId,
 				"seq", seq, "bytes", len(frame),
 				"elapsed_s", int(time.Since(startedAt).Seconds()))
-			return body.write(append(frame, '\n'))
+			return entry.emit(append(frame, '\n'))
 		})
 	elapsed := int(time.Since(startedAt).Seconds())
 
@@ -442,7 +774,7 @@ func (reg *Registry) runHarness(
 		if reg.displaced(runId, entry) {
 			slog.Info("dispatch superseded by takeover",
 				"harness", sandboxHarnessID, "run_id", runId, "elapsed_s", elapsed)
-			body.write(terminalFrame("superseded",
+			entry.emit(terminalFrame("superseded",
 				"a newer dispatch took over this run"))
 			return
 		}
@@ -452,31 +784,33 @@ func (reg *Registry) runHarness(
 		// stop.
 		if reg.tombstoned(runId) {
 			slog.Info("dispatch cancelled", "harness", sandboxHarnessID, "run_id", runId, "elapsed_s", elapsed)
-			body.write(terminalFrame("cancelled", "run cancelled"))
+			entry.emit(terminalFrame("cancelled", "run cancelled"))
 			return
 		}
 		// Nobody asked. The ctx died because this daemon is going away
-		// (SIGTERM → `CancelAll`, i.e. the pod was evicted or scaled in) or the
-		// client's connection dropped. Reporting `cancelled` here is how a
-		// pod eviction settled a live thread as `Error: cancelled: run
-		// cancelled` — a verdict Studio never retries, on a turn that was
-		// mid-edit. `sandbox_gone` says the pod could not finish, not that the
-		// run should not: the checkout is intact, the shutdown publish pushes it
-		// to the branch, and a replacement pod can pick the turn up.
+		// (SIGTERM → `CancelAll`, i.e. the pod was evicted or scaled in) or
+		// because no client reattached within `detachGrace`. A dropped
+		// connection no longer reaches here at all — that is the reattach path.
+		// Reporting `cancelled` here is how a pod eviction settled a live thread
+		// as `Error: cancelled: run cancelled` — a verdict Studio never retries,
+		// on a turn that was mid-edit. `sandbox_gone` says the pod could not
+		// finish, not that the run should not: the checkout is intact, the
+		// shutdown publish pushes it to the branch, and a replacement pod can
+		// pick the turn up.
 		slog.Info("dispatch sandbox gone", "harness", sandboxHarnessID, "run_id", runId, "elapsed_s", elapsed)
-		body.write(terminalFrame(sandboxGoneCode,
+		entry.emit(terminalFrame(sandboxGoneCode,
 			"the sandbox stopped mid-run (pod shutting down or connection dropped)"))
 		return
 	}
 	if err != nil {
 		slog.Error("harness crashed", "harness", sandboxHarnessID, "run_id", runId,
 			"elapsed_s", elapsed, "err", err)
-		body.write(terminalFrame("harness_crashed", err.Error()))
+		entry.emit(terminalFrame("harness_crashed", err.Error()))
 		return
 	}
 	slog.Info("dispatch done", "harness", sandboxHarnessID, "run_id", runId,
 		"elapsed_s", elapsed, "frames", frames)
-	body.write(terminalFrame("", ""))
+	entry.emit(terminalFrame("", ""))
 }
 
 // startKeepalive writes an insignificant byte into the JSON body while the
@@ -489,7 +823,7 @@ func (reg *Registry) runHarness(
 // racing the handler's last write.
 func startKeepalive(
 	ctx context.Context,
-	body *bodyWriter,
+	entry *activeRun,
 	runId string,
 ) func() {
 	ctx, cancel := context.WithCancel(ctx)
@@ -504,7 +838,7 @@ func startKeepalive(
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if !body.write([]byte("\n")) {
+				if !entry.keepaliveTo() {
 					return
 				}
 				// A quiet run is still a live run — see the frame callback's

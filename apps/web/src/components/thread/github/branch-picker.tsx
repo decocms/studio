@@ -1,10 +1,34 @@
-import { type UIEvent, useState } from "react";
-import type { SandboxMap } from "@/sdk";
-import { useMembersQuery } from "@/hooks/use-members";
-import { getInitials } from "@/lib/get-initials";
-import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { useState } from "react";
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Command,
   CommandEmpty,
@@ -12,214 +36,246 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "@decocms/ui/components/command.tsx";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@decocms/ui/components/popover.tsx";
 import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
-import {
-  Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  DotsVertical,
+  Edit01,
   GitBranch01,
   GitPullRequest,
+  Plus,
+  Trash01,
 } from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
+import type { Release } from "@decocms/shared/sdk/types";
+import type { SandboxMap } from "@/sdk";
+import { useT } from "@/i18n/use-t.ts";
+import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
-import { useT } from "@/i18n/use-t.ts";
 import { useOpenPrs } from "./use-pr-data.ts";
-import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  releaseDotClass,
+  useReleases,
+} from "./use-releases";
 
 interface Props {
+  virtualMcpId: string;
+  /** Human-readable creator label used to seed the generated branch name. */
+  userLabel: string | null | undefined;
+  /** The current branch (a release's branch, or the base). */
+  value: string | null | undefined;
+  /** The project's production branch. Not listed (read-only); used only for the
+   *  current-version label and as the fallback when the active draft is deleted. */
+  baseBranch?: string | null;
+  /** Repo scope for the "Advanced" flow (adopt an existing branch/PR as a draft). */
   orgId: string;
   orgSlug: string;
   userId: string;
-  /** Human-readable creator label (display name, else email local-part) used to
-   *  seed generated branch names. */
-  userLabel: string | null | undefined;
-  virtualMcpId: string;
   connectionId: string | null;
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
-  value: string | null | undefined;
   onChange: (branch: string) => void;
-  /** Called instead of `onChange` when the user creates a brand-new branch via
-   *  the "New" button, letting callers treat branch *creation* differently from
-   *  switching to an existing branch (Fast Preview projects start a fresh CMS
-   *  thread on it). Falls back to `onChange` when omitted. */
+  /** Called instead of `onChange` when a brand-new release is created, so CMS
+   *  projects can start a fresh thread on the new branch. Falls back to
+   *  `onChange`. */
   onCreateBranch?: (branch: string) => void;
-  /** When true, the trigger is disabled — the user can't open the
-   *  picker. The tooltip still surfaces the current branch on hover. */
   disabled?: boolean;
-  /** Chat input uses responsive label collapse; header always shows the name. */
+  /** When true, picking/creating opens a *new* chat on the branch rather than
+   *  switching in place (the current thread's branch is fixed). */
+  spawnsNewChat?: boolean;
+  /** Chat input collapses the label responsively; header always shows it. */
   placement?: "chat" | "header";
 }
 
-/** Substring, not cmdk's fuzzy default, so it can't hide a server match. */
-const branchFilter = (value: string, search: string) =>
-  matchesBranchSearch(value, search) ? 1 : 0;
-
-/** Grouped branch picker over {@link useBranches}, plus an open-PRs tab. */
+/** Version switcher over {@link useReleases}: the curated list of named,
+ *  color-coded drafts (releases) plus an inline "New draft" create. It is NOT a
+ *  branch list — only versions people named appear here; each is backed by a git
+ *  branch under the hood. Production (the published base) is deliberately absent
+ *  from the list: it is read-only, so the picker only offers editable drafts.
+ *  It still surfaces as the trigger label when you happen to be on production. */
 export function BranchPicker({
+  virtualMcpId,
+  userLabel,
+  value,
+  baseBranch,
   orgId,
   orgSlug,
   userId,
-  userLabel,
-  // virtualMcpId is consumed by callers via Props (e.g. BranchPill);
-  // BranchPicker itself doesn't use it directly. Kept on the Props
-  // contract so the pill container can pass it down uniformly.
-  virtualMcpId: _virtualMcpId,
   connectionId,
   owner,
   repo,
   sandboxMap,
-  value,
   onChange,
   onCreateBranch,
   disabled = false,
+  spawnsNewChat = false,
   placement = "chat",
 }: Props) {
   const t = useT();
   const isHeader = placement === "header";
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"branches" | "prs">("branches");
-  const [search, setSearch] = useState("");
-  // cmdk highlights the first item by default; seed the active item with the
-  // current branch so the picker opens focused on the branch in use rather than
-  // an unrelated first row. Kept in sync with keyboard/hover navigation.
-  const [activeValue, setActiveValue] = useState(value ?? "");
+  const [advanced, setAdvanced] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
+  const { releases, createRelease, renameRelease, deleteRelease } =
+    useReleases(virtualMcpId);
 
-  const {
-    recent,
-    yours,
-    others,
-    isLoading,
-    isError,
-    isSearching,
-    hiddenMatchCount,
-    hasMore,
-    isFetchingMore,
-    fetchMore,
-  } = useBranches({
-    orgId,
-    orgSlug,
-    userId,
-    connectionId,
-    sandboxMap,
-    owner,
-    repo,
-    search: tab === "branches" ? search : "",
-    enabled: open,
-  });
+  const isBase = !!value && value === baseBranch;
+  const current = releases.find((r) => r.branch === value);
+  // Current branch that is neither base nor a stored release: show as a draft.
+  const unlisted = !isBase && !current && !!value;
 
-  // userId -> { name, image } for contributor avatars on recent branches.
-  // Non-suspense variant so the trigger button never blocks on member loading.
-  const { data: membersData } = useMembersQuery({ enabled: open });
-  const memberById = new Map<string, MemberUser | undefined>(
-    ((membersData?.data?.members ?? []) as OrgMember[]).map(
-      (m) => [m.userId, m.user] as const,
-    ),
-  );
+  const currentLabel = isBase
+    ? t("thread.branchPicker.live")
+    : (current?.name ?? t("thread.branchPicker.defaultVersionName"));
+  const label = value ? currentLabel : t("thread.branchPicker.selectVersion");
+  const currentDot = isBase
+    ? "bg-success"
+    : releaseDotClass(current?.color ?? "orange");
 
-  // Open PRs for the repo — a PR is just a branch, so selecting one starts a
-  // sandbox on its head branch, exactly like picking a branch.
-  const {
-    data: prs = [],
-    isLoading: prsLoading,
-    isError: prsError,
-  } = useOpenPrs({
-    orgId,
-    orgSlug,
-    connectionId: connectionId ?? "",
-    owner,
-    repo,
-    enabled: open && tab === "prs",
-  });
-
-  // Only same-repo PRs are openable: a fork PR's head.ref names a branch in the
-  // fork, not this repo, so picking it would fail or hit a same-named local
-  // branch. Hide those, but surface a count so the drop isn't silent.
-  const repoFullName = `${owner}/${repo}`.toLowerCase();
-  const openablePrs = prs.filter(
-    (pr) => pr.headRepoFullName?.toLowerCase() === repoFullName,
-  );
-  const hiddenForkPrs = prs.length - openablePrs.length;
-
-  const pick = (name: string) => {
-    onChange(name);
+  const pick = (branch: string) => {
+    onChange(branch);
     setOpen(false);
   };
 
-  // Creating a branch is a distinct intent from switching to an existing one.
-  const create = (name: string) => {
-    (onCreateBranch ?? onChange)(name);
-    setOpen(false);
+  // A failed release write reverts the row silently otherwise — surface it.
+  const reportReleaseError = (err: unknown) => {
+    toast.error(
+      err instanceof Error ? err.message : t("thread.branchPicker.saveError"),
+    );
   };
 
-  const label = value ?? t("thread.branchPicker.selectBranch");
-
-  const onListScroll = (event: UIEvent<HTMLDivElement>) => {
-    const target = event.currentTarget;
-    const distanceFromBottom =
-      target.scrollHeight - target.scrollTop - target.clientHeight;
-
-    if (tab === "branches" && distanceFromBottom < 48) {
-      fetchMore();
+  // Advanced: adopt an existing branch/PR head as a named draft, then switch.
+  const adoptBranch = (branch: string, name: string) => {
+    if (!releases.some((r) => r.branch === branch)) {
+      createRelease({
+        branch,
+        name: name.trim() || branch,
+        color: nextReleaseColor(releases.length),
+        createdAt: new Date().toISOString(),
+      }).catch(reportReleaseError);
     }
+    onChange(branch);
+    setAdvanced(false);
+    setOpen(false);
   };
 
-  return (
+  const create = () => {
+    const branch = generateBranchName(userLabel);
+    createRelease({
+      branch,
+      name: nextDraftName(
+        releases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
+      color: nextReleaseColor(releases.length),
+      createdAt: new Date().toISOString(),
+    }).catch(reportReleaseError);
+    (onCreateBranch ?? onChange)(branch);
+    setOpen(false);
+  };
+
+  const resetTransient = () => {
+    setEditing(null);
+    setEditName("");
+    setAdvanced(false);
+  };
+
+  const startRename = (r: Release) => {
+    setEditing(r.branch);
+    setEditName(r.name);
+  };
+
+  const saveRename = (branch: string) => {
+    const next = editName.trim();
+    if (next) renameRelease(branch, next).catch(reportReleaseError);
+    setEditing(null);
+    setEditName("");
+  };
+
+  // Naming the current unlisted branch adopts it as a release (a named version).
+  const saveUnlistedName = () => {
+    const next = editName.trim();
+    if (next && value) {
+      void createRelease({
+        branch: value,
+        name: next,
+        color: nextReleaseColor(releases.length),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    setEditing(null);
+    setEditName("");
+  };
+
+  const cancelRename = () => {
+    setEditing(null);
+    setEditName("");
+  };
+
+  const confirmDelete = () => {
+    const r = pendingDelete;
+    setPendingDelete(null);
+    if (!r) return;
+    // Deleting the active draft: switch to a sibling draft, else read-only production.
+    if (r.branch === value) {
+      const sibling = releases.find((x) => x.branch !== r.branch);
+      if (sibling) pick(sibling.branch);
+      else if (baseBranch) pick(baseBranch);
+      else setOpen(false);
+    } else setOpen(false);
+    deleteRelease(r.branch).catch(reportReleaseError);
+  };
+
+  const popover = (
     <Popover
       open={open}
       onOpenChange={
         disabled
           ? undefined
           : (next) => {
-              // Re-seed the highlight on the current branch each time the picker
-              // opens, in case the branch changed since it was last closed.
-              // A term left over from last time would silently pre-filter the
-              // list, and re-fire its request on open.
-              if (next) {
-                setActiveValue(value ?? "");
-                setSearch("");
-              }
+              if (!next) resetTransient();
               setOpen(next);
             }
       }
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            className="inline-flex min-w-0 shrink"
-            data-tour={TOUR_ANCHORS.branches}
-          >
+          <span className="inline-flex min-w-0 shrink">
             <PopoverTrigger asChild>
               <Button
+                data-tour={LAYOUT_TOUR_ANCHORS.branchPicker}
                 variant={isHeader ? "outline" : "ghost"}
                 size={isHeader ? "sm" : "default"}
                 aria-label={label}
                 disabled={disabled}
                 className={cn(
-                  "font-mono shrink min-w-0 max-w-[200px] gap-1.5",
+                  "shrink min-w-0 max-w-[220px] gap-2",
                   isHeader
                     ? "text-xs"
                     : "text-xs text-muted-foreground hover:text-foreground",
+                  /** Inset, like every other button in the panel header: the
+                   *  Button default draws its ring OUTSIDE the box, where the
+                   *  header's scroll container shaves it off. Unconditional —
+                   *  `isHeader` is false here even inside the header, and an
+                   *  inset ring is never the wrong choice anyway. */
+                  INSET_FOCUS_RING,
                 )}
               >
-                <GitBranch01 className="h-3.5 w-3.5 shrink-0" />
-                {/* Show the branch name (truncated) so the branch in use is
-                    visible at a glance. Below 768px of panel header collapse to
-                    an icon-only button — the name stays available via the
-                    tooltip. Container query, matching the rest of the strip. */}
+                <span
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    value ? currentDot : "bg-muted-foreground",
+                  )}
+                />
                 <span className="min-w-0 truncate @max-3xl/panel-header:hidden">
                   {label}
                 </span>
@@ -233,275 +289,466 @@ export function BranchPicker({
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>
       <PopoverContent
-        className="w-[min(420px,calc(100vw-2rem))] p-0"
+        className="w-[min(300px,calc(100vw-2rem))] p-1.5"
         align="start"
+        // Don't steal focus onto the first row: it fires that row's branch tooltip.
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <Command
-          value={activeValue}
-          onValueChange={setActiveValue}
-          filter={tab === "branches" ? branchFilter : undefined}
-        >
-          <div className="*:data-[slot=command-input-wrapper]:flex-1 *:data-[slot=command-input-wrapper]:border-b-0 flex items-center border-b pr-2">
-            <CommandInput
-              placeholder={
-                tab === "branches"
-                  ? t("thread.branchPicker.searchBranches")
-                  : t("thread.branchPicker.searchPullRequests")
-              }
-              value={search}
-              onValueChange={setSearch}
-            />
-            {tab === "branches" && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0"
-                onClick={() =>
-                  create(search.trim() || generateBranchName(userLabel))
-                }
-              >
-                {search.trim()
-                  ? t("thread.branchPicker.createBranch", {
-                      name: search.trim(),
-                    })
-                  : t("thread.branchPicker.new")}
-              </Button>
+        {spawnsNewChat && (
+          <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
+            {t("thread.branchPicker.newChatHint")}
+          </p>
+        )}
+        {advanced ? (
+          <AdvancedPicker
+            orgId={orgId}
+            orgSlug={orgSlug}
+            userId={userId}
+            connectionId={connectionId}
+            owner={owner}
+            repo={repo}
+            sandboxMap={sandboxMap}
+            enabled={open}
+            onBack={() => setAdvanced(false)}
+            onAdopt={adoptBranch}
+          />
+        ) : (
+          <>
+            <div className="flex flex-col">
+              {unlisted &&
+                value &&
+                (editing === value ? (
+                  <RenameInput
+                    value={editName}
+                    onChange={setEditName}
+                    onSave={saveUnlistedName}
+                    onCancel={cancelRename}
+                  />
+                ) : (
+                  <ReleaseRow
+                    dot={releaseDotClass("orange")}
+                    label={t("thread.branchPicker.defaultVersionName")}
+                    branch={value}
+                    selected
+                    onSelect={() => pick(value)}
+                    onRename={() => {
+                      setEditing(value);
+                      setEditName(
+                        nextDraftName(
+                          releases,
+                          t("thread.branchPicker.defaultVersionName"),
+                        ),
+                      );
+                    }}
+                  />
+                ))}
+              {releases.map((r) =>
+                editing === r.branch ? (
+                  <RenameInput
+                    key={r.branch}
+                    value={editName}
+                    onChange={setEditName}
+                    onSave={() => saveRename(r.branch)}
+                    onCancel={cancelRename}
+                  />
+                ) : (
+                  <ReleaseRow
+                    key={r.branch}
+                    dot={releaseDotClass(r.color)}
+                    label={r.name}
+                    branch={r.branch}
+                    selected={r.branch === value}
+                    onSelect={() => pick(r.branch)}
+                    onRename={() => startRename(r)}
+                    onDelete={() => setPendingDelete(r)}
+                  />
+                ),
+              )}
+            </div>
+            {(unlisted || releases.length > 0) && (
+              <div className="my-1 border-t" />
             )}
-          </div>
-          <Tabs
-            className="px-2 pt-2 pb-1"
-            value={tab}
-            onValueChange={(v) => {
-              setTab(v as "branches" | "prs");
-              setSearch("");
-            }}
-          >
-            <TabsList
-              className="h-auto w-fit justify-start gap-1 bg-accent p-1"
-              variant="pill"
+            <button
+              type="button"
+              onClick={() => void create()}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              <TabsTrigger value="branches" className="h-6 px-2.5 text-xs">
-                {t("thread.branchPicker.branchesTab")}
-              </TabsTrigger>
-              <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
-                {t("thread.branchPicker.prsTab")}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <CommandList onScroll={onListScroll}>
-            {tab === "prs" ? (
-              <>
-                {prsError && (
-                  <div className="p-3 text-xs text-muted-foreground">
-                    {t("thread.branchPicker.couldntLoadPullRequests")}
-                  </div>
-                )}
-                {prsLoading && (
-                  <div className="p-3 text-xs text-muted-foreground">
-                    {t("thread.branchPicker.loadingPullRequests")}
-                  </div>
-                )}
-                {!prsError && !prsLoading && (
-                  <CommandEmpty>
-                    {search.trim()
-                      ? t("thread.branchPicker.noPullRequestsFound")
-                      : t("thread.branchPicker.noOpenPullRequests")}
-                  </CommandEmpty>
-                )}
-                {openablePrs.length > 0 && (
-                  <CommandGroup
-                    heading={t("thread.branchPicker.openPullRequests")}
-                  >
-                    {openablePrs.map((pr) => (
-                      <CommandItem
-                        key={pr.number}
-                        value={`#${pr.number} ${pr.title} ${pr.head}`}
-                        className="cursor-pointer"
-                        onSelect={() => pick(pr.head)}
-                      >
-                        <GitPullRequest className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate">
-                            {decodeHtmlEntities(pr.title)}
-                          </span>
-                          <span className="truncate text-xs text-muted-foreground">
-                            #{pr.number} · {pr.head}
-                            {pr.author ? ` · @${pr.author}` : ""}
-                          </span>
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-                {hiddenForkPrs > 0 && (
-                  <div className="border-t p-2 text-center text-xs text-muted-foreground">
-                    {t("thread.branchPicker.hiddenForkPrs", {
-                      count: hiddenForkPrs,
-                    })}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                {isError && (
-                  <div className="p-3 text-xs text-muted-foreground">
-                    {t("thread.branchPicker.couldntLoadBranches")}
-                  </div>
-                )}
-                {!isError && (isSearching || !isLoading) && (
-                  <CommandEmpty>
-                    {isSearching
-                      ? t("thread.branchPicker.searchingBranches")
-                      : t("thread.branchPicker.noBranchesFound")}
-                  </CommandEmpty>
-                )}
-                {recent.length > 0 && (
-                  <CommandGroup heading={t("thread.branchPicker.last7Days")}>
-                    {recent.map((b) => (
-                      <CommandItem
-                        key={b.name}
-                        value={b.name}
-                        className="cursor-pointer"
-                        onSelect={() => pick(b.name)}
-                      >
-                        <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
-                        <span className="flex-1 truncate">{b.name}</span>
-                        {b.name === value && (
-                          <Check className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                        )}
-                        <ContributorAvatars
-                          userIds={b.contributors ?? []}
-                          memberById={memberById}
-                        />
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-                {yours.length > 0 && (
-                  <>
-                    {recent.length > 0 && <CommandSeparator />}
-                    <CommandGroup
-                      heading={t("thread.branchPicker.yourBranches")}
-                    >
-                      {yours.map((b) => (
-                        <CommandItem
-                          key={b.name}
-                          value={b.name}
-                          className="cursor-pointer"
-                          onSelect={() => pick(b.name)}
-                        >
-                          <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
-                          <span className="flex-1 truncate">{b.name}</span>
-                          {b.name === value && (
-                            <Check className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                          )}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </>
-                )}
-                {others.length > 0 && (
-                  <>
-                    <CommandSeparator />
-                    <CommandGroup
-                      heading={t("thread.branchPicker.otherBranchesInRepo")}
-                    >
-                      {others.map((b) => (
-                        <CommandItem
-                          key={b.name}
-                          value={b.name}
-                          className="cursor-pointer"
-                          onSelect={() => pick(b.name)}
-                        >
-                          <GitBranch01 className="mr-2 h-4 w-4" />
-                          <span className="flex-1 truncate">{b.name}</span>
-                          {b.author && (
-                            <span className="text-xs text-muted-foreground">
-                              @{b.author}
-                            </span>
-                          )}
-                          {b.name === value && (
-                            <Check className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                          )}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </>
-                )}
-                {hasMore && (
-                  <div className="border-t p-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-full text-xs"
-                      disabled={isFetchingMore}
-                      onClick={fetchMore}
-                    >
-                      {isFetchingMore
-                        ? t("thread.branchPicker.loadingMore")
-                        : t("thread.branchPicker.loadMoreBranches")}
-                    </Button>
-                  </div>
-                )}
-                {hiddenMatchCount > 0 && (
-                  <div className="border-t p-2 text-center text-xs text-muted-foreground">
-                    {t("thread.branchPicker.moreMatches", {
-                      count: hiddenMatchCount,
-                    })}
-                  </div>
-                )}
-                {!search.trim() && !hasMore && others.length > 0 && (
-                  <div className="border-t p-2 text-center text-xs text-muted-foreground">
-                    {t("thread.branchPicker.allLoaded")}
-                  </div>
-                )}
-              </>
-            )}
-          </CommandList>
-        </Command>
+              <Plus className="h-4 w-4 shrink-0" />
+              {t("thread.branchPicker.newVersion")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdvanced(true)}
+              className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              {t("thread.branchPicker.advanced")}
+              <ChevronRight className="h-4 w-4 shrink-0" />
+            </button>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );
-}
-
-type MemberUser = { name?: string | null; image?: string | null };
-type OrgMember = { userId: string; user?: MemberUser };
-
-/**
- * Overlapping avatar stack for the people with an active sandbox on a branch.
- * Shows up to 3 faces, then a "+N" chip. Unknown userIds fall back to initials.
- */
-function ContributorAvatars({
-  userIds,
-  memberById,
-}: {
-  userIds: string[];
-  memberById: Map<string, MemberUser | undefined>;
-}) {
-  if (userIds.length === 0) return null;
-  const shown = userIds.slice(0, 3);
-  const extra = userIds.length - shown.length;
 
   return (
-    <span className="ml-2 flex shrink-0 items-center -space-x-1.5">
-      {shown.map((uid) => {
-        const user = memberById.get(uid);
-        return (
-          <Avatar
-            key={uid}
-            url={user?.image ?? undefined}
-            fallback={getInitials(user?.name ?? undefined)}
-            shape="circle"
-            size="xs"
-            className="ring-2 ring-background"
-          />
-        );
-      })}
-      {extra > 0 && (
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground ring-2 ring-background">
-          +{extra}
-        </span>
+    <>
+      {popover}
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("thread.branchPicker.deleteTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete &&
+                t("thread.branchPicker.deleteConfirm", {
+                  name: pendingDelete.name,
+                })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("thread.branchPicker.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("thread.branchPicker.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+/** Inline name editor shared by rename (a release) and adopt (an unlisted branch). */
+function RenameInput({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-1.5 p-1">
+      <input
+        // biome-ignore lint/a11y/noAutofocus: opened by an explicit click
+        autoFocus
+        aria-label={t("thread.branchPicker.rename")}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSave();
+          if (e.key === "Escape") {
+            // Don't let Escape also close the popover behind it.
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          }
+        }}
+        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+      />
+      <Button size="sm" onClick={onSave}>
+        {t("thread.branchPicker.save")}
+      </Button>
+    </div>
+  );
+}
+
+/** A version row: click to switch, with a ⋯ menu to rename (always) and discard
+ *  (only a stored release — an unlisted branch has nothing to discard). */
+function ReleaseRow({
+  dot,
+  label,
+  branch,
+  selected,
+  onSelect,
+  onRename,
+  onDelete,
+}: {
+  dot: string;
+  label: string;
+  branch: string;
+  selected: boolean;
+  onSelect: () => void;
+  onRename: () => void;
+  onDelete?: () => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      className={cn(
+        "group flex items-center rounded-md",
+        selected ? "bg-accent" : "hover:bg-accent/60",
       )}
-    </span>
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-pressed={selected}
+            onClick={onSelect}
+            className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
+          >
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
+            <span className="flex-1 truncate">{label}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="font-mono text-xs">
+          {t("thread.branchPicker.branchTooltip", { branch })}
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("thread.branchPicker.moreActions")}
+            className="mr-1 h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+          >
+            <DotsVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onRename}>
+            <Edit01 className="h-4 w-4" />
+            {t("thread.branchPicker.rename")}
+          </DropdownMenuItem>
+          {onDelete && (
+            <DropdownMenuItem
+              onSelect={onDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash01 className="h-4 w-4" />
+              {t("thread.branchPicker.delete")}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/** "Advanced": adopt an existing branch or open PR as a named draft. Reuses the
+ *  classic branch/PR listing ({@link useBranches} + {@link useOpenPrs}). */
+function AdvancedPicker({
+  orgId,
+  orgSlug,
+  userId,
+  connectionId,
+  owner,
+  repo,
+  sandboxMap,
+  enabled,
+  onBack,
+  onAdopt,
+}: {
+  orgId: string;
+  orgSlug: string;
+  userId: string;
+  connectionId: string | null;
+  owner: string;
+  repo: string;
+  sandboxMap: SandboxMap | undefined;
+  enabled: boolean;
+  onBack: () => void;
+  onAdopt: (branch: string, name: string) => void;
+}) {
+  const t = useT();
+  const [tab, setTab] = useState<"branches" | "prs">("branches");
+  const [search, setSearch] = useState("");
+  const {
+    recent,
+    yours,
+    others,
+    isLoading,
+    hasMore,
+    isFetchingMore,
+    fetchMore,
+  } = useBranches({
+    orgId,
+    orgSlug,
+    userId,
+    connectionId,
+    sandboxMap,
+    owner,
+    repo,
+    search: tab === "branches" ? search : "",
+    enabled: enabled && tab === "branches",
+  });
+  const { data: prs = [], isLoading: prsLoading } = useOpenPrs({
+    orgId,
+    orgSlug,
+    connectionId: connectionId ?? "",
+    owner,
+    repo,
+    enabled: enabled && tab === "prs",
+  });
+
+  const repoFullName = `${owner}/${repo}`.toLowerCase();
+  const openablePrs = prs.filter(
+    (pr) => pr.headRepoFullName?.toLowerCase() === repoFullName,
+  );
+
+  const seen = new Set<string>();
+  const branches = [...recent, ...yours, ...others].filter((b) => {
+    if (seen.has(b.name)) return false;
+    seen.add(b.name);
+    return true;
+  });
+
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <ChevronLeft className="h-4 w-4 shrink-0" />
+        {t("thread.branchPicker.advancedBack")}
+      </button>
+      <Command
+        filter={
+          tab === "branches"
+            ? (v, s) => (matchesBranchSearch(v, s) ? 1 : 0)
+            : undefined
+        }
+      >
+        <CommandInput
+          placeholder={
+            tab === "branches"
+              ? t("thread.branchPicker.searchBranches")
+              : t("thread.branchPicker.searchPullRequests")
+          }
+          value={search}
+          onValueChange={setSearch}
+        />
+        <Tabs
+          className="px-2 pt-2 pb-1"
+          value={tab}
+          onValueChange={(v) => {
+            setTab(v as "branches" | "prs");
+            setSearch("");
+          }}
+        >
+          <TabsList
+            className="h-auto w-fit justify-start gap-1 bg-accent p-1"
+            variant="pill"
+          >
+            <TabsTrigger value="branches" className="h-6 px-2.5 text-xs">
+              {t("thread.branchPicker.branchesTab")}
+            </TabsTrigger>
+            <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
+              {t("thread.branchPicker.prsTab")}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <CommandList
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            if (
+              tab === "branches" &&
+              el.scrollHeight - el.scrollTop - el.clientHeight < 48
+            ) {
+              fetchMore();
+            }
+          }}
+        >
+          {tab === "branches" ? (
+            <>
+              {isLoading && (
+                <div className="p-3 text-xs text-muted-foreground">
+                  {t("thread.branchPicker.loadingMore")}
+                </div>
+              )}
+              {!isLoading && branches.length === 0 && (
+                <CommandEmpty>
+                  {t("thread.branchPicker.noBranchesFound")}
+                </CommandEmpty>
+              )}
+              {branches.length > 0 && (
+                <CommandGroup>
+                  {branches.map((b) => (
+                    <CommandItem
+                      key={b.name}
+                      value={b.name}
+                      className="cursor-pointer"
+                      onSelect={() => onAdopt(b.name, b.name)}
+                    >
+                      <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="flex-1 truncate">{b.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {hasMore && (
+                <div className="p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-full text-xs"
+                    disabled={isFetchingMore}
+                    onClick={fetchMore}
+                  >
+                    {isFetchingMore
+                      ? t("thread.branchPicker.loadingMore")
+                      : t("thread.branchPicker.loadMoreBranches")}
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {prsLoading && (
+                <div className="p-3 text-xs text-muted-foreground">
+                  {t("thread.branchPicker.loadingPullRequests")}
+                </div>
+              )}
+              {!prsLoading && openablePrs.length === 0 && (
+                <CommandEmpty>
+                  {t("thread.branchPicker.noOpenPullRequests")}
+                </CommandEmpty>
+              )}
+              {openablePrs.length > 0 && (
+                <CommandGroup>
+                  {openablePrs.map((pr) => (
+                    <CommandItem
+                      key={pr.number}
+                      value={`#${pr.number} ${pr.title} ${pr.head}`}
+                      className="cursor-pointer"
+                      onSelect={() =>
+                        onAdopt(pr.head, decodeHtmlEntities(pr.title))
+                      }
+                    >
+                      <GitPullRequest className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">
+                          {decodeHtmlEntities(pr.title)}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          #{pr.number} · {pr.head}
+                        </span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </>
+          )}
+        </CommandList>
+      </Command>
+    </div>
   );
 }

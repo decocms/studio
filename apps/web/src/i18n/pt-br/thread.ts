@@ -2,12 +2,31 @@ import type { thread as threadEn } from "../en/thread.ts";
 
 export const thread = {
   "thread.branchPicker.allLoaded": "Todas carregadas",
+  "thread.branchPicker.branchTooltip": "branch: {branch}",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",
   "thread.branchPicker.couldntLoadPullRequests":
     "Não foi possível carregar pull requests do GitHub.",
   "thread.branchPicker.createBranch": 'Criar "{name}"',
+  "thread.branchPicker.advanced": "Avançado",
+  "thread.branchPicker.advancedBack": "Voltar",
+  "thread.branchPicker.cancel": "Cancelar",
+  "thread.branchPicker.defaultVersionName": "Rascunho",
+  "thread.branchPicker.delete": "Descartar",
+  "thread.branchPicker.deleteConfirm":
+    'Descartar "{name}"? Isso não pode ser desfeito.',
+  "thread.branchPicker.deleteTitle": "Descartar rascunho?",
+  "thread.branchPicker.live": "Produção",
+  "thread.branchPicker.moreActions": "Mais ações",
+  "thread.branchPicker.newVersion": "Novo Rascunho",
+  "thread.branchPicker.rename": "Renomear",
+  "thread.branchPicker.save": "Salvar",
+  "thread.branchPicker.saveError":
+    "Não foi possível salvar a versão. Tente novamente.",
+  "thread.branchPicker.selectVersion": "Selecione uma versão",
+  "thread.branchPicker.newChatHint":
+    "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",
   "thread.branchPicker.hiddenForkPrs":
     "{count} PR(s) de forks ocultado(s) — abra em uma branch deste repositório",
   "thread.branchPicker.last7Days": "Últimos 7 dias",
@@ -216,7 +235,6 @@ export const thread = {
     "Última publicação {when} por {name}",
   "thread.publishPopover.needsReviewGeneric":
     "Estas alterações precisam da revisão de um colega antes de irem ao ar",
-  "thread.publishPopover.newPage": "Página nova",
   "thread.publishPopover.newPageSections": "Página nova com {count} seções",
   "thread.publishPopover.newPageSectionOne": "Página nova com 1 seção",
   "thread.publishPopover.sectionsChanged": "{count} seções alteradas",
@@ -244,7 +262,6 @@ export const thread = {
   "thread.publishPopover.discardAll": "Descartar tudo",
   "thread.publishPopover.discardAllConfirm":
     "Descartar todas as alterações? Isso não pode ser desfeito.",
-  "thread.publishPopover.discardConfirm": "Descartar {name}?",
   "thread.publishPopover.reviewNote": "Nota para quem revisa",
   "thread.publishPopover.reviewNotePlaceholder": "O que mudou e por quê…",
   "thread.publishPopover.reviewing": "Revisando conteúdo…",

@@ -18,6 +18,7 @@ import type {
   GetPromptResult,
   ListPromptsRequest,
   ListPromptsResult,
+  ListToolsResult,
   Prompt,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { StudioContext } from "../../core/studio-context";
@@ -30,6 +31,11 @@ import {
   resolveStudioPackChecklist,
 } from "../../tools/virtual/studio-pack";
 import { createLazyClient } from "../lazy-client";
+import {
+  aggregateCacheKey,
+  getCachedAggregate,
+  setCachedAggregate,
+} from "./aggregate-cache";
 import { withKnowledge } from "./knowledge";
 import type { VirtualClientOptions } from "./types";
 
@@ -78,6 +84,11 @@ export class PassthroughClient extends GatewayClient {
 
     super(clients, {
       clientInfo: { name: "virtual-mcp-passthrough", version: "1.0.0" },
+      // Bound each child's list call. This option was declared on
+      // VirtualClientOptions and threaded through three call sites for a while
+      // without ever reaching the aggregator, so callers asking for a 1s list
+      // budget silently got the MCP SDK's 60s default.
+      listTimeoutMs: options.listTimeoutMs,
       capabilities: {
         tasks: {
           list: {},
@@ -94,6 +105,44 @@ export class PassthroughClient extends GatewayClient {
 
   async [Symbol.asyncDispose](): Promise<void> {
     await this.close();
+  }
+
+  /**
+   * Serve the aggregated tool list from the per-pod aggregate cache when a
+   * matching one is live.
+   *
+   * The route this class serves is stateless — a new PassthroughClient per HTTP
+   * request — so `GatewayClient`'s per-instance `toolsCache` never survives to
+   * a second `tools/list`. Without a cross-request cache, a client that
+   * re-initializes in a loop repays the whole fan-out every cycle.
+   *
+   * Paginated calls (any `params`/`options`) bypass the cache and go straight
+   * to the aggregator, matching how the per-connection list cache treats them:
+   * a cursor walk has to talk to the real thing.
+   */
+  override listTools(
+    params?: Parameters<GatewayClient["listTools"]>[0],
+    options?: RequestOptions,
+  ): Promise<ListToolsResult> {
+    if (params !== undefined || options !== undefined) {
+      return super.listTools(params, options);
+    }
+
+    const connectionIds = this.options.connections.map((c) => c.id);
+    const key = aggregateCacheKey({
+      virtualMcpId: this.options.virtualMcp?.id,
+      userId: this.ctx.auth?.user?.id,
+      superUser: this.options.superUser ?? false,
+      connectionIds,
+    });
+
+    const cached = getCachedAggregate(key);
+    if (cached) return cached;
+
+    const deps = this.options.virtualMcp?.id
+      ? [...connectionIds, this.options.virtualMcp.id]
+      : connectionIds;
+    return setCachedAggregate(key, deps, super.listTools());
   }
 
   /**

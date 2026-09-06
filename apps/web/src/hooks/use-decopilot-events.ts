@@ -39,6 +39,14 @@ export interface UseDecopilotEventsOptions {
   onFinish?: (event: DecopilotFinishEvent) => void;
   /** Called on each "decopilot.thread.status" event (task status changed) */
   onTaskStatus?: (event: DecopilotThreadStatusEvent) => void;
+  /**
+   * Called after the underlying `/watch` connection re-establishes post-drop
+   * (network blip, tab wake, dev-server hot-reload). Events fired while the
+   * connection was down are lost (at-most-once delivery) — a caller relying
+   * on one of these events to resync local state (e.g. a queued turn's
+   * dequeue) should use this hook to catch up instead of staying stuck.
+   */
+  onReconnect?: () => void;
 }
 
 interface CallbacksRef {
@@ -46,6 +54,7 @@ interface CallbacksRef {
   onStep?: (event: DecopilotStepEvent) => void;
   onFinish?: (event: DecopilotFinishEvent) => void;
   onTaskStatus?: (event: DecopilotThreadStatusEvent) => void;
+  onReconnect?: () => void;
 }
 
 /**
@@ -66,6 +75,7 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
     onStep,
     onFinish,
     onTaskStatus,
+    onReconnect,
   } = options;
 
   const callbacksRef = useRef<CallbacksRef>({
@@ -73,9 +83,16 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
     onStep,
     onFinish,
     onTaskStatus,
+    onReconnect,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  callbacksRef.current = { taskId, onStep, onFinish, onTaskStatus };
+  callbacksRef.current = {
+    taskId,
+    onStep,
+    onFinish,
+    onTaskStatus,
+    onReconnect,
+  };
 
   // `subscribe` only depends on `enabled` and `orgSlug` so the EventSource
   // connection is not torn down when callbacks or taskId change.
@@ -131,7 +148,9 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
         onStoreChange();
       };
 
-      return decopilotSSE.subscribe(orgSlug, handler);
+      return decopilotSSE.subscribe(orgSlug, handler, () =>
+        callbacksRef.current.onReconnect?.(),
+      );
     };
   }
 

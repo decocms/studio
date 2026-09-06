@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { probeDaemonHealth, proxyDaemonRequest } from "./daemon-client";
+import {
+  postConfig,
+  postOrgFsConfig,
+  probeDaemonHealth,
+  proxyDaemonRequest,
+} from "./daemon-client";
 
 type FetchCall = {
   input: string;
@@ -90,6 +95,66 @@ describe("probeDaemonHealth", () => {
         }),
     );
     expect(await probeDaemonHealth("http://daemon:9000")).toBeNull();
+  });
+});
+
+describe("malformed 2xx bodies", () => {
+  it("postConfig labels a malformed JSON body instead of a bare SyntaxError", async () => {
+    installFetch(() => new Response("<html>not json</html>", { status: 200 }));
+    await expect(
+      postConfig("http://daemon:9000", "tok", { env: {} } as never),
+    ).rejects.toThrow("/_sandbox/config returned a malformed JSON body");
+  });
+
+  it("postOrgFsConfig labels a malformed JSON body instead of a bare SyntaxError", async () => {
+    installFetch(() => new Response("not json", { status: 200 }));
+    await expect(
+      postOrgFsConfig("http://daemon:9000", "tok", "{}"),
+    ).rejects.toThrow("/_sandbox/orgfs-config returned a malformed JSON body");
+  });
+});
+
+describe("retry timeout budget", () => {
+  it("gives each retry attempt its own AbortSignal instead of reusing an already-fired one", async () => {
+    let attempts = 0;
+    const { calls } = installFetch(() => {
+      attempts++;
+      if (attempts === 1) {
+        throw new DOMException("The operation timed out.", "AbortError");
+      }
+      return new Response(
+        JSON.stringify({ bootId: "b", transition: "t", config: {} }),
+        { status: 200 },
+      );
+    });
+    await postConfig("http://daemon:9000", "tok", { env: {} } as never);
+    expect(calls.length).toBe(2);
+    // A shared signal here would make the retry fail instantly instead.
+    expect(calls[0]!.init.signal).not.toBe(calls[1]!.init.signal);
+    expect(calls[1]!.init.signal?.aborted).toBe(false);
+  });
+});
+
+describe("Bun-style connection errors", () => {
+  it("retries a Bun fetch connection-refused error (plain Error + .code, not TypeError)", async () => {
+    let attempts = 0;
+    const { calls } = installFetch(() => {
+      attempts++;
+      if (attempts === 1) {
+        // Bun's actual shape for a refused/cold-start connection: plain Error + .code.
+        const err = new Error(
+          "Unable to connect. Is the computer able to access the url?",
+        ) as Error & { code: string };
+        err.code = "ConnectionRefused";
+        throw err;
+      }
+      return new Response(
+        JSON.stringify({ bootId: "b", transition: "t", config: {} }),
+        { status: 200 },
+      );
+    });
+    await postConfig("http://daemon:9000", "tok", { env: {} } as never);
+    expect(calls.length).toBe(2);
   });
 });
 

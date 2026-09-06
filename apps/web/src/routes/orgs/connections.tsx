@@ -1,4 +1,5 @@
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { useT } from "@/i18n/use-t";
@@ -71,14 +72,7 @@ import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import {
-  Container,
-  Globe02,
-  Loading01,
-  Plus,
-  Terminal,
-  XClose,
-} from "@untitledui/icons";
+import { Container, Globe02, Plus, Terminal, XClose } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { track } from "@/lib/posthog-client";
@@ -500,7 +494,7 @@ function ConnectionResults({
       {/* Cards */}
       {mergedDiscovery.isInitialLoading && activeTab === "all" ? (
         <div className="flex h-full items-center justify-center">
-          <Loading01 size={32} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-8 text-muted-foreground" />
         </div>
       ) : (
         <div>
@@ -635,10 +629,7 @@ function ConnectionResults({
               {(activeTab === "all" || isSearching) &&
                 mergedDiscovery.isLoadingMore && (
                   <div className="col-span-full flex justify-center py-6">
-                    <Loading01
-                      size={24}
-                      className="animate-spin text-muted-foreground"
-                    />
+                    <Spinner className="size-6 text-muted-foreground" />
                   </div>
                 )}
             </div>
@@ -1488,10 +1479,7 @@ function OrgMcpsContent() {
               <Suspense
                 fallback={
                   <div className="flex h-full items-center justify-center">
-                    <Loading01
-                      size={32}
-                      className="animate-spin text-muted-foreground"
-                    />
+                    <Spinner className="size-8 text-muted-foreground" />
                   </div>
                 }
               >
@@ -1528,10 +1516,7 @@ export default function OrgMcps() {
       <Suspense
         fallback={
           <div className="flex h-full items-center justify-center">
-            <Loading01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner className="size-8 text-muted-foreground" />
           </div>
         }
       >

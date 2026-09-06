@@ -163,6 +163,8 @@ export class OrgScopedThreadStorage {
       agentId?: string;
       includeArchived?: boolean;
       hasTrigger?: boolean;
+      /** `metadata.source` — e.g. `jira` for runs the Jira integration started. */
+      source?: string;
     },
   ): Promise<{ threads: Thread[]; total: number }> {
     return this.inner.list(this.requireOrg(), createdBy, options);
@@ -719,6 +721,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       agentId?: string;
       includeArchived?: boolean;
       hasTrigger?: boolean;
+      /** `metadata.source` — e.g. `jira` for runs the Jira integration started. */
+      source?: string;
     },
   ): Promise<{ threads: Thread[]; total: number }> {
     const archived = options?.includeArchived === true;
@@ -766,6 +770,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (options?.status) {
       query = query.where("status", "=", options.status as ThreadStatus);
     }
+    if (options?.source) {
+      query = query.where(sql`metadata->>'source'`, "=", options.source);
+    }
 
     let countQuery = this.db
       .selectFrom("threads")
@@ -810,6 +817,13 @@ export class SqlThreadStorage implements ThreadStoragePort {
         "status",
         "=",
         options.status as ThreadStatus,
+      );
+    }
+    if (options?.source) {
+      countQuery = countQuery.where(
+        sql`metadata->>'source'`,
+        "=",
+        options.source,
       );
     }
 

@@ -66,4 +66,26 @@ describe("createClientPool", () => {
 
     await pool[Symbol.asyncDispose]();
   });
+
+  it("closes the transport when start() throws", async () => {
+    const pool = createClientPool();
+    let closed = false;
+    const transport: Transport = {
+      async start() {
+        throw new Error("spawn failed");
+      },
+      async send() {},
+      async close() {
+        closed = true;
+      },
+      onmessage: undefined,
+      onerror: undefined,
+      onclose: undefined,
+    };
+
+    await expect(pool(() => transport, "conn_1")).rejects.toThrow(
+      "spawn failed",
+    );
+    expect(closed).toBe(true);
+  });
 });

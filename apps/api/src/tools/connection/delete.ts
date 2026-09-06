@@ -18,6 +18,7 @@ import {
 } from "../../core/studio-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
+import { isDevAssetsConnection, usesLocalObjectStorage } from "./dev-assets";
 import { ConnectionEntitySchema } from "./schema";
 
 const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
@@ -52,6 +53,16 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
 
     // Check authorization
     await ctx.access.check();
+
+    // The dev-assets connection is synthetic; findById() below can't see it.
+    if (
+      usesLocalObjectStorage() &&
+      isDevAssetsConnection(input.id, organization.id)
+    ) {
+      throw new Error(
+        "This connection is a fixed system connection and cannot be deleted",
+      );
+    }
 
     // Fetch connection before deleting to return the entity
     const connection = await ctx.storage.connections.findById(input.id);
@@ -92,8 +103,41 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       }
     }
 
+    // A thread pinned to this connection as its repo would be stranded — same case VIRTUAL_MCP_DELETE guards.
+    if (await ctx.storage.connections.isReferencedByThread(input.id)) {
+      throw new Error(JSON.stringify({ code: "CONNECTION_IN_USE_BY_THREAD" }));
+    }
+
+    // An automation's event trigger connection_id has no FK, so it would strand silently.
+    const referencingAutomations =
+      await ctx.storage.automations.listActiveByEventTriggerConnectionId(
+        input.id,
+      );
+    if (referencingAutomations.length > 0) {
+      if (input.force) {
+        await Promise.all(
+          referencingAutomations.map((automation) =>
+            ctx.storage.automations.deactivateAutomation(automation.id),
+          ),
+        );
+      } else {
+        throw new Error(
+          JSON.stringify({
+            code: "CONNECTION_IN_USE_BY_AUTOMATION",
+            automationNames: referencingAutomations.map((a) => a.name),
+          }),
+        );
+      }
+    }
+
     // Delete connection
     await ctx.storage.connections.delete(input.id);
+
+    // trigger_callback_tokens.connection_id has no FK either — same class of orphan.
+    await ctx.storage.triggerCallbackTokens.deleteByConnection(
+      input.id,
+      organization.id,
+    );
 
     // Cleanup registry_config references to the deleted connection
     const orgSettings = await ctx.storage.organizationSettings.get(

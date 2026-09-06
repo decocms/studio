@@ -192,6 +192,15 @@ import * as migration190taskboardreviewcyclestartedat from "./190-task-board-rev
 import * as migration191taskboardcolumns from "./191-task-board-columns.ts";
 import * as migration192taskboardverdictnudgeactivity from "./192-task-board-verdict-nudge-activity.ts";
 import * as migration193taskboardstatuscolumnfk from "./193-task-board-status-column-fk.ts";
+import * as migration194jiralinksprint from "./194-jira-link-sprint.ts";
+import * as migration195taskboardsprintactivity from "./195-task-board-sprint-activity.ts";
+import * as migration196taskboardcolumntrackerstatuses from "./196-task-board-column-tracker-statuses.ts";
+import * as migration197taskboardprompts from "./197-task-board-prompts.ts";
+import * as migration198taskboardexternalurl from "./198-task-board-external-url.ts";
+import * as migration199dropjiramirrorandorgcolumns from "./199-drop-jira-mirror-and-org-columns.ts";
+import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
+import * as migration201organizationnotices from "./201-organization-notices.ts";
+import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -417,6 +426,17 @@ const migrations: Record<string, Migration> = {
   "192-task-board-verdict-nudge-activity":
     migration192taskboardverdictnudgeactivity,
   "193-task-board-status-column-fk": migration193taskboardstatuscolumnfk,
+  "194-jira-link-sprint": migration194jiralinksprint,
+  "195-task-board-sprint-activity": migration195taskboardsprintactivity,
+  "196-task-board-column-tracker-statuses":
+    migration196taskboardcolumntrackerstatuses,
+  "197-task-board-prompts": migration197taskboardprompts,
+  "198-task-board-external-url": migration198taskboardexternalurl,
+  "199-drop-jira-mirror-and-org-columns":
+    migration199dropjiramirrorandorgcolumns,
+  "200-jira-run-trigger": migration200jirarruntrigger,
+  "201-organization-notices": migration201organizationnotices,
+  "202-redact-base64-thread-parts": migration202redactbase64threadparts,
 };
 
 export default migrations;

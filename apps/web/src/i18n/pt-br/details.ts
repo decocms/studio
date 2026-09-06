@@ -30,8 +30,10 @@ export const details = {
   "details.connectionActivity.errors": "Erros",
   "details.connectionActivity.noActivityInThisPeriod":
     "Nenhuma atividade neste período",
+  "details.connectionActivity.timeframe": "Período",
   "details.connectionActivity.toolCalls": "Chamadas de ferramenta",
   "details.connectionActivity.topErrors": "Principais erros",
+  "details.connectionAgentsPanel.usedByAgents": "Usado por projetos",
   "details.connectionCapabilities.capabilities": "Capacidades",
   "details.connectionCapabilities.noCapabilitiesDiscovered":
     "Nenhuma capacidade descoberta ainda. A conexão ainda pode estar se conectando.",
@@ -115,6 +117,7 @@ export const details = {
   "details.prompt.notFoundTitle": "Prompt não encontrado",
   "details.prompt.title": "Título",
   "details.prompt.titlePlaceholder": "Prompt sem título",
+  "details.settingsTab.authenticate": "Autenticar",
   "details.settingsTab.authenticationRequired": "Autenticação Obrigatória",
   "details.settingsTab.manualAuthenticationDescription":
     "Este servidor requer uma chave de API ou token que deve ser configurado manualmente. Verifique a documentação do servidor para instruções sobre como obter credenciais.",

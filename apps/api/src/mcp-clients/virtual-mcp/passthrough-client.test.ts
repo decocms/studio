@@ -1,4 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { clearAggregateCache } from "./aggregate-cache";
 import { namespaceCode } from "@decocms/mcp-utils/aggregate";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type {
@@ -140,6 +141,10 @@ const mockCtx = {} as any;
 describe("PassthroughClient", () => {
   beforeEach(() => {
     mockCreateLazyClient.mockReset();
+    // listTools() now reads a module-level aggregate cache. Two tests that
+    // share a connection id and an (absent) acting user share a cache key, so
+    // without this the second would assert against the first's aggregate.
+    clearAggregateCache();
   });
 
   describe("tool namespacing", () => {

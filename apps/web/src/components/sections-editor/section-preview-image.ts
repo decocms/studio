@@ -1,6 +1,6 @@
 import { renderMustacheTemplate } from "./array-item-display";
 import type { LiveMeta } from "./resolve-schema";
-import { safeEditorImageUrl } from "./safe-editor-image-url";
+import { safeImageUrl } from "@/lib/safe-image-url";
 import { sectionSchemaChain } from "./section-schema";
 import { resolveSectionPreviewContext } from "./section-variants";
 import type { RawSection } from "./section-types";
@@ -40,5 +40,5 @@ export function getSectionPreviewImageSrc(
   const rendered = renderMustacheTemplate(imageTpl, ctx.data);
   if (!rendered) return undefined;
 
-  return safeEditorImageUrl(rendered);
+  return safeImageUrl(rendered);
 }

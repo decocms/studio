@@ -1,14 +1,10 @@
 /**
- * JIRA_* — per-org Jira Cloud integration (pull sync into the task board).
+ * JIRA_* — per-org Jira Cloud integration.
  *
  * One integration per org: site + Basic-auth credentials (API token, vault-
- * encrypted), one board, and a per-tenant status mapping (board lane → its
- * Jira status names). The jira-sync cron (dbos-jira-sync.ts) pulls every ~10
- * minutes; `_SYNC_RUN` pulls on demand.
- *
- * The pull's scope is the board's own saved filter, so an issue sitting in the
- * board's Backlog tab is a card here too — which sprint it belongs to is
- * mirrored onto the card instead of deciding whether the card exists.
+ * encrypted) and one board. Nothing here copies cards: the board is what the
+ * integration watches, and the credential is what the server spends on the
+ * org's behalf.
  */
 
 import { z } from "zod";
@@ -20,64 +16,21 @@ import {
   type StudioContext,
 } from "@/core/studio-context";
 import { JiraClient, normalizeSiteUrl } from "@/jira/client";
-import { syncJiraIntegrationSafe } from "@/jira/sync";
 import type { OrgJiraIntegration } from "@/storage/types";
-
-// Caps the jsonb blob every sync tick re-reads; no real board has more.
-const MAX_STATUS_MAPPING_LANES = 100;
-const MAX_STATUSES_PER_LANE = 100;
-const MAX_STATUS_NAME_LENGTH = 200;
-
-// `partialRecord`, not `record`: a `z.record` over an enum demands EVERY lane
-// be present, so an org mapping three of its columns would fail validation.
-// A plain record now that a board column is any key: `partialRecord` over a
-// closed enum was what forced every lane to be listed, and there is no closed
-// set of lanes to enumerate on a board the org owns.
-const statusMappingSchema = z
-  .record(
-    z.string().min(1).max(MAX_STATUS_NAME_LENGTH),
-    z
-      .array(z.string().min(1).max(MAX_STATUS_NAME_LENGTH))
-      .max(MAX_STATUSES_PER_LANE),
-  )
-  .refine(
-    (mapping) => Object.keys(mapping).length <= MAX_STATUS_MAPPING_LANES,
-    `Cannot map more than ${MAX_STATUS_MAPPING_LANES} lanes`,
-  )
-  .describe(
-    "Board status → its Jira status names, in board order. Several Jira " +
-      "statuses may share a lane; the first is where a card entering that lane " +
-      "is pushed. Issues whose Jira status names no lane are not synced.",
-  );
 
 /** The API token never leaves the server — outputs carry the rest.
  *  `webhookSecret` IS returned: org admins need it to compose the webhook
- *  URL they paste into Jira, and it grants nothing beyond triggering a sync. */
+ *  URL they paste into Jira, and it grants nothing beyond a wake-up call. */
 const integrationSchema = z.object({
   id: z.string(),
   siteUrl: z.string(),
   email: z.string(),
   boardId: z.string().nullable(),
   boardName: z.string().nullable(),
-  statusMapping: statusMappingSchema,
   webhookSecret: z.string(),
   enabled: z.boolean(),
-  lastSyncedAt: z.string().nullable(),
-  lastSyncError: z.string().nullable(),
   createdAt: z.string(),
 });
-
-const syncResultSchema = z.union([
-  z.object({
-    created: z.number(),
-    updated: z.number(),
-    unchanged: z.number(),
-    skipped: z.number(),
-    archived: z.number(),
-    unmappedStatuses: z.array(z.string()),
-  }),
-  z.object({ error: z.string() }),
-]);
 
 function toOutput(
   integration: OrgJiraIntegration,
@@ -88,11 +41,8 @@ function toOutput(
     email: integration.email,
     boardId: integration.boardId,
     boardName: integration.boardName,
-    statusMapping: integration.statusMapping,
     webhookSecret: integration.webhookSecret,
     enabled: integration.enabled,
-    lastSyncedAt: integration.lastSyncedAt,
-    lastSyncError: integration.lastSyncError,
     createdAt: integration.createdAt,
   };
 }
@@ -114,8 +64,8 @@ async function requireIntegration(
 export const JIRA_INTEGRATION_GET = defineTool({
   name: "JIRA_INTEGRATION_GET",
   description:
-    "Get this organization's Jira integration config and last sync status. " +
-    "Null when Jira is not connected. Never returns the API token.",
+    "Get this organization's Jira integration config. Null when Jira is not " +
+    "connected. Never returns the API token.",
   inputSchema: z.object({}),
   outputSchema: z.object({ integration: integrationSchema.nullable() }),
   handler: async (_input, ctx) => {
@@ -135,8 +85,7 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
     "Connect or update this organization's Jira integration. Credentials " +
     "(siteUrl + email + apiToken) are required on first connect and are " +
     "validated against Jira before saving; omitted fields keep their " +
-    "current value. Enable with a project and status mapping to start the " +
-    "~10-minute pull sync.",
+    "current value. Enabling requires a board.",
   inputSchema: z.object({
     siteUrl: z
       .string()
@@ -148,13 +97,12 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
       .string()
       .nullable()
       .optional()
-      .describe("Jira board to mirror (null clears it)"),
+      .describe("Jira board the integration watches (null clears it)"),
     boardName: z
       .string()
       .nullable()
       .optional()
       .describe("Display name of that board"),
-    statusMapping: statusMappingSchema.optional(),
     enabled: z.boolean().optional(),
   }),
   outputSchema: z.object({ integration: integrationSchema }),
@@ -195,16 +143,11 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
 
     const boardId =
       input.boardId !== undefined ? input.boardId : (existing?.boardId ?? null);
-    const statusMapping = input.statusMapping ?? existing?.statusMapping ?? {};
     const enabled = input.enabled ?? existing?.enabled ?? false;
-    // Server-side gate, not just the UI's: enabling without a board or a
-    // mapping makes every cron tick throw and record the same error for as long
-    // as it stays that way, with nothing to self-heal it. Reachable from the
-    // board-change path too, which clears the mapping while `enabled` stays on.
-    if (enabled && (!boardId || Object.keys(statusMapping).length === 0)) {
-      throw new Error(
-        "Select a board and map at least one column before enabling the Jira sync",
-      );
+    // Server-side gate, not just the UI's: an enabled integration with no board
+    // has nothing to watch.
+    if (enabled && !boardId) {
+      throw new Error("Select a board before enabling the Jira integration");
     }
 
     const integration = await ctx.storage.jiraIntegrations.upsert({
@@ -217,10 +160,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
         input.boardName !== undefined
           ? input.boardName
           : (existing?.boardName ?? null),
-      statusMapping,
-      // Superseded by column automations; the column stays until a later
-      // migration drops it, so writes keep it at its current value.
-      autoDelegate: existing?.autoDelegate ?? false,
       enabled,
       createdBy: existing?.createdBy ?? userId,
     });
@@ -230,9 +169,7 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
 
 export const JIRA_INTEGRATION_DELETE = defineTool({
   name: "JIRA_INTEGRATION_DELETE",
-  description:
-    "Disconnect Jira from this organization. Already-synced board cards are " +
-    "kept; they just stop updating.",
+  description: "Disconnect Jira from this organization.",
   inputSchema: z.object({}),
   outputSchema: z.object({ deleted: z.boolean() }),
   handler: async (_input, ctx) => {
@@ -248,7 +185,7 @@ export const JIRA_BOARDS_LIST = defineTool({
   name: "JIRA_BOARDS_LIST",
   description:
     "List the Jira boards visible to the connected credentials — for picking " +
-    "which board to mirror.",
+    "which board the integration watches.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     boards: z.array(
@@ -278,8 +215,8 @@ export const JIRA_BOARDS_LIST = defineTool({
 export const JIRA_BOARD_COLUMNS_LIST = defineTool({
   name: "JIRA_BOARD_COLUMNS_LIST",
   description:
-    "List a Jira board's columns with the status names each groups — the " +
-    "left-hand side of the status mapping, in the names the team knows.",
+    "List a Jira board's columns with the status names each groups, in the " +
+    "names the team knows.",
   inputSchema: z.object({ boardId: z.string() }),
   outputSchema: z.object({
     columns: z.array(
@@ -300,55 +237,14 @@ export const JIRA_BOARD_COLUMNS_LIST = defineTool({
   },
 });
 
-export const JIRA_SYNC_RUN = defineTool({
-  name: "JIRA_SYNC_RUN",
-  description:
-    "Pull from Jira into the task board right now (the 'I just changed " +
-    "something in Jira' button). Returns created/updated/unchanged/skipped/" +
-    "archived counts (skipped = an issue whose Jira status maps to no lane, or " +
-    "an epic; archived = a card whose issue left the board's scope), plus the " +
-    "Jira statuses it had to skip for lack of a mapping — or the error that " +
-    "was recorded on the integration.",
-  inputSchema: z.object({}),
-  outputSchema: z.object({ result: syncResultSchema }),
-  handler: async (_input, ctx) => {
-    requireAuth(ctx);
-    await ctx.access.check();
-    const organization = requireOrganization(ctx);
-    const integration = await requireIntegration(ctx, organization.id);
-    if (!integration.enabled) {
-      throw new Error(
-        "The Jira sync is disabled — enable it with JIRA_INTEGRATION_UPSERT before running",
-      );
-    }
-    const result = await syncJiraIntegrationSafe(ctx, integration);
-    return { result };
-  },
-});
-
-export const JIRA_RESYNC_REQUEST = defineTool({
-  name: "JIRA_RESYNC_REQUEST",
-  description:
-    "Mark the whole board for a re-scan. Does NOT sync — it drops the sync's " +
-    "watermark, so the next scheduled run re-reads every issue in scope " +
-    "instead of only what changed. Use it after changing what the sync DOES " +
-    "with an issue (a widened status mapping, a fixed body renderer), since " +
-    "issues behind the watermark are otherwise never asked for again. Use " +
-    "JIRA_SYNC_RUN to pull the recent changes right now.",
-  inputSchema: z.object({}),
-  outputSchema: z.object({ queued: z.literal(true) }),
-  handler: async (_input, ctx) => {
-    requireAuth(ctx);
-    await ctx.access.check();
-    const organization = requireOrganization(ctx);
-    const integration = await requireIntegration(ctx, organization.id);
-    // Deliberately does not run the scan. A full board is thousands of Jira
-    // reads paced across ticks by MAX_ISSUES_PER_RUN and `rescan_pending`,
-    // which is the scheduler's job — holding an HTTP request open for it would
-    // time out on exactly the boards big enough to need it, and a run dropped
-    // by a recycled process would leave no trace that a re-scan was wanted.
-    // The cleared watermark IS the durable record of the request.
-    await ctx.storage.jiraIntegrations.clearWatermark(integration.id);
-    return { queued: true as const };
-  },
-});
+export {
+  JIRA_AUTOMATION_DELETE,
+  JIRA_AUTOMATION_LIST,
+  JIRA_AUTOMATION_UPSERT,
+} from "./automations";
+export {
+  JIRA_ATTACHMENT_DOWNLOAD,
+  JIRA_COMMENT_ADD,
+  JIRA_ISSUE_GET,
+  JIRA_ISSUE_TRANSITION,
+} from "./run-tools";

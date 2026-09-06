@@ -30,6 +30,7 @@ import { TaskBoardStorage } from "./task-board";
 import { SqlThreadStorage } from "./threads";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
+/** Studio's own board, which is what these fixtures run on. */
 const ORG = "org_advance_review";
 const USER = "user_advance_review";
 

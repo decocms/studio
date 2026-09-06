@@ -1,5 +1,6 @@
 import { type Ref, useImperativeHandle } from "react";
-import { Loading01, X } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { X } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { useProjectContext } from "@/sdk";
@@ -102,7 +103,7 @@ export function PageJsonPanel({
       </div>
       {loading ? (
         <div className="flex flex-1 items-center justify-center">
-          <Loading01 size={20} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-5 text-muted-foreground" />
         </div>
       ) : missing ? (
         <div className="p-4 text-xs font-mono text-foreground/60">

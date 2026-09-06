@@ -16,7 +16,7 @@ Um agent tem:
 - **As tools certas** — apenas o que ele precisa, anexadas a partir das suas [connections](/pt-br/studio/connections)
 - **Instruções detalhadas** — como se comportar, o que priorizar, o que evitar
 - **Um histórico de thread** — cada conversa passada com ele, salva e retomável
-- **Um layout** — o que o usuário vê ao abrir o agent, além de quaisquer pinned views trazidas das suas tools conectadas
+- **Um layout** — a main view padrão, além de quais views disponíveis do projeto e de MCP apps fixados aparecem na sidebar
 - **Um sandbox opcional** — um runtime isolado onde o agent pode rodar código de um repo vinculado (seu próprio MCP server, um dev server, etc.)
 - **Automations opcionais** — schedules ou triggers de evento que executam o agent sem supervisão
 
@@ -24,18 +24,11 @@ Você chega a um agent pela home grid, pela lista de threads na sidebar ou pelo 
 
 ## A tela do agent
 
-Quando você abre um agent, a tela se divide em duas:
+Quando você abre um agent, a navegação permanente dele fica na seção do projeto na sidebar, e o workspace pode se dividir em duas partes:
 
+- **Sidebar — views do projeto.** Em **Layout**, escolha se Home, Reports, Tasks, Site Editor, Automations e cada view disponível de Assets, Hosting, E2E, Deco Analytics, Monitor ou de MCP apps fixados aparece aqui. Selecionar uma delas a abre como main view; esses destinos não aparecem também como tabs de nível superior no painel.
 - **Esquerda — chat.** Converse com o agent em linguagem natural; ele usa as tools anexadas para fazer o trabalho. Suas mensagens e threads passadas com este agent ficam aqui. Acima do input estão o **model picker** e o **runtime picker** (veja [Onde um agent roda](#onde-um-agent-roda)).
-- **Direita — um painel com abas.** Quais abas aparecem depende do que o agent é:
-
-| Tab | Quando aparece |
-|---|---|
-| **Settings** | Sempre que você pode gerenciar agents — nome, descrição, ícone, instruções, connections anexadas, files & skills, e **layout** (a view padrão, mais pinned views de tools que expõem uma UI interativa) |
-| **Automations** | Sempre — schedules e triggers de evento anexados a este agent |
-| **Preview** | Quando o agent é respaldado por um repo ou site clonável — um preview ao vivo do que ele constrói |
-| **Content** | Quando esse repo expõe páginas ou seções editáveis — edite o conteúdo inline |
-| **Review changes** | Quando o agent está vinculado a um repo do GitHub **e tem um pull request aberto** — revise a branch e seu diff |
+- **Direita — main view.** Esta é a view selecionada na sidebar ou configurada como padrão do projeto. Uma view ainda pode ter suas próprias tabs contextuais — por exemplo, Preview, Content e Code dentro do Site Editor — e outputs temporários do chat podem aparecer aqui sem virar navegação permanente na sidebar.
 
 Um agent baseado em Git também mostra um **branch selector** ao lado do runtime picker, e um indicador de **status do sandbox** enquanto seu ambiente inicializa.
 
@@ -43,7 +36,9 @@ Tudo sobre um único agent vive nesta única tela.
 
 ### Layout e pinned views
 
-Algumas connections expõem mais do que tools — elas trazem uma UI interativa (um dashboard, um formulário, um explorador de dados) junto ao seu endpoint MCP. Nas configurações de **Layout** do agent, você pode fixar qualquer uma dessas views para que apareçam como abas de nível superior dentro do agent. É assim que um agent se transforma em um pequeno app de propósito específico, e não apenas um chat.
+As configurações de **Layout** do agent controlam de forma independente a main view padrão e as entradas da sidebar. Projetos que ainda não salvaram preferências da sidebar começam com Home, Reports, Tasks e Site Editor quando essas views estão presentes; Automations e as outras views disponíveis começam desabilitadas. O Studio só oferece uma view nativa quando ela está presente no projeto: views ligadas a código exigem um repositório ou template, Assets precisa de um armazenamento de assets associado e Hosting, E2E, Deco Analytics e Monitor dependem dos serviços disponíveis para o site. Uma view presente fica disponível no seletor de **Main view** mesmo que seu switch da sidebar esteja desabilitado. O switch apenas adiciona ou remove essa entrada permanente da sidebar do projeto.
+
+Algumas connections expõem mais do que tools — elas trazem uma UI interativa (um dashboard, um formulário, um explorador de dados) junto ao seu endpoint MCP. Você pode fixar qualquer uma dessas views em **Layout**. Uma pinned view segue o mesmo modelo: ela se torna uma entrada selecionável na sidebar do projeto e uma opção de main view padrão. É assim que um agent se transforma em um pequeno app de propósito específico, e não apenas um chat.
 
 Essas views vêm de **MCP apps**.
 
@@ -54,7 +49,7 @@ Um **MCP app** é a forma de estender o Studio hoje. É um MCP server comum que 
 - **Tools** — as ações que um agent pode executar
 - **Views** — UIs em React (uma página, um painel, um dashboard) entregues como resources, vinculadas a tools específicas via `_meta.ui.resourceUri`
 
-Quando um MCP app é instalado como uma connection, o Studio sabe quais views pertencem a quais tools. Fixe uma view no Layout do agent e ela aparece como uma aba no agent — clicar no resultado de uma tool relevante, ou abrir a aba diretamente, carrega a view inline. A comunicação bidirecional entre o chat e a view é tratada pelo Studio.
+Quando um MCP app é instalado como uma connection, o Studio sabe quais views pertencem a quais tools. Fixe uma view no Layout do agent e ela aparece como uma entrada na sidebar do projeto — clicar no resultado de uma tool relevante, ou selecionar essa entrada, carrega a view inline. A comunicação bidirecional entre o chat e a view é tratada pelo Studio.
 
 Para criar um MCP app você usa o framework `@decocms/runtime` (React 19 + Tailwind + shadcn, compilado para um único arquivo HTML com Vite). O template de referência — incluindo estrutura de projeto, configuração de build e exemplos de tools-com-views — fica em [github.com/decocms/mcp-app](https://github.com/decocms/mcp-app).
 
@@ -87,6 +82,10 @@ Para usar as opções locais, abra a app nativa do Studio. O `local-api` embutid
 <Callout type="tip">
   Cloud é o padrão certo para execuções sem supervisão e para colegas de time que não deveriam precisar de uma configuração local. Recorra à app desktop quando o agent precisar da sua máquina — seus arquivos, suas credenciais ou um coding harness como Claude Code, Codex ou OpenCode.
 </Callout>
+
+## Windows
+
+O daemon roda nativamente no Windows com um pré-requisito: **[Git for Windows](https://gitforwindows.org)** — ele fornece tanto o `git` quanto o shell bash usado para rodar os scripts de dev do seu projeto. Se o daemon reportar "POSIX shell (sh) not found", instale o Git for Windows ou defina a variável de ambiente `DECO_SHELL` para um shell compatível com bash. O WSL2 continua sendo uma alternativa totalmente suportada. Montagens de arquivos da org ainda não estão disponíveis no Windows.
 
 ## Um agent é um MCP virtual
 

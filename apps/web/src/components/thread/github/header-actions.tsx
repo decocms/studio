@@ -25,6 +25,8 @@ import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { squashMergePullRequest } from "./github-pr-api.ts";
+import { useReleases } from "./use-releases";
+import { draftsModeEnabled } from "./use-version-gate";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
   isPrStateActivelyLoading,
@@ -51,7 +53,6 @@ import type {
 } from "@/components/sandbox/hooks/sandbox-events-context";
 import { useT, type TFunction } from "@/i18n/use-t";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
-import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import {
   AlertTriangle,
   CheckCircle,
@@ -135,6 +136,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
+  const { deleteRelease } = useReleases(virtualMcpId);
   const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
@@ -333,8 +335,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const switchToFreshBranch = async () => {
+    // Always land on a fresh editable draft, never on read-only production.
+    const published = draftsModeEnabled(vm) ? branch : null;
     const nextBranch = generateBranchName(branchUserLabel(session?.user));
     await setCurrentTaskBranch(nextBranch);
+    if (published && published !== baseBranch) {
+      await deleteRelease(published);
+    }
   };
 
   const handleSquashMerge = async (pullNumber: number) => {
@@ -519,29 +526,19 @@ function HeaderButtonRenderer(props: {
     };
   });
 
-  /** Tour anchors: publish on the Review & Publish primary, submit on create-pr; otherwise off, so the tour skips the step (`skipMissingElement`). */
-  const tourAnchor =
-    action === "publish"
-      ? TOUR_ANCHORS.publish
-      : action === "create-pr"
-        ? TOUR_ANCHORS.submit
-        : undefined;
-
   return (
-    <span className="inline-flex" data-tour={tourAnchor}>
-      <SplitButton
-        size="sm"
-        label={button.label}
-        variant={button.variant}
-        disabled={disabled}
-        loading={loading}
-        {...(action && !loading ? { icon: actionIcon(action) } : {})}
-        {...(tooltip ? { tooltip } : {})}
-        items={items}
-        menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
-        onClick={action ? () => onAction(action) : undefined}
-      />
-    </span>
+    <SplitButton
+      size="sm"
+      label={button.label}
+      variant={button.variant}
+      disabled={disabled}
+      loading={loading}
+      {...(action && !loading ? { icon: actionIcon(action) } : {})}
+      {...(tooltip ? { tooltip } : {})}
+      items={items}
+      menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
+      onClick={action ? () => onAction(action) : undefined}
+    />
   );
 }
 

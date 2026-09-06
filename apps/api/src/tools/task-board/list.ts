@@ -1,9 +1,9 @@
-import { boardFor } from "./board-handler";
+import { CANONICAL_COLUMNS } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
-import { SprintSchema, TaskBoardItemSchema } from "./schema";
+import { TaskBoardItemSchema } from "./schema";
 import { recoverStalledTasks } from "./stall-recovery";
 
 /** A board column as the client renders it — mirrors `BoardColumn` in shared. */
@@ -11,7 +11,6 @@ const BoardColumnSchema = z.object({
   key: z.string(),
   title: z.string(),
   position: z.number(),
-  role: z.string().nullable(),
 });
 
 export const TASK_BOARD_ITEM_LIST = defineTool({
@@ -32,8 +31,6 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     items: z.array(TaskBoardItemSchema),
     // The repo picker's option set — the valid values for a task's `repo`.
     repos: z.array(z.string()),
-    // The sprint filter's option set, in reading order (running → next → past).
-    sprints: z.array(SprintSchema),
     // The board's columns, left to right — its whole vocabulary.
     columns: z.array(BoardColumnSchema),
   }),
@@ -48,13 +45,10 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
       );
     }
 
-    const [items, { items: githubConnections }, sprints, columns] =
-      await Promise.all([
-        ctx.storage.taskBoard.list(organizationId),
-        ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
-        ctx.storage.sprints.listByOrg(organizationId),
-        boardFor(ctx, organizationId).then((board) => board.columns()),
-      ]);
+    const [items, { items: githubConnections }] = await Promise.all([
+      ctx.storage.taskBoard.list(organizationId),
+      ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
+    ]);
     const repos = listRepoScopeLabels(githubConnections);
 
     // Opening the board is the stall-recovery trigger: re-run the thread-finish
@@ -64,6 +58,6 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     // moves broadcast over SSE, which is how the board already learns them).
     void recoverStalledTasks(ctx, items);
 
-    return { items, repos, sprints, columns };
+    return { items, repos, columns: CANONICAL_COLUMNS };
   },
 });

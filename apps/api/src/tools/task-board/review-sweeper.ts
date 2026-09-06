@@ -9,13 +9,12 @@
  *    bash scan. A Super Agent task runs the `claude-code` harness *inside a
  *    sandbox*, so Claude Code opens the PR in the pod and it passes through
  *    neither hook. Nothing linked it, so `enqueueReviewersOnThreadFinish` saw
- *    `prs.length === 0` and parked the card. Both this sweeper and
- *    `TASK_BOARD_ITEM_PRS_GET` papered over it by regexing a PR URL out of the
- *    run's closing message — which silently linked nothing whenever the model
- *    wrote "PR #269 opened" instead of the URL. `TASK_BOARD_ITEM_PR_LINK` (see
- *    `pr-link.ts`) replaced that guess: the run states its PR, so by the time a
- *    card reaches here it is already linked, and an unlinked card means the run
- *    genuinely opened no PR.
+ *    `prs.length === 0` and parked the card. Every fix for that used to go
+ *    through the model — a regex over the run's closing message, then a tool
+ *    the run had to call — and a run that opened a PR and then died defeated
+ *    both. `linkPrFromRunBranch` (see `pr-by-branch.ts`) asks GitHub for the
+ *    branch the run was given instead, so an unlinked card here now means the
+ *    run genuinely opened no PR.
  *
  * 2. **The dispatch itself throws.** The projector's terminal hook runs inside a
  *    DBOS step, and the reviewer dispatch bottoms out in `enqueueThreadRun` →
@@ -66,10 +65,12 @@ import type { OrganizationBillingStorage } from "@/storage/organization-billing"
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  LANES,
   reviewCycleStart,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
+import { linkPrFromRunBranch } from "./pr-by-branch";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
 import { inReviewPhase } from "./lanes";
@@ -85,6 +86,7 @@ import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { previewMatchesHead, prReadyForReview } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
+import { reactToApprovedPrConflict } from "./conflict-reaction";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
  *  would take to notice a stuck card, and the work list is one index scan when
@@ -230,7 +232,7 @@ export class TaskBoardReviewSweeper {
 
   /**
    * Fail task-linked threads whose run never started, headlessly and in BOTH
-   * lanes.
+   * LANES.
    *
    * `recoverStalledTasks` already did this, but only on `TASK_BOARD_ITEM_LIST`
    * (so never without a human opening the board) and only for cards parked In
@@ -326,7 +328,7 @@ export class TaskBoardReviewSweeper {
         // the card between the scan and here, and their move wins.
         if (
           !item ||
-          item.status !== "in_progress" ||
+          item.status !== LANES.progress ||
           item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
         ) {
           continue;
@@ -399,7 +401,7 @@ export class TaskBoardReviewSweeper {
   ): Promise<void> {
     try {
       const item = await this.taskBoard.getById(id, organizationId);
-      if (!item || item.status !== "in_progress") return;
+      if (!item || item.status !== LANES.progress) return;
       const returned = await this.taskBoard.returnToTodoAfterFailure(
         id,
         organizationId,
@@ -427,14 +429,14 @@ export class TaskBoardReviewSweeper {
    * Hand a card parked In Review with no pull request to a person.
    *
    * There is nothing for a reviewer to review, so no reviewer is ever
-   * dispatched — the run either finished without opening a PR or opened one and
-   * never called `TASK_BOARD_ITEM_PR_LINK`. Until now that was a silent
+   * dispatched — the run finished without opening one, and the branch lookup
+   * above found nothing either. Until now that was a silent
    * `return`: the card was swept every five minutes forever and read on the
    * board exactly like one waiting on its reviewers. Four sat that way in one
    * org, the oldest for a week.
    *
-   * Waits out `NO_PR_HANDOFF_GRACE_MS` first, because the run links its PR and
-   * moves the card in two separate calls and the sweep can land between them.
+   * Waits out `NO_PR_HANDOFF_GRACE_MS` first, because a PR pushed seconds ago
+   * is a PR GitHub may not list yet, and the sweep can land in that window.
    */
   private async handOffReviewWithoutPr(
     ctx: StudioContext,
@@ -483,7 +485,7 @@ export class TaskBoardReviewSweeper {
     // its approvals stay valid, so it stays eligible to merge.
     const owned = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
-    const prs = await this.taskBoard.listPrs(id, organizationId);
+    let prs = await this.taskBoard.listPrs(id, organizationId);
 
     // Built as the task's owner, like the run-finish trigger does — the sweeper
     // has storage only, and the reviewer dispatch needs a full context.
@@ -494,8 +496,17 @@ export class TaskBoardReviewSweeper {
     if (!ctx) return false;
 
     if (prs.length === 0) {
-      if (owned) await this.handOffReviewWithoutPr(ctx, item);
-      return false;
+      // Nothing linked is not the same as nothing opened: a `claude-code` run
+      // opens its PR with `gh` inside the pod, where no Studio hook sees it. Ask
+      // GitHub for the branch the run was given before concluding there is
+      // nothing to review (`pr-by-branch.ts`).
+      if (await linkPrFromRunBranch(ctx, item)) {
+        prs = await this.taskBoard.listPrs(id, organizationId);
+      }
+      if (prs.length === 0) {
+        if (owned) await this.handOffReviewWithoutPr(ctx, item);
+        return false;
+      }
     }
 
     // One `get` per PR through the rate-limited queue, never straight at
@@ -542,6 +553,8 @@ export class TaskBoardReviewSweeper {
     // card that has no reviewer left to enqueue. Gated on verified approval +
     // auto-merge inside, so it can't ship anything the reviewers didn't.
     if (await retryAutoMergeIfApproved(ctx, item)) return true;
+    // With `auto_merge` off there is no refused merge to reveal a conflict.
+    if (await this.resolveConflictFromSweep(ctx, item, live)) return true;
     if (!owned) return false;
 
     if (!prReadyForReview(live)) return false;
@@ -550,6 +563,33 @@ export class TaskBoardReviewSweeper {
       previewMatchesHead: previewMatchesHead(live),
     });
     return true;
+  }
+
+  /**
+   * Hand a swept card's conflicting PR back to the Super Agent, using the
+   * conflict already read by `readPrStateThrottled` — no second GitHub call
+   * (the whole reason `SweptPrState` carries it). Best-effort: a dispatch
+   * failure must not abort the sweep pass for every other card.
+   */
+  private async resolveConflictFromSweep(
+    ctx: StudioContext,
+    item: TaskBoardItem,
+    live: readonly {
+      number: number;
+      url: string;
+      state: "open" | "closed" | null;
+      conflict: boolean | null;
+    }[],
+  ): Promise<boolean> {
+    const pr = live.find((p) => p.state !== "closed" && p.conflict === true);
+    if (!pr) return false;
+    return await reactToApprovedPrConflict(ctx, item.organizationId, item, {
+      pr: { number: pr.number, url: pr.url },
+      conflict: true,
+    }).catch((err) => {
+      console.error("[task-board-review-sweeper] conflict resolve failed", err);
+      return false;
+    });
   }
 
   dispose(): void {

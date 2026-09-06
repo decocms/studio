@@ -21,6 +21,7 @@ import {
 } from "../../database/test-db-pg";
 import { TaskBoardStorage } from "../../storage/task-board";
 
+/** Studio's own board, which is what these fixtures run on. */
 const ORG = "org_rerun_cycle_1";
 const USER = "user_rc1";
 

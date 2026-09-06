@@ -24,6 +24,17 @@ import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
 import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import { OrganizationNoticeStorage } from "@/storage/organization-notices";
+import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
+import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
+import { isValidSiteSlug } from "@decocms/shared/site-slug";
+import {
+  flagsResponse,
+  type OrgFlagsPatch,
+  OrgFlagsPatchSchema,
+} from "./admin-flags";
 import { posthog } from "@/posthog";
 import { getSettings } from "@/settings";
 import type { Env } from "@/api/hono-env";
@@ -114,6 +125,35 @@ async function getAuditActor(
       session?.session as { impersonatedBy?: string } | undefined
     )?.impersonatedBy,
   };
+}
+
+/**
+ * Overwrite an org's entire flags bag (raw-JSON editor "replace" mode). Unlike
+ * the merge upsert, a key absent from `flags` is deleted, restoring "unset"
+ * semantics. Insert-or-replace so it works before a settings row exists.
+ */
+async function replaceOrgFlags(
+  db: ReturnType<typeof getDb>["db"],
+  orgId: string,
+  flags: OrgFlagsPatch,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const serialized = JSON.stringify(flags);
+  await db
+    .insertInto("organization_settings")
+    .values({
+      organizationId: orgId,
+      flags: serialized,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflict((oc) =>
+      oc.column("organizationId").doUpdateSet({
+        flags: serialized,
+        updatedAt: now,
+      }),
+    )
+    .execute();
 }
 
 async function requireDeploymentAdmin(
@@ -304,10 +344,17 @@ export function createAdminRoutes(): Hono<Env> {
       .limit(limit)
       .execute();
 
+    // One extra query for the whole page: the notice badge is the reason an
+    // operator opens this list during a billing sweep.
+    const notices = await new OrganizationNoticeStorage(db).getActiveForOrgs(
+      rows.map((row) => row.id),
+    );
+
     return c.json({
       organizations: rows.map((row) => ({
         ...row,
         memberCount: Number(row.memberCount || 0),
+        notice: notices.get(row.id) ?? null,
       })),
     });
   });
@@ -374,6 +421,343 @@ export function createAdminRoutes(): Hono<Env> {
         added_user_id: user.id,
         role,
       },
+    });
+
+    return c.json({ ok: true });
+  });
+
+  // Feature-flag editor over `organization_settings.flags`; OrgFlagsSchema is the source of truth.
+  app.get("/orgs/:orgId/flags", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const settings = await new OrganizationSettingsStorage(db).get(orgId);
+    return c.json(flagsResponse(settings?.flags ?? null));
+  });
+
+  app.put("/orgs/:orgId/flags", async (c) => {
+    const orgId = c.req.param("orgId");
+    const raw = await c.req.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return c.json({ error: "Invalid body" }, 400);
+    }
+    const body = raw as { flags?: unknown; mode?: unknown };
+    // "replace" overwrites the whole bag (raw-JSON editor); "merge" (default) keeps omitted keys.
+    if (
+      body.mode !== undefined &&
+      body.mode !== "merge" &&
+      body.mode !== "replace"
+    ) {
+      return c.json({ error: "Invalid mode" }, 400);
+    }
+    const mode = body.mode === "replace" ? "replace" : "merge";
+    const parsed = OrgFlagsPatchSchema.safeParse(body.flags ?? {});
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid flags", issues: parsed.error.issues },
+        400,
+      );
+    }
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    if (mode === "replace") {
+      await replaceOrgFlags(db, orgId, parsed.data);
+    } else {
+      // Shallow jsonb merge (`coalesce(flags,'{}') || $new`).
+      await new OrganizationSettingsStorage(db).upsert(orgId, {
+        flags: parsed.data,
+      });
+    }
+    const settings = await new OrganizationSettingsStorage(db).get(orgId);
+
+    // Same real-actor attribution as member_add (reachable while impersonating).
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    auditAdminAction("org_flags_update", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      mode,
+      flags: parsed.data,
+    });
+    posthog.capture({
+      distinctId: actorId ?? orgId,
+      event: "deployment_admin_org_flags_updated",
+      groups: { organization: orgId },
+      properties: {
+        actor_user_id: actorId,
+        organization_id: orgId,
+        mode,
+        flags: parsed.data,
+      },
+    });
+
+    return c.json(flagsResponse(settings?.flags ?? null));
+  });
+
+  // Site ownership (org_sites): which org owns a globally-unique slug, the gate behind Hosting/E2E/Analytics/Monitor.
+  app.get("/orgs/:orgId/sites", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const sites = await new OrgSiteStorage(db).listByOrg(orgId);
+    return c.json({ sites });
+  });
+
+  app.post("/orgs/:orgId/sites", async (c) => {
+    const orgId = c.req.param("orgId");
+    const raw = await c.req.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return c.json({ error: "Invalid body" }, 400);
+    }
+    const body = raw as { slug?: unknown; reassign?: unknown };
+    const slug = typeof body.slug === "string" ? body.slug.trim() : "";
+    if (!isValidSiteSlug(slug)) {
+      return c.json({ error: "Invalid site slug" }, 400);
+    }
+    const reassign = body.reassign === true;
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const storage = new OrgSiteStorage(db);
+
+    const audit = (action: string, extra: Record<string, unknown>) => {
+      auditAdminAction(action, {
+        actor_user_id: actorId,
+        ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+        organization_id: orgId,
+        slug,
+        ...extra,
+      });
+      posthog.capture({
+        distinctId: actorId,
+        event: `deployment_admin_${action}`,
+        groups: { organization: orgId },
+        properties: { actor_user_id: actorId, organization_id: orgId, slug },
+      });
+    };
+
+    try {
+      const site = await storage.claimSite({
+        slug,
+        organizationId: orgId,
+        source: "manual",
+        by: actorId,
+      });
+      audit("org_site_claim", {});
+      return c.json({ site });
+    } catch (error) {
+      if (!(error instanceof OrgSiteConflictError)) throw error;
+      // Owned by another org: refuse unless the caller explicitly confirms the move.
+      if (!reassign) {
+        const owner = await db
+          .selectFrom("organization")
+          .select(["name", "slug"])
+          .where("id", "=", error.ownerOrganizationId)
+          .executeTakeFirst();
+        return c.json(
+          {
+            error: "owned_by_other_org",
+            ownerOrganizationId: error.ownerOrganizationId,
+            ownerOrganizationName: owner?.name ?? null,
+            ownerOrganizationSlug: owner?.slug ?? null,
+          },
+          409,
+        );
+      }
+      const site = await storage.reassignSite({
+        slug,
+        organizationId: orgId,
+        source: "manual",
+        by: actorId,
+      });
+      audit("org_site_reassign", {
+        from_organization_id: error.ownerOrganizationId,
+      });
+      return c.json({ site, reassignedFrom: error.ownerOrganizationId });
+    }
+  });
+
+  app.delete("/orgs/:orgId/sites/:slug", async (c) => {
+    const orgId = c.req.param("orgId");
+    const slug = c.req.param("slug");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    if (!released) {
+      return c.json({ error: "Site not found for this organization" }, 404);
+    }
+
+    auditAdminAction("org_site_release", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      slug,
+    });
+    posthog.capture({
+      distinctId: actorId ?? orgId,
+      event: "deployment_admin_org_site_release",
+      groups: { organization: orgId },
+      properties: { actor_user_id: actorId, organization_id: orgId, slug },
+    });
+
+    return c.json({ ok: true });
+  });
+
+  // Billing notice pinned on an org: a `warn` banner, or a `block` that takes
+  // the org's UI and control-plane writes away until it is resolved.
+  app.get("/orgs/:orgId/notice", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const notice = await new OrganizationNoticeStorage(db).getActive(orgId);
+    return c.json({ notice });
+  });
+
+  app.put("/orgs/:orgId/notice", async (c) => {
+    const orgId = c.req.param("orgId");
+    const raw = await c.req.json().catch(() => null);
+    const parsed = OrgNoticeInputSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid notice", issues: parsed.error.issues },
+        400,
+      );
+    }
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const notice = await new OrganizationNoticeStorage(db).setActive({
+      organizationId: orgId,
+      notice: parsed.data,
+      by: actorId,
+    });
+    invalidateOrgNoticeCache(orgId);
+
+    auditAdminAction("org_notice_set", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      severity: notice.severity,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_org_notice_set",
+      groups: { organization: orgId },
+      properties: {
+        actor_user_id: actorId,
+        organization_id: orgId,
+        severity: notice.severity,
+      },
+    });
+
+    return c.json({ notice });
+  });
+
+  app.delete("/orgs/:orgId/notice", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const resolved = await new OrganizationNoticeStorage(db).resolveActive({
+      organizationId: orgId,
+      by: actorId,
+    });
+    if (!resolved) {
+      return c.json({ error: "No active notice for this organization" }, 404);
+    }
+    invalidateOrgNoticeCache(orgId);
+
+    auditAdminAction("org_notice_resolve", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_org_notice_resolved",
+      groups: { organization: orgId },
+      properties: { actor_user_id: actorId, organization_id: orgId },
     });
 
     return c.json({ ok: true });

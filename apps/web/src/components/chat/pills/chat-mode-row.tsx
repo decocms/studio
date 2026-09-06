@@ -2,12 +2,16 @@ import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
+import {
+  draftsModeEnabled,
+  useBaseBranch,
+} from "../../thread/github/use-version-gate";
 import { getActiveGithubRepo } from "@/lib/github-repo";
+import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
   readThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
-import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 
@@ -62,36 +66,45 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const connectionId = githubRepo?.connectionId;
 
   const { data: session } = authClient.useSession();
-  const userId = session?.user?.id ?? "";
   const userLabel = branchUserLabel(session?.user);
+  const userId = session?.user?.id ?? "";
   const { org } = useProjectContext();
+
+  // Production branch shown as "Produção"; one shared source with the gate.
+  const baseBranch = useBaseBranch(virtualMcp, currentBranch);
+  const draftsMode = draftsModeEnabled(virtualMcp);
+
+  // Locked chat's branch is fixed: open a new chat on the picked branch.
+  const onChange = (next: string) => {
+    if (locked && createTask) createTask({ branch: next });
+    else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+  };
+  // Locked or CMS→sandbox: branch off into a fresh thread, don't re-point.
+  const onCreateBranch = (next: string) => {
+    if ((locked || createBranchAsCms) && createTask)
+      createTask({ branch: next });
+    else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+  };
 
   const branchPill =
     githubRepo && connectionId ? (
       <BranchPill
-        // Remount on repo/connection change so search/tab/highlight state
-        // from the previous repo doesn't leak into the new one's picker.
+        // Remount per repo so the previous project's switcher state can't leak.
         key={`${connectionId}:${githubRepo.owner}/${githubRepo.name}`}
+        draftsMode={draftsMode}
+        userLabel={userLabel}
+        virtualMcpId={virtualMcp?.id ?? ""}
+        value={currentBranch}
+        baseBranch={baseBranch}
         orgId={org.id}
         orgSlug={org.slug}
         userId={userId}
-        userLabel={userLabel}
-        virtualMcpId={virtualMcp?.id ?? ""}
         connectionId={connectionId}
         owner={githubRepo.owner}
         repo={githubRepo.name}
         sandboxMap={virtualMcp?.metadata?.sandboxMap}
-        value={currentBranch}
-        onChange={(next) => {
-          if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
-        }}
-        onCreateBranch={(next) => {
-          if (createBranchAsCms && createTask) {
-            createTask({ branch: next });
-          } else if (setCurrentTaskBranch) {
-            void setCurrentTaskBranch(next);
-          }
-        }}
+        onChange={onChange}
+        onCreateBranch={onCreateBranch}
         locked={locked}
         placement="chat"
       />

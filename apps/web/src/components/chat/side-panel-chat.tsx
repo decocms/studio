@@ -1,7 +1,9 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
-import { Suspense, useState } from "react";
+import { useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
+import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
+import { useT } from "@/i18n/use-t.ts";
 
 import { Chat } from "./index";
 import { useChatStream } from "./context";
@@ -110,12 +112,30 @@ function ChatSidePanelContent() {
   );
 }
 
+/**
+ * The chat panel belongs to the shell, but the conversation inside it is data
+ * like any other, so it waits behind the app's one panel loader rather than a
+ * skeleton of its own: the card frame stays, a spinner sits in it, and the
+ * chat replaces the spinner. A skeleton was worse on both counts — it drew a
+ * fake conversation that never matched the real one, and as the error fallback
+ * it left that fake conversation on screen forever.
+ */
 export function ChatSidePanel() {
+  const t = useT();
   return (
-    <ErrorBoundary fallback={<Chat.Skeleton />}>
-      <Suspense fallback={<Chat.Skeleton />}>
+    <ErrorBoundary
+      fallback={
+        <div
+          role="alert"
+          className="flex h-full flex-1 items-center justify-center text-sm text-muted-foreground"
+        >
+          {t("agentShellLayout.agentShellLayout.chatLoadingError")}
+        </div>
+      }
+    >
+      <MainPanelBoundary>
         <ChatSidePanelContent />
-      </Suspense>
+      </MainPanelBoundary>
     </ErrorBoundary>
   );
 }

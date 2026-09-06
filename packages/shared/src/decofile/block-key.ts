@@ -25,14 +25,7 @@ function containsPathTraversal(segment: string): boolean {
     ) {
       return true;
     }
-    // A percent-encoded slash (%2f/%2F) decodes to "/" — reject it.
-    // Literal slashes in the original key are safe (encodeURIComponent
-    // escapes them in the filename), but encoded ones indicate smuggling.
-    if (decoded !== segment && decoded.includes("/")) {
-      const originalSlashes = (segment.match(/\//g) ?? []).length;
-      const decodedSlashes = (decoded.match(/\//g) ?? []).length;
-      if (decodedSlashes > originalSlashes) return true;
-    }
+    // `%2F` is a legit deco key (slash-named page, like `%20` for a space); the whole key is re-encoded by blockKeyToFileStem, so only the `..`/`\`/NUL above can traverse.
     return false;
   } catch {
     return true;
@@ -43,6 +36,19 @@ export function assertSafeDecoBlockKey(blockKey: string): void {
   if (containsPathTraversal(blockKey)) {
     throw new Error(`Invalid block key: ${blockKey || "(empty)"}`);
   }
+}
+
+/**
+ * A block key that collides with a framework resolver module — e.g.
+ * `website/flags/multivariate/section.ts`, `site/sections/Foo.tsx`,
+ * `apps/deco/mod.ts`. Real decofile block ids are names/ids and never carry a
+ * source-file extension, so a `set` under such a key writes a
+ * `.deco/blocks/<encoded>.json` that shadows the native resolver for the whole
+ * site. Writes (create/update) must reject these; deletes must NOT — an
+ * already-shadowed resolver has to be removable to repair the site.
+ */
+export function isReservedResolverBlockKey(blockKey: string): boolean {
+  return /\.(?:tsx?|jsx?|mts|cts|mjs|cjs)$/.test(blockKey);
 }
 
 /** Block key from an on-disk `.deco/blocks/<stem>.json` filename stem. */

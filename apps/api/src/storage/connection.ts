@@ -384,8 +384,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
       }
     }
 
-    // Apply pagination
-    if (options?.limit) {
+    // Apply pagination. `!== undefined`, not truthiness — an explicit `limit: 0` must return zero rows, not "no limit".
+    if (options?.limit !== undefined) {
       query = query.limit(options.limit);
     }
     if (options?.offset) {
@@ -405,6 +405,16 @@ export class ConnectionStorage implements ConnectionStoragePort {
     id: string,
     data: Partial<ConnectionEntity>,
   ): Promise<ConnectionEntity> {
+    // Storage is the real trust boundary: never let identity/ownership columns reach the SET clause.
+    const {
+      id: _id,
+      organization_id: _organizationId,
+      created_by: _createdBy,
+      created_at: _createdAt,
+      ...safeData
+    } = data;
+    data = safeData;
+
     if (Object.keys(data).length === 0) {
       const connection = await this.findById(id);
       if (!connection) throw new Error("Connection not found");
@@ -524,13 +534,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
       } | null;
 
       // Bound the probe — a hanging remote server shouldn't hang this call.
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      let response: Response;
-      try {
-        response = await createNoRedirectFetch()(connection.connection_url, {
+      const response = await createNoRedirectFetch()(
+        connection.connection_url,
+        {
           method: "POST",
-          signal: controller.signal,
+          signal: AbortSignal.timeout(10_000),
           headers: {
             "Content-Type": "application/json",
             ...(connection.connection_token && {
@@ -544,10 +552,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
             method: "ping",
             id: 1,
           }),
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+        },
+      );
 
       return {
         healthy: response.ok || response.status === 404,

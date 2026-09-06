@@ -48,9 +48,14 @@ export const ORGANIZATION_UPDATE = defineTool({
     // and renaming would silently invalidate every saved URL.
     const updateData: Record<string, unknown> = {};
     if (input.name) updateData.name = input.name;
-    // !== undefined, not truthy: "" clears the description and must persist.
-    if (input.description !== undefined)
-      updateData.metadata = { description: input.description };
+    // Merge into existing metadata: organization.update replaces it wholesale (see delete.ts).
+    if (input.description !== undefined) {
+      const existing = await ctx.boundAuth.organization.get(org.id);
+      updateData.metadata = {
+        ...existing?.metadata,
+        description: input.description,
+      };
+    }
 
     // Update organization via Better Auth
     const result = await ctx.boundAuth.organization.update({

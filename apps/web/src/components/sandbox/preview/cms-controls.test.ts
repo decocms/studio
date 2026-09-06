@@ -1,63 +1,30 @@
 import { describe, expect, it } from "bun:test";
-import { showCmsControls } from "./cms-controls";
+import { showCmsPageSelector } from "./cms-controls";
 
-describe("showCmsControls", () => {
-  it("shows them for a deco site (blocks resolved to content)", () => {
+describe("showCmsPageSelector", () => {
+  it("shows it whenever content editing and the preview toolbar are enabled", () => {
     expect(
-      showCmsControls({
+      showCmsPageSelector({
         showPreviewToolbar: true,
-        blocksState: { kind: "content" },
+        contentEditingEnabled: true,
       }),
     ).toBe(true);
   });
 
-  it("hides them for a non-deco repo (decofile/meta 404 → framework missing)", () => {
+  it("hides it under the same disabled gate as Content and Blocks", () => {
     expect(
-      showCmsControls({
+      showCmsPageSelector({
         showPreviewToolbar: true,
-        blocksState: { kind: "empty", reason: "framework-missing" },
+        contentEditingEnabled: false,
       }),
     ).toBe(false);
   });
 
-  it("keeps them for a deco site whose decofile has no pages yet (Create page stays reachable)", () => {
+  it("hides it when the toolbar itself is hidden", () => {
     expect(
-      showCmsControls({
-        showPreviewToolbar: true,
-        blocksState: { kind: "empty", reason: "no-content" },
-      }),
-    ).toBe(true);
-  });
-
-  it("hides them while the reads are still in flight", () => {
-    expect(
-      showCmsControls({
-        showPreviewToolbar: true,
-        blocksState: { kind: "loading" },
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps them when a read failed — absence is unproven, so don't revoke", () => {
-    expect(
-      showCmsControls({
-        showPreviewToolbar: true,
-        blocksState: { kind: "error", source: "data" },
-      }),
-    ).toBe(true);
-    expect(
-      showCmsControls({
-        showPreviewToolbar: true,
-        blocksState: { kind: "error", source: "sandbox" },
-      }),
-    ).toBe(true);
-  });
-
-  it("hides them when the toolbar itself is hidden", () => {
-    expect(
-      showCmsControls({
+      showCmsPageSelector({
         showPreviewToolbar: false,
-        blocksState: { kind: "empty", reason: "no-content" },
+        contentEditingEnabled: true,
       }),
     ).toBe(false);
   });

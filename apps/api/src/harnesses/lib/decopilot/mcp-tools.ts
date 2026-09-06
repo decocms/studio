@@ -9,6 +9,7 @@ import {
   type ToolSet,
   type UIMessageStreamWriter,
 } from "ai";
+import { llmSafeInputSchema, restoreOriginalKeys } from "@decocms/mcp-utils";
 import {
   MAX_RESULT_TOKENS,
   createOutputPreview,
@@ -204,13 +205,14 @@ export async function toolsFromMCP(
   const toolEntries = visibleTools.map((t) => {
     const { name, title, description, inputSchema, annotations, _meta } = t;
     const safeName = nameMap.get(name)!;
+    const { schema: safeInputSchema, keyMap } = llmSafeInputSchema(inputSchema);
 
     return [
       safeName,
       tool<Record<string, unknown>, CallToolResult>({
         title: title ?? name,
         description,
-        inputSchema: jsonSchema(inputSchema as JSONSchema7),
+        inputSchema: jsonSchema(safeInputSchema as JSONSchema7),
         outputSchema: undefined,
         needsApproval:
           toolNeedsApproval(toolApprovalLevel, annotations?.readOnlyHint, {
@@ -221,9 +223,13 @@ export async function toolsFromMCP(
           let isError = false;
           let outputBytes: number | undefined;
           try {
+            const namedInput = restoreOriginalKeys(
+              input as Record<string, unknown>,
+              keyMap,
+            );
             const resolvedInput = options.resolveArgs
-              ? await options.resolveArgs(input as Record<string, unknown>)
-              : (input as Record<string, unknown>);
+              ? await options.resolveArgs(namedInput)
+              : namedInput;
             const result = await client.callTool(
               {
                 name: t.name,

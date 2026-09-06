@@ -1,5 +1,5 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 
 export function LoadingIndicator({
   label,
@@ -16,9 +16,9 @@ export function LoadingIndicator({
 }) {
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
-      <Loading01
-        size={iconSize}
-        className={cn("shrink-0 animate-spin", iconClassName)}
+      <Spinner
+        className={cn("shrink-0", iconClassName)}
+        style={{ width: iconSize, height: iconSize }}
       />
       <span className={cn("text-sm", labelClassName)}>{label}</span>
     </span>

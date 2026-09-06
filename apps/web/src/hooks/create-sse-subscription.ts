@@ -59,6 +59,15 @@ export interface SSESubscription {
     handler: Handler,
     onReconnect?: () => void,
   ) => () => void;
+  /**
+   * Tear down every live connection this subscription owns (closes each
+   * EventSource, releases any held Web Lock, closes each BroadcastChannel).
+   * For a module-scoped singleton, the caller's own `import.meta.hot.dispose`
+   * should call this — `import.meta.hot` here belongs to THIS file, so it only
+   * fires when create-sse-subscription.ts itself is edited, never when the
+   * call site (e.g. watch-sse-pool.ts) is hot-replaced.
+   */
+  dispose: () => void;
 }
 
 export function createSSESubscription(
@@ -241,17 +250,10 @@ export function createSSESubscription(
     connections.delete(conn.key);
   }
 
-  // HMR: release locks / channels so a dev reload doesn't orphan the Web Lock.
-  const hot = (
-    import.meta as unknown as { hot?: { dispose: (cb: () => void) => void } }
-  ).hot;
-  if (hot) {
-    hot.dispose(() => {
-      for (const conn of [...connections.values()]) teardown(conn);
-    });
-  }
-
   return {
+    dispose() {
+      for (const conn of [...connections.values()]) teardown(conn);
+    },
     subscribe(key, handler, onReconnect) {
       const isNew = !connections.has(key);
       const conn = getOrCreate(key);
@@ -284,6 +286,8 @@ export function filterEventTypes(
 ): SSESubscription {
   const allow = new Set(types);
   return {
+    // A view owns no connections of its own — disposing it disposes the base.
+    dispose: () => base.dispose(),
     subscribe(key, handler, onReconnect) {
       const wrapped: Handler = (e) => {
         if (allow.has(e.type)) handler(e);

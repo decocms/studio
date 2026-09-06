@@ -217,6 +217,7 @@ export interface ThreadsTabContentProps {
   filterAgentIds?: string[];
   filterUserIds?: string[];
   filterStatus?: string;
+  filterSource?: string;
 }
 
 const THREADS_PAGE_SIZE = 50;
@@ -232,6 +233,7 @@ export function ThreadsTabContent({
   filterAgentIds,
   filterUserIds,
   filterStatus,
+  filterSource,
 }: ThreadsTabContentProps) {
   const t = useT();
   const startDate = dateRange.startDate.toISOString();
@@ -244,6 +246,7 @@ export function ThreadsTabContent({
     agentIds: filterAgentIds,
     userIds: filterUserIds,
     status: filterStatus,
+    source: filterSource,
   });
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -267,6 +270,9 @@ export function ThreadsTabContent({
               : {}),
             ...(filterStatus && filterStatus !== "all"
               ? { status: filterStatus }
+              : {}),
+            ...(filterSource && filterSource !== "all"
+              ? { source: filterSource }
               : {}),
           },
         })) as { structuredContent?: unknown };
@@ -368,7 +374,8 @@ export function ThreadsTabContent({
     !!searchQuery ||
     (filterAgentIds?.length ?? 0) > 0 ||
     (filterUserIds?.length ?? 0) > 0 ||
-    !!(filterStatus && filterStatus !== "all");
+    !!(filterStatus && filterStatus !== "all") ||
+    !!(filterSource && filterSource !== "all");
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">

@@ -5,6 +5,7 @@
  */
 
 import { useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -48,10 +49,8 @@ import {
   HelpCircle,
   Lightning01,
   List,
-  Loading01,
   Plus,
   RefreshCw01,
-  Repeat04,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -71,7 +70,6 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { LoaderCircle } from "lucide-react";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -86,7 +84,6 @@ import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
-  useBoardSprintIndex,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
@@ -106,14 +103,16 @@ import {
   PRIORITY_CONFIG,
   runSortOrders,
   statusIconClassName,
-  laneLabel,
+  dropLane,
+  LANE_DROPPABLE_PREFIX,
+  laneHeader,
   laneVisual,
-  STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
   TASK_TYPES,
   type TaskBoardItem,
   type TaskBoardItemPriority,
+  type TaskBoardItemStatus,
   type TaskBoardItemTag,
   type Member,
 } from "./config";
@@ -122,7 +121,6 @@ import {
   useOrgFlag,
   useReviewerEnabled,
 } from "@/hooks/use-organization-settings";
-import type { Sprint } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDetail,
@@ -148,13 +146,19 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
-  resolveSprintFilter,
   TaskFiltersBar,
   TaskFiltersDrawer,
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
-import { useBoardSearch } from "./filters-search";
+import {
+  taskMatchesScope,
+  useBoardSearch,
+  visibleSelection,
+} from "./filters-search";
+import { useProjectScope } from "@/hooks/use-project-scope";
+import { useProjectIndex } from "@/hooks/use-project-index";
+import { filterAfterCreate } from "@/lib/project-index";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
@@ -487,7 +491,7 @@ function CardFooter({
   onDueDateChange?: (iso: string) => void;
 }) {
   const { org } = useProjectContext();
-  const key = taskKey(org.slug, item.keySeq, item.jiraIssueKey);
+  const key = taskKey(org.slug, item.keySeq);
   return (
     // No inset of its own: the footer shares the card's padding, so the type glyph starts on the same left edge as the title and the labels.
     <div className="mt-auto flex shrink-0 items-center justify-between gap-2 pt-1">
@@ -554,22 +558,6 @@ function DueDatePill({ iso }: { iso: string }) {
       {label}
     </span>
   );
-}
-
-/** The sprint a card belongs to, named the way its tracker names it. */
-function SprintPill({ sprint }: { sprint: Sprint }) {
-  return (
-    <span className={PILL}>
-      <Repeat04 size={FOOTER_GLYPH} />
-      {sprint.name}
-    </span>
-  );
-}
-
-/** The sprint of the card being rendered, or null when it's in the backlog. */
-function useCardSprint(item: TaskBoardItem): Sprint | null {
-  const sprints = useBoardSprintIndex();
-  return item.sprintId ? (sprints.get(item.sprintId) ?? null) : null;
 }
 
 /** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
@@ -667,22 +655,23 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
       ? "taskBoard.taskBoard.agentRunning"
       : "taskBoard.taskBoard.agentFailed",
   );
-  // LoaderCircle, not the board's `Loading01`: that one is eight evenly-spaced
-  // spokes, so rotating it lands on an identical image every 45° and
-  // `animate-spin` reads as a still frame. An arc has to be asymmetric to look
-  // like it is turning.
-  const Icon = running ? LoaderCircle : AlertTriangle;
+  // This used its own LoaderCircle because the spinner of the day was eight
+  // evenly-spaced spokes: rotating it lands on an identical image every 45°,
+  // so `animate-spin` read as a still frame. The shared `Spinner` is an arc
+  // now — asymmetric, so it looks like it is turning — which is the whole
+  // reason this call site can stop being special.
   return (
     <span className="mt-px flex shrink-0 items-center">
       <GlyphTooltip label={label}>
-        <Icon
-          size={14}
-          className={cn(
-            "shrink-0",
-            running ? "animate-spin text-primary" : "text-destructive",
-          )}
-          aria-label={label}
-        />
+        {running ? (
+          <Spinner className="size-3.5 text-primary" label={label} />
+        ) : (
+          <AlertTriangle
+            size={14}
+            className="shrink-0 text-destructive"
+            aria-label={label}
+          />
+        )}
       </GlyphTooltip>
       <span className="sr-only">{label}</span>
     </span>
@@ -821,7 +810,7 @@ function AssigneeDisplay({
 
 export function TaskBoardPage() {
   const t = useT();
-  const { items, sprints, columns, isLoading } = useTaskBoardItems();
+  const { items, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -838,7 +827,8 @@ export function TaskBoardPage() {
   const hasRepo = githubConnections.some(
     (c) => c.status === "active" && getRepoScope(c) !== null,
   );
-  // Repo filter options: distinct `owner/name` repos the org can reach.
+  // Distinct `owner/name` repos the org can reach — enrichment for the project
+  // index, so a repo imported but not yet on any card still gets a bucket.
   const repos = listRepoScopeLabels(githubConnections);
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
@@ -907,37 +897,34 @@ export function TaskBoardPage() {
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
+  const { filters, setFilters, layout, setLayout } = useBoardSearch();
+  /** Ambient project scope — a filter over the org-wide board, never a
+   *  container. Null repo (or no scope) means the board stays org-wide. */
   const {
-    filters: urlFilters,
-    setFilters,
-    layout,
-    setLayout,
-  } = useBoardSearch();
-  // A URL outlives the sprint it names, so an unknown one is dropped rather
-  // than left hiding every card behind a chip that reads like "no filter".
-  const filters = isLoading
-    ? urlFilters
-    : {
-        ...urlFilters,
-        sprint: resolveSprintFilter(urlFilters.sprint, sprints),
-      };
+    repo: scopeRepo,
+    project: scopeProject,
+    setScope,
+  } = useProjectScope();
+  /** The board's buckets, closed over every repo a loaded card names so the
+   *  "No project" bucket cannot claim a card that plainly has one. */
+  const projectIndex = useProjectIndex(items, repos);
   const [preferences] = usePreferences();
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
-    setSelectedIds((prev) => {
+    setSelection((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
   const selectAllInLane = (status: string) =>
-    setSelectedIds((prev) => {
+    setSelection((prev) => {
       const next = new Set(prev);
       for (const item of visibleItems)
         if (item.status === status) next.add(item.id);
       return next;
     });
-  const clearSelection = () => setSelectedIds(new Set());
+  const clearSelection = () => setSelection(new Set());
   // A filter change can hide selected cards the same way the list-view toggle does.
   const handleFiltersChange = (next: TaskFilters) => {
     setFilters(next);
@@ -947,12 +934,20 @@ export function TaskBoardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   // Status a newly-created task should start in (set by a lane's "+"); null for
   // the generic "New task" button.
-  const [createStatus, setCreateStatus] = useState<string | null>(null);
+  const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
+    null,
+  );
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
+  const openBoardSettings = () => {
+    navigate({
+      to: "/$org/settings/task-board",
+      params: { org: org.slug },
+    });
+  };
   /**
    * `/$org/tasks/DECO-01` renders that card in place of the lanes — the one
    * address a task has, whether it was reached by clicking its card, by the
@@ -1044,9 +1039,19 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  const visibleItems = items.filter((item) =>
-    taskMatchesFilters(item, filters),
+  /**
+   * Scope first, then filters. The ambient scope keeps unclassified cards; the
+   * board's own project filter does not — two different questions, composed
+   * rather than conflated, exactly as #6801 left them.
+   */
+  const scopedItems = items.filter((item) => taskMatchesScope(item, scopeRepo));
+  const visibleItems = scopedItems.filter((item) =>
+    taskMatchesFilters(item, filters, projectIndex),
   );
+  /** Bulk actions read the selection reconciled against what is on screen: the
+   *  scope switcher lives outside the board, so a scope change must not leave a
+   *  hidden card's id queued for a move, an assign — or a delete. */
+  const selectedIds = visibleSelection(selection, visibleItems);
   // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
   const visibleListItems = visibleItems.filter(
     (item) =>
@@ -1054,12 +1059,30 @@ export function TaskBoardPage() {
       preferences.shownTaskBoardLanes.includes(item.status),
   );
 
+  /**
+   * Keep a newly created card visible: drop the project filter when the card
+   * would fall outside it. Widening back is visible; an empty lane is not.
+   *
+   * Calls `setFilters` rather than `handleFiltersChange`, which also clears the
+   * selection: creating a card must not discard a bulk selection.
+   *
+   * Only the project filter is rescued. A board narrowed by assignee or search
+   * can still swallow a new card — that predates this and is not a promise
+   * made here.
+   */
+  const widenProjectFilterFor = (repo: string | null) => {
+    const next = filterAfterCreate({ repo }, filters.project, projectIndex);
+    if (next !== filters.project) {
+      setFilters({ ...filters, project: next });
+    }
+  };
+
   const openCreate = () => {
     setCreateStatus(null);
     setDialogOpen(true);
   };
 
-  const openCreateInLane = (status: string) => {
+  const openCreateInLane = (status: TaskBoardItemStatus) => {
     setCreateStatus(status);
     setDialogOpen(true);
   };
@@ -1090,7 +1113,7 @@ export function TaskBoardPage() {
   if (isLoading && items.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }
@@ -1124,9 +1147,36 @@ export function TaskBoardPage() {
       {/* Header — capped + centered to the same width as the board content so
         they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <h1 className="text-xl font-medium text-foreground">
-          {t("taskBoard.taskBoard.tasksTitle")}
-        </h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-xl font-medium text-foreground">
+            {t("taskBoard.taskBoard.tasksTitle")}
+          </h1>
+          {scopeProject && (
+            <button
+              type="button"
+              onClick={() => setScope(null)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent/50"
+              aria-label={t("taskBoard.scope.clear", {
+                name: scopeProject.title,
+              })}
+            >
+              <span className="truncate max-w-[16rem]">
+                {scopeProject.title}
+              </span>
+              <X size={12} className="text-muted-foreground" />
+            </button>
+          )}
+        </div>
+        {/* Only the case a person can act on. The counts that used to sit here
+            ("N routed here · N unassigned") narrated the scope filter's
+            fail-open in its own vocabulary — "routed" is the mechanism, and
+            "unassigned" means "no repo" here while it means "no assignee"
+            everywhere else in the product. */}
+        {scopeProject && !scopeRepo && (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            {t("taskBoard.scope.noRepo")}
+          </p>
+        )}
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
@@ -1141,9 +1191,9 @@ export function TaskBoardPage() {
                   filters={filters}
                   members={members}
                   tags={orgTags}
-                  repos={repos}
-                  sprints={sprints}
+                  index={projectIndex}
                   onChange={handleFiltersChange}
+                  onOpenBoardSettings={openBoardSettings}
                 />
               </div>
               <div className="hidden sm:block">
@@ -1151,9 +1201,9 @@ export function TaskBoardPage() {
                   filters={filters}
                   members={members}
                   tags={orgTags}
-                  repos={repos}
-                  sprints={sprints}
+                  index={projectIndex}
                   onChange={handleFiltersChange}
+                  onOpenBoardSettings={openBoardSettings}
                 />
               </div>
             </>
@@ -1212,7 +1262,6 @@ export function TaskBoardPage() {
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
-          columns={columns}
           items={visibleItems}
           members={members}
           memberByUserId={memberByUserId}
@@ -1350,6 +1399,7 @@ export function TaskBoardPage() {
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
             });
+            widenProjectFilterFor(openItem.repo ?? null);
             toast.success(t("taskBoard.taskDialog.cloneSuccess"));
             closeTask();
           }}
@@ -1380,7 +1430,7 @@ export function TaskBoardPage() {
           onOpenPreview={(thread) => {
             if (!thread.virtualMcpId) return;
             setTaskId(thread.threadId, thread.virtualMcpId, {
-              panel: "preview",
+              panel: "site-editor",
             });
           }}
         />
@@ -1398,6 +1448,7 @@ export function TaskBoardPage() {
             return;
           }
           actions.create.mutate(input);
+          widenProjectFilterFor(input.repo ?? null);
           closeCreate();
         }}
       />
@@ -1520,7 +1571,8 @@ export function TaskBoardPage() {
 /**
  * Small prompt shown when Auto-fix is used in an org with no GitHub connection.
  * The Super Agent needs GitHub to open a PR, so we connect first. Once the
- * connection lands the card's Auto-fix button works on the next click.
+ * connection lands the card's Run button (the auto-fix flow) works on the
+ * next click.
  */
 /**
  * Floating pill toolbar that appears once at least one card is selected —
@@ -1542,7 +1594,7 @@ function SelectionBar({
 }: {
   count: number;
   members: Member[];
-  onMoveTo: (status: string) => void;
+  onMoveTo: (status: TaskBoardItemStatus) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
   onAssign: (userId: string | null) => void;
@@ -1586,7 +1638,7 @@ function SelectionBar({
                     key={status}
                     onClick={() => onMoveTo(status)}
                   >
-                    {laneLabel(status, t)}
+                    {laneHeader(status, t).label}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>
@@ -1727,13 +1779,10 @@ function LayoutToggle({
   );
 }
 
-/** Prefix for a lane's own droppable id, so it can't collide with a card id. */
-const LANE_DROPPABLE_PREFIX = "lane:";
-
 /** Where a card sits locally: while a drag is in flight, and then until the
  *  server's optimistic patch catches up. */
 interface Placement {
-  status: string;
+  status: TaskBoardItemStatus;
   sortOrder: number;
 }
 
@@ -1749,7 +1798,6 @@ function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
 }
 
 function Lanes({
-  columns,
   items,
   members,
   memberByUserId,
@@ -1767,8 +1815,6 @@ function Lanes({
   onDueDateChange,
   visible,
 }: {
-  /** The board's own columns, as the server sent them. */
-  columns: readonly { key: string }[];
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
@@ -1776,8 +1822,12 @@ function Lanes({
   onToggleSelect: (id: string) => void;
   onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: string) => void;
-  onMove: (ids: string[], status: string, sortOrder: number) => void;
+  onCreate: (status: TaskBoardItemStatus) => void;
+  onMove: (
+    ids: string[],
+    status: TaskBoardItemStatus,
+    sortOrder: number,
+  ) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
@@ -1884,7 +1934,6 @@ function Lanes({
     hidden: hiddenLanes,
     hideable: hideableLanes,
   } = laneVisibility({
-    columns,
     deliveryEnabled,
     shownLanes: preferences.shownTaskBoardLanes,
     occupied: placed.map((item) => item.status),
@@ -1897,18 +1946,13 @@ function Lanes({
         : prev.shownTaskBoardLanes.filter((s) => s !== status),
     }));
 
-  /** The lane a drop target belongs to: a lane's own droppable, or the lane of
-   *  the card being hovered. Resolved against `placed` rather than dnd-kit's
-   *  `over.data`, which is a ref and can't be read during render. */
-  const laneOf = (overId: string | number | undefined) => {
-    if (overId === undefined) return null;
-    const id = String(overId);
-    if (id.startsWith(LANE_DROPPABLE_PREFIX)) {
-      const status = id.slice(LANE_DROPPABLE_PREFIX.length);
-      return STATUSES.find((candidate) => candidate === status) ?? null;
-    }
-    return placed.find((item) => item.id === id)?.status ?? null;
-  };
+  /** Resolved against `placed` rather than dnd-kit's `over.data`, which is a
+   *  ref and can't be read during render. */
+  const laneOf = (overId: string | number | undefined) =>
+    dropLane({
+      overId,
+      statusOf: (cardId) => placed.find((item) => item.id === cardId)?.status,
+    });
 
   // A card inside a multi-selection drags the whole selection, grabbed card
   // first so it leads the run and the others follow in order.
@@ -1917,7 +1961,7 @@ function Lanes({
       ? [id, ...Array.from(selectedIds).filter((other) => other !== id)]
       : [id];
 
-  const place = (ids: string[], status: string, slot: number) => {
+  const place = (ids: string[], status: TaskBoardItemStatus, slot: number) => {
     const orders = runSortOrders(slot, ids.length);
     setOverrides((prev) => {
       const next = new Map(prev);
@@ -2146,8 +2190,8 @@ function HiddenLanes({
       </summary>
       <div className="flex flex-col gap-2 px-1 pt-1">
         {statuses.map((status) => {
-          const config = laneVisual(status);
-          const LaneIcon = config.icon;
+          const { label, visual } = laneHeader(status, t);
+          const LaneIcon = visual.icon;
           return (
             <div
               key={status}
@@ -2156,10 +2200,10 @@ function HiddenLanes({
             >
               <LaneIcon
                 size={15}
-                className={cn("shrink-0", config.iconClassName)}
+                className={cn("shrink-0", visual.iconClassName)}
               />
               <span className="text-sm font-medium text-foreground">
-                {laneLabel(status, t)}
+                {label}
               </span>
               <span className="ml-auto text-[11px] font-medium text-muted-foreground">
                 {countOf(status)}
@@ -2169,7 +2213,7 @@ function HiddenLanes({
                   <button
                     type="button"
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                      lane: laneLabel(status, t),
+                      lane: label,
                     })}
                     className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
@@ -2211,7 +2255,7 @@ function Lane({
   onDueDateChange,
   onHide,
 }: {
-  status: string;
+  status: TaskBoardItemStatus;
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
@@ -2224,7 +2268,7 @@ function Lane({
   onToggleSelect: (id: string) => void;
   onSelectAllInLane: (status: string) => void;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: string) => void;
+  onCreate: (status: TaskBoardItemStatus) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
@@ -2235,8 +2279,8 @@ function Lane({
   onHide?: () => void;
 }) {
   const t = useT();
-  const config = laneVisual(status);
-  const LaneIcon = config.icon;
+  const { label, visual } = laneHeader(status, t);
+  const LaneIcon = visual.icon;
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
   const { setNodeRef } = useDroppable({
@@ -2271,12 +2315,10 @@ function Lane({
           size={15}
           className={cn(
             "shrink-0",
-            config.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+            visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
           )}
         />
-        <span className="text-sm font-medium text-foreground">
-          {laneLabel(status, t)}
-        </span>
+        <span className="text-sm font-medium text-foreground">{label}</span>
         <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
           {items.length}
         </span>
@@ -2285,7 +2327,7 @@ function Lane({
             <button
               type="button"
               aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                lane: laneLabel(status, t),
+                lane: label,
               })}
               className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -2306,11 +2348,9 @@ function Lane({
         <button
           type="button"
           aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-            lane: laneLabel(status, t),
+            lane: label,
           })}
-          title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
-            lane: laneLabel(status, t),
-          })}
+          title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
           onClick={() => onCreate(status)}
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
@@ -2473,7 +2513,6 @@ function TaskCard({
   onDueDateChange?: (iso: string) => void;
 }) {
   const t = useT();
-  const sprint = useCardSprint(item);
   const checks = useCardChecks(item);
   const runState = agentRunState(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
@@ -2534,9 +2573,8 @@ function TaskCard({
         {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {(sprint != null || item.tags.length > 0) && (
+      {item.tags.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-          {sprint != null && <SprintPill sprint={sprint} />}
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
@@ -2588,7 +2626,6 @@ function ListRow({
   onOpen: () => void;
 }) {
   const StatusIcon = laneVisual(item.status).icon;
-  const sprint = useCardSprint(item);
   return (
     <button
       type="button"
@@ -2612,11 +2649,6 @@ function ListRow({
       {item.dueDate && (
         <span className="hidden sm:inline-flex">
           <DueDatePill iso={item.dueDate} />
-        </span>
-      )}
-      {sprint != null && (
-        <span className="hidden sm:inline-flex">
-          <SprintPill sprint={sprint} />
         </span>
       )}
       {item.tags.length > 0 && (

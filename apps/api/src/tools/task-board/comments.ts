@@ -9,7 +9,6 @@ import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
-import { enqueueJiraCommentPush } from "@/jira/dbos-jira-sync";
 import { taskRunContextStore } from "./task-run-context";
 
 /** No real comment is this long — caps the row a single POST can write. */
@@ -142,16 +141,6 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       taskBoardItemId: comment.taskBoardItemId,
       organizationId,
       actorId: taskRun ? null : getUserId(ctx)!,
-      body: comment.body,
-    });
-    // Durable enqueue (a DB write): the DBOS queue mirrors it onto the issue.
-    await enqueueJiraCommentPush(ctx, {
-      commentId: comment.id,
-      taskBoardItemId: comment.taskBoardItemId,
-      organizationId,
-      authorLabel: taskRun
-        ? "Super Agent"
-        : (ctx.auth?.user?.name ?? ctx.auth?.user?.email ?? "Studio"),
       body: comment.body,
     });
     return { comment };

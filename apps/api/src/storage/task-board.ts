@@ -21,7 +21,11 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { DEFAULT_TASK_TYPE, DELIVERY_LANES } from "@decocms/shared/task-board";
+import {
+  DEFAULT_TASK_TYPE,
+  DELIVERY_LANES,
+  LANES,
+} from "@decocms/shared/task-board";
 import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
@@ -32,6 +36,7 @@ import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import { notify } from "../notifications/notify";
+import { escapeLikePattern } from "./threads";
 
 /** Activity actions that also earn an inbox row and an email. */
 const NOTIFIED_ACTIONS = new Set<string>(NOTIFICATION_TYPES);
@@ -247,12 +252,44 @@ export class TaskBoardStorage {
       .where("organization_id", "=", organizationId)
       // Dismissed findings are off the board; `getById` still resolves them.
       .where("dismissed_at", "is", null)
+      // So is a Jira run's anchor: the issue lives in Jira, the item only
+      // carries the run.
+      .where("source", "is", null)
       .orderBy("sort_order", "asc")
       .execute();
 
     const items = rows.map((row) => this.itemFromDbRow(row));
     await this.attachRefs(items, organizationId);
     return items;
+  }
+
+  /**
+   * Title search for the command palette, ordered most-recent-first.
+   *
+   * Deliberately NOT a parameter on `list()`: that one returns the whole board
+   * unpaginated and fires stall recovery as a side effect of the read, which is
+   * exactly wrong for a keystroke-driven query. Refs are not attached — the
+   * palette needs a title and an id, and hydrating threads/tags/PRs per
+   * keystroke would be pure waste.
+   */
+  async searchByTitle(
+    organizationId: string,
+    search: string,
+    limit: number,
+  ): Promise<TaskBoardItem[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("dismissed_at", "is", null)
+      // A Jira run's anchor is not a card, so it is not a search result either.
+      .where("source", "is", null)
+      .where("title", "ilike", `%${escapeLikePattern(search)}%`)
+      .orderBy("updated_at", "desc")
+      .limit(limit)
+      .execute();
+
+    return rows.map((row) => this.itemFromDbRow(row));
   }
 
   async getById(
@@ -277,10 +314,6 @@ export class TaskBoardStorage {
     title: string;
     description?: string | null;
     status?: string;
-    /** Set to the org id when the card's status names a row in
-     *  `task_board_columns`, which is what wakes the optional foreign key.
-     *  Null while the status is one of Studio's own lanes. */
-    boardColumnOrg?: string | null;
     priority?: TaskBoardItemPriority;
     type?: TaskBoardItemType;
     assigneeId?: string | null;
@@ -288,10 +321,13 @@ export class TaskBoardStorage {
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
     dueDate?: string | null;
-    /** Sprint the card belongs to (`TaskBoardSprint.id`); null/absent = backlog. */
-    sprintId?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
+    /** Link to the card's issue in the tracker it came from. */
+    externalUrl?: string | null;
+    /** `jira` hides the card from the board: it anchors a run, it is not work
+     *  the board shows. */
+    source?: "jira" | null;
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -314,15 +350,15 @@ export class TaskBoardStorage {
           title: params.title,
           description: params.description ?? null,
           status,
-          board_column_org: params.boardColumnOrg ?? null,
           priority: params.priority ?? "medium",
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
           due_date: params.dueDate ?? null,
-          sprint_id: params.sprintId ?? null,
           external_key: params.externalKey ?? null,
+          external_url: params.externalUrl ?? null,
+          source: params.source ?? null,
           sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
           from task_board_items
@@ -362,17 +398,13 @@ export class TaskBoardStorage {
       title?: string;
       description?: string | null;
       status?: string;
-      /** Set to the org id when the card's status names a row in
-       *  `task_board_columns`, which is what wakes the optional foreign key.
-       *  Null while the status is one of Studio's own lanes. */
-      boardColumnOrg?: string | null;
       priority?: TaskBoardItemPriority;
       type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
       dueDate?: string | null;
-      sprintId?: string | null;
+      externalUrl?: string | null;
       sortOrder?: number;
     },
     by: string,
@@ -395,9 +427,8 @@ export class TaskBoardStorage {
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
-        ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
-        ...(data.boardColumnOrg !== undefined
-          ? { board_column_org: data.boardColumnOrg }
+        ...(data.externalUrl !== undefined
+          ? { external_url: data.externalUrl }
           : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
@@ -697,7 +728,7 @@ export class TaskBoardStorage {
       .where((eb) =>
         eb.or([
           eb("review_cycle_started_at", "is not", null),
-          eb("status", "=", "in_review"),
+          eb("status", "=", LANES.review),
         ]),
       )
       .where("dismissed_at", "is", null);
@@ -929,7 +960,7 @@ export class TaskBoardStorage {
       .set({ retry_at: retryAt, retry_attempts: attempts })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      .where("status", "=", LANES.progress)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -951,7 +982,7 @@ export class TaskBoardStorage {
     const rows = await this.db
       .updateTable("task_board_items")
       .set({
-        status: "todo",
+        status: LANES.queue,
         retry_at: null,
         retry_attempts: 0,
         updated_by: updatedBy,
@@ -959,7 +990,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
+      .where("status", "=", LANES.progress)
       .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
@@ -1261,6 +1292,25 @@ export class TaskBoardStorage {
       .execute();
   }
 
+  /**
+   * Run threads linked to a task (the forward direction of the same
+   * many-to-many). Lets a caller holding only a card recover the run that
+   * worked on it — which is how the branch-based PR lookup
+   * (`pr-by-branch.ts`) finds the checkout the agent pushed.
+   */
+  async linkedThreadIds(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("task_board_item_threads")
+      .select("thread_id as threadId")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+    return rows.map((r) => r.threadId);
+  }
+
   async linkedTaskIds(
     threadId: string,
     organizationId: string,
@@ -1444,7 +1494,7 @@ export class TaskBoardStorage {
   ): Promise<TaskBoardItem | null> {
     const row = await this.db
       .updateTable("task_board_items")
-      .set({ review_cycle_started_at: new Date(), status: "in_progress" })
+      .set({ review_cycle_started_at: new Date(), status: LANES.progress })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       // In Review is in here because the PR link can LOSE THE RACE to the
@@ -1466,9 +1516,9 @@ export class TaskBoardStorage {
       // statement — a separate flip could interleave with the sweeper's read.
       .where((eb) =>
         eb.or([
-          eb("status", "=", "in_progress"),
+          eb("status", "=", LANES.progress),
           eb.and([
-            eb("status", "=", "in_review"),
+            eb("status", "=", LANES.review),
             eb("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID),
           ]),
         ]),
@@ -1614,7 +1664,7 @@ export class TaskBoardStorage {
     const row = await this.db
       .updateTable("task_board_items")
       .set({
-        status: "in_progress",
+        status: LANES.progress,
         // The claim exists to put the card back in the Super Agent's hands to
         // fix something, so the review that just ended is over. Cleared in the
         // SAME statement as the flip: a separate write could lose the race with
@@ -1626,7 +1676,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_review")
+      .where("status", "=", LANES.review)
       .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .returningAll()
       .executeTakeFirst();
@@ -1640,19 +1690,23 @@ export class TaskBoardStorage {
    * Atomically claim an unassigned To Do card for the Super Agent, returning
    * the updated item to the single winner and null to everyone else.
    *
-   * The Jira pull's auto-delegate is the caller, and it has three triggers that
-   * can overlap on the same issue: the 10-minute cron, a webhook wake-up (whose
-   * debounce is per-pod, so replicas don't coordinate), and a manual
-   * `JIRA_SYNC_RUN`. A read-then-write would let two of them each dispatch a
-   * paid Super Agent run on the same card — two threads, two PRs. Same atomic
-   * conditional-UPDATE pattern as `claimInReviewSuperAgentSlot`.
+   * A column rule's caller can fire more than once for one card — a drag and a
+   * re-fired event overlapping — and a read-then-write would let two of them
+   * each dispatch a paid Super Agent run on the same card: two threads, two
+   * PRs. Same atomic conditional-UPDATE pattern as `claimInReviewSuperAgentSlot`.
    */
   async claimUnassignedForSuperAgent(
     id: string,
     organizationId: string,
     assignedBy: string,
     by: string,
+    /** The column the card must still be sitting in for the claim to win —
+     *  the one whose rule is firing, not a fixed lane. An automation on any
+     *  other column used to look itself up by the card's status and then fence
+     *  on the queue lane, so it never claimed anything. */
+    fromLane: string | null,
   ): Promise<TaskBoardItem | null> {
+    if (fromLane === null) return null;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
@@ -1663,7 +1717,7 @@ export class TaskBoardStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "todo")
+      .where("status", "=", fromLane)
       .where("assignee_id", "is", null)
       .returningAll()
       .executeTakeFirst();
@@ -1674,8 +1728,54 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Atomically move a card into its in-progress lane when a PR opens, claiming
+   * it for the Super Agent in the SAME statement when nobody owns it yet.
+   *
+   * Both writes are fenced on `fromLane`, the status the caller decided
+   * against: that decision is made from a card snapshot taken before an LLM
+   * call, so by the time it lands a human may have dragged the card to Done or
+   * a reviewer may have moved it on. Replaying the stale advance would drag a
+   * finished card back to In Progress — the very regression `atOrBefore`
+   * exists to prevent. Losing the race returns null and the caller leaves the
+   * live card alone. One statement, so the status and the claim can't disagree.
+   */
+  async advanceToProgressOnPrOpen(
+    id: string,
+    organizationId: string,
+    fromLane: string,
+    toLane: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        status: toLane,
+        // Column reads on the right-hand side are the row's OLD values, so this
+        // claims only an unowned card and leaves a human's ownership intact.
+        assignee_id: sql`coalesce(assignee_id, ${SUPER_AGENT_ASSIGNEE_ID})`,
+        assigned_by: sql`case when assignee_id is null then ${by} else assigned_by end`,
+        // Same rule as `update()`: leaving the review phase ends the cycle.
+        ...(REVIEW_PHASE_LANES.has(toLane)
+          ? {}
+          : { review_cycle_started_at: null }),
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", fromLane)
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
    * Atomically hand a task from the Super Agent to a human: clear
-   * `assigneeId` ONLY if it's still the Super Agent, returning the updated
+   * `assigneeId` and `assignedBy` ONLY if it's still the Super Agent — an
+   * unassigned card keeps no delegation metadata — returning the updated
    * item, or null if it already changed. `handTaskToHuman`'s caller re-checks
    * a stale, previously-read `item.assigneeId` before calling this — several
    * dead-end paths (a bounce limit, a burned reviewer retry, a PR-less card)
@@ -1693,6 +1793,7 @@ export class TaskBoardStorage {
       .updateTable("task_board_items")
       .set({
         assignee_id: null,
+        assigned_by: null,
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
@@ -1717,12 +1818,14 @@ export class TaskBoardStorage {
     organizationId: string,
   ): Promise<void> {
     if (items.length === 0) return;
-    await this.inTransaction(async (db) => {
-      await this.attachThreads(db, items, organizationId);
-      await this.attachTags(db, items);
-      await this.attachJiraKeys(db, items);
-      await this.attachReviewVerdicts(db, items);
-    });
+    // Four independent fields, no shared state — issue together, not serially.
+    await this.inTransaction((db) =>
+      Promise.all([
+        this.attachThreads(db, items, organizationId),
+        this.attachTags(db, items),
+        this.attachReviewVerdicts(db, items),
+      ]),
+    );
   }
 
   /**
@@ -1847,32 +1950,6 @@ export class TaskBoardStorage {
 
   /** Populate each item's `tags`, name ascending. One batched query. Items are
    *  already org-scoped by the caller, so the join needs no org filter. */
-  /**
-   * Populate each item's `jiraIssueKey` — the key the issue wears in the
-   * tracker, which is what people say out loud about a synced card.
-   *
-   * One batched query, not a join on the item read: the link is one-to-one but
-   * lives in its own table, and every other ref on a card is attached here for
-   * the same reason. Cards Studio owns have no row and stay null.
-   */
-  private async attachJiraKeys(
-    db: Kysely<Database>,
-    items: TaskBoardItem[],
-  ): Promise<void> {
-    const ids = items.map((i) => i.id);
-
-    const rows = await db
-      .selectFrom("task_board_item_jira_links")
-      .select(["item_id as itemId", "jira_issue_key as jiraIssueKey"])
-      .where("item_id", "in", ids)
-      .execute();
-
-    const byItem = new Map(rows.map((row) => [row.itemId, row.jiraIssueKey]));
-    for (const item of items) {
-      item.jiraIssueKey = byItem.get(item.id) ?? null;
-    }
-  }
-
   private async attachTags(
     db: Kysely<Database>,
     items: TaskBoardItem[],
@@ -2350,7 +2427,8 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     repo: string | null;
     due_date: string | Date | null;
-    sprint_id?: string | null;
+    external_url?: string | null;
+    source?: "jira" | null;
     sort_order: number;
     key_seq: number;
     retry_attempts?: number;
@@ -2375,7 +2453,8 @@ export class TaskBoardStorage {
         row.due_date instanceof Date
           ? row.due_date.toISOString()
           : row.due_date,
-      sprintId: row.sprint_id ?? null,
+      externalUrl: row.external_url ?? null,
+      source: row.source ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
@@ -2384,7 +2463,6 @@ export class TaskBoardStorage {
           ? row.review_cycle_started_at.toISOString()
           : (row.review_cycle_started_at ?? null),
       // Populated by attachRefs for reads; null/empty for a fresh create.
-      jiraIssueKey: null,
       threads: [],
       tags: [],
       reviewVerdicts: [],

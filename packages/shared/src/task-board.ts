@@ -208,19 +208,37 @@ export const CANONICAL_COLUMN_KEYS = [
 export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
 
 /**
- * A board column as every surface reads it.
+ * The columns Studio's lifecycle gives meanings to, by meaning.
  *
- * `key` is the value a card's `status` holds. `role` is what automation keys
- * on, and is nullable because a board mirrored from someone else's tracker
- * will have columns nobody assigned a meaning to — null has to mean "nothing
- * automatic happens here", not a guess.
+ * Named so the writers and SQL predicates that move cards say what they mean
+ * (`LANES.review`) rather than repeating the literal at each site.
  */
+export const LANES = {
+  /** Where a card is born. */
+  intake: "triage",
+  /** Queued for the agent to pick up — the claim's starting line. */
+  queue: "todo",
+  /** Being worked on. */
+  progress: "in_progress",
+  /** Waiting on review. */
+  review: "in_review",
+  /** Retired. */
+  archive: "archived",
+} as const satisfies Record<string, CanonicalColumnKey>;
+
+/** A board column as every surface reads it. `key` is the value a card's
+ *  `status` holds. */
 export interface BoardColumn {
   key: string;
   title: string;
   position: number;
-  role: string | null;
 }
+
+/** The board's columns, left to right. `title` is the key: the client
+ *  translates it, being the only place that knows the reader's language. */
+export const CANONICAL_COLUMNS: BoardColumn[] = CANONICAL_COLUMN_KEYS.map(
+  (key, position) => ({ key, title: key, position }),
+);
 
 export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
 
@@ -446,3 +464,10 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
  * cache, so a delete on one client clears the card on every open board.
  */
 export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";
+
+/**
+ * Cap on the org's task system prompt. It rides in the system prompt of EVERY
+ * task run, so an unbounded textarea is a per-run token bill. Shared so the
+ * settings tool rejects what the textarea already refuses.
+ */
+export const TASK_SYSTEM_PROMPT_MAX_LENGTH = 4000;

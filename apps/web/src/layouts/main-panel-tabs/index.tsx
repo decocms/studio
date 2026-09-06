@@ -8,9 +8,11 @@
  * Tab sources and grammar are documented in `tab-id.ts`.
  */
 
-import { Suspense, lazy } from "react";
+import { lazy } from "react";
+import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
+import { OrgAgentsTab } from "./org-agents-tab";
 import { OverviewTab } from "./overview-tab";
 import { TaskBoardPage } from "@/layouts/task-board";
 import { GitTab } from "@/components/thread/github/git-tab";
@@ -23,10 +25,10 @@ import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
 import { ConnectSourcesTab } from "./connect-sources-tab";
 import { ReportsTab } from "./reports-tab";
+import { DiscoverTab } from "./discover-tab";
 import { DeckTab } from "./deck-tab";
 import { LibraryFileTab } from "./library-file-tab";
 import { LibraryTab } from "./library-tab";
-import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
   parseCodeTabId,
@@ -36,12 +38,43 @@ import {
   parsePinnedViewTabId,
 } from "./tab-id";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { useControlPlaneViews } from "@/hooks/use-organization-settings";
+import { usePublicConfig } from "@/hooks/use-public-config";
+import { useScopeId } from "@/hooks/use-project-scope";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
     default: m.AppViewContent,
   })),
 );
+
+// The control-plane / Monitor tabs are product-gated and heavy (charts, maps,
+// locale data), so lazy-load them: users without access never download them.
+// TabBody renders inside MainPanelContent's Suspense boundary.
+const HostingTab = lazy(() =>
+  import("./hosting-tab").then((m) => ({ default: m.HostingTab })),
+);
+const E2eTab = lazy(() =>
+  import("./e2e-tab").then((m) => ({ default: m.E2eTab })),
+);
+const AnalyticsTab = lazy(() =>
+  import("./analytics-tab").then((m) => ({ default: m.AnalyticsTab })),
+);
+const CdnTab = lazy(() =>
+  import("./cdn-tab").then((m) => ({ default: m.CdnTab })),
+);
+/**
+ * `/$org/home` is two pages behind one view id: the ORG's home when nothing is
+ * scoped, and the scoped AGENT's home when something is. That duality is the
+ * route's — `/home` has always served both, and `staticData.defaultMain` names
+ * one view for both — so it is answered here rather than invented as a second
+ * tab id the URL would then have to carry. `useScopeId` reads the scope
+ * straight off the search and subscribes to no query, so it cannot suspend.
+ */
+function HomeTab() {
+  const scopeId = useScopeId();
+  return scopeId ? <OverviewTab /> : <OrgAgentsTab />;
+}
 
 function TabBody({
   activeTab,
@@ -60,6 +93,16 @@ function TabBody({
     typeof useMainPanelTabs
   >["automationTabParsed"];
 }) {
+  const controlPlaneViews = useControlPlaneViews();
+  // Native CDN Monitor tab gate — warehouse wired, independent of the
+  // control-plane. Ownership is enforced by the BFF; combined with
+  // `controlPlaneViews.monitor` below this guards the deep-link `?main=cdn`
+  // against a deployment with no warehouse AND against a client the org's
+  // `monitor_enabled` flag hasn't opted in.
+  const monitorEnabled =
+    usePublicConfig().monitorEnabled === true ||
+    usePublicConfig().auth.localMode === true;
+
   // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
   // crash the active tab and exercise the ErrorBoundary recovery flow.
   // Dead-stripped from real production builds; alive in dev and in the e2e
@@ -75,7 +118,7 @@ function TabBody({
   }
 
   if (activeTab === "overview") {
-    return <OverviewTab />;
+    return <HomeTab />;
   }
   if (activeTab === "board") {
     // Task board opened next to chat, as the Tasks destination's own view.
@@ -96,7 +139,7 @@ function TabBody({
   if (activeTab === "automations") {
     return <AutomationsListTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "preview") {
+  if (activeTab === "site-editor") {
     return <PreviewTab virtualMcpId={virtualMcpId} />;
   }
   const codeTab = parseCodeTabId(activeTab);
@@ -109,12 +152,32 @@ function TabBody({
   if (activeTab === "assets") {
     return <AssetsTab virtualMcpId={virtualMcpId} />;
   }
+  // Control-plane tabs are behind the same per-view product gate as their tab
+  // buttons (see useControlPlaneViews) so a deep-link `?main=hosting` can't
+  // bypass it while the surface rolls out. Access to the data itself is enforced
+  // by the BFF.
+  if (activeTab === "hosting" && controlPlaneViews.hosting) {
+    return <HostingTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "e2e" && controlPlaneViews.e2e) {
+    return <E2eTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "analytics" && controlPlaneViews.analytics) {
+    return <AnalyticsTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "cdn" && monitorEnabled && controlPlaneViews.monitor) {
+    return <CdnTab virtualMcpId={virtualMcpId} />;
+  }
   if (activeTab === "files") {
     return <LibraryTab />;
   }
   if (activeTab === "reports") {
     // The Reports destination for an org with no report yet: start a diagnostic.
     return <ReportsTab />;
+  }
+  if (activeTab === "discover") {
+    // What this org doesn't have yet: setup, capabilities off, the catalog.
+    return <DiscoverTab />;
   }
   if (activeTab === "connect-sources") {
     // Report app hand-off (the `connect-sources` view) for a client who skipped
@@ -150,28 +213,28 @@ function TabBody({
         t.toolName === pinnedView.toolName,
     );
     return (
-      <Suspense fallback={<MainPanelLoading />}>
+      <MainPanelBoundary>
         <AppViewContent
           key={activeTab}
           connectionId={pinnedView.connectionId}
           toolName={pinnedView.toolName}
           args={expandedTool?.args}
         />
-      </Suspense>
+      </MainPanelBoundary>
     );
   }
 
   const agentTab = layoutTabs.find((t) => t.id === activeTab);
   if (agentTab) {
     return (
-      <Suspense fallback={<MainPanelLoading />}>
+      <MainPanelBoundary>
         <AppViewContent
           key={activeTab}
           connectionId={agentTab.view.appId}
           toolName={agentTab.id}
           args={agentTab.view.args}
         />
-      </Suspense>
+      </MainPanelBoundary>
     );
   }
 
@@ -193,7 +256,7 @@ export function MainPanelContent({
 
   return (
     <ErrorBoundary key={activeTab}>
-      <Suspense fallback={<MainPanelLoading />}>
+      <MainPanelBoundary>
         <TabBody
           activeTab={activeTab}
           virtualMcpId={virtualMcpId}
@@ -202,7 +265,7 @@ export function MainPanelContent({
           expandedTools={expandedTools}
           automationTabParsed={automationTabParsed}
         />
-      </Suspense>
+      </MainPanelBoundary>
     </ErrorBoundary>
   );
 }

@@ -1,12 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";
-import {
-  FilePlus01,
-  FolderPlus,
-  Loading01,
-  SearchSm,
-  XClose,
-} from "@untitledui/icons";
+import { FilePlus01, FolderPlus, SearchSm, XClose } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
@@ -1009,7 +1004,7 @@ export function FileExplorer({
   if (loading && !treeLoaded) {
     return (
       <div className="flex items-center justify-center h-full w-full">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }
@@ -1194,9 +1189,7 @@ export function FileExplorer({
                       {contentSearchTruncated ? "+" : ""}
                     </span>
                   )}
-                  {contentSearching && (
-                    <Loading01 size={10} className="animate-spin" />
-                  )}
+                  {contentSearching && <Spinner className="size-[10px]" />}
                 </div>
                 {!contentSearching &&
                   contentMatches !== null &&
@@ -1375,10 +1368,7 @@ export function FileExplorer({
               onMount={handleEditorMount}
               loading={
                 <div className="flex items-center justify-center h-full w-full">
-                  <Loading01
-                    size={20}
-                    className="animate-spin text-muted-foreground"
-                  />
+                  <Spinner className="size-5 text-muted-foreground" />
                 </div>
               }
               options={{
@@ -1399,10 +1389,7 @@ export function FileExplorer({
             />
           ) : selectedFile && !currentBuffer?.loaded ? (
             <div className="flex items-center justify-center h-full w-full">
-              <Loading01
-                size={20}
-                className="animate-spin text-muted-foreground"
-              />
+              <Spinner className="size-5 text-muted-foreground" />
             </div>
           ) : (
             <div className="flex items-center justify-center h-full w-full text-sm text-muted-foreground">

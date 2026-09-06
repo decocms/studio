@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
@@ -100,7 +100,7 @@ export function SectionRenameDialog({
             <Button type="submit" disabled={!name.trim() || isPending}>
               {isPending ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   {t("sandbox.sectionRenameDialog.saving")}
                 </>
               ) : (

@@ -9,6 +9,8 @@ import type {
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
+import { isTransientRunFailure } from "../task-board/transient-failure";
 
 // Mock the hosted runner before importing SANDBOX_START.
 
@@ -17,6 +19,7 @@ const mockEnsure = mock(
     handle: "vm_xyz",
     workdir: "/app",
     previewUrl: "https://stub.preview/",
+    warmPoolAdopted: false,
   }),
 );
 
@@ -313,6 +316,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     mockTokenGet.mockImplementation(async () => ({
       id: "dtok_1",
@@ -427,6 +431,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
@@ -466,6 +471,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -497,6 +503,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     // detectRepoRuntime probe will run when packageManager is unset; stub
     // it so it returns null and leaves metadata.runtime unchanged.
@@ -537,6 +544,7 @@ describe("SANDBOX_START", () => {
       handle: CACHED_ENTRY.sandboxHandle,
       workdir: "/app",
       previewUrl: CACHED_ENTRY.previewUrl,
+      warmPoolAdopted: false,
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -587,6 +595,33 @@ describe("SANDBOX_START", () => {
     await expect(
       SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
     ).rejects.toThrow("runner blew up");
+  });
+
+  it("rephrases a daemon-config rejection as a retryable provisioning failure", async () => {
+    mockEnsure.mockImplementation(async () => {
+      throw new ConfigRequestError(401, '{"error":"unauthorized"}');
+    });
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp });
+
+    const err = await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    ).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+
+    // The raw `/_sandbox/config returned 401` body must not reach the agent —
+    // it reads as a bug in the tool call rather than a pod to retry on.
+    expect(err?.message).not.toContain("_sandbox/config");
+    expect(err?.message).toContain("HTTP 401");
+    expect(err?.cause).toBeInstanceOf(ConfigRequestError);
+    // The wording is load-bearing: the task board decides the card's retry by
+    // matching it, so a reword that escapes this pattern silently parks cards.
+    expect(
+      isTransientRunFailure({ kind: "error", errorText: err?.message }),
+    ).toBe(true);
   });
 
   it("throws 'Virtual MCP not found' when findById returns null", async () => {
@@ -756,6 +791,7 @@ describe("SANDBOX_START", () => {
       handle: agentSandboxEntry.sandboxHandle,
       workdir: "/app",
       previewUrl: agentSandboxEntry.previewUrl,
+      warmPoolAdopted: false,
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,

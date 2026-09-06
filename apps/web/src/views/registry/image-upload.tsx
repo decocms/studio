@@ -1,16 +1,12 @@
 import { useRef, useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
-import {
-  ImagePlus,
-  RefreshCcw01,
-  Trash01,
-  Link01,
-  Loading01,
-} from "@untitledui/icons";
+import { ImagePlus, RefreshCcw01, Trash01, Link01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { safeImageUrl } from "@/lib/safe-image-url";
 
 interface ImageUploadProps {
   value: string;
@@ -72,6 +68,7 @@ export function ImageUpload({
   };
 
   const hasImage = value.length > 0;
+  const previewSrc = safeImageUrl(value);
 
   return (
     <div className="grid gap-1.5">
@@ -82,11 +79,13 @@ export function ImageUpload({
         <div className="relative group min-h-[180px] rounded-xl border border-border overflow-hidden bg-muted/10">
           <div className="flex items-center gap-3 p-3 h-full">
             <div className="size-20 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0">
-              <img
-                src={value}
-                alt={t("registry.imageUpload.previewAlt")}
-                className="w-full h-full object-cover"
-              />
+              {previewSrc ? (
+                <img
+                  src={previewSrc}
+                  alt={t("registry.imageUpload.previewAlt")}
+                  className="w-full h-full object-cover"
+                />
+              ) : null}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground truncate">{value}</p>
@@ -123,7 +122,7 @@ export function ImageUpload({
       ) : isUploading ? (
         /* ── Uploading state ── */
         <div className="relative min-h-[180px] rounded-xl border border-border bg-muted/10 flex flex-col items-center justify-center gap-3">
-          <Loading01 className="size-8 animate-spin text-muted-foreground" />
+          <Spinner className="size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             {t("registry.imageUpload.uploadingImage")}
           </p>

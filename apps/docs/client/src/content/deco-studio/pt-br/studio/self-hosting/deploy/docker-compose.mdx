@@ -51,7 +51,7 @@ open http://localhost:3000
 O arquivo `docker-compose.postgres.yml` monta o `DATABASE_URL` automaticamente a partir das variáveis `POSTGRES_*`, usando o serviço `postgres` como host.
 
 <Callout type="tip">
-  `BETTER_AUTH_SECRET` é a única variável estritamente obrigatória para a aplicação. As variáveis `POSTGRES_*` têm valores padrão, mas sempre defina uma senha de verdade.
+  `BETTER_AUTH_SECRET` cai para um valor padrão inseguro (só para dev) se não for definido — sempre defina um de verdade. As variáveis `POSTGRES_*` também têm valores padrão, mas sempre defina uma senha de verdade.
 </Callout>
 
 ## Variáveis de ambiente
@@ -60,13 +60,13 @@ Defina estas no `.env` ao lado do arquivo de compose:
 
 | Variável | Padrão | Descrição |
 |----------|---------|-------------|
-| `BETTER_AUTH_SECRET` | **obrigatório** | Secret de autenticação. Gere com `openssl rand -base64 32` |
+| `BETTER_AUTH_SECRET` | `local-dev-better-auth-secret-change-me` (inseguro) | Secret de autenticação — sempre defina um de verdade. Gere com `openssl rand -base64 32` |
 | `IMAGE_REPOSITORY` | `ghcr.io/decocms/studio/studio` | Repositório da imagem |
 | `IMAGE_TAG` | `latest` | Tag da imagem |
 | `PORT` | `3000` | Porta exposta no host |
 | `BASE_URL` / `BETTER_AUTH_URL` | `http://localhost:3000` | URLs públicas da aplicação |
 | `DATABASE_URL` | veja abaixo | Connection string do PostgreSQL |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio_user` / — / `studio_db` | Credenciais do Postgres embutido (apenas no compose postgres) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio` / `studio` / `studio` | Credenciais do Postgres embutido (apenas no compose postgres) |
 
 O container roda como usuário `1001:1001` e persiste dados no volume `studio-data`; o Postgres embutido persiste em `postgres-data`.
 

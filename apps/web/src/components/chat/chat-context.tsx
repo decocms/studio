@@ -59,7 +59,8 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
+  useVirtualMCPNonBlocking,
+  useVirtualMCPsNonBlocking,
 } from "@/sdk";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
@@ -489,14 +490,26 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     validatedStoredDeepResearch ??
     defaultDeepResearchModel;
 
-  // selectedVirtualMcp — URL-derived
-  const selectedVirtualMcpData = useVirtualMCP(urlVirtualMcpId);
-  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ?? {
-    id: urlVirtualMcpId,
-    title: "",
-    description: null,
-    icon: null,
-  };
+  /** URL-derived, and read NON-BLOCKING on purpose. This provider sits above
+   *  the sidebar and outside every Suspense boundary in the shell, so a
+   *  suspending read here blanks the whole app back to the splash screen. The
+   *  id flips (Super Agent → project) on any home → /projects navigation,
+   *  because only the projects route resolves `?virtualmcpid=`, so the key
+   *  changes on a navigation whose URL param did not. */
+  const selectedVirtualMcpData = useVirtualMCPNonBlocking(urlVirtualMcpId);
+  /** The org's list is already warm — the sidebar holds it — so the title and
+   *  icon are right on the first frame; the GET only adds the fields the list
+   *  omits, and lands without a visible change. */
+  const listedVirtualMcp = useVirtualMCPsNonBlocking().find(
+    (candidate) => candidate.id === urlVirtualMcpId,
+  );
+  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ??
+    listedVirtualMcp ?? {
+      id: urlVirtualMcpId,
+      title: "",
+      description: null,
+      icon: null,
+    };
 
   // App contexts
   const [appContexts, setAppContextsState] = useState<Record<string, string>>(
@@ -904,12 +917,11 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   });
   const conn = getOrOpenStream(org.slug, taskId, { client });
-  // Suspend until the initial-page MCP fetch settles. The Suspense boundary
-  // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
-  // catches this and shows the skeleton instead of an empty message list.
-  // `conn.ready` resolves on success, error, and null-client paths so the
-  // chat unsuspends in every terminal case; error states are surfaced via
-  // `status` and rendered inline.
+  /** Suspend until the initial-page MCP fetch settles. The `MainPanelBoundary`
+   *  in side-panel-chat.tsx catches this and shows the app's one panel loader
+   *  instead of an empty message list. `conn.ready` resolves on success, error
+   *  and null-client paths so the chat unsuspends in every terminal case;
+   *  error states are surfaced via `status` and rendered inline. */
   use(conn.ready);
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
@@ -958,6 +970,26 @@ export function ActiveTaskProvider({
   // Delivery is at-most-once (NATS Core, no replay): a dropped event self-heals
   // because any LATER same-thread status event re-reconciles. Scoped to threads
   // that actually queued work (`isQueueDirty`) so normal threads are untouched.
+  // Shared by onTaskStatus and onReconnect: a dropped `/watch` connection can lose a status event, so a reconnect also re-checks the dirty queue.
+  const resyncDirtyQueue = () => {
+    const cb = cbRef.current;
+    if (!isQueueDirty(cb.taskId)) return;
+    void (async () => {
+      await refreshMessageQueue(cb.orgSlug, cb.taskId);
+      const applied = await conn.reconcileFromServer();
+      // The gate queue has drained — the last queued turn finished and its
+      // parts are committed (guaranteed by the ordering above), so the body
+      // is whole. Stop reconciling until the next time work is queued.
+      // Gate on `applied`: `reconcileFromServer` skips its apply while the
+      // next queued turn is already mid-stream (racing dequeue) — and by
+      // then the gate queue can look drained. The flag must survive the
+      // skip so that turn's own terminal event retries the reconcile.
+      if (applied && messageQueueStore(cb.taskId).get().length === 0) {
+        clearQueueDirty(cb.taskId);
+      }
+    })();
+  };
+
   useDecopilotEvents({
     orgSlug: org.slug,
     taskId,
@@ -971,22 +1003,9 @@ export function ActiveTaskProvider({
         if (stashed) conn.applyLocalMessage(stashed);
         void refreshMessageQueue(cb.orgSlug, cb.taskId); // authoritative re-sync
       }
-      if (!isQueueDirty(cb.taskId)) return;
-      void (async () => {
-        await refreshMessageQueue(cb.orgSlug, cb.taskId);
-        const applied = await conn.reconcileFromServer();
-        // The gate queue has drained — the last queued turn finished and its
-        // parts are committed (guaranteed by the ordering above), so the body
-        // is whole. Stop reconciling until the next time work is queued.
-        // Gate on `applied`: `reconcileFromServer` skips its apply while the
-        // next queued turn is already mid-stream (racing dequeue) — and by
-        // then the gate queue can look drained. The flag must survive the
-        // skip so that turn's own terminal event retries the reconcile.
-        if (applied && messageQueueStore(cb.taskId).get().length === 0) {
-          clearQueueDirty(cb.taskId);
-        }
-      })();
+      resyncDirtyQueue();
     },
+    onReconnect: resyncDirtyQueue,
   });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
@@ -1028,7 +1047,7 @@ export function ActiveTaskProvider({
         }
         // `load_repo` finished cloning a repo into the thread's sandbox. Patch
         // the local thread row (branch + repo + sandbox record) so the preview
-        // resolves without a refetch, then open the "preview" main-panel tab.
+        // resolves without a refetch, then open the site-editor main-panel tab.
         if (chunk.type === "data-open-preview") {
           const data = (
             chunk as unknown as {
@@ -1053,7 +1072,7 @@ export function ActiveTaskProvider({
               } as Task["metadata"],
             });
           }
-          cb.openPanel("preview");
+          cb.openPanel("site-editor");
           return;
         }
       },

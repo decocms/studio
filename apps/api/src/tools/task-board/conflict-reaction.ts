@@ -2,10 +2,12 @@ import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
   allReviewersApproved,
+  LANES,
   enabledReviewerKinds,
   type ReviewCycleActivity,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import { autoResolveConflictsEnabled } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
@@ -18,6 +20,19 @@ import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
  * every poll. Generous — a task rarely conflicts more than once.
  */
 const MAX_AUTO_CONFLICT_RESOLUTIONS = 3;
+
+/** True when this task is a candidate for auto conflict-resolution: an In
+ *  Review task delegated to the Super Agent with a detected conflict. */
+export function isConflictResolutionCandidate(
+  item: { status: string; assigneeId: string | null },
+  conflict: boolean | null,
+): boolean {
+  return (
+    item.status === LANES.review &&
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+    conflict === true
+  );
+}
 
 /** True once a task has hit its all-time cap of auto conflict-resolution
  *  dispatches — counted from the `merge_conflict_resolution` activity entries,
@@ -67,16 +82,13 @@ export async function reactToApprovedPrConflict(
   item: TaskBoardItem,
   opts: { pr: { number: number; url: string }; conflict: boolean | null },
 ): Promise<boolean> {
-  // Only an In Review task delegated to the Super Agent is a candidate — a
-  // human-owned review never gets an automatic run, and a task already moved on
-  // (In Progress, Done) must not be bounced.
-  if (item.status !== "in_review") return false;
-  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
-  if (opts.conflict !== true) return false;
+  if (!isConflictResolutionCandidate(item, opts.conflict)) {
+    return false;
+  }
 
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const flags = settings?.flags ?? {};
-  if (flags.auto_merge !== true) return false;
+  if (!autoResolveConflictsEnabled(flags)) return false;
 
   // Same gate as the auto-merge: EVERY enabled reviewer must have a
   // token-verified approval in the current cycle. With no reviewer enabled
@@ -131,7 +143,7 @@ export async function reactToApprovedPrConflict(
     // strands the task forever: the guard above only fires on `in_review`,
     // so no future poll or approval retries it. Bounce back so it does.
     await ctx.storage.taskBoard
-      .update(claimed.id, orgId, { status: "in_review" }, "system")
+      .update(claimed.id, orgId, { status: LANES.review }, "system")
       .then((reverted) => emitTaskBoardUpdated(orgId, reverted))
       .catch((revertErr) =>
         console.error(

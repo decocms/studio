@@ -1,29 +1,30 @@
 import type { Task } from "@/components/chat/task/types";
+import { threadRuntimeMatches } from "@/lib/thread-runtime-match";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 /**
- * The current user's most-recently-updated non-archived thread with `agentId`,
- * or null when they have none. Scans an already-loaded thread list (the
- * ThreadManager's org-wide "Mine" page, ordered `updated_at` desc) — used by
- * the sidebar agent rows to resume the last conversation instead of always
- * landing on an empty composer.
+ * Current user's most-recently-updated non-archived thread for `agentId`
+ * (optionally runtime-matched), or null — the last *real* thread, empty or not.
  *
- * `created_by === userId` scopes the match to the current user — the list is
- * org-wide (it carries teammates' threads for the activity view), so without it
- * we'd resume a teammate's read-only thread. `!hidden` skips archived threads.
- * Returns null when nothing matches, so callers fall back to the empty-composer
- * behavior. Unlike `findReusableNewChat` this intentionally does NOT gate on
- * `title`/`harness_id`: we want the last *real* conversation, empty or not.
+ * `onlyBranches`: keep only threads whose `branch` is in the set (legacy resume).
+ * `excludeBranch`: skip threads on that branch (drafts-mode passes production).
  */
 export function findLastThreadForAgent(
   threads: Task[],
   agentId: string,
   userId: string | undefined,
+  expectedRuntime?: ThreadRuntime,
+  onlyBranches?: ReadonlySet<string>,
+  excludeBranch?: string | null,
 ): Task | null {
   let best: Task | null = null;
   for (const t of threads) {
     if (t.virtual_mcp_id !== agentId) continue;
     if (t.created_by !== userId) continue;
     if (t.hidden) continue;
+    if (!threadRuntimeMatches(t, expectedRuntime)) continue;
+    if (onlyBranches && (!t.branch || !onlyBranches.has(t.branch))) continue;
+    if (excludeBranch && t.branch === excludeBranch) continue;
     if (!best || t.updated_at > best.updated_at) best = t;
   }
   return best;

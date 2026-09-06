@@ -10,6 +10,7 @@ import {
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 
+/** Studio's own board, which is what these fixtures run on. */
 type LinkPrCall = {
   taskBoardItemId: string;
   organizationId: string;
@@ -204,14 +205,14 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     status: "in_review",
     priority: "medium",
     type: "chore",
-    sprintId: null,
     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
     assignedBy: null,
     repo: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
-    jiraIssueKey: null,
+    externalUrl: null,
+    source: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],
@@ -230,6 +231,9 @@ describe("handTaskToHuman", () => {
     const activityCalls: unknown[] = [];
     const ctx = {
       storage: {
+        // The hand-off parks the card first, and parking asks the board where
+        // its review column is. No settings row = Studio's own board.
+        organizationSettings: { get: async () => null },
         taskBoard: {
           unassignSuperAgent: async () => makeItem({ assigneeId: null }),
           recordActivity: async (p: unknown) => {

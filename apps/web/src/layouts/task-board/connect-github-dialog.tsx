@@ -1,5 +1,5 @@
-import { Loading01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
@@ -53,7 +53,7 @@ export function ConnectGitHubDialog({
               className="gap-2"
             >
               {isConnecting ? (
-                <Loading01 size={16} className="animate-spin" />
+                <Spinner className="size-4" />
               ) : (
                 <GitHubIcon className="size-4" />
               )}

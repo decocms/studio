@@ -65,9 +65,11 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_AUTOMATION_LIST,
   TaskBoardTools.TASK_BOARD_AUTOMATION_UPSERT,
   TaskBoardTools.TASK_BOARD_AUTOMATION_DELETE,
-  TaskBoardTools.TASK_BOARD_COLUMN_ROLE_SET,
+  TaskBoardTools.TASK_BOARD_PROMPT_LIST,
+  TaskBoardTools.TASK_BOARD_PROMPT_UPSERT,
+  TaskBoardTools.TASK_BOARD_PROMPT_DELETE,
   TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
-  TaskBoardTools.TASK_BOARD_ITEM_PR_LINK,
+  TaskBoardTools.TASK_BOARD_PREVIEW_PROBE,
   TaskBoardTools.TASK_BOARD_ITEM_RERUN,
   TaskBoardTools.TASK_BOARD_RESOLVE_CONFLICT,
   TaskBoardTools.TASK_BOARD_REVIEW_DECISION,
@@ -222,14 +224,20 @@ export const CORE_TOOLS = [
   OrgRepoSyncTools.ORG_REPO_SYNC_DELETE,
   OrgRepoSyncTools.ORG_REPO_SYNC_RUN,
 
-  // Per-org Jira integration (pull sync into the task board)
+  // Per-org Jira integration
   JiraTools.JIRA_INTEGRATION_GET,
   JiraTools.JIRA_INTEGRATION_UPSERT,
   JiraTools.JIRA_INTEGRATION_DELETE,
   JiraTools.JIRA_BOARDS_LIST,
   JiraTools.JIRA_BOARD_COLUMNS_LIST,
-  JiraTools.JIRA_SYNC_RUN,
-  JiraTools.JIRA_RESYNC_REQUEST,
+  JiraTools.JIRA_AUTOMATION_LIST,
+  JiraTools.JIRA_AUTOMATION_UPSERT,
+  JiraTools.JIRA_AUTOMATION_DELETE,
+  // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
+  JiraTools.JIRA_ISSUE_GET,
+  JiraTools.JIRA_COMMENT_ADD,
+  JiraTools.JIRA_ISSUE_TRANSITION,
+  JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

@@ -24,7 +24,6 @@ import {
   isDestinationPanel,
   panelLocationForTab,
   type PanelPayload,
-  resolveChatSegments,
   tabIdForPanel,
 } from "./panel-route";
 
@@ -34,24 +33,24 @@ const DESTINATION_ROUTE_BY_PANEL = {
   files: DESTINATION_ROUTE.library,
   reports: DESTINATION_ROUTE.reports,
   overview: DESTINATION_ROUTE.home,
+  discover: DESTINATION_ROUTE.discover,
 } as const satisfies Record<DestinationPanel, DestinationRoutePath>;
 
 /** The view the URL names, as a tab id; `undefined` when it names none. */
 export function useActivePanelTabId(): string | undefined {
   const params = useParams({ strict: false });
   const search = useSearch({ strict: false }) as PanelPayload;
-  const { panel } = resolveChatSegments({
-    project: params.project,
-    panel: params.panel,
-  });
-  return tabIdForPanel(panel, search);
+  /** One optional segment now, so it is unambiguously the view — the project
+   *  moved to `?virtualmcpid=`. A bookmarked project id in that slot is redirected
+   *  by the route's own `beforeLoad` before anything renders. */
+  return tabIdForPanel(params.panel, search);
 }
 
 export interface OpenPanelOptions {
   /** Defaults to `true`: swapping the view is a layout write, not a place. */
   replace?: boolean;
-  /** Scope the view to another project (the segment the chat route carries). */
-  project?: string;
+  /** Scope the view to another project. */
+  virtualmcpid?: string;
   /** Extra search the caller owns, applied under the panel's own payload. */
   search?: (prev: Record<string, unknown>) => Record<string, unknown>;
 }
@@ -62,10 +61,9 @@ export function usePanelNavigate(): {
 } {
   const navigate = useNavigate();
   const params = useParams({ strict: false });
-  const { project: currentProject } = resolveChatSegments({
-    project: params.project,
-    panel: params.panel,
-  });
+  const currentProject = (
+    useSearch({ strict: false }) as { virtualmcpid?: string }
+  ).virtualmcpid;
   const orgSlug = params.org ?? "";
   const onChatRoute = useLeafRoutePath() === DESTINATION_ROUTE.agents;
   /** The legacy `/$org/$taskId` keeps the thread in its path; every destination
@@ -116,14 +114,14 @@ export function usePanelNavigate(): {
       return;
     }
 
+    const virtualmcpid = opts?.virtualmcpid ?? currentProject;
     navigate({
       to: DESTINATION_ROUTE.agents,
-      params: {
-        org: orgSlug,
-        project: opts?.project ?? currentProject,
-        panel,
-      },
-      search,
+      params: { org: orgSlug, panel },
+      search: (prev: Record<string, unknown>) => ({
+        ...search(prev),
+        virtualmcpid,
+      }),
       replace,
     });
   };

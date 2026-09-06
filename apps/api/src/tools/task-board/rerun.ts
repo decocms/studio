@@ -38,6 +38,7 @@ import {
   type StudioContext,
 } from "@/core/studio-context";
 import {
+  LANES,
   type ReviewCycleActivity,
   reviewCycleStart,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -375,12 +376,15 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
     // best-effort: a swallowed failure here is exactly the silent no-op this
     // tool exists to remove.
-    const updated = await ctx.storage.taskBoard.update(
-      id,
-      organizationId,
-      { status: "in_progress" },
-      getUserId(ctx)!,
-    );
+    const progress = LANES.progress;
+    const updated = progress
+      ? await ctx.storage.taskBoard.update(
+          id,
+          organizationId,
+          { status: progress },
+          getUserId(ctx)!,
+        )
+      : item;
 
     await recordTaskActivity(ctx, {
       taskBoardItemId: id,

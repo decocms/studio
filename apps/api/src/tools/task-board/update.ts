@@ -1,4 +1,4 @@
-import { assertBoardHasColumn, boardFor } from "./board-handler";
+import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -20,7 +20,9 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
+import { runColumnAutomation } from "./run-column-automation";
 import { extractPrFromText } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import {
   ensureTaskExecutionAllowed,
   isReportsTask,
@@ -134,7 +136,7 @@ export function delegatesToSuperAgent(
   if (!previous) return false;
   return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
     ? true
-    : previous.status === "todo";
+    : previous.status === LANES.queue;
 }
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
@@ -291,11 +293,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       throw new Error(`Task board item not found: ${input.id}`);
     }
 
-    const board = await boardFor(ctx, organizationId);
-    if (input.status !== undefined) {
-      await assertBoardHasColumn(board, input.status);
-    }
-
     if (input.status !== undefined && isDeliveryLane(input.status)) {
       const settings =
         await ctx.storage.organizationSettings.get(organizationId);
@@ -326,9 +323,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
-    // Delegating a task to the Super Agent queues it to run — force To Do,
-    // overriding any status the caller passed alongside the reassignment.
+    // Delegating queues the card onto the queue lane.
     const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
+    const queuedStatus = becameSuperAgent ? LANES.queue : undefined;
+    const nextStatus = queuedStatus ?? input.status;
 
     if (previous && isReportsTask(previous)) {
       // Reports-pushed tasks are the report's findings — their CONTENT is
@@ -386,12 +384,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         {
           title: input.title,
           description: input.description,
-          status: becameSuperAgent ? "todo" : input.status,
-          // Written with the status it describes, so a card cannot end up in a
-          // column of the org's own while still unguarded.
-          ...(input.status !== undefined || becameSuperAgent
-            ? { boardColumnOrg: board.columnOwner() }
-            : {}),
+          status: nextStatus,
           priority: input.priority,
           type: input.type,
           assigneeId: input.assigneeId,
@@ -425,6 +418,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         repoOwner: pr.owner,
         repoName: pr.repo,
         connectionId: null,
+      });
+      // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+      await invalidatePrCards(organizationId).catch((err) => {
+        console.error("[task-board] PR card cache invalidation failed", err);
       });
     }
 
@@ -473,6 +470,21 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
     if (becameSuperAgent) {
       await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+      return { item };
+    }
+
+    // A card that just landed in a column runs that column's rule, whoever
+    // moved it. Only on an actual lane change: re-saving a title must not
+    // re-trigger, and the card is already owned once the rule has fired.
+    if (
+      input.status !== undefined &&
+      previous !== null &&
+      previous.status !== item.status
+    ) {
+      item = await runColumnAutomation(ctx, item, {
+        assignedBy: getUserId(ctx)!,
+        actor: getUserId(ctx)!,
+      });
     }
 
     return { item };

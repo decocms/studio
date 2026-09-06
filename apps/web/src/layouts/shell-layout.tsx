@@ -1,11 +1,16 @@
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { OrgAccessGate } from "@/components/org-access-gate";
-import { SplashScreen } from "@/components/splash-screen";
 import { FloatingReleaseCard } from "@/components/release-channel/floating-release-card";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { CommandPalette } from "@/components/command-palette";
+import {
+  closeCommandPalette,
+  openCommandPalette,
+  useCommandPaletteOpen,
+} from "@/components/command-palette-store";
 import { VersionCheckDialog } from "@/components/version-check-dialog";
 import { LanguageAnnouncementDialog } from "@/components/language-announcement-dialog";
-import { isModKey } from "@/lib/keyboard-shortcuts";
+import { isModKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { authClient } from "@/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
@@ -47,7 +52,16 @@ import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { ArchivedOrgScreen } from "../components/archived-org-screen";
+import { BlockedOrgScreen } from "../components/blocked-org-screen";
+import { useOrgNotice } from "../hooks/use-org-notice";
+import { isBillingEscapeHatch } from "../lib/org-block-escape";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+
+/** What `getFullOrganization` resolves to — named so the cache seed below can
+ *  be typed against it in one place. */
+type ActiveOrgData = Awaited<
+  ReturnType<typeof authClient.organization.getFullOrganization>
+>["data"];
 
 // ---------------------------------------------------------------------------
 // ShellProjectProvider — fetches org settings and provides project context.
@@ -239,6 +253,7 @@ function ShellLayoutContent() {
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const org = orgMatch?.params.org;
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useCommandPaletteOpen();
   const router = useRouter();
   const isHomeRoute = useIsHomeRoute();
 
@@ -257,6 +272,15 @@ function ShellLayoutContent() {
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (isModKey(e) && e.code === "KeyK") {
+        e.preventDefault();
+        /** The module-scope opener, not the setter this component reads with:
+         *  a store write needs no subscription, and it keeps the effect's
+         *  dependency list to the router. */
+        openCommandPalette();
+        return;
+      }
+      /** "?" opens the shortcuts sheet that ⌘K used to; ignored while typing. */
+      if (e.key === "?" && !isTypingTarget(e.target)) {
         e.preventDefault();
         setShortcutsDialogOpen(true);
         return;
@@ -320,14 +344,19 @@ function ShellLayoutContent() {
 
       return data;
     },
-    // Hydrate from the user-scoped cache so the shell paints without waiting on
-    // the network; the stale `initialDataUpdatedAt` triggers a background
-    // refetch that flips to the access gate if membership was revoked.
-    initialData: cachedOrg
-      ? (cachedOrg.data as Awaited<
-          ReturnType<typeof authClient.organization.getFullOrganization>
-        >["data"])
-      : undefined,
+    /** Boot is the only moment this query may suspend, and the splash is the
+     *  right loader then because no shell is on screen yet. Its key carries the
+     *  org slug, so an org SWITCH re-resolves it — but that happens inside the
+     *  router's transition, on a boundary that is already mounted, so React
+     *  keeps the painted shell up instead of dropping to the fallback. That is
+     *  the property `loading-states.spec.ts` pins; if a future change remounts
+     *  this boundary, the splash comes back on top of a painted shell.
+     *
+     *  Hydrating from the user-scoped cache keeps a reload of a known org off
+     *  the network entirely. The stale `initialDataUpdatedAt` still triggers a
+     *  background refetch, which flips to the access gate if membership was
+     *  revoked. */
+    initialData: cachedOrg ? (cachedOrg.data as ActiveOrgData) : undefined,
     initialDataUpdatedAt: cachedOrg?.updatedAt,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -337,6 +366,15 @@ function ShellLayoutContent() {
   const orgId = activeOrg?.id;
   const orgSlug = activeOrg?.slug;
   const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
+  const ssoBlocked = !!ssoStatus?.ssoRequired && !ssoStatus.authenticated;
+
+  /** A blocked org (billing notice) shows the notice instead of itself —
+   *  except on billing, which stays reachable so the org can settle it. The
+   *  server enforces the same block on writes; this is the screen for it. */
+  const { data: orgNotice } = useOrgNotice(orgSlug);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const orgBlocked =
+    orgNotice?.severity === "block" && !isBillingEscapeHatch(pathname);
 
   // Warm the self-MCP connection in parallel with the rest of shell bootstrap,
   // so the home's useMCPClient resolves without waiting on a fresh connect()
@@ -352,16 +390,19 @@ function ShellLayoutContent() {
     enabled: !!orgId && !!orgSlug,
   });
 
+  /** Below this line the shell may return a gate screen instead of itself, and
+   *  none of them mount the palette — so drop any flag ⌘K set on the way in. */
+  if (!activeOrg || isOrgArchived(activeOrg) || ssoBlocked || orgBlocked) {
+    closeCommandPalette();
+  }
+
   if (!activeOrg) {
-    // Not a member: figure out which screen to show (no-access / pending
-    // invite / auto-domain-join / not-found). Wrapped in Suspense so the
-    // brief access-status fetch shows the splash instead of throwing back to
-    // the parent suspense boundary.
-    return (
-      <Suspense fallback={<SplashScreen />}>
-        <OrgAccessGate orgSlug={org!} />
-      </Suspense>
-    );
+    /** Not a member: figure out which screen to show (no-access / pending
+     *  invite / auto-domain-join / not-found). No boundary of its own — the
+     *  brief access-status fetch suspends up to the app's single splash
+     *  boundary, which is the same splash a local fallback used to draw and one
+     *  element fewer to remount (`layouts/boot-gate.tsx`). */
+    return <OrgAccessGate orgSlug={org!} />;
   }
 
   const isArchivedOrg = isOrgArchived(activeOrg);
@@ -373,7 +414,11 @@ function ShellLayoutContent() {
     return <ArchivedOrgScreen orgName={activeOrg.name} />;
   }
 
-  if (ssoStatus?.ssoRequired && !ssoStatus.authenticated) {
+  if (orgBlocked && orgNotice) {
+    return <BlockedOrgScreen notice={orgNotice} orgSlug={activeOrg.slug} />;
+  }
+
+  if (ssoBlocked) {
     return (
       <SsoRequiredScreen
         orgId={activeOrg.id}
@@ -393,6 +438,14 @@ function ShellLayoutContent() {
         <FloatingReleaseCard />
         <VersionCheckDialog />
       </div>
+
+      {/* Mounted only while open: this sits outside every Suspense boundary
+          but the root, so nothing here may suspend — the palette's search
+          client is non-blocking for that reason. The ⌘K binding lives above,
+          so gating the mount does not lose it. */}
+      {paletteOpen && (
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      )}
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog

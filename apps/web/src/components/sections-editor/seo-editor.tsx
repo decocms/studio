@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronRight, CreditCardSearch, Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { ChevronRight, CreditCardSearch } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { useT } from "@/i18n/use-t.ts";
@@ -164,12 +165,7 @@ export function SeoEditor({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          {isPending && (
-            <Loading01
-              size={14}
-              className="animate-spin text-muted-foreground"
-            />
-          )}
+          {isPending && <Spinner className="size-3.5 text-muted-foreground" />}
           {target.kind === "page" && onEditDefaultSeo && (
             <Button
               type="button"

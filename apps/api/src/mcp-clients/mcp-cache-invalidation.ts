@@ -17,6 +17,7 @@
 import type { NatsConnection, Subscription } from "@nats-io/nats-core";
 import { getMcpReadCache } from "./mcp-read-cache";
 import { clearRevalidationState } from "./mcp-list-cache";
+import { invalidateAggregates } from "./virtual-mcp/aggregate-cache";
 
 const INVALIDATE_SUBJECT = "studio.mcp-cache.invalidate";
 
@@ -39,6 +40,10 @@ let sub: Subscription | null = null;
 function evictLocal(connectionId: string): void {
   getMcpReadCache()?.invalidate(connectionId);
   clearRevalidationState(connectionId);
+  // Also drop any cached Virtual MCP aggregate this connection fed — whether as
+  // a child (its tools changed) or as the agent itself (its selected_tools
+  // changed). Without this, an edit would not show up until the aggregate TTL.
+  invalidateAggregates(connectionId);
 }
 
 /**

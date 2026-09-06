@@ -15,6 +15,7 @@ import {
   CANONICAL_COLUMN_KEYS,
   type CanonicalColumnKey,
   DELIVERY_LANES,
+  LANES,
 } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
 
@@ -27,22 +28,16 @@ const RANK_BY_KEY = Object.fromEntries(
  *  error here, which is the whole reason the table is exhaustive. */
 export const LANE_RANK: Record<TaskBoardItemStatus, number> = RANK_BY_KEY;
 
-/** Widened read of the same table. A card's status is any column key, and
- *  indexing the closed Record would let the compiler believe every status has
- *  a rank. */
+/** Widened read of the same table: a card's status is typed as any column
+ *  key, and the closed Record would not accept it as an index. */
 const RANK_LOOKUP: Record<string, number> = LANE_RANK;
 
-/**
- * Where a status sits in Studio's own order, or null for a column Studio did
- * not define.
- *
- * An org board's order is its columns' positions, not this table, so null is
- * the honest answer rather than a guessed rank — and callers decide what an
- * unrankable status means for them, instead of silently comparing against a
- * number that was invented.
- */
-export function laneRank(status: string): number | null {
-  return RANK_LOOKUP[status] ?? null;
+/** Where a status sits in board order. Every status is a canonical column, so
+ *  an unknown key is a corrupt row, not a case to reason about. */
+export function laneRank(status: string): number {
+  const rank = RANK_LOOKUP[status];
+  if (rank === undefined) throw new Error(`Unknown board column "${status}"`);
+  return rank;
 }
 
 /** The delivery lanes, as board statuses — the assertion that the shared
@@ -66,13 +61,16 @@ export function isDeliveryLane(status: string): boolean {
  * so adding one silently turns it into a path that drags cards BACKWARD.
  */
 export function movesForward(from: string, to: string): boolean {
-  const before = laneRank(from);
-  const after = laneRank(to);
-  // Either side unrankable means one of them is a column Studio did not
-  // define. There is no order to be forward in, so the guard abstains rather
-  // than inventing one.
-  if (before === null || after === null) return true;
-  return after > before;
+  return laneRank(to) > laneRank(from);
+}
+
+/**
+ * True when a card in `from` may still be advanced to `to`: it sits at or
+ * before it. What stops a re-opened PR dragging a finished card backwards,
+ * while letting a repeated trigger on the target lane stay a no-op.
+ */
+export function atOrBefore(from: string, to: string): boolean {
+  return laneRank(from) <= laneRank(to);
 }
 
 /**
@@ -114,11 +112,8 @@ export function inReviewPhase(item: {
   status: string;
   reviewCycleStartedAt: string | null;
 }): boolean {
-  const rank = laneRank(item.status);
-  // A column Studio did not define has no place in this order, so the rank
-  // bound simply does not apply to it.
-  if (rank !== null && rank > LANE_RANK.in_review) return false;
+  if (laneRank(item.status) > LANE_RANK.in_review) return false;
   // Truthiness, not `!== null`: an absent stamp must read as "no cycle", and
   // a partial item (a fixture, a projection) carries `undefined`, not `null`.
-  return item.status === "in_review" || Boolean(item.reviewCycleStartedAt);
+  return item.status === LANES.review || Boolean(item.reviewCycleStartedAt);
 }

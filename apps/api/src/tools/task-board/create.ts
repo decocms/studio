@@ -1,4 +1,4 @@
-import { assertBoardHasColumn, boardFor } from "./board-handler";
+import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -18,6 +18,7 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { extractPrFromText } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -76,11 +77,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       );
     }
 
-    // Resolved once and reused below: the same board answers whether the status
-    // is real and whether the card is one the foreign key can hold.
-    const board = await boardFor(ctx, organizationId);
     if (input.status !== undefined) {
-      await assertBoardHasColumn(board, input.status);
       const settings =
         await ctx.storage.organizationSettings.get(organizationId);
       if (
@@ -102,6 +99,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     }
 
     const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+    const status = delegatedToSuperAgent
+      ? LANES.queue
+      : (input.status ?? LANES.intake);
 
     if (input.tagIds?.length) {
       const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
@@ -117,10 +117,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       organizationId,
       title: input.title,
       description: input.description ?? null,
-      // A task handed to the Super Agent is queued to run — land it in To Do.
-      status: delegatedToSuperAgent ? "todo" : input.status,
-      // Guarded from birth, not from whenever a sync first touches it.
-      boardColumnOrg: board.columnOwner(),
+      status,
       priority: input.priority,
       type: input.type,
       assigneeId: input.assigneeId ?? null,
@@ -148,6 +145,10 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         repoOwner: pr.owner,
         repoName: pr.repo,
         connectionId: null,
+      });
+      // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+      await invalidatePrCards(organizationId).catch((err) => {
+        console.error("[task-board] PR card cache invalidation failed", err);
       });
     }
 

@@ -34,15 +34,85 @@ const VirtualMCPConnectionSchema = z.object({
 
 export type VirtualMCPConnection = z.infer<typeof VirtualMCPConnectionSchema>;
 
+/** Cap on how many tool/resource/prompt names a single connection can select
+ *  on write — an unbounded array here is attacker-controlled payload size on
+ *  a mutation input, not a real agent config (no connection realistically
+ *  exposes more than a few hundred tools). */
+const SELECTED_ITEMS_MAX = 500;
+
+/** Cap on how many connections a single virtual MCP can list on write — same
+ *  rationale as {@link SELECTED_ITEMS_MAX}: no real agent config connects to
+ *  hundreds of MCPs. */
+const CONNECTIONS_MAX = 200;
+
+/** Cap on how many plugin IDs `metadata.enabled_plugins` can carry on write —
+ *  same rationale as the sibling cap on organization_settings.enabled_plugins
+ *  (apps/api/src/tools/organization/settings-update.ts): the plugin registry
+ *  is a small, finite set, so an unbounded array here is attacker-controlled
+ *  payload size, not a real agent config. */
+const ENABLED_PLUGINS_MAX = 200;
+
+/** Cap on how many sub-agent IDs this agent can delegate to. */
+const SUBAGENTS_MAX = 200;
+
+/** Cap on home tiles per agent. */
+const HOME_TILES_MAX = 20;
+
+/** Cap on home prompts (icebreakers) per agent. */
+const HOME_PROMPTS_MAX = 50;
+
+/** Cap on pinned tool views per agent. */
+const PINNED_VIEWS_MAX = 100;
+
+/** Cap on UI layout tabs per agent. */
+const TABS_MAX = 20;
+
+/** Cap on knowledge files attached to an agent. */
+const KNOWLEDGE_MAX = 100;
+
+/** Cap on releases (named branches) per agent. */
+const RELEASES_MAX = 50;
+
+/** Cap on runtime env vars injected per sandbox. */
+const RUNTIME_ENV_MAX = 100;
+
+/** Cap on git submodule credentials per sandbox. */
+const SUBMODULE_CREDENTIALS_MAX = 50;
+
+/** Cap on a single literal env var's value length — an unbounded string here
+ *  is attacker-controlled payload size on a mutation input (posted verbatim
+ *  to the sandbox daemon on every SANDBOX_START), not a real env value. 8KB
+ *  comfortably covers legitimate values (JSON config, certs, tokens). */
+const RUNTIME_ENV_LITERAL_VALUE_MAX = 8192;
+
 /**
  * Virtual MCP connection schema for input (Create/Update) - fields can be optional
  */
 const VirtualMCPConnectionInputSchema = VirtualMCPConnectionSchema.extend({
-  selected_tools: VirtualMCPConnectionSchema.shape.selected_tools.optional(),
-  selected_resources:
-    VirtualMCPConnectionSchema.shape.selected_resources.optional(),
-  selected_prompts:
-    VirtualMCPConnectionSchema.shape.selected_prompts.optional(),
+  selected_tools: z
+    .array(z.string())
+    .max(SELECTED_ITEMS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Selected tool names. null = all tools included, array = only these tools included",
+    ),
+  selected_resources: z
+    .array(z.string())
+    .max(SELECTED_ITEMS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Selected resource URIs or patterns. Supports * and ** wildcards for pattern matching. null = all resources included, array = only these resources included",
+    ),
+  selected_prompts: z
+    .array(z.string())
+    .max(SELECTED_ITEMS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Selected prompt names. null = all prompts included, array = only these prompts included",
+    ),
 });
 
 /**
@@ -58,9 +128,9 @@ const VirtualMcpPinnedViewSchema = z.object({
 export type VirtualMcpPinnedView = z.infer<typeof VirtualMcpPinnedViewSchema>;
 
 /**
- * A single tab declared by an agent in `metadata.ui.layout.tabs`. Rendered
- * after the fixed system tabs (Instructions / Connections / Layout / Env)
- * in the unified chat layout's right panel.
+ * A durable panel tab declared by an agent in `metadata.ui.layout.tabs`.
+ * Native project navigation is configured separately through
+ * `metadata.sidebarViews`.
  */
 export const VirtualMcpUILayoutTabSchema = z.object({
   id: z.string().describe("Stable id; used as React key and ?tab= value"),
@@ -75,22 +145,63 @@ export const VirtualMcpUILayoutTabSchema = z.object({
 
 export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
 
-/**
- * How an agent offers content editing:
- * - `off` — no CMS. The Content tab and the Preview toolbar's CMS toggle, the
- *   two entry points, are not rendered. A UI gate only: the decofile stays
- *   readable and the agent still edits content through its tools.
- * - `manual` — the default. Editors open the CMS from Preview when they want it.
- * - `auto` — Preview opens the CMS as soon as its metadata is ready to render.
- */
-export const CmsModeSchema = z.enum(["off", "manual", "auto"]);
+/** Project views that may be shown in the sidebar. Availability is resolved at
+ * runtime (for example, Site Editor requires source and Assets requires a file
+ * config); this persisted list only records the project's chosen entries. */
+export const VirtualMcpSidebarViewSchema = z.enum([
+  "overview",
+  "reports",
+  "board",
+  "site-editor",
+  "assets",
+  "hosting",
+  "e2e",
+  "analytics",
+  "cdn",
+  "automations",
+]);
+
+export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
+
+/** How an agent offers content editing. `on` (the default) offers the Site
+ *  Editor's Content view and opens a CMS session on it; `off` offers it
+ *  nowhere — a UI gate only, since the decofile stays readable and the agent
+ *  still edits content through its tools. */
+export const CmsModeSchema = z.enum(["on", "off"]);
 
 export type CmsMode = z.infer<typeof CmsModeSchema>;
 
+/** RETIRED CMS modes, mapped old → new — same job as `normalizePanelSegment`'s
+ *  rename map. `manual` and `auto` differed only in whether Preview popped the
+ *  CMS open itself, and Content is a URL now, so both collapsed into `on`. Both
+ *  are PERSISTED on real agents: without this map, dropping them from the enum
+ *  reads every one as `off` and silently takes their CMS away. */
+const RETIRED_CMS_MODES: ReadonlyMap<string, CmsMode> = new Map([
+  ["manual", "on"],
+  ["auto", "on"],
+]);
+
+/** The stored shapes `cms` can arrive in: the two live modes plus the retired
+ *  names above, which parse so a pre-collapse row still validates. */
+const StoredCmsModeSchema = z.enum(["on", "off", "manual", "auto"]);
+
 /**
- * Layout-specific settings stored under `metadata.ui.layout`. Controls which
- * main view opens by default and which additional right-panel tabs are
- * permanently available for the agent.
+ * The canonical mode for a stored `cms` value, accepting the retired names in
+ * {@link RETIRED_CMS_MODES}. `null` when there is no value to normalise, so a
+ * caller can tell "not configured" from "configured off".
+ */
+export function normalizeCmsMode(
+  stored: string | null | undefined,
+): CmsMode | null {
+  if (!stored) return null;
+  const retired = RETIRED_CMS_MODES.get(stored);
+  if (retired) return retired;
+  return stored === "on" || stored === "off" ? stored : null;
+}
+
+/**
+ * Layout-specific settings stored under `metadata.ui.layout`. Controls the
+ * initial workspace and the project's configurable navigation surfaces.
  */
 export const VirtualMcpUILayoutSchema = z.object({
   defaultMainView: z
@@ -108,36 +219,40 @@ export const VirtualMcpUILayoutSchema = z.object({
    * unless the default view is Chat.
    */
   chatDefaultOpen: z.boolean().nullable().optional(),
-  /**
-   * @deprecated Superseded by `cms`. Still read as the fallback for agents
-   * configured before the tri-state existed — see `resolveCmsMode`. Writers
-   * set `cms` and null this out.
-   */
+  /** @deprecated Superseded by `cms` and read by nothing: it chose between two
+   *  modes that have collapsed into `on`, so carrying it reads as carrying
+   *  nothing. Kept so an untouched row still validates. */
   cmsDefaultOpen: z.boolean().nullable().optional(),
-  cms: CmsModeSchema.nullable()
+  cms: StoredCmsModeSchema.nullable()
     .optional()
     .describe(
-      "How this agent offers content editing. Absent falls back to cmsDefaultOpen.",
+      "How this agent offers content editing. Absent means on; the retired `manual` / `auto` read as on too.",
     ),
-  tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
+  /** @deprecated Read fallback for development data written before sidebar
+   *  selections moved to `metadata.sidebarViews`. New writes use the
+   *  top-level metadata field. */
+  sidebarViews: z
+    .array(VirtualMcpSidebarViewSchema)
+    .max(10)
+    .nullable()
+    .optional()
+    .describe(
+      "Deprecated layout-scoped sidebar selections. Read only as a fallback when metadata.sidebarViews is absent.",
+    ),
+  tabs: z.array(VirtualMcpUILayoutTabSchema).max(TABS_MAX).optional(),
 });
 
 export type VirtualMcpUILayout = z.infer<typeof VirtualMcpUILayoutSchema>;
 
-/**
- * The CMS mode for an agent, resolving the legacy `cmsDefaultOpen` boolean the
- * tri-state replaced. Every reader goes through this: `layout.cms` alone is
- * wrong for agents configured before the enum, and reading both at a call site
- * is how the two drift apart.
- */
+/** The ONE place a stored value becomes a CMS mode the app can branch on —
+ *  every reader goes through it, because `layout.cms` alone reads a persisted
+ *  `manual`/`auto` as neither mode, silently stripping the CMS from an agent
+ *  that has one. Configuring nothing means `on`: `off` is a deliberate choice,
+ *  never a default. */
 export function resolveCmsMode(
-  layout:
-    | { cms?: CmsMode | null; cmsDefaultOpen?: boolean | null }
-    | null
-    | undefined,
+  layout: { cms?: string | null } | null | undefined,
 ): CmsMode {
-  if (layout?.cms) return layout.cms;
-  return layout?.cmsDefaultOpen ? "auto" : "manual";
+  return normalizeCmsMode(layout?.cms) ?? "on";
 }
 
 /**
@@ -157,7 +272,7 @@ export function withCmsMode(
     ...layout,
     cms: mode,
     cmsDefaultOpen: null,
-    ...(dropsContentView ? { defaultMainView: { type: "preview" } } : {}),
+    ...(dropsContentView ? { defaultMainView: { type: "site-editor" } } : {}),
   };
 }
 
@@ -224,7 +339,11 @@ const VirtualMcpUISchema = z.object({
   bannerColor: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),
   themeColor: z.string().nullable().optional(),
-  pinnedViews: z.array(VirtualMcpPinnedViewSchema).nullable().optional(),
+  pinnedViews: z
+    .array(VirtualMcpPinnedViewSchema)
+    .max(PINNED_VIEWS_MAX)
+    .nullable()
+    .optional(),
   layout: VirtualMcpUILayoutSchema.nullable().optional(),
   /**
    * Legacy single-tile slot. Still honored by the home-next-actions
@@ -238,7 +357,11 @@ const VirtualMcpUISchema = z.object({
    * the org home board, rendered via MCPAppRenderer against the
    * resource's owning connection.
    */
-  homeTiles: z.array(VirtualMcpHomeTileSchema).nullable().optional(),
+  homeTiles: z
+    .array(VirtualMcpHomeTileSchema)
+    .max(HOME_TILES_MAX)
+    .nullable()
+    .optional(),
   /**
    * Curated list of prompt names to surface on the home board. When
    * absent / null, the BE falls back to listing every prompt the
@@ -246,7 +369,7 @@ const VirtualMcpUISchema = z.object({
    * array means "no prompts" — useful for an agent that only wants to
    * surface its UI tiles.
    */
-  homePrompts: z.array(z.string()).nullable().optional(),
+  homePrompts: z.array(z.string()).max(HOME_PROMPTS_MAX).nullable().optional(),
 });
 
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
@@ -290,7 +413,7 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     key: envVarKey,
     kind: z.literal("literal"),
-    value: z.string(),
+    value: z.string().max(RUNTIME_ENV_LITERAL_VALUE_MAX),
   }),
   z.object({
     key: envVarKey,
@@ -360,6 +483,7 @@ const RuntimeMetadataSchema = z.object({
     ),
   env: z
     .array(RuntimeEnvEntrySchema)
+    .max(RUNTIME_ENV_MAX)
     .nullable()
     .optional()
     .describe(
@@ -367,6 +491,7 @@ const RuntimeMetadataSchema = z.object({
     ),
   submoduleCredentials: z
     .array(SubmoduleCredentialSchema)
+    .max(SUBMODULE_CREDENTIALS_MAX)
     .nullable()
     .optional()
     .describe(
@@ -399,10 +524,10 @@ const GithubRepoSchema = z.object({
 
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
-/** The app surfaces that can own a sandbox-map entry. */
-type SandboxMapOwnerKind = "agent-sandbox" | "local-api";
-
 const SandboxMapOwnerKindSchema = z.enum(["agent-sandbox", "local-api"]);
+
+/** The app surfaces that can own a sandbox-map entry. */
+type SandboxMapOwnerKind = z.infer<typeof SandboxMapOwnerKindSchema>;
 /**
  * A single sandbox record in the per-(user, branch, kind) sandbox map — the
  * provider-issued handle plus the preview URL the UI renders.
@@ -594,6 +719,7 @@ export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
  */
 const knowledgeMetadataField = z
   .array(KnowledgeFileSchema)
+  .max(KNOWLEDGE_MAX)
   .nullable()
   .optional()
   .describe(
@@ -643,6 +769,24 @@ const fastPreviewMetadataField = z
   );
 
 /**
+ * Reusable `metadata.fastPreviewInPlace` field — EXPERIMENTAL, per-agent opt-in
+ * layered on Fast Preview. When on, content edits refresh the preview by POSTing
+ * the merged (unsaved) decofile to the site runtime's `/live/previews` and
+ * swapping the returned HTML into the frame in place — no git commit, no reload
+ * — instead of committing and re-navigating to a `?__draft=@sha` URL. Requires
+ * `fastPreview` (and thus `previewServerUrl`); inert on its own. Deco-runtime
+ * only: the render target must serve `POST /live/previews` with inline
+ * `__decofile`, so this stays a flag to trial per site.
+ */
+const fastPreviewInPlaceMetadataField = z
+  .boolean()
+  .nullable()
+  .optional()
+  .describe(
+    "EXPERIMENTAL: with Fast Preview on, refresh content edits via an in-place /live/previews render (no commit, no reload) instead of a commit + re-navigation. Deco-runtime preview targets only. Requires fastPreview.",
+  );
+
+/**
  * Reusable `metadata.previewServerUrl` field — the deployment the CMS preview
  * renders against. Usually the live production site, but any deco-runtime
  * deployment works (a local `https://localhost:3100` during development, a
@@ -657,6 +801,125 @@ const previewServerUrlMetadataField = z
   .describe(
     "Preview server URL — the deployment the CMS preview renders against (often the live site, e.g. https://acme.com). Painted in the preview iframe, and the render target for Fast Preview drafts. Supersedes the legacy productionUrl key.",
   );
+
+/**
+ * A named, color-coded release: a working version of the site backed by a git
+ * branch. `metadata.releases` is a curated, user-managed list — NOT the full
+ * git branch list — so the switcher shows only versions people named, never
+ * every branch. The base branch renders as "No ar" and is never stored here;
+ * the branch stays the content source of truth while name + color are Studio's.
+ */
+export const ReleaseSchema = z.object({
+  branch: z.string().describe("Git branch backing this release"),
+  name: z.string().describe('User-facing name, e.g. "Black Friday 2026"'),
+  color: z.string().describe("Dot color token shown in the version switcher"),
+  createdBy: z.string().optional().describe("User ID who created the release"),
+  createdAt: z.string().optional().describe("ISO 8601 creation timestamp"),
+});
+
+export type Release = z.infer<typeof ReleaseSchema>;
+
+const releasesMetadataField = z
+  .array(ReleaseSchema)
+  .max(RELEASES_MAX)
+  .nullable()
+  .optional()
+  .describe(
+    "Curated list of named, branch-backed releases shown in the version switcher. The base branch ('No ar') is derived, not stored here.",
+  );
+
+const draftsModeMetadataField = z
+  .boolean()
+  .nullable()
+  .optional()
+  .describe(
+    "Draft & Releases mode: gates the drafts UX (releases switcher, read-only production, publish-to-production). Off (default) keeps the classic branch/PR picker and post-publish behavior.",
+  );
+
+/**
+ * Shared metadata definition for VirtualMCP entity. Used in VirtualMCPEntitySchema,
+ * VirtualMCPCreateDataSchema, and VirtualMCPUpdateDataSchema to avoid duplication.
+ * Note: instructions is optional here; VirtualMCPEntitySchema makes it required.
+ */
+const VirtualMcpMetadataFields = {
+  instructions: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Instructions also used as system prompt"),
+  enabled_plugins: z
+    .array(z.string())
+    .max(ENABLED_PLUGINS_MAX)
+    .nullable()
+    .optional()
+    .describe("List of enabled plugin IDs"),
+  subAgents: z
+    .array(z.string())
+    .max(SUBAGENTS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
+    ),
+  liveAgentId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
+    ),
+  ui: VirtualMcpUISchema.nullable()
+    .optional()
+    .describe("UI customization settings"),
+  sidebarViews: z
+    .array(VirtualMcpSidebarViewSchema)
+    .max(10)
+    .nullable()
+    .optional()
+    .describe(
+      "Project views selected for the sidebar. Interpret as an exact list when sidebarViewsVersion is 1; unversioned values use legacy native-only semantics. Runtime presence gates still apply.",
+    ),
+  sidebarViewsVersion: z
+    .literal(1)
+    .optional()
+    .describe(
+      "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
+    ),
+  githubRepo: GithubRepoSchema.nullable()
+    .optional()
+    .describe("Linked GitHub repository"),
+  runtime: RuntimeMetadataSchema.nullable()
+    .optional()
+    .describe(
+      "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
+    ),
+  knowledge: knowledgeMetadataField,
+  siteSlug: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Linked asset site slug (managed storage tenancy)"),
+  publishPolicy: publishPolicyMetadataField,
+  previewServerUrl: previewServerUrlMetadataField,
+  productionUrl: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
+    ),
+  fieldDescriptionTooltips: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
+    ),
+  fastPreview: fastPreviewMetadataField,
+  releases: releasesMetadataField,
+  draftsMode: draftsModeMetadataField,
+  fastPreviewInPlace: fastPreviewInPlaceMetadataField,
+} as const satisfies z.ZodRawShape;
 
 /**
  * Virtual MCP entity schema - single source of truth
@@ -681,69 +944,16 @@ export const VirtualMCPEntitySchema = z.object({
   status: z.enum(["active", "inactive"]).describe("Current status"),
   pinned: z.boolean().describe("Whether this space is pinned to the sidebar"),
   // Metadata (stored in connections.metadata)
-  // Normalize null/undefined to { instructions: null } for consistent form tracking
   metadata: z
-    .object({
+    .object(VirtualMcpMetadataFields)
+    .extend({
       instructions: z
         .string()
         .nullable()
         .describe("Instructions also used as system prompt"),
-      enabled_plugins: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-      subAgents: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe(
-          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
-        ),
-      liveAgentId: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-        ),
-      ui: VirtualMcpUISchema.nullable()
-        .optional()
-        .describe("UI customization settings"),
-      githubRepo: GithubRepoSchema.nullable()
-        .optional()
-        .describe("Linked GitHub repository"),
-      runtime: RuntimeMetadataSchema.nullable()
-        .optional()
-        .describe(
-          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
-        ),
       sandboxMap: SandboxMapSchema.optional().describe(
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
-      knowledge: knowledgeMetadataField,
-      siteSlug: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Linked asset site slug (managed storage tenancy)"),
-      publishPolicy: publishPolicyMetadataField,
-      previewServerUrl: previewServerUrlMetadataField,
-      productionUrl: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
-        ),
-      fieldDescriptionTooltips: z
-        .boolean()
-        .nullable()
-        .optional()
-        .describe(
-          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-        ),
-      fastPreview: fastPreviewMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -774,6 +984,7 @@ export const AgentKickstartPromptSchema = z.object({
   text: z
     .string()
     .min(1)
+    .max(4000)
     .describe("The message sent to the agent when the prompt is clicked"),
 });
 
@@ -786,6 +997,7 @@ export const VirtualMCPCreateDataSchema = z.object({
   title: z.string().min(1).max(255).describe("Name for the virtual MCP"),
   description: z
     .string()
+    .max(500)
     .nullable()
     .optional()
     .describe("Optional description"),
@@ -797,65 +1009,14 @@ export const VirtualMCPCreateDataSchema = z.object({
     .describe("Initial status"),
   pinned: z.boolean().optional().default(false).describe("Pin to sidebar"),
   metadata: z
-    .object({
-      instructions: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("MCP server instructions"),
+    .object(VirtualMcpMetadataFields)
+    .extend({
       enabled_plugins: z
         .array(z.string())
+        .max(ENABLED_PLUGINS_MAX)
         .nullable()
         .optional()
         .describe("List of enabled plugin IDs"),
-      subAgents: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe(
-          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
-        ),
-      liveAgentId: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-        ),
-      ui: VirtualMcpUISchema.nullable()
-        .optional()
-        .describe("UI customization settings"),
-      githubRepo: GithubRepoSchema.nullable()
-        .optional()
-        .describe("Linked GitHub repository"),
-      runtime: RuntimeMetadataSchema.nullable()
-        .optional()
-        .describe(
-          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
-        ),
-      knowledge: knowledgeMetadataField,
-      siteSlug: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Linked asset site slug (managed storage tenancy)"),
-      publishPolicy: publishPolicyMetadataField,
-      previewServerUrl: previewServerUrlMetadataField,
-      productionUrl: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
-        ),
-      fieldDescriptionTooltips: z
-        .boolean()
-        .nullable()
-        .optional()
-        .describe(
-          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-        ),
-      fastPreview: fastPreviewMetadataField,
     })
     .loose()
     .superRefine((metadata, ctx) => {
@@ -872,11 +1033,13 @@ export const VirtualMCPCreateDataSchema = z.object({
     .describe("Additional metadata including MCP server instructions"),
   connections: z
     .array(VirtualMCPConnectionInputSchema)
+    .max(CONNECTIONS_MAX)
     .describe(
       "Connections to include/exclude (can be empty for exclusion mode)",
     ),
   prompts: z
     .array(AgentKickstartPromptSchema)
+    .max(20)
     .optional()
     .describe(
       "Optional kickstart prompts to seed on the agent. Each becomes a clickable conversation starter (icebreaker) on the agent. Author them from the agent's role and the tools it will have so they're coherent and immediately useful.",
@@ -892,6 +1055,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
   title: z.string().min(1).max(255).optional().describe("New name"),
   description: z
     .string()
+    .max(500)
     .nullable()
     .optional()
     .describe("New description (null to clear)"),
@@ -899,65 +1063,14 @@ export const VirtualMCPUpdateDataSchema = z.object({
   status: z.enum(["active", "inactive"]).optional().describe("New status"),
   pinned: z.boolean().optional().describe("Pin/unpin from sidebar"),
   metadata: z
-    .object({
-      instructions: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("MCP server instructions"),
+    .object(VirtualMcpMetadataFields)
+    .extend({
       enabled_plugins: z
         .array(z.string())
+        .max(ENABLED_PLUGINS_MAX)
         .nullable()
         .optional()
         .describe("List of enabled plugin IDs"),
-      subAgents: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe(
-          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
-        ),
-      liveAgentId: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-        ),
-      ui: VirtualMcpUISchema.nullable()
-        .optional()
-        .describe("UI customization settings"),
-      githubRepo: GithubRepoSchema.nullable()
-        .optional()
-        .describe("Linked GitHub repository"),
-      runtime: RuntimeMetadataSchema.nullable()
-        .optional()
-        .describe(
-          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
-        ),
-      knowledge: knowledgeMetadataField,
-      siteSlug: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Linked asset site slug (managed storage tenancy)"),
-      publishPolicy: publishPolicyMetadataField,
-      previewServerUrl: previewServerUrlMetadataField,
-      productionUrl: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
-        ),
-      fieldDescriptionTooltips: z
-        .boolean()
-        .nullable()
-        .optional()
-        .describe(
-          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-        ),
-      fastPreview: fastPreviewMetadataField,
     })
     .loose()
     .superRefine((metadata, ctx) => {
@@ -974,10 +1087,12 @@ export const VirtualMCPUpdateDataSchema = z.object({
     .describe("Additional metadata including MCP server instructions"),
   connections: z
     .array(VirtualMCPConnectionInputSchema)
+    .max(CONNECTIONS_MAX)
     .optional()
     .describe("New connections (replaces existing)"),
   prompts: z
     .array(AgentKickstartPromptSchema)
+    .max(20)
     .optional()
     .describe(
       "Replace the agent's kickstart prompts with this full set. Omit to leave them unchanged; pass an empty array to remove all. Each becomes a clickable conversation starter (icebreaker).",

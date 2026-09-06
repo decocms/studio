@@ -7,13 +7,16 @@
 
 import { z } from "zod";
 
+// Bounds a single free-text field below, independent of the array/record size caps.
+const MAX_SETTINGS_STRING_LENGTH = 500;
+
 /**
  * Sidebar item schema - matches SidebarItem interface from storage/types.ts
  */
 export const SidebarItemSchema = z.object({
-  title: z.string(),
-  url: z.string(),
-  icon: z.string(),
+  title: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+  url: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+  icon: z.string().max(MAX_SETTINGS_STRING_LENGTH),
 });
 
 export type SidebarItem = z.infer<typeof SidebarItemSchema>;
@@ -26,22 +29,25 @@ export type SidebarItem = z.infer<typeof SidebarItemSchema>;
  */
 export const RegistryConfigSchema = z.object({
   registries: z
-    .record(z.string(), z.object({ enabled: z.boolean() }))
+    .record(
+      z.string().max(MAX_SETTINGS_STRING_LENGTH),
+      z.object({ enabled: z.boolean() }),
+    )
     .describe(
       "Per-registry enabled/disabled state. Key is connection ID. Absent registries are treated as enabled.",
     ),
   blockedMcps: z
-    .array(z.string())
+    .array(z.string().max(MAX_SETTINGS_STRING_LENGTH))
     .describe("List of MCP app_name or app_id values to hide from the store."),
 });
 
 export type RegistryConfig = z.infer<typeof RegistryConfigSchema>;
 
-const ModelSlotSchema = z
+export const ModelSlotSchema = z
   .object({
-    keyId: z.string(),
-    modelId: z.string(),
-    title: z.string().optional(),
+    keyId: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+    modelId: z.string().max(MAX_SETTINGS_STRING_LENGTH),
+    title: z.string().max(MAX_SETTINGS_STRING_LENGTH).optional(),
   })
   .nullable();
 
@@ -102,7 +108,7 @@ export type UserModelPreferences = z.infer<typeof UserModelPreferencesSchema>;
  */
 export const DefaultHomeAgentsConfigSchema = z.object({
   ids: z
-    .array(z.string())
+    .array(z.string().max(MAX_SETTINGS_STRING_LENGTH))
     .describe(
       "Ordered list of custom virtual MCP agent ids to show on the home view.",
     ),
@@ -137,12 +143,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
-  org_board_columns: z
-    .boolean()
-    .optional()
-    .describe(
-      "The task board's columns are this org's own, mirrored from its tracker, rather than the set Studio ships. Off means the canonical lanes, which is the only board most orgs want.",
-    ),
   reviewer_enabled: z
     .boolean()
     .optional()
@@ -166,7 +166,13 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
+      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
+    ),
+  auto_resolve_conflicts: z
+    .boolean()
+    .optional()
+    .describe(
+      "When an approved pull request can't be merged because it conflicts with its base branch, hand it back to the Super Agent to resolve the conflict (check out the branch, merge the base, push). Unset, it follows `auto_merge`; set it explicitly to run one without the other.",
     ),
   cheap_reviewer_model: z
     .boolean()
@@ -191,6 +197,30 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
+    ),
+  hosting_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site Hosting tab (deployments, domains, deploy outcomes). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
+    ),
+  deco_analytics_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site Deco Analytics tab (traffic, realtime, usage & limits). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
+    ),
+  e2e_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site E2E tab (end-to-end test runs). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
+    ),
+  monitor_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site Monitor tab (CDN Performance + Audience from the stats-lake warehouse). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. Its own deployment-wide switch `MONITOR_GA` opens it to every org at once (independent of the control-plane trio).",
     ),
   delivery_lanes_enabled: z
     .boolean()
@@ -238,33 +268,110 @@ export function orgFlagEnabled(
 }
 
 /**
+ * Whether an approved-but-conflicting PR is handed back to the Super Agent.
+ * Not `orgFlagEnabled`: unset it INHERITS `auto_merge`, which is the behavior
+ * every org on auto-merge already has — splitting the two must not silently
+ * take conflict resolution away from them. An explicit value wins either way,
+ * so an org can resolve conflicts without auto-merging, or vice versa.
+ */
+export function autoResolveConflictsEnabled(
+  flags: Record<string, unknown> | null | undefined,
+): boolean {
+  const value = flags?.auto_resolve_conflicts;
+  return typeof value === "boolean" ? value : flags?.auto_merge === true;
+}
+
+/**
+ * `images` and `metadata` are caller-supplied JSON blobs with no other size
+ * limit on the write path (BRAND_CONTEXT_CREATE/UPDATE pass this schema
+ * straight through to storage) — an org member with ordinary brand-write
+ * permission could otherwise stash an arbitrarily large payload in a brand
+ * context row. Mirrors the `configuration_state`/`metadata` cap on
+ * `ConnectionEntitySchema`.
+ */
+const MAX_BRAND_JSON_FIELD_BYTES = 256 * 1024;
+const MAX_BRAND_IMAGES = 50;
+const MAX_BRAND_STRING_LENGTH = 500;
+const MAX_BRAND_OVERVIEW_LENGTH = 5000;
+
+/**
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({
   id: z.string().describe("Brand context ID"),
-  name: z.string().describe("Company name"),
-  domain: z.string().describe("Company domain (e.g. example.com)"),
-  overview: z.string().describe("Company overview / description"),
-  logo: z.string().nullable().optional().describe("Logo URL"),
-  favicon: z.string().nullable().optional().describe("Favicon URL"),
-  ogImage: z.string().nullable().optional().describe("OG image URL"),
+  name: z.string().max(MAX_BRAND_STRING_LENGTH).describe("Company name"),
+  domain: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .describe("Company domain (e.g. example.com)"),
+  overview: z
+    .string()
+    .max(MAX_BRAND_OVERVIEW_LENGTH)
+    .describe("Company overview / description"),
+  logo: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .nullable()
+    .optional()
+    .describe("Logo URL"),
+  favicon: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .nullable()
+    .optional()
+    .describe("Favicon URL"),
+  ogImage: z
+    .string()
+    .max(MAX_BRAND_STRING_LENGTH)
+    .nullable()
+    .optional()
+    .describe("OG image URL"),
   fonts: z
     .object({
-      heading: z.string().optional().describe("Font family for headings"),
-      body: z.string().optional().describe("Font family for body text"),
-      code: z.string().optional().describe("Font family for code / monospace"),
+      heading: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Font family for headings"),
+      body: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Font family for body text"),
+      code: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Font family for code / monospace"),
     })
     .nullable()
     .optional()
     .describe("Font families by semantic role"),
   colors: z
     .object({
-      primary: z.string().optional().describe("Primary brand color (hex)"),
-      secondary: z.string().optional().describe("Secondary brand color (hex)"),
-      accent: z.string().optional().describe("Accent / highlight color (hex)"),
-      background: z.string().optional().describe("Background color (hex)"),
+      primary: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Primary brand color (hex)"),
+      secondary: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Secondary brand color (hex)"),
+      accent: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Accent / highlight color (hex)"),
+      background: z
+        .string()
+        .max(MAX_BRAND_STRING_LENGTH)
+        .optional()
+        .describe("Background color (hex)"),
       foreground: z
         .string()
+        .max(MAX_BRAND_STRING_LENGTH)
         .optional()
         .describe("Foreground / text color (hex)"),
     })
@@ -273,13 +380,32 @@ export const BrandContextSchema = z.object({
     .describe("Semantic color palette"),
   images: z
     .array(z.record(z.string(), z.unknown()))
+    .max(MAX_BRAND_IMAGES)
     .nullable()
     .optional()
+    .refine(
+      (value) =>
+        value === null ||
+        value === undefined ||
+        JSON.stringify(value).length <= MAX_BRAND_JSON_FIELD_BYTES,
+      {
+        message: `images must serialize to at most ${MAX_BRAND_JSON_FIELD_BYTES} bytes`,
+      },
+    )
     .describe("Brand images"),
   metadata: z
     .record(z.string(), z.unknown())
     .nullable()
     .optional()
+    .refine(
+      (value) =>
+        value === null ||
+        value === undefined ||
+        JSON.stringify(value).length <= MAX_BRAND_JSON_FIELD_BYTES,
+      {
+        message: `metadata must serialize to at most ${MAX_BRAND_JSON_FIELD_BYTES} bytes`,
+      },
+    )
     .describe(
       "Extra design tokens (typography, components, spacing, layout, tone, etc.)",
     ),

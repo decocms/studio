@@ -115,7 +115,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   // Resolve to the OUTERMOST page-level section (clicking nested content still
   // maps to the top-level section the panel indexes); null if it isn't in the
   // aligned editable set (a framework section deco injected).
-  var findSection = function(el) {
+  var findSection = function(el, out) {
     var node = el;
     var found = null;
     while (node && node !== document.body) {
@@ -125,7 +125,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       node = node.parentElement;
     }
     if (!found) return null;
-    return getAllSections().indexOf(found) >= 0 ? found : null;
+    var sections = getAllSections();
+    if (out) out.sections = sections;
+    return sections.indexOf(found) >= 0 ? found : null;
   };
 
   // A Lazy wrapper's key is just the loader — show the inner section's instead.
@@ -150,13 +152,13 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   // global inside async rendering); kinds: section type that drives the color.
   var sectionLabels = [];
   var sectionKinds = [];
-  var labelFor = function(section) {
-    var idx = getAllSections().indexOf(section);
+  var labelFor = function(section, sections) {
+    var idx = (sections || getAllSections()).indexOf(section);
     if (idx >= 0 && sectionLabels[idx]) return sectionLabels[idx];
     return displayKey(section);
   };
-  var kindFor = function(section) {
-    var idx = getAllSections().indexOf(section);
+  var kindFor = function(section, sections) {
+    var idx = (sections || getAllSections()).indexOf(section);
     return (idx >= 0 && sectionKinds[idx]) || "normal";
   };
 
@@ -178,6 +180,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var lastLabel = "";
   var lastKind = "normal";
   var rafPending = false;
+  // True while an in-place render fetch/swap is in flight; suppresses hover so it can't re-show the overlay right before the swap snapshots it.
+  var renderPending = false;
 
   // Document-relative coordinates (rect + scroll) on absolutely-positioned
   // nodes, so the browser scrolls the highlight together with the page
@@ -198,13 +202,15 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
 
   var moveHandler = function(e) {
-    if (rafPending) return;
+    if (renderPending || rafPending) return;
     rafPending = true;
     var target = e.target;
     requestAnimationFrame(function() {
       rafPending = false;
+      if (renderPending) return;
       if (!target || target === highlight || target === badge) return;
-      var section = findSection(target);
+      var out = {};
+      var section = findSection(target, out);
       if (section === lastSection) return;
       lastSection = section;
       if (!section) {
@@ -212,8 +218,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
         badge.style.display = "none";
         return;
       }
-      lastLabel = labelFor(section);
-      lastKind = kindFor(section);
+      lastLabel = labelFor(section, out.sections);
+      lastKind = kindFor(section, out.sections);
       applyColor(lastKind);
       positionHighlight(section);
     });
@@ -251,11 +257,11 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var clickHandler = function(e) {
     var target = e.target;
     if (!target || target === highlight || target === badge) return;
-    var section = findSection(target);
+    var out = {};
+    var section = findSection(target, out);
     if (!section) return;
 
-    var sections = getAllSections();
-    var sectionIndex = sections.indexOf(section);
+    var sectionIndex = out.sections.indexOf(section);
     var manifestKey = section.getAttribute("data-manifest-key") || "";
 
     var c = COLORS[lastKind] || COLORS.normal;
@@ -304,7 +310,70 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var submitBlocker = function(e) { e.preventDefault(); };
   document.addEventListener("submit", submitBlocker, true);
 
+  // Fast Preview in-place render: POST merged decofile to /live/previews, swap the HTML in (document/window listeners survive; overlay nodes get re-attached).
+  var renderCtrl = null;
+  var renderQueue = Promise.resolve();
+  var TRANSITION_TAG =
+    "<style id=\\"deco-disable-transitions\\">* { transition: none !important; }</style></head>";
+  var renderInPlace = function(src, body) {
+    if (renderCtrl) renderCtrl.abort();
+    var ctrl = new AbortController();
+    renderCtrl = ctrl;
+    renderPending = true;
+    highlight.style.display = "none";
+    badge.style.display = "none";
+    window.parent.postMessage({ type: "cms-editor::render-start" }, "*");
+    renderQueue = renderQueue.then(function() {
+      return fetch(src, {
+        method: "POST",
+        body: body,
+        signal: ctrl.signal,
+        headers: { accept: "text/html", "content-type": "application/json" }
+      }).then(function(res) {
+        if (!res.ok) throw new Error("render " + res.status);
+        return res.text();
+      }).then(function(html) {
+        var swap = function() {
+          document.documentElement.innerHTML = html.replace("</head>", TRANSITION_TAG);
+          document.body.appendChild(highlight);
+          document.body.appendChild(badge);
+          // Old section is gone; hide the overlay until the next hover repositions it.
+          highlight.style.display = "none";
+          badge.style.display = "none";
+          lastSection = null;
+        };
+        var headHtml = html.slice(html.indexOf("<head>"), html.indexOf("</head>") + 7);
+        var doc = new DOMParser().parseFromString(headHtml, "text/html");
+        var sheets = Array.prototype.map.call(
+          doc.head.querySelectorAll("link[rel=\\"stylesheet\\"]"),
+          function(el) { return el.href ? fetch(el.href).catch(function() {}) : null; }
+        );
+        return Promise.all(sheets).then(function() {
+          if (typeof document.startViewTransition === "function") {
+            return document.startViewTransition(swap).finished;
+          }
+          swap();
+        });
+      }).then(function() {
+        var t = document.getElementById("deco-disable-transitions");
+        if (t) t.remove();
+        if (ctrl === renderCtrl) renderPending = false;
+        window.parent.postMessage({ type: "cms-editor::render-end" }, "*");
+      }).catch(function(err) {
+        if (ctrl === renderCtrl) renderPending = false;
+        if (err && err.name === "AbortError") return;
+        window.parent.postMessage({ type: "cms-editor::render-error" }, "*");
+      });
+    });
+  };
+
   window.addEventListener("message", function(e) {
+    // Only Studio's own postMessage (source === this frame's parent) may drive the bridge — forged senders can't trigger the render fetch/swap.
+    if (e.source !== window.parent) return;
+    if (e.data && e.data.type === "cms-editor::render" && typeof e.data.src === "string") {
+      renderInPlace(e.data.src, e.data.body);
+      return;
+    }
     if (e.data && e.data.type === "cms-editor::set-labels" && Array.isArray(e.data.labels)) {
       sectionLabels = e.data.labels;
       if (Array.isArray(e.data.kinds)) sectionKinds = e.data.kinds;

@@ -1,49 +1,103 @@
 import { describe, expect, test } from "bun:test";
-import { shouldAutoOpenCms, togglePreviewEditorMode } from "./editing-mode";
+import {
+  defaultPreviewEditingMode,
+  isBlocksEditingEnabled,
+  resolveEffectivePreviewEditingMode,
+  toggleVisualEditingMode,
+} from "./editing-mode";
 
-describe("togglePreviewEditorMode", () => {
-  test("activates an editor from the neutral preview", () => {
-    expect(togglePreviewEditorMode("preview", "visual")).toBe("visual");
-    expect(togglePreviewEditorMode("preview", "blocks")).toBe("blocks");
-  });
-
-  test("turns off the active editor", () => {
-    expect(togglePreviewEditorMode("visual", "visual")).toBe("preview");
-    expect(togglePreviewEditorMode("blocks", "blocks")).toBe("preview");
-  });
-
-  test("switches directly between mutually exclusive editors", () => {
-    expect(togglePreviewEditorMode("visual", "blocks")).toBe("blocks");
-    expect(togglePreviewEditorMode("blocks", "visual")).toBe("visual");
+describe("isBlocksEditingEnabled", () => {
+  test("keeps Blocks desktop-only within the shared content-editing gate", () => {
+    expect(
+      isBlocksEditingEnabled({ contentEditingEnabled: true, isMobile: false }),
+    ).toBe(true);
+    expect(
+      isBlocksEditingEnabled({ contentEditingEnabled: true, isMobile: true }),
+    ).toBe(false);
+    expect(
+      isBlocksEditingEnabled({ contentEditingEnabled: false, isMobile: false }),
+    ).toBe(false);
   });
 });
 
-describe("shouldAutoOpenCms", () => {
-  const ready = {
-    autoOpen: true,
-    blocksReady: true,
-    autoOpenResolved: false,
-    editingMode: "preview",
-  } as const;
-
-  test("fires only when all four conditions hold", () => {
-    expect(shouldAutoOpenCms(ready)).toBe(true);
+describe("toggleVisualEditingMode", () => {
+  test("activates Visual from Preview or Blocks", () => {
+    expect(toggleVisualEditingMode("preview", false)).toBe("visual");
+    expect(toggleVisualEditingMode("blocks", true)).toBe("visual");
   });
 
-  test("never fires outside the `auto` mode (manual is the default)", () => {
-    expect(shouldAutoOpenCms({ ...ready, autoOpen: false })).toBe(false);
+  test("returns from Visual to Blocks when content editing is enabled", () => {
+    expect(toggleVisualEditingMode("visual", true)).toBe("blocks");
   });
 
-  test("waits until Blocks metadata is ready", () => {
-    expect(shouldAutoOpenCms({ ...ready, blocksReady: false })).toBe(false);
+  test("returns from Visual to Preview when Blocks is unavailable", () => {
+    expect(toggleVisualEditingMode("visual", false)).toBe("preview");
+  });
+});
+
+describe("defaultPreviewEditingMode", () => {
+  test("desktop opens Blocks whenever Content is enabled", () => {
+    expect(
+      defaultPreviewEditingMode({
+        cmsMode: "on",
+        isMobile: false,
+      }),
+    ).toBe("blocks");
   });
 
-  test("does not re-fire once resolved (user took control / already opened)", () => {
-    expect(shouldAutoOpenCms({ ...ready, autoOpenResolved: true })).toBe(false);
+  test("mobile opens the plain preview", () => {
+    expect(
+      defaultPreviewEditingMode({
+        cmsMode: "on",
+        isMobile: true,
+      }),
+    ).toBe("preview");
   });
 
-  test("does not fire when the user is already in an editor", () => {
-    expect(shouldAutoOpenCms({ ...ready, editingMode: "blocks" })).toBe(false);
-    expect(shouldAutoOpenCms({ ...ready, editingMode: "visual" })).toBe(false);
+  test("CMS off opens the plain preview", () => {
+    expect(defaultPreviewEditingMode({ cmsMode: "off", isMobile: false })).toBe(
+      "preview",
+    );
+  });
+});
+
+describe("resolveEffectivePreviewEditingMode", () => {
+  test("keeps Blocks when desktop editing is available", () => {
+    for (const sandboxDisplay of [false, true]) {
+      expect(
+        resolveEffectivePreviewEditingMode({
+          editingMode: "blocks",
+          sandboxDisplay,
+          blocksEditingEnabled: true,
+        }),
+      ).toBe("blocks");
+    }
+  });
+
+  test("downgrades Blocks when desktop editing is unavailable", () => {
+    expect(
+      resolveEffectivePreviewEditingMode({
+        editingMode: "blocks",
+        sandboxDisplay: true,
+        blocksEditingEnabled: false,
+      }),
+    ).toBe("preview");
+  });
+
+  test("keeps Visual limited to a sandbox iframe", () => {
+    expect(
+      resolveEffectivePreviewEditingMode({
+        editingMode: "visual",
+        sandboxDisplay: false,
+        blocksEditingEnabled: true,
+      }),
+    ).toBe("preview");
+    expect(
+      resolveEffectivePreviewEditingMode({
+        editingMode: "visual",
+        sandboxDisplay: true,
+        blocksEditingEnabled: true,
+      }),
+    ).toBe("visual");
   });
 });

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
 )
@@ -107,6 +108,23 @@ func changedPaths(status WorkingTreeStatus) []string {
 // run's MCP bearer token, which a push would leak into the repo's history.
 var NeverCommit = []string{".deco/tools/"}
 
+// BuildArtifacts are generated files some repos track anyway. A sandbox must
+// never commit one: it holds a DEV build (a `deno task dev` writes minified
+// Tailwind where the repo tracks the expanded release build), so committing it
+// is a large, meaningless reformat that every descendant branch then inherits.
+//
+// A repo tracking its own build output is the underlying bug, and gitignoring
+// it there is the real fix — this is the sandbox-side belt so no run makes it
+// worse in the meantime. Named paths, not patterns: a pattern would eventually
+// swallow something a user meant to commit.
+//
+// Note `.deco/metadata/` (a generated manifest), NOT `.deco/blocks/` — those
+// are decofile content and the whole point of many changes.
+var BuildArtifacts = []string{
+	"static/tailwind.css",
+	".deco/metadata/",
+}
+
 // dotenvName reports whether a file name is a `.env` variant — `.env` itself or
 // `.env.<anything>` (`.env.local`, `.env.production`). NOT `.envrc`, which repos
 // commit on purpose.
@@ -134,6 +152,14 @@ func dropNeverCommit(paths []string) []string {
 		for _, deny := range NeverCommit {
 			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
 				reason = "daemon-managed path"
+				break
+			}
+		}
+		// The pre-commit hook covers the agent's own `git add -A`; publish
+		// pushes with --no-verify, so it needs the same list in code.
+		for _, deny := range BuildArtifacts {
+			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+				reason = "generated build artifact"
 				break
 			}
 		}
@@ -207,6 +233,36 @@ func expandUntrackedDirs(repoDir string, paths []string) []string {
 	return out
 }
 
+// transientPushErrors mirrors setup.transientErrors: the network failures a
+// retry can plausibly outlive, as opposed to an auth/permission/protected-branch
+// rejection where retrying wastes the shutdown-sync window for nothing.
+var transientPushErrors = []string{
+	"Could not resolve host",
+	"early EOF",
+	"unexpected disconnect",
+	"Connection reset by peer",
+	"Connection timed out",
+	"Operation too slow",
+	"transfer closed with",
+	"RPC failed",
+	"the remote end hung up",
+}
+
+const (
+	pushMaxRetries   = 2
+	pushRetryDelayMs = 2000
+)
+
+func isTransientPushError(err error) bool {
+	message := FormatGitError(err)
+	for _, e := range transientPushErrors {
+		if strings.Contains(message, e) {
+			return true
+		}
+	}
+	return false
+}
+
 var gitPushConfig = []string{"-c", "credential.helper=", "-c", "safe.directory=*"}
 
 func pushEnv(repoDir string) map[string]string {
@@ -224,9 +280,16 @@ func pushBranch(repoDir, branch string, reconcileRemote bool) error {
 	// --no-verify: a repo's pre-push script can hang the push, and the shutdown
 	// sync shares this path with no room to wait it out before SIGKILL.
 	args := append(append([]string{}, gitPushConfig...), "push", "--no-verify", "-u", "origin", branch)
-	_, err := Run(args, RunOpts{Cwd: repoDir, Env: pushEnv(repoDir)})
-	if err == nil {
-		return nil
+	var err error
+	for attempt := 0; ; attempt++ {
+		_, err = Run(args, RunOpts{Cwd: repoDir, Env: pushEnv(repoDir)})
+		if err == nil {
+			return nil
+		}
+		if attempt >= pushMaxRetries || !isTransientPushError(err) {
+			break
+		}
+		time.Sleep(pushRetryDelayMs * time.Millisecond)
 	}
 	// origin/<branch> diverged: a prior publish force-pushed a rebased history,
 	// or the sandbox was re-provisioned from base and lost the branch's local
@@ -292,7 +355,7 @@ func Publish(deps PublishDeps, message string) error {
 		if deps.GetOperator != nil {
 			operator = deps.GetOperator()
 		}
-		commitMsg := AppendCoAuthorTrailer(msg, operator)
+		commitMsg, authorArgs := CommitAttribution(msg, operator)
 		env := map[string]string{
 			"GIT_CEILING_DIRECTORIES": repoDir,
 			"GIT_OPTIONAL_LOCKS":      "0",
@@ -300,7 +363,9 @@ func Publish(deps PublishDeps, message string) error {
 		for k, v := range skipHooksEnv {
 			env[k] = v
 		}
-		args := []string{"-c", "core.hooksPath=" + getEmptyHooksDir(), "commit", "--no-verify", "-m", commitMsg}
+		args := []string{"-c", "core.hooksPath=" + getEmptyHooksDir(), "commit", "--no-verify"}
+		args = append(args, authorArgs...)
+		args = append(args, "-m", commitMsg)
 		if _, err := Run(args, RunOpts{Cwd: repoDir, Env: env}); err != nil {
 			return err
 		}

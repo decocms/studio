@@ -59,37 +59,6 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
     expect(result.organizationId).toBe("org-a");
   });
 
-  it("forwards main_agent_id to storage — a set id and an explicit null to clear", async () => {
-    const upsert = (ctx: ReturnType<typeof makeCtx>): ReturnType<typeof mock> =>
-      (
-        ctx as unknown as {
-          storage: {
-            organizationSettings: { upsert: ReturnType<typeof mock> };
-          };
-        }
-      ).storage.organizationSettings.upsert;
-
-    const setCtx = makeCtx({ id: "org-a" });
-    await ORGANIZATION_SETTINGS_UPDATE.handler(
-      { organizationId: "org-a", main_agent_id: "vmcp-1" },
-      setCtx,
-    );
-    expect(upsert(setCtx).mock.calls[0]?.[1]).toMatchObject({
-      main_agent_id: "vmcp-1",
-    });
-
-    // Explicit null must be forwarded (not dropped) so the storage layer can
-    // clear the column and fall the org landing back to the Super Agent.
-    const clearCtx = makeCtx({ id: "org-a" });
-    await ORGANIZATION_SETTINGS_UPDATE.handler(
-      { organizationId: "org-a", main_agent_id: null },
-      clearCtx,
-    );
-    expect(upsert(clearCtx).mock.calls[0]?.[1]).toMatchObject({
-      main_agent_id: null,
-    });
-  });
-
   it("forwards flags to storage — true and explicit false both persist", async () => {
     const upsert = (ctx: ReturnType<typeof makeCtx>): ReturnType<typeof mock> =>
       (
@@ -132,5 +101,93 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("rejects oversized sidebar_items, blockedMcps, default_home_agents.ids, and enabled_plugins", () => {
+    const item = { title: "x", url: "/x", icon: "star" };
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        sidebar_items: Array(51).fill(item),
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        enabled_plugins: Array(201).fill("plugin"),
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        registry_config: { registries: {}, blockedMcps: Array(501).fill("x") },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        default_home_agents: { ids: Array(101).fill("vmcp") },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an oversized string in a sidebar item, enabled_plugins entry, blockedMcps entry, registries key, or default_home_agents id", () => {
+    const longString = "x".repeat(501);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        sidebar_items: [{ title: longString, url: "/x", icon: "star" }],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        enabled_plugins: [longString],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        registry_config: { registries: {}, blockedMcps: [longString] },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        registry_config: {
+          registries: { [longString]: { enabled: true } },
+          blockedMcps: [],
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        default_home_agents: { ids: [longString] },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an oversized registries record on registry_config", () => {
+    // Regression: registries was the one sibling collection left uncapped.
+    const registries = Object.fromEntries(
+      Array.from({ length: 201 }, (_, i) => [`conn-${i}`, { enabled: true }]),
+    );
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        registry_config: { registries, blockedMcps: [] },
+      }).success,
+    ).toBe(false);
   });
 });

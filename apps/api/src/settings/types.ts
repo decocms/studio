@@ -34,6 +34,9 @@ export interface Settings {
   studioJwtSecret: string | undefined;
   localMode: boolean;
   disableRateLimit: boolean;
+  /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
+   *  local development and e2e. See `normalizeSiteUrl`. */
+  jiraAllowLocalSiteUrl: boolean;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];
@@ -191,6 +194,34 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+  /** Deco control-plane REST base URL (e.g.
+   *  https://control-plane.infra.deco.cx/api/v1). Read by the per-site Hosting
+   *  tab's BFF proxy. Unset ⇒ the Hosting tab is hidden and the proxy 503s. */
+  controlplaneRestUrl: string | undefined;
+  /** Bearer service token for the control-plane REST API. Never leaves the
+   *  server — the BFF proxy attaches it and returns only the proxied JSON. */
+  controlplaneServiceToken: string | undefined;
+  /** Deployment-wide GA switch for the control-plane views (Hosting · E2E ·
+   *  Deco Analytics): true opens them to every org at once. Off by default,
+   *  where each view shows only for deco.cx staff, local dev, or an org with
+   *  that view's flag (`hosting_enabled` / `deco_analytics_enabled` /
+   *  `e2e_enabled`). Exposed to the browser via /api/config. */
+  hostingControlPlaneGa: boolean;
+  /** Deployment-wide GA switch for the Monitor tab (env `MONITOR_GA`),
+   *  independent of the control-plane trio: true opens Monitor to every org at
+   *  once. Off by default, where it shows only for deco.cx staff, local dev, or
+   *  an org with the `monitor_enabled` flag. Exposed via /api/config. */
+  monitorGa: boolean;
+  /** Deco Analytics READ surface base URL (e.g.
+   *  https://analytics.infra.deco.cx). Read by the per-site Analytics tab's BFF
+   *  proxy to fetch the tenant-scoped `/data` views. This is the read half of
+   *  Deco Analytics; registration still goes through the control-plane. Unset ⇒
+   *  the data views 503 and the tab falls back to the Configuration section. */
+  analyticsDataUrl: string | undefined;
+  /** Master bearer token for the Analytics read surface. Never leaves the
+   *  server — the BFF attaches it and passes `site=s<id>`; the warehouse's own
+   *  row policies clamp to that tenant as a backstop. */
+  analyticsMasterToken: string | undefined;
   /** Legacy deco.cx analytics warehouse (CDN + shared-infra usage facts) read
    *  by the Infra Billing settings page. A DIFFERENT ClickHouse from
    *  `clickhouseUrl`, which is Studio's own monitoring store. Unset = the

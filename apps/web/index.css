@@ -113,6 +113,32 @@
 }
 
 @layer utilities {
+  /* A card whose contents are cached and being revalidated in the background:
+     its border breathes instead of the whole card blanking to a skeleton.
+     Inset so it needs no border on the element (see `todo-cb-pulse`). */
+  .revalidating-ring {
+    animation: revalidating-ring-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes revalidating-ring-pulse {
+    0%,
+    100% {
+      box-shadow: inset 0 0 0 1px var(--color-border);
+    }
+    50% {
+      box-shadow: inset 0 0 0 1.5px var(--color-ring);
+    }
+  }
+
+  /* Motion is the whole signal here, so with it suppressed keep a static ring
+     rather than dropping the "still loading" cue entirely. */
+  @media (prefers-reduced-motion: reduce) {
+    .revalidating-ring {
+      animation: none;
+      box-shadow: inset 0 0 0 1px var(--color-ring);
+    }
+  }
+
   .shimmer {
     background-image: linear-gradient(
       90deg,

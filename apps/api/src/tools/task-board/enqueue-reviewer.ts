@@ -65,7 +65,7 @@ function isThreadRunLive(
  * The Super Agent is told to link the PR and set In Review *while still
  * running* (`claude-code-task-run.ts`), so the card is reviewable long before
  * the run that owns the branch is finished. Title is the discriminator the rest
- * of the board already uses (`resolveReviewRunToolNames`); liveness is
+ * of the board already uses (`resolveTaskRunToolNames`); liveness is
  * {@link isThreadRunLive}, so a dead author's stall window releases the card
  * rather than stranding it.
  */
@@ -175,6 +175,26 @@ export function stalePreviewHandoffDue(
   return nowMs - cycleStartMs >= STALE_PREVIEW_HANDOFF_GRACE_MS;
 }
 
+/**
+ * True when a stale deploy preview should hand this card to a human.
+ *
+ * Only while the reviewer has NOT yet ruled on the current cycle. Once a
+ * verdict is recorded, the preview already served its purpose — re-litigating
+ * its staleness on every later sweep tick (auto-merge off, so the card sits In
+ * Review after approval waiting on a human to ship) would strand an already
+ * APPROVED card behind a "the Reviewer cannot verify this change" hand-off,
+ * even though it already did. Pure — unit-tested.
+ */
+export function stalePreviewHandoffOwed(
+  verdictRecorded: boolean,
+  previewMatchesHead: boolean | undefined,
+  lastInReviewAt: number,
+  now: number,
+): boolean {
+  if (verdictRecorded || previewMatchesHead !== false) return false;
+  return stalePreviewHandoffDue(lastInReviewAt, now);
+}
+
 export async function enqueueEnabledReviewers(
   ctx: StudioContext,
   task: TaskBoardItem,
@@ -262,7 +282,14 @@ export async function enqueueEnabledReviewers(
       }
       // Would be a verdict on the wrong bytes — see `previewMatchesHead`.
       if (opts?.previewMatchesHead === false) {
-        if (stalePreviewHandoffDue(lastInReviewAt, Date.now())) {
+        if (
+          stalePreviewHandoffOwed(
+            verdictRecorded,
+            opts.previewMatchesHead,
+            lastInReviewAt,
+            Date.now(),
+          )
+        ) {
           await handTaskToHuman(
             ctx,
             task,
@@ -773,7 +800,7 @@ async function enqueueReviewerForTask(
     // is loaded, which this prompt already tells it to do. Unlike a hosted
     // capture service, a local browser can also reach the run's OWN dev server
     // on localhost.
-    "- For a VISUAL change, capture before/after by running `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>] [--console]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). Add `--mobile` too for a responsive change, and `--console` to catch the runtime errors a screenshot alone reports as a pass. WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them: a screenshot you never opened is not verification.",
+    '- For a VISUAL change, capture before/after by running `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>] [--console]` (headless Chromium, baked into the sandbox; also works against a dev server you started on localhost — none is running by default, this pod is a checkout). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector=\'<css>\'` frames just the component you changed (best for a focused before/after). Add `--mobile` too for a responsive change, and `--console` to catch the runtime errors a screenshot alone reports as a pass. WRITE them under `org/output/` — that\'s what surfaces them on the task. Then `Read` the files to actually LOOK at them: a screenshot you never opened is not verification. To INTERACT with a page — click, hit-test with `document.elementFromPoint`, fill a form — `qa-screenshot` is not enough, but the browser it drives is yours: write a throwaway node script that requires the global playwright-core: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`. Do NOT report a check as impossible because Playwright is missing — it is installed.',
     `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`,
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,

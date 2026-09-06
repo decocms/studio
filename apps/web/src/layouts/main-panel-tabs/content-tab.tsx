@@ -2,12 +2,17 @@ import { ContentBrowser } from "@/components/sandbox/content/content-browser";
 import { useChatTask } from "@/components/chat/chat-context";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useVirtualMCP } from "@/sdk";
-import { AlertCircle } from "@untitledui/icons";
 import { useSearch } from "@tanstack/react-router";
 import { useT } from "@/i18n/use-t.ts";
+import { EmptyState } from "@/components/empty-state";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitHubRepoPicker } from "@/components/github-repo-picker";
+import { useState } from "react";
 
 export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const entity = useVirtualMCP(virtualMcpId);
   const { activeTask } = useChatTask();
   // Storefront "." deep-link (see /choose-editor): preselect the visited page.
@@ -25,13 +30,29 @@ export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   if (!hasClonableSource) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground p-6">
-        <AlertCircle size={24} className="text-muted-foreground/60" />
-        <div>{t("mainPanelTabs.contentTab.noContentToEdit")}</div>
-        <div className="text-xs text-muted-foreground/80">
-          {t("mainPanelTabs.contentTab.connectGithubDescription")}
-        </div>
-      </div>
+      <>
+        <EmptyState
+          className="h-full"
+          image={
+            <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+              <GitHubIcon className="size-7 text-foreground" />
+            </div>
+          }
+          title={t("mainPanelTabs.contentTab.noContentToEdit")}
+          description={t("mainPanelTabs.contentTab.connectGithubDescription")}
+          actions={
+            <Button onClick={() => setPickerOpen(true)}>
+              <GitHubIcon className="size-4" />
+              {t("mainPanelTabs.previewTab.connectGithub")}
+            </Button>
+          }
+        />
+        <GitHubRepoPicker
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          mode="agent"
+        />
+      </>
     );
   }
 

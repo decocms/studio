@@ -21,6 +21,7 @@ import {
 } from "../database/test-db-pg";
 import { TaskBoardStorage } from "./task-board";
 
+/** Studio's own board, which is what these fixtures run on. */
 const ORG = "org_retry_dismissed";
 const USER = "user_retry_dismissed";
 

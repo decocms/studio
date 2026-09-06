@@ -193,8 +193,13 @@ const ALL_TOOL_NAMES = [
   "JIRA_INTEGRATION_DELETE",
   "JIRA_BOARDS_LIST",
   "JIRA_BOARD_COLUMNS_LIST",
-  "JIRA_SYNC_RUN",
-  "JIRA_RESYNC_REQUEST",
+  "JIRA_AUTOMATION_LIST",
+  "JIRA_AUTOMATION_UPSERT",
+  "JIRA_AUTOMATION_DELETE",
+  "JIRA_ISSUE_GET",
+  "JIRA_COMMENT_ADD",
+  "JIRA_ISSUE_TRANSITION",
+  "JIRA_ATTACHMENT_DOWNLOAD",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -257,9 +262,11 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_AUTOMATION_LIST",
   "TASK_BOARD_AUTOMATION_UPSERT",
   "TASK_BOARD_AUTOMATION_DELETE",
-  "TASK_BOARD_COLUMN_ROLE_SET",
+  "TASK_BOARD_PROMPT_LIST",
+  "TASK_BOARD_PROMPT_UPSERT",
+  "TASK_BOARD_PROMPT_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
-  "TASK_BOARD_ITEM_PR_LINK",
+  "TASK_BOARD_PREVIEW_PROBE",
   "TASK_BOARD_ITEM_RERUN",
   "TASK_BOARD_RESOLVE_CONFLICT",
   "TASK_BOARD_REVIEW_DECISION",
@@ -892,7 +899,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_INTEGRATION_GET",
-    description: "Get the org's Jira integration config and last sync status",
+    description: "Get the org's Jira integration config",
     category: "Jira",
   },
   {
@@ -916,14 +923,39 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
-    name: "JIRA_SYNC_RUN",
-    description: "Pull from Jira into the task board right now",
+    name: "JIRA_AUTOMATION_LIST",
+    description: "List which Jira statuses start an agent run",
     category: "Jira",
   },
   {
-    name: "JIRA_RESYNC_REQUEST",
+    name: "JIRA_AUTOMATION_UPSERT",
+    description: "Run the agent on issues entering a Jira status",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_AUTOMATION_DELETE",
+    description: "Stop running the agent on issues entering a Jira status",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_GET",
+    description: "Re-read the Jira issue a run is working on",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_COMMENT_ADD",
+    description: "Comment on the Jira issue a run is working on",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_TRANSITION",
+    description: "Move the Jira issue a run is working on to another status",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
-      "Mark the whole Jira board to be re-read on the next scheduled sync",
+      "Get a short-lived download URL for an attachment of the run's Jira issue",
     category: "Jira",
   },
   {
@@ -1212,9 +1244,22 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
-    name: "TASK_BOARD_COLUMN_ROLE_SET",
-    description: "Say what one of the board's columns means to Studio",
+    name: "TASK_BOARD_PROMPT_LIST",
+    description:
+      "List the instructions appended to the system prompt of the board's runs",
     category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_UPSERT",
+    description:
+      "Set the instructions appended to the system prompt of the board's runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_DELETE",
+    description: "Clear a board system prompt",
+    category: "Task Board",
+    dangerous: true,
   },
   {
     name: "TASK_BOARD_ITEM_PRS_GET",
@@ -1222,8 +1267,9 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
-    name: "TASK_BOARD_ITEM_PR_LINK",
-    description: "Link a pull request a task run opened to its task board item",
+    name: "TASK_BOARD_PREVIEW_PROBE",
+    description:
+      "Check whether a pull request's deploy preview URL is currently reachable",
     category: "Task Board",
   },
   {
@@ -1424,9 +1470,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_AUTOMATION_LIST",
       "TASK_BOARD_AUTOMATION_UPSERT",
       "TASK_BOARD_AUTOMATION_DELETE",
-      "TASK_BOARD_COLUMN_ROLE_SET",
+      "TASK_BOARD_PROMPT_LIST",
+      "TASK_BOARD_PROMPT_UPSERT",
+      "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
-      "TASK_BOARD_ITEM_PR_LINK",
+      "TASK_BOARD_PREVIEW_PROBE",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -1474,8 +1522,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_INTEGRATION_DELETE",
       "JIRA_BOARDS_LIST",
       "JIRA_BOARD_COLUMNS_LIST",
-      "JIRA_SYNC_RUN",
-      "JIRA_RESYNC_REQUEST",
+      "JIRA_AUTOMATION_LIST",
+      "JIRA_AUTOMATION_UPSERT",
+      "JIRA_AUTOMATION_DELETE",
     ],
   },
   {

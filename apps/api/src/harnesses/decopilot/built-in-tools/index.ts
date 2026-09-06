@@ -65,6 +65,7 @@ import { createClusterResearchJob } from "./cluster-research-job";
 import type { PendingImage } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
+import { createJiraRunTools } from "./jira-run-tools";
 import { createTaskBoardTools } from "./task-board-tools";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
@@ -220,7 +221,19 @@ async function buildAllTools(
   // Task-board built-ins — the Super Agent aggregates no connections, so these
   // are the only way it can read or move cards on the board. Before this it had
   // to `subtask`-delegate to the (now retired) Task Manager agent.
-  Object.assign(tools, createTaskBoardTools(ctx));
+  //
+  // A Jira-triggered run gets the ISSUE's tools instead. Its card is a hidden
+  // anchor nobody reads, so handing it the board tools would have it record its
+  // work where no one looks while the issue stayed untouched. The sandbox
+  // harness makes the same swap at its run-scoped MCP endpoint
+  // (`resolveTaskRunToolNames`); this is the same rule for the Decopilot path,
+  // which an org with no repo to work in takes.
+  Object.assign(
+    tools,
+    (await isJiraRun(ctx, taskId))
+      ? createJiraRunTools(ctx, taskId)
+      : createTaskBoardTools(ctx),
+  );
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
@@ -556,4 +569,24 @@ export function buildBuiltInTools(
     tools.subtask = createSubtaskTool(writer, subtaskParams, ctx);
   }
   return tools;
+}
+
+/**
+ * Whether this run was started by the Jira integration.
+ *
+ * Read off the run thread's own metadata (stamped at dispatch), not off
+ * anything the model or the caller could assert — the same discriminator the
+ * run-scoped MCP endpoint uses. A thread that cannot be read is not a Jira run:
+ * the board tools are the safe default for every other run there is.
+ */
+async function isJiraRun(
+  ctx: StudioContext,
+  threadId: string,
+): Promise<boolean> {
+  try {
+    const thread = await ctx.storage.threads.get(threadId);
+    return thread?.metadata?.source === "jira";
+  } catch {
+    return false;
+  }
 }

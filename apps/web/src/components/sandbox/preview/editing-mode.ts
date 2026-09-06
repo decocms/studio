@@ -1,33 +1,56 @@
+import type { CmsMode } from "@decocms/shared/sdk/types";
+import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
+
 export type PreviewEditingMode = "preview" | "visual" | "blocks";
 
-export type PreviewEditorMode = Exclude<PreviewEditingMode, "preview">;
+/** Blocks is a desktop editing surface. Content remains available on mobile. */
+export function isBlocksEditingEnabled(input: {
+  contentEditingEnabled: boolean;
+  isMobile: boolean;
+}): boolean {
+  return input.contentEditingEnabled && !input.isMobile;
+}
 
-export function togglePreviewEditorMode(
+/** Leaving Visual returns to the Blocks split whenever that surface is enabled. */
+export function toggleVisualEditingMode(
   current: PreviewEditingMode,
-  requested: PreviewEditorMode,
+  blocksEditingEnabled: boolean,
 ): PreviewEditingMode {
-  return current === requested ? "preview" : requested;
+  if (current !== "visual") return "visual";
+  return blocksEditingEnabled ? "blocks" : "preview";
 }
 
 /**
- * Whether the one-shot CMS auto-open should fire. All four must hold:
- * - `autoOpen`: the agent's CMS mode is `auto` (the mode is `manual` by
- *   default — this is the load-bearing safety gate),
- * - `blocksReady`: Blocks metadata resolved to renderable content,
- * - `!autoOpenResolved`: it hasn't already fired and the user hasn't taken
- *   manual control of the editing mode,
- * - `editingMode === "preview"`: the user isn't already in an editor.
+ * A fresh Preview follows the same product gate as Content. When content
+ * editing is enabled, Blocks is part of the desktop Site Editor surface rather
+ * than an opt-in toolbar mode. Mobile and `off` keep the plain preview.
  */
-export function shouldAutoOpenCms(input: {
-  autoOpen: boolean;
-  blocksReady: boolean;
-  autoOpenResolved: boolean;
+export function defaultPreviewEditingMode(input: {
+  /** The agent's CMS mode, already normalised by `resolveCmsMode`. */
+  cmsMode: CmsMode;
+  isMobile: boolean;
+}): PreviewEditingMode {
+  return isBlocksEditingEnabled({
+    contentEditingEnabled: isContentEditingEnabled(input.cmsMode),
+    isMobile: input.isMobile,
+  })
+    ? "blocks"
+    : "preview";
+}
+
+/**
+ * The editor mode Preview can render. Blocks uses the same agent-level product
+ * gate as Content plus its desktop-only layout constraint; the current display
+ * still decides whether Visual editing can inject into the iframe.
+ */
+export function resolveEffectivePreviewEditingMode(input: {
   editingMode: PreviewEditingMode;
-}): boolean {
-  return (
-    input.autoOpen &&
-    input.blocksReady &&
-    !input.autoOpenResolved &&
-    input.editingMode === "preview"
-  );
+  sandboxDisplay: boolean;
+  blocksEditingEnabled: boolean;
+}): PreviewEditingMode {
+  if (input.editingMode === "blocks" && !input.blocksEditingEnabled) {
+    return "preview";
+  }
+  if (input.editingMode === "visual" && !input.sandboxDisplay) return "preview";
+  return input.editingMode;
 }

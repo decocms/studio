@@ -1,5 +1,6 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { ChevronRight, Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { ChevronRight } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -230,7 +231,7 @@ export function AppEditor({
               />
             ) : schemaPending ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">
-                <Loading01 size={16} className="animate-spin" />
+                <Spinner className="size-4" />
                 {t("sandbox.appEditor.loadingSchema")}
               </div>
             ) : (

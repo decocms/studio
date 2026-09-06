@@ -717,7 +717,7 @@ describe("resolveSchema – plainSchema on block-ref", () => {
   });
 
   test("populates plainSchema for a multivariate flag nested past the eager depth cap", () => {
-    // Real farmrio MediaKits: the ImageWidget anyOf sits ~7 objects deep (loader → mediaKits[] → content → desktop → media union → image). eagerBranchSchema's depth cap used to null the plain image-uri branch there, demoting the field to a block-ref "Image Variants" picker instead of an image widget with variants.
+    // A real storefront's MediaKits: the ImageWidget anyOf sits ~7 objects deep (loader → mediaKits[] → content → desktop → media union → image). eagerBranchSchema's depth cap used to null the plain image-uri branch there, demoting the field to a block-ref "Image Variants" picker instead of an image widget with variants.
     const imageWidgetAnyOf = {
       title: "Imagem",
       anyOf: [
@@ -802,7 +802,7 @@ describe("resolveSchema – plainSchema on block-ref", () => {
 
 describe("resolveSchema – array branch hidden behind a $ref", () => {
   test("prefers the inline array over colliding loader/Resolvable branches", () => {
-    // Real farmrio EtcMediaKits `mediaKits`: array member is a bare $ref beside loader/named-block branches.
+    // A real storefront's EtcMediaKits `mediaKits`: array member is a bare $ref beside loader/named-block branches.
     const meta = metaWithSchema({
       type: "object",
       properties: {

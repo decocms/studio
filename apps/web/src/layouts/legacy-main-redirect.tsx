@@ -18,7 +18,6 @@
  */
 
 import { Navigate, useParams, useSearch } from "@tanstack/react-router";
-import { resolveChatSegments } from "@/layouts/main-panel-tabs/panel-route";
 import {
   type LegacyMainTranslation,
   translateLegacyMainParam,
@@ -37,6 +36,7 @@ export function LegacyMainRedirect() {
 
   const view: LegacyMainTranslation | null = translateLegacyMainParam(
     search.main,
+    params.panel,
   );
   if (!view) return null;
 
@@ -50,28 +50,12 @@ export function LegacyMainRedirect() {
     );
   }
 
-  if (view.to === "/$org/agents/{-$project}/{-$panel}") {
-    /** Through `resolveChatSegments`, so a lone `/agents/<view>` segment is not
-     *  mistaken for the project when a legacy `?main=` arrives beside it. */
-    const { project } = resolveChatSegments({
-      project: params.project,
-      panel: params.panel,
-    });
+  if (view.to === "/$org/agents/{-$panel}") {
     return (
       <Navigate
-        to="/$org/agents/{-$project}/{-$panel}"
-        params={{
-          org,
-          /** On a destination the agent lives in the legacy search param; the
-           *  chat route's segment is where it belongs. */
-          project: project ?? search.virtualmcpid,
-          panel: view.panel,
-        }}
-        search={(prev) => ({
-          ...prev,
-          ...view.search,
-          virtualmcpid: undefined,
-        })}
+        to="/$org/agents/{-$panel}"
+        params={{ org, panel: view.panel }}
+        search={(prev) => ({ ...prev, ...view.search })}
         replace
       />
     );

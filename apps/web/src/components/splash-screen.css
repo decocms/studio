@@ -1,0 +1,126 @@
+.deco-splash {
+  /* One lime, inherited by both halves of the liquid: the filled body and the
+   * crest stroked on top of it. They are the same paint, so they share one
+   * declaration. `--brand-green-light` is the deployment-customisable brand
+   * token; the literal is its stock value, and stays the effective one here
+   * because a deployment's overrides are injected by `ThemeProvider`, which
+   * lives *below* the Suspense boundary this splash is the fallback for. */
+  --deco-splash-lime: var(--brand-green-light, #d0ec1a);
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+}
+
+.deco-splash__entrance {
+  width: clamp(6.5rem, 12.5vw, 11rem);
+  animation: deco-splash-enter 220ms ease-out both;
+}
+
+.deco-splash__mark {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.deco-splash__air {
+  fill: color-mix(in oklch, var(--muted) 20%, transparent);
+}
+
+.deco-splash__outline {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: calc(var(--border-hairline) * 2);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(var(--shadow-xs));
+}
+
+.deco-splash__liquid-rise {
+  animation: deco-splash-liquid-rise 5s linear forwards;
+}
+
+.deco-splash__wave-track {
+  animation: deco-splash-wave 1.5s linear infinite;
+}
+
+.deco-splash__liquid {
+  fill: var(--deco-splash-lime);
+}
+
+/** The wave crest, stroked so the surface keeps its rounded top edge above the
+ *  filled body. It is the top of the liquid, not a rim around it, so it is the
+ *  same lime as the fill — a darker stroke here paints a band of another colour
+ *  1.35 units thick at the liquid/air boundary. */
+.deco-splash__liquid-surface {
+  fill: none;
+  stroke: var(--deco-splash-lime);
+  stroke-width: 1.35;
+  stroke-linecap: round;
+}
+
+@keyframes deco-splash-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Decelerating rise that reaches full coverage of the mark right at the end of
+ * the 5s animation, and no sooner. -54px is the smallest translateY that
+ * still guarantees full coverage across the whole wave cycle: the crest
+ * oscillates ±5 around its center, so covering the mark's highest point
+ * (the arrow tip, local y ~13) even at the crest's shallowest phase (local
+ * y 63) needs translateY <= 13 - 63 = -50, plus a small margin for curve
+ * imprecision. Overshooting further than that (the old -64px target) just
+ * left the tail of the animation sitting fully filled with nothing left to
+ * animate. A warm boot may unmount while the liquid is still rising. Once
+ * full, `deco-splash__wave-track`'s own infinite animation keeps the crest
+ * moving, so a slow boot reads as "topped up and idling", not stuck. `linear`
+ * between stops so the curve is the curve, not re-eased. */
+@keyframes deco-splash-liquid-rise {
+  0% {
+    transform: translateY(55px);
+  }
+  8% {
+    transform: translateY(22px);
+  }
+  20% {
+    transform: translateY(0px);
+  }
+  40% {
+    transform: translateY(-24px);
+  }
+  65% {
+    transform: translateY(-40px);
+  }
+  100% {
+    transform: translateY(-54px);
+  }
+}
+
+@keyframes deco-splash-wave {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deco-splash__entrance,
+  .deco-splash__liquid-rise,
+  .deco-splash__wave-track {
+    animation: none;
+  }
+
+  .deco-splash__liquid-rise {
+    transform: translateY(-54px);
+  }
+}

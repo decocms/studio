@@ -28,10 +28,10 @@ import {
   useState,
   useSyncExternalStore,
   use,
-  Suspense,
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Chat, useChatTask } from "@/components/chat/index";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import {
@@ -42,14 +42,14 @@ import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
-import { AlertCircle, Loading01 } from "@untitledui/icons";
+import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { useThreadManager } from "@/components/chat/store/hooks";
-import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -62,6 +62,15 @@ import {
 } from "@/hooks/use-layout-state";
 import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
 import { getActiveGithubRepo } from "@/lib/github-repo";
+import {
+  draftsModeEnabled,
+  useBaseBranch,
+} from "@/components/thread/github/use-version-gate";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  useReleases,
+} from "@/components/thread/github/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
@@ -75,10 +84,14 @@ import {
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
-import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
-import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
+import {
+  useRouteAgentId,
+  useRouteThreadId,
+  useRouteVirtualMcpId,
+} from "@/layouts/thread-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -135,9 +148,7 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
         </div>
       }
     >
-      <Suspense fallback={<Chat.Skeleton />}>
-        {children ?? defaultContent}
-      </Suspense>
+      <MainPanelBoundary>{children ?? defaultContent}</MainPanelBoundary>
     </ErrorBoundary>
   );
 }
@@ -329,6 +340,42 @@ function VmEventsBridge({
     setCurrentTaskBranch,
   ]);
 
+  // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
+  const draftsVm = useVirtualMCP(virtualMcpId);
+  const draftsBase = useBaseBranch(draftsVm, currentBranch);
+  const { releases: draftReleases, createRelease: createDraftRelease } =
+    useReleases(virtualMcpId);
+  const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
+  const currentIsUnnamedDraft =
+    draftsModeEnabled(draftsVm) &&
+    isOwnDraftThread &&
+    !!currentBranch &&
+    currentBranch !== draftsBase &&
+    !draftReleases.some((r) => r.branch === currentBranch);
+  const namedDraftForBranchRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
+  useEffect(() => {
+    if (!currentIsUnnamedDraft || !currentBranch) return;
+    if (namedDraftForBranchRef.current === currentBranch) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't create twice
+    namedDraftForBranchRef.current = currentBranch;
+    createDraftRelease({
+      branch: currentBranch,
+      name: nextDraftName(
+        draftReleases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
+      color: nextReleaseColor(draftReleases.length),
+      createdAt: new Date().toISOString(),
+    }).catch(() => {});
+  }, [
+    currentIsUnnamedDraft,
+    currentBranch,
+    draftReleases,
+    createDraftRelease,
+    t,
+  ]);
+
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
   // Gate instead on a registered sandboxMap entry, or an in-flight
@@ -464,7 +511,7 @@ function DesktopTaskWorkspace({
       {/* Panels each own a 48px header (tabs / toggles / publish). Everything
           lives under SandboxEventsProvider — useMainPanelTabs gates Content on
           lifecycle.phase === "running" + decofile. */}
-      <Suspense fallback={<Chat.Skeleton />}>
+      <MainPanelBoundary>
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
           taskId={layout.threadId}
@@ -475,7 +522,7 @@ function DesktopTaskWorkspace({
           toggleMain={layout.toggleMain}
           chatContent={<ActiveTaskBoundary />}
         />
-      </Suspense>
+      </MainPanelBoundary>
     </>
   );
 }
@@ -513,7 +560,7 @@ function MobileTaskWorkspace({
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
       />
-      <Suspense fallback={<Chat.Skeleton />}>
+      <MainPanelBoundary>
         <div className="flex-1 min-h-0 overflow-hidden">
           {mobileSurface === "main" ? (
             <ErrorBoundary
@@ -526,29 +573,20 @@ function MobileTaskWorkspace({
                 </div>
               }
             >
-              <Suspense
-                fallback={
-                  <div className="h-full flex items-center justify-center">
-                    <Loading01
-                      size={20}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                }
-              >
+              <MainPanelBoundary>
                 <div data-testid="main-panel" className="h-full">
                   <MainPanelWithDrawer
                     taskId={layout.threadId}
                     virtualMcpId={virtualMcpId}
                   />
                 </div>
-              </Suspense>
+              </MainPanelBoundary>
             </ErrorBoundary>
           ) : (
             <SidePanel chatContent={<ActiveTaskBoundary />} />
           )}
         </div>
-      </Suspense>
+      </MainPanelBoundary>
     </>
   );
 }
@@ -572,23 +610,55 @@ function AgentInsetProvider() {
   const routeThreadId = useRouteThreadId();
   /** The agent is the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
   const virtualMcpId = useRouteVirtualMcpId();
+  /** Truthy only when the route names a SCOPED agent; `undefined` at org level
+   *  (where `virtualMcpId` falls back to the Super Agent). Gates the threadless
+   *  entry-thread resolver so the org home keeps its fresh composer. */
+  const routeAgentId = useRouteAgentId();
   /** A stable thread id to mint when a repo-backed editor arrives with none and
    *  the user has no idle empty chat to reuse, so a re-render before the URL
    *  catches up reuses it instead of looping through fresh ones. Generated once
    *  per mount; only used by the redirect below. */
   const [generatedThreadId] = useState(() => crypto.randomUUID());
   const { data: session } = authClient.useSession();
+  /** Drafts-mode entry lands a fresh thread on an editable draft, never on
+   *  read-only production. Generated once per mount, like the thread id above. */
+  const [generatedDraftBranch] = useState(() =>
+    generateBranchName(
+      session?.user?.name || session?.user?.email?.split("@")[0],
+    ),
+  );
   const threadManager = useThreadManager();
   const threads = useSyncExternalStore(
     threadManager.threads.subscribe,
     threadManager.threads.get,
   );
+  const threadsStatus = useSyncExternalStore(
+    threadManager.threadsStatus.subscribe,
+    threadManager.threadsStatus.get,
+  );
+
+  // Fetch entity (Suspense-based — resolved before render)
+  const entity = useVirtualMCP(virtualMcpId);
+
+  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const isDraftsMode = draftsModeEnabled(entity);
+  const baseBranch = useBaseBranch(entity, null);
+  // Legacy resume set; drafts mode resumes any non-base draft (see findAgentEntryThread).
+  const namedVersionBranches = new Set<string>([
+    baseBranch,
+    ...(entity?.metadata?.releases ?? []).map((r) => r.branch),
+  ]);
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
   // "Creating task…" state until the row is persisted. Without this the
   // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(routeThreadId, virtualMcpId);
+  const ensureState = useEnsureTask(
+    routeThreadId,
+    virtualMcpId,
+    // Drafts mode: a freshly minted thread lands on an editable draft, never production.
+    isDraftsMode ? generatedDraftBranch : undefined,
+  );
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
   // sandboxMap bound by load_repo after the panel snapshot) so the preview
@@ -598,9 +668,6 @@ function AgentInsetProvider() {
     ensureState.status === "ready" ? ensureState.task : null,
   );
 
-  // Fetch entity (Suspense-based — resolved before render)
-  const entity = useVirtualMCP(virtualMcpId);
-
   const layoutMetadata = entity?.metadata?.ui?.layout ?? null;
   const entityMetadata = layoutMetadata
     ? {
@@ -609,7 +676,6 @@ function AgentInsetProvider() {
       }
     : null;
 
-  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
   const layout = useWorkspaceLayoutState(entityMetadata, {
     virtualMcpId,
     isAgentRoute: true,
@@ -629,30 +695,50 @@ function AgentInsetProvider() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  /**
-   * A repo-backed editor's branch is a thread field, so it must run on a thread;
-   * mint one into `?thread=` before mounting when the URL names none (#6667). The
-   * Super Agent (no repo) keeps its lazy threadless composer.
-   */
-  if (routeThreadId === null && hasActiveGithubRepo) {
-    // Focus the user's idle empty chat for this agent, else mint one — as useNavigateToAgent does.
-    const threadId =
-      findReusableNewChat(
-        threads,
-        virtualMcpId,
-        session?.user?.id,
-        defaultThreadRuntime(entity.metadata),
-      )?.id ?? generatedThreadId;
-    return (
-      <Navigate
-        to="."
-        replace
-        search={(prev: Record<string, unknown>) => ({
-          ...prev,
-          thread: threadId,
-        })}
-      />
+  // Resolve a scoped agent's entry thread HERE, in project scope once loaded — useNavigateToAgent's cross-project manager can't see these threads (#6667); repo agents mint one if none resolves, branchless fall through to the lazy composer, org home (no routeAgentId) stays fresh.
+  if (routeThreadId === null && routeAgentId && entity) {
+    // Wait for the first thread page: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
+    if (threadsStatus.kind === "loading") {
+      return (
+        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
+          >
+            <Spinner className="size-4 mr-2" />
+            {t("agentShellLayout.agentShellLayout.creatingTask")}
+          </div>
+        </div>
+      );
+    }
+    // Resume the last version/conversation for this agent; a repo editor mints a fresh thread when none resolves, a branchless agent falls through to its lazy composer.
+    const entry = findAgentEntryThread(
+      threads,
+      virtualMcpId,
+      session?.user?.id,
+      defaultThreadRuntime(entity.metadata),
+      hasActiveGithubRepo,
+      {
+        knownBranches: namedVersionBranches,
+        draftsMode: isDraftsMode,
+        baseBranch,
+      },
     );
+    const threadId =
+      entry?.id ?? (hasActiveGithubRepo ? generatedThreadId : null);
+    if (threadId) {
+      return (
+        <Navigate
+          to="."
+          replace
+          search={(prev: Record<string, unknown>) => ({
+            ...prev,
+            thread: threadId,
+          })}
+        />
+      );
+    }
   }
 
   const chatVirtualMcpId = virtualMcpId;
@@ -671,7 +757,7 @@ function AgentInsetProvider() {
             aria-live="polite"
             className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
           >
-            <Loading01 className="size-4 animate-spin mr-2" />
+            <Spinner className="size-4 mr-2" />
             {t("agentShellLayout.agentShellLayout.creatingTask")}
           </div>
         </div>
@@ -749,13 +835,13 @@ function AgentInsetProvider() {
                 key={layout.providerKey}
                 threadId={layout.threadId}
               >
-                <Suspense fallback={<Chat.Skeleton />}>
+                <MainPanelBoundary>
                   <MobileTaskWorkspace
                     virtualMcpId={chatVirtualMcpId}
                     layout={layout}
                     onNewTaskRef={onNewTask}
                   />
-                </Suspense>
+                </MainPanelBoundary>
               </ActiveTaskRuntimeProvider>
             </VmEventsBridge>
           </Chat.Provider>
@@ -788,14 +874,14 @@ function AgentInsetProvider() {
               key={layout.providerKey}
               threadId={layout.threadId}
             >
-              <Suspense fallback={<Chat.Skeleton />}>
+              <MainPanelBoundary>
                 <DesktopTaskWorkspace
                   entity={entity}
                   virtualMcpId={virtualMcpId}
                   layout={layout}
                   onNewTaskRef={onNewTask}
                 />
-              </Suspense>
+              </MainPanelBoundary>
             </ActiveTaskRuntimeProvider>
           </VmEventsBridge>
         </Chat.Provider>
@@ -814,7 +900,7 @@ function AgentInsetProvider() {
 
 export default function AgentShellLayout() {
   return (
-    <Suspense fallback={<ShellRouteLoading />}>
+    <MainPanelBoundary>
       {/* Rewrites a legacy `/$org/$taskId` URL into the first-class shape,
           without unmounting anything below it. */}
       <LegacyThreadRedirect />
@@ -823,6 +909,6 @@ export default function AgentShellLayout() {
         <AgentInsetProvider />
         <OrgFilePreviewMount />
       </OrgFileOpenProvider>
-    </Suspense>
+    </MainPanelBoundary>
   );
 }

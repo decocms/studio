@@ -12,6 +12,7 @@ import {
   extractPreviewUrlFromDeployment,
   headShaFromPrGet,
   headShaFromStatus,
+  isAwaitingPreview,
   isRateLimitError,
   extractPreviewUrlFromCheckRuns,
   extractPreviewUrlFromComments,
@@ -126,11 +127,11 @@ describe("extractPreviewUrl", () => {
           {
             context: "deco/preview",
             state: "success",
-            target_url: "https://envs-montecarlo--c8xgrn.decocdn.com/",
+            target_url: "https://envs-example--a1b2c3.decocdn.com/",
           },
         ],
       }),
-    ).toBe("https://envs-montecarlo--c8xgrn.decocdn.com/");
+    ).toBe("https://envs-example--a1b2c3.decocdn.com/");
 
     expect(
       extractPreviewUrl({
@@ -172,7 +173,7 @@ describe("extractPreviewUrl", () => {
 });
 
 describe("toCheckRunsStatus", () => {
-  it("maps GitHub Actions check-runs (montecarlo's failing 'Deco / QA' run)", () => {
+  it("maps GitHub Actions check-runs (a real failing 'Deco / QA' run)", () => {
     expect(
       toCheckRunsStatus({
         check_runs: [
@@ -257,7 +258,7 @@ describe("mergeChecksStatus", () => {
     expect(mergeChecksStatus("passing", "pending")).toBe("pending");
     expect(mergeChecksStatus("passing", null)).toBe("passing");
     expect(mergeChecksStatus(null, null)).toBeNull();
-    // montecarlo: empty combined status (null) + failing check-run → failing.
+    // Seen in production: empty combined status (null) + failing check-run → failing.
     expect(
       mergeChecksStatus(toChecksStatus({ total_count: 0 }), "failing"),
     ).toBe("failing");
@@ -267,7 +268,7 @@ describe("mergeChecksStatus", () => {
 describe("isTrustedPreviewHost", () => {
   it("accepts the real deco preview hosts", () => {
     expect(
-      isTrustedPreviewHost("https://envs-montecarlo--c8xgrn.decocdn.com/"),
+      isTrustedPreviewHost("https://envs-example--a1b2c3.decocdn.com/"),
     ).toBe(true);
     expect(
       isTrustedPreviewHost(
@@ -289,9 +290,11 @@ describe("isTrustedPreviewHost", () => {
     expect(isTrustedPreviewHost("https://evilvercel.app/")).toBe(false);
   });
 
-  it("accepts VTEX preview subdomains but not other vtex.app hosts", () => {
+  it("accepts any vtex.app subdomain, not just *.preview.vtex.app", () => {
     expect(isTrustedPreviewHost("https://acme.preview.vtex.app/")).toBe(true);
-    expect(isTrustedPreviewHost("https://acme.vtex.app/")).toBe(false);
+    // FastStore WebOps publishes some deploys (e.g. a `staging` environment)
+    // straight on `<account>.vtex.app`; the narrower rule dropped those.
+    expect(isTrustedPreviewHost("https://acme.vtex.app/")).toBe(true);
     expect(isTrustedPreviewHost("https://preview.vtex.app.evil.com/")).toBe(
       false,
     );
@@ -370,7 +373,7 @@ describe("extractPreviewUrlFromComments", () => {
   // Real deco.cx `decobot` comment shape (trimmed).
   const decobotBody =
     "**deco Deployment** · commit `1059e10`\n\n| Name | Preview |\n| - | - |\n" +
-    "| montecarlo | [Visit Preview](https://envs-montecarlo--c8xgrn.decocdn.com) |";
+    "| example | [Visit Preview](https://envs-example--a1b2c3.decocdn.com) |";
   // Real Vercel bot comment shape (trimmed, from deco-sites/electrolux#10).
   const vercelBody =
     "| Project | Deployment | Actions | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n" +
@@ -385,7 +388,7 @@ describe("extractPreviewUrlFromComments", () => {
 
   it("lifts the deco.cx 'Visit Preview' markdown link", () => {
     expect(extractPreviewUrlFromComments([{ body: decobotBody }])).toBe(
-      "https://envs-montecarlo--c8xgrn.decocdn.com",
+      "https://envs-example--a1b2c3.decocdn.com",
     );
   });
 
@@ -398,10 +401,10 @@ describe("extractPreviewUrlFromComments", () => {
   it("accepts the { comments } and { items } wrapper shapes", () => {
     expect(
       extractPreviewUrlFromComments({ comments: [{ body: decobotBody }] }),
-    ).toBe("https://envs-montecarlo--c8xgrn.decocdn.com");
+    ).toBe("https://envs-example--a1b2c3.decocdn.com");
     expect(
       extractPreviewUrlFromComments({ items: [{ body: decobotBody }] }),
-    ).toBe("https://envs-montecarlo--c8xgrn.decocdn.com");
+    ).toBe("https://envs-example--a1b2c3.decocdn.com");
   });
 
   it("is null with no deco preview comment", () => {
@@ -461,7 +464,7 @@ describe("extractPreviewUrlFromComments", () => {
         { body: decobotBody },
         { body: vercelBody },
       ]),
-    ).toBe("https://envs-montecarlo--c8xgrn.decocdn.com");
+    ).toBe("https://envs-example--a1b2c3.decocdn.com");
   });
 });
 
@@ -638,5 +641,30 @@ describe("previewMatchesHead", () => {
     };
     expect(previewMatchesHead([closed, merged, pr("passing")])).toBe(true);
     expect(previewMatchesHead([])).toBe(true);
+  });
+});
+
+describe("isAwaitingPreview", () => {
+  it("only a running-CI card with no preview keeps refreshing", () => {
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "pending" }),
+    ).toBe(true);
+    // Preview found — nothing left to wait for.
+    expect(
+      isAwaitingPreview({
+        previewUrl: "https://x.vtex.app",
+        checksStatus: "pending",
+      }),
+    ).toBe(false);
+    // CI settled without ever posting one; refreshing forever would not help.
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "passing" }),
+    ).toBe(false);
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "failing" }),
+    ).toBe(false);
+    expect(isAwaitingPreview({ previewUrl: null, checksStatus: null })).toBe(
+      false,
+    );
   });
 });

@@ -33,30 +33,3 @@ describe("taskKey", () => {
     expect(taskKey("deco", undefined)).toBeNull();
   });
 });
-
-/**
- * A synced card wears the tracker's key because that is the name it already
- * has — in the issue, the branch, the PR title and everything anyone says
- * about it. The Studio sequence is untouched underneath; it just stops being
- * the thing on screen.
- */
-describe("taskKey with a tracker key", () => {
-  test("shows the tracker's key instead of the Studio one", () => {
-    expect(taskKey("osklen", 320, "OS-333")).toBe("OS-333");
-  });
-
-  test("keeps the Studio key for a card Studio owns", () => {
-    expect(taskKey("osklen", 320, null)).toBe("OSKL-320");
-    expect(taskKey("osklen", 320, undefined)).toBe("OSKL-320");
-  });
-
-  test("treats a blank tracker key as absent rather than showing nothing", () => {
-    expect(taskKey("osklen", 320, "")).toBe("OSKL-320");
-    expect(taskKey("osklen", 320, "   ")).toBe("OSKL-320");
-  });
-
-  test("shows a tracker key even for a card from before the backfill", () => {
-    expect(taskKey("osklen", null, "OS-333")).toBe("OS-333");
-    expect(taskKey("osklen", null, null)).toBe(null);
-  });
-});

@@ -18,9 +18,3 @@ export function usePublicConfig(): PublicConfig {
   });
   return data;
 }
-
-/** Default product logos per color mode */
-export const DEFAULT_LOGO = {
-  light: "/logos/deco logo.svg",
-  dark: "/logos/deco logo negative.svg",
-};

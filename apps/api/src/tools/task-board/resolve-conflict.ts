@@ -31,6 +31,7 @@
  * everywhere else.
  */
 
+import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -105,6 +106,18 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
 
     // Atomic dispatch fence shared with the automatic reaction (see doc above).
+    // The fence moves the card between these two, and the failure path moves it
+    // back. A board missing either cannot express the round trip, so it never
+    // starts one — and narrowing here is what lets the revert below write a
+    // string instead of an "undefined means leave it alone" that would strand
+    // the card mid-fence.
+    if (LANES.review === null || LANES.progress === null) {
+      throw new Error(
+        "This board has no column meaning 'under review' or 'in progress', so " +
+          "there is nowhere to move the card while the conflict is resolved. " +
+          "Set those roles on the board's columns first.",
+      );
+    }
     const claimed = await ctx.storage.taskBoard.claimConflictResolution(
       id,
       organizationId,
@@ -128,7 +141,7 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     } catch (err) {
       // Dispatch failed after the fence bounced the status — bounce it back.
       await ctx.storage.taskBoard
-        .update(claimed.id, organizationId, { status: "in_review" }, "system")
+        .update(claimed.id, organizationId, { status: LANES.review }, "system")
         .then((reverted) => emitTaskBoardUpdated(organizationId, reverted))
         .catch((revertErr) =>
           console.error(

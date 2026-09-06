@@ -18,6 +18,7 @@ import {
 
 const noopSse: SSESubscription = {
   subscribe: () => () => {},
+  dispose: () => {},
 };
 
 afterEach(() => {

@@ -29,7 +29,8 @@ export const automations = {
   "automations.automationConfig.noToolsFound": "Nenhuma ferramenta encontrada",
   "automations.automationConfig.none": "Nenhum",
   "automations.automationConfig.otherTools": "Outras ferramentas",
-  "automations.automationConfig.pickAgentFirst": "Selecione um agente primeiro",
+  "automations.automationConfig.pickAgentFirst":
+    "Selecione um projeto primeiro",
   "automations.automationConfig.pickModelPlaceholder": "Selecione um modelo",
   "automations.automationConfig.searchToolsPlaceholder":
     "Pesquisar ferramentas...",
@@ -76,7 +77,7 @@ export const automations = {
     "Pesquise conteúdo de arquivo por padrão",
   "automations.automationConfig.toolSubtask": "Subtarefa",
   "automations.automationConfig.toolSubtaskDesc":
-    "Crie um sub-agente focado para lidar com parte do trabalho",
+    "Crie um sub-projeto focado para lidar com parte do trabalho",
   "automations.automationConfig.toolWebSearch": "Busca na web",
   "automations.automationConfig.toolWebSearchDesc":
     "Pesquise informações atuais na web",
@@ -146,7 +147,7 @@ export const automations = {
   "automations.automationRuns.tokensHeader": "Tokens",
   "automations.automationRuns.tokensTitle": "Tokens",
   "automations.automationsList.emptyDescription":
-    "Crie sua primeira automação para executar este agente em um cronograma ou em resposta a eventos.",
+    "Crie sua primeira automação para executar este projeto em um cronograma ou em resposta a eventos.",
   "automations.automationsList.emptyTitle": "Nenhuma automação ainda",
   "automations.automationsList.newAutomation": "Nova automação",
   "automations.automationsList.noResultsDescription":

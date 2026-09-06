@@ -146,11 +146,49 @@ function titleFromName(name: string): string {
 export interface GatewayClientOptions {
   clientInfo?: Implementation;
   capabilities?: ClientCapabilities;
+  /**
+   * Per-client deadline (ms) for one list call (tools/resources/prompts,
+   * including its pagination chain). A client that exceeds it is skipped the
+   * same way an unreachable one is: logged, contributing nothing. Defaults to
+   * {@link GatewayClient.DEFAULT_LIST_TIMEOUT_MS}.
+   */
+  listTimeoutMs?: number;
+}
+
+/**
+ * Race a promise against a deadline, clearing the timer either way. A bare
+ * `Promise.race([p, new Promise((_, reject) => setTimeout(reject, ms))])`
+ * leaves the timer armed after `p` wins — it later fires as an unhandled
+ * rejection with nothing awaiting it.
+ *
+ * Local to this package on purpose: `@decocms/mcp-utils` publishes with only
+ * `ajv` as a runtime dep, so it must not reach for a private workspace module
+ * for six lines.
+ */
+function withDeadline<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
 
 export class GatewayClient extends Client {
   /** Hard cap on pages fetched per client per list call — see `paginate`. */
   private static readonly MAX_PAGES_PER_CLIENT = 1000;
+
+  /**
+   * Default per-client list deadline. The MCP SDK's own request default is 60s;
+   * with the fan-out now parallel that bounds a whole aggregation at one hung
+   * client's 60s, which still overshoots every MCP client's connect timeout
+   * (30s for Claude Code). 30s keeps a genuinely slow-but-working server
+   * inside the budget while capping a hung one.
+   */
+  static readonly DEFAULT_LIST_TIMEOUT_MS = 30_000;
 
   private readonly clients: Record<string, ClientEntry>;
   private readonly slugToKey = new Map<string, string>();
@@ -168,6 +206,9 @@ export class GatewayClient extends Client {
   /** Route map for resources (URIs aren't namespaced). */
   private resourceRouteMap = new Map<string, string>();
 
+  /** Per-client deadline for a single list call — see `listFromClient`. */
+  private readonly listTimeoutMs: number;
+
   constructor(
     clients: Record<string, ClientEntry>,
     options?: GatewayClientOptions,
@@ -176,6 +217,8 @@ export class GatewayClient extends Client {
       capabilities: options?.capabilities,
     });
     this.clients = clients;
+    this.listTimeoutMs =
+      options?.listTimeoutMs ?? GatewayClient.DEFAULT_LIST_TIMEOUT_MS;
     for (const key of Object.keys(clients)) {
       const slug = namespaceCode(key);
       if (this.slugToKey.has(slug)) {
@@ -196,13 +239,15 @@ export class GatewayClient extends Client {
   }
 
   /**
-   * Resolve a tool name to [clientKey, originalName].
-   * Fast path: parse namespace prefix. Fallback: search aggregated tools
-   * for an un-namespaced match (supports callers that don't know about
-   * namespacing, e.g. workflow tool steps).
+   * Resolve a namespaced tool/prompt name to [clientKey, originalName].
+   * Fast path: parse namespace prefix. Fallback: search the aggregated
+   * `items` for an un-namespaced match (supports callers that don't know
+   * about namespacing, e.g. workflow tool steps).
    */
-  private async resolveToolTarget(
+  private async resolveNamespacedTarget(
     name: string,
+    kind: "tool" | "prompt",
+    items: () => Promise<Array<{ name: string; _meta?: unknown }>>,
   ): Promise<[clientKey: string, originalName: string]> {
     // Fast path: namespace prefix matches a known client
     const sep = name.indexOf("_");
@@ -214,12 +259,11 @@ export class GatewayClient extends Client {
       }
     }
 
-    // Fallback: search aggregated tools by original (un-namespaced) name
-    const { tools } = await this.listTools();
-    for (const tool of tools) {
-      const clientId = getGatewayClientId(tool._meta);
+    // Fallback: search aggregated items by original (un-namespaced) name
+    for (const item of await items()) {
+      const clientId = getGatewayClientId(item._meta);
       if (!clientId) continue;
-      if (stripToolNamespace(tool.name, clientId) === name) {
+      if (stripToolNamespace(item.name, clientId) === name) {
         return [clientId, name];
       }
     }
@@ -227,7 +271,7 @@ export class GatewayClient extends Client {
     // Nothing matched — throw the original-style error
     if (sep === -1) {
       throw new Error(
-        `GatewayClient: could not resolve tool "${name}" — no namespace prefix and not found in any client`,
+        `GatewayClient: could not resolve ${kind} "${name}" — no namespace prefix and not found in any client`,
       );
     }
     throw new Error(
@@ -235,40 +279,23 @@ export class GatewayClient extends Client {
     );
   }
 
-  /**
-   * Resolve a prompt name to [clientKey, originalName].
-   * Same logic as resolveToolTarget but searches prompts.
-   */
-  private async resolvePromptTarget(
+  private resolveToolTarget(
     name: string,
   ): Promise<[clientKey: string, originalName: string]> {
-    // Fast path: namespace prefix matches a known client
-    const sep = name.indexOf("_");
-    if (sep !== -1) {
-      const slug = name.slice(0, sep);
-      const clientKey = this.slugToKey.get(slug);
-      if (clientKey) {
-        return [clientKey, name.slice(sep + 1)];
-      }
-    }
+    return this.resolveNamespacedTarget(
+      name,
+      "tool",
+      async () => (await this.listTools()).tools,
+    );
+  }
 
-    // Fallback: search aggregated prompts by original (un-namespaced) name
-    const { prompts } = await this.listPrompts();
-    for (const prompt of prompts) {
-      const clientId = getGatewayClientId(prompt._meta);
-      if (!clientId) continue;
-      if (stripToolNamespace(prompt.name, clientId) === name) {
-        return [clientId, name];
-      }
-    }
-
-    if (sep === -1) {
-      throw new Error(
-        `GatewayClient: could not resolve prompt "${name}" — no namespace prefix and not found in any client`,
-      );
-    }
-    throw new Error(
-      `GatewayClient: unknown namespace "${name.slice(0, sep)}" in "${name}" and not found by original name in any client`,
+  private resolvePromptTarget(
+    name: string,
+  ): Promise<[clientKey: string, originalName: string]> {
+    return this.resolveNamespacedTarget(
+      name,
+      "prompt",
+      async () => (await this.listPrompts()).prompts,
     );
   }
 
@@ -338,6 +365,14 @@ export class GatewayClient extends Client {
    * transport error) must NOT abort the whole aggregation — that would take
    * down the entire agent run over one broken connection. Log and contribute
    * nothing instead; the caller degrades to the connections that did resolve.
+   *
+   * The whole connect + paginate chain is bounded by `listTimeoutMs`: a client
+   * that hangs is indistinguishable from one that is down, and before this
+   * bound existed a single hung upstream held the aggregation for the MCP SDK's
+   * 60s request default. The deadline is applied here rather than passed down
+   * as `RequestOptions` on purpose — Studio's lazy client treats any `options`
+   * argument as a cache bypass, so threading it through `listTools(params,
+   * options)` would silently disable the cross-pod list cache.
    */
   private async listFromClient<T>(
     clientKey: string,
@@ -345,8 +380,14 @@ export class GatewayClient extends Client {
     kind: string,
   ): Promise<T[]> {
     try {
-      const client = await this.resolveClient(clientKey);
-      return await fetchAll(client);
+      return await withDeadline(
+        (async () => {
+          const client = await this.resolveClient(clientKey);
+          return await fetchAll(client);
+        })(),
+        this.listTimeoutMs,
+        `timed out after ${this.listTimeoutMs}ms`,
+      );
     } catch (err) {
       console.warn(
         `GatewayClient: skipping ${kind} from client "${clientKey}" — ${
@@ -355,6 +396,34 @@ export class GatewayClient extends Client {
       );
       return [];
     }
+  }
+
+  /**
+   * Fan out one list call to every client in parallel, preserving key order in
+   * the result. Sequential `for … await` made an aggregation cost the SUM of
+   * its clients' latencies, so a 6-connection agent routinely blew past the
+   * client's connect timeout; each client is independent, so there is nothing
+   * to serialize. Merging stays sequential in key order at the call sites, so
+   * duplicate-resolution (first key wins) is unchanged.
+   */
+  private listFromAllClients<T>(
+    fetchAll: (client: IClient, clientKey: string) => Promise<T[]>,
+    kind: string,
+  ): Promise<Array<[clientKey: string, entry: ClientEntry, items: T[]]>> {
+    return Promise.all(
+      Object.entries(this.clients).map(
+        async ([clientKey, entry]) =>
+          [
+            clientKey,
+            entry,
+            await this.listFromClient(
+              clientKey,
+              (c) => fetchAll(c, clientKey),
+              kind,
+            ),
+          ] as [string, ClientEntry, T[]],
+      ),
+    );
   }
 
   /**
@@ -448,14 +517,12 @@ export class GatewayClient extends Client {
 
   private async aggregateTools(): Promise<ListToolsResult> {
     const tools: Tool[] = [];
+    const perClient = await this.listFromAllClients(
+      (c, clientKey) => this.fetchAllTools(c, clientKey),
+      "tools",
+    );
 
-    for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const clientTools = await this.listFromClient(
-        clientKey,
-        (c) => this.fetchAllTools(c, clientKey),
-        "tools",
-      );
-
+    for (const [clientKey, entry, clientTools] of perClient) {
       const selected = entry.tools;
       const selectedSet = selected ? new Set(selected) : null;
 
@@ -490,14 +557,12 @@ export class GatewayClient extends Client {
     const seen = new Set<string>();
     const resources: Resource[] = [];
     const routeMap = new Map<string, string>();
+    const perClient = await this.listFromAllClients(
+      (c, clientKey) => this.fetchAllResources(c, clientKey),
+      "resources",
+    );
 
-    for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const clientResources = await this.listFromClient(
-        clientKey,
-        (c) => this.fetchAllResources(c, clientKey),
-        "resources",
-      );
-
+    for (const [clientKey, entry, clientResources] of perClient) {
       const selected = entry.resources;
       const selectedSet = selected ? new Set(selected) : null;
 
@@ -545,14 +610,12 @@ export class GatewayClient extends Client {
   private async aggregateResourceTemplates(): Promise<ListResourceTemplatesResult> {
     const seen = new Set<string>();
     const resourceTemplates: ResourceTemplate[] = [];
+    const perClient = await this.listFromAllClients(
+      (c, clientKey) => this.fetchAllResourceTemplates(c, clientKey),
+      "resource templates",
+    );
 
-    for (const [clientKey, _entry] of Object.entries(this.clients)) {
-      const clientTemplates = await this.listFromClient(
-        clientKey,
-        (c) => this.fetchAllResourceTemplates(c, clientKey),
-        "resource templates",
-      );
-
+    for (const [clientKey, _entry, clientTemplates] of perClient) {
       for (const template of clientTemplates) {
         if (seen.has(template.uriTemplate)) {
           console.warn(
@@ -587,14 +650,12 @@ export class GatewayClient extends Client {
 
   private async aggregatePrompts(): Promise<ListPromptsResult> {
     const prompts: Prompt[] = [];
+    const perClient = await this.listFromAllClients(
+      (c, clientKey) => this.fetchAllPrompts(c, clientKey),
+      "prompts",
+    );
 
-    for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const clientPrompts = await this.listFromClient(
-        clientKey,
-        (c) => this.fetchAllPrompts(c, clientKey),
-        "prompts",
-      );
-
+    for (const [clientKey, entry, clientPrompts] of perClient) {
       const selected = entry.prompts;
       const selectedSet = selected ? new Set(selected) : null;
 

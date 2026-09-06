@@ -4,6 +4,7 @@ import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 async function createClonableAgent(
   api: Parameters<typeof createHttpConnection>[0],
   orgSlug: string,
+  cmsMode: "on" | "off" = "on",
 ) {
   await callSelfMcpTool(api, orgSlug, "AI_PROVIDER_KEY_CREATE", {
     providerId: "anthropic",
@@ -32,6 +33,7 @@ async function createClonableAgent(
             name: "repo",
             connectionId: connection.id,
           },
+          ui: { layout: { cms: cmsMode } },
         },
       },
     },
@@ -48,7 +50,7 @@ async function createClonableAgent(
 test.describe("Blocks preview mode", () => {
   test.setTimeout(90_000);
 
-  test("desktop keeps Chat independent and removes Blocks from the workspace toolbar", async ({
+  test("desktop renders Blocks and Content under the same enabled gate", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -62,24 +64,63 @@ test.describe("Blocks preview mode", () => {
 
     const chat = page.getByTestId("chat-panel");
     const main = page.getByTestId("main-panel");
-    const legacyBlocksToggle = page.getByRole("button", {
-      name: "Blocks",
+    const contentTab = page.getByRole("button", {
+      name: "Content",
       exact: true,
     });
 
     await expect(chat).toBeVisible({ timeout: 30_000 });
     await expect(main).toBeVisible();
-    await expect(legacyBlocksToggle).toHaveCount(0);
+    // Both editing surfaces are local to the Site Editor.
+    await expect(contentTab).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
-    /* The view is a path segment now: `/agents/<project>/preview`. */
-    await expect(page).toHaveURL(/\/agents\/[^/?]+\/preview/);
+    /* The Site Editor is opened from the SIDEBAR. Preview / Content / Code are
+       a switcher WITHIN that surface, so they only render once you are on it —
+       there is no "Preview" button to press from Settings. */
+    await page
+      .getByRole("button", { name: "Site Editor", exact: true })
+      .click();
+    /* The VIEW is the segment (`site-editor`, which `preview` normalises to);
+       the project rides in `?virtualmcpid=`. Assert both halves: a shrinking
+       path alone would also pass if the project scope had been dropped. */
+    await expect(page).toHaveURL(/\/agents\/site-editor/);
+    await expect(page).toHaveURL(
+      (url) => url.searchParams.get("virtualmcpid") === agentId,
+    );
+    await expect(contentTab).toBeVisible();
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toBeVisible();
     await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
   });
 
-  test("mobile renders one workspace surface at a time", async ({
+  test("CMS off removes both Blocks and Content", async ({ authedPage }) => {
+    const { page, orgSlug } = authedPage;
+    const { agentId, threadId } = await createClonableAgent(
+      page.context().request,
+      orgSlug,
+      "off",
+    );
+
+    await page.goto(
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=true&main=preview`,
+    );
+
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByRole("button", { name: "Preview", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Content", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
+  });
+
+  test("mobile renders one workspace surface at a time without Blocks", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -99,6 +140,8 @@ test.describe("Blocks preview mode", () => {
     await expect(viewSelect).toBeVisible({ timeout: 30_000 });
     // Preview is the single visible surface to start.
     await expect(page.getByTestId("main-panel")).toBeVisible();
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
     // Pick Chat: main closes, but the view stays in the path so Preview returns.
     await viewSelect.click();
@@ -112,8 +155,13 @@ test.describe("Blocks preview mode", () => {
     await viewSelect.click();
     await page.getByRole("option", { name: "Preview" }).click();
     await expect(page).toHaveURL(/sidepanel=false/);
-    await expect(page).toHaveURL(/\/agents\/[^/?]+\/preview/);
+    await expect(page).toHaveURL(/\/agents\/site-editor/);
+    // The project scope moved from the path into search — it must still be here.
+    await expect(page).toHaveURL(
+      (url) => url.searchParams.get("virtualmcpid") === agentId,
+    );
     await expect(page.getByTestId("main-panel")).toBeVisible();
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });
 });

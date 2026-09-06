@@ -9,14 +9,12 @@ export const settings = {
   "settings.nav.connect": "Conectar",
   "settings.nav.aiProviders": "Provedores de IA",
   "settings.nav.secrets": "Segredos",
-  "settings.nav.apiKeys": "Chaves de API",
   "settings.nav.billing": "Cobrança e IA",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Repos sincronizados",
   "settings.nav.storage": "Armazenamento",
   "settings.nav.advanced": "Avançado",
   "settings.subnav.ariaLabel": "Seções de configurações",
-  "settings.subnav.clients": "Clientes",
   "settings.subnav.infrastructure": "Infraestrutura",
   "settings.nav.tasks": "Quadro",
   "settings.jira.sectionTitle": "Integração com o Jira",
@@ -41,41 +39,22 @@ export const settings = {
   "settings.jira.cancel": "Cancelar",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
-    "Tudo o que o board abrange é espelhado, incluindo o backlog. Epics e sub-tasks não, e os cards mostram em qual sprint estão.",
+    "O board que o Studio acompanha — um card entrando em uma de suas colunas é o que dispara a integração.",
   "settings.jira.boardPlaceholder": "Selecione um board",
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
   "settings.jira.loadingBoards": "Carregando boards…",
-  "settings.jira.mappingLabel": "Mapeamento de colunas",
-  "settings.jira.mappingDescription":
-    "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",
-  "settings.jira.dontSync": "Não sincronizar",
-  "settings.jira.columnsFailed":
-    "Não foi possível carregar as colunas do board",
-  "settings.jira.enableLabel": "Sincronização ativa",
+  "settings.jira.enabledLabel": "Integração ativa",
+  "settings.jira.enabledDescription":
+    "Enquanto desativada, os cards que se movem no board são ignorados.",
   "settings.jira.enableRequirements":
-    "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
-  "settings.jira.lastSynced": "Última sincronização {ago}",
-  "settings.jira.waitingFirstSync": "Aguardando a próxima sincronização",
-  "settings.jira.resyncAll": "Resincronizar tudo",
-  "settings.jira.resyncAllTitle": "Reler o board inteiro?",
-  "settings.jira.resyncAllQueued":
-    "Releitura solicitada — a próxima sincronização vai começá-la.",
-  "settings.jira.resyncAllDescription":
-    'O "Sincronizar agora" só puxa issues alteradas desde a última execução. Esta opção marca todas as issues do board para serem relidas — é o que você quer depois de mudar o mapeamento de status, ou quando os cards estão errados. Ela começa na próxima sincronização agendada, não agora, pode se estender por várias execuções num board grande, e nunca delega um card para um agente.',
-  "settings.jira.syncNow": "Sincronizar agora",
-  "settings.jira.syncing": "Sincronizando…",
-  "settings.jira.syncDone":
-    "Sincronizado: {created} criados, {updated} atualizados, {archived} arquivados",
-  "settings.jira.unmappedWarning":
-    "Ainda sem mapeamento: {columns}. Issue que entra numa dessas colunas \u00e9 ignorada, e o card fica parado na lane que tinha antes \u2014 escolha uma lane, ou \u201cN\u00e3o sincronizar\u201d pra dizer que \u00e9 de prop\u00f3sito.",
-  "settings.jira.syncFailed": "Falha na sincronização",
+    "Escolha um board antes de ativar a integração",
   "settings.jira.saveFailed":
     "Não foi possível salvar as configurações do Jira",
   "settings.jira.createTokenLink": "Criar um API token",
   "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
   "settings.jira.webhookDescription":
-    "Opcional. Sem ele, mudanças feitas no Jira chegam ao quadro na próxima sincronização de 10 minutos; com ele, chegam em segundos.",
+    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 10 minutos; com ele, a run começa em segundos.",
   "settings.jira.webhookCopy": "Copiar",
   "settings.jira.webhookCopied": "URL do webhook copiada",
   "settings.jira.webhookStep1":
@@ -87,7 +66,20 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Opcionalmente restrinja com um filtro JQL, ex.: project = <chave do projeto>.",
   "settings.jira.webhookStep5":
-    "Salve. Mudanças feitas no Jira passam a aparecer no quadro em segundos.",
+    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run em segundos.",
+  "settings.jira.automationsLabel":
+    "Rodar o agente quando uma issue entrar em…",
+  "settings.jira.automationsDescription":
+    "Quando uma issue entra em um destes status, o Studio inicia um run do agente nela. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+  "settings.jira.addAutomation": "Adicionar automação",
+  "settings.jira.automationOn": "Automação ativa",
+  "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
+  "settings.jira.promptHelp":
+    "Deixe vazio para usar a instrução do próprio agente. A descrição, os comentários e os anexos da issue sempre vão junto.",
+  "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
+  "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
+  "settings.jira.columnsFailed":
+    "Não foi possível carregar as colunas do board",
   "settings.syncedRepos.pageDescription":
     "Repositórios do GitHub espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
@@ -112,13 +104,15 @@ export const settings = {
   "settings.syncedRepos.removed": "Sincronização removida",
   "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
   "settings.nav.connections": "Conexões",
-  "settings.nav.agents": "Agentes",
+  "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Loja",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
   "settings.nav.security": "Segurança",
   "settings.nav.profile": "Perfil e preferências",
+  "settings.nav.backToHome": "Voltar para o início",
   "settings.nav.signOut": "Sair",
   "settings.profile.avatar": "Avatar",
   "settings.profile.displayName": "Nome de exibição",
@@ -157,7 +151,7 @@ export const settings = {
   "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Executa tudo sem aprovação",
-  "settings.automations.browseAgentsButton": "Procurar agentes",
+  "settings.automations.browseAgentsButton": "Procurar projetos",
   "settings.automations.emptyDescription":
     "As automa\u00e7\u00f5es s\u00e3o criadas por agente. Abra um agente e adicione uma na aba de Automa\u00e7\u00f5es.",
   "settings.automations.emptyTitle": "Nenhuma automa\u00e7\u00e3o ainda",
@@ -167,6 +161,39 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Importar skill",
+  "settings.skills.importing": "Importando\u2026",
+  "settings.skills.importSuccess": '"{name}" importada',
+  "settings.skills.importError": "Falha ao importar a skill",
+  "settings.skills.importMissingSkillMd":
+    "Essa pasta n\u00e3o tem um SKILL.md na raiz. Selecione a pasta da pr\u00f3pria skill.",
+  "settings.skills.importNeedsFolder":
+    "Selecione uma pasta, não arquivos individuais — este navegador pode não suportar upload de pastas.",
+  "settings.skills.searchPlaceholder": "Pesquisar skills...",
+  "settings.skills.noDescription": "Sem descri\u00e7\u00e3o",
+  "settings.skills.filterAll": "Todas",
+  "settings.skills.emptyTitle": "Nenhuma skill ainda",
+  "settings.skills.emptyDescription":
+    "Importe uma pasta com um SKILL.md para dar aos seus agentes instru\u00e7\u00f5es reutiliz\u00e1veis que eles podem carregar sob demanda.",
+  "settings.skills.noResultsTitle": "Nenhuma skill encontrada",
+  "settings.skills.noResultsDescription":
+    'Nenhuma skill corresponde a "{search}"',
+  "settings.skills.cancel": "Cancelar",
+  "settings.skills.deleteButton": "Excluir",
+  "settings.skills.deleteDialogTitle": "Excluir esta skill?",
+  "settings.skills.deleteDialogDescription":
+    'Isso remove "{name}" e seus arquivos. Essa a\u00e7\u00e3o n\u00e3o pode ser desfeita.',
+  "settings.skills.deleteSuccess": "Skill exclu\u00edda",
+  "settings.skills.deleteError": "Falha ao excluir a skill",
+  "settings.skills.importTooManyFiles":
+    "Essa pasta tem {count} arquivos (limite {max}). Importe uma pasta com apenas os arquivos da skill.",
+  "settings.skills.importSlugTaken":
+    'Já existe uma skill chamada "{slug}". Exclua-a antes de reimportar.',
+  "settings.skills.errorTitle": "Não foi possível carregar as skills",
+  "settings.skills.errorDescription":
+    "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
+  "settings.skills.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",
@@ -244,38 +271,28 @@ export const settings = {
     "Armazena apenas um endpoint de atualiza\u00e7\u00e3o + chave API; credenciais de curta dura\u00e7\u00e3o s\u00e3o buscadas sob demanda e atualizadas automaticamente.",
   "settings.buckets.temporarySessionOption":
     "Sess\u00e3o tempor\u00e1ria (STS, auto-atualizada)",
-  "settings.connectClients.activeKeys": "Chaves ativas",
-  "settings.connectClients.activeKeysDescription":
-    "Chaves que você gerou para clientes headless. Revogue quando quiser.",
-  "settings.connectClients.apiKeyTab": "Chave API",
+  "settings.connectClients.anyOtherClientDescription":
+    "Qualquer outro cliente MCP: cole este endpoint nele para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
+  "settings.connectClients.apiKeyOption": "Chave API",
+  "settings.connectClients.connectAClient": "Conectar um cliente",
   "settings.connectClients.copy": "Copiar",
-  "settings.connectClients.createdAt": "Criada em {date}",
-  "settings.connectClients.customClientHint":
-    "Conectando um cliente personalizado?",
   "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
-  "settings.connectClients.failedToLoadKeys":
-    "Falha ao carregar chaves: {error}",
+  "settings.connectClients.generateKey": "Gerar chave",
   "settings.connectClients.generateKeyFor": "Gerar chave para {client}",
   "settings.connectClients.generatingKey": "Gerando…",
   "settings.connectClients.headlessKeyHint":
     "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
+  "settings.connectClients.installMethod": "Método de instalação",
   "settings.connectClients.keyCreated": "Chave criada",
-  "settings.connectClients.keyRevoked": "Chave revogada",
-  "settings.connectClients.loadingActiveKeys": "Carregando chaves ativas…",
-  "settings.connectClients.noConnectKeysYet":
-    "Nenhuma chave de conexão criada ainda. Gere uma na aba de um cliente acima para configurações headless.",
+  "settings.connectClients.oauthDiscoveryDetails":
+    "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
     "Recomendado para seu laptop. O navegador abrirá no primeiro uso para você entrar — sem token para gerenciar.",
   "settings.connectClients.oauthMetadataHint":
     "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
-  "settings.connectClients.oauthTab": "OAuth",
-  "settings.connectClients.orgUnifiedMcp": "O MCP unificado da sua org",
-  "settings.connectClients.orgUnifiedMcpDescription":
-    "Insira esta URL em qualquer cliente MCP para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
+  "settings.connectClients.oauthOption": "OAuth",
+  "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar a clientes",
-  "settings.connectClients.revoke": "Revogar",
-  "settings.connectClients.revokeConfirm":
-    'Revogar "{name}"? Qualquer cliente que ainda use esta chave perderá o acesso.',
   "settings.connectClients.snippetOneTimeWarning":
     "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
@@ -356,7 +373,7 @@ export const settings = {
   "settings.decoCreditsHero.disconnect": "Desconectar",
   "settings.decoCreditsHero.disconnectButton": "Desconectar",
   "settings.decoCreditsHero.disconnectDescription":
-    "Isso remover\u00e1 o Deco AI Gateway deste espa\u00e7o de trabalho. Seu saldo de cr\u00e9dito \u00e9 preservado e estar\u00e1 dispon\u00edvel se voc\u00ea se reconectar.",
+    "Isso remover\u00e1 o Deco AI Gateway deste espa\u00e7o de trabalho. Seu saldo de cr\u00e9dito \u00e9 preservado e estar\u00e1 dispon\u00edvel se você se reconectar.",
   "settings.decoCreditsHero.disconnectError": "Falha ao desconectar: {message}",
   "settings.decoCreditsHero.disconnectSuccess": "Deco AI Gateway desconectado",
   "settings.decoCreditsHero.disconnectTitle": "Desconectar Deco AI Gateway",
@@ -457,30 +474,23 @@ export const settings = {
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
-  "settings.mainAgent.title": "Agente principal",
-  "settings.mainAgent.description":
-    "O agente em que esta organiza\u00e7\u00e3o abre. Todos os membros chegam aqui em vez do Super Agent.",
-  "settings.mainAgent.itemTitle": "Agente de entrada",
-  "settings.mainAgent.itemDescription":
-    "Escolha o agente que abre ao entrar nesta organiza\u00e7\u00e3o.",
-  "settings.mainAgent.superAgentOption": "Super Agent (padr\u00e3o)",
-  "settings.mainAgent.setToast": '"{title}" agora \u00e9 o agente principal',
-  "settings.mainAgent.resetToast": "Redefinido para o Super Agent",
-  "settings.mainAgent.errorToast":
-    "N\u00e3o foi poss\u00edvel atualizar o agente principal",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
     "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
   "settings.review.reviewerTitle": "Ativar Reviewer",
   "settings.review.reviewerDescription":
-    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para voc\u00ea quando n\u00e3o consegue resolver algo.",
+    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para você quando n\u00e3o consegue resolver algo.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
     "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
+    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+  "settings.review.autoResolveConflictsTitle":
+    "Resolver conflitos de merge automaticamente",
+  "settings.review.autoResolveConflictsDescription":
+    "Quando um pull request aprovado conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
   "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
   "settings.review.deliveryLanesDescription":
     "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
@@ -490,6 +500,14 @@ export const settings = {
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.fieldLabel": "Instru\u00e7\u00f5es",
+  "settings.taskPrompt.placeholder":
+    "ex.: Use pnpm, nunca npm. Nunca edite arquivos em src/generated/.",
+  "settings.taskPrompt.save": "Salvar",
+  "settings.taskPrompt.saved": "System prompt salvo",
+  "settings.taskPrompt.failed":
+    "N\u00e3o foi poss\u00edvel salvar o system prompt",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
     "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",
@@ -501,22 +519,6 @@ export const settings = {
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats em um agente importado de um reposit\u00f3rio do GitHub rodam dentro do sandbox desse agente, ao lado do checkout, em vez de rodarem no Decopilot. As respostas chegam de turno inteiro, e n\u00e3o palavra por palavra. S\u00f3 vale para chats novos \u2014 um chat existente mant\u00e9m o runtime em que come\u00e7ou.",
-  "settings.sprints.title": "Sprints",
-  "settings.sprints.description":
-    "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",
-  "settings.sprints.enabledTitle": "Ativar sprints",
-  "settings.sprints.enabledDescription":
-    "Adiciona uma propriedade de sprint em cada tarefa e um filtro de sprint no board.",
-  "settings.sprints.cadenceTitle": "Cad\u00eancia",
-  "settings.sprints.cadenceDescription":
-    "Quanto tempo dura uma sprint e o dia em que a sprint 1 come\u00e7ou.",
-  "settings.sprints.cadenceCurrent":
-    "A sprint {number} est\u00e1 em andamento ({start} a {end}).",
-  "settings.sprints.weeksValue": "{count} semanas",
-  "settings.sprints.weeksValueOne": "1 semana",
-  "settings.sprints.startDateLabel": "Dia inicial da sprint 1",
-  "settings.sprints.updateError":
-    "N\u00e3o foi poss\u00edvel atualizar as configura\u00e7\u00f5es de sprint",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
@@ -749,14 +751,16 @@ export const settings = {
   "settings.apiKeys.failedToLoadError":
     "Falha ao carregar chaves de API: {error}",
   "settings.apiKeys.keyDeleted": 'Chave de API "{name}" excluída',
-  "settings.apiKeys.keysCountPlural": "{count} chaves",
-  "settings.apiKeys.keysCountSingular": "{count} chave",
+  "settings.apiKeys.loading": "Carregando chaves de API…",
   "settings.apiKeys.nameLabel": "Nome",
   "settings.apiKeys.namePlaceholder": "Minha integração",
   "settings.apiKeys.newKey": "Nova chave",
   "settings.apiKeys.newKeyDescription":
     "Dê um nome à chave para reconhecê-la depois.",
   "settings.apiKeys.newKeyTitle": "Nova chave de API",
+  "settings.apiKeys.sectionDescription":
+    "Chaves de longa duração para scripts e clientes que não conseguem entrar por um navegador.",
+  "settings.apiKeys.sectionTitle": "Chaves de API",
   "settings.secrets.cancelButton": "Cancelar",
   "settings.secrets.createButton": "Criar segredo",
   "settings.secrets.creatingButton": "Criando\u2026",
@@ -827,24 +831,6 @@ export const settings = {
     "Deco AI Gateway conectado com sucesso",
   "settings.aiProviders.decoConnectError":
     "Falha ao conectar o Deco AI Gateway: {error}",
-  "settings.billing.autoTasksTitle": "Tarefas automáticas",
-  "settings.billing.unlimitedDescription":
-    "As execuções de tarefas automáticas são ilimitadas neste deployment. Tarefas criadas por você também nunca têm limite.",
-  "settings.billing.autoTasksDescriptionTrial":
-    "3 execuções grátis vitalícias, depois R$ 250/mês para 10 execuções por ciclo de cobrança.",
-  "settings.billing.autoTasksDescriptionSubscribed":
-    "10 execuções de tarefas automáticas por ciclo de cobrança. Tarefas criadas por você nunca têm limite.",
-  "settings.billing.statusTrial": "Teste grátis",
-  "settings.billing.statusActive": "Ativa",
-  "settings.billing.statusPastDue": "Problema no pagamento",
-  "settings.billing.runsUsedLabel": "execuções usadas",
-  "settings.billing.renewsOn": "Renova em {date}",
-  "settings.billing.subscribeButton": "Assinar",
-  "settings.billing.manageButton": "Gerenciar cobrança",
-  "settings.billing.checkoutError":
-    "Não foi possível iniciar o checkout: {message}",
-  "settings.billing.portalError":
-    "Não foi possível abrir o portal de cobrança: {message}",
 
   "settings.infraBilling.noSites":
     "Esta organização ainda não é dona de nenhum site deco.cx.",

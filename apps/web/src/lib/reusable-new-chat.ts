@@ -1,5 +1,6 @@
 import type { Task } from "@/components/chat/task/types";
-import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import { findLastThreadForAgent } from "@/lib/find-last-thread-for-agent";
+import { threadRuntimeMatches } from "@/lib/thread-runtime-match";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 /**
@@ -36,25 +37,66 @@ export function findReusableNewChat(
       t.created_by === userId &&
       t.title === "New chat" &&
       !t.harness_id &&
-      runtimeMatches(t, expectedRuntime),
+      threadRuntimeMatches(t, expectedRuntime),
   );
 }
 
+export interface AgentEntryOpts {
+  /** Production ∪ named-release branches — the versions a legacy thread can resume to. */
+  knownBranches?: ReadonlySet<string>;
+  /** Drafts mode resumes the last thread on any editable draft (never production), else nothing (caller mints a fresh draft thread). */
+  draftsMode?: boolean;
+  /** Production branch, excluded from drafts-mode resume so entry never lands there. */
+  baseBranch?: string;
+}
+
 /**
- * A thread's runtime is immutable, so an empty chat stamped with the OTHER
- * runtime is not reusable — focusing it would silently drop the user into a
- * coding session (or a CMS one) they didn't ask for.
+ * Thread to land on when *entering* an agent.
  *
- * An unstamped row always matches: it predates the stamp and resolves to the
- * project default by definition. `undefined` — the caller couldn't resolve the
- * project — keeps the pre-existing unfiltered behavior rather than guessing.
+ * `draftsMode`: resume the last thread on any draft branch (never `baseBranch`), else `undefined`.
+ * Legacy `hasBranch`: prefer the last thread on `knownBranches`, then the raw last, then the empty chat.
+ * Branchless: resume the last thread (empty or not), never piling up empty chats.
  */
-function runtimeMatches(thread: Task, expected: ThreadRuntime | undefined) {
-  if (!expected) return true;
-  // A `/watch` synthetic carries no metadata, so its absent stamp is "not
-  // loaded", not "unstamped" — trusting it would reuse a CMS chat for a coding
-  // session (or the reverse) on nothing more than a race with the feed.
-  if (thread.partial) return false;
-  const stamp = parseThreadRuntime(thread.metadata?.runtime);
-  return stamp === null || stamp === expected;
+export function findAgentEntryThread(
+  threads: Task[],
+  agentId: string,
+  userId: string | undefined,
+  expectedRuntime: ThreadRuntime | undefined,
+  hasBranch: boolean,
+  opts?: AgentEntryOpts,
+): Task | undefined {
+  if (!hasBranch) {
+    return (
+      findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??
+      undefined
+    );
+  }
+  if (opts?.draftsMode) {
+    return (
+      findLastThreadForAgent(
+        threads,
+        agentId,
+        userId,
+        expectedRuntime,
+        undefined,
+        opts?.baseBranch,
+      ) ?? undefined
+    );
+  }
+  const known = opts?.knownBranches;
+  const onNamedVersion =
+    known && known.size > 0
+      ? (findLastThreadForAgent(
+          threads,
+          agentId,
+          userId,
+          expectedRuntime,
+          known,
+        ) ?? undefined)
+      : undefined;
+  return (
+    onNamedVersion ??
+    findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??
+    findReusableNewChat(threads, agentId, userId, expectedRuntime)
+  );
 }

@@ -20,9 +20,12 @@ import {
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
-import { DEFAULT_TAG_COLOR, DELIVERY_LANES } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  DEFAULT_TAG_COLOR,
+  DELIVERY_LANES,
+} from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
-import type { Sprint } from "@decocms/shared/sprints";
 import type { ComponentType } from "react";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
@@ -33,7 +36,6 @@ export {
 } from "@decocms/shared/task-board";
 
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
-export type { Sprint };
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
 export type TaskBoardItemType = NonNullable<TaskBoardItem["type"]>;
@@ -75,28 +77,6 @@ export function isLiveAttempt(thread: {
 /** Org tag, as returned by TAGS_LIST/TAGS_CREATE (same shape a task's `tags`
  *  snapshot is drawn from). */
 export type OrgTag = ToolOutput<"TAGS_LIST">["tags"][number];
-
-/** UTC: a sprint's dates are calendar days in Jira, so rendering them in the
- *  viewer's zone shows the day before for anyone west of UTC. */
-const SPRINT_DATE_FMT = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
-
-/** A sprint's span as `Jan 5 – Jan 18`, or null when it carries no dates (a
- *  planned sprint nobody has scheduled yet). */
-export function formatSprintDates(sprint: Sprint): string | null {
-  const day = (value: string | null) => {
-    if (!value) return null;
-    const ms = Date.parse(value);
-    return Number.isNaN(ms) ? null : SPRINT_DATE_FMT.format(new Date(ms));
-  };
-  const start = day(sprint.startsAt);
-  const end = day(sprint.endsAt);
-  if (!start && !end) return null;
-  return start && end ? `${start} – ${end}` : (start ?? end);
-}
 
 /**
  * A task is "blocked" when one of its agent threads is waiting on human input
@@ -213,28 +193,16 @@ export type Member = {
   user?: { name?: string | null; image?: string | null };
 };
 
-export const STATUSES: TaskBoardItemStatus[] = [
-  "triage",
-  "todo",
-  "in_progress",
-  "in_review",
-  "approved",
-  "merged",
-  "post_deploy_validation",
-  "done",
-  "archived",
-];
-
 /**
  * Lanes that don't earn a board column by default — they sit collapsed under
- * "Hidden columns" until shown. They stay in `STATUSES`, so "Move to", drag
- * targets and status validation still know about them.
+ * "Hidden columns" until shown. They stay in `CANONICAL_COLUMN_KEYS`, so "Move
+ * to", drag targets and status validation still know about them.
  */
-export const HIDDEN_STATUSES: string[] = ["archived"];
+export const HIDDEN_STATUSES: CanonicalColumnKey[] = ["archived"];
 
-/** Keyed by Studio's OWN lanes, not by a card's status. Exhaustive on purpose:
- *  adding a lane is a compile error here. A card's status is any column key,
- *  which is what `laneVisual` and `laneLabel` are for. */
+/** Keyed by the board's lanes. Exhaustive on purpose: adding a lane is a
+ *  compile error here. A card's status arrives as a plain string, which is
+ *  what `laneVisual` and `laneHeader` are for. */
 export const STATUS_CONFIG: Record<
   CanonicalColumnKey,
   { labelKey: TranslationKey; icon: typeof Circle; iconClassName: string }
@@ -287,22 +255,22 @@ export const STATUS_CONFIG: Record<
 };
 
 /** What a lane looks like, for a status we may not recognise. */
-export type LaneVisual = {
+type LaneVisual = {
   icon: typeof Circle;
   iconClassName: string;
 };
 
-/** Neutral stand-in for a column Studio did not name. An org board's columns
- *  come from its tracker, so there is no icon of ours and no translation. */
+/** Neutral stand-in for a status this bundle does not know — a card written by
+ *  a server one lane ahead of the client it is talking to. */
 const UNKNOWN_LANE: LaneVisual = {
   icon: Circle,
   iconClassName: "text-muted-foreground",
 };
 
-/** Widened on purpose. `STATUS_CONFIG` is exhaustive over Studio's own lanes —
- *  that is what makes adding one a compile error — but a card's status is any
- *  column key, and indexing the closed Record would let the compiler believe
- *  every lookup hits. */
+/** Widened on purpose. `STATUS_CONFIG` is exhaustive over the board's lanes —
+ *  that is what makes adding one a compile error — but a card's status is a
+ *  plain string on the wire, and indexing the closed Record would let the
+ *  compiler believe every lookup hits. */
 const LANE_VISUALS: Record<string, LaneVisual> = STATUS_CONFIG;
 
 export function laneVisual(status: string): LaneVisual {
@@ -310,20 +278,19 @@ export function laneVisual(status: string): LaneVisual {
 }
 
 /**
- * What to call a lane.
- *
- * Studio's own lanes are translated; a column mirrored from a tracker is
- * called whatever that tracker calls it, which is not ours to translate. Pass
- * `title` when the board read gave you one — callers without it get the raw
- * key, which is still the name the team uses.
+ * How a lane reads: the translated name of one of the board's lanes and its
+ * icon. A status this bundle does not know is named by its raw key and drawn
+ * neutral rather than hidden — the card is still the org's card.
  */
-export function laneLabel(
+export function laneHeader(
   status: string,
   t: (key: TranslationKey) => string,
-  title?: string,
-): string {
+): { label: string; visual: LaneVisual } {
   const known = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG];
-  return known ? t(known.labelKey) : (title ?? status);
+  return {
+    label: known ? t(known.labelKey) : status,
+    visual: laneVisual(status),
+  };
 }
 
 export const TASK_TYPES: TaskBoardItemType[] = [
@@ -383,20 +350,19 @@ export const TASK_TYPE_CONFIG: Record<
 };
 
 /** True for one of the post-merge delivery lanes. */
-export function isDeliveryLane(status: string): boolean {
+function isDeliveryLane(status: string): boolean {
   return (DELIVERY_LANES as string[]).includes(status);
 }
 
 /**
- * Lanes a card may be MOVED to — "Move to", the status dropdown, drag targets.
- * With the delivery lanes off they aren't offered, so nobody can put a card
- * somewhere the org's state machine doesn't ship to. Rendering a lane's own
- * label is a separate question, always answered by `STATUS_CONFIG`.
+ * Lanes a card may be MOVED to — "Move to", the status dropdown. With the
+ * delivery lanes off they aren't offered, so nobody can put a card somewhere
+ * the org's state machine doesn't ship to.
  */
-export function moveTargets(deliveryEnabled: boolean): TaskBoardItemStatus[] {
-  return deliveryEnabled
-    ? STATUSES
-    : STATUSES.filter((s) => !isDeliveryLane(s));
+export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
+  return CANONICAL_COLUMN_KEYS.filter(
+    (key) => deliveryEnabled || !isDeliveryLane(key),
+  );
 }
 
 /**
@@ -407,50 +373,61 @@ export function moveTargets(deliveryEnabled: boolean): TaskBoardItemStatus[] {
  * absent while empty, but reappears in the drawer the moment a card sits in it.
  */
 export function laneVisibility({
-  columns,
   deliveryEnabled,
   shownLanes,
   occupied,
 }: {
-  /** The board's own columns, left to right, as the server sent them. Empty
-   *  only while the read is in flight — an org that owns its board and has no
-   *  columns yet genuinely has an empty board, and rendering Studio's lanes
-   *  instead would file its cards under lanes nobody chose. */
-  columns: readonly { key: string }[];
   deliveryEnabled: boolean;
   /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
   shownLanes: readonly string[];
   occupied: readonly string[];
 }): {
-  lanes: string[];
-  hidden: string[];
-  hideable: string[];
+  lanes: CanonicalColumnKey[];
+  hidden: CanonicalColumnKey[];
+  hideable: CanonicalColumnKey[];
 } {
-  const known = columns
-    .map((column) => column.key)
-    .filter(
-      (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
-    );
+  const known = CANONICAL_COLUMN_KEYS.filter(
+    (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
+  );
   const hideable = known.filter(
     (s) =>
       HIDDEN_STATUSES.includes(s) || (!deliveryEnabled && isDeliveryLane(s)),
   );
   const hidden = hideable.filter((s) => !shownLanes.includes(s));
+  return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
+}
 
-  // A status no column accounts for, but cards are sitting in. Appended as its
-  // own lane rather than hidden or re-filed: a card the board cannot place is
-  // still the org's card, and rendering it under a column we picked would be
-  // us deciding something only they can. Deliberately not hideable — hiding it
-  // is the invisibility this exists to prevent. It goes away when the last card
-  // leaves, the same way a column the tracker dropped does.
-  const placed = new Set(known);
-  const unplaced = [...new Set(occupied)].filter((s) => !placed.has(s)).sort();
+/** dnd-kit id prefix for a lane's own droppable — the empty space below the
+ *  last card. Anything else `over` reports is a card id. */
+export const LANE_DROPPABLE_PREFIX = "lane:";
 
-  return {
-    lanes: [...known.filter((s) => !hidden.includes(s)), ...unplaced],
-    hidden,
-    hideable,
-  };
+/** True for one of the board's columns — the only place a drop may land. */
+function isColumnKey(status: string): status is CanonicalColumnKey {
+  return (CANONICAL_COLUMN_KEYS as readonly string[]).includes(status);
+}
+
+/**
+ * Where a drag currently sits, or null when it sits nowhere it may land.
+ *
+ * Two ways to be over a lane — its own droppable, or a card in it — and one
+ * rule over both: the landing has to be one of the board's columns, else the
+ * server rejects the write and the drop only looks like it worked until the
+ * list refetches.
+ */
+export function dropLane({
+  overId,
+  statusOf,
+}: {
+  overId: string | number | undefined;
+  /** A card's lane, by card id. */
+  statusOf: (cardId: string) => string | undefined;
+}): CanonicalColumnKey | null {
+  if (overId === undefined) return null;
+  const id = String(overId);
+  const status = id.startsWith(LANE_DROPPABLE_PREFIX)
+    ? id.slice(LANE_DROPPABLE_PREFIX.length)
+    : statusOf(id);
+  return status !== undefined && isColumnKey(status) ? status : null;
 }
 
 export const PRIORITIES: TaskBoardItemPriority[] = [

@@ -1,57 +1,33 @@
-/**
- * The main-panel view as a URL: `/$org/agents/{-$project}/{-$panel}`.
- *
- * `?main=` used to conflate two things — WHICH view is showing, and WHETHER the
- * main panel is open at all (the `0` sentinel) — which is exactly why a view
- * could not be a path segment. They are split now:
- *
- *   path segment   which view      /$org/agents/vir_x/preview
- *   ?mainpanel=    is it open      a boolean, mirroring ?sidepanel
- *
- * so closing the panel no longer erases which view you were on, and every view
- * has one shareable address.
- *
- * GRAMMAR. The app keeps ONE vocabulary internally — the tab id (see
- * `tab-id.ts`), which the tab bar, the per-thread layout memory and the bar's
- * order storage all speak. This module is the single boundary that turns a tab
- * id into a URL and back. Eight fixed views are plain words and become the
- * segment as-is; the six kinds that carry a payload put the KIND in the path
- * and the payload in search:
- *
- *   code:<path>          → /agents/:project/code?file=src/app.tsx
- *   file:<key>           → /agents/:project/file?key=org-fs:outputs/…
- *   deck:<path>          → /agents/:project/deck?deck=decks/q3.html
- *   library-file:<path>  → /agents/:project/library-file?path=home/docs/a.md
- *   app:<conn>:<tool>    → /agents/:project/app?connection=conn_1&tool=get_orders
- *   automation:<id>      → /agents/:project/automations?automation=<id>
- *
- * A payload rides in search rather than in nested segments (`/app/:conn/:tool`)
- * on purpose: paths carry `/`, so `code`/`deck`/`file`/`library-file` could not
- * be segments at all without re-encoding, and giving only `app` and
- * `automations` nested routes would split one grammar into two shapes and add
- * dynamic siblings under the chat node — the ranking hazard `router.tsx`
- * documents. One optional segment, one route, one parser.
- *
- * AMBIGUITY. `{-$project}` and `{-$panel}` are both optional, so `/agents/preview`
- * (a view on the Super Agent, which has no project segment) matches with
- * `project="preview"`: TanStack fills the first optional segment. Project ids
- * are opaque prefixed ids (`vir_…`, `decopilot_…`) and never plain words, so
- * {@link resolveChatSegments} reads a lone segment from the known panel
- * vocabulary back as the panel. Every reader of the pair goes through it —
- * `useActivePanelTabId` and `usePanelNavigate` here, and everything else via
- * `useRouteProjectId` (`layouts/thread-route.ts`). Reading `params.project`
- * raw hands a VIEW name to the agent lookup, and the workspace renders
- * "Agent not found" for a URL the panel writers themselves mint.
- */
+/** The main-panel view as a URL: `/$org/agents/{-$panel}?virtualmcpid=<id>`.
+ *  WHICH view is the segment; WHETHER the panel is open is `?mainpanel`, so
+ *  closing it no longer erases the view and every view has one shareable
+ *  address. The project is search, not a segment — it has to mean the same
+ *  thing on `/tasks` and `/library`.
+ *  GRAMMAR. One internal vocabulary, the tab id (`tab-id.ts`), spoken by the
+ *  tab bar, the per-thread layout memory and the bar's order storage. This
+ *  module is the single boundary turning a tab id into a URL and back. Fixed
+ *  views are plain words and become the segment as-is; the kinds that carry a
+ *  payload put the KIND in the path and the payload in search —
+ *  `code:<path>` → `/agents/code?file=src/app.tsx`, `app:<conn>:<tool>` →
+ *  `/agents/app?connection=conn_1&tool=get_orders`, and so on for `file`,
+ *  `deck`, `library-file` and `automations`. A payload rides in search rather
+ *  than nested segments because paths carry `/`, and because nesting only some
+ *  of them would split one grammar into two shapes.
+ *  A lone `/agents/<word>` is unambiguous now that only one segment is
+ *  optional, but the vocabulary below still classifies it: the route's
+ *  `beforeLoad` uses {@link isKnownPanelSegment} to tell a view name from a
+ *  bookmarked project id and move the latter into `?virtualmcpid=`. */
 
 import {
   FIXED_SYSTEM_TABS,
+  GATED_CONTROL_PLANE_TABS,
   formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
   formatLibraryFileTabId,
   formatPinnedViewTabId,
   isLegacySettingsTab,
+  normalizePanelSegment,
   OVERLAY_TABS,
   parseAutomationTabId,
   parseCodeTabId,
@@ -79,6 +55,9 @@ export interface PanelPayload {
   tool?: string;
   /** `automations` — the automation whose detail is open (absent = the list). */
   automation?: string;
+  /** `site-editor` — {@link CONTENT_MAIN} while the surface is on Content;
+   *  absent for the plain preview. */
+  main?: string;
 }
 
 /** Every payload key, so a writer can clear the ones it does not use. */
@@ -90,7 +69,23 @@ export const PANEL_PAYLOAD_KEYS = [
   "connection",
   "tool",
   "automation",
+  "main",
 ] as const satisfies ReadonlyArray<keyof PanelPayload>;
+
+/**
+ * Content's address: `?main=content` on the Site Editor segment.
+ *
+ * Preview, Content and Code are one surface, so they are one segment
+ * (`/agents/site-editor`) and the view within it is this parameter — which
+ * makes Content shareable and reload-stable without minting a second home for
+ * a place the sidebar already has one row for.
+ *
+ * The name is deliberate and the collision is real: `main` is otherwise the
+ * LEGACY param whose whole job is to translate itself into a segment. This one
+ * value is carved out of that translation (see `legacy-route-translation.ts`);
+ * every other `main=<tab>` still retires exactly as it did.
+ */
+export const CONTENT_MAIN = "content";
 
 /** A view's URL: the `{-$panel}` segment plus the search that parameterizes it. */
 export interface PanelLocation {
@@ -113,7 +108,10 @@ export function clearPanelPayload(): PanelPayload {
  * project too.
  */
 const KNOWN_PANEL_SEGMENTS: ReadonlySet<string> = new Set<string>([
-  ...FIXED_SYSTEM_TABS,
+  // Gated, per-site control-plane tabs are excluded: they always appear with a
+  // project, so a lone `/agents/<segment>` naming one of them is a project, not
+  // a panel word (otherwise a project slugged "hosting"/"analytics"/etc. breaks).
+  ...FIXED_SYSTEM_TABS.filter((tab) => !GATED_CONTROL_PLANE_TABS.has(tab)),
   ...OVERLAY_TABS,
   "app",
   "file",
@@ -123,6 +121,9 @@ const KNOWN_PANEL_SEGMENTS: ReadonlySet<string> = new Set<string>([
   "instructions",
   "connections",
   "layout",
+  /** Renamed to `site-editor`; still a view name, so a bookmark carrying it is
+   *  not mistaken for a project id. `tabIdForPanel` normalises it. */
+  "preview",
 ]);
 
 /**
@@ -131,7 +132,13 @@ const KNOWN_PANEL_SEGMENTS: ReadonlySet<string> = new Set<string>([
  * map to live with the other route literals (`use-destination-route.ts`), so
  * TanStack type-checks them; the vocabulary lives here, with the grammar.
  */
-const DESTINATION_PANELS = ["board", "files", "reports", "overview"] as const;
+const DESTINATION_PANELS = [
+  "board",
+  "files",
+  "reports",
+  "overview",
+  "discover",
+] as const;
 
 export type DestinationPanel = (typeof DESTINATION_PANELS)[number];
 
@@ -212,7 +219,19 @@ export function panelLocationForTab(tabId: string): PanelLocation {
   /** The three merged tabs share one view, so they share one address. */
   if (isLegacySettingsTab(tabId)) return { panel: "settings", payload };
 
-  return { panel: tabId, payload };
+  /** Content is a view ON the Site Editor, not a segment beside it — see
+   *  {@link CONTENT_MAIN}. Every other view clears `main` along with the rest
+   *  of the payload, so leaving Content is what returns the plain preview. */
+  if (tabId === CONTENT_MAIN) {
+    return {
+      panel: "site-editor",
+      payload: { ...payload, main: CONTENT_MAIN },
+    };
+  }
+
+  /** A renamed id (a stored default, a legacy `?main=`) is written out under
+   *  its current name — the alias is accepted on input, never emitted. */
+  return { panel: normalizePanelSegment(tabId), payload };
 }
 
 /**
@@ -245,7 +264,15 @@ export function tabIdForPanel(
       return payload.path ? formatLibraryFileTabId(payload.path) : undefined;
     case "code":
       return payload.file ? formatCodeTabId(payload.file) : "code";
-    default:
-      return panel;
+    default: {
+      const view = normalizePanelSegment(panel);
+      /** The Site Editor's own view lives in search — `?main=content` is
+       *  Content, its absence is the preview. `content` also still arrives as
+       *  a SEGMENT, from links minted before it moved, and resolves to the
+       *  same view. */
+      return view === "site-editor" && payload.main === CONTENT_MAIN
+        ? CONTENT_MAIN
+        : view;
+    }
   }
 }

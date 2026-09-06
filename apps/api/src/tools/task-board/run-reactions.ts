@@ -32,17 +32,19 @@ import type { OrganizationBillingStorage } from "@/storage/organization-billing"
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
+import { invalidatePrCards } from "./prs-get";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
   isReportsTask,
+  LANES,
   SUPER_AGENT_ASSIGNEE_ID,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { LANE_RANK, inReviewPhase, laneRank } from "./lanes";
+import { LANE_RANK, inReviewPhase, laneRank, atOrBefore } from "./lanes";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 
@@ -66,9 +68,7 @@ function captureTaskRunEvent(
   });
 }
 
-/** Push a task board item change to every SSE listener on its org. Also the
- *  one funnel every board write passes through, so it feeds the Jira status
- *  push — dynamic import because the jira sync itself imports this module. */
+/** Push a task board item change to every SSE listener on its org. */
 export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
   sseHub.emit(orgId, {
     id: crypto.randomUUID(),
@@ -78,13 +78,6 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
     data: item,
     time: new Date().toISOString(),
   });
-  void import("@/jira/dbos-jira-sync")
-    .then((jira) => jira.maybeEnqueueJiraStatusPush(orgId, item))
-    .catch((err) => {
-      // Swallowing this silently would make the whole Jira status push dead on
-      // arrival with no signal anywhere — the enqueue logs its own failures.
-      console.warn("[jira] status push hook unavailable:", err);
-    });
 }
 
 /** Push a task board item deletion to every SSE listener on its org. */
@@ -135,34 +128,35 @@ export async function resolveRunTaskTargets(
 }
 
 /**
- * Advance the run's linked task board item(s) forward to `status` and
+ * Advance the run's linked task board item(s) forward to this board's `lane` and
  * broadcast each move. Resolves the linked item(s) from `runMetadata` first
  * (set at enqueue for the task's own run), falling back to the
  * `task_board_item_threads` link by `threadId` — the fallback is what makes
  * this fire for a re-prompted, repo-backed task's second PR, which carries no
- * run metadata. No-op when neither resolves, when an item is gone, or when
- * the target status wouldn't move its card forward. Best-effort: a failure
+ * run metadata. No-op when neither resolves, when this board has no column for
+ * `lane`, when an item is gone, or when the target wouldn't move the card
+ * forward. Best-effort: a failure
  * here never disturbs the agent run.
  */
 export async function advanceTaskBoardForRun(
   ctx: StudioContext,
-  status: string,
+  lane: keyof typeof LANES,
   threadId?: string,
 ): Promise<void> {
   const orgId = ctx.organization?.id;
   if (!orgId) return;
   try {
+    const status = LANES[lane];
     for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
       const current = await ctx.storage.taskBoard.getById(itemId, orgId);
-      // ponytail: read-then-write rank guard. A single run's transitions are
-      // sequential, so the race window is negligible; it buys idempotency (a
-      // repeated PR tool call, or in_progress re-fired on a DBOS retry, won't
-      // regress a card that's already further along). A status with no rank is
-      // a column Studio did not define, and inventing an order for someone
-      // else's columns would be worse than not guarding.
-      const to = laneRank(status);
-      const from = laneRank(current?.status ?? "");
-      if (!current || (to !== null && from !== null && to <= from)) continue;
+      if (!current) continue;
+      // Read-then-write guard, by lane order. A single run's transitions are
+      // sequential, so the race window is negligible; it buys idempotency — a
+      // repeated PR tool call, or a run start re-fired on a DBOS retry, must
+      // not drag a card that is already further right back to this lane.
+      if (current.status === status || !atOrBefore(current.status, status)) {
+        continue;
+      }
       const item = await ctx.storage.taskBoard.update(
         itemId,
         orgId,
@@ -185,7 +179,7 @@ export async function advanceTaskBoardForRun(
       // The PR-open hook no longer comes through here — it opens a review
       // cycle instead (`openReviewCycleForRun`) and emits its own event — so
       // the only advance left to report is the run starting.
-      if (status === "in_progress") {
+      if (lane === "progress") {
         captureTaskRunEvent("task_run_started", orgId, item, {
           from: current.status,
         });
@@ -265,6 +259,8 @@ export async function capturePrForRun(
         connectionId: connectionId ?? null,
       });
     }
+    // Drop the cached cards so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+    if (targets.length > 0) await invalidatePrCards(orgId);
   } catch (err) {
     console.error("[task-board] PR capture failed", err);
   }
@@ -386,7 +382,7 @@ export async function reactToFailedTaskRun(
           .relabelDeliveredFailure(threadId, orgId, DELIVERED_FAILURE_REASON)
           .catch(() => {});
       }
-      if (item.status !== "in_progress") continue;
+      if (item.status !== LANES.progress) continue;
       // A REVIEWER's run failed, not the author's: the card is In Progress only
       // because that is where a card under review sits now. Retrying it here
       // would dispatch a fresh Super Agent run over a PR that is waiting for a
@@ -422,8 +418,8 @@ export async function reactToFailedTaskRun(
             action: "status_changed",
             actorId: null,
             data: {
-              from: "in_progress",
-              to: "in_progress",
+              from: LANES.progress,
+              to: LANES.progress,
               retry: attempts + 1,
               of: budget,
               reason: failure.errorText ?? failure.kind,
@@ -444,8 +440,8 @@ export async function reactToFailedTaskRun(
           action: "status_changed",
           actorId: null,
           data: {
-            from: "in_progress",
-            to: "todo",
+            from: LANES.progress,
+            to: LANES.queue,
             reason: failure.errorText ?? failure.kind,
             retriesSpent: attempts,
           },
@@ -528,12 +524,12 @@ export async function parkReviewedCardForHuman(
   ctx: StudioContext,
   item: TaskBoardItem,
 ): Promise<void> {
-  if (item.status !== "in_progress" || !inReviewPhase(item)) return;
+  if (item.status !== LANES.progress || !inReviewPhase(item)) return;
   try {
     const parked = await ctx.storage.taskBoard.update(
       item.id,
       item.organizationId,
-      { status: "in_review" },
+      { status: LANES.review },
       item.updatedBy,
     );
     await ctx.storage.taskBoard
@@ -541,7 +537,7 @@ export async function parkReviewedCardForHuman(
         taskBoardItemId: item.id,
         action: "status_changed",
         actorId: null,
-        data: { from: item.status, to: "in_review" },
+        data: { from: item.status, to: LANES.review },
       })
       .catch(() => {});
     emitTaskBoardUpdated(item.organizationId, parked);
@@ -578,7 +574,14 @@ export async function handTaskToHuman(
   const orgId = item.organizationId;
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   try {
-    await parkReviewedCardForHuman(ctx, item);
+    // Best-effort: parking needs to know the board, and a card must still
+    // reach a person when that read fails.
+    await parkReviewedCardForHuman(ctx, item).catch((err) =>
+      console.warn(
+        `[task-board] parking ${item.id} before hand-off failed`,
+        err,
+      ),
+    );
     // Re-checks the assignee against the DB, not this stale `item`.
     const handed = await ctx.storage.taskBoard.unassignSuperAgent(
       item.id,

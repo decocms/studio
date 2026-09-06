@@ -7,7 +7,8 @@ export const sandbox = {
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
-  "sandbox.availableSectionEditor.editingBreadcrumb": "Navegação de edição",
+  "sandbox.availableSectionEditor.editingBreadcrumb":
+    "Trilha de navegação de edição",
   "sandbox.availableSectionEditor.localEditsHint":
     "{typeLabel} — edições permanecem locais até que você salve isto como uma seção global.",
   "sandbox.availableSectionEditor.noEditableFields":
@@ -257,6 +258,7 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "Mais ações",
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
+  "sandbox.itemRow.selectItem": "Selecionar {title}",
   "sandbox.listBlocks.addCard": "Adicionar card",
   "sandbox.listBlocks.addItem": "Adicionar item",
   "sandbox.listBlocks.addStat": "Adicionar estatística",
@@ -445,39 +447,29 @@ export const sandbox = {
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":
     "Clique em qualquer elemento para perguntar à IA",
-  "sandbox.preview.cms": "CMS",
   "sandbox.preview.collapseTerminal": "Recolher terminal",
-  "sandbox.preview.editContent": "Editar conteúdo",
-  "sandbox.preview.exitEditor": "Sair do editor",
   "sandbox.preview.expandTerminal": "Expandir terminal",
   "sandbox.preview.resizeTerminal": "Redimensionar terminal",
-  "sandbox.preview.copyCurrentUrl": "Copiar URL atual",
   "sandbox.preview.createNewPage": "Criar nova página",
   "sandbox.preview.devServerPreviewTitle":
     "Visualização do servidor de desenvolvimento",
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Celular (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
-  "sandbox.preview.editSeo": "Editar SEO",
   "sandbox.preview.enterToGo": "Enter para ir",
-  "sandbox.preview.failedToCopyUrl": "Falha ao copiar URL",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
   "sandbox.preview.globalLoaders": "Loaders globais",
-  "sandbox.preview.invalidPageBlockKey": "Chave de bloco de página inválida",
   "sandbox.preview.loaderBadge": "Loader",
   "sandbox.preview.loaderNoLongerExists": "Este loader não existe mais.",
-  "sandbox.preview.moreOptions": "Mais opções",
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",
   "sandbox.preview.noSearchResults":
     "Nenhum resultado corresponde à sua pesquisa.",
   "sandbox.preview.noServerRunning": "Nenhum servidor em execução",
-  "sandbox.preview.openInCursor": "Abrir no Cursor",
   "sandbox.preview.openInBrowser": "Abrir no navegador",
   "sandbox.preview.failedToOpenInBrowser":
     "Não foi possível abrir seu navegador",
   "sandbox.preview.openInNewTab": "Abrir em nova aba",
-  "sandbox.preview.openInVscode": "Abrir no VSCode",
   "sandbox.preview.pageAlreadyExists":
     'Uma página com o caminho "{path}" já existe.',
   "sandbox.preview.pageCreated": 'Página "{name}" criada',
@@ -491,10 +483,7 @@ export const sandbox = {
     "Mostrando seu site publicado. Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
-  "sandbox.preview.urlCopiedToClipboard":
-    "URL copiada para a área de transferência",
   "sandbox.preview.valueForParam": "Valor de {label}",
-  "sandbox.preview.viewJson": "Visualizar JSON",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
   "sandbox.productBlocks.addProductsButton": "Adicionar produtos",
@@ -591,20 +580,19 @@ export const sandbox = {
     "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
+  "sandbox.cmsSettings.fastPreviewInPlace.label":
+    "Preview instantâneo (experimental)",
+  "sandbox.cmsSettings.fastPreviewInPlace.description":
+    "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em sites que têm a rota /live/previews.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.cmsSettings.contentEditing.description":
-    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
-  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Quem edita abre o CMS pelo preview quando precisa.",
-  "sandbox.cmsSettings.contentEditing.auto": "Automático",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "O preview abre o CMS assim que for possível editar o conteúdo.",
+    "Se este projeto oferece um CMS.",
+  "sandbox.cmsSettings.contentEditing.on": "Ativado",
+  "sandbox.cmsSettings.contentEditing.onDescription":
+    "O Editor do Site oferece Conteúdo e abre Blocos ao lado do Preview no desktop.",
   "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
-  "sandbox.cmsUnavailable.title":
-    "Este chat não consegue pré-visualizar seu site",
+    "Sem a visão Conteúdo nem o formulário de Blocos no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
   "sandbox.cmsUnavailable.noPreviewServer":
     "É uma sessão de CMS, mas este projeto não tem servidor de preview configurado.",
   "sandbox.cmsUnavailable.noRepo":
@@ -621,7 +609,7 @@ export const sandbox = {
   "sandbox.repoRow.label": "Repositório",
   "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
   "sandbox.repoRow.tooltipContent":
-    "O repositório GitHub conectado para este agente. Gerencie em Conexões.",
+    "O repositório GitHub conectado para este projeto. Gerencie em Conexões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.backToList": "Voltar para a lista",
@@ -631,7 +619,7 @@ export const sandbox = {
   "sandbox.runnableBlockEditor.collapseResult": "Recolher resultado",
   "sandbox.runnableBlockEditor.editAsJson": "Editar como JSON",
   "sandbox.runnableBlockEditor.editingBreadcrumb":
-    "Trilha de migalhas da edição",
+    "Trilha de navegação de edição",
   "sandbox.runnableBlockEditor.expand": "Expandir",
   "sandbox.runnableBlockEditor.expandResult": "Expandir resultado",
   "sandbox.runnableBlockEditor.failedToRun": "Falha ao executar {singular}",
@@ -686,7 +674,8 @@ export const sandbox = {
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.savedSectionEditor.editAsJson": "Editar como JSON",
-  "sandbox.savedSectionEditor.editingBreadcrumb": "Trilha de edição",
+  "sandbox.savedSectionEditor.editingBreadcrumb":
+    "Trilha de navegação de edição",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Seção global — alterações são salvas automaticamente e aplicadas em todos os locais onde é usada.",
   "sandbox.savedSectionEditor.invalidJsonError":
@@ -710,7 +699,7 @@ export const sandbox = {
     "A conexão do GitHub usada neste chat foi removida. Vincule o repositório novamente para iniciar o sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Vincular repositório",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
-    "O repositório GitHub deste agente não está autenticado. Reconecte em Conexões e tente novamente.",
+    "O repositório GitHub deste projeto não está autenticado. Reconecte em Conexões e tente novamente.",
   "sandbox.stateCard.reconnectGithub": "Reconectar GitHub",
   "sandbox.stateCard.resume": "Retomar",
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",
@@ -761,7 +750,14 @@ export const sandbox = {
   "sandbox.submoduleCredentialsField.title": "Credenciais de submódulo",
   "sandbox.submoduleCredentialsField.tokenLabel": "Token de acesso pessoal",
   "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
+  "sandbox.tableBlock.addColumn": "Adicionar coluna",
+  "sandbox.tableBlock.addRow": "Adicionar linha",
+  "sandbox.tableBlock.headerPlaceholder": "Cabeçalho {n}",
+  "sandbox.tableBlock.noRowsYet": "Nenhuma linha ainda — adicione uma abaixo.",
+  "sandbox.tableBlock.removeColumn": "Remover coluna {n}",
+  "sandbox.tableBlock.removeRow": "Remover linha {n}",
   "sandbox.toolbar.closeTab": "Fechar {tab}",
+  "sandbox.toolbar.moreActions": "Mais ações",
   "sandbox.toolbar.noScriptsFound": "Nenhum script encontrado",
   "sandbox.toolbar.restart": "Reiniciar",
   "sandbox.toolbar.resume": "Retomar",

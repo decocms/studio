@@ -42,22 +42,20 @@ function renderField(ui: React.ReactElement) {
 }
 
 describe("ContentEditingField", () => {
-  const modes: Array<CmsMode | null> = [null, "off", "manual", "auto"];
+  const modes: Array<CmsMode | null> = [null, "off", "on"];
 
   test("describes the field, not the selected mode", () => {
     const descriptions = modes.map(
       (cms) => renderField(<CmsHarness cms={cms} />).description,
     );
     expect(new Set(descriptions).size).toBe(1);
-    expect(descriptions[0]).toBe(
-      "Whether this agent offers a CMS, and where the preview lands when it does.",
-    );
+    expect(descriptions[0]).toBe("Whether this project offers a CMS.");
   });
 
   test("shows the selected mode in the trigger, and only its label", () => {
     expect(renderField(<CmsHarness cms="off" />).trigger).toBe("Disabled");
-    expect(renderField(<CmsHarness cms="auto" />).trigger).toBe("Auto");
-    // Absent mode reads as `manual` — same fallback every other reader uses.
+    expect(renderField(<CmsHarness cms="on" />).trigger).toBe("Enabled");
+    // Absent mode reads as `on` — same fallback every other reader uses.
     expect(renderField(<CmsHarness cms={null} />).trigger).toBe("Enabled");
   });
 });
@@ -69,7 +67,7 @@ describe("PublishPolicyField", () => {
     );
     expect(new Set(descriptions).size).toBe(1);
     expect(descriptions[0]).toBe(
-      "Control when this agent's changes can be published directly, skipping pull-request review.",
+      "Control when this project's changes can be published directly, skipping pull-request review.",
     );
   });
 

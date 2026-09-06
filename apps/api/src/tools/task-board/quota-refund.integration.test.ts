@@ -25,6 +25,7 @@ import {
 } from "../../billing/task-quota";
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 
+/** Studio's own board, which is what these fixtures run on. */
 const ORG = "org_refund_wiring";
 const USER = "user_refund_wiring";
 

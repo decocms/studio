@@ -1,14 +1,18 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  BarChartSquare02,
+  CheckDone01,
   Code02,
   File02,
   Folder,
   GitBranch01,
   Globe01,
+  Globe02,
   Home02,
   LayoutAlt04,
   Lightning01,
   Package,
+  Server01,
 } from "@untitledui/icons";
 import { getIconComponent, parseIconString } from "../../components/agent-icon";
 
@@ -25,10 +29,14 @@ export type SystemTabId =
   | "overview"
   | "settings"
   | "automations"
-  | "preview"
+  | "site-editor"
   | "code"
   | "content"
   | "assets"
+  | "hosting"
+  | "e2e"
+  | "analytics"
+  | "cdn"
   | "git"
   | "files";
 
@@ -36,10 +44,14 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   overview: Home02,
   settings: LayoutAlt04,
   automations: Lightning01,
-  preview: Globe01,
+  "site-editor": Globe01,
   code: Code02,
   content: File02,
   assets: Package,
+  hosting: Server01,
+  e2e: CheckDone01,
+  analytics: BarChartSquare02,
+  cdn: Globe02,
   git: GitBranch01,
   files: Folder,
 };

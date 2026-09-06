@@ -36,6 +36,31 @@ describe("classifyRunFailure", () => {
     }
   });
 
+  test("the bare abort-signal message is a timeout, not a generic error", () => {
+    // Verbatim from thread 3a3d9465: an AbortSignal.timeout DOMException that
+    // reached the user unwrapped and classified as nothing.
+    expect(classifyRunFailure("Error: The operation timed out.").kind).toBe(
+      "timeout",
+    );
+    expect(classifyRunFailure("fetch failed: ETIMEDOUT").kind).toBe("timeout");
+  });
+
+  test("a timeout that names a more specific cause keeps that kind", () => {
+    // "timed out" is a phrase almost any failure can carry in passing, so the
+    // timeout pattern is last: it must never re-bucket a run that a named
+    // cause already classified — `failure_kind` is what analytics GROUP BY.
+    const cases: Array<[string, string]> = [
+      ["Daemon unreachable: The operation timed out.", "sandbox_unreachable"],
+      ["cancelled: run cancelled because the sandbox timed out", "cancelled"],
+      ["API Error: 500 upstream provider timed out", "model_error"],
+      ["429 rate limited after the request timed out", "overloaded"],
+      ["context length exceeded; the retry timed out", "context_length"],
+    ];
+    for (const [text, kind] of cases) {
+      expect(classifyRunFailure(text).kind).toBe(kind);
+    }
+  });
+
   test("unrecognized text keeps exactly today's behavior", () => {
     for (const text of ["something new", "", "   ", null, undefined]) {
       expect(classifyRunFailure(text)).toEqual({ ...GENERIC_RUN_FAILURE });
@@ -46,6 +71,7 @@ describe("classifyRunFailure", () => {
     const texts = [
       "requires more credits",
       "[SANDBOX_UNREACHABLE] x",
+      "Error: The operation timed out.",
       "cancelled: run cancelled",
       "Overloaded.",
       "exceeds the maximum context length",

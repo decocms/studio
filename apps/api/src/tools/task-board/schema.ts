@@ -1,7 +1,10 @@
 import { z } from "zod";
 
-import { SPRINT_STATES } from "@decocms/shared/sprints";
-import { REVIEWER_KINDS, type ReviewerKind } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  REVIEWER_KINDS,
+  type ReviewerKind,
+} from "@decocms/shared/task-board";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
@@ -20,32 +23,8 @@ export const MAX_TASK_REPO_LENGTH = 200;
  *  same reasoning as MAX_TASK_DESCRIPTION_LENGTH. */
 export const MAX_AUTOMATION_PROMPT_LENGTH = 50_000;
 
-/**
- * A card's column, by key.
- *
- * Not an enum: on a board whose columns are the org's own the keys come from
- * their tracker, and a closed union would reject the only values that board
- * has. What an enum used to guarantee is now the board's job — see
- * `assertBoardHasColumn` — because only the board knows which keys are real
- * for the org making the call.
- */
-export const TaskBoardItemStatusSchema = z.string().min(1);
-
-/**
- * A sprint cards can belong to — mirrored from the tracker the board syncs
- * with (today Jira), never authored here.
- *
- * Shipped alongside the items in `TASK_BOARD_ITEM_LIST` rather than as its own
- * tool: it is the sprint filter's option set, the same way `repos` is the repo
- * filter's, and both are needed exactly when the board loads.
- */
-export const SprintSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  state: z.enum(SPRINT_STATES),
-  startsAt: z.string().nullable(),
-  endsAt: z.string().nullable(),
-});
+/** A card's column, by key. */
+export const TaskBoardItemStatusSchema = z.enum(CANONICAL_COLUMN_KEYS);
 
 /**
  * What KIND of work a card is — its shape, not its area.
@@ -181,17 +160,18 @@ export const TaskBoardItemSchema = z.object({
   // `owner/name` of the repo (site) this task pertains to.
   repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
-  /** The sprint this card belongs to — an id from `TASK_BOARD_ITEM_LIST`'s
-   *  `sprints`. Null = backlog. Mirrored from the tracker, not writable here. */
-  sprintId: z.string().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.
   keySeq: z.number().nullable(),
-  // The key this card's issue wears in the tracker (`OS-333`), for a card that
-  // came from one. It is what the card shows, because it is what people say
-  // out loud about it. Null for a card Studio owns.
-  jiraIssueKey: z.string().nullable(),
+  /** Link to the card's issue in an external tracker, for the UI to render as
+   *  a link. Kept OUT of `description` on purpose: the description is quoted
+   *  verbatim into every agent run's prompt, and a URL there is context the run
+   *  does not need and used to act on. Null for a card Studio owns. */
+  externalUrl: z.string().nullable(),
+  /** `jira` for the hidden anchor of a Jira-triggered run — never in
+   *  `TASK_BOARD_ITEM_LIST`; null for a card the board shows. */
+  source: z.enum(["jira"]).nullable(),
   // Infrastructure retries already spent on this card's runs — the budget
   // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
   // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:
