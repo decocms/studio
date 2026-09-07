@@ -1,42 +1,77 @@
 /**
  * The paths a PR's run says it created or edited, read off the PR body.
  *
- * The run authors the PR body itself (`gh pr create`), and its prompt asks it
- * to end that body with a `Preview routes:` list of paths. Concatenated with
- * the deploy preview's origin, that turns one "Open preview" button into the
- * actual pages the change touched.
+ * Concatenated with the deploy preview's origin, they turn one "Open preview"
+ * button into the actual pages the change touched.
+ *
+ * Two shapes are accepted, both anchored on a `Route:` / `Preview routes:`
+ * label so ordinary prose can never become a link: paths on the label's own
+ * line (`**Route:** \`/cliente-vip\``, which runs were already writing before
+ * the prompt asked for anything), or a bullet list under a bare label. Reading
+ * both is what makes the feature work on PRs that predate it.
  *
  * ponytail: parsed from the body rather than persisted on the card. Routes
  * belong to a PR, not to a task (a task can have several, and a re-run replaces
  * them), and `body` is already fetched and on the wire — a column would need a
- * migration, a tool field and its own staleness story. If runs turn out to
- * write the block unreliably, persist it via TASK_BOARD_ITEM_UPDATE instead.
+ * migration, a tool field and its own staleness story, and would know nothing
+ * about existing PRs. If runs write these labels unreliably, persist instead.
  */
 
-const HEADING = /^\s*preview routes:\s*$/i;
-/** `- /path` — a leading `/` is required, so prose bullets don't become links. */
-const ROUTE = /^\s*[-*]\s+(\/\S*)\s*$/;
+/** A `Route:` / `Routes:` / `Preview routes:` label, and whatever follows it on
+ *  the line. Markdown bold/italic around the label is common, so it's tolerated. */
+const LABEL = /^[\s>*_]*(?:preview\s+)?routes?[\s*_]*:[\s*_]*(.*)$/i;
+const BULLET = /^\s*[-*]\s+(.*)$/;
 
 /** No real preview list is longer; caps what one PR body can render. */
 const MAX_ROUTES = 20;
 
+/** Pull absolute paths out of one line of markdown prose. */
+function pathsIn(text: string): string[] {
+  return (
+    text
+      .split(/[\s,;]+/)
+      .map((token) =>
+        // Markdown wrapping (`code`, [label](…), **bold**) and sentence
+        // punctuation sit against the path in real bodies.
+        token
+          .replace(/^[`("'[*_]+/, "")
+          .replace(/[`)"'\]*_.,;:!?]+$/, ""),
+      )
+      // A single leading slash: a bare `//evil.com` is protocol-relative and
+      // would leave the preview host once joined.
+      .filter((token) => token.startsWith("/") && !token.startsWith("//"))
+  );
+}
+
 export function parsePreviewRoutes(body: string | null | undefined): string[] {
   if (!body) return [];
   const lines = body.split("\n");
-  const start = lines.findIndex((l) => HEADING.test(l));
-  if (start === -1) return [];
-
   const routes: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    const match = line.match(ROUTE);
-    // Ends at the first non-bullet line, so a later list isn't swallowed.
-    if (!match?.[1]) break;
-    // `//evil.com` is protocol-relative — it would leave the preview host.
-    if (match[1].startsWith("//")) continue;
-    if (!routes.includes(match[1])) routes.push(match[1]);
-    if (routes.length === MAX_ROUTES) break;
+
+  const add = (found: string[]) => {
+    for (const route of found) {
+      if (!routes.includes(route) && routes.length < MAX_ROUTES) {
+        routes.push(route);
+      }
+    }
+  };
+
+  for (const [index, line] of lines.entries()) {
+    const rest = line.match(LABEL)?.[1];
+    if (rest === undefined) continue;
+    if (rest.trim()) {
+      add(pathsIn(rest));
+      continue;
+    }
+    // A bare label heads a list: take bullets until the first line that isn't
+    // one, so a later unrelated list isn't swallowed.
+    for (const next of lines.slice(index + 1)) {
+      const bullet = next.match(BULLET)?.[1];
+      if (bullet === undefined) break;
+      add(pathsIn(bullet));
+    }
   }
-  return routes;
+  return routes.slice(0, MAX_ROUTES);
 }
 
 /** `https://host/base` + `/path` — one origin, the route's path. */

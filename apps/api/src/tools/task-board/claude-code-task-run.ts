@@ -298,7 +298,7 @@ export function buildClaudeCodeTaskPrompt(
     // is open the PR from some other branch. Replaces `TASK_BOARD_ITEM_PR_LINK`,
     // which a run that died right after `gh pr create` could never call.
     // Parsed back out by `parsePreviewRoutes` (apps/web) — must be exact paths, not prose.
-    "- If your change adds or edits pages a person can open, end the pull request body with a `Preview routes:` line followed by one `- /path` bullet per page (paths only, no host). Skip it entirely when the change has no visible route.",
+    "- If your change adds or edits pages a person can open, name them in the pull request body on a `Route:` line, or on a `Preview routes:` line followed by one `- /path` bullet per page — paths only, no host. Skip it when the change has no visible route.",
     "- Open the pull request from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.",
     // Deliberately NOT "then move it to In Review". Linking the PR is what
     // starts the review (`openReviewCycleIfInProgress`), and the card stays In
