@@ -3,7 +3,7 @@
  * person made.
  *
  * The filter is the whole point. Every org is backfilled with the Studio Pack
- * managers (Agent Manager, Automation Manager, …), so a list that renders
+ * managers (Connection Manager, Automation Manager, …), so a list that renders
  * "all agents" shows scaffolding nobody created — which is what the settings
  * Agents page does today. After filtering, a fresh org's home is the EMPTY
  * state, and that is the common first-run path rather than a rare one.
@@ -67,7 +67,7 @@ test.describe("org home — the agent roster", () => {
 
     /* The backfilled managers are plumbing, not the org's work. If this ever
        fails, the home is rendering the unfiltered list again. */
-    for (const manager of ["Agent Manager", "Automation Manager"]) {
+    for (const manager of ["Connection Manager", "Automation Manager"]) {
       await expect(mainPanel.getByText(manager, { exact: true })).toHaveCount(
         0,
       );

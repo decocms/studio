@@ -1,8 +1,10 @@
 import type { TiptapDoc } from "../types";
 
 export interface ImprovePromptDocInput {
-  managerAgentId: string;
-  managerName: string;
+  /** Manager to delegate to. Omit to address the Super Agent directly — it
+   *  owns the agent CRUD tools itself, so an agent rewrite needs no mention. */
+  managerAgentId?: string;
+  managerName?: string;
   kind: "agent" | "automation";
   id: string;
   instructions: string;
@@ -16,22 +18,20 @@ export interface ImprovePromptDocInput {
  *
  * The mention is shaped so derivePartsFromTiptapDoc emits the standard
  * `[DELEGATE TO AGENT: ...]` directive that Decopilot's SUBTASK tool
- * picks up.
+ * picks up. Without a manager the sentence opens with "Improve the
+ * instructions of ..." and no delegation is requested.
  */
 export function buildImprovePromptDoc(input: ImprovePromptDocInput): TiptapDoc {
   const { managerAgentId, managerName, kind, id, instructions } = input;
 
-  const trailing =
-    ` to improve the instructions of ${kind} "${id}". ` +
+  const tail =
+    `the instructions of ${kind} "${id}". ` +
     `Here are its current instructions.\n` +
     `<current_instructions>${instructions}</current_instructions>`;
 
-  return {
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
+  const content =
+    managerAgentId && managerName
+      ? [
           { type: "text", text: "Use " },
           {
             type: "mention",
@@ -42,9 +42,12 @@ export function buildImprovePromptDoc(input: ImprovePromptDocInput): TiptapDoc {
               metadata: { agentId: managerAgentId, title: managerName },
             },
           },
-          { type: "text", text: trailing },
-        ],
-      },
-    ],
+          { type: "text", text: ` to improve ${tail}` },
+        ]
+      : [{ type: "text", text: `Improve ${tail}` }];
+
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content }],
   };
 }

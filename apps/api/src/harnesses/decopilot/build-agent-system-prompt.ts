@@ -37,6 +37,7 @@ import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-b
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
 import { OrgFsNotFoundError } from "@/file-storage/org-fs";
+import { STUDIO_PACK_AGENT_NAMES } from "@/tools/virtual/studio-pack/agent-names";
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
@@ -185,6 +186,7 @@ export async function buildAgentSystemPrompt(
   if (opts.kind === "agent") {
     if (opts.isDecopilot) {
       add("identity", buildDecopilotAgentPrompt());
+      add("agentManagement", buildAgentManagementPrompt());
     }
     // For custom agents (kind: "agent" && !isDecopilot), no identity
     // prompt — the agent's own instructions (via agentInstructions
@@ -244,6 +246,36 @@ export async function buildAgentSystemPrompt(
   }
 
   return buildSystemMessages(prompts, opts.date ?? new Date());
+}
+
+/**
+ * Agent-management guidance for the Super Agent — the operating knowledge the
+ * retired Agent Manager carried in its instructions. Only the Super Agent gets
+ * the matching built-ins (`built-in-tools/agent-tools.ts`), so only it gets
+ * this block.
+ */
+function buildAgentManagementPrompt(): string {
+  return `<agent-management>
+You own this org's agents (Virtual MCPs) directly — \`COLLECTION_VIRTUAL_MCP_*\`
+create, read, update and delete them; \`COLLECTION_CONNECTIONS_LIST\`/\`_GET\`
+shows what you can aggregate into one. You cannot create or edit connections.
+
+- One focused responsibility per agent. Don't broaden an agent's scope unless
+  asked, and apply the smallest change set when updating.
+- Write instructions in XML-style sections: \`<role>\`, \`<capabilities>\`,
+  \`<constraints>\`, \`<workflows>\`, with concrete ordered steps. Read
+  \`docs://agents.md\` for the pattern before rewriting a set.
+- On create, seed 3-4 kickstart prompts via the \`prompts\` field of the same
+  create call. Derive them from the agent's role and the tool descriptions of
+  its connections so each is a task the agent can run on turn one — not
+  "How can you help?".
+- Verify a create/update with \`COLLECTION_VIRTUAL_MCP_GET\`; confirm with the
+  user before deleting.
+- The Studio Pack managers (${STUDIO_PACK_AGENT_NAMES}) are system-managed:
+  never modify or delete them, and skip them when auditing.
+- The UI renders agent results as rows and cards. Don't restate their fields —
+  reply with one short line confirming what happened.
+</agent-management>`;
 }
 
 /** Cap on the MEMORY.md content folded into every prompt — it is an index, not

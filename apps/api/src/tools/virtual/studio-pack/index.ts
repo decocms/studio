@@ -2,7 +2,6 @@ import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import type { VirtualMCPStorage } from "@/storage/virtual";
 import type { StudioContext } from "@/core/studio-context";
 import type { VirtualMCPEntity } from "../schema";
-import { agentManagerAgent } from "./agent-manager";
 import { apiKeyManagerAgent } from "./api-key-manager";
 import { automationManagerAgent } from "./automation-manager";
 import { brandManagerAgent } from "./brand-manager";
@@ -34,11 +33,14 @@ export type {
  * the org's agents page. Deleting a virtual MCP also deletes its threads —
  * intentional here: these are system-managed board-management chats.
  */
-const RETIRED_AGENT_ID_PREFIXES = ["studio-task-manager_"];
+const RETIRED_AGENT_ID_PREFIXES = [
+  "studio-task-manager_",
+  // Its tools are Super Agent built-ins now (`built-in-tools/agent-tools.ts`).
+  "studio-agent-manager_",
+];
 
 export const STUDIO_PACK_AGENTS = [
   brandManagerAgent,
-  agentManagerAgent,
   automationManagerAgent,
   connectionManagerAgent,
   apiKeyManagerAgent,
