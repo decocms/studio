@@ -55,15 +55,11 @@ describe("resolveTaskRunToolNames", () => {
     expect(REVIEW_RUN_TOOL_NAMES).toContain("TASK_BOARD_ITEM_PRS_GET");
   });
 
-  // Both inverted from "a task run can link / look up the PR it opened". The
-  // board no longer takes the run's word for its PR — it finds it by the branch
-  // the run was given (`pr-by-branch.ts`), so a Super Agent run needs neither
-  // tool and `TASK_BOARD_ITEM_PR_LINK` no longer exists.
-  test("a task run neither links nor looks up its own PR", () => {
+  // Inverted from "a task run can look up the PR it opened". The board no
+  // longer takes the run's word for its PR — it finds it by the branch the run
+  // was given (`pr-by-branch.ts`), so a Super Agent run needs no PR tool.
+  test("a task run does not look up its own PR", () => {
     expect(TASK_RUN_TOOL_NAMES).not.toContain("TASK_BOARD_ITEM_PRS_GET");
-    expect(TASK_RUN_TOOL_NAMES as readonly string[]).not.toContain(
-      "TASK_BOARD_ITEM_PR_LINK",
-    );
   });
 
   test("the review surface only ADDS to the narrow one", () => {

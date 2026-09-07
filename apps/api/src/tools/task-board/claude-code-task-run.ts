@@ -295,11 +295,11 @@ export function buildClaudeCodeTaskPrompt(
     '- A browser is installed globally, NOT in the repo\'s `node_modules` — don\'t go looking for playwright there. `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders any URL (localhost included) in headless Chromium, runs the page\'s JS, and writes a file you must then `Read` — a screenshot you never opened is not verification. To INTERACT (click, fill, `document.elementFromPoint`), write a throwaway node script: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`.',
     // How the board finds the PR now: it looks GitHub up by the branch this
     // checkout is on (`pr-by-branch.ts`), so the one thing the run must not do
-    // is open the PR from some other branch. Replaces `TASK_BOARD_ITEM_PR_LINK`,
-    // which a run that died right after `gh pr create` could never call.
-    // Parsed back out by `parsePreviewRoutes` (apps/web) — must be exact paths, not prose.
-    "- If your change adds or edits pages a person can open, name them in the pull request body on a `Route:` line, or on a `Preview routes:` line followed by one `- /path` bullet per page — paths only, no host. Skip it when the change has no visible route.",
+    // is open the PR from some other branch. Replaces asking the run to report
+    // it, which a run that died right after `gh pr create` could never do.
     "- Open the pull request from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.",
+    // Parsed back out by `parsePreviewRoutes` (apps/web) — exact paths, not prose.
+    "- If your change adds or edits pages a person can open, name them in the pull request body on a `Route:` line, or on a `Preview routes:` line followed by one `- /path` bullet per page — paths only, no host. Skip it when the change has no visible route.",
     // Deliberately NOT "then move it to In Review". Linking the PR is what
     // starts the review (`openReviewCycleIfInProgress`), and the card stays In
     // Progress until the reviewer decides — an agent is still working on it.
