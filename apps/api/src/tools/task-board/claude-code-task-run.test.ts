@@ -40,15 +40,12 @@ describe("buildClaudeCodeTaskPrompt", () => {
   // review now, and the card stays In Progress until the REVIEWER decides — so
   // asking the model for that move would put the card in the wrong lane for
   // the whole time an agent is still working on it.
-  // Inverted: the run used to be told to report its PR with
-  // `TASK_BOARD_ITEM_PR_LINK`. The board finds it by branch now
-  // (`pr-by-branch.ts`), so the prompt pins the BRANCH instead — asking for a
-  // tool that no longer exists would just burn a turn on `not_found`.
+  // Inverted: the run used to be told to report its own PR. The board finds it
+  // by branch now (`pr-by-branch.ts`), so the prompt pins the BRANCH instead.
   test("asks for a pull request on the given branch, not a board move", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("open a pull request");
     expect(prompt).toContain("branch you were given");
-    expect(prompt).not.toContain("TASK_BOARD_ITEM_PR_LINK");
     expect(prompt).toContain("(task id: tbi_1)");
     expect(prompt).not.toContain('status "in_review"');
   });

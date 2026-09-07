@@ -4,10 +4,10 @@
  *
  * The board used to learn a `claude-code` run's PR two ways, both of them the
  * model's word for it: a regex over the run's closing message (which linked
- * nothing whenever it wrote "PR #269 opened" instead of a URL), and then
- * `TASK_BOARD_ITEM_PR_LINK`, a tool the run had to remember to call. Both share
- * a failure mode no prompt fixes — a run that opens the PR and then dies, runs
- * out of budget, or simply doesn't call the tool strands its card, and reviewers
+ * nothing whenever it wrote "PR #269 opened" instead of a URL), and a link tool
+ * the run had to remember to call. Both share a failure mode no prompt fixes —
+ * a run that opens the PR and then dies, runs out of budget, or simply doesn't
+ * call the tool strands its card, and reviewers
  * are only dispatched for a card with a linked PR.
  *
  * Studio already knows everything needed to look it up: the repository is bound
@@ -194,8 +194,8 @@ export async function linkPrFromRunBranch(
             repoName: pr.repo,
             connectionId: conn.id,
           });
-          // The one piece of bookkeeping the deleted `TASK_BOARD_ITEM_PR_LINK`
-          // did alongside its link that nothing else on this path does.
+          // The one piece of bookkeeping the deleted PR-link tool did
+          // alongside its link that nothing else on this path does.
           // Idempotent, and a no-op for the case this file exists for — a run
           // that opened its PR and then died is already In Review by the time
           // we get here, and keeps a null cycle. It matters for a run still
