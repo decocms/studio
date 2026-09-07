@@ -426,7 +426,6 @@ export function getWellKnownReportVirtualMCP(
  * Studio Pack agent ID prefixes (org-scoped), keyed the same as StudioPackAgentId below.
  */
 const studioPackAgentPrefixes = {
-  AGENT_MANAGER: createWellKnownAgentPrefix("studio-agent-manager_"),
   AUTOMATION_MANAGER: createWellKnownAgentPrefix("studio-automation-manager_"),
   CONNECTION_MANAGER: createWellKnownAgentPrefix("studio-connection-manager_"),
   API_KEY_MANAGER: createWellKnownAgentPrefix("studio-api-key-manager_"),
@@ -439,7 +438,6 @@ const studioPackAgentPrefixes = {
  * Studio Pack agent ID generators (org-scoped)
  */
 export const StudioPackAgentId = {
-  AGENT_MANAGER: studioPackAgentPrefixes.AGENT_MANAGER.get,
   AUTOMATION_MANAGER: studioPackAgentPrefixes.AUTOMATION_MANAGER.get,
   CONNECTION_MANAGER: studioPackAgentPrefixes.CONNECTION_MANAGER.get,
   API_KEY_MANAGER: studioPackAgentPrefixes.API_KEY_MANAGER.get,

@@ -48,7 +48,6 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import {
   ENV_VAR_KEY_RE,
-  StudioPackAgentId,
   SUBMODULE_HOST_RE,
   useConnectionActions,
   useProjectContext,
@@ -454,9 +453,9 @@ function VirtualMcpDetailViewWithData({
       openSidePanel();
 
       await sendMessage({
+        // No manager mention: the Super Agent owns the agent CRUD tools
+        // itself now, so this goes straight to whoever is in the chat.
         tiptapDoc: buildImprovePromptDoc({
-          managerAgentId: StudioPackAgentId.AGENT_MANAGER(org.id),
-          managerName: "Agent Manager",
           kind: "agent",
           id: virtualMcp.id,
           instructions: currentInstructions,

@@ -61,12 +61,14 @@ import {
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  mcpClientQueryOptions,
   useConnectionActions,
   useConnections,
   useProjectContext,
   type ConnectionEntity,
   useVirtualMCPs,
 } from "@/sdk";
+import { resolveConnectedMcpTarget } from "./connected-mcp-target.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -327,6 +329,46 @@ function ConnectionResults({
       }
 
       toast.success(t("orgs.connections.connectedSuccessfully"));
+
+      // Land the user IN the MCP they just connected: its first app if it
+      // ships one, otherwise its own page (which opens on the tools tab). A
+      // server that answers with no tools isn't worth opening, so the catalog
+      // stays put — the toast is the whole feedback in that case.
+      // Its own try: the connection is already created and the success toast
+      // already fired, so a server that won't list tools must not surface as
+      // "failed to connect" from the outer catch.
+      let target: ReturnType<typeof resolveConnectedMcpTarget> = null;
+      try {
+        const client = await queryClient.fetchQuery(
+          mcpClientQueryOptions({
+            connectionId: id,
+            orgId: org.id,
+            orgSlug: org.slug,
+          }),
+        );
+        target = resolveConnectedMcpTarget((await client.listTools()).tools);
+      } catch {
+        return;
+      }
+      if (!target) return;
+
+      const appSlug = getConnectionSlug({ ...connectionData, id });
+      navigate(
+        target.appToolName
+          ? {
+              to: "/$org/settings/connections/$appSlug/$collectionName/$itemId",
+              params: {
+                org: org.slug,
+                appSlug,
+                collectionName: "tools",
+                itemId: encodeURIComponent(target.appToolName),
+              },
+            }
+          : {
+              to: "/$org/settings/connections/$appSlug",
+              params: { org: org.slug, appSlug },
+            },
+      );
     } catch (error) {
       toast.error(
         t("orgs.connections.failedToConnect", {

@@ -67,6 +67,8 @@ import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-to
 import { createThreadTools } from "./thread-tools";
 import { createJiraRunTools } from "./jira-run-tools";
 import { createTaskBoardTools } from "./task-board-tools";
+import { isDecopilot } from "@decocms/shared/sdk";
+import { createAgentTools } from "./agent-tools";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
@@ -234,6 +236,13 @@ async function buildAllTools(
       ? createJiraRunTools(ctx, taskId)
       : createTaskBoardTools(ctx),
   );
+  // Agent-management built-ins — the Super Agent is the only agent that has
+  // no connections to reach them through, and it is the one asked to create or
+  // fix an agent. Scoped to it so a user-built agent doesn't silently gain the
+  // power to rewrite its siblings. They stay on the Studio MCP endpoint too.
+  if (isDecopilot(agentId)) {
+    Object.assign(tools, createAgentTools(ctx));
+  }
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
