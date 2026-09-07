@@ -249,8 +249,7 @@ function defineWellKnownAgentVMCP(opts: {
 }
 
 // ---- Decopilot ----
-// Default agent that aggregates ALL org connections. Gateway populates
-// the connections array at lookup time.
+// Default agent. Aggregates no connections — see `storage/virtual.ts` findById.
 const decopilotPrefix = createWellKnownAgentPrefix("decopilot_");
 export const isDecopilot = decopilotPrefix.is;
 export const getDecopilotId = decopilotPrefix.get;
