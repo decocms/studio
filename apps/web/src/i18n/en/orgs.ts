@@ -72,6 +72,7 @@ export const orgs = {
   "orgs.connections.commandPlaceholder": "node, bun, python...",
   "orgs.connections.communityMcpRegistry": "Community MCP Registry",
   "orgs.connections.connectedSuccessfully": "Connected successfully",
+  "orgs.connections.openConnection": "Open connection",
   "orgs.connections.connectionDisabled": "Connection disabled",
   "orgs.connections.connectionEnabled": "Connection enabled",
   "orgs.connections.createConnection": "Create Connection",

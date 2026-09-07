@@ -285,7 +285,8 @@ function ConnectionResults({
         return;
       }
 
-      const { id } = await actions.create.mutateAsync(connectionData);
+      const created = await actions.create.mutateAsync(connectionData);
+      const { id } = created;
 
       // Handle OAuth flow (if needed) + persist, via the shared helper.
       const auth = await authenticateAndPersistOAuth({
@@ -328,15 +329,7 @@ function ConnectionResults({
         toast.success(t("orgs.connections.authenticationSuccessful"));
       }
 
-      toast.success(t("orgs.connections.connectedSuccessfully"));
-
-      // Land the user IN the MCP they just connected: its first app if it
-      // ships one, otherwise its own page (which opens on the tools tab). A
-      // server that answers with no tools isn't worth opening, so the catalog
-      // stays put — the toast is the whole feedback in that case.
-      // Its own try: the connection is already created and the success toast
-      // already fired, so a server that won't list tools must not surface as
-      // "failed to connect" from the outer catch.
+      // Own try: the connection exists; a failed listTools isn't a failed connect.
       let target: ReturnType<typeof resolveConnectedMcpTarget> = null;
       try {
         const client = await queryClient.fetchQuery(
@@ -348,14 +341,14 @@ function ConnectionResults({
         );
         target = resolveConnectedMcpTarget((await client.listTools()).tools);
       } catch {
-        return;
+        // No target — the toast below just loses its button.
       }
-      if (!target) return;
 
-      const appSlug = getConnectionSlug({ ...connectionData, id });
-      navigate(
-        target.appToolName
-          ? {
+      const appSlug = getConnectionSlug(created);
+      const to = !target
+        ? null
+        : target.appToolName
+          ? ({
               to: "/$org/settings/connections/$appSlug/$collectionName/$itemId",
               params: {
                 org: org.slug,
@@ -363,11 +356,22 @@ function ConnectionResults({
                 collectionName: "tools",
                 itemId: encodeURIComponent(target.appToolName),
               },
-            }
-          : {
+            } as const)
+          : ({
               to: "/$org/settings/connections/$appSlug",
               params: { org: org.slug, appSlug },
-            },
+            } as const);
+
+      toast.success(
+        t("orgs.connections.connectedSuccessfully"),
+        to
+          ? {
+              action: {
+                label: t("orgs.connections.openConnection"),
+                onClick: () => navigate(to),
+              },
+            }
+          : undefined,
       );
     } catch (error) {
       toast.error(

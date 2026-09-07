@@ -48,6 +48,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import {
   ENV_VAR_KEY_RE,
+  getWellKnownDecopilotVirtualMCP,
   SUBMODULE_HOST_RE,
   useConnectionActions,
   useProjectContext,
@@ -452,10 +453,12 @@ function VirtualMcpDetailViewWithData({
 
       openSidePanel();
 
+      // This chat runs as the agent being edited; agent CRUD is Super-Agent-only.
+      const superAgent = getWellKnownDecopilotVirtualMCP(org.id);
       await sendMessage({
-        // No manager mention: the Super Agent owns the agent CRUD tools
-        // itself now, so this goes straight to whoever is in the chat.
         tiptapDoc: buildImprovePromptDoc({
+          managerAgentId: superAgent.id,
+          managerName: superAgent.title,
           kind: "agent",
           id: virtualMcp.id,
           instructions: currentInstructions,
