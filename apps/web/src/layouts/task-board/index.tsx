@@ -158,7 +158,12 @@ import {
 } from "./filters-search";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useProjectIndex } from "@/hooks/use-project-index";
-import { filterAfterCreate } from "@/lib/project-index";
+import {
+  filterAfterCreate,
+  stampableEntries,
+  type ProjectIndexEntry,
+} from "@/lib/project-index";
+import { ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
@@ -908,6 +913,9 @@ export function TaskBoardPage() {
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
+  /** The projects a card can be stamped for — the same reachability-gated
+   *  subset the task dialog's Project picker offers, reused by the bulk bar. */
+  const projectEntries = stampableEntries(projectIndex);
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -1482,6 +1490,11 @@ export function TaskBoardPage() {
         <SelectionBar
           count={selectedIds.size}
           members={members}
+          projectEntries={projectEntries}
+          onSetRepo={(repo) => {
+            for (const id of selectedIds) actions.update.mutate({ id, repo });
+            clearSelection();
+          }}
           onMoveTo={(status) => {
             for (const id of selectedIds) actions.update.mutate({ id, status });
             clearSelection();
@@ -1582,6 +1595,8 @@ export function TaskBoardPage() {
 function SelectionBar({
   count,
   members,
+  projectEntries,
+  onSetRepo,
   onMoveTo,
   onSetPriority,
   onAddTag,
@@ -1594,6 +1609,10 @@ function SelectionBar({
 }: {
   count: number;
   members: Member[];
+  /** The projects a card can be stamped for — same set as the task dialog. */
+  projectEntries: ProjectIndexEntry[];
+  /** Bulk-assign the project (persisted as the underlying repo), or clear it. */
+  onSetRepo: (repo: string | null) => void;
   onMoveTo: (status: TaskBoardItemStatus) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
@@ -1672,6 +1691,27 @@ function SelectionBar({
                 <AssigneePickerContent members={members} onSelect={onAssign} />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            {projectEntries.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  {t("taskBoard.taskBoard.assignProjectButton")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-64">
+                  <DropdownMenuItem onClick={() => onSetRepo(null)}>
+                    {t("taskBoard.taskDialog.noProject")}
+                  </DropdownMenuItem>
+                  {projectEntries.map((entry) => (
+                    <DropdownMenuItem
+                      key={entry.id}
+                      className="gap-2"
+                      onClick={() => onSetRepo(entry.repo)}
+                    >
+                      <ProjectEntryRow entry={entry} />
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 {t("taskBoard.taskBoard.dueDateButton")}
