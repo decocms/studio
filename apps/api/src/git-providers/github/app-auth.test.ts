@@ -9,6 +9,7 @@ import {
   installationCacheKey,
   mapInstallation,
   nextPermissionSet,
+  usableAppKey,
 } from "./app-auth";
 
 /** A throwaway RSA pair. Real crypto, generated per run — nothing is mocked. */
@@ -248,5 +249,35 @@ describe("mapInstallation", () => {
     expect(mapInstallation({ id: 1 })).toBeNull();
     expect(mapInstallation({ id: 1, account: { login: "x" } })).toBeNull();
     expect(mapInstallation({ account: { id: 2, login: "x" } })).toBeNull();
+  });
+});
+
+describe("usableAppKey", () => {
+  const key = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  }).privateKey;
+  const config = (privateKeyPem: string) => ({
+    appId: "1",
+    privateKeyPem,
+    clientId: "c",
+    clientSecret: "s",
+    slug: "studio",
+  });
+
+  test("accepts a key that can actually sign", () => {
+    expect(usableAppKey(config(key))).toBe(true);
+  });
+
+  /**
+   * Every one of these is a non-empty string, so the env reader is happy with
+   * it. Without this gate they would make the App look configured, take every
+   * repository off its legacy connection, and then fail at the first mint.
+   */
+  test("rejects the ways a PEM arrives mangled from a secret store", () => {
+    expect(usableAppKey(config(key.replace(/\n/g, " ")))).toBe(false);
+    expect(usableAppKey(config(key.slice(0, 120)))).toBe(false);
+    expect(usableAppKey(config("not a key"))).toBe(false);
   });
 });

@@ -26,13 +26,9 @@ import {
 import {
   accountIsServable,
   clientForAccount,
-  getGithubAppAuth,
-} from "@/git-providers/credentials";
-import {
-  readGithubAppConfig,
-  readGitlabOAuthConfig,
-} from "@/git-providers/env";
-import { gitlabCurrentUser } from "@/git-providers/gitlab/client";
+  principalForToken,
+  providerCapabilities,
+} from "@/git-providers";
 import type { GitProviderAccountRecord } from "@/storage/git-provider-accounts";
 import type { RepositoryRecord } from "@/storage/repositories";
 
@@ -109,9 +105,8 @@ export const GIT_PROVIDER_CAPABILITIES = defineTool({
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
     const base = `/api/${organization.slug ?? organization.id}/git-providers`;
-    const github =
-      readGithubAppConfig() !== null && getGithubAppAuth() !== null;
-    const gitlab = readGitlabOAuthConfig();
+    const capabilities = providerCapabilities();
+    const github = capabilities.github.configured;
     return {
       github: {
         configured: github,
@@ -119,8 +114,10 @@ export const GIT_PROVIDER_CAPABILITIES = defineTool({
         installPath: github ? `${base}/github/install` : null,
       },
       gitlab: {
-        oauthHosts: gitlab ? [gitlab.host] : [],
-        connectPath: gitlab ? `${base}/gitlab/connect` : null,
+        oauthHosts: capabilities.gitlab.hosts,
+        connectPath: capabilities.gitlab.configured
+          ? `${base}/gitlab/connect`
+          : null,
       },
     };
   },
@@ -177,19 +174,15 @@ export const GIT_ACCOUNT_CONNECT_TOKEN = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-    if (input.type !== "gitlab") {
-      throw new Error(
-        "GitHub accounts connect through the GitHub App; tokens are accepted for GitLab only",
-      );
-    }
     const host = input.host.trim().toLowerCase();
     if (!/^[a-z0-9.-]+(:[0-9]+)?$/.test(host)) {
       throw new Error("host must be a bare hostname, optionally with a port");
     }
-    const principal = await gitlabCurrentUser(host, input.token);
+    // Refuses GitHub by policy — see `principalForToken`.
+    const principal = await principalForToken(input.type, host, input.token);
     const account = await ctx.storage.gitProviderAccounts.upsert({
       organizationId: organization.id,
-      type: "gitlab",
+      type: input.type,
       host,
       authKind: "token",
       externalAccountId: principal.externalAccountId,
@@ -403,3 +396,5 @@ export const REPOSITORY_DELETE = defineTool({
     return { deleted };
   },
 });
+
+export { REPOSITORY_SEARCH_BRANCHES } from "./branches";

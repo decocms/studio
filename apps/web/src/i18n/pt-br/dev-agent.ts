@@ -1,7 +1,7 @@
 import type { devAgent as devAgentEn } from "../en/dev-agent.ts";
 
 export const devAgent = {
-  "devAgent.devAgentSetup.importButton": "Importar do GitHub",
+  "devAgent.devAgentSetup.importButton": "Importar reposit\u00f3rio",
   "devAgent.devAgentSetup.importDialogTitle":
     "Importar um projeto de desenvolvimento do GitHub",
   "devAgent.devAgentSetup.linkDescription":

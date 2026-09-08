@@ -228,9 +228,9 @@ export const KEYS = {
   ) => ["github-branches", orgId, orgSlug, connectionId, owner, repo] as const,
 
   /**
-   * The branch's pull request with its checks, review state and comments — ONE
-   * key for all four, so those hooks share a single request (see
-   * GITHUB_PR_STATE).
+   * The branch's change request with its CI runs, review state and comments —
+   * ONE key for all four, so those hooks share a single request (see
+   * CHANGE_REQUEST_STATE).
    */
   githubPrState: (
     orgSlug: string,
@@ -254,6 +254,31 @@ export const KEYS = {
       owner,
       repo,
       base,
+    ] as const,
+
+  /** A repository's open change requests, for the branch picker's list. */
+  githubOpenPrs: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+  ) => ["github-open-prs", orgSlug, connectionId, owner, repo] as const,
+
+  /** One CI run's report, loaded when a Checks row is expanded. */
+  githubCheckRun: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+    checkRunId: string | null,
+  ) =>
+    [
+      "github-check-run",
+      orgSlug,
+      connectionId,
+      owner,
+      repo,
+      checkRunId,
     ] as const,
 
   githubBranchSearch: (

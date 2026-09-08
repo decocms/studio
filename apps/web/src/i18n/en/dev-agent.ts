@@ -1,5 +1,5 @@
 export const devAgent = {
-  "devAgent.devAgentSetup.importButton": "Import from GitHub",
+  "devAgent.devAgentSetup.importButton": "Import repository",
   "devAgent.devAgentSetup.importDialogTitle":
     "Import a dev project from GitHub",
   "devAgent.devAgentSetup.linkDescription":

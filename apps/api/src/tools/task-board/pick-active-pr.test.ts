@@ -28,6 +28,7 @@ const pr = (number: number): TaskBoardItemPrRef => ({
   number,
   url: `https://github.com/deco/studio/pull/${number}`,
   connectionId: "conn_1",
+  repositoryId: null,
   createdAt: new Date(0).toISOString(),
 });
 

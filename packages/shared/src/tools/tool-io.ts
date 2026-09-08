@@ -7564,87 +7564,6 @@ export interface StudioToolIO {
       }[];
     };
   };
-  GITHUB_SEARCH_BRANCHES: {
-    input: {
-      connectionId: string;
-      owner: string;
-      repo: string;
-      query: string;
-      limit?: number | undefined;
-    };
-    output: {
-      branches: { name: string; author: string | null }[];
-      totalCount: number;
-    };
-  };
-  GITHUB_PR_STATE: {
-    input: {
-      connectionId: string;
-      owner: string;
-      repo: string;
-      branch: string;
-    };
-    output: {
-      pullRequest: {
-        number: number;
-        title: string;
-        body: string;
-        state: "open" | "closed";
-        merged: boolean;
-        mergedAt: string | null;
-        base: string;
-        head: string;
-        headSha: string;
-        headRepoFullName: string | null;
-        htmlUrl: string;
-        author: string;
-        draft: boolean;
-        mergeableState: "unknown" | "clean" | "dirty" | "blocked";
-        unresolvedConversations: number;
-        missingRequiredApprovals: boolean;
-        changedFiles: number;
-        checks: {
-          id: string;
-          name: string;
-          status: "in_progress" | "completed" | "queued";
-          conclusion:
-            | "success"
-            | "skipped"
-            | "cancelled"
-            | "failure"
-            | "neutral"
-            | "timed_out"
-            | "action_required"
-            | null;
-          htmlUrl: string;
-          durationMs: number | null;
-        }[];
-        comments: {
-          id: number;
-          author: string;
-          body: string;
-          createdAt: string;
-          htmlUrl: string;
-        }[];
-      } | null;
-    };
-  };
-  GITHUB_LAST_PUBLISHED_PR: {
-    input: { connectionId: string; owner: string; repo: string; base: string };
-    output: {
-      pullRequest: {
-        number: number;
-        title: string;
-        body: string;
-        mergedAt: string | null;
-        base: string;
-        head: string;
-        headSha: string;
-        htmlUrl: string;
-        author: string;
-      } | null;
-    };
-  };
   GIT_PROVIDER_CAPABILITIES: {
     input: { [x: string]: never };
     output: {
@@ -7755,6 +7674,191 @@ export interface StudioToolIO {
     };
   };
   REPOSITORY_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  REPOSITORY_SEARCH_BRANCHES: {
+    input: {
+      query: string;
+      limit?: number | undefined;
+      cursor?: string | null | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      branches: { name: string; author: string | null }[];
+      totalCount: number;
+      nextCursor: string | null;
+    };
+  };
+  CHANGE_REQUEST_STATE: {
+    input: {
+      branch: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequest: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+        checkRuns: {
+          id: string | null;
+          name: string;
+          state: "completed" | "running" | "queued";
+          conclusion:
+            | "success"
+            | "skipped"
+            | "cancelled"
+            | "failure"
+            | "neutral"
+            | "timed_out"
+            | "action_required"
+            | null;
+          url: string | null;
+          durationMs: number | null;
+          summary: string | null;
+        }[];
+        comments: {
+          id: string;
+          author: string;
+          body: string;
+          createdAt: string;
+          updatedAt: string;
+          url: string;
+        }[];
+        unresolvedConversations: number;
+        reviewBlocked: boolean;
+      } | null;
+    };
+  };
+  CHANGE_REQUEST_LAST_MERGED: {
+    input: {
+      base: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequest: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+      } | null;
+    };
+  };
+  CHANGE_REQUEST_LIST_OPEN: {
+    input: {
+      limit?: number | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequests: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+      }[];
+    };
+  };
+  CHANGE_REQUEST_CHECK_LOG: {
+    input: {
+      checkId: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: { report: string | null };
+  };
+  CHANGE_REQUEST_OPEN: {
+    input: {
+      head: string;
+      base: string;
+      title: string;
+      body?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequest: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+      };
+      existed: boolean;
+    };
+  };
+  CHANGE_REQUEST_MERGE: {
+    input: {
+      number: number;
+      strategy?: "unknown" | "squash" | undefined;
+      commitTitle?: string | undefined;
+      commitMessage?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      merged: boolean;
+      reason?:
+        | "error"
+        | "not_found"
+        | "conflict"
+        | "blocked"
+        | "rate_limited"
+        | undefined;
+      detail?: string | undefined;
+    };
+  };
   GLOBAL_SEARCH: {
     input: {
       query: string;

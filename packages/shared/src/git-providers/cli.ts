@@ -18,6 +18,8 @@ export interface ProviderCli {
   createCommand: string;
   /** Checks an existing one out by its number, which the caller appends. */
   checkoutCommand: string;
+  /** How the provider writes a change request's number in prose. */
+  numberSigil: string;
 }
 
 const CLIS: Record<GitProviderKind, ProviderCli> = {
@@ -26,15 +28,31 @@ const CLIS: Record<GitProviderKind, ProviderCli> = {
     changeRequest: "pull request",
     createCommand: "gh pr create",
     checkoutCommand: "gh pr checkout",
+    numberSigil: "#",
   },
   gitlab: {
     cli: "glab",
     changeRequest: "merge request",
     createCommand: "glab mr create",
     checkoutCommand: "glab mr checkout",
+    numberSigil: "!",
   },
 };
 
 export function providerCli(provider: GitProviderKind): ProviderCli {
   return CLIS[provider];
+}
+
+/**
+ * A change request in prose, the way its own provider writes it — "PR #7" and
+ * "MR !7" are what a reader of that provider expects to see, and a card
+ * titled "PR #7" for a merge request is simply wrong.
+ */
+export function changeRequestLabel(
+  provider: GitProviderKind,
+  number: number,
+): string {
+  const { cli, numberSigil } = CLIS[provider];
+  const abbreviation = cli === "gh" ? "PR" : "MR";
+  return `${abbreviation} ${numberSigil}${number}`;
 }

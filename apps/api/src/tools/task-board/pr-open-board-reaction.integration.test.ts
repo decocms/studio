@@ -13,7 +13,7 @@ import {
 } from "../../database/test-db-pg";
 import { TaskBoardStorage } from "../../storage/task-board";
 import type { TaskBoardItem } from "../../storage/types";
-import type { ExtractedPr } from "./pr-extract";
+import type { ChangeRequestRef } from "./change-request-extract";
 import {
   applyBoardDecision,
   type BoardDecision,
@@ -21,11 +21,10 @@ import {
 
 const ORG = "org_propen_1";
 const USER = "user_propen_1";
-const PR: ExtractedPr = {
+const PR: ChangeRequestRef = {
   url: "https://github.com/acme/widget/pull/7",
   number: 7,
-  owner: "acme",
-  repo: "widget",
+  repo: { provider: "github", host: "github.com", path: "acme/widget" },
 };
 
 describe("applyBoardDecision", () => {

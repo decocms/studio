@@ -11,7 +11,7 @@ import {
   requireBranchHead,
   RepoWriteConflict,
   type TreeEntry,
-} from "@/git-providers/content/types";
+} from "@/git-providers";
 import { meter } from "../observability";
 import {
   getBlob,
