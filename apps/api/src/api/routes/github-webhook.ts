@@ -176,10 +176,21 @@ async function refreshPrCardsForRefs(
 ): Promise<number> {
   let refreshed = 0;
   for (const ref of refs) {
+    const taskBoard = deps.taskBoard();
+    let links: Awaited<ReturnType<typeof taskBoard.findPrLinks>>;
     try {
-      const taskBoard = deps.taskBoard();
-      const links = await taskBoard.findPrLinks(ref);
-      for (const link of links) {
+      links = await taskBoard.findPrLinks(ref);
+    } catch (err) {
+      // Same reason `refreshItemPrCards` swallows its own: a 500 here makes
+      // GitHub retry the delivery, and a database blip is not something a
+      // replay fixes. The count in the response is the signal instead.
+      console.error("[github-webhook] pr link lookup failed:", err);
+      continue;
+    }
+    for (const link of links) {
+      // Per link, so one card whose owner or context is unreadable doesn't cost
+      // the other cards linked to the same PR their refresh.
+      try {
         const item = await taskBoard.getById(
           link.taskBoardItemId,
           link.organizationId,
@@ -200,12 +211,12 @@ async function refreshPrCardsForRefs(
           link.taskBoardItemId,
         );
         if (cards !== null) refreshed++;
+      } catch (err) {
+        console.error(
+          `[github-webhook] pr card refresh failed for ${link.taskBoardItemId}:`,
+          err,
+        );
       }
-    } catch (err) {
-      // Same reason `refreshItemPrCards` swallows its own: a 500 here makes
-      // GitHub retry the delivery, and a database blip is not something a
-      // replay fixes. The count in the response is the signal instead.
-      console.error("[github-webhook] pr card refresh failed:", err);
     }
   }
   return refreshed;
