@@ -9,7 +9,7 @@ import {
 import type { Database } from "./types";
 
 /**
- * `repositories` (migration 199): first-class repos, one row per
+ * `repositories` (migration 204): first-class repos, one row per
  * (org, host, path) case-insensitively. Every org-facing method takes the
  * organizationId in the WHERE clause — tenancy by construction.
  */

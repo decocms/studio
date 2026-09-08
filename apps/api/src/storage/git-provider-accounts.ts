@@ -7,7 +7,7 @@ import type {
 import type { Database } from "./types";
 
 /**
- * `git_provider_accounts` (migration 199): the credential holder behind every
+ * `git_provider_accounts` (migration 204): the credential holder behind every
  * first-class repository. Every org-facing method takes the organizationId in
  * the WHERE clause — tenancy by construction.
  */
