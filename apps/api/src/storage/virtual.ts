@@ -75,6 +75,26 @@ export function escapeLikePattern(term: string): string {
   return term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+/**
+ * The repository an agent's metadata binds it to, as a reference.
+ *
+ * DUAL-WRITE while migration 205 expands: the column is the binding, and
+ * `metadata.githubRepo` is still written beside it because a pod running the
+ * previous release reads only the JSON. The JSON write goes away with the
+ * fallback read, not before.
+ *
+ * Null for a legacy binding that names no repository row yet — those keep
+ * resolving by identity, which is exactly the step this column exists to
+ * retire once every binding carries one.
+ */
+function boundRepositoryId(
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  const bound = (metadata as { githubRepo?: { repositoryId?: unknown } } | null)
+    ?.githubRepo?.repositoryId;
+  return typeof bound === "string" && bound.length > 0 ? bound : null;
+}
+
 export class VirtualMCPStorage implements VirtualMCPStoragePort {
   constructor(private db: Kysely<Database>) {}
 
@@ -110,6 +130,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
           configuration_state: null,
           configuration_scopes: null,
           metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+          repository_id: boundRepositoryId(data.metadata),
           bindings: null,
           status: data.status ?? "active",
           created_at: now,
@@ -462,6 +483,8 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       updateData.pinned = data.pinned;
     }
     if (data.metadata !== undefined) {
+      // Dual-write, in step with the JSON — see `boundRepositoryId`.
+      updateData.repository_id = boundRepositoryId(data.metadata);
       updateData.metadata = data.metadata
         ? JSON.stringify(data.metadata)
         : null;

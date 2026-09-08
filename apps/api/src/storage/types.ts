@@ -237,10 +237,34 @@ export interface MCPConnectionTable {
   metadata: JsonObject<Record<string, unknown>> | null;
   bindings: JsonArray<string[]> | null; // Detected bindings (CHAT, EMAIL, etc.)
 
+  /**
+   * The repository a VIRTUAL connection (an agent) works in — migration 205.
+   * Null for every other connection type, and for an agent with no repository.
+   *
+   * Preferred over `metadata.githubRepo`, which is still written and read as
+   * the fallback until the expand completes. A GitLab project in subgroups
+   * only fits here: the JSON's `owner`/`name` pair cannot carry a namespace.
+   */
+  repository_id: string | null;
+
   status: "active" | "inactive" | "error";
   pinned: boolean;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/**
+ * A repository checked out into a thread's run, beyond the agent's own.
+ *
+ * `TASK_ADD_REPO` appends here so one run can hold several checkouts. The
+ * primary key is what makes a concurrent double-add a no-op — the reason this
+ * is a table and not the `metadata.githubRepos` array it replaces.
+ */
+export interface ThreadRepositoryTable {
+  thread_id: string;
+  organization_id: string;
+  repository_id: string;
+  added_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 // MCPConnection runtime type is now ConnectionEntity from "../tools/connection/schema"
@@ -2306,6 +2330,7 @@ export interface Database extends PrivateRegistryDatabase {
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
+  thread_repositories: ThreadRepositoryTable;
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
   api_keys: ApiKeyTable; // Better Auth API keys

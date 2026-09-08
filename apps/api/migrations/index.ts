@@ -203,6 +203,7 @@ import * as migration201organizationnotices from "./201-organization-notices.ts"
 import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
 import * as migration203taskboardpreviewroutes from "./203-task-board-preview-routes.ts";
 import * as migration204gitprovideraccountsandrepositories from "./204-git-provider-accounts-and-repositories.ts";
+import * as migration205repositoryreferences from "./205-repository-references.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -442,6 +443,7 @@ const migrations: Record<string, Migration> = {
   "203-task-board-preview-routes": migration203taskboardpreviewroutes,
   "204-git-provider-accounts-and-repositories":
     migration204gitprovideraccountsandrepositories,
+  "205-repository-references": migration205repositoryreferences,
 };
 
 export default migrations;
