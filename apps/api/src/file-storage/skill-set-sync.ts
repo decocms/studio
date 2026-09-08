@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import type { Kysely } from "kysely";
+import { retry, RetryError } from "@decocms/shared/std";
 import type { Database } from "../storage/types";
 import { OrgFsEntryStorage } from "../storage/org-fs";
 import {
@@ -193,6 +194,37 @@ async function readTarballStream(
   return out;
 }
 
+/** A non-2xx tarball response, carrying the status so retry can classify it. */
+export class TarballHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TarballHttpError";
+  }
+}
+
+/**
+ * Whether a tarball fetch failure is worth retrying. A declared/actual
+ * size-cap refusal is permanent (the archive won't shrink). A 4xx (bad ref,
+ * missing repo, expired token) won't resolve either. Everything else —
+ * codeload 5xx/429, and whatever `fetch`/the 60s timeout throw for a reset or
+ * DNS hiccup — is the transient case this exists for.
+ */
+export function isRetriableTarballError(err: unknown): boolean {
+  if (err instanceof TarballHttpError) {
+    return err.status >= 500 || err.status === 429;
+  }
+  if (
+    err instanceof Error &&
+    /declares .* bytes|exceeds .* bytes/.test(err.message)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Fetch `owner/repo@ref` and return files keyed by repo-relative path. */
 async function fetchRepoFiles(
   repo: string,
@@ -200,29 +232,43 @@ async function fetchRepoFiles(
   authToken?: string,
 ): Promise<Map<string, Uint8Array>> {
   const { url, headers } = tarballRequestFor(repo, ref, authToken);
-  // Bound the whole download — a stalled codeload socket would otherwise hang
-  // this sync cycle (and the boot loop's first iteration) indefinitely.
-  const res = await fetch(url, {
-    headers,
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!res.ok) {
-    throw new Error(
-      `tarball fetch failed for ${repo}@${ref}: HTTP ${res.status}`,
-    );
+  const label = `${repo}@${ref}`;
+  const attempt = async (): Promise<Uint8Array> => {
+    // Bounds the whole download so a stalled codeload socket can't hang this sync cycle.
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      throw new TarballHttpError(
+        res.status,
+        `tarball fetch failed for ${label}: HTTP ${res.status}`,
+      );
+    }
+    // Refuse before buffering when the server declares the size; the post-download check backstops chunked responses.
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_TARBALL_BYTES) {
+      throw new Error(
+        `tarball for ${label} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
+      );
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  try {
+    const gz = await retry(attempt, {
+      maxAttempts: 3,
+      minTimeout: 500,
+      maxTimeout: 4_000,
+      jitter: 0.5,
+      isRetriable: isRetriableTarballError,
+    });
+    return filesFromTarball(gz, label);
+  } catch (err) {
+    if (err instanceof RetryError) {
+      throw err.cause instanceof Error ? err.cause : err;
+    }
+    throw err;
   }
-  // Refuse before buffering when the server declares the size; the
-  // post-download check stays as the backstop for chunked responses.
-  const declared = Number(res.headers.get("content-length") ?? 0);
-  if (declared > MAX_TARBALL_BYTES) {
-    throw new Error(
-      `tarball for ${repo}@${ref} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
-    );
-  }
-  return filesFromTarball(
-    new Uint8Array(await res.arrayBuffer()),
-    `${repo}@${ref}`,
-  );
 }
 
 /**

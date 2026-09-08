@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+  isRetriableTarballError,
   isUpToDate,
   parseTar,
   planVolumeTree,
   staleDirs,
+  TarballHttpError,
   tarballRequestFor,
 } from "./skill-set-sync";
 
@@ -178,5 +180,30 @@ describe("tarballRequestFor", () => {
     expect(tarballRequestFor("acme/widget", "feat/x").url).toBe(
       "https://codeload.github.com/acme/widget/tar.gz/feat%2Fx",
     );
+  });
+});
+
+describe("isRetriableTarballError", () => {
+  it("retries codeload 5xx and 429", () => {
+    expect(isRetriableTarballError(new TarballHttpError(503, "x"))).toBe(true);
+    expect(isRetriableTarballError(new TarballHttpError(429, "x"))).toBe(true);
+  });
+
+  it("does not retry a 4xx (bad ref, missing repo, expired token)", () => {
+    expect(isRetriableTarballError(new TarballHttpError(404, "x"))).toBe(false);
+    expect(isRetriableTarballError(new TarballHttpError(401, "x"))).toBe(false);
+  });
+
+  it("does not retry a size-cap refusal", () => {
+    expect(
+      isRetriableTarballError(new Error("tarball for x declares 999 bytes")),
+    ).toBe(false);
+    expect(
+      isRetriableTarballError(new Error("tarball for x exceeds 999 bytes")),
+    ).toBe(false);
+  });
+
+  it("retries an unclassified network error (reset, DNS, timeout)", () => {
+    expect(isRetriableTarballError(new TypeError("fetch failed"))).toBe(true);
   });
 });
