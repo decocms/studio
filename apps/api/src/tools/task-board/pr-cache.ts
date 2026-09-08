@@ -97,6 +97,18 @@ export interface PrCacheFetch {
   /** Receives the background revalidation so the caller can keep its MCP client
    *  open until it settles. */
   onRevalidation: (promise: Promise<void>) => void;
+  /** Per-entry override of the hit window, computed from the STORED value.
+   *  A read whose value says "not ready yet" — a deploy with no url published —
+   *  should go stale fast, so the next poll refetches instead of serving the
+   *  not-ready answer for the full config window. Omit for the default. */
+  revalidateAfterMs?: (stored: unknown) => number;
+  /** Per-entry override of the STALE ceiling, computed from the stored value.
+   *  Returning 0 makes a stored value a MISS — the caller blocks on a live
+   *  fetch. That is the right trade for a value whose whole point is that it
+   *  ends (CI still running): stale-while-revalidate needs two polls to surface
+   *  a change (this poll serves stale, the background write lands after), and
+   *  if that background write ever fails the entry never moves again. */
+  maxStaleMs?: (stored: unknown) => number;
 }
 
 export class JetStreamKVPrCache {
@@ -162,7 +174,8 @@ export class JetStreamKVPrCache {
 
   async fetch(params: PrCacheFetch): Promise<unknown> {
     const { namespace, key: rawKey, fetchLive, onRevalidation } = params;
-    const { cache, revalidateAfterMs, maxStaleMs } = this.config;
+    const { cache, maxStaleMs } = this.config;
+    const defaultRevalidateAfterMs = this.config.revalidateAfterMs;
     if (!this.kv) {
       return this.fallback.fetch({
         type: "tools/call",
@@ -181,14 +194,21 @@ export class JetStreamKVPrCache {
     const age = stored
       ? this.now() - stored.storedAt
       : Number.POSITIVE_INFINITY;
+    const staleCeilingMs =
+      stored && params.maxStaleMs
+        ? params.maxStaleMs(stored.value)
+        : maxStaleMs;
 
-    if (!stored || age > maxStaleMs) {
+    if (!stored || age > staleCeilingMs) {
       cacheCounter.add(1, { cache, outcome: "miss" });
       const value = await fetchLive();
       await this.write(key, value, cache);
       return value;
     }
 
+    const revalidateAfterMs = params.revalidateAfterMs
+      ? params.revalidateAfterMs(stored.value)
+      : defaultRevalidateAfterMs;
     if (age > revalidateAfterMs && !this.revalidating.has(key)) {
       cacheCounter.add(1, { cache, outcome: "stale" });
       this.revalidating.add(key);
@@ -228,15 +248,22 @@ export class JetStreamKVPrCache {
     key: string;
     fetchLive: () => Promise<T>;
     placeholder: T;
+    /** Per-entry override of the hit window, computed from the STORED value —
+     *  see {@link PrCacheFetch.revalidateAfterMs}. */
+    revalidateAfterMs?: (stored: T) => number;
   }): Promise<{ value: T; live: boolean }> {
     const { namespace, key: rawKey, fetchLive, placeholder } = params;
-    const { cache, revalidateAfterMs, maxStaleMs } = this.config;
+    const { cache, maxStaleMs } = this.config;
     const key = this.storageKey(namespace, rawKey);
     const stored = await this.read(key);
     const age = stored
       ? this.now() - stored.storedAt
       : Number.POSITIVE_INFINITY;
     const usable = stored != null && age <= maxStaleMs;
+    const revalidateAfterMs =
+      stored && params.revalidateAfterMs
+        ? params.revalidateAfterMs(stored.value as T)
+        : this.config.revalidateAfterMs;
 
     if (usable && age <= revalidateAfterMs) {
       cacheCounter.add(1, { cache, outcome: "hit" });

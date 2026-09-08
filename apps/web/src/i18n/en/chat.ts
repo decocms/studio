@@ -262,8 +262,6 @@ export const chat = {
   "chat.input.readOnlyOthersChatNamed":
     "Read only - you're viewing {name}'s chat",
   "chat.input.readOnlyThread": "Read only - this chat takes no replies",
-  "chat.input.productionReadOnly": "Production is read-only",
-  "chat.input.startDraftToEdit": "Start a new draft to edit",
   "chat.input.sendMessage": "Send message",
   "chat.input.sendMessageEnter": "Send message (Enter)",
   "chat.input.stillSendingPreviousMessage":

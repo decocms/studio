@@ -14,7 +14,6 @@ export {
   TASK_BOARD_PROMPT_UPSERT,
 } from "./prompts";
 export { TASK_BOARD_ITEM_PRS_GET } from "./prs-get";
-export { TASK_BOARD_ITEM_PR_LINK } from "./pr-link";
 export { TASK_BOARD_PREVIEW_PROBE } from "./preview-probe";
 export { TASK_BOARD_ITEM_RERUN } from "./rerun";
 export { TASK_BOARD_RESOLVE_CONFLICT } from "./resolve-conflict";

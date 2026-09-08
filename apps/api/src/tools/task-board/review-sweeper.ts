@@ -9,13 +9,12 @@
  *    bash scan. A Super Agent task runs the `claude-code` harness *inside a
  *    sandbox*, so Claude Code opens the PR in the pod and it passes through
  *    neither hook. Nothing linked it, so `enqueueReviewersOnThreadFinish` saw
- *    `prs.length === 0` and parked the card. Both this sweeper and
- *    `TASK_BOARD_ITEM_PRS_GET` papered over it by regexing a PR URL out of the
- *    run's closing message — which silently linked nothing whenever the model
- *    wrote "PR #269 opened" instead of the URL. `TASK_BOARD_ITEM_PR_LINK` (see
- *    `pr-link.ts`) replaced that guess: the run states its PR, so by the time a
- *    card reaches here it is already linked, and an unlinked card means the run
- *    genuinely opened no PR.
+ *    `prs.length === 0` and parked the card. Every fix for that used to go
+ *    through the model — a regex over the run's closing message, then a tool
+ *    the run had to call — and a run that opened a PR and then died defeated
+ *    both. `linkPrFromRunBranch` (see `pr-by-branch.ts`) asks GitHub for the
+ *    branch the run was given instead, so an unlinked card here now means the
+ *    run genuinely opened no PR.
  *
  * 2. **The dispatch itself throws.** The projector's terminal hook runs inside a
  *    DBOS step, and the reviewer dispatch bottoms out in `enqueueThreadRun` →
@@ -71,6 +70,7 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
+import { linkPrFromRunBranch } from "./pr-by-branch";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
 import { inReviewPhase } from "./lanes";
@@ -429,14 +429,14 @@ export class TaskBoardReviewSweeper {
    * Hand a card parked In Review with no pull request to a person.
    *
    * There is nothing for a reviewer to review, so no reviewer is ever
-   * dispatched — the run either finished without opening a PR or opened one and
-   * never called `TASK_BOARD_ITEM_PR_LINK`. Until now that was a silent
+   * dispatched — the run finished without opening one, and the branch lookup
+   * above found nothing either. Until now that was a silent
    * `return`: the card was swept every five minutes forever and read on the
    * board exactly like one waiting on its reviewers. Four sat that way in one
    * org, the oldest for a week.
    *
-   * Waits out `NO_PR_HANDOFF_GRACE_MS` first, because the run links its PR and
-   * moves the card in two separate calls and the sweep can land between them.
+   * Waits out `NO_PR_HANDOFF_GRACE_MS` first, because a PR pushed seconds ago
+   * is a PR GitHub may not list yet, and the sweep can land in that window.
    */
   private async handOffReviewWithoutPr(
     ctx: StudioContext,
@@ -485,7 +485,7 @@ export class TaskBoardReviewSweeper {
     // its approvals stay valid, so it stays eligible to merge.
     const owned = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
-    const prs = await this.taskBoard.listPrs(id, organizationId);
+    let prs = await this.taskBoard.listPrs(id, organizationId);
 
     // Built as the task's owner, like the run-finish trigger does — the sweeper
     // has storage only, and the reviewer dispatch needs a full context.
@@ -496,8 +496,17 @@ export class TaskBoardReviewSweeper {
     if (!ctx) return false;
 
     if (prs.length === 0) {
-      if (owned) await this.handOffReviewWithoutPr(ctx, item);
-      return false;
+      // Nothing linked is not the same as nothing opened: a `claude-code` run
+      // opens its PR with `gh` inside the pod, where no Studio hook sees it. Ask
+      // GitHub for the branch the run was given before concluding there is
+      // nothing to review (`pr-by-branch.ts`).
+      if (await linkPrFromRunBranch(ctx, item)) {
+        prs = await this.taskBoard.listPrs(id, organizationId);
+      }
+      if (prs.length === 0) {
+        if (owned) await this.handOffReviewWithoutPr(ctx, item);
+        return false;
+      }
     }
 
     // One `get` per PR through the rate-limited queue, never straight at

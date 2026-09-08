@@ -1,11 +1,6 @@
 import { Suspense, lazy, type ReactNode } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
-import {
-  draftsModeEnabled,
-  useIsOnProduction,
-} from "@/components/thread/github/use-version-gate";
-import { ReadOnlyPane } from "@/components/sections-editor/fields/read-only-pane";
+import { useProjectContext } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
@@ -55,9 +50,6 @@ export function BlocksPanel({
 }) {
   const { org } = useProjectContext();
   const { currentBranch, taskId } = useChatTask();
-  const readOnlyVm = useVirtualMCP(virtualMcpId);
-  const isOnProduction = useIsOnProduction(readOnlyVm, currentBranch);
-  const readOnly = draftsModeEnabled(readOnlyVm) && isOnProduction;
   const sandboxEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
   const workspace = useBlocksPreviewWorkspace();
@@ -104,17 +96,8 @@ export function BlocksPanel({
     return panel(<BlocksErrorState source={state.source} onRetry={retry} />);
   }
 
-  // On production the editor stays visible but read-only per widget.
-  const gateReadOnly = (children: ReactNode) =>
-    panel(
-      <ReadOnlyPane
-        readOnly={readOnly}
-        virtualMcpId={virtualMcpId}
-        className="h-full min-h-0"
-      >
-        {children}
-      </ReadOnlyPane>,
-    );
+  const editorPanel = (children: ReactNode) =>
+    panel(<div className="h-full min-h-0">{children}</div>);
 
   // Blocks edits whatever page its sibling Preview canvas is on. The shared
   // workspace target is published by Preview; when Preview hasn't run yet,
@@ -123,7 +106,7 @@ export function BlocksPanel({
 
   // Loaders have their own editor (form + Run), not the sections editor.
   if (target?.kind === "loader" && decofile.data && meta.data) {
-    return gateReadOnly(
+    return editorPanel(
       <GlobalLoaderEditor
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
@@ -162,7 +145,7 @@ export function BlocksPanel({
       ? `section:${activeGlobalBlockKey}`
       : `path:${currentPath}`;
 
-  return gateReadOnly(
+  return editorPanel(
     <Suspense
       fallback={
         <div className="h-full flex items-center justify-center">

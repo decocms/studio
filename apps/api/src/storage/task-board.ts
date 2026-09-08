@@ -405,6 +405,7 @@ export class TaskBoardStorage {
       repo?: string | null;
       dueDate?: string | null;
       externalUrl?: string | null;
+      previewRoutes?: string[] | null;
       sortOrder?: number;
     },
     by: string,
@@ -429,6 +430,9 @@ export class TaskBoardStorage {
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.externalUrl !== undefined
           ? { external_url: data.externalUrl }
+          : {}),
+        ...(data.previewRoutes !== undefined
+          ? { preview_routes: JSON.stringify(data.previewRoutes) }
           : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
@@ -1290,6 +1294,25 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .execute();
+  }
+
+  /**
+   * Run threads linked to a task (the forward direction of the same
+   * many-to-many). Lets a caller holding only a card recover the run that
+   * worked on it — which is how the branch-based PR lookup
+   * (`pr-by-branch.ts`) finds the checkout the agent pushed.
+   */
+  async linkedThreadIds(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("task_board_item_threads")
+      .select("thread_id as threadId")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+    return rows.map((r) => r.threadId);
   }
 
   async linkedTaskIds(
@@ -2409,6 +2432,7 @@ export class TaskBoardStorage {
     repo: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
+    preview_routes?: string[] | null;
     source?: "jira" | null;
     sort_order: number;
     key_seq: number;
@@ -2435,6 +2459,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       externalUrl: row.external_url ?? null,
+      previewRoutes: row.preview_routes ?? [],
       source: row.source ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,

@@ -259,6 +259,17 @@ export async function ensureSandbox(
      * isn't happening. Best-effort: a throw here must not fail the ensure.
      */
     onColdStart?: () => Promise<void>;
+    /**
+     * The pod this call bound, once it is known: `warmPoolAdopted` means the
+     * tenant warm pool handed over a pod that is already cloned, installed and
+     * serving, rather than a bare `cloneOnly` checkout.
+     *
+     * A callback rather than a return field because `SandboxRecord` is
+     * persisted (thread + agent metadata) and this is a fact about ONE claim,
+     * not about the sandbox. Not fired on the resume fast path — no pod was
+     * bound there, so a caller keeps whatever it already assumed.
+     */
+    onBound?: (info: { warmPoolAdopted: boolean }) => void;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -323,7 +334,7 @@ export async function ensureSandbox(
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
   // Past the resume fast path: this call is a real boot, so tell the caller.
   await input.onColdStart?.().catch(() => {});
-  const { entry } = await provisionSandbox({
+  const { entry, warmPoolAdopted } = await provisionSandbox({
     ctx,
     userId,
     sandboxUserId,
@@ -337,6 +348,7 @@ export async function ensureSandbox(
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
   });
+  input.onBound?.({ warmPoolAdopted });
   return entry;
 }
 
@@ -439,9 +451,11 @@ async function buildExtraRepoOpts(args: {
   return out;
 }
 
-async function provisionSandbox(
-  params: StartParams,
-): Promise<{ entry: SandboxRecord; isNewVm: boolean }> {
+async function provisionSandbox(params: StartParams): Promise<{
+  entry: SandboxRecord;
+  isNewVm: boolean;
+  warmPoolAdopted: boolean;
+}> {
   const {
     ctx,
     userId,
@@ -788,7 +802,7 @@ async function provisionSandbox(
 
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
-  return { entry, isNewVm };
+  return { entry, isNewVm, warmPoolAdopted: sandbox.warmPoolAdopted };
 }
 
 /**

@@ -98,6 +98,7 @@ export function useNavigateToAgent() {
               ...(target?.metadata?.releases ?? []).map((r) => r.branch),
             ]),
             draftsMode: draftsModeEnabled(target),
+            baseBranch,
           },
         );
     const taskId = delegateEntryToShell

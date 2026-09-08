@@ -271,3 +271,115 @@ describe("fetchOrPlaceholder", () => {
     });
   });
 });
+
+describe("per-entry revalidate override (a value still awaiting something)", () => {
+  test("fetch: a not-ready stored value goes stale immediately", async () => {
+    const clock = { now: 0 };
+    const cache = await cacheAt(clock);
+    let calls = 0;
+    const pending: Promise<void>[] = [];
+    const read = (ready: boolean) =>
+      cache.fetch({
+        namespace: "conn_1",
+        key: "deployment",
+        fetchLive: async () => {
+          calls++;
+          return { url: ready ? "https://x.vtex.app" : null };
+        },
+        onRevalidation: (p) => pending.push(p),
+        // Not ready -> 0, so the very next read revalidates.
+        revalidateAfterMs: (stored) =>
+          (stored as { url: string | null }).url === null ? 0 : 55_000,
+      });
+
+    await read(false);
+    expect(calls).toBe(1);
+
+    // One tick later the default window (55s) would still be a HIT; the
+    // override makes it stale, so the deploy's url is picked up on this poll.
+    clock.now = 1_000;
+    await read(true);
+    await Promise.all(pending);
+    expect(calls).toBe(2);
+
+    // Now that it IS ready, the default window applies again.
+    clock.now = 2_000;
+    await read(true);
+    await Promise.all(pending);
+    expect(calls).toBe(2);
+  });
+
+  test("fetch: maxStaleMs 0 makes a pending value a blocking miss", async () => {
+    const clock = { now: 0 };
+    const cache = await cacheAt(clock);
+    let calls = 0;
+    const pending: Promise<void>[] = [];
+    const read = (status: string) =>
+      cache.fetch({
+        namespace: "conn_1",
+        key: "checks",
+        fetchLive: async () => {
+          calls++;
+          return { status };
+        },
+        onRevalidation: (p) => pending.push(p),
+        revalidateAfterMs: () => 0,
+        maxStaleMs: (stored) =>
+          (stored as { status: string }).status === "pending" ? 0 : 55_000,
+      });
+
+    await read("pending");
+    expect(calls).toBe(1);
+
+    // A zero hit window alone would serve the stale "pending" and refresh behind it.
+    clock.now = 1_000;
+    expect(await read("success")).toEqual({ status: "success" });
+    expect(calls).toBe(2);
+
+    // Settled: the normal ceiling applies again (stale-serve + revalidate).
+    clock.now = 2_000;
+    expect(await read("success")).toEqual({ status: "success" });
+    await Promise.all(pending);
+  });
+
+  test("fetchOrPlaceholder: an incomplete card is never a hit", async () => {
+    const clock = { now: 0 };
+    const cache = new JetStreamKVPrCache(
+      PR_CARDS_CACHE,
+      { getJetStream: () => null },
+      () => clock.now,
+    );
+    await cache.init(fakeKv());
+
+    let calls = 0;
+    const get = (previewUrl: string | null) =>
+      cache.fetchOrPlaceholder<{ previewUrl: string | null }>({
+        namespace: "org_1",
+        key: "task_1",
+        fetchLive: async () => {
+          calls++;
+          return { previewUrl };
+        },
+        placeholder: { previewUrl: null },
+        revalidateAfterMs: (card) =>
+          card.previewUrl === null ? 0 : PR_CARDS_CACHE.revalidateAfterMs,
+      });
+
+    await get(null); // placeholder + detached fill
+    await Bun.sleep(0);
+    expect(calls).toBe(1);
+
+    // Inside the 30s default window, so unpatched this was a hit and the
+    // preview waited for the window to age out.
+    clock.now = 1_000;
+    await get("https://x.vtex.app");
+    await Bun.sleep(0);
+    expect(calls).toBe(2);
+
+    // Complete card: back to the normal window, no rebuild per poll.
+    clock.now = 2_000;
+    await get("https://x.vtex.app");
+    await Bun.sleep(0);
+    expect(calls).toBe(2);
+  });
+});

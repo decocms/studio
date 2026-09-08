@@ -49,7 +49,58 @@ export function isRateLimitError(err: unknown): boolean {
  * only moves to Done once a poll observes `merged`, and a minute of "did my ship
  * button work?" is exactly the confusion this cache must not introduce.
  */
-import { getPrCardCache, getPrReadCache } from "./pr-cache";
+import {
+  getPrCardCache,
+  getPrReadCache,
+  PR_CARDS_CACHE,
+  PR_READS_CACHE,
+} from "./pr-cache";
+
+/** Hit window for a cached value that is still waiting on something — a deploy
+ *  with no published url, or CI that hasn't finished. Zero, so the next poll
+ *  always revalidates (detached, off the request path) instead of serving the
+ *  not-ready answer for the full window. */
+const NOT_READY_REVALIDATE_MS = 0;
+
+/**
+ * A card that should keep refreshing: CI is still running, so both what it
+ * reports and the preview URL a deploy check publishes are still moving.
+ *
+ * Pending CI counts on its own — it used to additionally require a missing
+ * preview URL, which is what left a card sitting on "Checks pending" minutes
+ * after the checks went green. Nothing about the PR had changed; the checks
+ * simply finished, and with a preview already found the card was a cache HIT
+ * for the full window, rebuilt from reads that were themselves a window stale.
+ * Waiting is the one state whose whole point is that it ends, so it never gets
+ * a hit window.
+ *
+ * Bounded: a settled card (passing/failing/no CI) caches normally, so the
+ * per-poll rebuild this costs only runs while CI is actually running.
+ */
+export function isAwaitingCi(card: { checksStatus: ChecksStatus }): boolean {
+  return card.checksStatus === "pending";
+}
+
+/** Hit window for one raw GitHub read: zero while it says CI is still running,
+ *  for the same reason as {@link isAwaitingCi}. Without this the card
+ *  cache revalidates on every poll only to rebuild from a read that is itself
+ *  up to a full read-window stale, and the two lags add up. */
+function ciRevalidateAfterMs(status: ChecksStatus): number {
+  return status === "pending"
+    ? NOT_READY_REVALIDATE_MS
+    : PR_READS_CACHE.revalidateAfterMs;
+}
+
+/** Stale ceiling for one raw GitHub read: zero while it says CI is running, so
+ *  the read is a MISS and asks GitHub synchronously instead of serving the
+ *  pending answer one more time. A zero HIT window alone wasn't enough — it
+ *  only starts a background refresh, so the assembled card was still built from
+ *  the previous read and a fresh result needed a second poll to appear (and
+ *  never appeared at all if that one background write failed). Bounded to a
+ *  pending PR someone has the dialog open on. */
+function ciMaxStaleMs(status: ChecksStatus): number {
+  return status === "pending" ? 0 : PR_READS_CACHE.maxStaleMs;
+}
 
 export function invalidatePrReads(connectionId: string): Promise<void> {
   return getPrReadCache().invalidate(connectionId);
@@ -168,11 +219,15 @@ async function cachedPrRead(
   args: Record<string, unknown>,
   describe: string,
   pending: Promise<void>[],
+  revalidateAfterMs?: (stored: unknown) => number,
+  maxStaleMs?: (stored: unknown) => number,
 ): Promise<Record<string, unknown> | null> {
   try {
     const raw = await getPrReadCache().fetch({
       namespace: connectionId,
       key: JSON.stringify({ name, args }),
+      revalidateAfterMs,
+      maxStaleMs,
       fetchLive: () =>
         retry(
           async () => {
@@ -819,7 +874,11 @@ async function fetchPrStatusExtras(
   checks: PrCheck[];
   previewUrl: string | null;
 }> {
-  const read = (method: "get_status" | "get_check_runs" | "get_comments") =>
+  const read = (
+    method: "get_status" | "get_check_runs" | "get_comments",
+    revalidateAfterMs?: (stored: unknown) => number,
+    maxStaleMs?: (stored: unknown) => number,
+  ) =>
     cachedPrRead(
       getClient,
       connectionId,
@@ -832,13 +891,24 @@ async function fetchPrStatusExtras(
       },
       `${prLabel(pr)} (${method})`,
       pending,
+      revalidateAfterMs,
+      maxStaleMs,
     );
   // The three reads are independent — run them CONCURRENTLY. Serial was the
   // slowness (each is a remote MCP → GitHub round-trip, ~1.5-2s; the card made
   // 4-5 of them in a row).
   const [statusObj, runsRaw, commentsRaw] = await Promise.all([
-    read("get_status"),
-    read("get_check_runs"),
+    read(
+      "get_status",
+      (stored) => ciRevalidateAfterMs(toChecksStatus(toolResultJson(stored))),
+      (stored) => ciMaxStaleMs(toChecksStatus(toolResultJson(stored))),
+    ),
+    read(
+      "get_check_runs",
+      (stored) =>
+        ciRevalidateAfterMs(toCheckRunsStatus(toolResultJson(stored))),
+      (stored) => ciMaxStaleMs(toCheckRunsStatus(toolResultJson(stored))),
+    ),
     read("get_comments"),
   ]);
   // Combined Status API ∪ Checks API → one summary.
@@ -867,6 +937,16 @@ async function fetchPrStatusExtras(
           { owner: pr.repoOwner, repo: pr.repoName, sha: headSha },
           `${prLabel(pr)} (deployment preview)`,
           pending,
+          // An in-flight deploy answers "no environment url yet". Holding that
+          // for the full read window means the card keeps rebuilding from a
+          // stale not-ready answer even once GitHub has the url, so the preview
+          // shows up minutes after the deploy finished.
+          (stored) =>
+            extractPreviewUrlFromDeployment(
+              stored as Record<string, unknown> | null,
+            ) === null
+              ? NOT_READY_REVALIDATE_MS
+              : PR_READS_CACHE.revalidateAfterMs,
         ),
       );
     }
@@ -1265,6 +1345,15 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       namespace: organizationId,
       key: taskBoardItemId,
       fetchLive: assemble,
+      // A card whose deploy is still running has no preview yet. At the default
+      // window that card is a cache HIT for 30s, so the url can be a poll or
+      // two late even after the read above refreshes. Go stale immediately
+      // instead: the revalidation is detached, so this costs a background
+      // rebuild per poll on exactly the cards that are still missing something.
+      revalidateAfterMs: (cards) =>
+        cards.some(isAwaitingCi)
+          ? NOT_READY_REVALIDATE_MS
+          : PR_CARDS_CACHE.revalidateAfterMs,
       placeholder: linked.map((pr) => ({
         url: pr.url,
         number: pr.number,

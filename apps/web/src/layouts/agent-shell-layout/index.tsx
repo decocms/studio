@@ -66,6 +66,11 @@ import {
   draftsModeEnabled,
   useBaseBranch,
 } from "@/components/thread/github/use-version-gate";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  useReleases,
+} from "@/components/thread/github/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
@@ -335,6 +340,42 @@ function VmEventsBridge({
     setCurrentTaskBranch,
   ]);
 
+  // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
+  const draftsVm = useVirtualMCP(virtualMcpId);
+  const draftsBase = useBaseBranch(draftsVm, currentBranch);
+  const { releases: draftReleases, createRelease: createDraftRelease } =
+    useReleases(virtualMcpId);
+  const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
+  const currentIsUnnamedDraft =
+    draftsModeEnabled(draftsVm) &&
+    isOwnDraftThread &&
+    !!currentBranch &&
+    currentBranch !== draftsBase &&
+    !draftReleases.some((r) => r.branch === currentBranch);
+  const namedDraftForBranchRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
+  useEffect(() => {
+    if (!currentIsUnnamedDraft || !currentBranch) return;
+    if (namedDraftForBranchRef.current === currentBranch) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't create twice
+    namedDraftForBranchRef.current = currentBranch;
+    createDraftRelease({
+      branch: currentBranch,
+      name: nextDraftName(
+        draftReleases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
+      color: nextReleaseColor(draftReleases.length),
+      createdAt: new Date().toISOString(),
+    }).catch(() => {});
+  }, [
+    currentIsUnnamedDraft,
+    currentBranch,
+    draftReleases,
+    createDraftRelease,
+    t,
+  ]);
+
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
   // Gate instead on a registered sandboxMap entry, or an in-flight
@@ -579,6 +620,13 @@ function AgentInsetProvider() {
    *  per mount; only used by the redirect below. */
   const [generatedThreadId] = useState(() => crypto.randomUUID());
   const { data: session } = authClient.useSession();
+  /** Drafts-mode entry lands a fresh thread on an editable draft, never on
+   *  read-only production. Generated once per mount, like the thread id above. */
+  const [generatedDraftBranch] = useState(() =>
+    generateBranchName(
+      session?.user?.name || session?.user?.email?.split("@")[0],
+    ),
+  );
   const threadManager = useThreadManager();
   const threads = useSyncExternalStore(
     threadManager.threads.subscribe,
@@ -594,8 +642,8 @@ function AgentInsetProvider() {
 
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
   const isDraftsMode = draftsModeEnabled(entity);
-  // Production + named releases: the versions entry can restore to (see findAgentEntryThread).
   const baseBranch = useBaseBranch(entity, null);
+  // Legacy resume set; drafts mode resumes any non-base draft (see findAgentEntryThread).
   const namedVersionBranches = new Set<string>([
     baseBranch,
     ...(entity?.metadata?.releases ?? []).map((r) => r.branch),
@@ -608,8 +656,8 @@ function AgentInsetProvider() {
   const ensureState = useEnsureTask(
     routeThreadId,
     virtualMcpId,
-    // Drafts mode: a freshly minted thread lands on production, never an unnamed draft.
-    isDraftsMode ? baseBranch : undefined,
+    // Drafts mode: a freshly minted thread lands on an editable draft, never production.
+    isDraftsMode ? generatedDraftBranch : undefined,
   );
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
@@ -671,7 +719,11 @@ function AgentInsetProvider() {
       session?.user?.id,
       defaultThreadRuntime(entity.metadata),
       hasActiveGithubRepo,
-      { knownBranches: namedVersionBranches, draftsMode: isDraftsMode },
+      {
+        knownBranches: namedVersionBranches,
+        draftsMode: isDraftsMode,
+        baseBranch,
+      },
     );
     const threadId =
       entry?.id ?? (hasActiveGithubRepo ? generatedThreadId : null);

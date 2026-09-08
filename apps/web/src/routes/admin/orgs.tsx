@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { BUILTIN_ROLES } from "@decocms/shared/auth/roles";
 import {
@@ -33,11 +34,21 @@ import {
   type OrgFlags,
   OrgFlagsSchema,
 } from "@decocms/shared/organization/schema";
+import type {
+  OrgNoticeInput,
+  OrgNoticeSeverity,
+} from "@decocms/shared/organization/notice";
 import { SITE_SLUG_RE } from "@decocms/shared/site-slug";
 import { adminFetch } from "@/lib/admin-fetch";
 import { formatDate } from "@/lib/format-time";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+
+interface AdminOrgNotice extends OrgNoticeInput {
+  id: string;
+  source: string;
+  updatedAt: string;
+}
 
 interface DeploymentAdminOrg {
   id: string;
@@ -45,6 +56,8 @@ interface DeploymentAdminOrg {
   slug: string;
   createdAt: string;
   memberCount: number;
+  /** The org's live billing notice, or null — see `organization_notices`. */
+  notice: AdminOrgNotice | null;
 }
 
 interface FlagsResponse {
@@ -682,6 +695,234 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
   );
 }
 
+/**
+ * Pins (or lifts) the billing notice on one org: a `warn` banner, or a `block`
+ * that takes the org's UI and control-plane writes away until it is resolved.
+ * The copy is typed here and shown verbatim to that org's members.
+ */
+function NoticeDialog({ org }: { org: DeploymentAdminOrg }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<OrgNoticeInput | null>(null);
+  const queryClient = useQueryClient();
+
+  const { data: notice } = useQuery({
+    queryKey: KEYS.deploymentAdminOrgNotice(org.id),
+    queryFn: () =>
+      adminFetch<{ notice: AdminOrgNotice | null }>(
+        `/api/_admin/orgs/${org.id}/notice`,
+      ).then((res) => res.notice),
+    enabled: open,
+    initialData: org.notice,
+  });
+
+  const form: OrgNoticeInput = draft ?? {
+    severity: notice?.severity ?? "warn",
+    title: notice?.title ?? "",
+    message: notice?.message ?? "",
+    ctaLabel: notice?.ctaLabel ?? "",
+    ctaUrl: notice?.ctaUrl ?? "",
+  };
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({
+      queryKey: KEYS.deploymentAdminOrgNotice(org.id),
+    });
+    queryClient.invalidateQueries({ queryKey: KEYS.deploymentAdminOrgsList() });
+  };
+
+  const closeAndReset = () => {
+    setDraft(null);
+    setOpen(false);
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      adminFetch(`/api/_admin/orgs/${org.id}/notice`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          severity: form.severity,
+          title: form.title.trim(),
+          message: form.message.trim(),
+          ctaLabel: form.ctaLabel?.trim() || null,
+          ctaUrl: form.ctaUrl?.trim() || null,
+        }),
+      }),
+    onSuccess: () => {
+      toast.success(t("admin.orgs.noticeSaved", { org: org.name }));
+      invalidate();
+      closeAndReset();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("admin.orgs.failedSaveNotice"),
+      );
+    },
+  });
+
+  const clear = useMutation({
+    mutationFn: () =>
+      adminFetch(`/api/_admin/orgs/${org.id}/notice`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success(t("admin.orgs.noticeCleared", { org: org.name }));
+      invalidate();
+      closeAndReset();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("admin.orgs.failedClearNotice"),
+      );
+    },
+  });
+
+  const isPending = save.isPending || clear.isPending;
+  // A labelled button with no URL (or the reverse) is rejected server-side.
+  const ctaIncomplete = !form.ctaLabel?.trim() !== !form.ctaUrl?.trim();
+  const canSave =
+    !!form.title.trim() && !!form.message.trim() && !ctaIncomplete;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => (next ? setOpen(true) : closeAndReset())}
+    >
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          {t("admin.orgs.notice")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {t("admin.orgs.noticeFor", { org: org.name })}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {t("admin.orgs.noticeDescription")}
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor={`notice-severity-${org.id}`}>
+              {t("admin.orgs.noticeSeverity")}
+            </Label>
+            <Select
+              value={form.severity}
+              onValueChange={(value) =>
+                setDraft({ ...form, severity: value as OrgNoticeSeverity })
+              }
+              disabled={isPending}
+            >
+              <SelectTrigger
+                id={`notice-severity-${org.id}`}
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="warn">
+                  {t("admin.orgs.noticeSeverityWarn")}
+                </SelectItem>
+                <SelectItem value="block">
+                  {t("admin.orgs.noticeSeverityBlock")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`notice-title-${org.id}`}>
+              {t("admin.orgs.noticeTitle")}
+            </Label>
+            <Input
+              id={`notice-title-${org.id}`}
+              value={form.title}
+              onChange={(e) => setDraft({ ...form, title: e.target.value })}
+              placeholder={t("admin.orgs.noticeTitlePlaceholder")}
+              disabled={isPending}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`notice-message-${org.id}`}>
+              {t("admin.orgs.noticeMessage")}
+            </Label>
+            <Textarea
+              id={`notice-message-${org.id}`}
+              value={form.message}
+              onChange={(e) => setDraft({ ...form, message: e.target.value })}
+              placeholder={t("admin.orgs.noticeMessagePlaceholder")}
+              rows={4}
+              disabled={isPending}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor={`notice-cta-label-${org.id}`}>
+                {t("admin.orgs.noticeCtaLabel")}
+              </Label>
+              <Input
+                id={`notice-cta-label-${org.id}`}
+                value={form.ctaLabel ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...form, ctaLabel: e.target.value })
+                }
+                placeholder={t("admin.orgs.noticeCtaLabelPlaceholder")}
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`notice-cta-url-${org.id}`}>
+                {t("admin.orgs.noticeCtaUrl")}
+              </Label>
+              <Input
+                id={`notice-cta-url-${org.id}`}
+                value={form.ctaUrl ?? ""}
+                onChange={(e) => setDraft({ ...form, ctaUrl: e.target.value })}
+                placeholder="https://..."
+                disabled={isPending}
+              />
+            </div>
+          </div>
+          {ctaIncomplete ? (
+            <p className="text-sm text-destructive">
+              {t("admin.orgs.noticeCtaIncomplete")}
+            </p>
+          ) : null}
+        </div>
+        <DialogFooter>
+          {notice ? (
+            <Button
+              variant="outline"
+              onClick={() => clear.mutate()}
+              disabled={isPending}
+            >
+              {t("admin.orgs.noticeClear")}
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            onClick={closeAndReset}
+            disabled={isPending}
+          >
+            {t("admin.orgs.cancel")}
+          </Button>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={!canSave || isPending}
+          >
+            {save.isPending
+              ? t("admin.orgs.noticeSaving")
+              : t("admin.orgs.noticeSave")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -817,6 +1058,25 @@ export default function AdminOrgsPage() {
       cellClassName: "flex-1 min-w-0",
     },
     {
+      id: "notice",
+      header: t("admin.orgs.notice"),
+      render: (org) =>
+        org.notice ? (
+          <Badge
+            variant={
+              org.notice.severity === "block" ? "destructive" : "outline"
+            }
+          >
+            {org.notice.severity === "block"
+              ? t("admin.orgs.noticeSeverityBlock")
+              : t("admin.orgs.noticeSeverityWarn")}
+          </Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        ),
+      cellClassName: "w-28 shrink-0",
+    },
+    {
       id: "members",
       header: t("admin.orgs.members"),
       render: (org) => (
@@ -841,6 +1101,7 @@ export default function AdminOrgsPage() {
         <div className="flex items-center justify-end gap-2">
           <FlagsDialog org={org} />
           <SitesDialog org={org} />
+          <NoticeDialog org={org} />
           <AddMemberDialog org={org} />
         </div>
       ),

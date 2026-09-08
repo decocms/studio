@@ -110,6 +110,7 @@ import {
   isSuccessfulCheck,
   prCardActions,
 } from "./pr-card-actions";
+import { previewRouteUrl } from "./preview-routes";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import { usePreviewProbe } from "@/hooks/use-preview-probe";
@@ -1749,7 +1750,7 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
  * opaque to the browser), so this blocks on `usePreviewProbe` and offers the
  * link only on a < 400.
  */
-function PreviewButton({ url }: { url: string }) {
+function PreviewButton({ url, routes }: { url: string; routes: string[] }) {
   const t = useT();
   const { data, isPending, isError } = usePreviewProbe(url);
   const available = data?.available ?? false;
@@ -1785,13 +1786,13 @@ function PreviewButton({ url }: { url: string }) {
     );
   }
 
-  return (
+  const link = (
     <Button
       asChild
       type="button"
       variant="outline"
       size="sm"
-      className="gap-1.5"
+      className={cn("gap-1.5", routes.length > 0 && "rounded-r-none")}
     >
       <a href={url} target="_blank" rel="noreferrer">
         <Globe01 size={14} />
@@ -1799,6 +1800,43 @@ function PreviewButton({ url }: { url: string }) {
         <LinkExternal01 size={12} />
       </a>
     </Button>
+  );
+
+  if (routes.length === 0) return link;
+
+  // Button keeps opening the preview root; the caret offers the run's pages.
+  return (
+    <div className="flex items-center">
+      {link}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-l-none border-l-0 px-1.5"
+            aria-label={t("taskBoard.taskDialog.previewRoutesLabel")}
+            title={t("taskBoard.taskDialog.previewRoutesLabel")}
+          >
+            <ChevronDown size={14} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {routes.map((route) => (
+            <DropdownMenuItem key={route} asChild>
+              <a
+                href={previewRouteUrl(url, route)}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-xs"
+              >
+                {route}
+              </a>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -1809,6 +1847,7 @@ function PreviewButton({ url }: { url: string }) {
  */
 function PrCard({
   pr,
+  routes,
   revalidating,
   previewThread,
   reviewsReady,
@@ -1819,6 +1858,8 @@ function PrCard({
   onOpenPreview,
 }: {
   pr: TaskBoardItemPr;
+  /** The task's reported preview routes, offered under this PR's preview. */
+  routes: string[];
   /** A live GitHub read is in flight behind the values shown. */
   revalidating: boolean;
   previewThread?: TaskBoardItemThread;
@@ -1912,7 +1953,9 @@ function PrCard({
               {t("taskBoard.taskDialog.openPreviewButton")}
             </Button>
           )}
-          {pr.previewUrl && <PreviewButton url={pr.previewUrl} />}
+          {pr.previewUrl && (
+            <PreviewButton url={pr.previewUrl} routes={routes} />
+          )}
           {showShip && (
             <Button
               type="button"
@@ -2116,6 +2159,7 @@ function LinksSection({
             <PrCard
               key={pr.url}
               pr={pr}
+              routes={item.previewRoutes ?? []}
               revalidating={prsFetching}
               previewThread={previewThread}
               reviewsReady={reviewsReady}

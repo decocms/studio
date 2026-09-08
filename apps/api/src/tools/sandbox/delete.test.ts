@@ -23,6 +23,7 @@ const mockRunner: Pick<
     handle: "_unused",
     workdir: "/app",
     previewUrl: null,
+    warmPoolAdopted: false,
   }),
   delete: (h) => mockDelete(h),
   alive: async () => true,

@@ -91,12 +91,40 @@ const URL_USERINFO = /([a-z][a-z0-9+.-]{0,30}:\/\/)[^\s/@]{1,512}@/gi;
 // would redact chat content the user needs to read.
 const GITHUB_TOKEN = /\b(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g;
 
+// A base64 data URL inline in tool output or agent text. Same reasoning as the
+// image blocks below, minus the structure: it is bulk binary that nobody reads
+// out of this table. Bounded prefix, and the payload class excludes whitespace
+// so it cannot run past the URL into surrounding prose.
+const BASE64_DATA_URL =
+  /data:[a-z0-9.+-]{0,60}\/[a-z0-9.+-]{0,60};base64,[A-Za-z0-9+/=]{100,}/gi;
+
 function sanitizeForPg(value: string): string {
   return value
     .replace(NUL, "")
     .replace(LONE_SURROGATE, "\uFFFD")
     .replace(URL_USERINFO, "$1***@")
-    .replace(GITHUB_TOKEN, "$1***");
+    .replace(GITHUB_TOKEN, "$1***")
+    .replace(BASE64_DATA_URL, "[base64 data omitted]");
+}
+
+// A screenshot the agent read is megabytes of base64 that dominates this table
+// (54 MB across ~700 rows in production) and rides into every later prompt
+// folded from these parts. It becomes a text block, not an image block with
+// gutted `data`, so the folded message stays a valid content block.
+//
+// Only blocks carrying the bytes: an image block pointing at object storage
+// (`studio-storage:`, a signed URL) is a cheap reference the UI still needs.
+function isInlineBase64Image(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const block = value as { type?: unknown; data?: unknown; source?: unknown };
+  if (block.type !== "image") return false;
+  if (typeof block.data === "string") return true;
+  const source = block.source;
+  return (
+    typeof source === "object" &&
+    source !== null &&
+    typeof (source as { data?: unknown }).data === "string"
+  );
 }
 
 export function serializePayload(payload: unknown): string {
@@ -112,9 +140,12 @@ export function serializePayload(payload: unknown): string {
   // A JSON replacer visits every string in the payload tree; clean strings pass
   // through untouched (byte-identical output, so ids derived from the payload
   // stay stable).
-  return JSON.stringify(payload, (_key, value) =>
-    typeof value === "string" ? sanitizeForPg(value) : value,
-  );
+  return JSON.stringify(payload, (_key, value) => {
+    if (typeof value === "string") return sanitizeForPg(value);
+    if (isInlineBase64Image(value))
+      return { type: "text", text: "[image omitted]" };
+    return value;
+  });
 }
 
 export class SqlThreadMessagePartStorage {

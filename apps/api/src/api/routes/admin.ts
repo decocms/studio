@@ -25,7 +25,10 @@ import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
+import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import {
   flagsResponse,
@@ -341,10 +344,17 @@ export function createAdminRoutes(): Hono<Env> {
       .limit(limit)
       .execute();
 
+    // One extra query for the whole page: the notice badge is the reason an
+    // operator opens this list during a billing sweep.
+    const notices = await new OrganizationNoticeStorage(db).getActiveForOrgs(
+      rows.map((row) => row.id),
+    );
+
     return c.json({
       organizations: rows.map((row) => ({
         ...row,
         memberCount: Number(row.memberCount || 0),
+        notice: notices.get(row.id) ?? null,
       })),
     });
   });
@@ -642,6 +652,112 @@ export function createAdminRoutes(): Hono<Env> {
       event: "deployment_admin_org_site_release",
       groups: { organization: orgId },
       properties: { actor_user_id: actorId, organization_id: orgId, slug },
+    });
+
+    return c.json({ ok: true });
+  });
+
+  // Billing notice pinned on an org: a `warn` banner, or a `block` that takes
+  // the org's UI and control-plane writes away until it is resolved.
+  app.get("/orgs/:orgId/notice", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const notice = await new OrganizationNoticeStorage(db).getActive(orgId);
+    return c.json({ notice });
+  });
+
+  app.put("/orgs/:orgId/notice", async (c) => {
+    const orgId = c.req.param("orgId");
+    const raw = await c.req.json().catch(() => null);
+    const parsed = OrgNoticeInputSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid notice", issues: parsed.error.issues },
+        400,
+      );
+    }
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const notice = await new OrganizationNoticeStorage(db).setActive({
+      organizationId: orgId,
+      notice: parsed.data,
+      by: actorId,
+    });
+    invalidateOrgNoticeCache(orgId);
+
+    auditAdminAction("org_notice_set", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      severity: notice.severity,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_org_notice_set",
+      groups: { organization: orgId },
+      properties: {
+        actor_user_id: actorId,
+        organization_id: orgId,
+        severity: notice.severity,
+      },
+    });
+
+    return c.json({ notice });
+  });
+
+  app.delete("/orgs/:orgId/notice", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const resolved = await new OrganizationNoticeStorage(db).resolveActive({
+      organizationId: orgId,
+      by: actorId,
+    });
+    if (!resolved) {
+      return c.json({ error: "No active notice for this organization" }, 404);
+    }
+    invalidateOrgNoticeCache(orgId);
+
+    auditAdminAction("org_notice_resolve", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_org_notice_resolved",
+      groups: { organization: orgId },
+      properties: { actor_user_id: actorId, organization_id: orgId },
     });
 
     return c.json({ ok: true });

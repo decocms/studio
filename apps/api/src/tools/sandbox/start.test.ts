@@ -19,6 +19,7 @@ const mockEnsure = mock(
     handle: "vm_xyz",
     workdir: "/app",
     previewUrl: "https://stub.preview/",
+    warmPoolAdopted: false,
   }),
 );
 
@@ -321,6 +322,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     mockTokenGet.mockImplementation(async () => ({
       id: "dtok_1",
@@ -435,6 +437,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
@@ -474,6 +477,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -505,6 +509,7 @@ describe("SANDBOX_START", () => {
       handle: "vm_xyz",
       workdir: "/app",
       previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
     }));
     // detectRepoRuntime probe will run when packageManager is unset; stub
     // it so it returns null and leaves metadata.runtime unchanged.
@@ -545,6 +550,7 @@ describe("SANDBOX_START", () => {
       handle: CACHED_ENTRY.sandboxHandle,
       workdir: "/app",
       previewUrl: CACHED_ENTRY.previewUrl,
+      warmPoolAdopted: false,
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -791,6 +797,7 @@ describe("SANDBOX_START", () => {
       handle: agentSandboxEntry.sandboxHandle,
       workdir: "/app",
       previewUrl: agentSandboxEntry.previewUrl,
+      warmPoolAdopted: false,
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
