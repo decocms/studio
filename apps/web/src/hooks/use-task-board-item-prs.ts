@@ -25,7 +25,7 @@ const PRS_UNENRICHED_POLL_INTERVAL_MS = 2_000;
  *  when — so while any linked PR reports pending CI, poll faster than the idle
  *  minute. Bounded to a dialog that is open on a PR whose CI is actually
  *  running, and the server answers those from cache while it refreshes. */
-const PRS_PENDING_CHECKS_POLL_INTERVAL_MS = 15_000;
+const PRS_PENDING_CHECKS_POLL_INTERVAL_MS = 10_000;
 
 /** A card the server returned before GitHub answered: link fields only. `state`
  *  is null for a PR GitHub could not be read for too, which polls the same way

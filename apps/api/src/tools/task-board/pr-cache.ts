@@ -102,6 +102,13 @@ export interface PrCacheFetch {
    *  should go stale fast, so the next poll refetches instead of serving the
    *  not-ready answer for the full config window. Omit for the default. */
   revalidateAfterMs?: (stored: unknown) => number;
+  /** Per-entry override of the STALE ceiling, computed from the stored value.
+   *  Returning 0 makes a stored value a MISS — the caller blocks on a live
+   *  fetch. That is the right trade for a value whose whole point is that it
+   *  ends (CI still running): stale-while-revalidate needs two polls to surface
+   *  a change (this poll serves stale, the background write lands after), and
+   *  if that background write ever fails the entry never moves again. */
+  maxStaleMs?: (stored: unknown) => number;
 }
 
 export class JetStreamKVPrCache {
@@ -187,8 +194,12 @@ export class JetStreamKVPrCache {
     const age = stored
       ? this.now() - stored.storedAt
       : Number.POSITIVE_INFINITY;
+    const staleCeilingMs =
+      stored && params.maxStaleMs
+        ? params.maxStaleMs(stored.value)
+        : maxStaleMs;
 
-    if (!stored || age > maxStaleMs) {
+    if (!stored || age > staleCeilingMs) {
       cacheCounter.add(1, { cache, outcome: "miss" });
       const value = await fetchLive();
       await this.write(key, value, cache);
