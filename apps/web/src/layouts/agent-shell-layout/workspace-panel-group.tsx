@@ -29,7 +29,7 @@ import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar"
 import { VirtualMcpHeaderInfo } from "@/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
-import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { useResolvedMainTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useOptionalChatTask } from "@/components/chat/context";
 import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -136,11 +136,13 @@ export function WorkspacePanelGroup({
   // to: the branch is the branch the surface is being edited on, and it said
   // nothing useful beside a screen that edits no files.
   const currentBranch = useOptionalChatTask()?.currentBranch ?? null;
-  const activeTab = useActivePanelTabId();
-  const branchSelector =
-    activeTab && isSurfaceTab(activeTab) ? (
-      <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
-    ) : null;
+  /** RESOLVED view, not the raw URL segment — same reason as the publish
+   *  cluster it sits beside: the bare `/$org/agents` entry shows the default
+   *  Preview with no `{-$panel}` segment, and a raw read hid the selector. */
+  const activeTab = useResolvedMainTabId(entity.metadata?.ui?.layout ?? null);
+  const branchSelector = isSurfaceTab(activeTab) ? (
+    <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
+  ) : null;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs URL-derived visibility with the resizable panels' imperative layout API
   useEffect(() => {
