@@ -2,7 +2,7 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { agentShowsGithubHeaderActions } from "@/lib/agent-capabilities";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
-import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { useResolvedMainTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { CmsHeaderActions } from "../../components/thread/github/cms-header-actions.tsx";
 import { HeaderActions } from "../../components/thread/github/header-actions.tsx";
 import { DevAgentControl } from "../../components/dev-agent/dev-agent-control.tsx";
@@ -29,8 +29,14 @@ export function VirtualMcpHeaderInfo({
   // The SESSION's runtime, not the project's: a coding session on a CMS-default
   // project gets the sandbox header, and the hooks that header mounts.
   const fastPreviewActive = useSessionRuntime(virtualMcp.id).runtime === "cms";
-  const activeTab = useActivePanelTabId();
-  const onSiteEditor = !!activeTab && isSurfaceTab(activeTab);
+  /** The RESOLVED view, not the raw URL segment: landing on the bare
+   *  `/$org/agents` entry renders this project's default Preview with no
+   *  `{-$panel}` segment, so a raw read reported "no active tab" and hid the
+   *  publish cluster even though the Site Editor was on screen. */
+  const activeTab = useResolvedMainTabId(
+    virtualMcp.metadata?.ui?.layout ?? null,
+  );
+  const onSiteEditor = isSurfaceTab(activeTab);
 
   return (
     <div className="flex items-center gap-2">
