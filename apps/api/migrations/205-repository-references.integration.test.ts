@@ -9,7 +9,14 @@
  * metadata is not valid JSON does not abort the run.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  setDefaultTimeout,
+} from "bun:test";
 import { sql } from "kysely";
 import type { StudioDatabase } from "../src/database";
 import {
@@ -18,6 +25,12 @@ import {
   resetTestPgDatabase,
 } from "../src/database/test-db-pg";
 import { down, up } from "./205-repository-references";
+
+// Each test resets the schema from scratch, and that reset truncates every
+// table there is — a cost that grows with every migration the repo adds. On a
+// shared CI Postgres the hook alone can outlast bun's 5s default, and an
+// aborted hook surfaces as an unrelated "driver has already been destroyed".
+setDefaultTimeout(30_000);
 
 const ORG = "org_202";
 const USER = "user_202";
