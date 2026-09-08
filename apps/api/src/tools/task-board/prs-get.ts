@@ -91,6 +91,17 @@ function ciRevalidateAfterMs(status: ChecksStatus): number {
     : PR_READS_CACHE.revalidateAfterMs;
 }
 
+/** Stale ceiling for one raw GitHub read: zero while it says CI is running, so
+ *  the read is a MISS and asks GitHub synchronously instead of serving the
+ *  pending answer one more time. A zero HIT window alone wasn't enough — it
+ *  only starts a background refresh, so the assembled card was still built from
+ *  the previous read and a fresh result needed a second poll to appear (and
+ *  never appeared at all if that one background write failed). Bounded to a
+ *  pending PR someone has the dialog open on. */
+function ciMaxStaleMs(status: ChecksStatus): number {
+  return status === "pending" ? 0 : PR_READS_CACHE.maxStaleMs;
+}
+
 export function invalidatePrReads(connectionId: string): Promise<void> {
   return getPrReadCache().invalidate(connectionId);
 }
@@ -209,12 +220,14 @@ async function cachedPrRead(
   describe: string,
   pending: Promise<void>[],
   revalidateAfterMs?: (stored: unknown) => number,
+  maxStaleMs?: (stored: unknown) => number,
 ): Promise<Record<string, unknown> | null> {
   try {
     const raw = await getPrReadCache().fetch({
       namespace: connectionId,
       key: JSON.stringify({ name, args }),
       revalidateAfterMs,
+      maxStaleMs,
       fetchLive: () =>
         retry(
           async () => {
@@ -864,6 +877,7 @@ async function fetchPrStatusExtras(
   const read = (
     method: "get_status" | "get_check_runs" | "get_comments",
     revalidateAfterMs?: (stored: unknown) => number,
+    maxStaleMs?: (stored: unknown) => number,
   ) =>
     cachedPrRead(
       getClient,
@@ -878,16 +892,22 @@ async function fetchPrStatusExtras(
       `${prLabel(pr)} (${method})`,
       pending,
       revalidateAfterMs,
+      maxStaleMs,
     );
   // The three reads are independent — run them CONCURRENTLY. Serial was the
   // slowness (each is a remote MCP → GitHub round-trip, ~1.5-2s; the card made
   // 4-5 of them in a row).
   const [statusObj, runsRaw, commentsRaw] = await Promise.all([
-    read("get_status", (stored) =>
-      ciRevalidateAfterMs(toChecksStatus(toolResultJson(stored))),
+    read(
+      "get_status",
+      (stored) => ciRevalidateAfterMs(toChecksStatus(toolResultJson(stored))),
+      (stored) => ciMaxStaleMs(toChecksStatus(toolResultJson(stored))),
     ),
-    read("get_check_runs", (stored) =>
-      ciRevalidateAfterMs(toCheckRunsStatus(toolResultJson(stored))),
+    read(
+      "get_check_runs",
+      (stored) =>
+        ciRevalidateAfterMs(toCheckRunsStatus(toolResultJson(stored))),
+      (stored) => ciMaxStaleMs(toCheckRunsStatus(toolResultJson(stored))),
     ),
     read("get_comments"),
   ]);
