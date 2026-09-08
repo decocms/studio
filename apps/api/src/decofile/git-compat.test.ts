@@ -1,37 +1,29 @@
 import { describe, expect, it } from "bun:test";
+import type { TreeEntry } from "@/git-providers/content/types";
 import {
-  buildDiscardTreeEntries,
-  buildMergeTreeEntries,
+  buildDiscardPlan,
+  buildMergeReplayPlan,
   buildPublishStatus,
   normalizeCompareStatus,
 } from "./git-compat";
-import type { TreeEntry } from "./github-git-data";
 
-describe("buildMergeTreeEntries", () => {
+describe("buildMergeReplayPlan", () => {
   it("writes a rename as create-destination + delete-source", () => {
-    const entries = buildMergeTreeEntries(
+    const plan = buildMergeReplayPlan(
       [
         {
           filename: "Header.json",
           status: "renamed",
-          sha: "b1",
           previousFilename: "Hero.json",
         },
       ],
-      new Map([["Header.json", { sha: "b1" }]]),
+      "merged-sha",
     );
-    expect(entries).toContainEqual({
+    expect(plan).toContainEqual({
       path: "Header.json",
-      mode: "100644",
-      type: "blob",
-      sha: "b1",
+      copyFromRef: "merged-sha",
     });
-    expect(entries).toContainEqual({
-      path: "Hero.json",
-      mode: "100644",
-      type: "blob",
-      sha: null,
-    });
+    expect(plan).toContainEqual({ path: "Hero.json", deleted: true });
   });
 
   it("keeps a path's new content when it is both a rename destination and another file's rename source, regardless of diff order", () => {
@@ -39,87 +31,83 @@ describe("buildMergeTreeEntries", () => {
       {
         filename: "Header.json",
         status: "renamed",
-        sha: "b1",
         previousFilename: "Hero.json",
       },
       {
         filename: "Hero.json",
         status: "renamed",
-        sha: "b2",
         previousFilename: "Banner.json",
       },
     ];
-    const branchBlobByPath = new Map([
-      ["Header.json", { sha: "b1" }],
-      ["Hero.json", { sha: "b2" }],
-    ]);
 
     for (const ordered of [files, [...files].reverse()]) {
-      const entries = buildMergeTreeEntries(ordered, branchBlobByPath);
-      const heroEntry = entries.find((e) => e.path === "Hero.json");
-      expect(heroEntry).toEqual({
+      const plan = buildMergeReplayPlan(ordered, "merged-sha");
+      expect(plan.find((e) => e.path === "Hero.json")).toEqual({
         path: "Hero.json",
-        mode: "100644",
-        type: "blob",
-        sha: "b2",
+        copyFromRef: "merged-sha",
       });
-      expect(entries).toContainEqual({
-        path: "Banner.json",
-        mode: "100644",
-        type: "blob",
-        sha: null,
-      });
+      expect(plan).toContainEqual({ path: "Banner.json", deleted: true });
     }
   });
 
-  it("deletes a removed file", () => {
-    const entries = buildMergeTreeEntries(
-      [{ filename: "Old.json", status: "removed", sha: "b1" }],
-      new Map(),
+  it("deletes a removed file rather than replaying it from the source ref", () => {
+    const plan = buildMergeReplayPlan(
+      [{ filename: "Old.json", status: "removed" }],
+      "merged-sha",
     );
-    expect(entries).toEqual([
-      { path: "Old.json", mode: "100644", type: "blob", sha: null },
+    expect(plan).toEqual([{ path: "Old.json", deleted: true }]);
+  });
+
+  it("replays every surviving path from the one source ref, uploading nothing", () => {
+    const plan = buildMergeReplayPlan(
+      [
+        { filename: "A.json", status: "modified" },
+        { filename: "B.json", status: "added" },
+      ],
+      "branch-head",
+    );
+    expect(plan).toEqual([
+      { path: "A.json", copyFromRef: "branch-head" },
+      { path: "B.json", copyFromRef: "branch-head" },
     ]);
   });
 });
 
-describe("buildDiscardTreeEntries", () => {
-  const blob = (sha: string, mode: string): TreeEntry => ({
+describe("buildDiscardPlan", () => {
+  const blob = (sha: string): TreeEntry => ({
     path: "irrelevant", // overwritten by the map key at lookup time
-    mode,
     type: "blob",
     sha,
   });
 
-  it("restores the base blob's mode, not a hardcoded 100644", () => {
-    const entries = buildDiscardTreeEntries(
+  it("restores the path from the base ref itself, so an executable stays executable", () => {
+    const plan = buildDiscardPlan(
       ["run.sh"],
-      new Map([["run.sh", blob("base-sha", "100755")]]),
-      new Map([["run.sh", blob("head-sha", "100755")]]),
+      new Map([["run.sh", blob("base-sha")]]),
+      new Map([["run.sh", blob("head-sha")]]),
+      "merge-base",
     );
-    expect(entries).toEqual([
-      { path: "run.sh", mode: "100755", type: "blob", sha: "base-sha" },
-    ]);
+    expect(plan).toEqual([{ path: "run.sh", copyFromRef: "merge-base" }]);
   });
 
   it("deletes a path the base doesn't have", () => {
-    const entries = buildDiscardTreeEntries(
+    const plan = buildDiscardPlan(
       ["New.json"],
       new Map(),
-      new Map([["New.json", blob("head-sha", "100644")]]),
+      new Map([["New.json", blob("head-sha")]]),
+      "merge-base",
     );
-    expect(entries).toEqual([
-      { path: "New.json", mode: "100644", type: "blob", sha: null },
-    ]);
+    expect(plan).toEqual([{ path: "New.json", deleted: true }]);
   });
 
   it("is a no-op when base and head already match, or both are absent", () => {
-    const entries = buildDiscardTreeEntries(
+    const plan = buildDiscardPlan(
       ["Same.json", "Never.json"],
-      new Map([["Same.json", blob("s", "100644")]]),
-      new Map([["Same.json", blob("s", "100644")]]),
+      new Map([["Same.json", blob("s")]]),
+      new Map([["Same.json", blob("s")]]),
+      "merge-base",
     );
-    expect(entries).toEqual([]);
+    expect(plan).toEqual([]);
   });
 });
 

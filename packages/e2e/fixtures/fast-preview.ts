@@ -81,7 +81,7 @@ export interface FastPreviewProject {
  * Full Fast Preview project wiring: repo-scoped GitHub child + unexpired
  * downstream token + a virtual MCP carrying the Fast Preview gate.
  * `repoScopeMode` picks which real repo-child shape to seed; the two resolve
- * credentials down different paths (see `client-for-repo`), and the default is
+ * credentials down different paths (see `git-providers/content`), and the default is
  * the one every repo imported since refreshable grants landed actually has.
  */
 export async function createFastPreviewProject(

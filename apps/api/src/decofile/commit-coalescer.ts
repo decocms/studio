@@ -3,9 +3,13 @@ import {
   type CoAuthorIdentity,
 } from "@decocms/sandbox/shared";
 import { blockKeyToFileStem, mergeBlocks } from "@decocms/shared/decofile";
+import { repoIdentityKey } from "@decocms/shared/git-providers";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
-import type { GitDataClient, TreeWriteEntry } from "./github-git-data";
-import { GitHubApiError } from "./github-git-data";
+import {
+  type FileChange,
+  type RepoContentClient,
+  RepoWriteConflict,
+} from "@/git-providers/content/types";
 import {
   aliasPathsForKey,
   blockEntriesInTree,
@@ -21,9 +25,10 @@ import {
  * commit is in flight merge into ONE pending batch, and the next flush lands
  * them all in a single commit.
  *
- * Multi-replica safety comes from GitHub itself: `updateRef` is non-forced, so
- * a concurrent writer (another replica, a dev pushing code) makes it fail
- * non-fast-forward and the flush rebuilds on the fresh head and retries.
+ * Multi-replica safety comes from the provider itself: `commitFiles` guards on
+ * the head the batch was built against, so a concurrent writer (another
+ * replica, a dev pushing code) makes it fail with `RepoWriteConflict` and the
+ * flush rebuilds on the fresh head and retries.
  */
 
 const MAX_CAS_ATTEMPTS = 3;
@@ -34,7 +39,7 @@ export interface DecofilePatch {
 }
 
 export interface CommitDeps {
-  client: GitDataClient;
+  client: RepoContentClient;
   branch: string;
   packagePath: string | null;
   /** Acting user, appended as a `Co-authored-by:` trailer when present. */
@@ -123,43 +128,41 @@ async function commitBatch(batch: Batch): Promise<string> {
     // Writes are session-only, so first-touch of a thread-minted branch may
     // materialize it here (a save can race ahead of the editor's first read).
     const headSha = await resolveOrCreateHead(client, branch);
-    const baseTreeSha = await client.getCommitTreeSha(headSha);
-    const tree = await client.getDecofileTree(baseTreeSha, packagePath);
+    const tree = await client.listDecofileEntries(headSha, packagePath);
     const entries = blockEntriesInTree(tree, packagePath);
 
-    const writes: TreeWriteEntry[] = [];
+    const writes: FileChange[] = [];
     // Post-patch view of the blocks dir, for blocks.gen.json regeneration.
     const nextBlocks = new Map<
       string,
-      { stem: string; sha: string | null; content?: string }
+      { stem: string; sha: string } | { stem: string; content: string }
     >(entries.map((e) => [e.path, { stem: e.stem, sha: e.sha }]));
 
     for (const [key, value] of batch.set) {
       const aliases = aliasPathsForKey(entries, key);
       const content = `${JSON.stringify(value, null, 2)}\n`;
-      const blobSha = await client.createBlob(content);
       // Write-through to the disk store (fail-open) so the read after this
       // save never re-fetches content the replica already has in hand.
-      await primeBlobCache(client.owner, client.repo, blobSha, content);
+      await primeBlobCache(client.repo, content);
       // Land on the existing on-disk spelling (a differently-encoded stem would
       // otherwise become a duplicate sibling); collapse extra aliases.
       const target =
         aliases[0] ??
         `${blocksDirPath(packagePath)}/${blockKeyToFileStem(key)}.json`;
-      writes.push({ path: target, mode: "100644", type: "blob", sha: blobSha });
+      writes.push({ path: target, content });
       const targetStem = target.slice(
         target.lastIndexOf("/") + 1,
         -".json".length,
       );
-      nextBlocks.set(target, { stem: targetStem, sha: blobSha, content });
+      nextBlocks.set(target, { stem: targetStem, content });
       for (const extra of aliases.slice(1)) {
-        writes.push({ path: extra, mode: "100644", type: "blob", sha: null });
+        writes.push({ path: extra, deleted: true });
         nextBlocks.delete(extra);
       }
     }
     for (const key of batch.del) {
       for (const alias of aliasPathsForKey(entries, key)) {
-        writes.push({ path: alias, mode: "100644", type: "blob", sha: null });
+        writes.push({ path: alias, deleted: true });
         nextBlocks.delete(alias);
       }
     }
@@ -175,41 +178,37 @@ async function commitBatch(batch: Batch): Promise<string> {
       const files = await Promise.all(
         [...nextBlocks.values()].map(async (b) => ({
           stem: b.stem,
-          content: b.content ?? (await client.getBlobText(b.sha as string)),
+          content: "content" in b ? b.content : await client.readBlob(b.sha),
         })),
       );
       const { decofile: genContent, skipped } = mergeBlocks(files);
       if (skipped.length > 0) {
         console.warn("decofile gen: dropped blocks that were not valid JSON", {
-          repo: `${client.owner}/${client.repo}`,
+          repo: repoIdentityKey(client.repo),
           branch,
           packagePath,
           blocks: skipped.map((s) => s.key),
         });
       }
-      const genBlobSha = await client.createBlob(genContent);
-      writes.push({
-        path: genPath,
-        mode: "100644",
-        type: "blob",
-        sha: genBlobSha,
-      });
+      writes.push({ path: genPath, content: genContent });
     }
 
-    const newTreeSha = await client.createTree(baseTreeSha, writes);
-    const commitSha = await client.createCommit({
-      message: commitMessage(batch),
-      treeSha: newTreeSha,
-      parentShas: [headSha],
-    });
     try {
-      await client.updateRef(branch, commitSha);
-      return commitSha;
+      const { sha } = await client.commitFiles({
+        branch,
+        message: commitMessage(batch),
+        expectedHead: headSha,
+        changes: writes,
+      });
+      return sha;
     } catch (err) {
-      // Non-fast-forward: someone else advanced the branch between our head
-      // read and the ref update. Rebuild on the fresh head and try again.
-      const isCas = err instanceof GitHubApiError && err.status === 422;
-      if (!isCas || attempt >= MAX_CAS_ATTEMPTS - 1) throw err;
+      // Someone else advanced the branch between our head read and the write.
+      if (
+        !(err instanceof RepoWriteConflict) ||
+        attempt >= MAX_CAS_ATTEMPTS - 1
+      ) {
+        throw err;
+      }
       await sleep(exponentialBackoffWithJitter(2_000, 200, attempt, 2, 0.5));
     }
   }

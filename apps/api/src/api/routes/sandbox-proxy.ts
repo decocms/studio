@@ -52,16 +52,18 @@ import {
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
-import { gitDataClientForRepo } from "../../decofile/client-for-repo";
+import { contentClientForProjectRepo } from "../../git-providers/content";
 import {
-  GitHubApiError,
-  GitHubRateLimitError,
-} from "../../decofile/github-git-data";
+  repoErrorStatus,
+  repoRateLimitRetryAfterMs,
+  RepoWriteConflict,
+} from "../../git-providers/content/types";
+import { GitProviderError } from "../../git-providers/types";
 import {
-  githubGitDiff,
-  githubGitDiscard,
-  githubGitRebase,
-  githubGitStatus,
+  repoGitDiff,
+  repoGitDiscard,
+  repoGitRebase,
+  repoGitStatus,
 } from "../../decofile/git-compat";
 import {
   buildLoaderInvokeUrl,
@@ -382,37 +384,42 @@ async function fastPreviewGitClient(c: Context<VmEnv>) {
     connectionIds,
   );
   if (!githubRepo) {
-    throw new GitHubApiError(
-      404,
-      "AUTH",
-      "repo",
-      "Project has no GitHub repository",
-    );
+    throw new GitProviderError({
+      provider: "github",
+      status: 404,
+      message: "Project has no GitHub repository",
+    });
   }
   const organization = requireOrganization(ctx);
-  return gitDataClientForRepo(ctx, organization.id, githubRepo);
+  return contentClientForProjectRepo(ctx, organization.id, githubRepo);
 }
 
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
-  /** 429 with GitHub's own wait, so the client backs off instead of retrying. */
-  if (err instanceof GitHubRateLimitError) {
-    return c.json({ error: err.message }, 429, {
+  const message = err instanceof Error ? err.message : String(err);
+  /** 429 with the provider's own wait, so the client backs off instead of
+   *  retrying immediately. */
+  const retryAfterMs = repoRateLimitRetryAfterMs(err);
+  if (retryAfterMs !== undefined) {
+    return c.json({ error: message }, 429, {
       ...SANDBOX_PROXY_CACHE_HEADERS,
-      ...(err.retryAfterMs === null
+      ...(retryAfterMs === null
         ? {}
-        : { "Retry-After": String(Math.ceil(err.retryAfterMs / 1000)) }),
+        : { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) }),
     });
   }
-  if (err instanceof GitHubApiError) {
+  if (err instanceof RepoWriteConflict) {
+    return c.json({ error: message }, 409, SANDBOX_PROXY_CACHE_HEADERS);
+  }
+  const providerStatus = repoErrorStatus(err);
+  if (providerStatus !== null) {
     const status =
-      err.status === 404
+      providerStatus === 404
         ? 404
-        : err.status === 409 || err.status === 422
+        : providerStatus === 409 || providerStatus === 422
           ? 409
           : 502;
-    return c.json({ error: err.message }, status, SANDBOX_PROXY_CACHE_HEADERS);
+    return c.json({ error: message }, status, SANDBOX_PROXY_CACHE_HEADERS);
   }
-  const message = err instanceof Error ? err.message : String(err);
   return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
 }
 
@@ -453,7 +460,7 @@ async function proxyPreviewUpstream(
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
     const client = await fastPreviewGitClient(c);
-    const status = await githubGitStatus(client, c.get("vmClaim").branch);
+    const status = await repoGitStatus(client, c.get("vmClaim").branch);
     return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
   } catch (err) {
     return fastPreviewGitError(c, err);
@@ -950,7 +957,7 @@ export const createSandboxRoutes = () => {
           base?: string;
         };
         const client = await fastPreviewGitClient(c);
-        const diff = await githubGitDiff(client, claim.branch, body.base);
+        const diff = await repoGitDiff(client, claim.branch, body.base);
         return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         return fastPreviewGitError(c, err);
@@ -1035,11 +1042,13 @@ export const createSandboxRoutes = () => {
         }
         try {
           const client = await fastPreviewGitClient(c);
-          await githubGitDiscard(client, claim.branch, filepaths);
+          await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           const status =
-            err instanceof GitHubApiError && err.status === 409 ? 409 : 502;
+            repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
+              ? 409
+              : 502;
           const message = err instanceof Error ? err.message : String(err);
           return c.json(
             { error: message },
@@ -1066,7 +1075,7 @@ export const createSandboxRoutes = () => {
           };
           const client = await fastPreviewGitClient(c);
           const base = body.base ?? (await client.getDefaultBranch());
-          await githubGitRebase(client, claim.branch, base);
+          await repoGitRebase(client, claim.branch, base);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           return fastPreviewGitError(c, err);
@@ -1156,8 +1165,8 @@ export const createSandboxRoutes = () => {
                 await (async () => {
                   const client = await fastPreviewGitClient(c);
                   return Promise.all([
-                    githubGitStatus(client, claim.branch),
-                    githubGitDiff(client, claim.branch),
+                    repoGitStatus(client, claim.branch),
+                    repoGitDiff(client, claim.branch),
                   ]);
                 })();
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
@@ -1245,8 +1254,8 @@ export const createSandboxRoutes = () => {
               : await (async () => {
                   const client = await fastPreviewGitClient(c);
                   return Promise.all([
-                    githubGitStatus(client, claim.branch),
-                    githubGitDiff(client, claim.branch),
+                    repoGitStatus(client, claim.branch),
+                    repoGitDiff(client, claim.branch),
                   ]);
                 })();
         const verdict = await judgeRequiresReviewWithLlm(

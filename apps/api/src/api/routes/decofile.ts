@@ -32,14 +32,18 @@ import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
 import { parseGithubRepoFromMetadata } from "@/tools/sandbox/sync-git-credentials";
-import { gitDataClientForRepo } from "@/decofile/client-for-repo";
+import { contentClientForProjectRepo } from "@/git-providers/content";
 import {
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
-import { githubGitRebase } from "@/decofile/git-compat";
-import { GitHubApiError, type GitDataClient } from "@/decofile/github-git-data";
+import { repoGitRebase } from "@/decofile/git-compat";
+import {
+  type RepoContentClient,
+  repoErrorStatus,
+  RepoWriteConflict,
+} from "@/git-providers/content/types";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import type { Env } from "../hono-env";
 
@@ -204,11 +208,11 @@ function requestApiHost(c: Context<DecofileEnv>): string {
   return c.req.header("x-forwarded-host") ?? new URL(c.req.url).host;
 }
 
-async function gitDataClientForScope(
+async function contentClientForScope(
   c: Context<DecofileEnv>,
-): Promise<GitDataClient> {
+): Promise<RepoContentClient> {
   const scope = c.get("decofileScope");
-  return gitDataClientForRepo(
+  return contentClientForProjectRepo(
     c.var.studioContext,
     scope.organizationId,
     scope.githubRepo,
@@ -216,20 +220,20 @@ async function gitDataClientForScope(
 }
 
 function errorResponse(c: Context<DecofileEnv>, err: unknown) {
-  if (err instanceof GitHubApiError) {
-    // 401/403 from GitHub means our credential, not the caller's — map to 502
-    // so the client doesn't treat it as a Studio auth failure.
-    const status =
-      err.status === 404
-        ? 404
-        : err.status === 409
-          ? 409
-          : err.status === 422
-            ? 409
-            : 502;
-    return c.json({ error: err.message }, status);
-  }
   const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof RepoWriteConflict) return c.json({ error: message }, 409);
+  const providerStatus = repoErrorStatus(err);
+  if (providerStatus !== null) {
+    /** 401/403 from the provider means OUR credential, not the caller's — map
+     *  it to 502 so the client doesn't treat it as a Studio auth failure. */
+    const status =
+      providerStatus === 404
+        ? 404
+        : providerStatus === 409 || providerStatus === 422
+          ? 409
+          : 502;
+    return c.json({ error: message }, status);
+  }
   return c.json({ error: message }, 500);
 }
 
@@ -242,7 +246,7 @@ export function createDecofileRoutes() {
   app.get("/:virtualMcpId/:branch", async (c) => {
     const scope = c.get("decofileScope");
     try {
-      const client = await gitDataClientForScope(c);
+      const client = await contentClientForScope(c);
       const snapshot = await readDecofileSnapshot(
         client,
         scope.branch,
@@ -297,16 +301,16 @@ export function createDecofileRoutes() {
       ? `${scope.packagePath}/.deco/meta.gen.json`
       : ".deco/meta.gen.json";
     try {
-      const client = await gitDataClientForScope(c);
+      const client = await contentClientForScope(c);
       /** The thread branch may not be materialized on GitHub yet (it forks
        *  from default at first CMS touch), so fall back to the default branch —
        *  meta.gen.json is a code artifact the CMS never edits, so the default's
        *  copy is the schema the forked branch would carry anyway. */
-      let text = await client.getFileTextAtRef(scope.branch, metaPath);
+      let text = await client.readFileAtRef(scope.branch, metaPath);
       if (text === null) {
         const defaultBranch = await client.getDefaultBranch();
         if (defaultBranch !== scope.branch) {
-          text = await client.getFileTextAtRef(defaultBranch, metaPath);
+          text = await client.readFileAtRef(defaultBranch, metaPath);
         }
       }
       if (text === null) {
@@ -364,7 +368,7 @@ export function createDecofileRoutes() {
     }
 
     try {
-      const client = await gitDataClientForScope(c);
+      const client = await contentClientForScope(c);
       const sha = await enqueueDecofilePatch(
         `${scope.organizationId}/${scope.virtualMcpId}/${scope.branch}`,
         {
@@ -389,7 +393,7 @@ export function createDecofileRoutes() {
   app.post("/:virtualMcpId/:branch/publish", async (c) => {
     const scope = c.get("decofileScope");
     try {
-      const client = await gitDataClientForScope(c);
+      const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
       if (baseBranch === scope.branch) {
         return c.json({ error: "Branch is already the default branch" }, 400);
@@ -398,29 +402,29 @@ export function createDecofileRoutes() {
       try {
         let sha: string | null;
         try {
-          sha = await client.mergeBranch(baseBranch, scope.branch, message);
+          sha = await client.mergeBranches(baseBranch, scope.branch, message);
         } catch (err) {
-          if (!(err instanceof GitHubApiError && err.status === 409)) throw err;
+          if (repoErrorStatus(err) !== 409) throw err;
           // Sync branch-wins first; the branch then sits on base and this FFs.
-          await githubGitRebase(client, scope.branch, baseBranch);
-          sha = await client.mergeBranch(baseBranch, scope.branch, message);
+          await repoGitRebase(client, scope.branch, baseBranch);
+          sha = await client.mergeBranches(baseBranch, scope.branch, message);
         }
         return sha
           ? c.json({ result: "merged", sha })
           : c.json({ result: "up-to-date" });
       } catch (err) {
-        if (err instanceof GitHubApiError && err.status === 409) {
+        if (repoErrorStatus(err) === 409) {
           return c.json({ error: "merge-conflict" }, 409);
         }
         // 405 = merge blocked (protected base branch) → fall back to a PR.
-        if (err instanceof GitHubApiError && err.status === 405) {
-          const existing = await client.findOpenPullRequest(
+        if (repoErrorStatus(err) === 405) {
+          const existing = await client.findOpenChangeRequest(
             baseBranch,
             scope.branch,
           );
           const pr =
             existing ??
-            (await client.createPullRequest({
+            (await client.createChangeRequest({
               base: baseBranch,
               head: scope.branch,
               title: `Publish ${scope.branch}`,
@@ -428,7 +432,7 @@ export function createDecofileRoutes() {
           return c.json({
             result: "pull-request",
             number: pr.number,
-            url: pr.html_url,
+            url: pr.url,
           });
         }
         throw err;
@@ -441,7 +445,7 @@ export function createDecofileRoutes() {
   app.get("/:virtualMcpId/:branch/status", async (c) => {
     const scope = c.get("decofileScope");
     try {
-      const client = await gitDataClientForScope(c);
+      const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
       // Null lastCommitAt == "no age, never auto-switch off this branch".
       if (baseBranch === scope.branch) {
@@ -455,17 +459,17 @@ export function createDecofileRoutes() {
       try {
         const [{ aheadBy, behindBy }, head] = await Promise.all([
           client.compare(baseBranch, scope.branch),
-          client.getBranchHead(scope.branch),
+          client.getBranch(scope.branch),
         ]);
         return c.json({
           baseBranch,
           aheadBy,
           behindBy,
-          lastCommitAt: head.committedAt,
+          lastCommitAt: head?.committedAt ?? null,
         });
       } catch (err) {
         // A thread-minted branch not materialized yet has no drift and no age.
-        if (err instanceof GitHubApiError && err.status === 404) {
+        if (repoErrorStatus(err) === 404) {
           return c.json({
             baseBranch,
             aheadBy: 0,

@@ -16,7 +16,7 @@ import {
 } from "@/observability/github-rate-limit";
 
 const GITHUB_API = "https://api.github.com";
-/** Matches the Git Data client's per-attempt timeout in `decofile/github-git-data.ts`. */
+/** Matches the content client's per-attempt timeout in `git-providers/content/github.ts`. */
 const GITHUB_TIMEOUT_MS = 15_000;
 
 interface InstallationsPage {
