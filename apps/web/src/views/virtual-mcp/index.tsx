@@ -1,4 +1,4 @@
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
@@ -1090,11 +1090,7 @@ function VirtualMcpDetailViewWithData({
               <span className="text-muted-foreground/50">·</span>
               <span>
                 {t("virtualMcp.virtualMcp.created")}{" "}
-                {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {format(new Date(virtualMcp.created_at), "PP", { locale })}
               </span>
               <span className="text-muted-foreground/50">·</span>
               <span>
