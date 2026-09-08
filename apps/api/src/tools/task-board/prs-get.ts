@@ -7,6 +7,7 @@ import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import {
+  isCardNotReady,
   LANES,
   shippedLane,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -67,33 +68,6 @@ const NOT_READY_REVALIDATE_MS = 0;
 
 /** Stale ceiling that makes any stored read a miss. */
 const FORCE_FRESH = () => 0;
-
-/** Bound on chasing a preview url that may never arrive, from GitHub's
- *  `updated_at`. */
-const PREVIEW_CHASE_MS = 10 * 60_000;
-
-/** A card waiting on something that ends by itself: never asked GitHub yet, CI
- *  running, or no preview url yet (time-bounded — a repo may publish none,
- *  ever). */
-export function isCardNotReady(
-  card: {
-    checksStatus: ChecksStatus;
-    previewUrl: string | null;
-    state: string | null;
-    updatedAt: string | null;
-  },
-  now: number = Date.now(),
-): boolean {
-  // `null` is the placeholder: we have not asked GitHub yet, so it is the least
-  // ready a card can be. Only a state GitHub actually reported as not-open is
-  // settled.
-  if (card.state !== null && card.state !== "open") return false;
-  if (card.state === null) return true;
-  if (card.checksStatus === "pending") return true;
-  if (card.previewUrl !== null) return false;
-  const activeAt = card.updatedAt ? Date.parse(card.updatedAt) : Number.NaN;
-  return Number.isFinite(activeAt) && now - activeAt < PREVIEW_CHASE_MS;
-}
 
 /** Hit window for one raw GitHub read: zero while it says CI is still running,
  *  for the same reason as {@link isCardNotReady}. Without this the card

@@ -1,3 +1,4 @@
+import { isCardNotReady } from "@decocms/shared/task-board";
 import { useProjectContext } from "@/sdk";
 import type { TaskBoardItemPr } from "@/layouts/task-board/config";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,17 +33,6 @@ const PRS_IN_FLIGHT_POLL_INTERVAL_MS = 10_000;
  *  — the right behavior either way. */
 const isUnenriched = (pr: TaskBoardItemPr) => pr.state === null;
 
-/** Mirrors `isCardNotReady` on the server, including its 10-minute bound on
- *  chasing a preview url that may never arrive. */
-const PREVIEW_CHASE_MS = 10 * 60_000;
-const isInFlight = (pr: TaskBoardItemPr) => {
-  if (pr.state !== "open") return false;
-  if (pr.checksStatus === "pending") return true;
-  if (pr.previewUrl !== null) return false;
-  const activeAt = pr.updatedAt ? Date.parse(pr.updatedAt) : Number.NaN;
-  return Number.isFinite(activeAt) && Date.now() - activeAt < PREVIEW_CHASE_MS;
-};
-
 /**
  * A task's linked PRs, each with live state fetched from GitHub via the
  * `TASK_BOARD_ITEM_PRS_GET` tool. Enabled only when a task id is present
@@ -73,7 +63,8 @@ export function useTaskBoardItemPrs(itemId: string | undefined) {
     refetchInterval: (query) => {
       const prs = query.state.data;
       if (prs?.some(isUnenriched)) return PRS_UNENRICHED_POLL_INTERVAL_MS;
-      if (prs?.some(isInFlight)) return PRS_IN_FLIGHT_POLL_INTERVAL_MS;
+      if (prs?.some((pr) => isCardNotReady(pr)))
+        return PRS_IN_FLIGHT_POLL_INTERVAL_MS;
       return PRS_POLL_INTERVAL_MS;
     },
     // Seeded from localStorage so a cold page load paints the last known cards

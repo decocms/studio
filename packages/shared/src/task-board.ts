@@ -480,3 +480,35 @@ export const TASK_BOARD_ITEM_PRS_UPDATED_EVENT = "task-board.item.prs.updated";
  * settings tool rejects what the textarea already refuses.
  */
 export const TASK_SYSTEM_PROMPT_MAX_LENGTH = 4000;
+
+/** Bound on chasing a preview url that may never arrive, from GitHub's
+ *  `updated_at`. */
+const PREVIEW_CHASE_MS = 10 * 60_000;
+
+/**
+ * A PR card waiting on something that ends by itself: never asked GitHub yet,
+ * CI running, or no preview url yet (time-bounded — a repo may publish none,
+ * ever).
+ *
+ * Shared because both sides key off it and must not drift: the server drops the
+ * card cache's hit window to zero, and the dialog polls faster.
+ */
+export function isCardNotReady(
+  card: {
+    checksStatus: string | null;
+    previewUrl: string | null;
+    state: string | null;
+    updatedAt: string | null;
+  },
+  now: number = Date.now(),
+): boolean {
+  // `null` is the placeholder: we have not asked GitHub yet, so it is the least
+  // ready a card can be. Only a state GitHub actually reported as not-open is
+  // settled.
+  if (card.state !== null && card.state !== "open") return false;
+  if (card.state === null) return true;
+  if (card.checksStatus === "pending") return true;
+  if (card.previewUrl !== null) return false;
+  const activeAt = card.updatedAt ? Date.parse(card.updatedAt) : Number.NaN;
+  return Number.isFinite(activeAt) && now - activeAt < PREVIEW_CHASE_MS;
+}

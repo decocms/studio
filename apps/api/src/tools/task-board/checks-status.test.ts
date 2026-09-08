@@ -3,6 +3,7 @@
  * `checksStatus` the board renders. No I/O — the live fetch and its failure
  * modes belong to e2e; this pins only the state translation.
  */
+import { isCardNotReady } from "@decocms/shared/task-board";
 import { describe, expect, it } from "bun:test";
 import {
   checksFromMergeableState,
@@ -12,7 +13,6 @@ import {
   extractPreviewUrlFromDeployment,
   headShaFromPrGet,
   headShaFromStatus,
-  isCardNotReady,
   isRateLimitError,
   extractPreviewUrlFromCheckRuns,
   extractPreviewUrlFromComments,
