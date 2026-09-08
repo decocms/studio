@@ -1366,29 +1366,18 @@ export class TaskBoardStorage {
     repoOwner: string;
     repoName: string;
     number: number;
-  }): Promise<
-    {
-      taskBoardItemId: string;
-      organizationId: string;
-      connectionId: string | null;
-    }[]
-  > {
+  }): Promise<{ taskBoardItemId: string; organizationId: string }[]> {
     const rows = await this.db
       .selectFrom("task_board_item_prs")
       .select([
         "task_board_item_id as taskBoardItemId",
         "organization_id as organizationId",
-        "connection_id as connectionId",
       ])
       .where("repo_owner", "=", pr.repoOwner)
       .where("repo_name", "=", pr.repoName)
       .where("pr_number", "=", pr.number)
       .execute();
-    return rows.map((r) => ({
-      taskBoardItemId: r.taskBoardItemId,
-      organizationId: r.organizationId,
-      connectionId: r.connectionId ?? null,
-    }));
+    return rows;
   }
 
   /** PRs linked to a task (most-recent first), identity only. */

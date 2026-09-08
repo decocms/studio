@@ -72,8 +72,9 @@ const FORCE_FRESH = () => 0;
  *  `updated_at`. */
 const PREVIEW_CHASE_MS = 10 * 60_000;
 
-/** A card waiting on something that ends by itself: CI running, or no preview
- *  url yet (time-bounded — a repo may publish none, ever). */
+/** A card waiting on something that ends by itself: never asked GitHub yet, CI
+ *  running, or no preview url yet (time-bounded — a repo may publish none,
+ *  ever). */
 export function isCardNotReady(
   card: {
     checksStatus: ChecksStatus;
@@ -83,7 +84,11 @@ export function isCardNotReady(
   },
   now: number = Date.now(),
 ): boolean {
-  if (card.state !== "open") return false;
+  // `null` is the placeholder: we have not asked GitHub yet, so it is the least
+  // ready a card can be. Only a state GitHub actually reported as not-open is
+  // settled.
+  if (card.state !== null && card.state !== "open") return false;
+  if (card.state === null) return true;
   if (card.checksStatus === "pending") return true;
   if (card.previewUrl !== null) return false;
   const activeAt = card.updatedAt ? Date.parse(card.updatedAt) : Number.NaN;

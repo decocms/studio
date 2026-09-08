@@ -711,15 +711,29 @@ describe("isCardNotReady", () => {
     }
   });
 
-  it("never chases a PR that is not open", () => {
-    for (const state of ["closed", null]) {
-      expect(
-        isCardNotReady(
-          { state, updatedAt: recent, checksStatus: null, previewUrl: null },
-          NOW,
-        ),
-      ).toBe(false);
-    }
+  it("never chases a PR GitHub reported as not open", () => {
+    expect(
+      isCardNotReady(
+        {
+          state: "closed",
+          updatedAt: recent,
+          checksStatus: null,
+          previewUrl: null,
+        },
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it("always refreshes the placeholder, which GitHub was never asked about", () => {
+    // Every live field is null on the card served before the first read; a
+    // settled-looking `state: null` must not park it for the full hit window.
+    expect(
+      isCardNotReady(
+        { state: null, updatedAt: null, checksStatus: null, previewUrl: null },
+        NOW,
+      ),
+    ).toBe(true);
   });
 });
 
