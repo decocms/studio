@@ -432,7 +432,7 @@ export class TaskBoardStorage {
           ? { external_url: data.externalUrl }
           : {}),
         ...(data.previewRoutes !== undefined
-          ? { preview_routes: data.previewRoutes }
+          ? { preview_routes: JSON.stringify(data.previewRoutes) }
           : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.

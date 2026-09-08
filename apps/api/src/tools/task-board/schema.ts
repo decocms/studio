@@ -168,12 +168,12 @@ export const TaskBoardItemSchema = z.object({
    *  a link. Kept OUT of `description` on purpose: the description is quoted
    *  verbatim into every agent run's prompt, and a URL there is context the run
    *  does not need and used to act on. Null for a card Studio owns. */
+  externalUrl: z.string().nullable(),
   /** Paths this task's work created or edited, joined onto a PR's deploy-preview
    *  origin by the card. Empty when the task named none. Present on every
    *  `TaskBoardItem`, so — like `retryAttempts` — it MUST be modeled here or
    *  Ajv-revalidating MCP clients reject every response with `-32602`. */
   previewRoutes: z.array(z.string()),
-  externalUrl: z.string().nullable(),
   /** `jira` for the hidden anchor of a Jira-triggered run — never in
    *  `TASK_BOARD_ITEM_LIST`; null for a card the board shows. */
   source: z.enum(["jira"]).nullable(),

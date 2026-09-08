@@ -1701,8 +1701,8 @@ export interface TaskBoardItemTable {
    *  `TASK_BOARD_ITEM_UPDATE`; null for a task that never named one. */
   preview_routes: ColumnType<
     string[] | null,
-    string[] | null | undefined,
-    string[] | null
+    string | null | undefined,
+    string | null
   >;
   /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) — the
    *  import refreshes an OPEN item with the same key instead of duplicating
