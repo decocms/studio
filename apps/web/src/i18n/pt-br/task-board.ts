@@ -61,6 +61,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.moveToButton": "Mover para",
   "taskBoard.taskBoard.changePriorityButton": "Mudar prioridade",
   "taskBoard.taskBoard.assignButton": "Atribuir",
+  "taskBoard.taskBoard.assignProjectButton": "Atribuir projeto",
   "taskBoard.taskBoard.dueDateButton": "Data de entrega",
   "taskBoard.taskBoard.addTagButton": "Adicionar tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Excluir",
