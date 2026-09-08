@@ -11,6 +11,8 @@ import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
 import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
 import { buildCloneInfo } from "@/shared/github-clone-info";
+import { cloneInfoForRepository } from "@/git-providers/credentials";
+import { RepositoryStorage } from "@/storage/repositories";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
 import { parseGithubOwnerRepo } from "@/sandbox/parse-github-clone-url";
@@ -156,6 +158,19 @@ async function instantiate(
     tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
     meter,
     mintCloneUrl: async (repo, mintOpts) => {
+      // First-class repositories re-mint through their provider account.
+      if (repo.repositoryId) {
+        const repository = await new RepositoryStorage(db).getUnscoped(
+          repo.repositoryId,
+        );
+        if (!repository) return null;
+        const { cloneUrl } = await cloneInfoForRepository(
+          { db, vault },
+          repository,
+          { bufferMs: mintOpts?.bufferMs },
+        );
+        return cloneUrl;
+      }
       // Only connection-backed clones can be re-minted; buildCloneInfo
       // refreshes standard OAuth GitHub connections from db + vault alone.
       // Legacy repo-scoped tokens throw here (need an org-scoped ctx) and

@@ -365,8 +365,8 @@ export function spentAttemptsThisCycle(
 }
 
 /**
- * The connectionId for the repository a card already names, when the org has
- * several and the run would otherwise have to go looking.
+ * The `TASK_ADD_REPO` id for the repository a card already names, when the org
+ * has several and the run would otherwise have to go looking.
  *
  * Every reviewer in a multi-repo org opened by calling `TASK_ADD_REPO` with no
  * arguments — the discovery form, which answers with the org's whole catalog —
@@ -375,12 +375,12 @@ export function spentAttemptsThisCycle(
  * repo is already cloned (nothing to pick), or when the name matches nothing
  * loadable: each leaves the run to discover it as before.
  */
-export function pinnedRepoConnectionId(
+export function pinnedRepoId(
   taskRepo: string | null,
   choice: TaskRepoChoice,
 ): string | null {
   if (!taskRepo || !choice || !("choices" in choice)) return null;
-  return choice.choices.find((c) => c.repo === taskRepo)?.connectionId ?? null;
+  return choice.choices.find((c) => c.repo === taskRepo)?.id ?? null;
 }
 
 /**
@@ -721,7 +721,7 @@ async function enqueueReviewerForTask(
   const repo = choice && "repo" in choice ? choice.repo : null;
   const sandboxed = choice !== null;
   const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());
-  const pinnedConnectionId = pinnedRepoConnectionId(task.repo, choice);
+  const pinnedRepo = pinnedRepoId(task.repo, choice);
   // Over the sandbox's MCP client the task-run tools are namespaced; hosted
   // Decopilot calls them bare. Naming them wrong is not cosmetic — it is what
   // the model retries `enable_tool` against before giving up.
@@ -779,13 +779,13 @@ async function enqueueReviewerForTask(
     "How to work:",
     `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
     repo
-      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
-            pinnedConnectionId
-              ? `with connectionId \`${pinnedConnectionId}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
-              : `with the connectionId of the PR's repository FIRST;`
-          } it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`
+            pinnedRepo
+              ? `with id \`${pinnedRepo}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
+              : `with the id of the PR's repository FIRST;`
+          } it clones the repository and waits for the checkout, and \`git\` and its CLI are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`
         : "- Load the PR's repository to inspect / exercise the change.",
     `- ${PR_DIFF_RECIPE}`,
     ...(priorReviewAt > 0

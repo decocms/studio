@@ -17,6 +17,7 @@
     "./sdk/types/*": "./src/sdk/types/*.ts",
     "./sdk/lib/*": "./src/sdk/lib/*.ts",
     "./decofile": "./src/decofile/index.ts",
+    "./git-providers": "./src/git-providers/index.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

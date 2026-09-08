@@ -534,6 +534,21 @@ export const KEYS = {
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
   orgRepoSyncs: (orgId: string) => ["org-repo-syncs", orgId] as const,
 
+  // First-class git repositories (Settings → Repositories)
+  gitProviderCapabilities: (orgId: string) =>
+    ["git-provider-capabilities", orgId] as const,
+  gitAccounts: (orgId: string) => ["git-accounts", orgId] as const,
+  /** Omit `accountId` for the whole org's list — that key is also the prefix a
+   *  mutation invalidates to refresh every per-account listing with it. */
+  repositories: (orgId: string, accountId?: string) =>
+    (accountId
+      ? ["repositories", orgId, accountId]
+      : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Provider-side repo search — hits the provider's API, so the query text is
+   *  part of the key and results are kept while the next page loads. */
+  providerRepoSearch: (orgId: string, accountId: string, query: string) =>
+    ["provider-repo-search", orgId, accountId, query] as const,
+
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
   jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,

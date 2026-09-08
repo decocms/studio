@@ -59,8 +59,12 @@ export function useCreateOrgRepoSync() {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: KEYS.orgRepoSyncs(org.id) });
   return useMutation({
-    mutationFn: async (input: { connectionId: string; volume: string }) =>
-      (await studio.call("ORG_REPO_SYNC_CREATE", input)).config,
+    mutationFn: async (
+      input: { volume: string } & (
+        | { repositoryId: string; connectionId?: never }
+        | { connectionId: string; repositoryId?: never }
+      ),
+    ) => (await studio.call("ORG_REPO_SYNC_CREATE", input)).config,
     onSuccess: (config) => {
       void studio
         .call("ORG_REPO_SYNC_RUN", { id: config.id })

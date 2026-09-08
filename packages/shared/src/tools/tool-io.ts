@@ -794,11 +794,11 @@ export interface StudioToolIO {
     output: { restored: number };
   };
   TASK_ADD_REPO: {
-    input: { connectionId?: string | undefined };
+    input: { id?: string | undefined; connectionId?: string | undefined };
     output: {
       success: boolean;
       message: string;
-      repositories?: { connectionId: string; repo: string }[] | undefined;
+      repositories?: { id: string; repo: string }[] | undefined;
       repo?: string | undefined;
       cloned?: boolean | undefined;
       files?: string | undefined;
@@ -2168,6 +2168,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -2424,6 +2425,7 @@ export interface StudioToolIO {
                     name: string;
                     installationId?: number | undefined;
                     connectionId?: string | undefined;
+                    repositoryId?: string | undefined;
                   }
                 | null
                 | undefined;
@@ -2619,6 +2621,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -2850,6 +2853,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3072,6 +3076,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3293,6 +3298,7 @@ export interface StudioToolIO {
                     name: string;
                     installationId?: number | undefined;
                     connectionId?: string | undefined;
+                    repositoryId?: string | undefined;
                   }
                 | null
                 | undefined;
@@ -3496,6 +3502,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3716,6 +3723,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -4806,6 +4814,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -5285,15 +5294,17 @@ export interface StudioToolIO {
   };
   ORG_REPO_SYNC_CREATE: {
     input: {
-      connectionId: string;
       volume: string;
+      repositoryId?: string | undefined;
+      connectionId?: string | undefined;
       ref?: string | undefined;
       paths?: { from: string; to?: string | undefined }[] | undefined;
     };
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5311,7 +5322,8 @@ export interface StudioToolIO {
     output: {
       configs: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5334,7 +5346,8 @@ export interface StudioToolIO {
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -7632,6 +7645,116 @@ export interface StudioToolIO {
       } | null;
     };
   };
+  GIT_PROVIDER_CAPABILITIES: {
+    input: { [x: string]: never };
+    output: {
+      github: {
+        configured: boolean;
+        connectPath: string | null;
+        installPath: string | null;
+      };
+      gitlab: { oauthHosts: string[]; connectPath: string | null };
+    };
+  };
+  GIT_ACCOUNT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      accounts: {
+        id: string;
+        organizationId: string;
+        type: "github" | "gitlab";
+        host: string;
+        authKind: "token" | "oauth" | "github_app";
+        externalAccountId: string;
+        login: string;
+        avatarUrl: string | null;
+        installationId: number | null;
+        status: "active" | "revoked";
+        createdAt: string;
+        updatedAt: string;
+        servable: boolean;
+      }[];
+    };
+  };
+  GIT_ACCOUNT_CONNECT_TOKEN: {
+    input: { type: "github" | "gitlab"; host: string; token: string };
+    output: {
+      account: {
+        id: string;
+        organizationId: string;
+        type: "github" | "gitlab";
+        host: string;
+        authKind: "token" | "oauth" | "github_app";
+        externalAccountId: string;
+        login: string;
+        avatarUrl: string | null;
+        installationId: number | null;
+        status: "active" | "revoked";
+        createdAt: string;
+        updatedAt: string;
+        servable: boolean;
+      };
+    };
+  };
+  GIT_ACCOUNT_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  REPOSITORY_LIST: {
+    input: { accountId?: string | undefined };
+    output: {
+      repositories: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    };
+  };
+  REPOSITORY_SEARCH: {
+    input: {
+      accountId: string;
+      query?: string | undefined;
+      page?: number | undefined;
+      perPage?: number | undefined;
+    };
+    output: {
+      repositories: {
+        ref: { provider: "github" | "gitlab"; host: string; path: string };
+        externalId: string;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal";
+        description: string | null;
+        updatedAt: string | null;
+      }[];
+    };
+  };
+  REPOSITORY_LINK: {
+    input: { url: string; accountId?: string | undefined };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_DELETE: { input: { id: string }; output: { deleted: boolean } };
   GLOBAL_SEARCH: {
     input: {
       query: string;

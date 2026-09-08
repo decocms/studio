@@ -100,6 +100,12 @@ export const SETTINGS_TAB_GROUPS: Record<
         requires: "file-configs:manage",
       },
       {
+        key: "repositories",
+        labelKey: "settings.nav.repositories",
+        to: "/$org/settings/repositories",
+        requires: "file-configs:manage",
+      },
+      {
         key: "synced-repos",
         labelKey: "settings.nav.syncedRepos",
         to: "/$org/settings/synced-repos",

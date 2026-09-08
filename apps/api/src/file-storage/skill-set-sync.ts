@@ -132,6 +132,67 @@ export function tarballRequestFor(
   };
 }
 
+/**
+ * Gzipped tar bytes → files keyed by repo-relative path.
+ *
+ * Every provider wraps the tree in exactly one top-level directory, but they
+ * disagree on its name (`owner-repo-sha/` on GitHub, `project-ref-sha/` on
+ * GitLab) — so one leading segment is stripped generically, never matched.
+ */
+function filesFromTarball(
+  gz: Uint8Array,
+  label: string,
+): Map<string, Uint8Array> {
+  if (gz.length > MAX_TARBALL_BYTES) {
+    throw new Error(`tarball for ${label} exceeds ${MAX_TARBALL_BYTES} bytes`);
+  }
+  // maxOutputLength bounds decompression (a gzip bomb throws instead of OOM).
+  const raw = parseTar(
+    new Uint8Array(gunzipSync(gz, { maxOutputLength: MAX_UNPACKED_BYTES })),
+  );
+  const files = new Map<string, Uint8Array>();
+  for (const [path, bytes] of raw) {
+    const slash = path.indexOf("/");
+    if (slash === -1) continue;
+    const rel = path.slice(slash + 1);
+    if (rel) files.set(rel, bytes);
+  }
+  return files;
+}
+
+/** Buffer a tarball stream, refusing to grow past the download cap. */
+async function readTarballStream(
+  stream: ReadableStream<Uint8Array>,
+  label: string,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > MAX_TARBALL_BYTES) {
+        throw new Error(
+          `tarball for ${label} exceeds ${MAX_TARBALL_BYTES} bytes`,
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.length;
+  }
+  return out;
+}
+
 /** Fetch `owner/repo@ref` and return files keyed by repo-relative path. */
 async function fetchRepoFiles(
   repo: string,
@@ -158,25 +219,30 @@ async function fetchRepoFiles(
       `tarball for ${repo}@${ref} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
     );
   }
-  const gz = new Uint8Array(await res.arrayBuffer());
-  if (gz.length > MAX_TARBALL_BYTES) {
-    throw new Error(
-      `tarball for ${repo}@${ref} exceeds ${MAX_TARBALL_BYTES} bytes`,
-    );
-  }
-  // maxOutputLength bounds decompression (a gzip bomb throws instead of OOM).
-  const raw = parseTar(
-    new Uint8Array(gunzipSync(gz, { maxOutputLength: MAX_UNPACKED_BYTES })),
+  return filesFromTarball(
+    new Uint8Array(await res.arrayBuffer()),
+    `${repo}@${ref}`,
   );
-  // strip the tarball's single top-level `<repo>-<ref>/` dir
-  const files = new Map<string, Uint8Array>();
-  for (const [path, bytes] of raw) {
-    const slash = path.indexOf("/");
-    if (slash === -1) continue;
-    const rel = path.slice(slash + 1);
-    if (rel) files.set(rel, bytes);
+}
+
+/**
+ * Where the archive comes from when it is not the GitHub codeload/API URL: a
+ * `GitProviderClient.archiveTarball` bound to a first-class repository. Null
+ * means the provider answered 404.
+ */
+export type TarballSource = () => Promise<ReadableStream<Uint8Array> | null>;
+
+async function repoFilesFor(
+  source: RepoSyncSource,
+  opts: { tarball?: TarballSource; authToken?: string },
+): Promise<Map<string, Uint8Array>> {
+  if (!opts.tarball) {
+    return fetchRepoFiles(source.repo, source.ref, opts.authToken);
   }
-  return files;
+  const label = `${source.repo}@${source.ref}`;
+  const stream = await opts.tarball();
+  if (!stream) throw new Error(`tarball not found for ${label}`);
+  return filesFromTarball(await readTarballStream(stream, label), label);
 }
 
 /**
@@ -297,6 +363,11 @@ export async function syncRepoToVolume(
     source: RepoSyncSource;
     /** Installation token for private repos; omit for anonymous fetch. */
     authToken?: string;
+    /**
+     * Provider-supplied archive, used instead of the GitHub tarball URL when
+     * the source is a first-class repository (`authToken` is then unused).
+     */
+    tarball?: TarballSource;
     /** Only system-owned shared content may bypass the per-volume quota. */
     skipVolumeQuota: boolean;
   },
@@ -310,7 +381,7 @@ export async function syncRepoToVolume(
   const fs = new OrgFs(storage, manifest, orgId);
 
   const desired = planVolumeTree(
-    await fetchRepoFiles(source.repo, source.ref, opts.authToken),
+    await repoFilesFor(source, opts),
     source.paths,
   );
   const current = new Map(

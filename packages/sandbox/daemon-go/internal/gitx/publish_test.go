@@ -166,3 +166,23 @@ func TestDiscardRestoresRenamedFile(t *testing.T) {
 		t.Fatalf("new.txt should have been removed, stat err: %v", err)
 	}
 }
+
+func TestRequiresCloneCredentials(t *testing.T) {
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://github.com/acme/site.git", true},
+		{"https://gitlab.acme.com/group/sub/project.git", true},
+		{"https://x-access-token:tok@github.com/acme/site.git", false},
+		{"https://oauth2:tok@gitlab.com/g/p.git", false},
+		{"git@github.com:acme/site.git", false},
+		{"ssh://git@gitlab.com/g/p.git", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := RequiresCloneCredentials(c.url); got != c.want {
+			t.Errorf("RequiresCloneCredentials(%q) = %v, want %v", c.url, got, c.want)
+		}
+	}
+}

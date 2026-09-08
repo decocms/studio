@@ -14,7 +14,8 @@ function toIso(value: Date | string): string {
 type Row = {
   id: string;
   organization_id: string;
-  connection_id: string;
+  connection_id: string | null;
+  repository_id: string | null;
   repo_owner: string;
   repo_name: string;
   ref: string;
@@ -33,6 +34,7 @@ function toEntity(row: Row): OrgRepoSync {
     id: row.id,
     organizationId: row.organization_id,
     connectionId: row.connection_id,
+    repositoryId: row.repository_id,
     repoOwner: row.repo_owner,
     repoName: row.repo_name,
     ref: row.ref,
@@ -52,7 +54,10 @@ export class OrgRepoSyncStorage {
 
   async create(params: {
     organizationId: string;
-    connectionId: string;
+    /** At least one of `connectionId` / `repositoryId` must be set — the
+     *  `org_repo_sync_source_present` CHECK enforces it in the database. */
+    connectionId?: string | null;
+    repositoryId?: string | null;
     repoOwner: string;
     repoName: string;
     ref: string;
@@ -64,7 +69,8 @@ export class OrgRepoSyncStorage {
       .insertInto("org_repo_sync")
       .values({
         organization_id: params.organizationId,
-        connection_id: params.connectionId,
+        connection_id: params.connectionId ?? null,
+        repository_id: params.repositoryId ?? null,
         repo_owner: params.repoOwner,
         repo_name: params.repoName,
         ref: params.ref,

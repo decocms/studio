@@ -22,7 +22,8 @@ import { expect, newApiContext, test } from "../fixtures/test";
 
 interface SyncConfig {
   id: string;
-  connectionId: string;
+  connectionId: string | null;
+  repositoryId: string | null;
   repoOwner: string;
   repoName: string;
   ref: string;
@@ -237,6 +238,74 @@ test.describe("org repo sync configs", () => {
         {},
       );
       expect(finalList.configs.map((c) => c.id)).not.toContain(config.id);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  /**
+   * A sync can be backed by a first-class repository instead of a
+   * `mcp-github` connection. Exactly one source is allowed, and the config
+   * carries the repository's namespace split into owner/name for display.
+   */
+  test("creates a sync from a linked repository", async ({ playwright }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const { orgSlug: org } = await signUpViaApi(ctx);
+      const path = `acme/sync-${Date.now()}`;
+      const { repository } = await callSelfMcpTool<{
+        repository: { id: string };
+      }>(ctx, org, "REPOSITORY_LINK", {
+        url: `https://github.com/${path}`,
+      });
+
+      await expect(
+        callSelfMcpTool(ctx, org, "ORG_REPO_SYNC_CREATE", {
+          volume: `vol-${Date.now()}`,
+        }),
+      ).rejects.toThrow(/exactly one/i);
+      await expect(
+        callSelfMcpTool(ctx, org, "ORG_REPO_SYNC_CREATE", {
+          repositoryId: repository.id,
+          connectionId: repository.id,
+          volume: `vol-${Date.now()}`,
+        }),
+      ).rejects.toThrow(/exactly one/i);
+
+      const volume = `repo-sync-${Date.now()}`;
+      const { config } = await callSelfMcpTool<{ config: SyncConfig }>(
+        ctx,
+        org,
+        "ORG_REPO_SYNC_CREATE",
+        { repositoryId: repository.id, volume },
+      );
+      expect(config.repositoryId).toBe(repository.id);
+      expect(config.connectionId).toBeNull();
+      expect(`${config.repoOwner}/${config.repoName}`).toBe(path);
+
+      const list = await callSelfMcpTool<{ configs: SyncConfig[] }>(
+        ctx,
+        org,
+        "ORG_REPO_SYNC_LIST",
+        {},
+      );
+      expect(list.configs.find((c) => c.id === config.id)?.repositoryId).toBe(
+        repository.id,
+      );
+
+      // Another org cannot name this repository as its sync source.
+      const otherCtx = await newApiContext(playwright);
+      try {
+        const other = await signUpViaApi(otherCtx);
+        await expect(
+          callSelfMcpTool(otherCtx, other.orgSlug, "ORG_REPO_SYNC_CREATE", {
+            repositoryId: repository.id,
+            volume: `stolen-${Date.now()}`,
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await otherCtx.dispose();
+      }
     } finally {
       await ctx.dispose();
     }
