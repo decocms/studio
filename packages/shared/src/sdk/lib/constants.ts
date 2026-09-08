@@ -455,6 +455,33 @@ export function isStudioPackAgent(id: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Retired Studio Pack agent ID prefixes: agents that used to be installed
+ * per-org but no longer exist. Their rows linger in orgs that once had them
+ * (the backfill that deletes them is version-gated), so the UI must keep
+ * hiding them as scaffolding even though they are no longer part of the pack.
+ */
+export const RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES = [
+  "studio-agent-manager_",
+  "studio-task-manager_",
+] as const;
+
+const retiredStudioPackAgentPrefixes =
+  RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES.map(createWellKnownAgentPrefix);
+
+/**
+ * Check if a connection or virtual MCP ID is a retired Studio Pack agent whose
+ * leftover row should be hidden from users.
+ */
+export function isRetiredStudioPackAgent(
+  id: string | null | undefined,
+): boolean {
+  if (!id) return false;
+  return retiredStudioPackAgentPrefixes.some(
+    (prefix) => prefix.is(id) !== null,
+  );
+}
+
 export function getWellKnownDecopilotConnection(
   organizationId: string,
 ): ConnectionEntity {
