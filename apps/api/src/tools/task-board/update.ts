@@ -22,6 +22,7 @@ import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { runColumnAutomation } from "./run-column-automation";
 import { extractPrFromText } from "./pr-extract";
+import { normalizePreviewRoutes } from "./preview-routes";
 import { invalidatePrCards } from "./prs-get";
 import {
   ensureTaskExecutionAllowed,
@@ -65,6 +66,7 @@ const UPDATABLE_FIELDS = [
   "repo",
   "dueDate",
   "sortOrder",
+  "previewRoutes",
   "tagIds",
 ] as const;
 
@@ -217,6 +219,17 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
+    previewRoutes: z
+      .array(z.string().max(500))
+      .max(20)
+      .optional()
+      .describe(
+        "Paths this task's work created or edited, e.g. " +
+          '["/cliente-vip", "/cliente-vip/faq"]. Paths only — no host: the ' +
+          "card joins each onto the pull request's deploy-preview origin so " +
+          "a reviewer can open the pages directly. Replaces the previous set; " +
+          "pass [] to clear.",
+      ),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
@@ -397,6 +410,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
+          previewRoutes: normalizePreviewRoutes(input.previewRoutes),
         },
         getUserId(ctx)!,
       );

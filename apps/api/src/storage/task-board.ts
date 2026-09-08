@@ -405,6 +405,7 @@ export class TaskBoardStorage {
       repo?: string | null;
       dueDate?: string | null;
       externalUrl?: string | null;
+      previewRoutes?: string[] | null;
       sortOrder?: number;
     },
     by: string,
@@ -429,6 +430,9 @@ export class TaskBoardStorage {
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.externalUrl !== undefined
           ? { external_url: data.externalUrl }
+          : {}),
+        ...(data.previewRoutes !== undefined
+          ? { preview_routes: data.previewRoutes }
           : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
@@ -2428,6 +2432,7 @@ export class TaskBoardStorage {
     repo: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
+    preview_routes?: string[] | null;
     source?: "jira" | null;
     sort_order: number;
     key_seq: number;
@@ -2454,6 +2459,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       externalUrl: row.external_url ?? null,
+      previewRoutes: row.preview_routes ?? [],
       source: row.source ?? null,
       sortOrder: row.sort_order,
       keySeq: row.key_seq,
