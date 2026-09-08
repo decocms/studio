@@ -24,8 +24,8 @@ import {
   type TokenOptions,
   type TokenSource,
 } from "../types";
+import { gitlabFailure, gitlabFetch } from "./http";
 
-const REQUEST_TIMEOUT_MS = 15_000;
 /** A whole-repo archive is a download, not a REST call — it needs room to stream. */
 const ARCHIVE_TIMEOUT_MS = 60_000;
 const DEFAULT_PER_PAGE = 30;
@@ -121,60 +121,20 @@ const GitlabUserSchema = z.object({
 });
 type GitlabUser = z.infer<typeof GitlabUserSchema>;
 
-function describeCause(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
-async function errorMessage(res: Response): Promise<string> {
-  const text = await res.text().catch(() => "");
-  if (!text) return res.statusText || `HTTP ${res.status}`;
-  try {
-    const json = JSON.parse(text) as { message?: unknown; error?: unknown };
-    if (typeof json.message === "string") return json.message;
-    if (typeof json.error === "string") return json.error;
-  } catch {
-    // Not JSON: fall through to the raw body.
-  }
-  return text.slice(0, 200);
-}
-
 /**
- * Authenticated GET against the GitLab API. 404 resolves to null so callers
- * can express "not found" without try/catch; every other non-2xx becomes a
- * `GitProviderError`, with a wait hint when GitLab rate-limited us.
+ * Authenticated GET against the GitLab API via the shared transport. 404
+ * resolves to null so callers can express "not found" without try/catch;
+ * every other non-2xx becomes a `GitProviderError` (`./http`'s `gitlabFailure`
+ * flattens GitLab's various error-body shapes and carries a rate-limit hint).
  */
 async function gitlabRequest(
   url: string,
   token: string,
   init: { accept?: string; timeoutMs?: number } = {},
 ): Promise<Response | null> {
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: init.accept ?? "application/json",
-      },
-      signal: AbortSignal.timeout(init.timeoutMs ?? REQUEST_TIMEOUT_MS),
-    });
-  } catch (cause) {
-    throw new GitProviderError({
-      provider: "gitlab",
-      status: 0,
-      message: `GitLab request failed: ${describeCause(cause)}`,
-      cause,
-    });
-  }
+  const res = await gitlabFetch(url, token, init);
   if (res.status === 404) return null;
-  if (!res.ok) {
-    throw new GitProviderError({
-      provider: "gitlab",
-      status: res.status,
-      message: `GitLab API ${res.status}: ${await errorMessage(res)}`,
-      retryAfterMs: res.status === 429 ? gitlabRetryAfterMs(res.headers) : null,
-    });
-  }
+  if (!res.ok) throw await gitlabFailure(res);
   return res;
 }
 
