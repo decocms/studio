@@ -45,10 +45,10 @@ import {
 import type { ConnectionStoragePort } from "./ports";
 import type { Database } from "./types";
 
-/** JSON fields that need serialization/deserialization */
+/** JSON fields that need serialization/deserialization. oauth_config is handled
+ * separately below since it's encrypted (it may carry a client secret). */
 const JSON_FIELDS = [
   "connection_headers",
-  "oauth_config",
   "configuration_scopes",
   "metadata",
   "bindings",
@@ -586,6 +586,9 @@ export class ConnectionStorage implements ConnectionStoragePort {
         // Encrypt configuration state
         const stateJson = JSON.stringify(value);
         result[key] = await this.vault.encrypt(stateJson);
+      } else if (key === "oauth_config" && value) {
+        // May carry an OAuth client secret — encrypt like connection_token.
+        result[key] = await this.vault.encrypt(JSON.stringify(value));
       } else if (key === "connection_headers" && value) {
         // For STDIO, encrypt envVars before storing
         const params = value as ConnectionParameters;
@@ -692,6 +695,27 @@ export class ConnectionStorage implements ConnectionStoragePort {
       }
     }
 
+    // Falls back to plain JSON for connections written before encryption.
+    let decryptedOAuthConfig: OAuthConfig | null = null;
+    if (typeof row.oauth_config === "string") {
+      try {
+        decryptedOAuthConfig = JSON.parse(
+          await this.vault.decrypt(row.oauth_config),
+        );
+      } catch {
+        try {
+          decryptedOAuthConfig = JSON.parse(row.oauth_config);
+        } catch (error) {
+          console.error(
+            `Failed to parse oauth_config for connection ${row.id}:`,
+            error,
+          );
+        }
+      }
+    } else {
+      decryptedOAuthConfig = row.oauth_config;
+    }
+
     if (decryptErrors.length > 0) {
       await this.handleDecryptFailures(row, decryptErrors);
     } else if (row.connection_token || row.configuration_state) {
@@ -758,7 +782,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       connection_url: row.connection_url,
       connection_token: decryptedToken,
       connection_headers: connectionParameters,
-      oauth_config: parseJson<OAuthConfig>(row.oauth_config),
+      oauth_config: decryptedOAuthConfig,
       configuration_state: decryptedConfigState,
       configuration_scopes: parseJson<string[]>(row.configuration_scopes),
       metadata: parseJson<Record<string, unknown>>(row.metadata),
