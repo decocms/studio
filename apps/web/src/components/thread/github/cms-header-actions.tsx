@@ -232,18 +232,15 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     await prQuery.refetch();
   };
 
-  /** Publish done: go to production and discard the merged draft (switcher entry
-   *  + branch); a mutation so `isPending` signals the publish is still settling. */
+  /** Publish done: land on a fresh editable draft and discard the merged draft
+   *  (switcher entry + branch); a mutation so `isPending` signals the publish is
+   *  still settling. */
   const publishCompletion = useMutation({
     mutationFn: async () => {
-      if (!draftsModeEnabled(vm)) {
-        await setCurrentTaskBranch(
-          generateBranchName(branchUserLabel(session?.user)),
-        );
-        return;
-      }
-      const published = branch;
-      await setCurrentTaskBranch(baseBranch);
+      const published = draftsModeEnabled(vm) ? branch : null;
+      await setCurrentTaskBranch(
+        generateBranchName(branchUserLabel(session?.user)),
+      );
       if (published && published !== baseBranch) {
         await deleteRelease(published);
       }

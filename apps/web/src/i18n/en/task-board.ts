@@ -169,6 +169,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.prStateMerged": "Merged",
   "taskBoard.taskDialog.prStateOpen": "Open",
   "taskBoard.taskDialog.previewLabel": "Open preview",
+  "taskBoard.taskDialog.previewRoutesLabel": "Pages changed in this PR",
   "taskBoard.taskDialog.previewUnavailable": "Preview unavailable",
   "taskBoard.taskDialog.previewUnavailableTitle":
     "The deploy preview isn't responding yet — it may still be building",

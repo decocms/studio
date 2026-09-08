@@ -173,6 +173,9 @@ export interface TaskBoardItem {
   /** Link to that issue in the tracker, for a human to open. Never folded into
    *  `description`, which agent prompts quote verbatim. */
   externalUrl: string | null;
+  /** Paths this task's work created or edited, joined onto a PR's deploy-preview
+   *  origin by the card. Empty when the task named none. */
+  previewRoutes: string[];
   /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
    *  board shows. */
   source: "jira" | null;

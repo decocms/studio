@@ -1,12 +1,16 @@
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import type {
   VirtualMCPEntity,
   VirtualMcpSidebarView,
 } from "@decocms/shared/sdk/types";
 import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
-import { useBaseBranch } from "@/components/thread/github/use-version-gate";
+import { authClient } from "@/lib/auth-client";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -44,7 +48,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import {
   ENV_VAR_KEY_RE,
-  StudioPackAgentId,
+  getWellKnownDecopilotVirtualMCP,
   SUBMODULE_HOST_RE,
   useConnectionActions,
   useProjectContext,
@@ -430,12 +434,9 @@ function VirtualMcpDetailViewWithData({
   const [isImproving, setIsImproving] = useState(false);
   const { createNewTask, openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
-  // Enabling Draft & Releases mode lands the thread on production (the base).
+  // Enabling Draft & Releases mode moves the thread onto a fresh editable draft.
   const draftsTaskCtx = useOptionalChatTask();
-  const draftsBaseBranch = useBaseBranch(
-    virtualMcp,
-    draftsTaskCtx?.currentBranch ?? null,
-  );
+  const { data: draftsSession } = authClient.useSession();
 
   const handleImprovePrompt = async () => {
     if (isImproving) return;
@@ -452,10 +453,12 @@ function VirtualMcpDetailViewWithData({
 
       openSidePanel();
 
+      // This chat runs as the agent being edited; agent CRUD is Super-Agent-only.
+      const superAgent = getWellKnownDecopilotVirtualMCP(org.id);
       await sendMessage({
         tiptapDoc: buildImprovePromptDoc({
-          managerAgentId: StudioPackAgentId.AGENT_MANAGER(org.id),
-          managerName: "Agent Manager",
+          managerAgentId: superAgent.id,
+          managerName: superAgent.title,
           kind: "agent",
           id: virtualMcp.id,
           instructions: currentInstructions,
@@ -1087,11 +1090,7 @@ function VirtualMcpDetailViewWithData({
               <span className="text-muted-foreground/50">·</span>
               <span>
                 {t("virtualMcp.virtualMcp.created")}{" "}
-                {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {format(new Date(virtualMcp.created_at), "PP", { locale })}
               </span>
               <span className="text-muted-foreground/50">·</span>
               <span>
@@ -1293,7 +1292,11 @@ function VirtualMcpDetailViewWithData({
                         control={form.control}
                         onCommit={flushAndSave}
                         onEnable={() =>
-                          draftsTaskCtx?.setCurrentTaskBranch(draftsBaseBranch)
+                          draftsTaskCtx?.setCurrentTaskBranch(
+                            generateBranchName(
+                              branchUserLabel(draftsSession?.user),
+                            ),
+                          )
                         }
                       />
                       {/* Blocks-form preference — nothing to tune with the CMS off. */}

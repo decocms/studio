@@ -199,7 +199,10 @@ import * as migration197taskboardprompts from "./197-task-board-prompts.ts";
 import * as migration198taskboardexternalurl from "./198-task-board-external-url.ts";
 import * as migration199dropjiramirrorandorgcolumns from "./199-drop-jira-mirror-and-org-columns.ts";
 import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
-import * as migration201gitprovideraccountsandrepositories from "./201-git-provider-accounts-and-repositories.ts";
+import * as migration201organizationnotices from "./201-organization-notices.ts";
+import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
+import * as migration203taskboardpreviewroutes from "./203-task-board-preview-routes.ts";
+import * as migration204gitprovideraccountsandrepositories from "./204-git-provider-accounts-and-repositories.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -434,8 +437,11 @@ const migrations: Record<string, Migration> = {
   "199-drop-jira-mirror-and-org-columns":
     migration199dropjiramirrorandorgcolumns,
   "200-jira-run-trigger": migration200jirarruntrigger,
-  "201-git-provider-accounts-and-repositories":
-    migration201gitprovideraccountsandrepositories,
+  "201-organization-notices": migration201organizationnotices,
+  "202-redact-base64-thread-parts": migration202redactbase64threadparts,
+  "203-task-board-preview-routes": migration203taskboardpreviewroutes,
+  "204-git-provider-accounts-and-repositories":
+    migration204gitprovideraccountsandrepositories,
 };
 
 export default migrations;

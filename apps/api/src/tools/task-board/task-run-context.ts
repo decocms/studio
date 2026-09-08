@@ -49,8 +49,6 @@ export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
   "TASK_ADD_REPO",
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
-  "TASK_BOARD_ITEM_PRS_GET",
-  "TASK_BOARD_ITEM_PR_LINK",
   "TASK_BOARD_ACTIVITY_LIST",
   "TASK_BOARD_COMMENT_LIST",
   "TASK_BOARD_COMMENT_CREATE",
@@ -74,6 +72,10 @@ export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
  */
 export const REVIEW_RUN_TOOL_NAMES: readonly ToolName[] = [
   ...TASK_RUN_TOOL_NAMES,
+  // The PR under review. Reviewer-only: a Super Agent run works on the branch
+  // it was given and never needs to look its own pull request up — the board
+  // does that for it now (`pr-by-branch.ts`).
+  "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_REVIEW_DECISION",
 ];
 

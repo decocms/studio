@@ -42,27 +42,20 @@ export function findReusableNewChat(
 }
 
 export interface AgentEntryOpts {
-  /** Production ∪ named-release branches — the versions a thread can resume to. */
+  /** Production ∪ named-release branches — the versions a legacy thread can resume to. */
   knownBranches?: ReadonlySet<string>;
-  /** Drafts mode never resumes an unnamed draft: a named version or production, else nothing (caller mints a fresh production thread). */
+  /** Drafts mode resumes the last thread on any editable draft (never production), else nothing (caller mints a fresh draft thread). */
   draftsMode?: boolean;
+  /** Production branch, excluded from drafts-mode resume so entry never lands there. */
+  baseBranch?: string;
 }
 
 /**
  * Thread to land on when *entering* an agent.
  *
- * A `hasBranch` agent's thread branch is only a *named version* (a release or
- * production) if it was promoted — a fresh thread mints an unnamed auto-generated
- * branch the drafts picker can only render as a "Rascunho". So we first prefer
- * the last thread on one of `knownBranches`, restoring the version the user was
- * editing.
- *
- * In `draftsMode` an unnamed draft is never editable: if no thread sits on a
- * named version we return `undefined` so the caller mints a fresh thread on
- * production. Otherwise (legacy branch/PR mode) we fall back to the raw last
- * thread, then the empty chat, then `undefined`.
- *
- * A branchless agent resumes its last thread (empty or not), never piling up empty chats.
+ * `draftsMode`: resume the last thread on any draft branch (never `baseBranch`), else `undefined`.
+ * Legacy `hasBranch`: prefer the last thread on `knownBranches`, then the raw last, then the empty chat.
+ * Branchless: resume the last thread (empty or not), never piling up empty chats.
  */
 export function findAgentEntryThread(
   threads: Task[],
@@ -78,6 +71,18 @@ export function findAgentEntryThread(
       undefined
     );
   }
+  if (opts?.draftsMode) {
+    return (
+      findLastThreadForAgent(
+        threads,
+        agentId,
+        userId,
+        expectedRuntime,
+        undefined,
+        opts?.baseBranch,
+      ) ?? undefined
+    );
+  }
   const known = opts?.knownBranches;
   const onNamedVersion =
     known && known.size > 0
@@ -89,7 +94,6 @@ export function findAgentEntryThread(
           known,
         ) ?? undefined)
       : undefined;
-  if (opts?.draftsMode) return onNamedVersion;
   return (
     onNamedVersion ??
     findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??

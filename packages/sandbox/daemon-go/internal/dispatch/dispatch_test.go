@@ -148,6 +148,7 @@ func TestRebaseWorkspaceCwd(t *testing.T) {
 // the run it displaces and wait for it to exit — two harnesses editing one
 // checkout is the failure this prevents.
 func TestClaimTakesOverAnInFlightRun(t *testing.T) {
+	shortSupersedeGrace(t)
 	reg := NewRegistry()
 	cancelled := make(chan struct{})
 	first, waitFirst := claimForTest(reg, "run-1", func() { close(cancelled) })
@@ -192,6 +193,7 @@ func TestClaimTakesOverAnInFlightRun(t *testing.T) {
 // "cancelled" terminal from the loser is what settled a live thread as
 // `Error: cancelled: run cancelled` in prod on 2026-08-07.
 func TestDisplacedReportsOnlyTheLoserOfATakeover(t *testing.T) {
+	shortSupersedeGrace(t)
 	reg := NewRegistry()
 	first, _ := claimForTest(reg, "run-1", func() {})
 	if reg.displaced("run-1", first) {
@@ -218,6 +220,7 @@ func TestDisplacedReportsOnlyTheLoserOfATakeover(t *testing.T) {
 // The takeover wait is bounded: a displaced run whose process refuses to die
 // must not wedge the thread forever.
 func TestClaimTakeoverGivesUpAfterTheTimeout(t *testing.T) {
+	shortSupersedeGrace(t)
 	restore := takeoverTimeout
 	takeoverTimeout = 10 * time.Millisecond
 	defer func() { takeoverTimeout = restore }()
@@ -357,6 +360,14 @@ func TestDispatchRejectsOversizedBody(t *testing.T) {
 	}
 }
 
+// shortSupersedeGrace keeps the suite fast: every takeover path now waits out
+// `supersedeGrace` for the incumbent to hang up first.
+func shortSupersedeGrace(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = 20 * time.Millisecond
+	t.Cleanup(func() { supersedeGrace = restore })
+}
+
 // claimForTest keeps the pre-reattach ergonomics the takeover tests are written
 // against: one call, one fresh run, its cancel.
 func claimForTest(reg *Registry, runId string, cancel func()) (*activeRun, func()) {
@@ -418,6 +429,7 @@ func TestLostClientDetachesInsteadOfEndingTheRun(t *testing.T) {
 // holding live connections for one runId is a real double-dispatch, and letting
 // both harnesses write one checkout is two agents in one worktree.
 func TestALiveClientIsStillTakenOverNotAdopted(t *testing.T) {
+	shortSupersedeGrace(t)
 	reg := NewRegistry()
 	cancelled := make(chan struct{})
 	first, _ := attachedRun(reg, "run-1", func() { close(cancelled) })
@@ -485,5 +497,203 @@ func TestAbandonedDetachedRunIsCancelledAfterTheGrace(t *testing.T) {
 	case <-cancelled:
 	case <-time.After(time.Second):
 		t.Fatal("a detached run nobody reattached to must be cancelled")
+	}
+}
+
+// The case that kept losing work in prod. KEDA scales in the worker holding a
+// run; DBOS recovers the workflow and re-dispatches within a second or two —
+// faster than the dying pod's TCP close is observed here. The daemon has no
+// attach verb, so that reconnect arrives as the same `POST /dispatch` a
+// competing turn would, and the only thing separating them was whether the
+// previous connection looked open. It did, so a healthy harness was SIGKILLed
+// and the turn re-run. There was never a second writer, only a slow-closing
+// one.
+func TestIncumbentHangingUpDuringTheGraceIsReattachedNotSuperseded(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = time.Second
+	defer func() { supersedeGrace = restore }()
+
+	reg := NewRegistry()
+	cancelled := make(chan struct{})
+	first, sink := attachedRun(reg, "run-1", func() { close(cancelled) })
+
+	// The incumbent's connection dies just after the re-dispatch arrives.
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		first.detach(sink)
+	}()
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		t.Fatal("a re-dispatch must not displace a run whose client is hanging up")
+		return nil, func() {}
+	})
+	if fresh || entry != first {
+		t.Fatal("the reconnect must adopt the running harness")
+	}
+	select {
+	case <-cancelled:
+		t.Fatal("the running harness must not be killed for a reconnect")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// The grace must not become a way for two live writers to share a checkout: an
+// incumbent that is genuinely still streaming is still displaced, just later.
+func TestIncumbentThatStaysAttachedIsStillSuperseded(t *testing.T) {
+	shortSupersedeGrace(t)
+
+	reg := NewRegistry()
+	cancelled := make(chan struct{})
+	first, _ := attachedRun(reg, "run-1", func() { close(cancelled) })
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		return &activeRun{done: make(chan struct{})}, func() {}
+	})
+	if !fresh || entry == first {
+		t.Fatal("a live incumbent must still be displaced after the grace")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("the displaced run must be cancelled")
+	}
+}
+
+// A run that hangs up and then FINISHES inside the grace has nothing left to
+// displace: the re-dispatch collects its buffered frames and terminal instead of
+// re-running a turn that already completed. Asserting the terminal actually
+// arrives is the point — "did not start a fresh run" alone is also true of an
+// adopted corpse with nothing left to replay.
+func TestRunFinishingDuringTheGraceIsCollectedNotRestarted(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = time.Second
+	defer func() { supersedeGrace = restore }()
+
+	reg := NewRegistry()
+	first, sink := attachedRun(reg, "run-1", func() {})
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		time.Sleep(30 * time.Millisecond)
+		first.detach(sink)
+		first.emit(terminalFrame("", ""))
+		reg.release("run-1", first)
+	}()
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		t.Fatal("a finished run must be collected, not re-run")
+		return nil, func() {}
+	})
+	if fresh || entry != first {
+		t.Fatal("the re-dispatch must find the finished run")
+	}
+
+	<-released
+	rec := httptest.NewRecorder()
+	if entry.attach(newBodyWriter(rec)) {
+		t.Fatal("attaching to a finished run must report that it is over")
+	}
+	if !strings.Contains(rec.Body.String(), `"done":true`) {
+		t.Fatalf("the successor must receive the run's terminal, got %q", rec.Body.String())
+	}
+}
+
+// A run that finishes with its client STILL READING has already delivered its
+// terminal, and `release` keeps nothing (there is no buffer to hand on). A
+// dispatch arriving after that must start a new turn — adopting the drained
+// entry would stream zero frames and no terminal, and the thread would never
+// settle.
+func TestRunFinishingAttachedDuringTheGraceStartsAFreshRun(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = time.Second
+	defer func() { supersedeGrace = restore }()
+
+	reg := NewRegistry()
+	first, _ := attachedRun(reg, "run-1", func() {})
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		first.emit(terminalFrame("", ""))
+		reg.release("run-1", first)
+	}()
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		return &activeRun{done: make(chan struct{})}, func() {}
+	})
+	if !fresh || entry == first {
+		t.Fatal("a run whose terminal was already delivered must not be re-adopted")
+	}
+}
+
+// The wait is lock-free, so the incumbent can be replaced while it runs. The
+// replacement is judged on its own state: an already-detached one is another
+// reconnect and must be adopted, not SIGKILLed — the very thing the grace
+// exists to prevent, one race narrower.
+func TestReplacementIncumbentThatIsDetachedIsAdoptedNotKilled(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = time.Second
+	defer func() { supersedeGrace = restore }()
+
+	reg := NewRegistry()
+	first, firstSink := attachedRun(reg, "run-1", func() {})
+	cancelled := make(chan struct{})
+	second, sink := newDetachedRun(func() { close(cancelled) })
+
+	// `second` is detached BEFORE it becomes the claim: the waiter must never be
+	// able to observe it mid-swap and call it a live second writer.
+	second.detach(sink)
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		reg.mu.Lock()
+		reg.activeRuns["run-1"] = second
+		reg.mu.Unlock()
+		first.detach(firstSink) // unblocks the wait; `first` is no longer the claim
+	}()
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		return &activeRun{done: make(chan struct{})}, func() {}
+	})
+	if fresh || entry != second {
+		t.Fatal("a detached replacement must be reattached to, not displaced")
+	}
+	select {
+	case <-cancelled:
+		t.Fatal("the replacement's harness must not be killed")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func newDetachedRun(cancel func()) (*activeRun, *bodyWriter) {
+	entry := &activeRun{done: make(chan struct{}), cancel: cancel}
+	sink := newBodyWriter(httptest.NewRecorder())
+	entry.attach(sink)
+	return entry, sink
+}
+
+// The grace's own side effect. DELETE is exactly what ends the wait early — it
+// cancels the run, which closes `done` — so a stop pressed during those seconds
+// used to be answered by STARTING the run it had just cancelled, and that
+// harness then held the checkout for a full turn. The handler's pre-wait
+// tombstone check covers only the instant before the wait.
+func TestRunCancelledDuringTheGraceIsNotRestarted(t *testing.T) {
+	restore := supersedeGrace
+	supersedeGrace = time.Second
+	defer func() { supersedeGrace = restore }()
+
+	reg := NewRegistry()
+	first, _ := attachedRun(reg, "run-1", func() {})
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		reg.mu.Lock()
+		reg.tombstones["run-1"] = time.Now().Add(tombstoneTTL)
+		reg.mu.Unlock()
+		reg.release("run-1", first)
+	}()
+
+	entry, fresh, _ := reg.claimOrAttach("run-1", func() (*activeRun, context.CancelFunc) {
+		t.Fatal("a cancelled run must never be restarted by the dispatch behind it")
+		return nil, func() {}
+	})
+	if entry != nil || fresh {
+		t.Fatal("a tombstoned run must resolve to nothing, so the handler answers 410")
 	}
 }

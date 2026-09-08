@@ -19,6 +19,7 @@ import {
   type DestinationRoutePath,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
+import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import {
   type DestinationPanel,
   isDestinationPanel,
@@ -26,6 +27,7 @@ import {
   type PanelPayload,
   tabIdForPanel,
 } from "./panel-route";
+import { type EntityLayoutMetadata, resolveActiveTabAndOpen } from "./tab-id";
 
 /** Typed against the router's own paths, so a rename in `router.tsx` breaks here. */
 const DESTINATION_ROUTE_BY_PANEL = {
@@ -44,6 +46,32 @@ export function useActivePanelTabId(): string | undefined {
    *  moved to `?virtualmcpid=`. A bookmarked project id in that slot is redirected
    *  by the route's own `beforeLoad` before anything renders. */
   return tabIdForPanel(params.panel, search);
+}
+
+/**
+ * The main-panel view actually SHOWING, resolving the agent's `defaultMainView`
+ * and the route default the SAME way the panel content does (see
+ * {@link resolveActiveTabAndOpen}).
+ *
+ * Unlike {@link useActivePanelTabId}, which returns only what the URL segment
+ * NAMES, this is defined on the bare `/$org/agents` entry that renders the
+ * default Preview without a `{-$panel}` segment. Gates that ask "is the Site
+ * Editor surface on screen?" (the publish cluster, the branch selector) must
+ * use THIS — reading the raw segment made them vanish whenever the surface was
+ * shown by default rather than by an explicit segment.
+ */
+export function useResolvedMainTabId(
+  entityMetadata: EntityLayoutMetadata | null,
+): string {
+  const panelTabId = useActivePanelTabId();
+  const routeDefaultMain = useRouteDefaultMain();
+  const search = useSearch({ strict: false }) as { mainpanel?: boolean };
+  return resolveActiveTabAndOpen({
+    panelTabId,
+    mainPanelParam: search.mainpanel,
+    routeDefaultMain,
+    metadata: entityMetadata,
+  }).activeTab;
 }
 
 export interface OpenPanelOptions {

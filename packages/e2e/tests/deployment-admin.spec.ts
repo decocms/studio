@@ -1073,6 +1073,391 @@ test.describe("/api/_admin/*", () => {
     await adminCtx.dispose();
   });
 
+  test("notice: PUT pins it, GET returns it, DELETE clears it", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      await (await adminCtx.get(`/api/_admin/orgs/${orgId}/notice`)).json(),
+    ).toEqual({ notice: null });
+
+    const put = await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+      data: {
+        severity: "warn",
+        title: "Payment overdue",
+        message: "Settle the invoice to keep your workspace.",
+        ctaLabel: "Pay invoice",
+        ctaUrl: "https://billing.example.com/invoice",
+      },
+    });
+    expect(put.status()).toBe(200);
+    const putBody = (await put.json()) as {
+      notice: { severity: string; title: string; source: string };
+    };
+    expect(putBody.notice.severity).toBe("warn");
+    expect(putBody.notice.source).toBe("manual");
+
+    // Escalating edits the same row rather than stacking a second one.
+    const escalate = await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+      data: {
+        severity: "block",
+        title: "Access suspended",
+        message: "Your account is more than 7 days overdue.",
+      },
+    });
+    expect(escalate.status()).toBe(200);
+    const rows = await db.query<{ severity: string; cta_url: string | null }>(
+      `SELECT severity, cta_url FROM "organization_notices"
+         WHERE organization_id = $1 AND resolved_at IS NULL`,
+      [orgId],
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.severity).toBe("block");
+    // The edit dropped the CTA — a stale "Pay invoice" button would outlive it.
+    expect(rows.rows[0]?.cta_url).toBeNull();
+
+    const del = await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`);
+    expect(del.status()).toBe(200);
+    // Resolved, not deleted: the org's notice history survives.
+    const afterDelete = await db.query<{ resolved_at: string | null }>(
+      `SELECT resolved_at FROM "organization_notices" WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(afterDelete.rows).toHaveLength(1);
+    expect(afterDelete.rows[0]?.resolved_at).not.toBeNull();
+
+    // Clearing a org with nothing pinned is a 404, not a silent success.
+    expect(
+      (await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`)).status(),
+    ).toBe(404);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: PUT rejects a bad severity, empty text, a half CTA and a non-http link", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    const invalid = [
+      { severity: "nope", title: "t", message: "m" },
+      { severity: "warn", title: "   ", message: "m" },
+      { severity: "warn", title: "t", message: "" },
+      { severity: "warn", title: "t", message: "m", ctaLabel: "Pay" },
+      {
+        severity: "warn",
+        title: "t",
+        message: "m",
+        ctaLabel: "Pay",
+        ctaUrl: "javascript:alert(1)",
+      },
+    ];
+    for (const data of invalid) {
+      const res = await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+        data,
+      });
+      expect(res.status(), JSON.stringify(data)).toBe(400);
+    }
+
+    // Nothing was pinned by any of the rejected writes.
+    const stored = await db.query(
+      `SELECT 1 FROM "organization_notices" WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(stored.rows).toHaveLength(0);
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: { severity: "warn", title: "t", message: "m" },
+        })
+      ).status(),
+    ).toBe(200);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: a block stops the org's writes while billing and reads keep working", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+    const org = owner.orgSlug;
+
+    // Baseline: the owner can write, and an unrouted POST 404s (not 403).
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/ORGANIZATION_SETTINGS_UPDATE`, {
+          data: { organizationId: orgId, flags: { demo_mode: true } },
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (await ownerCtx.post(`/api/${org}/no-such-route`, { data: {} })).status(),
+    ).toBe(404);
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: {
+            severity: "block",
+            title: "Access suspended",
+            message: "Your account is more than 7 days overdue.",
+          },
+        })
+      ).status(),
+    ).toBe(200);
+
+    // The same write is now refused, with a code the client can branch on.
+    const blockedWrite = await ownerCtx.post(
+      `/api/${org}/tools/ORGANIZATION_SETTINGS_UPDATE`,
+      { data: { organizationId: orgId, flags: { demo_mode: false } } },
+    );
+    expect(blockedWrite.status()).toBe(403);
+    expect(((await blockedWrite.json()) as { code?: string }).code).toBe(
+      "org_blocked",
+    );
+    // The refused write changed nothing.
+    expect(
+      (
+        await db.query<{ flags: Record<string, boolean> | null }>(
+          `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+          [orgId],
+        )
+      ).rows[0]?.flags?.demo_mode,
+    ).toBe(true);
+
+    // Every non-GET org route is gated, not just the ones with a handler.
+    const blockedRoute = await ownerCtx.post(`/api/${org}/no-such-route`, {
+      data: {},
+    });
+    expect(blockedRoute.status()).toBe(403);
+    expect(((await blockedRoute.json()) as { code?: string }).code).toBe(
+      "org_blocked",
+    );
+
+    // What the block screen and the billing page need still answers.
+    const notice = await ownerCtx.get(`/api/${org}/notice`);
+    expect(notice.status()).toBe(200);
+    expect(
+      ((await notice.json()) as { notice: { severity: string; title: string } })
+        .notice,
+    ).toMatchObject({ severity: "block", title: "Access suspended" });
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/ORGANIZATION_SETTINGS_GET`, {
+          data: {},
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/INFRA_BILLING_SITES_LIST`, {
+          data: {},
+        })
+      ).status(),
+    ).toBe(200);
+
+    // Lifting the block restores the write on the next request, not in 5 minutes.
+    expect(
+      (await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`)).status(),
+    ).toBe(200);
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/ORGANIZATION_SETTINGS_UPDATE`, {
+          data: { organizationId: orgId, flags: { demo_mode: false } },
+        })
+      ).status(),
+    ).toBe(200);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: a warn leaves the org's writes alone", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: {
+            severity: "warn",
+            title: "Payment overdue",
+            message: "Settle the invoice within 7 days.",
+          },
+        })
+      ).status(),
+    ).toBe(200);
+
+    expect(
+      (
+        await ownerCtx.post(
+          `/api/${owner.orgSlug}/tools/ORGANIZATION_SETTINGS_UPDATE`,
+          {
+            data: { organizationId: orgId, flags: { demo_mode: true } },
+          },
+        )
+      ).status(),
+    ).toBe(200);
+    const notice = await ownerCtx.get(`/api/${owner.orgSlug}/notice`);
+    expect(
+      ((await notice.json()) as { notice: { severity: string } }).notice
+        .severity,
+    ).toBe("warn");
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: a non-member cannot read another org's notice", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: { severity: "warn", title: "t", message: "m" },
+        })
+      ).status(),
+    ).toBe(200);
+
+    const outsiderCtx = await newApiContext(playwright);
+    await signUpViaApi(outsiderCtx);
+    const res = await outsiderCtx.get(`/api/${owner.orgSlug}/notice`);
+    expect(res.status()).toBe(403);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+    await outsiderCtx.dispose();
+  });
+
+  test("notice: a blocked org shows the block screen, with billing still reachable", async ({
+    browser,
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const baseURL = getE2EAppOrigin();
+    const ctx = await browser.newContext({
+      baseURL,
+      extraHTTPHeaders: { Origin: baseURL },
+    });
+    const page = await ctx.newPage();
+    const owner = await signUpViaApi(page.context().request);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: {
+            severity: "block",
+            title: "Access suspended",
+            message: "Your account is more than 7 days overdue.",
+            ctaLabel: "Pay invoice",
+            ctaUrl: "https://billing.example.com/invoice",
+          },
+        })
+      ).status(),
+    ).toBe(200);
+
+    await page.goto(`/${owner.orgSlug}`);
+    // The operator's own words, not a generic error page.
+    await expect(page.getByText("Access suspended")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("link", { name: "Pay invoice" })).toBeVisible();
+
+    // The one route a blocked org still opens, so it can settle the notice.
+    await page.getByRole("link", { name: "Go to billing" }).click();
+    await expect(page).toHaveURL(/\/settings\/infra-billing/);
+    await expect(page.getByText("Access suspended")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Lifting the block gives the org back.
+    expect(
+      (await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`)).status(),
+    ).toBe(200);
+    await page.goto(`/${owner.orgSlug}`);
+    await expect(page.getByText("Access suspended")).toHaveCount(0);
+
+    await ctx.close();
+    await adminCtx.dispose();
+  });
+
   test("a verified admin sees the dashboard in a browser", async ({
     browser,
   }) => {

@@ -694,6 +694,10 @@ interface PodTerminationSource {
     }>;
   };
   status?: {
+    /** Pod-level verdict. An eviction lands here, never in a container status. */
+    phase?: string;
+    reason?: string;
+    message?: string;
     containerStatuses?: Array<{
       name?: string;
       state?: { terminated?: TerminatedState };
@@ -711,7 +715,24 @@ export function podTermination(
     (c) => c.name === containerName,
   );
   const terminated = status?.state?.terminated ?? status?.lastState?.terminated;
-  if (!terminated?.reason) return null;
+  // An eviction is reported on the POD (`status.reason`), and its containers
+  // often carry no terminated state at all — the kubelet takes the pod away
+  // before they record one. Reading only container statuses therefore returned
+  // null for every eviction, so a run whose pod was evicted for filling a
+  // volume was reported as an unexplained lost sandbox. The message is the
+  // actionable half: it names the volume and the limit.
+  if (!terminated?.reason) {
+    if (pod.status?.reason === "Evicted") {
+      return {
+        reason: "Evicted",
+        oomKilled: false,
+        ...(pod.status.message === undefined
+          ? {}
+          : { evictionMessage: pod.status.message }),
+      };
+    }
+    return null;
+  }
   const memoryLimit = (pod.spec?.containers ?? []).find(
     (c) => c.name === containerName,
   )?.resources?.limits?.memory;

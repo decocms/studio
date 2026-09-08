@@ -61,12 +61,14 @@ import {
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  mcpClientQueryOptions,
   useConnectionActions,
   useConnections,
   useProjectContext,
   type ConnectionEntity,
   useVirtualMCPs,
 } from "@/sdk";
+import { resolveConnectedMcpTarget } from "./connected-mcp-target.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -283,7 +285,8 @@ function ConnectionResults({
         return;
       }
 
-      const { id } = await actions.create.mutateAsync(connectionData);
+      const created = await actions.create.mutateAsync(connectionData);
+      const { id } = created;
 
       // Handle OAuth flow (if needed) + persist, via the shared helper.
       const auth = await authenticateAndPersistOAuth({
@@ -326,7 +329,50 @@ function ConnectionResults({
         toast.success(t("orgs.connections.authenticationSuccessful"));
       }
 
-      toast.success(t("orgs.connections.connectedSuccessfully"));
+      // Own try: the connection exists; a failed listTools isn't a failed connect.
+      let target: ReturnType<typeof resolveConnectedMcpTarget> = null;
+      try {
+        const client = await queryClient.fetchQuery(
+          mcpClientQueryOptions({
+            connectionId: id,
+            orgId: org.id,
+            orgSlug: org.slug,
+          }),
+        );
+        target = resolveConnectedMcpTarget((await client.listTools()).tools);
+      } catch {
+        // No target — the toast below just loses its button.
+      }
+
+      const appSlug = getConnectionSlug(created);
+      const to = !target
+        ? null
+        : target.appToolName
+          ? ({
+              to: "/$org/settings/connections/$appSlug/$collectionName/$itemId",
+              params: {
+                org: org.slug,
+                appSlug,
+                collectionName: "tools",
+                itemId: encodeURIComponent(target.appToolName),
+              },
+            } as const)
+          : ({
+              to: "/$org/settings/connections/$appSlug",
+              params: { org: org.slug, appSlug },
+            } as const);
+
+      toast.success(
+        t("orgs.connections.connectedSuccessfully"),
+        to
+          ? {
+              action: {
+                label: t("orgs.connections.openConnection"),
+                onClick: () => navigate(to),
+              },
+            }
+          : undefined,
+      );
     } catch (error) {
       toast.error(
         t("orgs.connections.failedToConnect", {

@@ -378,6 +378,7 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
+        previewRoutes: string[];
         externalUrl: string | null;
         source: "jira" | null;
         retryAttempts: number;
@@ -447,6 +448,7 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
+        previewRoutes: string[];
         externalUrl: string | null;
         source: "jira" | null;
         retryAttempts: number;
@@ -514,6 +516,7 @@ export interface StudioToolIO {
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
+      previewRoutes?: string[] | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
       prUrl?: string | null | undefined;
@@ -542,6 +545,7 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
+        previewRoutes: string[];
         externalUrl: string | null;
         source: "jira" | null;
         retryAttempts: number;
@@ -639,10 +643,6 @@ export interface StudioToolIO {
         previewUrl: string | null;
       }[];
     };
-  };
-  TASK_BOARD_ITEM_PR_LINK: {
-    input: { url: string };
-    output: { url: string; prNumber: number; taskBoardItemIds: string[] };
   };
   TASK_BOARD_PREVIEW_PROBE: {
     input: { url: string };

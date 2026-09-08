@@ -34,12 +34,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
-import {
-  draftsModeEnabled,
-  useIsOnProduction,
-} from "@/components/thread/github/use-version-gate";
-import { ReadOnlyPane } from "@/components/sections-editor/fields/read-only-pane";
+import { useProjectContext } from "@/sdk";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
@@ -353,9 +348,6 @@ function ContentBrowserReady({
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const readOnlyVm = useVirtualMCP(virtualMcpId);
-  const isOnProduction = useIsOnProduction(readOnlyVm, branch);
-  const readOnly = draftsModeEnabled(readOnlyVm) && isOnProduction;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
@@ -1183,11 +1175,7 @@ function ContentBrowserReady({
             }
           />
         )}
-      <ReadOnlyPane
-        readOnly={readOnly}
-        virtualMcpId={virtualMcpId}
-        className="flex-1 min-w-0"
-      >
+      <div className="flex-1 min-w-0">
         {activeCollection === "loaders" || activeCollection === "actions" ? (
           <RunnableBlocksBrowser
             orgSlug={orgSlug}
@@ -1412,7 +1400,7 @@ function ContentBrowserReady({
             )}
           </Suspense>
         )}
-      </ReadOnlyPane>
+      </div>
 
       {/* Page create/duplicate/rename dialog */}
       {pageDialog && (

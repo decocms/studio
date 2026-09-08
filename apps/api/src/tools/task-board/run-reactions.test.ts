@@ -212,6 +212,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     sortOrder: 0,
     keySeq: 1,
     externalUrl: null,
+    previewRoutes: [],
     source: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,

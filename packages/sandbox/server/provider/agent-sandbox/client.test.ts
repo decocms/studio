@@ -796,3 +796,41 @@ describe("readPodTermination", () => {
     ).toBeNull();
   });
 });
+
+describe("podTermination", () => {
+  // An eviction is reported on the POD, not on a container: the kubelet takes
+  // the pod away before its containers record a terminated state. Reading only
+  // container statuses returned null, so every eviction reached the user as an
+  // unexplained lost sandbox — including the 41 pods evicted in one afternoon
+  // for filling `/tmp`, each retry landing on a fresh pod that filled it again.
+  it("reports an eviction and the kubelet's message", () => {
+    expect(
+      podTermination(
+        {
+          status: {
+            phase: "Failed",
+            reason: "Evicted",
+            message: 'Usage of EmptyDir volume "tmp" exceeds the limit "1Gi".',
+            containerStatuses: [{ name: "sandbox" }],
+          },
+        },
+        "sandbox",
+      ),
+    ).toEqual({
+      reason: "Evicted",
+      oomKilled: false,
+      evictionMessage:
+        'Usage of EmptyDir volume "tmp" exceeds the limit "1Gi".',
+    });
+  });
+
+  // A pod that is merely gone still carries nothing worth saying.
+  it("stays null for a pod with no verdict", () => {
+    expect(
+      podTermination(
+        { status: { containerStatuses: [{ name: "sandbox" }] } },
+        "sandbox",
+      ),
+    ).toBeNull();
+  });
+});

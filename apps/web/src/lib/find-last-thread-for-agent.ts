@@ -6,10 +6,8 @@ import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
  * Current user's most-recently-updated non-archived thread for `agentId`
  * (optionally runtime-matched), or null — the last *real* thread, empty or not.
  *
- * When `onlyBranches` is given, only threads whose `branch` is in that set are
- * considered. Entry uses this to prefer the last thread on a *named* version (a
- * release, or production) so re-entry restores the version the user was editing
- * instead of an unnamed auto-minted draft.
+ * `onlyBranches`: keep only threads whose `branch` is in the set (legacy resume).
+ * `excludeBranch`: skip threads on that branch (drafts-mode passes production).
  */
 export function findLastThreadForAgent(
   threads: Task[],
@@ -17,6 +15,7 @@ export function findLastThreadForAgent(
   userId: string | undefined,
   expectedRuntime?: ThreadRuntime,
   onlyBranches?: ReadonlySet<string>,
+  excludeBranch?: string | null,
 ): Task | null {
   let best: Task | null = null;
   for (const t of threads) {
@@ -25,6 +24,7 @@ export function findLastThreadForAgent(
     if (t.hidden) continue;
     if (!threadRuntimeMatches(t, expectedRuntime)) continue;
     if (onlyBranches && (!t.branch || !onlyBranches.has(t.branch))) continue;
+    if (excludeBranch && t.branch === excludeBranch) continue;
     if (!best || t.updated_at > best.updated_at) best = t;
   }
   return best;

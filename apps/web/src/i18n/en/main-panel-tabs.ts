@@ -520,6 +520,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Library",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Main view",
+  "mainPanelTabs.mobileMainPanelTabSelect.switchTo": "Switch to {name}",
   "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Tasks",
   "mainPanelTabs.mobileMainPanelTabSelect.view": "View",
   "mainPanelTabs.previewTab.connectGithub": "Connect GitHub",

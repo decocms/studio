@@ -21,6 +21,7 @@ import type {
   OrgFlags,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
+import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { ReviewerKind } from "@decocms/shared/task-board";
 import type { PrivateRegistryDatabase } from "./registry/types";
@@ -1548,6 +1549,50 @@ export interface OrgSite {
 }
 
 // ============================================================================
+// Organization Notices (deployment-admin billing warning / block)
+// ============================================================================
+
+export interface OrganizationNoticeTable {
+  id: string;
+  organization_id: string;
+  /** 'warn' renders a banner; 'block' replaces the org UI and gates writes. */
+  severity: string;
+  title: string;
+  message: string;
+  cta_label: string | null;
+  cta_url: string | null;
+  /** 'manual' (typed in the admin UI) or, later, an invoice sync's id. */
+  source: ColumnType<string, string | undefined, string>;
+  resolved_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  resolved_by: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrganizationNotice {
+  id: string;
+  organizationId: string;
+  severity: OrgNoticeSeverity;
+  title: string;
+  message: string;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  source: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+// ============================================================================
 // Org Repo Sync (per-org GitHub repo → org-fs volume mirror)
 // ============================================================================
 
@@ -1666,6 +1711,14 @@ export interface TaskBoardItemTable {
   source: ColumnType<"jira" | null, "jira" | null | undefined, "jira" | null>;
   external_url: ColumnType<
     string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Paths the task's work created or edited (`["/cliente-vip"]`), joined onto
+   *  a PR's deploy-preview origin by the card. Reported by the run through
+   *  `TASK_BOARD_ITEM_UPDATE`; null for a task that never named one. */
+  preview_routes: ColumnType<
+    string[] | null,
     string | null | undefined,
     string | null
   >;
@@ -1936,6 +1989,8 @@ export interface TaskBoardItem {
   /** Link to that issue in the tracker, for a human to open. Never part of the
    *  description, which is quoted into agent prompts verbatim. */
   externalUrl: string | null;
+  /** Paths this task's work created or edited; empty when it named none. */
+  previewRoutes: string[];
   /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
    *  board shows. */
   source: "jira" | null;
@@ -2324,6 +2379,9 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+
+  // Deployment-admin billing warning / block pinned on an org
+  organization_notices: OrganizationNoticeTable;
   org_repo_sync: OrgRepoSyncTable;
   git_provider_accounts: GitProviderAccountTable;
   git_provider_account_credentials: GitProviderAccountCredentialTable;

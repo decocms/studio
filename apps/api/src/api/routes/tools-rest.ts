@@ -14,6 +14,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
+import { OrgBlockedError } from "../../core/org-notice-gate";
 import { TOOL_BY_NAME } from "../../tools";
 import { getToolRegistration } from "../../tools/management-registration";
 import type { Env } from "../hono-env";
@@ -84,6 +85,9 @@ export const createToolsRestRoutes = () => {
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         return c.json({ error: error.message }, 401);
+      }
+      if (error instanceof OrgBlockedError) {
+        return c.json({ error: error.message, code: error.code }, 403);
       }
       if (error instanceof ForbiddenError) {
         return c.json({ error: error.message }, 403);
