@@ -30,7 +30,7 @@ import { meter } from "../../observability";
 
 const cacheCounter = meter.createCounter("pr_read_cache.fetches", {
   description:
-    "Task board PR cache outcomes (hit, stale, miss, placeholder, error, store_rejected)",
+    "Task board PR cache outcomes (hit, stale, miss, placeholder, refresh, error, store_rejected)",
   unit: "{fetches}",
 });
 
@@ -289,6 +289,26 @@ export class JetStreamKVPrCache {
     return usable
       ? { value: stored!.value as T, live: true }
       : { value: placeholder, live: false };
+  }
+
+  /**
+   * Fetch live and store, ignoring whatever is cached — the webhook's push
+   * path, where GitHub has just told us the value changed. Rejects if the fetch
+   * does, so a failed refresh leaves the previous value in place.
+   */
+  async refresh<T>(params: {
+    namespace: string;
+    key: string;
+    fetchLive: () => Promise<T>;
+  }): Promise<T> {
+    const value = await params.fetchLive();
+    await this.write(
+      this.storageKey(params.namespace, params.key),
+      value,
+      this.config.cache,
+    );
+    cacheCounter.add(1, { cache: this.config.cache, outcome: "refresh" });
+    return value;
   }
 
   private async read(key: string): Promise<StoredRead | null> {

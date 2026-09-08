@@ -12,7 +12,7 @@ import {
   extractPreviewUrlFromDeployment,
   headShaFromPrGet,
   headShaFromStatus,
-  isAwaitingCi,
+  isCardNotReady,
   isRateLimitError,
   extractPreviewUrlFromCheckRuns,
   extractPreviewUrlFromComments,
@@ -644,16 +644,153 @@ describe("previewMatchesHead", () => {
   });
 });
 
-describe("isAwaitingCi", () => {
+describe("isCardNotReady", () => {
+  const NOW = Date.parse("2026-09-08T12:00:00Z");
+  const recent = new Date(NOW - 60_000).toISOString();
+  const old = new Date(NOW - 30 * 60_000).toISOString();
+  const open = { state: "open" as string | null, updatedAt: recent };
+
   it("keeps refreshing while CI runs", () => {
-    // Was false whenever a preview URL had already been found, so that card got
-    // the full hit window and showed "Checks pending" long after they passed.
-    expect(isAwaitingCi({ checksStatus: "pending" })).toBe(true);
+    expect(
+      isCardNotReady(
+        { ...open, checksStatus: "pending", previewUrl: null },
+        NOW,
+      ),
+    ).toBe(true);
+    // Preview already found used to make this false — hence "Checks pending".
+    expect(
+      isCardNotReady(
+        { ...open, checksStatus: "pending", previewUrl: "https://x.vtex.app" },
+        NOW,
+      ),
+    ).toBe(true);
+    // Pending CI ends by itself, so it isn't subject to the preview bound.
+    expect(
+      isCardNotReady(
+        { ...open, updatedAt: old, checksStatus: "pending", previewUrl: null },
+        NOW,
+      ),
+    ).toBe(true);
   });
 
-  it("caches normally once CI settles", () => {
-    expect(isAwaitingCi({ checksStatus: "passing" })).toBe(false);
-    expect(isAwaitingCi({ checksStatus: "failing" })).toBe(false);
-    expect(isAwaitingCi({ checksStatus: null })).toBe(false);
+  it("keeps refreshing after CI settles until a preview url is found", () => {
+    // The deploy bot's comment lands AFTER the checks go green.
+    expect(
+      isCardNotReady(
+        { ...open, checksStatus: "passing", previewUrl: null },
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  it("stops chasing a preview that never came", () => {
+    // previewUrl stays null forever on a repo that publishes no preview.
+    expect(
+      isCardNotReady(
+        { ...open, updatedAt: old, checksStatus: "passing", previewUrl: null },
+        NOW,
+      ),
+    ).toBe(false);
+    // Unknown activity time doesn't chase — safe direction for the rate limit.
+    expect(
+      isCardNotReady(
+        { ...open, updatedAt: null, checksStatus: "passing", previewUrl: null },
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it("caches normally once CI settled and a preview is known", () => {
+    for (const checksStatus of ["passing", "failing"] as const) {
+      expect(
+        isCardNotReady(
+          { ...open, checksStatus, previewUrl: "https://x.vtex.app" },
+          NOW,
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("never chases a PR that is not open", () => {
+    for (const state of ["closed", null]) {
+      expect(
+        isCardNotReady(
+          { state, updatedAt: recent, checksStatus: null, previewUrl: null },
+          NOW,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("extractPreviewUrlFromCheckRuns — preview without a bot comment", () => {
+  const run = (o: Record<string, unknown>) => ({ check_runs: [o] });
+
+  it("reads the url out of a deploy check's output", () => {
+    expect(
+      extractPreviewUrlFromCheckRuns(
+        run({
+          name: "Cloudflare Pages",
+          conclusion: "success",
+          output: { summary: "Deployed to https://abc.deco.site 🎉" },
+        }),
+      ),
+    ).toBe("https://abc.deco.site");
+  });
+
+  it("falls back to the details link", () => {
+    expect(
+      extractPreviewUrlFromCheckRuns(
+        run({ name: "deploy", details_url: "https://x.vtex.app/" }),
+      ),
+    ).toBe("https://x.vtex.app/");
+  });
+
+  it("prefers a successful run over a failed earlier attempt", () => {
+    expect(
+      extractPreviewUrlFromCheckRuns({
+        check_runs: [
+          {
+            name: "deploy",
+            conclusion: "failure",
+            details_url: "https://bad.deco.site",
+          },
+          {
+            name: "deploy",
+            conclusion: "success",
+            details_url: "https://good.deco.site",
+          },
+        ],
+      }),
+    ).toBe("https://good.deco.site");
+  });
+
+  it("ignores a url that is not a trusted preview host", () => {
+    expect(
+      extractPreviewUrlFromCheckRuns(
+        run({
+          name: "lint",
+          output: { summary: "see https://evil.example.com" },
+        }),
+      ),
+    ).toBe(null);
+  });
+
+  it("still prefers the exact Workers Builds url over a scanned one", () => {
+    expect(
+      extractPreviewUrlFromCheckRuns({
+        check_runs: [
+          {
+            name: "other",
+            conclusion: "success",
+            details_url: "https://x.vtex.app",
+          },
+          {
+            name: "Workers Builds: my-site",
+            output: { summary: "Version ID: abcd1234" },
+          },
+        ],
+      }),
+    ).toBe("https://abcd1234-my-site.deco-cx.workers.dev");
   });
 });

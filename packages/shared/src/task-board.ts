@@ -466,6 +466,15 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
 export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";
 
 /**
+ * Org-scoped SSE event pushed on `sseHub` whenever a task's linked PR cards are
+ * re-read from GitHub because a webhook said they changed — CI finished, or a
+ * deploy bot commented. Its `data` is `{ id, prs }` (the task id and the fresh
+ * cards); the open task dialog writes them straight into its react-query cache,
+ * so checks and the preview url land without waiting for the next poll.
+ */
+export const TASK_BOARD_ITEM_PRS_UPDATED_EVENT = "task-board.item.prs.updated";
+
+/**
  * Cap on the org's task system prompt. It rides in the system prompt of EVERY
  * task run, so an unbounded textarea is a per-run token bill. Shared so the
  * settings tool rejects what the textarea already refuses.
