@@ -12,7 +12,7 @@ import {
   extractPreviewUrlFromDeployment,
   headShaFromPrGet,
   headShaFromStatus,
-  isAwaitingPreview,
+  isAwaitingCi,
   isRateLimitError,
   extractPreviewUrlFromCheckRuns,
   extractPreviewUrlFromComments,
@@ -644,27 +644,16 @@ describe("previewMatchesHead", () => {
   });
 });
 
-describe("isAwaitingPreview", () => {
-  it("only a running-CI card with no preview keeps refreshing", () => {
-    expect(
-      isAwaitingPreview({ previewUrl: null, checksStatus: "pending" }),
-    ).toBe(true);
-    // Preview found — nothing left to wait for.
-    expect(
-      isAwaitingPreview({
-        previewUrl: "https://x.vtex.app",
-        checksStatus: "pending",
-      }),
-    ).toBe(false);
-    // CI settled without ever posting one; refreshing forever would not help.
-    expect(
-      isAwaitingPreview({ previewUrl: null, checksStatus: "passing" }),
-    ).toBe(false);
-    expect(
-      isAwaitingPreview({ previewUrl: null, checksStatus: "failing" }),
-    ).toBe(false);
-    expect(isAwaitingPreview({ previewUrl: null, checksStatus: null })).toBe(
-      false,
-    );
+describe("isAwaitingCi", () => {
+  it("keeps refreshing while CI runs", () => {
+    // Was false whenever a preview URL had already been found, so that card got
+    // the full hit window and showed "Checks pending" long after they passed.
+    expect(isAwaitingCi({ checksStatus: "pending" })).toBe(true);
+  });
+
+  it("caches normally once CI settles", () => {
+    expect(isAwaitingCi({ checksStatus: "passing" })).toBe(false);
+    expect(isAwaitingCi({ checksStatus: "failing" })).toBe(false);
+    expect(isAwaitingCi({ checksStatus: null })).toBe(false);
   });
 });
