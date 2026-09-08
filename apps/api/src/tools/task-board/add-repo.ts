@@ -237,13 +237,6 @@ export function parseRepoProbe(stdout: string): {
  * configure `gh` from the primary's remote and leave `glab` unauthenticated.
  * The two providers keep separate config files, so a mixed-provider sandbox
  * ends up with both authenticated; a second host of the SAME provider replaces
- * the first, which is why one provider account per host is the supported shape.
- *
- * Run in the checkout being added, NOT the daemon's default cwd: that is the
- * primary, so a GitLab secondary added to a GitHub sandbox would otherwise
- * configure `gh` from the primary's remote and leave `glab` unauthenticated.
- * The two providers keep separate config files, so a mixed-provider sandbox
- * ends up with both authenticated; a second host of the SAME provider replaces
  * the first, which is why one account per host is the supported shape.
  *
  * The userinfo username tells the two apart, exactly as the daemon does:
