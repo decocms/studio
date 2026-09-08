@@ -990,7 +990,10 @@ function VirtualMcpDetailViewWithData({
                       });
                       flushAndSave();
                     }}
-                    name={form.watch("title") || "Agent"}
+                    name={
+                      form.watch("title") ||
+                      t("virtualMcp.virtualMcp.agentNameFallback")
+                    }
                     size="md"
                     className="shrink-0"
                     avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
