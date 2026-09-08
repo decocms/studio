@@ -13,6 +13,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   isDecopilot,
+  isRetiredStudioPackAgent,
   isStudioPackAgent,
   useVirtualMCPNonBlocking,
   useVirtualMCPsNonBlocking,
@@ -42,7 +43,8 @@ export function scopableProjects(
     (project) =>
       !devIds.has(project.id) &&
       !isDecopilot(project.id) &&
-      !isStudioPackAgent(project.id),
+      !isStudioPackAgent(project.id) &&
+      !isRetiredStudioPackAgent(project.id),
   );
 }
 
