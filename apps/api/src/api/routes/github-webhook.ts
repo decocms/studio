@@ -176,28 +176,36 @@ async function refreshPrCardsForRefs(
 ): Promise<number> {
   let refreshed = 0;
   for (const ref of refs) {
-    const taskBoard = deps.taskBoard();
-    const links = await taskBoard.findPrLinks(ref);
-    for (const link of links) {
-      const item = await taskBoard.getById(
-        link.taskBoardItemId,
-        link.organizationId,
-      );
-      // The context is the org's, built from the card's owner: a webhook has no
-      // principal of its own, and the GitHub connection it reads through is the
-      // organization's.
-      const ctx = item
-        ? await deps.contextFactory()(
-            link.organizationId,
-            item.assignedBy ?? item.createdBy,
-          )
-        : null;
-      if (!ctx) continue;
-      if (
-        await refreshItemPrCards(ctx, link.organizationId, link.taskBoardItemId)
-      ) {
-        refreshed++;
+    try {
+      const taskBoard = deps.taskBoard();
+      const links = await taskBoard.findPrLinks(ref);
+      for (const link of links) {
+        const item = await taskBoard.getById(
+          link.taskBoardItemId,
+          link.organizationId,
+        );
+        // The context is the org's, built from the card's owner: a webhook has
+        // no principal of its own, and the GitHub connection it reads through
+        // is the organization's.
+        const ctx = item
+          ? await deps.contextFactory()(
+              link.organizationId,
+              item.assignedBy ?? item.createdBy,
+            )
+          : null;
+        if (!ctx) continue;
+        const cards = await refreshItemPrCards(
+          ctx,
+          link.organizationId,
+          link.taskBoardItemId,
+        );
+        if (cards !== null) refreshed++;
       }
+    } catch (err) {
+      // Same reason `refreshItemPrCards` swallows its own: a 500 here makes
+      // GitHub retry the delivery, and a database blip is not something a
+      // replay fixes. The count in the response is the signal instead.
+      console.error("[github-webhook] pr card refresh failed:", err);
     }
   }
   return refreshed;
