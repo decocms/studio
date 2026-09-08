@@ -20,8 +20,12 @@ import { discoverBlogBlockTypes } from "./blog-data";
 import { InsertBlockDivider } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
 import { type RawBlock } from "./blocks/block-registry";
-
-type BlockItem = { id: string; block: RawBlock };
+import {
+  reseedBlockItems,
+  seedBlockItems,
+  uid,
+  type BlockItem,
+} from "./block-items";
 
 export function asBlocks(value: unknown): RawBlock[] {
   return Array.isArray(value) ? (value as RawBlock[]) : [];
@@ -50,13 +54,13 @@ export function BlockDocument({
   const blockTypes = discoverBlogBlockTypes(meta);
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
-    value.map((blk) => ({ id: uid(), block: blk })),
+    seedBlockItems(value),
   );
   // Re-seed when `value` changes for a reason other than our own onChange echo.
   const [lastEmitted, setLastEmitted] = useState(value);
   if (value !== lastEmitted) {
     setLastEmitted(value);
-    setBlockItems(value.map((blk) => ({ id: uid(), block: blk })));
+    setBlockItems(reseedBlockItems(blockItems, value));
   }
 
   const ids = blockItems.map((x) => x.id);
@@ -156,8 +160,4 @@ export function BlockDocument({
       </DndContext>
     </div>
   );
-}
-
-function uid(): string {
-  return crypto.randomUUID();
 }
