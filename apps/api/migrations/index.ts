@@ -202,6 +202,7 @@ import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
 import * as migration201organizationnotices from "./201-organization-notices.ts";
 import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
 import * as migration203taskboardpreviewroutes from "./203-task-board-preview-routes.ts";
+import * as migration204taskboardprsrepoidx from "./204-task-board-prs-repo-idx.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -439,6 +440,7 @@ const migrations: Record<string, Migration> = {
   "201-organization-notices": migration201organizationnotices,
   "202-redact-base64-thread-parts": migration202redactbase64threadparts,
   "203-task-board-preview-routes": migration203taskboardpreviewroutes,
+  "204-task-board-prs-repo-idx": migration204taskboardprsrepoidx,
 };
 
 export default migrations;

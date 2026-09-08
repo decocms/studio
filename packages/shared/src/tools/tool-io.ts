@@ -378,8 +378,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -448,8 +448,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -545,8 +545,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -626,6 +626,7 @@ export interface StudioToolIO {
         repoOwner: string;
         repoName: string;
         createdAt: string;
+        updatedAt: string | null;
         title: string | null;
         body: string | null;
         state: "open" | "closed" | null;

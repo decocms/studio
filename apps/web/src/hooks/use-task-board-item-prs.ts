@@ -1,8 +1,10 @@
+import { isCardNotReady } from "@decocms/shared/task-board";
 import { useProjectContext } from "@/sdk";
 import type { TaskBoardItemPr } from "@/layouts/task-board/config";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useTaskBoardItemPrsEvents } from "./use-task-board-item-prs-events";
 import {
   readCachedTaskPrs,
   writeCachedTaskPrs,
@@ -21,18 +23,15 @@ const PRS_POLL_INTERVAL_MS = 60_000;
  *  minute. */
 const PRS_UNENRICHED_POLL_INTERVAL_MS = 2_000;
 
-/** Checks that are still running settle on their own, with no webhook to say
- *  when — so while any linked PR reports pending CI, poll faster than the idle
- *  minute. Bounded to a dialog that is open on a PR whose CI is actually
- *  running, and the server answers those from cache while it refreshes. */
-const PRS_PENDING_CHECKS_POLL_INTERVAL_MS = 10_000;
+/** CI and a deploy preview settle on their own, with no webhook to say when, so
+ *  a PR waiting on either polls faster than the idle minute. Bounded to an open
+ *  dialog; the server answers from cache while it refreshes. */
+const PRS_IN_FLIGHT_POLL_INTERVAL_MS = 10_000;
 
 /** A card the server returned before GitHub answered: link fields only. `state`
  *  is null for a PR GitHub could not be read for too, which polls the same way
  *  — the right behavior either way. */
 const isUnenriched = (pr: TaskBoardItemPr) => pr.state === null;
-
-const hasPendingChecks = (pr: TaskBoardItemPr) => pr.checksStatus === "pending";
 
 /**
  * A task's linked PRs, each with live state fetched from GitHub via the
@@ -41,8 +40,22 @@ const hasPendingChecks = (pr: TaskBoardItemPr) => pr.checksStatus === "pending";
  * while the dialog is open, so poll it.
  */
 export function useTaskBoardItemPrs(itemId: string | undefined) {
-  const { locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  // The webhook's push path: fresh cards land here as soon as GitHub reports
+  // CI finished or the deploy bot commented, ahead of the poll below.
+  useTaskBoardItemPrsEvents({
+    orgSlug: org.slug,
+    itemId,
+    onPrs: (prs) => {
+      queryClient.setQueryData(
+        KEYS.taskBoardItemPrs(locator, itemId ?? ""),
+        prs,
+      );
+    },
+  });
 
   return useQuery({
     queryKey: KEYS.taskBoardItemPrs(locator, itemId ?? ""),
@@ -50,8 +63,8 @@ export function useTaskBoardItemPrs(itemId: string | undefined) {
     refetchInterval: (query) => {
       const prs = query.state.data;
       if (prs?.some(isUnenriched)) return PRS_UNENRICHED_POLL_INTERVAL_MS;
-      if (prs?.some(hasPendingChecks))
-        return PRS_PENDING_CHECKS_POLL_INTERVAL_MS;
+      if (prs?.some((pr) => isCardNotReady(pr)))
+        return PRS_IN_FLIGHT_POLL_INTERVAL_MS;
       return PRS_POLL_INTERVAL_MS;
     },
     // Seeded from localStorage so a cold page load paints the last known cards

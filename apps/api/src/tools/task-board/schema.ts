@@ -112,6 +112,10 @@ export const TaskBoardItemPrSchema = z.object({
   repoOwner: z.string(),
   repoName: z.string(),
   createdAt: z.string(),
+  /** GitHub's `updated_at` for the PR — bumped by a push, a comment or a review.
+   *  Bounds how long a card with no preview url keeps chasing one. `null` when
+   *  GitHub hasn't been read yet or the fetch failed. */
+  updatedAt: z.string().nullable(),
   title: z.string().nullable(),
   body: z.string().nullable(),
   state: z.enum(["open", "closed"]).nullable(),

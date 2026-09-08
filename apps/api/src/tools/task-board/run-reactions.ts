@@ -41,6 +41,7 @@ import {
   LANES,
   SUPER_AGENT_ASSIGNEE_ID,
   TASK_BOARD_ITEM_DELETED_EVENT,
+  TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
@@ -76,6 +77,22 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
     source: "task-board",
     subject: item.id,
     data: item,
+    time: new Date().toISOString(),
+  });
+}
+
+/** Push a task's freshly re-read PR cards to every SSE listener on its org. */
+export function emitTaskBoardPrsUpdated(
+  orgId: string,
+  itemId: string,
+  prs: unknown[],
+): void {
+  sseHub.emit(orgId, {
+    id: crypto.randomUUID(),
+    type: TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
+    source: "task-board",
+    subject: itemId,
+    data: { id: itemId, prs },
     time: new Date().toISOString(),
   });
 }

@@ -7,16 +7,20 @@ import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import {
+  isCardNotReady,
   LANES,
   shippedLane,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { retry, RetryError } from "@decocms/shared/std";
 import { TaskBoardItemPrSchema } from "./schema";
+
+/** One assembled PR card — the tool's output shape, and what the card cache stores. */
+export type TaskBoardItemPrCard = z.infer<typeof TaskBoardItemPrSchema>;
 import { cardWorkLanded } from "./archive-merged";
 import { recordTaskActivity } from "./activity";
 import { inReviewPhase, movesForward } from "./lanes";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { emitTaskBoardPrsUpdated, emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { readPrStateThrottled } from "./dbos-github-read";
@@ -62,27 +66,11 @@ import {
  *  not-ready answer for the full window. */
 const NOT_READY_REVALIDATE_MS = 0;
 
-/**
- * A card that should keep refreshing: CI is still running, so both what it
- * reports and the preview URL a deploy check publishes are still moving.
- *
- * Pending CI counts on its own — it used to additionally require a missing
- * preview URL, which is what left a card sitting on "Checks pending" minutes
- * after the checks went green. Nothing about the PR had changed; the checks
- * simply finished, and with a preview already found the card was a cache HIT
- * for the full window, rebuilt from reads that were themselves a window stale.
- * Waiting is the one state whose whole point is that it ends, so it never gets
- * a hit window.
- *
- * Bounded: a settled card (passing/failing/no CI) caches normally, so the
- * per-poll rebuild this costs only runs while CI is actually running.
- */
-export function isAwaitingCi(card: { checksStatus: ChecksStatus }): boolean {
-  return card.checksStatus === "pending";
-}
+/** Stale ceiling that makes any stored read a miss. */
+const FORCE_FRESH = () => 0;
 
 /** Hit window for one raw GitHub read: zero while it says CI is still running,
- *  for the same reason as {@link isAwaitingCi}. Without this the card
+ *  for the same reason as {@link isCardNotReady}. Without this the card
  *  cache revalidates on every poll only to rebuild from a read that is itself
  *  up to a full read-window stale, and the two lags add up. */
 function ciRevalidateAfterMs(status: ChecksStatus): number {
@@ -100,6 +88,16 @@ function ciRevalidateAfterMs(status: ChecksStatus): number {
  *  pending PR someone has the dialog open on. */
 function ciMaxStaleMs(status: ChecksStatus): number {
   return status === "pending" ? 0 : PR_READS_CACHE.maxStaleMs;
+}
+
+/** Hit window for `get_comments`, the read the deploy bot's comment arrives in:
+ *  zero until the list actually carries a preview url. It was the only read
+ *  still on the full 55s window, so a per-poll card rebuild kept re-extracting
+ *  the preview from a list fetched before the bot posted. */
+function commentsRevalidateAfterMs(stored: unknown): number {
+  return extractPreviewUrlFromComments(toolResultJson(stored)) === null
+    ? NOT_READY_REVALIDATE_MS
+    : PR_READS_CACHE.revalidateAfterMs;
 }
 
 export function invalidatePrReads(connectionId: string): Promise<void> {
@@ -378,6 +376,7 @@ export type PrCheck = {
 type PrLiveState = {
   title: string | null;
   body: string | null;
+  updatedAt: string | null;
   state: "open" | "closed" | null;
   draft: boolean | null;
   merged: boolean | null;
@@ -394,6 +393,7 @@ type PrLiveState = {
 const NO_LIVE_STATE: PrLiveState = {
   title: null,
   body: null,
+  updatedAt: null,
   state: null,
   draft: null,
   merged: null,
@@ -423,6 +423,17 @@ export function isTrustedPreviewHost(url: string): boolean {
     hostname.endsWith(".deco.site") ||
     hostname.endsWith(".vercel.app") ||
     hostname.endsWith(".vtex.app")
+  );
+}
+
+/** The first url in `text` that is on a trusted preview host. The character
+ *  class stops at `)`/`]` so a markdown link's url doesn't absorb its syntax. */
+function firstTrustedUrl(text: unknown): string | null {
+  if (typeof text !== "string") return null;
+  return (
+    (text.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find(
+      isTrustedPreviewHost,
+    ) ?? null
   );
 }
 
@@ -458,6 +469,18 @@ export function extractPreviewUrl(
  *  ponytail: hardcoded; make it configurable if sites land in another account. */
 const WORKERS_DEV_SUBDOMAIN = "deco-cx";
 
+/**
+ * Pull the preview URL out of a PR's check runs — the source that works when
+ * the deploy bot posts no comment at all, which happens often enough that the
+ * comment can't be the only path.
+ *
+ * Two passes. First the exact one: Workers Builds names the worker and prints
+ * the version id, which composes the immutable per-deploy url. Then the generic
+ * one: any check whose output or details link carries a trusted preview host —
+ * Cloudflare Pages, Vercel and the deco bots all print theirs somewhere in
+ * there. Successful runs win over unfinished or failed ones, so a retried
+ * deploy doesn't hand back the broken attempt's url.
+ */
 export function extractPreviewUrlFromCheckRuns(raw: unknown): string | null {
   const runs = Array.isArray(raw)
     ? raw
@@ -478,6 +501,30 @@ export function extractPreviewUrlFromCheckRuns(raw: unknown): string | null {
     if (!version) continue;
     const url = `https://${version}-${worker}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`;
     if (isTrustedPreviewHost(url)) return url;
+  }
+  return previewUrlFromRunOutput(runs);
+}
+
+/** Second pass of {@link extractPreviewUrlFromCheckRuns}: scan each run's
+ *  output and details link, successful runs first. */
+function previewUrlFromRunOutput(runs: unknown[]): string | null {
+  const isSuccess = (r: unknown) =>
+    (r as { conclusion?: unknown })?.conclusion === "success";
+  for (const r of [
+    ...runs.filter(isSuccess),
+    ...runs.filter((r) => !isSuccess(r)),
+  ]) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as {
+      output?: { summary?: unknown; text?: unknown; title?: unknown };
+      details_url?: unknown;
+    };
+    const url =
+      firstTrustedUrl(o.output?.summary) ??
+      firstTrustedUrl(o.output?.text) ??
+      firstTrustedUrl(o.output?.title) ??
+      firstTrustedUrl(o.details_url);
+    if (url) return url;
   }
   return null;
 }
@@ -533,9 +580,7 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
     // prefer the branch URL, which stays valid as the PR gets new commits.
     const branch = body.match(/href=['"]([^'"]+)['"][^>]*>\s*Branch Preview/i);
     if (branch?.[1] && isTrustedPreviewHost(branch[1])) return branch[1];
-    const url = (body.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find((u) =>
-      isTrustedPreviewHost(u),
-    );
+    const url = firstTrustedUrl(body);
     if (url) return url;
   }
   return null;
@@ -869,6 +914,7 @@ async function fetchPrStatusExtras(
   pr: TaskBoardItemPrRef,
   pending: Promise<void>[],
   prGet: Promise<Record<string, unknown> | null>,
+  fresh = false,
 ): Promise<{
   checksStatus: ChecksStatus;
   checks: PrCheck[];
@@ -892,7 +938,7 @@ async function fetchPrStatusExtras(
       `${prLabel(pr)} (${method})`,
       pending,
       revalidateAfterMs,
-      maxStaleMs,
+      fresh ? FORCE_FRESH : maxStaleMs,
     );
   // The three reads are independent — run them CONCURRENTLY. Serial was the
   // slowness (each is a remote MCP → GitHub round-trip, ~1.5-2s; the card made
@@ -909,7 +955,7 @@ async function fetchPrStatusExtras(
         ciRevalidateAfterMs(toCheckRunsStatus(toolResultJson(stored))),
       (stored) => ciMaxStaleMs(toCheckRunsStatus(toolResultJson(stored))),
     ),
-    read("get_comments"),
+    read("get_comments", commentsRevalidateAfterMs),
   ]);
   // Combined Status API ∪ Checks API → one summary.
   const checksStatus = mergeChecksStatus(
@@ -1050,6 +1096,8 @@ async function fetchPrLiveState(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
+  /** Skip the read cache entirely — GitHub has just told us it changed. */
+  fresh = false,
 ): Promise<PrLiveState> {
   const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
     owner: pr.repoOwner,
@@ -1078,10 +1126,12 @@ async function fetchPrLiveState(
       },
       `${prLabel(pr)} (get)`,
       pending,
+      undefined,
+      fresh ? FORCE_FRESH : undefined,
     );
     const [obj, extras] = await Promise.all([
       prGet,
-      fetchPrStatusExtras(getClient, conn.id, pr, pending, prGet),
+      fetchPrStatusExtras(getClient, conn.id, pr, pending, prGet, fresh),
     ]);
     if (!obj) return NO_LIVE_STATE;
     const rawState = obj.state;
@@ -1090,6 +1140,7 @@ async function fetchPrLiveState(
     return {
       title: typeof obj.title === "string" ? obj.title : null,
       body: typeof obj.body === "string" ? obj.body : null,
+      updatedAt: typeof obj.updated_at === "string" ? obj.updated_at : null,
       state: rawState === "closed" ? "closed" : isOpen ? "open" : null,
       draft: typeof obj.draft === "boolean" ? obj.draft : null,
       merged: typeof obj.merged === "boolean" ? obj.merged : null,
@@ -1278,6 +1329,66 @@ export async function pickActivePr(
   return prs[pickActivePrIndex(states)];
 }
 
+/** One GitHub round-trip per linked PR, in parallel, each best-effort. */
+function assemblePrCards(
+  ctx: StudioContext,
+  orgId: string,
+  linked: TaskBoardItemPrRef[],
+  fresh = false,
+): Promise<TaskBoardItemPrCard[]> {
+  return Promise.all(
+    linked.map(async (pr) => {
+      const live = await fetchPrLiveState(ctx, orgId, pr, fresh);
+      return {
+        url: pr.url,
+        number: pr.number,
+        repoOwner: pr.repoOwner,
+        repoName: pr.repoName,
+        createdAt: pr.createdAt,
+        ...live,
+      };
+    }),
+  );
+}
+
+/**
+ * Re-read a task's PR cards from GitHub and push them out — the GitHub
+ * webhook's entry point, where an event has just told us CI finished or a
+ * deploy bot commented.
+ *
+ * Reads bypass the read cache (`fresh`), because the event IS the invalidation
+ * and a 55s-old read is exactly what it supersedes. The result is written
+ * straight into the card cache, so the dialog's next poll is a hit, and emitted
+ * on the org's SSE stream, so a dialog that is already open updates without
+ * waiting for that poll.
+ *
+ * Best-effort and never throws: a webhook delivery must not retry because one
+ * org's GitHub connection is unreachable.
+ */
+export async function refreshItemPrCards(
+  ctx: StudioContext,
+  orgId: string,
+  taskBoardItemId: string,
+): Promise<TaskBoardItemPrCard[] | null> {
+  try {
+    const linked = await ctx.storage.taskBoard.listPrs(taskBoardItemId, orgId);
+    if (linked.length === 0) return null;
+    const prs = await getPrCardCache().refresh({
+      namespace: orgId,
+      key: taskBoardItemId,
+      fetchLive: () => assemblePrCards(ctx, orgId, linked, true),
+    });
+    emitTaskBoardPrsUpdated(orgId, taskBoardItemId, prs);
+    return prs;
+  } catch (err) {
+    console.error(
+      `[task-board] pr card refresh failed for ${taskBoardItemId}:`,
+      err,
+    );
+    return null;
+  }
+}
+
 export const TASK_BOARD_ITEM_PRS_GET = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:
@@ -1314,21 +1425,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       taskBoardItemId,
       organizationId,
     );
-    // One GitHub round-trip per linked PR, in parallel, each best-effort.
-    const assemble = () =>
-      Promise.all(
-        linked.map(async (pr) => {
-          const live = await fetchPrLiveState(ctx, organizationId, pr);
-          return {
-            url: pr.url,
-            number: pr.number,
-            repoOwner: pr.repoOwner,
-            repoName: pr.repoName,
-            createdAt: pr.createdAt,
-            ...live,
-          };
-        }),
-      );
+    const assemble = () => assemblePrCards(ctx, organizationId, linked);
 
     // Serve the assembled card, not the raw reads it was built from. The read
     // cache underneath still helps the sweeps, but it could not make THIS fast:
@@ -1345,13 +1442,9 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       namespace: organizationId,
       key: taskBoardItemId,
       fetchLive: assemble,
-      // A card whose deploy is still running has no preview yet. At the default
-      // window that card is a cache HIT for 30s, so the url can be a poll or
-      // two late even after the read above refreshes. Go stale immediately
-      // instead: the revalidation is detached, so this costs a background
-      // rebuild per poll on exactly the cards that are still missing something.
+      // Detached, so a mid-flight card costs one rebuild per poll, not a 30s wait.
       revalidateAfterMs: (cards) =>
-        cards.some(isAwaitingCi)
+        cards.some((c) => isCardNotReady(c))
           ? NOT_READY_REVALIDATE_MS
           : PR_CARDS_CACHE.revalidateAfterMs,
       placeholder: linked.map((pr) => ({
