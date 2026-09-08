@@ -42,6 +42,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     sortOrder: 0,
     keySeq: 1,
     externalUrl: null,
+    previewRoutes: [],
     source: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,

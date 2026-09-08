@@ -110,7 +110,7 @@ import {
   isSuccessfulCheck,
   prCardActions,
 } from "./pr-card-actions";
-import { parsePreviewRoutes, previewRouteUrl } from "./preview-routes";
+import { previewRouteUrl } from "./preview-routes";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import { usePreviewProbe } from "@/hooks/use-preview-probe";
@@ -1847,6 +1847,7 @@ function PreviewButton({ url, routes }: { url: string; routes: string[] }) {
  */
 function PrCard({
   pr,
+  routes,
   revalidating,
   previewThread,
   reviewsReady,
@@ -1857,6 +1858,8 @@ function PrCard({
   onOpenPreview,
 }: {
   pr: TaskBoardItemPr;
+  /** The task's reported preview routes, offered under this PR's preview. */
+  routes: string[];
   /** A live GitHub read is in flight behind the values shown. */
   revalidating: boolean;
   previewThread?: TaskBoardItemThread;
@@ -1951,10 +1954,7 @@ function PrCard({
             </Button>
           )}
           {pr.previewUrl && (
-            <PreviewButton
-              url={pr.previewUrl}
-              routes={parsePreviewRoutes(pr.body)}
-            />
+            <PreviewButton url={pr.previewUrl} routes={routes} />
           )}
           {showShip && (
             <Button
@@ -2159,6 +2159,7 @@ function LinksSection({
             <PrCard
               key={pr.url}
               pr={pr}
+              routes={item.previewRoutes ?? []}
               revalidating={prsFetching}
               previewThread={previewThread}
               reviewsReady={reviewsReady}

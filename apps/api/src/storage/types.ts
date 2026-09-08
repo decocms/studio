@@ -1696,6 +1696,14 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** Paths the task's work created or edited (`["/cliente-vip"]`), joined onto
+   *  a PR's deploy-preview origin by the card. Reported by the run through
+   *  `TASK_BOARD_ITEM_UPDATE`; null for a task that never named one. */
+  preview_routes: ColumnType<
+    string[] | null,
+    string | null | undefined,
+    string | null
+  >;
   /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) — the
    *  import refreshes an OPEN item with the same key instead of duplicating
    *  it. Null for human-created cards. */
@@ -1961,6 +1969,8 @@ export interface TaskBoardItem {
   /** Link to that issue in the tracker, for a human to open. Never part of the
    *  description, which is quoted into agent prompts verbatim. */
   externalUrl: string | null;
+  /** Paths this task's work created or edited; empty when it named none. */
+  previewRoutes: string[];
   /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
    *  board shows. */
   source: "jira" | null;
