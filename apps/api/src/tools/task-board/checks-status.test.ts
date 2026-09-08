@@ -13,6 +13,7 @@ import {
   headShaFromPrGet,
   headShaFromStatus,
   isAwaitingPreview,
+  runsForHead,
   isRateLimitError,
   extractPreviewUrlFromCheckRuns,
   extractPreviewUrlFromComments,
@@ -665,6 +666,32 @@ describe("isAwaitingPreview", () => {
     ).toBe(false);
     expect(isAwaitingPreview({ previewUrl: null, checksStatus: null })).toBe(
       false,
+    );
+  });
+});
+
+describe("runsForHead", () => {
+  const head = "4f800cc";
+  const runs = [
+    { name: "cubic", head_sha: head, status: "completed" },
+    { name: "pages", head_sha: "0000001", status: "in_progress" },
+    { name: "no-sha", status: "completed" },
+  ];
+
+  it("drops runs from a superseded commit, keeps head's and sha-less ones", () => {
+    expect(
+      runsForHead({ check_runs: runs }, head).map((r) => (r as any).name),
+    ).toEqual(["cubic", "no-sha"]);
+  });
+
+  it("keeps everything when the head sha is unknown", () => {
+    expect(runsForHead(runs, null)).toHaveLength(3);
+  });
+
+  it("makes a green head stop reporting the old commit as pending", () => {
+    expect(toCheckRunsStatus({ check_runs: runs })).toBe("pending");
+    expect(toCheckRunsStatus(runsForHead({ check_runs: runs }, head))).toBe(
+      "passing",
     );
   });
 });

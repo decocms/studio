@@ -426,11 +426,7 @@ export function extractPreviewUrl(
 const WORKERS_DEV_SUBDOMAIN = "deco-cx";
 
 export function extractPreviewUrlFromCheckRuns(raw: unknown): string | null {
-  const runs = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
-      ? (raw as { check_runs: unknown[] }).check_runs
-      : [];
+  const runs = toRunsArray(raw);
   for (const r of runs) {
     if (!r || typeof r !== "object") continue;
     const o = r as { name?: unknown; output?: { summary?: unknown } };
@@ -586,6 +582,36 @@ const FAILED_CHECK_CONCLUSIONS = new Set([
   "stale",
 ]);
 
+/** Normalize a `get_check_runs` result (`{ check_runs }` or an array). */
+function toRunsArray(raw: unknown): unknown[] {
+  return Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
+      ? (raw as { check_runs: unknown[] }).check_runs
+      : [];
+}
+
+/**
+ * Drop check-runs belonging to a commit that is no longer the PR's head.
+ *
+ * The reads behind a card are cached by PR number, not by sha, so right after a
+ * push the card is assembled from the PREVIOUS commit's runs — which is how a
+ * PR GitHub reports as fully green kept rendering "Checks pending" with the
+ * superseded commit's still-running checks.
+ *
+ * Unconditional: on a fresh read every run already carries the head sha, so
+ * this only ever removes stale ones. A run without a `head_sha` is kept.
+ * Exported for the unit test.
+ */
+export function runsForHead(raw: unknown, headSha: string | null): unknown[] {
+  const runs = toRunsArray(raw);
+  if (!headSha) return runs;
+  return runs.filter((r) => {
+    const sha = (r as { head_sha?: unknown } | null)?.head_sha;
+    return typeof sha !== "string" || sha === headSha;
+  });
+}
+
 /** Map GitHub check-runs (Checks API) to our three-value summary. Repos on
  *  GitHub Actions post check-runs, NOT legacy commit statuses (which
  *  `toChecksStatus` reads), so this is often the only signal — e.g. a deco site
@@ -593,11 +619,7 @@ const FAILED_CHECK_CONCLUSIONS = new Set([
  *  Accepts the raw `get_check_runs` result (`{ check_runs }` or an array).
  *  `null` when there are no check-runs. Exported for the unit test. */
 export function toCheckRunsStatus(raw: unknown): ChecksStatus {
-  const runs = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
-      ? (raw as { check_runs: unknown[] }).check_runs
-      : [];
+  const runs = toRunsArray(raw);
   if (runs.length === 0) return null;
   let failing = false;
   let pending = false;
@@ -643,11 +665,7 @@ type RawCheckRun = {
 
 /** Parse a `get_check_runs` result into a flat list. Exported for the test. */
 export function parseCheckRuns(raw: unknown): RawCheckRun[] {
-  const runs = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
-      ? (raw as { check_runs: unknown[] }).check_runs
-      : [];
+  const runs = toRunsArray(raw);
   const out: RawCheckRun[] = [];
   for (const r of runs) {
     if (!r || typeof r !== "object") continue;
@@ -863,23 +881,30 @@ async function fetchPrStatusExtras(
     read("get_check_runs"),
     read("get_comments"),
   ]);
+  // The PR's head sha — everything below is judged against it, so a cached read
+  // taken before the last push can't report the old commit's CI as this PR's.
+  const headSha = headShaFromPrGet(await prGet) ?? headShaFromStatus(statusObj);
+  const runs = runsForHead(runsRaw, headSha);
+  // Same for the combined status. Only an explicit MISMATCH drops it — a
+  // response without a sha says nothing about which commit it describes.
+  const statusSha = headShaFromStatus(statusObj);
+  const statusForHead =
+    headSha && statusSha && statusSha !== headSha ? null : statusObj;
   // Combined Status API ∪ Checks API → one summary.
   const checksStatus = mergeChecksStatus(
-    toChecksStatus(statusObj),
-    toCheckRunsStatus(runsRaw),
+    toChecksStatus(statusForHead),
+    toCheckRunsStatus(runs),
   );
   // Preview: the Workers Builds version (exact, and present even when
   // Cloudflare's PR comment omits its Preview URL column), else a status
   // `target_url` (rare), else the deploy bot's PR comment.
   let previewUrl =
-    extractPreviewUrlFromCheckRuns(runsRaw) ??
-    extractPreviewUrl(statusObj) ??
+    extractPreviewUrlFromCheckRuns(runs) ??
+    extractPreviewUrl(statusForHead) ??
     extractPreviewUrlFromComments(commentsRaw);
   // TODO(e2e): cover the miss-path gate + head-sha threading below (only the pure extractors are unit-tested).
   if (!previewUrl) {
     // Last resort: a GitHub Deployment env url (VTEX FastStore posts it only there), scanned only on the miss path once the head sha is known.
-    const headSha =
-      headShaFromPrGet(await prGet) ?? headShaFromStatus(statusObj);
     if (headSha) {
       previewUrl = extractPreviewUrlFromDeployment(
         await cachedPrRead(
@@ -906,7 +931,7 @@ async function fetchPrStatusExtras(
   // Per-check list for the footer; pull the output markdown only for failing
   // runs (bounded, in parallel).
   const checks = await Promise.all(
-    parseCheckRuns(runsRaw).map(
+    parseCheckRuns(runs).map(
       async (r): Promise<PrCheck> => ({
         name: r.name,
         status: r.status,
