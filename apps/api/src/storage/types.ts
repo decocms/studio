@@ -1640,7 +1640,7 @@ export interface OrgRepoSyncTable {
     string
   >;
   volume: string;
-  /** First-class repository (migration 199); null until backfilled/linked. */
+  /** First-class repository (migration 204); null until backfilled/linked. */
   repository_id: ColumnType<
     string | null,
     string | null | undefined,
@@ -1715,7 +1715,7 @@ export interface TaskBoardItemTable {
   assignee_id: string | null;
   assigned_by: string | null;
   repo: string | null;
-  /** First-class repository (migration 199); null until backfilled/linked. */
+  /** First-class repository (migration 204); null until backfilled/linked. */
   repository_id: ColumnType<
     string | null,
     string | null | undefined,
@@ -1871,7 +1871,7 @@ export interface TaskBoardItemPrTable {
   /** Source GitHub MCP connection, when the PR was opened via MCP. Null for
    *  bash-opened PRs — the live fetcher falls back to the org's shared conn. */
   connection_id: string | null;
-  /** First-class repository (migration 199); null until backfilled/linked. */
+  /** First-class repository (migration 204); null until backfilled/linked. */
   repository_id: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
