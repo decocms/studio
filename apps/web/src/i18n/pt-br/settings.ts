@@ -82,7 +82,7 @@ export const settings = {
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
   "settings.syncedRepos.pageDescription":
-    "Repositórios do GitHub espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
+    "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
   "settings.syncedRepos.cancel": "Cancelar",
   "settings.syncedRepos.create": "Criar",
@@ -91,7 +91,7 @@ export const settings = {
     'Sincronização criada — sincronizando em "{volume}" em segundo plano',
   "settings.syncedRepos.emptyTitle": "Nenhum repo sincronizado ainda",
   "settings.syncedRepos.emptyDescription":
-    "Escolha um repositório do GitHub e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
+    "Escolha um repositório e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
   "settings.syncedRepos.failed": "Algo deu errado",
   "settings.syncedRepos.nameDialogDescription":
     "{repo} será mantido em sincronia nesta pasta somente leitura da biblioteca.",
@@ -115,10 +115,12 @@ export const settings = {
   "settings.repositories.noProvidersTitle": "Nenhum provedor git configurado",
   "settings.repositories.noProvidersDescription":
     "Entrar com GitHub ou GitLab depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab com um token de acesso.",
+  "settings.repositories.githubUnavailable":
+    "GitHub não está configurado neste ambiente. Entre em contato com um administrador.",
   "settings.repositories.connectGithub": "Conectar GitHub",
   "settings.repositories.installGithub": "Instalar em outra conta",
   "settings.repositories.connectGitlab": "Conectar GitLab",
-  "settings.repositories.connectGitlabToken": "Conectar com um token",
+  "settings.repositories.connectGitlabToken": "Conectar GitLab com um token",
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Token pessoal",
@@ -173,7 +175,7 @@ export const settings = {
   "settings.repositories.searchFailed":
     "Não foi possível buscar os repositórios",
   "settings.repositories.urlLabel": "URL do repositório",
-  "settings.repositories.urlPlaceholder": "https://github.com/owner/repo",
+  "settings.repositories.urlPlaceholder": "Cole uma URL do GitHub ou GitLab",
   "settings.repositories.link": "Adicionar",
   "settings.repositories.linking": "Adicionando…",
   "settings.repositories.linked": 'Adicionado "{path}"',

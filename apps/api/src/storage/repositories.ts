@@ -186,11 +186,24 @@ export class RepositoryStorage {
   }
 
   async delete(id: string, organizationId: string): Promise<boolean> {
-    const result = await this.db
-      .deleteFrom("repositories")
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .executeTakeFirst();
-    return result.numDeletedRows > 0n;
+    try {
+      const result = await this.db
+        .deleteFrom("repositories")
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .executeTakeFirst();
+      return result.numDeletedRows > 0n;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "constraint" in error &&
+        error.constraint === "org_repo_sync_source_present"
+      ) {
+        throw new Error(
+          "Remove this repository's sync configurations before unlinking it",
+        );
+      }
+      throw error;
+    }
   }
 }

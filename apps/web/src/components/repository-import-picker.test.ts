@@ -5,7 +5,7 @@
  * 400 while the picker closed as though it had worked — no project, no error.
  */
 import { describe, expect, it } from "bun:test";
-import { agentPayload } from "./repository-picker-bridge";
+import { agentPayload } from "./repository-import-picker";
 
 const repo = {
   name: "storefront",

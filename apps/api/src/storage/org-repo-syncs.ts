@@ -16,6 +16,7 @@ type Row = {
   organization_id: string;
   connection_id: string | null;
   repository_id: string | null;
+  repository_path?: string | null;
   repo_owner: string;
   repo_name: string;
   ref: string;
@@ -30,13 +31,14 @@ type Row = {
 };
 
 function toEntity(row: Row): OrgRepoSync {
+  const segments = row.repository_path?.split("/");
   return {
     id: row.id,
     organizationId: row.organization_id,
     connectionId: row.connection_id,
     repositoryId: row.repository_id,
-    repoOwner: row.repo_owner,
-    repoName: row.repo_name,
+    repoOwner: segments ? segments.slice(0, -1).join("/") : row.repo_owner,
+    repoName: segments?.at(-1) ?? row.repo_name,
     ref: row.ref,
     paths: row.paths,
     volume: row.volume,
@@ -51,6 +53,22 @@ function toEntity(row: Row): OrgRepoSync {
 
 export class OrgRepoSyncStorage {
   constructor(private readonly db: Kysely<Database>) {}
+
+  private configs() {
+    return this.db
+      .selectFrom("org_repo_sync")
+      .leftJoin("repositories as repository", (join) =>
+        join
+          .onRef("repository.id", "=", "org_repo_sync.repository_id")
+          .onRef(
+            "repository.organization_id",
+            "=",
+            "org_repo_sync.organization_id",
+          ),
+      )
+      .selectAll("org_repo_sync")
+      .select("repository.path as repository_path");
+  }
 
   async create(params: {
     organizationId: string;
@@ -84,21 +102,17 @@ export class OrgRepoSyncStorage {
   }
 
   async get(id: string, organizationId: string): Promise<OrgRepoSync | null> {
-    const row = await this.db
-      .selectFrom("org_repo_sync")
-      .selectAll()
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
+    const row = await this.configs()
+      .where("org_repo_sync.id", "=", id)
+      .where("org_repo_sync.organization_id", "=", organizationId)
       .executeTakeFirst();
     return row ? toEntity(row as Row) : null;
   }
 
   async listByOrg(organizationId: string): Promise<OrgRepoSync[]> {
-    const rows = await this.db
-      .selectFrom("org_repo_sync")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .orderBy("created_at", "asc")
+    const rows = await this.configs()
+      .where("org_repo_sync.organization_id", "=", organizationId)
+      .orderBy("org_repo_sync.created_at", "asc")
       .execute();
     return (rows as Row[]).map(toEntity);
   }
@@ -114,11 +128,9 @@ export class OrgRepoSyncStorage {
 
   /** Every enabled config across all orgs — the sync cron's work list. */
   async listEnabled(): Promise<OrgRepoSync[]> {
-    const rows = await this.db
-      .selectFrom("org_repo_sync")
-      .selectAll()
+    const rows = await this.configs()
       .where("enabled", "=", true)
-      .orderBy("created_at", "asc")
+      .orderBy("org_repo_sync.created_at", "asc")
       .execute();
     return (rows as Row[]).map(toEntity);
   }

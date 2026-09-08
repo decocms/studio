@@ -222,7 +222,9 @@ export class GithubProviderClient implements GitProviderClient {
     );
   }
 
-  async listRepos(opts: ListReposOptions = {}): Promise<RepoSummary[]> {
+  async listRepos(
+    opts: ListReposOptions = {},
+  ): Promise<{ repositories: RepoSummary[]; hasMore: boolean }> {
     const page = Math.max(1, Math.floor(opts.page ?? 1));
     const perPage = Math.min(
       MAX_PER_PAGE,
@@ -253,9 +255,13 @@ export class GithubProviderClient implements GitProviderClient {
       repos = Array.isArray(body) ? body : [];
     }
 
-    return repos
-      .filter((r) => matchesRepoQuery(r.full_name, opts.query))
-      .map((r) => mapGithubRepo(r, this.host));
+    return {
+      repositories: repos
+        .filter((r) => matchesRepoQuery(r.full_name, opts.query))
+        .map((r) => mapGithubRepo(r, this.host)),
+      // Filtering must not hide the remaining provider pages.
+      hasMore: repos.length === perPage,
+    };
   }
 
   async readFile(

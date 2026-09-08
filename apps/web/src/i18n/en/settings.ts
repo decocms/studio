@@ -77,7 +77,7 @@ export const settings = {
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.syncedRepos.pageDescription":
-    "GitHub repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
+    "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",
   "settings.syncedRepos.cancel": "Cancel",
   "settings.syncedRepos.create": "Create",
@@ -86,7 +86,7 @@ export const settings = {
     'Sync created — syncing into "{volume}" in the background',
   "settings.syncedRepos.emptyTitle": "No synced repos yet",
   "settings.syncedRepos.emptyDescription":
-    "Pick a GitHub repository and it will appear in the library as a read-only folder, kept in sync automatically.",
+    "Pick a repository and it will appear in the library as a read-only folder, kept in sync automatically.",
   "settings.syncedRepos.failed": "Something went wrong",
   "settings.syncedRepos.nameDialogDescription":
     "{repo} will be kept in sync into this read-only library folder.",
@@ -110,10 +110,12 @@ export const settings = {
   "settings.repositories.noProvidersTitle": "No git provider configured",
   "settings.repositories.noProvidersDescription":
     "Signing in with GitHub or GitLab needs provider credentials an administrator configures for this deployment. You can still connect a GitLab account with an access token.",
+  "settings.repositories.githubUnavailable":
+    "GitHub is not configured on this deployment. Contact an administrator.",
   "settings.repositories.connectGithub": "Connect GitHub",
   "settings.repositories.installGithub": "Install on another account",
   "settings.repositories.connectGitlab": "Connect GitLab",
-  "settings.repositories.connectGitlabToken": "Connect with a token",
+  "settings.repositories.connectGitlabToken": "Connect GitLab with a token",
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Personal token",
@@ -167,7 +169,7 @@ export const settings = {
   "settings.repositories.searchEmpty": "No repositories found",
   "settings.repositories.searchFailed": "Could not search repositories",
   "settings.repositories.urlLabel": "Repository URL",
-  "settings.repositories.urlPlaceholder": "https://github.com/owner/repo",
+  "settings.repositories.urlPlaceholder": "Paste a GitHub or GitLab URL",
   "settings.repositories.link": "Add",
   "settings.repositories.linking": "Adding…",
   "settings.repositories.linked": 'Added "{path}"',

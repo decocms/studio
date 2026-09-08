@@ -100,6 +100,9 @@ export const common = {
   "common.errorBoundary.somethingWentWrong": "Algo deu errado",
   "common.errorBoundary.tryAgain": "Tentar novamente",
   "common.errorBoundary.unexpectedError": "Um erro inesperado ocorreu",
+  "common.repositoryPicker.searchMore":
+    "Nenhum resultado nos repositórios carregados. Carregue mais para continuar a busca.",
+  "common.repositoryPicker.loadMore": "Carregar mais repositórios",
   "common.repositoryPicker.linkedSection": "Repositórios vinculados",
   "common.repositoryPicker.browseSection": "Navegar por uma conta",
   "common.repositoryPicker.searchPlaceholder": "Buscar repositórios",
@@ -135,7 +138,7 @@ export const common = {
   "common.githubRepoPicker.forkBadge": "Fork",
   "common.githubRepoPicker.githubConnected": "GitHub conectado",
   "common.githubRepoPicker.importFromGitHub": "Importar reposit\u00f3rio",
-  "common.githubRepoPicker.importedRepo": "Importado {name} do GitHub",
+  "common.githubRepoPicker.importedRepo": "Importado {name}",
   "common.githubRepoPicker.installGitHubApp": "Instalar o aplicativo GitHub",
   "common.githubRepoPicker.installingGitHubConnection":
     "Instalando a conexão com GitHub...",

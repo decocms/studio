@@ -21,8 +21,8 @@ import {
 import { isDecopilot, useVirtualMCPActions, useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
+import { GitBranch01 } from "@untitledui/icons";
+import { RepositoryImportPicker } from "@/components/repository-import-picker.tsx";
 import {
   agentHasClonableSource,
   getDevAgentIds,
@@ -133,7 +133,7 @@ export function DevAgentSetup({
                   className="gap-2"
                   onClick={() => setGithubOpen(true)}
                 >
-                  <GitHubIcon className="size-4" />
+                  <GitBranch01 className="size-4" />
                   {t("devAgent.devAgentSetup.importButton")}
                 </Button>
                 {linkableAgents.length > 0 ? (
@@ -159,7 +159,7 @@ export function DevAgentSetup({
           )}
         </CardContent>
       </Card>
-      <GitHubRepoPicker
+      <RepositoryImportPicker
         open={githubOpen}
         onOpenChange={setGithubOpen}
         title={t("devAgent.devAgentSetup.importDialogTitle")}

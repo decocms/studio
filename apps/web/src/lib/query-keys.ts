@@ -572,7 +572,7 @@ export const KEYS = {
   /** Provider-side repo search — hits the provider's API, so the query text is
    *  part of the key and results are kept while the next page loads. */
   providerRepoSearch: (orgId: string, accountId: string, query: string) =>
-    ["provider-repo-search", orgId, accountId, query] as const,
+    ["provider-repo-search-pages", orgId, accountId, query] as const,
 
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
@@ -807,22 +807,6 @@ export function invalidateVirtualMcpQueries(
         (!orgId || key[1] === orgId) &&
         key[3] === "collection" &&
         key[4] === "VIRTUAL_MCP"
-      );
-    },
-  });
-}
-
-export function invalidateConnectionQueries(
-  queryClient: import("@tanstack/react-query").QueryClient,
-  orgId?: string,
-) {
-  queryClient.invalidateQueries({
-    predicate: (query) => {
-      const key = query.queryKey;
-      return (
-        (!orgId || key[1] === orgId) &&
-        key[3] === "collection" &&
-        key[4] === "CONNECTIONS"
       );
     },
   });

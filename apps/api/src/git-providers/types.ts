@@ -91,7 +91,9 @@ export interface GitProviderClient {
   getRepo(repo: RepoRef): Promise<RepoSummary | null>;
 
   /** Repositories the account can reach, optionally filtered by `query`. */
-  listRepos(opts?: ListReposOptions): Promise<RepoSummary[]>;
+  listRepos(
+    opts?: ListReposOptions,
+  ): Promise<{ repositories: RepoSummary[]; hasMore: boolean }>;
 
   /** Raw file contents at `path` on `ref` (default branch when omitted), or null on 404. */
   readFile(repo: RepoRef, path: string, ref?: string): Promise<string | null>;

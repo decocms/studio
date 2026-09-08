@@ -1,3 +1,4 @@
+import * as migration206repositoryconsumers from "./206-repository-consumers";
 import { type Migration } from "kysely";
 import * as migration001initialschema from "./001-initial-schema.ts";
 import * as migration002organizationsettings from "./002-organization-settings.ts";
@@ -444,6 +445,7 @@ const migrations: Record<string, Migration> = {
   "204-git-provider-accounts-and-repositories":
     migration204gitprovideraccountsandrepositories,
   "205-repository-references": migration205repositoryreferences,
+  "206-repository-consumers": migration206repositoryconsumers,
 };
 
 export default migrations;

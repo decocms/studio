@@ -7,7 +7,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { GitHubRepoPicker } from "@/components/github-repo-picker";
+import { RepositoryImportPicker } from "@/components/repository-import-picker";
 import { useState } from "react";
 
 export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
@@ -47,7 +47,7 @@ export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
             </Button>
           }
         />
-        <GitHubRepoPicker
+        <RepositoryImportPicker
           open={pickerOpen}
           onOpenChange={setPickerOpen}
           mode="agent"

@@ -915,7 +915,7 @@ const settingsBucketsRoute = createRoute({
 const settingsRepositoriesRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/repositories",
-  pendingComponent: settingsGroupPendingComponent("storage"),
+  pendingComponent: settingsGroupPendingComponent("repositories"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/repositories.tsx"),
   ),

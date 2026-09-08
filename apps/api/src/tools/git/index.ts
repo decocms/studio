@@ -8,6 +8,8 @@
  * redirect flow (see `api/routes/git-providers.ts`); tokens are accepted here.
  */
 
+import { listOrgRepoChoices } from "@/git-providers/repo-choices";
+
 import { z } from "zod";
 import {
   GitProviderAccountSchema,
@@ -247,7 +249,9 @@ export const REPOSITORY_LIST = defineTool({
       .optional()
       .describe("Only repositories of this account"),
   }),
-  outputSchema: z.object({ repositories: z.array(RepositorySchema) }),
+  outputSchema: z.object({
+    repositories: z.array(RepositorySchema.extend({ usable: z.boolean() })),
+  }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -256,7 +260,16 @@ export const REPOSITORY_LIST = defineTool({
       organization.id,
       { accountId: input.accountId },
     );
-    return { repositories: repositories.map(toRepositoryOutput) };
+    const choices = await listOrgRepoChoices(ctx, organization.id);
+    const reachable = new Set(
+      choices.map((choice) => choice.webUrl.toLowerCase()),
+    );
+    return {
+      repositories: repositories.map((repository) => ({
+        ...toRepositoryOutput(repository),
+        usable: reachable.has(repository.webUrl.toLowerCase()),
+      })),
+    };
   },
 });
 
@@ -278,19 +291,21 @@ export const REPOSITORY_SEARCH = defineTool({
     page: z.number().int().min(1).optional(),
     perPage: z.number().int().min(1).max(100).optional(),
   }),
-  outputSchema: z.object({ repositories: z.array(RepoSummarySchema) }),
+  outputSchema: z.object({
+    repositories: z.array(RepoSummarySchema),
+    hasMore: z.boolean(),
+  }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
     const organization = requireOrganization(ctx);
     const account = await requireAccount(ctx, organization.id, input.accountId);
     const client = clientForAccount({ db: ctx.db, vault: ctx.vault }, account);
-    const repositories = await client.listRepos({
+    return client.listRepos({
       query: input.query,
       page: input.page,
       perPage: input.perPage,
     });
-    return { repositories };
   },
 });
 

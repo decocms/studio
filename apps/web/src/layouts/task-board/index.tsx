@@ -71,16 +71,9 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
-import {
-  getWellKnownDecopilotVirtualMCP,
-  useConnections,
-  useProjectContext,
-} from "@/sdk";
-import {
-  getRepoScope,
-  listRepoScopeLabels,
-} from "@decocms/shared/github-repo-scope";
-import { GitHubRepoPicker } from "@/components/github-repo-picker";
+import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
+
+import { RepositoryImportPicker } from "@/components/repository-import-picker";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -128,7 +121,7 @@ import {
   toEndOfDayIso,
 } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
-import { ConnectGitHubDialog } from "./connect-github-dialog";
+import { useRepositories } from "@/hooks/use-git-providers";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
@@ -818,35 +811,20 @@ export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
-  // Handing a task to the Super Agent makes it open a PR — so it needs at
-  // least one repo imported (a repo-scoped mcp-github connection; the bare
-  // org-level connection has no `repoScope` and isn't loadable). Every path that
-  // assigns to the Super Agent (Auto-fix, the lane assignee picker, the task
-  // dialog) prompts to connect + pick a repo instead of enqueueing a run that
-  // has nothing to load.
-  // Mirrors `load_repo`'s `selectLoadableRepos` (apps/api): the Super Agent's
-  // built-in loads ANY active repo-scoped `mcp-github` connection — org-shared
-  // OR per-agent (e.g. a repo imported by a Code Agent). So an existing
-  // per-agent connection already satisfies this; don't force a fresh connect.
-  const githubConnections = useConnections({ slug: "mcp-github" }) ?? [];
-  const hasRepo = githubConnections.some(
-    (c) => c.status === "active" && getRepoScope(c) !== null,
+  const repositories = useRepositories();
+  const usableRepos = (repositories.data ?? []).filter(
+    (repository) => repository.usable,
   );
-  // Distinct `owner/name` repos the org can reach — enrichment for the project
-  // index, so a repo imported but not yet on any card still gets a bucket.
-  const repos = listRepoScopeLabels(githubConnections);
-  const [connectGithubOpen, setConnectGithubOpen] = useState(false);
-  // Connecting only grants a broad org-level GitHub connection — Auto-fix
-  // still needs a repo imported (see `hasRepo`), so once connected we chain
-  // straight into the repo picker.
+  const hasRepo = usableRepos.length > 0;
+  const repos = usableRepos.map((repository) => repository.path);
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   // Returns true if the assignment was blocked (connect prompt opened) so the
   // caller stops before dispatching.
-  const blockSuperAgentWithoutGithub = (
+  const blockSuperAgentWithoutRepository = (
     assigneeId: string | null | undefined,
   ) => {
     if (assigneeId === SUPER_AGENT_ASSIGNEE_ID && !hasRepo) {
-      setConnectGithubOpen(true);
+      setRepoPickerOpen(true);
       return true;
     }
     return false;
@@ -883,7 +861,7 @@ export function TaskBoardPage() {
   const confirmRerun = () => {
     if (rerunTargets.length === 0) return;
     // Same GitHub precondition as delegating: the run is expected to open a PR.
-    if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) {
+    if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID)) {
       setRerunTargets([]);
       return;
     }
@@ -1291,7 +1269,7 @@ export function TaskBoardPage() {
             );
           }}
           onAssign={(id, userId) => {
-            if (blockSuperAgentWithoutGithub(userId)) return;
+            if (blockSuperAgentWithoutRepository(userId)) return;
             // `userId` is `null` for "Unassigned" — `?? undefined` used to
             // coalesce that into "field not provided", silently no-opping the
             // unassign since TASK_BOARD_ITEM_UPDATE treats undefined as
@@ -1310,7 +1288,8 @@ export function TaskBoardPage() {
             actions.update.mutate({ id, dueDate })
           }
           onAutoFix={(item) => {
-            if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+            if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID))
+              return;
             actions.update.mutate(
               {
                 id: item.id,
@@ -1372,7 +1351,7 @@ export function TaskBoardPage() {
           onClose={() => closeTask()}
           isSaving={actions.update.isPending}
           onSubmit={(input) => {
-            if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+            if (blockSuperAgentWithoutRepository(input.assigneeId)) {
               closeTask();
               return;
             }
@@ -1418,7 +1397,8 @@ export function TaskBoardPage() {
           }}
           onNewChat={() => void startChatFromTask(openItem)}
           onAutoFix={() => {
-            if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+            if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID))
+              return;
             actions.update.mutate(
               { id: openItem.id, assigneeId: SUPER_AGENT_ASSIGNEE_ID },
               { onError: onDelegateError },
@@ -1451,7 +1431,7 @@ export function TaskBoardPage() {
         defaultStatus={createStatus ?? undefined}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
-          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+          if (blockSuperAgentWithoutRepository(input.assigneeId)) {
             closeCreate();
             return;
           }
@@ -1461,13 +1441,8 @@ export function TaskBoardPage() {
         }}
       />
 
-      <ConnectGitHubDialog
-        open={connectGithubOpen}
-        onOpenChange={setConnectGithubOpen}
-        onConnected={() => setRepoPickerOpen(true)}
-      />
-      <GitHubRepoPicker
-        mode="connection"
+      <RepositoryImportPicker
+        mode="link"
         open={repoPickerOpen}
         onOpenChange={setRepoPickerOpen}
       />
@@ -1515,7 +1490,7 @@ export function TaskBoardPage() {
             clearSelection();
           }}
           onAssign={(userId) => {
-            if (blockSuperAgentWithoutGithub(userId)) return;
+            if (blockSuperAgentWithoutRepository(userId)) return;
             for (const id of selectedIds)
               actions.update.mutate(
                 { id, assigneeId: userId },
@@ -1540,7 +1515,7 @@ export function TaskBoardPage() {
               );
             })
               ? () => {
-                  if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
+                  if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID))
                     return;
                   for (const id of selectedIds)
                     actions.update.mutate(
