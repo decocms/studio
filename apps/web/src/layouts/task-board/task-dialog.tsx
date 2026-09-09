@@ -131,6 +131,8 @@ import {
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { parseChangeRequestUrl } from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
 import { entryForFilter, stampableEntries } from "@/lib/project-index";
@@ -1905,7 +1907,11 @@ function PrCard({
       )}
     >
       <div className="flex items-center gap-3">
-        <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        {parseChangeRequestUrl(pr.url)?.repo.provider === "gitlab" ? (
+          <GitLabIcon className="size-4 shrink-0 text-foreground" />
+        ) : (
+          <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        )}
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
           {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
         </span>
