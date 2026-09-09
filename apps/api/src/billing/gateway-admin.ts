@@ -39,16 +39,23 @@ async function postGatewayAdmin(
 
 /**
  * Grant the one-time signup credit to a new org's gateway ledger. Idempotent
- * at the gateway per referenceId (unique ledger index): the deterministic
- * `signup-credit:<orgId>` reference collapses any replay — a re-run of
- * seedOrgDb, a retry — to a no-op, so the org is credited exactly once without
- * Studio holding any local "already granted" state.
+ * at the gateway per referenceId (`uq_ledger_reference` is
+ * `(reference_id, reference_type)` with no org column, so the key is global):
+ * a re-run of seedOrgDb or any retry collapses to a no-op without Studio
+ * holding local "already granted" state.
+ *
+ * The key is the creating USER, not the org. Keying it per org id made the
+ * grant farmable — org ids are fresh on every creation and org creation is
+ * unlimited and unthrottled, so delete-and-recreate (or just a loop) minted
+ * the default grant again on every cycle. A signup credit is one per person;
+ * a user's second org therefore gets nothing, which is the intended meaning.
  *
  * Fail-soft is the CALLER's job: org creation must never fail on a grant error
  * (see seedOrgDb), mirroring the auto-provision path.
  */
 export async function grantGatewaySignupCredit(input: {
   organizationId: string;
+  createdBy: string;
   amountCents: number;
 }): Promise<void> {
   if (!gatewayAdminConfigured()) {
@@ -63,7 +70,7 @@ export async function grantGatewaySignupCredit(input: {
       orgId: input.organizationId,
       amountCents: input.amountCents,
       description: "Studio signup credit",
-      referenceId: `signup-credit:${input.organizationId}`,
+      referenceId: `signup-credit:user:${input.createdBy}`,
     },
     "gateway signup credit grant",
   );

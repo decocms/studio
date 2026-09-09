@@ -1,58 +1,36 @@
 import { describe, expect, it } from "bun:test";
-import { readInitialCreditCents } from "./initial-credit";
+import { stripPrivilegedMetadata } from "./initial-credit";
 
-describe("readInitialCreditCents", () => {
-  it("reads a valid amount from an object", () => {
-    expect(readInitialCreditCents({ initialCreditCents: 2500 })).toBe(2500);
+describe("stripPrivilegedMetadata", () => {
+  it("removes initialCreditCents — the channel that let a user mint credit", () => {
+    expect(stripPrivilegedMetadata({ initialCreditCents: 100_000 })).toBeUndefined();
   });
 
-  it("reads a valid amount from a JSON string (as Better Auth may pass it)", () => {
+  it("removes it from the JSON-string form Better Auth may hand over", () => {
     expect(
-      readInitialCreditCents(JSON.stringify({ initialCreditCents: 1000 })),
-    ).toBe(1000);
+      stripPrivilegedMetadata(JSON.stringify({ initialCreditCents: 2500 })),
+    ).toBeUndefined();
   });
 
-  it("accepts 0 (explicit no-grant)", () => {
-    expect(readInitialCreditCents({ initialCreditCents: 0 })).toBe(0);
-  });
-
-  it("preserves other metadata keys without interfering", () => {
+  it("keeps legitimate metadata while dropping the privileged key", () => {
     expect(
-      readInitialCreditCents({ description: "x", initialCreditCents: 500 }),
-    ).toBe(500);
+      stripPrivilegedMetadata({ description: "x", initialCreditCents: 500 }),
+    ).toEqual({ description: "x" });
   });
 
-  it("falls back to undefined for non-object / missing / malformed input", () => {
-    for (const input of [
-      undefined,
-      null,
-      "",
-      "not json",
-      42,
-      [],
-      { other: 1 },
-    ]) {
-      expect(readInitialCreditCents(input)).toBeUndefined();
+  it("leaves metadata carrying no privileged key untouched", () => {
+    expect(stripPrivilegedMetadata({ description: "x" })).toEqual({
+      description: "x",
+    });
+  });
+
+  it("strips a zero as well — any value at all is a value we did not authorize", () => {
+    expect(stripPrivilegedMetadata({ initialCreditCents: 0 })).toBeUndefined();
+  });
+
+  it("returns undefined rather than an empty bag for non-object input", () => {
+    for (const input of [undefined, null, "", "not json", 42, []]) {
+      expect(stripPrivilegedMetadata(input)).toBeUndefined();
     }
-  });
-
-  it("rejects out-of-range or non-integer amounts", () => {
-    for (const value of [
-      -1,
-      1.5,
-      Number.NaN,
-      Number.POSITIVE_INFINITY,
-      100_001,
-    ]) {
-      expect(
-        readInitialCreditCents({ initialCreditCents: value }),
-      ).toBeUndefined();
-    }
-  });
-
-  it("accepts exactly the cap", () => {
-    expect(readInitialCreditCents({ initialCreditCents: 100_000 })).toBe(
-      100_000,
-    );
   });
 });

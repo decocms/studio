@@ -75,9 +75,10 @@ export interface Settings {
   /** Bearer for the gateway's /api/admin/* (top-up credits). Absent → the
    *  top-up tool falls back to the gateway's own checkout. */
   aiGatewayAdminToken: string | undefined;
-  /** One-time AI credit granted to every new org on signup, in cents (default
-   *  2300, which nets ~$25 with the gateway's own $2 provision credit). A
-   *  per-org override may be passed at creation (see readInitialCreditCents).
+  /** One-time AI credit granted on a user's FIRST org, in cents (default 2300,
+   *  which nets ~$25 with the gateway's own $2 provision credit). Deployment-wide;
+   *  there is deliberately no per-org override at creation time, because the only
+   *  channel one could ride on there is client-writable (see auth/initial-credit).
    *  0 disables the grant. Only applied when the gateway admin is configured
    *  (hosted deployments); self-hosted can't reach the admin API and skip it. */
   signupGrantCents: number;
