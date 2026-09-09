@@ -1,5 +1,9 @@
 import { describe, expect, it, mock } from "bun:test";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import {
+  clearRefreshBackoff,
+  refreshAndStore,
+} from "../../oauth/token-refresh";
 import { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 
 function makeCtx(options: {
@@ -79,6 +83,56 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
 
     expect(result.item.id).toBe("conn_repo");
     expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
+  });
+
+  it("clears the oauth refresh backoff tracker on delete", async () => {
+    // Regression: an unbounded tracker entry lingered past delete, suppressing a reconnect's first refresh.
+    const { ctx } = makeCtx({ referencedByThread: false });
+    const tokenStorage = {
+      get: async () => null,
+      delete: async () => {},
+      isExpired: () => false,
+      upsert: async () => ({}) as never,
+    };
+    const unrefreshableToken = {
+      id: "dtok_1",
+      connectionId: "conn_repo",
+      accessToken: "old",
+      refreshToken: null,
+      scope: null,
+      expiresAt: null,
+      createdAt: "",
+      updatedAt: "",
+      clientId: null,
+      clientSecret: null,
+      tokenEndpoint: null,
+    };
+    // Arms the backoff window without a network call (no refresh_token to try).
+    await refreshAndStore(unrefreshableToken, tokenStorage);
+
+    await COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx);
+
+    const originalFetch = global.fetch;
+    let fetchCalled = false;
+    global.fetch = mock(async () => {
+      fetchCalled = true;
+      return new Response(JSON.stringify({ access_token: "new" }));
+    }) as unknown as typeof fetch;
+    try {
+      await refreshAndStore(
+        {
+          ...unrefreshableToken,
+          refreshToken: "rt",
+          clientId: "cid",
+          tokenEndpoint: "https://example.com/token",
+        },
+        tokenStorage,
+      );
+    } finally {
+      global.fetch = originalFetch;
+      clearRefreshBackoff("conn_repo");
+    }
+    expect(fetchCalled).toBe(true);
   });
 
   it("revokes the connection's trigger callback token on delete", async () => {
