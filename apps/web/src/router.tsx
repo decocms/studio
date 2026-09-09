@@ -915,6 +915,9 @@ const settingsBucketsRoute = createRoute({
 const settingsRepositoriesRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/repositories",
+  validateSearch: z.object({
+    git_error: z.string().optional().catch(undefined),
+  }),
   pendingComponent: settingsGroupPendingComponent("repositories"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/repositories.tsx"),

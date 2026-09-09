@@ -12,6 +12,7 @@ import { GitAccountConnect } from "@/components/git-account-connect";
 import { RepositoryPicker } from "@/components/repository-picker";
 
 import { useState } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { GitBranch01, LinkExternal01, Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -27,6 +28,7 @@ import {
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
 
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 
@@ -336,6 +338,41 @@ function RepositoriesSection({
   );
 }
 
+function ConnectError() {
+  const t = useT();
+  const error = useSearch({
+    strict: false,
+    select: (search) => search.git_error,
+  });
+  if (!error) return null;
+
+  let message: string;
+  switch (error) {
+    case "no_installations":
+      message = t("settings.repositories.oauthNoInstallations");
+      break;
+    case "denied":
+    case "access_denied":
+      message = t("settings.repositories.oauthDenied");
+      break;
+    case "missing_state":
+    case "invalid_state":
+    case "session_mismatch":
+      message = t("settings.repositories.oauthExpired");
+      break;
+    case "not_configured":
+      message = t("settings.repositories.oauthNotConfigured");
+      break;
+    default:
+      message = t("settings.repositories.oauthFailed");
+  }
+  return (
+    <Alert variant={error === "no_installations" ? "info" : "destructive"}>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
+  );
+}
+
 function RepositoriesContent() {
   const t = useT();
   const deleteAccount = useDeleteGitAccount();
@@ -372,6 +409,8 @@ function RepositoriesContent() {
       <p className="text-sm text-muted-foreground">
         {t("settings.repositories.pageDescription")}
       </p>
+
+      <ConnectError />
 
       <AccountsSection onDisconnect={setPendingAccount} />
 

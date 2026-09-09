@@ -121,7 +121,19 @@ export const settings = {
   "settings.repositories.gitlabTokenHint":
     "Use um token de acesso pessoal, de projeto ou de grupo.",
   "settings.repositories.connectGithub": "Conectar GitHub",
-  "settings.repositories.installGithub": "Instalar em outra conta",
+  "settings.repositories.manageGithub": "Gerenciar acesso no GitHub",
+  "settings.repositories.manageGithubHint":
+    "Instale ou configure o app nas suas contas e organizações do GitHub.",
+  "settings.repositories.oauthNoInstallations":
+    "A autorização no GitHub foi concluída, mas nenhuma instalação do app está disponível para este usuário. Use Gerenciar acesso no GitHub para instalar o app ou solicitar acesso a um administrador da organização. Depois, conecte novamente.",
+  "settings.repositories.oauthDenied":
+    "A autorização foi cancelada. Conecte novamente quando quiser.",
+  "settings.repositories.oauthExpired":
+    "Esta tentativa de conexão expirou ou pertence a outra sessão. Comece novamente por esta página.",
+  "settings.repositories.oauthNotConfigured":
+    "Este provedor git não está configurado. Peça a um administrador para habilitá-lo.",
+  "settings.repositories.oauthFailed":
+    "Não foi possível conectar sua conta git. Tente novamente. Se o erro persistir, entre em contato com um administrador.",
   "settings.repositories.connectGitlab": "Conectar GitLab",
   "settings.repositories.connectGitlabToken": "Conectar GitLab com um token",
   "settings.repositories.authKindGithubApp": "GitHub App",

@@ -7,6 +7,18 @@ import {
 } from "./oauth";
 
 describe("githubAuthorizeUrl", () => {
+  test("explicit reconnect shows the GitHub account chooser", () => {
+    const url = new URL(
+      githubAuthorizeUrl({
+        clientId: "Iv1.abc",
+        redirectUri: "https://studio.example/api/_git/github/callback",
+        state: "opaque-state",
+        selectAccount: true,
+      }),
+    );
+    expect(url.searchParams.get("prompt")).toBe("select_account");
+  });
+
   test("targets github.com's authorize endpoint with the three parameters", () => {
     const url = new URL(
       githubAuthorizeUrl({
