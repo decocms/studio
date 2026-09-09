@@ -101,6 +101,7 @@ export const createGitProviderRoutes = () => {
         clientId: config.clientId,
         redirectUri: callbackUrl("github"),
         state,
+        selectAccount: true,
       }),
     );
   });

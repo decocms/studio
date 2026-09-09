@@ -20,11 +20,13 @@ export function githubAuthorizeUrl(params: {
   clientId: string;
   redirectUri: string;
   state: string;
+  selectAccount?: boolean;
 }): string {
   const url = new URL(GITHUB_OAUTH_AUTHORIZE_URL);
   url.searchParams.set("client_id", params.clientId);
   url.searchParams.set("redirect_uri", params.redirectUri);
   url.searchParams.set("state", params.state);
+  if (params.selectAccount) url.searchParams.set("prompt", "select_account");
   return url.toString();
 }
 

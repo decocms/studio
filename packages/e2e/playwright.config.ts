@@ -1,4 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
+import { generateKeyPairSync } from "node:crypto";
+
+// Synthetic GitHub App credentials exercise connect/setup redirects locally.
+// Tests stop before GitHub; this key belongs to no registered application.
+const githubTestKey = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  publicKeyEncoding: { type: "spki", format: "pem" },
+}).privateKey;
 
 const serverPort = process.env.PORT || "3000";
 const appPort = process.env.VITE_PORT || "4000";
@@ -141,6 +150,13 @@ export default defineConfig({
     },
     {
       command: apiServerCommand,
+      env: {
+        GITHUB_APP_ID: "1",
+        GITHUB_APP_SLUG: "studio-e2e",
+        GITHUB_APP_CLIENT_ID: "Iv1.studio-e2e",
+        GITHUB_APP_CLIENT_SECRET: "synthetic-e2e-secret",
+        GITHUB_APP_PRIVATE_KEY: githubTestKey,
+      },
       // The API and web apps are launched as separate processes. These cwd
       // entries are the suite's ONLY ties to app implementation, and both stay
       // behind process + HTTP boundaries so the black-box contract holds.

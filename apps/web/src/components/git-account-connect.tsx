@@ -22,7 +22,6 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import {
-  useGitAccounts,
   useGitProviderCapabilities,
   useConnectGitAccountToken,
 } from "@/hooks/use-git-providers";
@@ -39,16 +38,12 @@ export function GitAccountConnect({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const accounts = useGitAccounts();
   return (
     <>
       <ConnectActions
         layout={layout}
         disabled={disabled}
         onTokenDialog={() => setOpen(true)}
-        hasGithubAccount={(accounts.data ?? []).some(
-          (a) => a.type === "github",
-        )}
       />
       {open && <TokenConnectDialog open onOpenChange={setOpen} />}
     </>
@@ -216,12 +211,10 @@ function ConnectActions({
   layout,
   disabled,
   onTokenDialog,
-  hasGithubAccount,
 }: {
   layout: "buttons" | "picker";
   disabled: boolean;
   onTokenDialog: () => void;
-  hasGithubAccount: boolean;
 }) {
   const t = useT();
   const capabilities = useGitProviderCapabilities();
@@ -264,11 +257,11 @@ function ConnectActions({
         href={github?.connectPath ? connectUrl(github.connectPath) : undefined}
         disabled={disabled || !githubConfigured || !github?.connectPath}
       />
-      {githubConfigured && hasGithubAccount && github?.installPath && (
+      {githubConfigured && github?.installPath && (
         <ConnectAction
           layout={layout}
-          label={t("settings.repositories.installGithub")}
-          description={t("settings.repositories.browseAccount")}
+          label={t("settings.repositories.manageGithub")}
+          description={t("settings.repositories.manageGithubHint")}
           icon={<GitHubIcon size={16} />}
           href={connectUrl(github.installPath)}
           disabled={disabled}
