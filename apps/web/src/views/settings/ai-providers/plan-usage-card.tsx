@@ -22,7 +22,7 @@ import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
-import { useEntitlements } from "@/hooks/use-entitlements";
+import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
 
 /**
  * The org's plan and its AI usage bar.
@@ -160,7 +160,13 @@ export function PlanUsageCard() {
   const [preferences] = usePreferences();
   const [changeOpen, setChangeOpen] = useState(false);
 
+  const plansEnabled = usePlansEnabled();
   const { data, isLoading, isError, refetch } = useEntitlements();
+
+  // The "no plan surface here" case the error branch below excuses itself for:
+  // the deployment has plans switched off, so there is nothing to show and
+  // nothing failed. Not a hook, so it has to sit after the hooks above.
+  if (!plansEnabled) return null;
 
   if (isLoading) {
     return (

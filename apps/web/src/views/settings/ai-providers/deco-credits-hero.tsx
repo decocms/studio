@@ -28,6 +28,7 @@ import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { usePlansEnabled } from "@/hooks/use-entitlements";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 
@@ -163,6 +164,68 @@ function creditColorClass(dollars: number): string {
   return "text-foreground";
 }
 
+/**
+ * The dollar balance this card used to own. With plans ON it moved into
+ * PlanUsageCard, where it reads as the second of the two pools; with plans OFF
+ * that card is not rendered at all, so it stays here rather than disappearing.
+ */
+function CreditsBalance({ enabled }: { enabled: boolean }) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: KEYS.aiProviderCredits(org.id, "deco"),
+    enabled,
+    staleTime: 60_000,
+    queryFn: async () => {
+      try {
+        return await studio.call("AI_PROVIDER_CREDITS", { providerId: "deco" });
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  if (!enabled) return null;
+
+  const balanceDollars =
+    data?.balanceCents != null ? data.balanceCents / 100 : null;
+  const displayBalance =
+    balanceDollars != null ? `$${balanceDollars.toFixed(2)}` : "—";
+
+  return (
+    <div className="flex flex-col gap-2 pt-2">
+      <div className="flex items-baseline gap-2">
+        {isLoading || isFetching ? (
+          <Skeleton className="h-9 w-24" />
+        ) : (
+          <span
+            className={cn(
+              "text-3xl font-semibold tabular-nums tracking-tight",
+              balanceDollars != null && creditColorClass(balanceDollars),
+            )}
+          >
+            {displayBalance}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
+          aria-label={t("settings.decoCreditsHero.refreshBalance")}
+        >
+          <RefreshCw01 size={14} className={cn(isFetching && "animate-spin")} />
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("settings.decoCreditsHero.availableBalance")}
+      </p>
+    </div>
+  );
+}
+
 export function DecoCreditsHero() {
   const t = useT();
   const { org } = useProjectContext();
@@ -170,6 +233,8 @@ export function DecoCreditsHero() {
   const queryClient = useQueryClient();
   const allKeys = useAiProviderKeys();
   const decoKey = allKeys.find((k) => k.providerId === "deco");
+  // With plans on, the balance lives on PlanUsageCard instead.
+  const plansEnabled = usePlansEnabled();
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const { mutate: disconnect, isPending: isDisconnecting } = useMutation({
@@ -190,25 +255,7 @@ export function DecoCreditsHero() {
     },
   });
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: KEYS.aiProviderCredits(org.id, "deco"),
-    enabled: !!decoKey,
-    staleTime: 60_000,
-    queryFn: async () => {
-      try {
-        return await studio.call("AI_PROVIDER_CREDITS", { providerId: "deco" });
-      } catch {
-        return null;
-      }
-    },
-  });
-
   if (!decoKey) return null;
-
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
-  const displayBalance =
-    balanceDollars != null ? `$${balanceDollars.toFixed(2)}` : "—";
 
   return (
     <SettingsSection title={t("settings.decoCreditsHero.title")}>
@@ -266,38 +313,7 @@ export function DecoCreditsHero() {
             </AlertDialogContent>
           </AlertDialog>
 
-          {/* Balance */}
-          <div className="flex flex-col gap-2 pt-2">
-            <div className="flex items-baseline gap-2">
-              {isLoading || isFetching ? (
-                <Skeleton className="h-9 w-24" />
-              ) : (
-                <span
-                  className={cn(
-                    "text-3xl font-semibold tabular-nums tracking-tight",
-                    balanceDollars != null && creditColorClass(balanceDollars),
-                  )}
-                >
-                  {displayBalance}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
-                aria-label={t("settings.decoCreditsHero.refreshBalance")}
-              >
-                <RefreshCw01
-                  size={14}
-                  className={cn(isFetching && "animate-spin")}
-                />
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.decoCreditsHero.availableBalance")}
-            </p>
-          </div>
+          <CreditsBalance enabled={!plansEnabled} />
 
           {/* Quick top-up */}
           <div className="pt-4 border-t border-border/60">

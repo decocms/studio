@@ -8,7 +8,7 @@
  * Tab sources and grammar are documented in `tab-id.ts`.
  */
 
-import { lazy } from "react";
+import { lazy, useState } from "react";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
@@ -99,6 +99,8 @@ function TabBody({
 }) {
   const controlPlaneViews = useControlPlaneViews();
   const { closePanel } = usePanelNavigate();
+  // A collapsed main panel stays mounted, so closePanel alone never hides this.
+  const [dismissedFeature, setDismissedFeature] = useState<string | null>(null);
   const gatedFeature = featureForTab(activeTab);
   const featureAllowed = useFeature(gatedFeature);
   // Native CDN Monitor tab gate — warehouse wired, independent of the
@@ -125,9 +127,18 @@ function TabBody({
   }
 
   if (gatedFeature && !featureAllowed) {
+    if (dismissedFeature === gatedFeature) return null;
     // Closing the panel on dismiss, rather than leaving a blank body behind
     // the dialog: the view the URL names is one this org cannot open.
-    return <FeaturePaywall feature={gatedFeature} onDismiss={closePanel} />;
+    return (
+      <FeaturePaywall
+        feature={gatedFeature}
+        onDismiss={() => {
+          setDismissedFeature(gatedFeature);
+          closePanel();
+        }}
+      />
+    );
   }
 
   if (activeTab === "overview") {

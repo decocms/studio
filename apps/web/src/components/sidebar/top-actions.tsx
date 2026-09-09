@@ -6,10 +6,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@decocms/ui/components/sidebar.tsx";
-import { Coins04 } from "@untitledui/icons";
+import { Coins04, Lightning01 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 import { useDecoCredits } from "@/hooks/use-deco-credits";
+import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
+import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 class SilentErrorBoundary extends Component<
@@ -36,6 +38,11 @@ function creditColor(balanceDollars: number): string {
   return "text-foreground/70";
 }
 
+/**
+ * The dollar chip this slot used to hold. Kept for deployments with plans OFF,
+ * where there is no bar to show instead — the same split `CreditsBalance`
+ * makes on the settings card.
+ */
 function CreditChip() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -70,11 +77,71 @@ function CreditChip() {
   );
 }
 
+/** Mirrors the plan card's bar, which is the same number from the same read. */
+const BAR_COLORS = {
+  ok: "bg-primary",
+  warn: "bg-warning",
+  exhausted: "bg-destructive",
+} as const;
+
+/**
+ * The org's AI usage, as a percentage. A percent and nothing else — the wallet
+ * is the only place a dollar amount belongs, and it is not here.
+ */
+function UsageChip() {
+  const t = useT();
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const { data } = useEntitlements();
+  // No answer and no envelope both mean there is no honest bar to draw.
+  if (!data?.usage || !data.features.chat) return null;
+
+  const percent = Math.round(data.usage.percent * 100);
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip={`${t("settings.planUsage.aiUsage")}: ${percent}%`}
+          className="h-auto! py-1.5"
+          onClick={() =>
+            navigate({
+              to: "/$org/settings/ai-providers",
+              params: { org: org.slug },
+            })
+          }
+        >
+          <Lightning01 />
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="flex items-center justify-between gap-2">
+              <span className="truncate">
+                {t("settings.planUsage.aiUsage")}
+              </span>
+              <span className="tabular-nums text-xs text-muted-foreground">
+                {percent}%
+              </span>
+            </span>
+            <span className="block h-1 overflow-hidden rounded-full bg-muted">
+              <span
+                className={cn("block h-full", BAR_COLORS[data.usage.state])}
+                style={{ width: `${percent}%` }}
+              />
+            </span>
+          </span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+function TopChip() {
+  return usePlansEnabled() ? <UsageChip /> : <CreditChip />;
+}
+
 export function SidebarTopActions() {
   return (
     <SilentErrorBoundary>
       <Suspense fallback={null}>
-        <CreditChip />
+        <TopChip />
       </Suspense>
     </SilentErrorBoundary>
   );

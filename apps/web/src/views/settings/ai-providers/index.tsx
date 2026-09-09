@@ -15,6 +15,7 @@ import { ClaudeSubscriptionCard } from "./claude-subscription-card";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
+import { useFeature } from "@/hooks/use-entitlements";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -36,7 +37,13 @@ function OrgAiProvidersContent() {
     useState<ProviderSelection | null>(null);
 
   const aiProviders = useAiProviders();
-  const providers = aiProviders?.providers ?? [];
+  // Fails OPEN, so a gateway blip shows the BYO surfaces rather than hiding them.
+  const canChooseModels = useFeature("model_choice");
+  const allProviders = aiProviders?.providers ?? [];
+  // Every tile but Deco is a bring-your-own key.
+  const providers = canChooseModels
+    ? allProviders
+    : allProviders.filter((p) => p.id === "deco");
 
   if (!hasHostedProvider) {
     return (
@@ -47,7 +54,7 @@ function OrgAiProvidersContent() {
         <ProviderGrid
           providers={providers}
           onSelect={setPendingProvider}
-          onShowAll={() => setConnectOpen(true)}
+          onShowAll={canChooseModels ? () => setConnectOpen(true) : undefined}
         />
         <ConnectProviderDialog
           open={pendingProvider !== null || connectOpen}
@@ -59,7 +66,7 @@ function OrgAiProvidersContent() {
           }}
           initialProvider={pendingProvider ?? undefined}
         />
-        {hasInventory ? (
+        {hasInventory && canChooseModels ? (
           <ConnectedProvidersSection
             onConnectClick={() => setConnectOpen(true)}
           />
@@ -71,13 +78,23 @@ function OrgAiProvidersContent() {
   return (
     <>
       <PlanUsageCard />
-      <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-        <SimpleModeSection />
-      </Suspense>
-      {hasDeco ? <DecoCreditsHero /> : <DecoNudgeCard />}
-      <ClaudeSubscriptionCard />
-      <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
-      <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
+      {hasDeco ? <DecoCreditsHero /> : null}
+      {canChooseModels ? (
+        <>
+          <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+            <SimpleModeSection />
+          </Suspense>
+          {hasDeco ? null : <DecoNudgeCard />}
+          <ClaudeSubscriptionCard />
+          <ConnectedProvidersSection
+            onConnectClick={() => setConnectOpen(true)}
+          />
+          <ConnectProviderDialog
+            open={connectOpen}
+            onOpenChange={setConnectOpen}
+          />
+        </>
+      ) : null}
     </>
   );
 }
