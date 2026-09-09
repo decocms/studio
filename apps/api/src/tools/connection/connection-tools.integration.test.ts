@@ -1452,6 +1452,102 @@ describe("Connection Tools", () => {
     // Delete test removed - was timing out due to network calls
   });
 
+  describe("Connection robustness — configuration state validation", () => {
+    it("rejects malformed configuration_state with non-object value for scope key", async () => {
+      const subject = await ctx.storage.connections.create({
+        id: "conn_malformed_state",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Malformed State Subject",
+        connection_type: "HTTP",
+        connection_url: "https://malformed.invalid/mcp",
+        connection_token: null,
+        tools: null,
+      });
+
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+
+      // State key must be {value: id}, not a plain string
+      await expect(
+        COLLECTION_CONNECTIONS_UPDATE.execute(
+          {
+            id: subject.id,
+            data: {
+              configuration_state: {
+                github: "just-a-string",
+              },
+              configuration_scopes: [
+                `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+              ],
+            },
+          },
+          ctx,
+        ),
+      ).rejects.toThrow();
+
+      const unchanged = await ctx.storage.connections.findById(subject.id);
+      expect(unchanged?.configuration_state).toBeNull();
+    });
+
+    it("prevents cross-org credential grants when scope references another org's connection", async () => {
+      const otherOrgConn = await ctx.storage.connections.create({
+        id: "conn_other_org",
+        organization_id: "other_org_123",
+        created_by: "user_1",
+        title: "Other Org Connection",
+        connection_type: "HTTP",
+        connection_url: "https://other-org.invalid/mcp",
+        connection_token: null,
+        tools: null,
+      });
+
+      const subject = await ctx.storage.connections.create({
+        id: "conn_cross_org_subject",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Cross Org Subject",
+        connection_type: "HTTP",
+        connection_url: "https://cross-org.invalid/mcp",
+        connection_token: null,
+        tools: null,
+      });
+
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+
+      await expect(
+        COLLECTION_CONNECTIONS_UPDATE.execute(
+          {
+            id: subject.id,
+            data: {
+              configuration_state: {
+                github: { __type: "@deco/github", value: otherOrgConn.id },
+              },
+              configuration_scopes: [
+                `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+              ],
+            },
+          },
+          ctx,
+        ),
+      ).rejects.toThrow("Referenced connection not found");
+
+      await expect(
+        ctx.storage.connectionCredentialVault.hasGrant({
+          organizationId: "org_123",
+          subjectConnectionId: subject.id,
+          targetConnectionId: otherOrgConn.id,
+          scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        }),
+      ).resolves.toBe(false);
+    });
+  });
+
   describe("CONNECTION_TEST", () => {
     it("should test connection health", async () => {
       const created = await COLLECTION_CONNECTIONS_CREATE.execute(
