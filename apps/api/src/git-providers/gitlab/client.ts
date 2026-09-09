@@ -24,7 +24,7 @@ import {
   type TokenOptions,
   type TokenSource,
 } from "../types";
-import { gitlabFailure, gitlabFetch } from "./http";
+import { gitlabFailure, gitlabFetch, gitlabJson } from "./http";
 
 /** A whole-repo archive is a download, not a REST call — it needs room to stream. */
 const ARCHIVE_TIMEOUT_MS = 60_000;
@@ -156,7 +156,7 @@ async function fetchGitlabUser(
       message: "GitLab did not recognise the authenticated user",
     });
   }
-  return GitlabUserSchema.parse(await res.json());
+  return GitlabUserSchema.parse(await gitlabJson(res, "get_user"));
 }
 
 /**
@@ -209,7 +209,7 @@ export class GitlabProviderClient implements GitProviderClient {
   async getRepo(repo: RepoRef): Promise<RepoSummary | null> {
     const res = await this.get(`/projects/${encodeProjectPath(repo.path)}`);
     if (!res) return null;
-    return mapGitlabProject(await res.json(), this.host);
+    return mapGitlabProject(await gitlabJson(res, "get_repo"), this.host);
   }
 
   async listRepos(
@@ -231,7 +231,7 @@ export class GitlabProviderClient implements GitProviderClient {
     if (query) params.set("search", query);
     const res = await this.get(`/projects?${params}`);
     if (!res) return { repositories: [], hasMore: false };
-    const json = await res.json();
+    const json = await gitlabJson(res, "list_repos");
     if (!Array.isArray(json)) {
       throw new GitProviderError({
         provider: "gitlab",
@@ -286,7 +286,7 @@ export class GitlabProviderClient implements GitProviderClient {
   async identity(): Promise<GitIdentity | null> {
     const res = await this.authedFetch(`${this.apiBase}/user`);
     if (!res.ok) throw await gitlabFailure(res);
-    const user = GitlabUserSchema.parse(await res.json());
+    const user = GitlabUserSchema.parse(await gitlabJson(res, "identity"));
     return {
       name: user.name || user.username,
       email:
