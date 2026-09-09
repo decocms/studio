@@ -14,6 +14,7 @@ import {
   isGithubRateLimited,
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
+import { USER_BUDGET_OWNER } from "@/git-providers/github/budget-owner";
 
 const GITHUB_API = "https://api.github.com";
 /** Matches the content client's per-attempt timeout in `git-providers/content/github.ts`. */
@@ -169,6 +170,7 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       recordGithubRateLimit(res.headers, {
         lane: "rest",
         operation: "list_user_installations",
+        installation: USER_BUDGET_OWNER,
       });
 
       if (isGithubRateLimited(res)) {
@@ -177,6 +179,7 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
         countGithubRateLimited({
           lane: "rest",
           operation: "list_user_installations",
+          installation: USER_BUDGET_OWNER,
           kind,
         });
         const waitMs = githubRetryAfterMs(res.headers);

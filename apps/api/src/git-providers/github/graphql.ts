@@ -21,6 +21,7 @@ import {
   isGithubRateLimited,
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
+import { budgetOwnerFor } from "./budget-owner";
 
 /** e2e seam, mirroring `git-providers/content/github.ts`. Read per call site so a
  *  long-lived dev server and a test webServer agree on one value. */
@@ -143,6 +144,7 @@ export async function githubGraphqlRequest<T>(
   };
 
   let res = await postWithRetry(accessToken);
+  let spentToken = accessToken;
 
   // Token revoked/rotated behind our clock: one refresh + retry, then give up.
   if (res.status === 401) {
@@ -155,12 +157,15 @@ export async function githubGraphqlRequest<T>(
     const refreshed = await args.getToken(true);
     if (!refreshed) throw new Error(args.missingTokenMessage);
     res = await postWithRetry(refreshed);
+    spentToken = refreshed;
     if (res.status === 401) throw new Error(args.missingTokenMessage);
   }
 
+  const installation = budgetOwnerFor(spentToken);
   recordGithubRateLimit(res.headers, {
     lane: "graphql",
     operation: args.operation,
+    installation,
   });
 
   // Never retried here: retrying a secondary limit IS the burst being limited.
@@ -170,6 +175,7 @@ export async function githubGraphqlRequest<T>(
     countGithubRateLimited({
       lane: "graphql",
       operation: args.operation,
+      installation,
       kind,
     });
     const waitMs = githubRetryAfterMs(res.headers);
