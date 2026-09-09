@@ -61,10 +61,7 @@ import {
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
 import { TaskSystemPromptSettings } from "./task-system-prompt";
-
-function errorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback;
-}
+import { errorMessage } from "@/utils/error-message";
 
 const CREATE_TOKEN_URL =
   "https://id.atlassian.com/manage-profile/security/api-tokens";
