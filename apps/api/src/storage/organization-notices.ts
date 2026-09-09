@@ -126,6 +126,63 @@ export class OrganizationNoticeStorage {
     return toEntity(row);
   }
 
+  /**
+   * Set a live notice only when the current notice belongs to the same source.
+   *
+   * Machine integrations use this instead of `setActive`: a finance sync may
+   * refresh its own warning or escalate it to a block, but it must never replace
+   * text an operator pinned manually. The conflict predicate makes that
+   * ownership check atomic, including when a manual write races this one.
+   * Returns null when another source owns the active notice.
+   */
+  async setActiveForSource(params: {
+    organizationId: string;
+    notice: OrgNoticeInput;
+    source: string;
+    by: string;
+  }): Promise<OrganizationNotice | null> {
+    const now = new Date();
+    const { notice, source } = params;
+    const row = await this.db
+      .insertInto("organization_notices")
+      .values({
+        id: randomUUID(),
+        organization_id: params.organizationId,
+        severity: notice.severity,
+        title: notice.title,
+        message: notice.message,
+        cta_label: notice.ctaLabel || null,
+        cta_url: notice.ctaUrl || null,
+        source,
+        resolved_at: null,
+        resolved_by: null,
+        created_by: params.by,
+        created_at: now,
+        updated_by: params.by,
+        updated_at: now,
+      })
+      .onConflict((oc) =>
+        oc
+          .column("organization_id")
+          .where("resolved_at", "is", null)
+          .doUpdateSet({
+            severity: notice.severity,
+            title: notice.title,
+            message: notice.message,
+            cta_label: notice.ctaLabel || null,
+            cta_url: notice.ctaUrl || null,
+            source,
+            updated_by: params.by,
+            updated_at: now,
+          })
+          .where("organization_notices.source", "=", source),
+      )
+      .returningAll()
+      .executeTakeFirst();
+
+    return row ? toEntity(row) : null;
+  }
+
   /** Resolve the org's live notice. False when there was nothing pinned. */
   async resolveActive(params: {
     organizationId: string;
@@ -141,6 +198,28 @@ export class OrganizationNoticeStorage {
         updated_at: now,
       })
       .where("organization_id", "=", params.organizationId)
+      .where("resolved_at", "is", null)
+      .executeTakeFirst();
+    return Number(res.numUpdatedRows ?? 0n) > 0;
+  }
+
+  /** Resolve only a notice owned by `source`. */
+  async resolveActiveForSource(params: {
+    organizationId: string;
+    source: string;
+    by: string;
+  }): Promise<boolean> {
+    const now = new Date();
+    const res = await this.db
+      .updateTable("organization_notices")
+      .set({
+        resolved_at: now,
+        resolved_by: params.by,
+        updated_by: params.by,
+        updated_at: now,
+      })
+      .where("organization_id", "=", params.organizationId)
+      .where("source", "=", params.source)
       .where("resolved_at", "is", null)
       .executeTakeFirst();
     return Number(res.numUpdatedRows ?? 0n) > 0;
