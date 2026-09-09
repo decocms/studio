@@ -1298,44 +1298,40 @@ function TaskBoardItemEditor({
                       const tag = orgTags.find((ot) => ot.id === tagId);
                       if (!tag) return null;
                       return (
-                        <button
+                        // Two sibling buttons, not one nested in the other — a <button> can't validly contain another interactive element.
+                        <div
                           key={tagId}
-                          type="button"
-                          onClick={() => setTagsOpen(true)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                         >
-                          <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: tagDotColor(tag.color) }}
-                          />
-                          <span className="truncate">{tag.name}</span>
-                          <span
-                            role="button"
-                            tabIndex={0}
+                          <button
+                            type="button"
+                            onClick={() => setTagsOpen(true)}
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: tagDotColor(tag.color),
+                              }}
+                            />
+                            <span className="truncate">{tag.name}</span>
+                          </button>
+                          <button
+                            type="button"
                             aria-label={t(
                               "taskBoard.taskDialog.removeTagAriaLabel",
                               { name: tag.name },
                             )}
                             className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
                               });
                             }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                patch({
-                                  tagIds: tagIds.filter((id) => id !== tagId),
-                                });
-                              }
-                            }}
                           >
                             <X size={10} />
-                          </span>
-                        </button>
+                          </button>
+                        </div>
                       );
                     })}
                     <PopoverTrigger asChild>
