@@ -7,6 +7,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test:e2e": "playwright test",
+    "test:e2e:github-connect": "PORT=3001 VITE_PORT=4001 BASE_URL=http://localhost:4001 playwright test --config=playwright.github-connect.config.ts",
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {

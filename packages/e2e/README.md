@@ -51,6 +51,18 @@ Studio services. Tests that require production-style object storage also need
 the `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and
 `S3_SECRET_ACCESS_KEY` variables; they skip when S3 is unavailable.
 
+GitHub reconnect tests run separately with a synthetic GitHub App:
+
+```bash
+bun run --cwd=packages/e2e test:e2e:github-connect
+```
+
+The main suite excludes this spec because enabling an App changes credential
+resolution for its legacy GitHub fixtures. The dedicated configuration starts
+fresh API and web servers on ports 3001 and 4001. Set the same
+`BETTER_AUTH_SECRET` for both runs when reusing a database, so the second server
+can decrypt persisted authentication keys. CI runs both suites.
+
 ## Architecture
 
 `playwright.config.ts` runs the commerce-upgrade mock, `apps/api`, and
