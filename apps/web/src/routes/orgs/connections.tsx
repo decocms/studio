@@ -404,16 +404,13 @@ function ConnectionResults({
     setBulkDeleteOpen(false);
     const ids = [...selectedIds];
     track("connections_bulk_delete", { count: ids.length });
-    let deleted = 0;
 
-    for (const id of ids) {
-      try {
-        await studio.call("COLLECTION_CONNECTIONS_DELETE", { id, force: true });
-        deleted++;
-      } catch {
-        // continue with next
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        studio.call("COLLECTION_CONNECTIONS_DELETE", { id, force: true }),
+      ),
+    );
+    const deleted = results.filter((r) => r.status === "fulfilled").length;
 
     invalidateConnections();
     toast.success(t("orgs.connections.deletedConnections", { count: deleted }));
@@ -443,16 +440,10 @@ function ConnectionResults({
       count: ids.length,
       to_status: status,
     });
-    let updated = 0;
-
-    for (const id of ids) {
-      try {
-        await actions.update.mutateAsync({ id, data: { status } });
-        updated++;
-      } catch {
-        // continue
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) => actions.update.mutateAsync({ id, data: { status } })),
+    );
+    const updated = results.filter((r) => r.status === "fulfilled").length;
 
     invalidateConnections();
     toast.success(
