@@ -467,29 +467,39 @@ export const TASK_ADD_REPO = defineTool({
       );
     }
 
-    const existingPrimary = (
-      thread.metadata as { githubRepo?: { owner?: string } } | null
-    )?.githubRepo?.owner;
+    const githubRepo = (
+      thread.metadata as {
+        githubRepo?: { owner?: string; name?: string };
+      } | null
+    )?.githubRepo;
     const existingSecondaries =
       (
         thread.metadata as {
           githubRepos?: { owner: string; name: string }[];
         } | null
       )?.githubRepos ?? [];
+
+    const isPrimaryRepo =
+      githubRepo &&
+      githubRepo.owner === repo.owner &&
+      githubRepo.name?.toLowerCase() === repo.name.toLowerCase();
+
     if (
-      existingPrimary &&
-      secondaryRepoCapExceeded(existingSecondaries, {
-        owner: repo.owner,
-        name: repo.name,
-      })
+      githubRepo &&
+      (isPrimaryRepo ||
+        secondaryRepoCapExceeded(existingSecondaries, {
+          owner: repo.owner,
+          name: repo.name,
+        }))
     ) {
       return {
         success: false,
         repo: `${repo.owner}/${repo.name}`,
         cloned: false,
-        message:
-          `This run already has ${MAX_SECONDARY_REPOS} additional repositories checked out, ` +
-          `which is the limit. Work with what's already checked out instead of adding another.`,
+        message: isPrimaryRepo
+          ? `${repo.label} is already checked out at your working directory.`
+          : `This run already has ${MAX_SECONDARY_REPOS} additional repositories checked out, ` +
+            `which is the limit. Work with what's already checked out instead of adding another.`,
       };
     }
 
@@ -520,7 +530,7 @@ export const TASK_ADD_REPO = defineTool({
     // package-manager probe, dev server and preview, and a second call must not
     // move that out from under a running dev server. Later ones accumulate in
     // `githubRepos` and land as secondary checkouts.
-    const isPrimary = !existingPrimary;
+    const isPrimary = !githubRepo;
     const secondaries = isPrimary
       ? []
       : await ctx.storage.threads.appendThreadGithubRepo(threadId, bound);
