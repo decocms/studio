@@ -8,7 +8,9 @@ import {
   buildAppJwt,
   installationCacheKey,
   type InstallationToken,
+  invalidTokenScope,
   mapInstallation,
+  MAX_TOKEN_REPOSITORIES,
   nextPermissionSet,
   pruneExpiredTokens,
   usableAppKey,
@@ -210,6 +212,53 @@ describe("installationCacheKey", () => {
       }),
     ).not.toBe(base);
     expect(installationCacheKey(1, {})).not.toBe(base);
+  });
+
+  test("separates a scope by id from the same numbers spelled as names", () => {
+    const byId = installationCacheKey(1, { repositoryIds: [7] });
+    expect(byId).not.toBe(installationCacheKey(1, { repositories: ["7"] }));
+    expect(byId).not.toBe(installationCacheKey(1, {}));
+    expect(installationCacheKey(1, { repositoryIds: [9, 7] })).toBe(
+      installationCacheKey(1, { repositoryIds: [7, 9] }),
+    );
+    expect(installationCacheKey(1, { repositoryIds: [7, 9] })).not.toBe(byId);
+  });
+});
+
+describe("invalidTokenScope", () => {
+  test("accepts an unrestricted scope and either restricted spelling", () => {
+    expect(invalidTokenScope({})).toBeNull();
+    expect(invalidTokenScope({ repositories: ["alpha"] })).toBeNull();
+    expect(invalidTokenScope({ repositoryIds: [1] })).toBeNull();
+  });
+
+  test("rejects an empty scope, which GitHub would read as every repo", () => {
+    expect(invalidTokenScope({ repositories: [] })).toContain("1 to");
+    expect(invalidTokenScope({ repositoryIds: [] })).toContain("1 to");
+  });
+
+  test("rejects more repositories than GitHub mints for", () => {
+    const ids = Array.from(
+      { length: MAX_TOKEN_REPOSITORIES + 1 },
+      (_, i) => i + 1,
+    );
+    expect(invalidTokenScope({ repositoryIds: ids })).toContain("1 to");
+    expect(invalidTokenScope({ repositoryIds: ids.slice(1) })).toBeNull();
+  });
+
+  test("rejects the two spellings together and non-identifier ids", () => {
+    expect(
+      invalidTokenScope({ repositories: ["alpha"], repositoryIds: [1] }),
+    ).toContain("never both");
+    expect(invalidTokenScope({ repositoryIds: [0] })).toContain(
+      "positive integer",
+    );
+    expect(invalidTokenScope({ repositoryIds: [1, 1.5] })).toContain(
+      "positive integer",
+    );
+    expect(invalidTokenScope({ repositoryIds: [Number.MAX_VALUE] })).toContain(
+      "positive integer",
+    );
   });
 });
 

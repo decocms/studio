@@ -158,10 +158,20 @@ export const createGitProviderRoutes = () => {
     const appAuth = getGithubAppAuth();
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
     try {
-      const { installations } = await appAuth.listOwnedInstallations(
+      const { installations } = await appAuth.listAuthorizedInstallations(
         await ctx.vault.decrypt(flow.encrypted_access_token),
       );
-      return c.json({ installations, expiresAt: flow.expires_at });
+      // The ids themselves are Studio's business; the chooser only needs to
+      // say whether the account comes whole or as a slice of its repositories.
+      return c.json({
+        installations: installations.map(
+          ({ repositoryIds, ...installation }) => ({
+            ...installation,
+            repositoryCount: repositoryIds?.length ?? null,
+          }),
+        ),
+        expiresAt: flow.expires_at,
+      });
     } catch {
       return c.json({ error: "github_unavailable" }, 502);
     }
@@ -192,7 +202,7 @@ export const createGitProviderRoutes = () => {
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
     let access;
     try {
-      access = await appAuth.listOwnedInstallations(
+      access = await appAuth.listAuthorizedInstallations(
         await ctx.vault.decrypt(flow.encrypted_access_token),
       );
     } catch {
@@ -215,6 +225,7 @@ export const createGitProviderRoutes = () => {
         avatarUrl: installation.avatarUrl,
         installationId: installation.installationId,
         installationAuthorizedBy: access.userId,
+        installationRepositoryIds: installation.repositoryIds,
       },
     );
     if (!account) return c.json({ error: "flow_expired" }, 410);

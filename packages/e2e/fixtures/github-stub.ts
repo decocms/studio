@@ -19,7 +19,7 @@
  *   - refs:    `branch -> commitSha`
  *
  * GitHub-shaped endpoints (only what the decofile client calls):
- *   GET   /repos/{o}/{r}                              -> { default_branch }
+ *   GET   /repos/{o}/{r}                              -> { id, full_name, private, html_url, default_branch }
  *   GET   /repos/{o}/{r}/git/ref/heads/{branch}       -> { object: { sha } }
  *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { tree: { sha }, parents }
  *   GET   /repos/{o}/{r}/git/trees/{sha}[?recursive=1] -> { tree: [...], truncated } (non-recursive = direct children + subtree shas)
@@ -33,6 +33,17 @@
  *   GET   /repos/{o}/{r}/pulls?state&base&head        -> [ { number, html_url } ]
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
  *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
+ *
+ * GitHub App endpoints (the git-provider account suite):
+ *   GET   /user/installations                          -> { installations }
+ *   GET   /user/installations/{id}/repositories        -> { repositories }
+ *   POST  /app/installations/{id}/access_tokens        -> { token, expires_at }
+ *
+ * A minted token carries its own scope (`ghs-inst-{id}-all` or
+ * `ghs-inst-{id}-ids-{a}.{b}`), and `/repos/{o}/{r}` answers 404 for a
+ * repository outside it — the same wall GitHub puts up, so a test can prove
+ * Studio never widens a partial grant. Any other Authorization value is taken
+ * as an unrestricted legacy token, which is what the decofile suite sends.
  *
  * Test-only admin endpoints (no auth):
  *   GET  /health
@@ -76,6 +87,8 @@ interface PullRecord {
 }
 
 interface RepoState {
+  /** GitHub's numeric repository id, which is what a token scope names. */
+  id: number;
   owner: string;
   name: string;
   defaultBranch: string;
@@ -102,6 +115,8 @@ interface RepoState {
 interface SeedRepoBody {
   owner: string;
   repo: string;
+  /** Numeric id, for tests that pin it to an installation grant. */
+  id?: number;
   defaultBranch?: string;
   /**
    * Per-branch file map (`path -> content`). The default branch becomes a root
@@ -120,6 +135,21 @@ interface SeedRepoBody {
 }
 
 const repos = new Map<string, RepoState>();
+let repoIdSequence = 1_000_000;
+function nextRepoId(): number {
+  return ++repoIdSequence;
+}
+
+/**
+ * The repository ids an Authorization header may reach, or null for every one.
+ *
+ * Only tokens this stub minted carry a scope; anything else is treated as
+ * unrestricted so the suites that send a static token are unaffected.
+ */
+function tokenScope(authorization: string | undefined): number[] | null {
+  const scope = /^Bearer ghs-inst-\d+-ids-([\d.]+)$/.exec(authorization ?? "");
+  return scope?.[1] ? scope[1].split(".").map(Number) : null;
+}
 let commitCounter = 0;
 
 function sha1(input: string): string {
@@ -234,6 +264,7 @@ function mergeBaseOf(repo: RepoState, a: string, b: string): string | null {
 function seedRepo(body: SeedRepoBody): RepoState {
   const defaultBranch = body.defaultBranch ?? "main";
   const repo: RepoState = {
+    id: body.id ?? nextRepoId(),
     owner: body.owner,
     name: body.repo,
     defaultBranch,
@@ -405,7 +436,9 @@ async function handleRepos(
   const owner = segments[1];
   const name = segments[2];
   const repo = owner && name ? repos.get(repoKey(owner, name)) : undefined;
-  if (!repo) {
+  const scope = tokenScope(req.headers.authorization);
+  // Out of scope reads as absent, exactly as it does on github.com.
+  if (!repo || (scope && !scope.includes(repo.id))) {
     notFound(res);
     return;
   }
@@ -414,8 +447,11 @@ async function handleRepos(
   // GET /repos/{o}/{r}
   if (req.method === "GET" && rest.length === 0) {
     json(res, 200, {
+      id: repo.id,
       name: repo.name,
       full_name: repoKey(repo.owner, repo.name),
+      private: true,
+      html_url: `https://github.com/${repoKey(repo.owner, repo.name)}`,
       default_branch: repo.defaultBranch,
       owner: { login: repo.owner },
     });
@@ -908,6 +944,11 @@ interface UserInstallation {
     avatar_url: string | null;
     type: "Organization" | "User";
   };
+  /**
+   * What `GET /user/installations/{id}/repositories` answers for this user.
+   * `admin` is GitHub's "can this person install the App here" signal.
+   */
+  repositories?: Array<{ id: number; permissions?: { admin?: boolean } }>;
 }
 
 export function createGithubStubServer(): Server {
@@ -1004,7 +1045,12 @@ export function createGithubStubServer(): Server {
         }
         return;
       }
-      if (req.method === "GET" && url.pathname === "/user/installations") {
+      const installationRepositories =
+        /^\/user\/installations\/(\d+)\/repositories$/.exec(url.pathname);
+      if (
+        req.method === "GET" &&
+        (url.pathname === "/user/installations" || installationRepositories)
+      ) {
         const installations = users.get(
           req.headers.authorization?.replace(/^Bearer /, "") ?? "",
         )?.installations;
@@ -1013,9 +1059,46 @@ export function createGithubStubServer(): Server {
           return;
         }
         const page = Number(url.searchParams.get("page") ?? 1);
+        const perPage = Number(url.searchParams.get("per_page") ?? 100);
+        const slice = <T>(items: T[]) =>
+          items.slice((page - 1) * perPage, page * perPage);
+        if (url.pathname === "/user/installations") {
+          json(res, 200, {
+            installations: slice(installations),
+            total_count: installations.length,
+          });
+          return;
+        }
+        const id = Number(installationRepositories?.[1]);
+        const installation = installations.find((item) => item.id === id);
+        if (!installation) {
+          notFound(res);
+          return;
+        }
+        const repositories = installation.repositories ?? [];
         json(res, 200, {
-          installations: installations.slice((page - 1) * 100, page * 100),
-          total_count: installations.length,
+          repositories: slice(repositories),
+          total_count: repositories.length,
+        });
+        return;
+      }
+      if (
+        req.method === "POST" &&
+        /^\/app\/installations\/\d+\/access_tokens$/.test(url.pathname)
+      ) {
+        const installationId = url.pathname.split("/")[3];
+        const body = JSON.parse((await readBody(req)) || "{}") as {
+          repository_ids?: number[];
+          permissions?: Record<string, string>;
+        };
+        // The scope travels in the token, so a later read can be judged by it.
+        const scope = body.repository_ids?.length
+          ? `ids-${body.repository_ids.join(".")}`
+          : "all";
+        json(res, 201, {
+          token: `ghs-inst-${installationId}-${scope}`,
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          permissions: body.permissions ?? {},
         });
         return;
       }

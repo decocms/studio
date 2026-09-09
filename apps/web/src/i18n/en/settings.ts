@@ -133,9 +133,12 @@ export const settings = {
   "settings.repositories.addGithubAccount":
     "Add GitHub account or organization",
   "settings.repositories.githubShareHint":
-    "Choose your personal GitHub account or an organization you own to share with {organization}. Members with repository permissions in Studio can use this connection.",
+    "Choose your personal GitHub account, or an organization where you administer repositories, to share with {organization}. Members with repository permissions in Studio can use this connection.",
   "settings.repositories.githubInstallHint":
-    "No accounts you own are available. Install the GitHub App on your personal account or an organization you own, or ask its owner to connect it to Studio. Access to an individual repository does not allow sharing its entire account.",
+    "Nothing here is yours to share yet. Install the GitHub App on your personal account or on repositories you administer, or ask an account owner to connect it to Studio. A repository you only collaborate on is not yours to share.",
+  "settings.repositories.githubAdministered":
+    "{count} repositories you administer",
+  "settings.repositories.githubAdministeredOne": "1 repository you administer",
   "settings.repositories.installGithubAccount": "Install on another account",
   "settings.repositories.checkGithubAccess": "Check access",
   "settings.repositories.switchGithubUser": "Use another GitHub login",
