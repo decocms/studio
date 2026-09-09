@@ -15,6 +15,7 @@ import {
   blockEntriesInTree,
   blocksDirPath,
   primeBlobCache,
+  resolveBlockContents,
   resolveOrCreateHead,
 } from "./read-decofile";
 
@@ -124,6 +125,10 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
 
 async function commitBatch(batch: Batch): Promise<string> {
   const { client, branch, packagePath } = batch.deps;
+  /** blob sha -> text, shared across CAS attempts. A blob sha is immutable, so
+   *  a retry that rebuilds on a fresh head re-reads only blocks it has not
+   *  already resolved instead of the whole tree again. */
+  const blobMemo = new Map<string, string>();
   for (let attempt = 0; ; attempt++) {
     // Writes are session-only, so first-touch of a thread-minted branch may
     // materialize it here (a save can race ahead of the editor's first read).
@@ -175,11 +180,10 @@ async function commitBatch(batch: Batch): Promise<string> {
       ? `${packagePath}/.deco/blocks.gen.json`
       : ".deco/blocks.gen.json";
     if (tree.some((e) => e.type === "blob" && e.path === genPath)) {
-      const files = await Promise.all(
-        [...nextBlocks.values()].map(async (b) => ({
-          stem: b.stem,
-          content: "content" in b ? b.content : await client.readBlob(b.sha),
-        })),
+      const files = await resolveBlockContents(
+        client,
+        nextBlocks.values(),
+        blobMemo,
       );
       const { decofile: genContent, skipped } = mergeBlocks(files);
       if (skipped.length > 0) {
