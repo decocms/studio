@@ -1,7 +1,11 @@
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { DownstreamTokenData } from "./downstream-token";
-import type { Database, DownstreamToken } from "./types";
+import type {
+  Database,
+  DownstreamToken,
+  GitProviderAccountCredentialTable,
+} from "./types";
 
 /**
  * `git_provider_account_credentials` (migration 199): the OAuth grant or
@@ -24,23 +28,7 @@ export class GitProviderAccountCredentialStorage {
       .where("account_id", "=", accountId)
       .executeTakeFirst();
     if (!row) return null;
-    return {
-      id: row.account_id,
-      connectionId: row.account_id,
-      accessToken: await this.vault.decrypt(row.access_token),
-      refreshToken: row.refresh_token
-        ? await this.vault.decrypt(row.refresh_token)
-        : null,
-      scope: row.scope,
-      expiresAt: row.expires_at,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      clientId: row.client_id,
-      clientSecret: row.client_secret
-        ? await this.vault.decrypt(row.client_secret)
-        : null,
-      tokenEndpoint: row.token_endpoint,
-    };
+    return decryptGitProviderAccountCredentialRow(this.vault, row);
   }
 
   /** `data.connectionId` is the account id (see module doc). */
@@ -97,5 +85,69 @@ export class GitProviderAccountCredentialStorage {
     const expiryTime = expiresAt.getTime();
     if (Number.isNaN(expiryTime)) return true;
     return expiryTime - bufferMs < Date.now();
+  }
+}
+
+/**
+ * Row shape as read back from `git_provider_account_credentials`, before
+ * decryption.
+ */
+export type RawGitProviderAccountCredentialRow = Pick<
+  GitProviderAccountCredentialTable,
+  | "access_token"
+  | "refresh_token"
+  | "scope"
+  | "client_id"
+  | "client_secret"
+  | "token_endpoint"
+> & {
+  account_id: string;
+  expires_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+/**
+ * Decrypt sensitive fields from a `git_provider_account_credentials` row.
+ * Mirrors `decryptDownstreamTokenRow`: corrupted ciphertext (a tampered
+ * value, or a row encrypted under a vault key that has since been rotated)
+ * makes AES-GCM's tag check throw — that must not crash the caller. Callers
+ * already treat a missing row as "no cached credential, go re-authorize"; an
+ * undecryptable row degrades to the same outcome instead of a 500.
+ */
+export async function decryptGitProviderAccountCredentialRow(
+  vault: CredentialVault,
+  row: RawGitProviderAccountCredentialRow,
+): Promise<DownstreamToken | null> {
+  try {
+    const accessToken = await vault.decrypt(row.access_token);
+    const refreshToken = row.refresh_token
+      ? await vault.decrypt(row.refresh_token)
+      : null;
+    const clientSecret = row.client_secret
+      ? await vault.decrypt(row.client_secret)
+      : null;
+    return {
+      id: row.account_id,
+      connectionId: row.account_id,
+      accessToken,
+      refreshToken,
+      scope: row.scope,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      clientId: row.client_id,
+      clientSecret,
+      tokenEndpoint: row.token_endpoint,
+    };
+  } catch (error) {
+    console.warn(
+      "[GitProviderAccountCredential] failed to decrypt credential row",
+      {
+        accountId: row.account_id,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return null;
   }
 }
