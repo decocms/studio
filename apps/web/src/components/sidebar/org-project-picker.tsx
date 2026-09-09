@@ -217,6 +217,21 @@ function PickerContent({
   const { hits, isSearching, isStale, isError } = useProjectSearch(
     searching ? term : "",
   );
+  /** Organizations matching the term, filtered CLIENT-side. The full list is
+   *  already in memory (`useActiveOrganizations`), so matching it by name or
+   *  slug is free and instant — no per-org scan, which is the cost the project
+   *  search endpoint exists to avoid. This is what lets the search field honour
+   *  its "organizations and projects" placeholder: without it, typing an org's
+   *  name found nothing, since the project endpoint only knows about projects. */
+  const orgMatches = searching
+    ? allOrgs.filter((candidate) => {
+        const q = term.toLowerCase();
+        return (
+          candidate.name.toLowerCase().includes(q) ||
+          candidate.slug.toLowerCase().includes(q)
+        );
+      })
+    : [];
   /** The settings tree is its own shell; the scope means nothing inside it. */
   const inSettings = useLeafRoutePath().startsWith("/$org/settings");
 
@@ -293,11 +308,14 @@ function PickerContent({
             {isError && (
               <CommandEmpty>{t("sidebar.picker.searchFailed")}</CommandEmpty>
             )}
-            {!isError && !isSearching && hits.length === 0 && (
-              <CommandEmpty>
-                {t("sidebar.picker.noMatches", { query: term })}
-              </CommandEmpty>
-            )}
+            {!isError &&
+              !isSearching &&
+              hits.length === 0 &&
+              orgMatches.length === 0 && (
+                <CommandEmpty>
+                  {t("sidebar.picker.noMatches", { query: term })}
+                </CommandEmpty>
+              )}
             {!isError && hits.length > 0 && (
               /* These rows still answer the PREVIOUS term while the current
                  one is in flight — kept on screen so the list never blinks
@@ -317,6 +335,24 @@ function PickerContent({
                     rows={rows}
                     onScope={scopeTo}
                     onTravel={travelTo}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {/* Organizations matching the term, listed after the projects to
+                mirror the browsing order. Local data, so it shows instantly
+                even while the project request is still in flight. */}
+            {orgMatches.length > 0 && (
+              <CommandGroup heading={t("sidebar.picker.orgsHeading")}>
+                {orgMatches.map((candidate: PickerOrg) => (
+                  <OrgRow
+                    key={candidate.id}
+                    candidate={candidate}
+                    currentOrgSlug={org.slug}
+                    currentOrgName={org.name}
+                    rows={rows}
+                    onTravel={travelTo}
+                    onClose={onClose}
                   />
                 ))}
               </CommandGroup>
@@ -392,36 +428,17 @@ function PickerContent({
                   onChanged={refetchInvitations}
                 />
               ))}
-              {allOrgs.map((candidate: PickerOrg) => {
-                const isCurrent = candidate.slug === org.slug;
-                const value = rowValue.org(candidate.slug);
-                /** The current org is not travel — selecting it goes nowhere,
-                 *  so the strip must not offer to leave anything. */
-                rows.set(value, {
-                  kind: isCurrent ? "scope" : "travel",
-                  label: candidate.name,
-                  ...(isCurrent ? {} : { leaves: org.name }),
-                });
-                return (
-                  <CommandItem
-                    key={candidate.id}
-                    value={value}
-                    className={ROW}
-                    onSelect={() =>
-                      isCurrent ? onClose() : travelTo(candidate.slug)
-                    }
-                  >
-                    <OrgIcon org={candidate} size="xs" />
-                    <span className="min-w-0 flex-1 truncate">
-                      {candidate.name}
-                    </span>
-                    {/* The same check the scoped project wears: "where you
-                        are" reads as one mark throughout, rather than a tick
-                        in one group and the word "current" in the next. */}
-                    {isCurrent && <Check size={14} />}
-                  </CommandItem>
-                );
-              })}
+              {allOrgs.map((candidate: PickerOrg) => (
+                <OrgRow
+                  key={candidate.id}
+                  candidate={candidate}
+                  currentOrgSlug={org.slug}
+                  currentOrgName={org.name}
+                  rows={rows}
+                  onTravel={travelTo}
+                  onClose={onClose}
+                />
+              ))}
             </CommandGroup>
           </>
         )}
@@ -429,6 +446,48 @@ function PickerContent({
 
       <VerbStrip active={active} rows={rows} />
     </Command>
+  );
+}
+
+/** One organization row, shared by both modes so an org reads the same whether
+ *  you browsed to it or searched for it. Registers its verb in `rows` as a
+ *  side effect of render, exactly like `SearchHitRow` — the current org SCOPEs
+ *  (a no-op that just closes), every other org TRAVELs and says what it leaves. */
+function OrgRow({
+  candidate,
+  currentOrgSlug,
+  currentOrgName,
+  rows,
+  onTravel,
+  onClose,
+}: {
+  candidate: PickerOrg;
+  currentOrgSlug: string;
+  currentOrgName: string;
+  rows: Map<string, RowMeta>;
+  onTravel: (slug: string) => void;
+  onClose: () => void;
+}) {
+  const isCurrent = candidate.slug === currentOrgSlug;
+  const value = rowValue.org(candidate.slug);
+  rows.set(value, {
+    kind: isCurrent ? "scope" : "travel",
+    label: candidate.name,
+    ...(isCurrent ? {} : { leaves: currentOrgName }),
+  });
+  return (
+    <CommandItem
+      value={value}
+      className={ROW}
+      onSelect={() => (isCurrent ? onClose() : onTravel(candidate.slug))}
+    >
+      <OrgIcon org={candidate} size="xs" />
+      <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
+      {/* The same check the scoped project wears: "where you are" reads as one
+          mark throughout, rather than a tick in one group and the word
+          "current" in the next. */}
+      {isCurrent && <Check size={14} />}
+    </CommandItem>
   );
 }
 

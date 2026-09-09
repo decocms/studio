@@ -16,8 +16,7 @@ type LinkPrCall = {
   organizationId: string;
   url: string;
   prNumber: number;
-  repoOwner: string;
-  repoName: string;
+  repo: { provider: string; host: string; path: string };
   connectionId?: string | null;
 };
 
@@ -66,8 +65,7 @@ describe("capturePrForRun", () => {
         organizationId: "org-1",
         url: "https://github.com/acme/site/pull/42",
         prNumber: 42,
-        repoOwner: "acme",
-        repoName: "site",
+        repo: { provider: "github", host: "github.com", path: "acme/site" },
         connectionId: "conn-9",
       },
     ]);
@@ -145,9 +143,11 @@ describe("resolveAdvanceTargets", () => {
 });
 
 describe("isPrCreateMcpTool", () => {
-  it("matches the GitHub MCP PR-create tools", () => {
+  it("matches each provider's create tool", () => {
     expect(isPrCreateMcpTool("create_pull_request")).toBe(true);
     expect(isPrCreateMcpTool("createPullRequest")).toBe(true);
+    expect(isPrCreateMcpTool("create_merge_request")).toBe(true);
+    expect(isPrCreateMcpTool("createMergeRequest")).toBe(true);
   });
 
   it("matches a gateway-prefixed tool name", () => {
@@ -160,18 +160,23 @@ describe("isPrCreateMcpTool", () => {
   it("ignores other tools", () => {
     expect(isPrCreateMcpTool("list_pull_requests")).toBe(false);
     expect(isPrCreateMcpTool("pull_request_read")).toBe(false);
+    expect(isPrCreateMcpTool("list_merge_requests")).toBe(false);
     expect(isPrCreateMcpTool("bash")).toBe(false);
   });
 });
 
 describe("isPrCreateBashCommand", () => {
-  it("matches `gh pr create` with flags and extra whitespace", () => {
+  it("matches either CLI's create, with flags and extra whitespace", () => {
     expect(isPrCreateBashCommand("gh pr create")).toBe(true);
     expect(isPrCreateBashCommand("gh pr create --fill --base main")).toBe(true);
     expect(isPrCreateBashCommand("cd repo && gh  pr  create")).toBe(true);
+    expect(isPrCreateBashCommand("glab mr create")).toBe(true);
+    expect(
+      isPrCreateBashCommand("cd repo && glab mr create --fill --yes"),
+    ).toBe(true);
   });
 
-  it("matches a curl REST POST to the GitHub pulls endpoint", () => {
+  it("matches a curl REST POST to either provider's endpoint", () => {
     // The real prod case: agent fell back to curl when the MCP tool 404'd.
     const cmd =
       'cd /app/repo && curl -s -X POST -H "Authorization: token $TOKEN" ' +
@@ -182,16 +187,27 @@ describe("isPrCreateBashCommand", () => {
         "curl --request POST https://api.github.com/repos/o/r/pulls -d '{}'",
       ),
     ).toBe(true);
+    expect(
+      isPrCreateBashCommand(
+        "curl -X POST https://gitlab.com/api/v4/projects/group%2Fstore/merge_requests -d '{}'",
+      ),
+    ).toBe(true);
   });
 
   it("does not match unrelated gh / git / curl commands", () => {
     expect(isPrCreateBashCommand("gh pr list")).toBe(false);
     expect(isPrCreateBashCommand("gh pr view 12")).toBe(false);
+    expect(isPrCreateBashCommand("glab mr list")).toBe(false);
     expect(isPrCreateBashCommand("git push origin feature")).toBe(false);
     expect(isPrCreateBashCommand("echo create pull request")).toBe(false);
-    // GET to /pulls (listing) must not count — only a POST opens a PR.
+    // A GET to the listing endpoint must not count — only a POST opens one.
     expect(
       isPrCreateBashCommand("curl https://api.github.com/repos/o/r/pulls"),
+    ).toBe(false);
+    expect(
+      isPrCreateBashCommand(
+        "curl https://gitlab.com/api/v4/projects/1/merge_requests",
+      ),
     ).toBe(false);
   });
 });

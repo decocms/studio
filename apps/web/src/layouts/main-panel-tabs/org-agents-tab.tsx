@@ -14,9 +14,9 @@ import { SearchLg } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
-import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
+import { RepositoryImportPicker } from "@/components/repository-import-picker.tsx";
 import { openCommandPalette } from "@/components/command-palette-store";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitBranch01 } from "@untitledui/icons";
 import { ConnectPill } from "@/components/org-home/connect-pill";
 import { firstName, greetingSlot } from "@/components/org-home/greeting";
 import {
@@ -193,7 +193,7 @@ export function OrgAgentsTab() {
         setGithubPickerOpen(true);
       }}
     >
-      <GitHubIcon size={14} />
+      <GitBranch01 size={14} />
       {t("home.orgAgents.importFromGitHub")}
     </Button>
   );
@@ -236,7 +236,7 @@ export function OrgAgentsTab() {
         </Page.Body>
       </Page.Content>
 
-      <GitHubRepoPicker
+      <RepositoryImportPicker
         open={githubPickerOpen}
         onOpenChange={setGithubPickerOpen}
       />

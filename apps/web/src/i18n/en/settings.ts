@@ -10,6 +10,7 @@ export const settings = {
   "settings.nav.billing": "Billing & AI",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Synced repos",
+  "settings.nav.repositories": "Repositories",
   "settings.nav.storage": "Storage",
   "settings.nav.advanced": "Advanced",
   "settings.subnav.ariaLabel": "Settings sections",
@@ -76,7 +77,7 @@ export const settings = {
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.syncedRepos.pageDescription":
-    "GitHub repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
+    "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",
   "settings.syncedRepos.cancel": "Cancel",
   "settings.syncedRepos.create": "Create",
@@ -85,7 +86,7 @@ export const settings = {
     'Sync created — syncing into "{volume}" in the background',
   "settings.syncedRepos.emptyTitle": "No synced repos yet",
   "settings.syncedRepos.emptyDescription":
-    "Pick a GitHub repository and it will appear in the library as a read-only folder, kept in sync automatically.",
+    "Pick a repository and it will appear in the library as a read-only folder, kept in sync automatically.",
   "settings.syncedRepos.failed": "Something went wrong",
   "settings.syncedRepos.nameDialogDescription":
     "{repo} will be kept in sync into this read-only library folder.",
@@ -98,6 +99,96 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Stop syncing "{volume}"?',
   "settings.syncedRepos.removed": "Sync removed",
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
+  "settings.repositories.pageDescription":
+    "Connect your git provider accounts and link the repositories this organization works with.",
+  "settings.repositories.accountsTitle": "Connected accounts",
+  "settings.repositories.accountsDescription":
+    "Accounts Studio uses to read your repositories and push changes on your behalf.",
+  "settings.repositories.accountsEmptyTitle": "No accounts connected",
+  "settings.repositories.accountsEmptyDescription":
+    "Connect a GitHub or GitLab account to browse your repositories and link private ones.",
+  "settings.repositories.noProvidersTitle": "No git provider configured",
+  "settings.repositories.noProvidersDescription":
+    "Signing in with GitHub or GitLab needs provider credentials an administrator configures for this deployment. You can still connect a GitLab account with an access token.",
+  "settings.repositories.githubUnavailable":
+    "Ask an administrator to enable GitHub.",
+  "settings.repositories.browseAccount": "Browse repositories in your account.",
+  "settings.repositories.gitlabTokenHint":
+    "Use a personal, project or group access token.",
+  "settings.repositories.addGithubAccount":
+    "Add GitHub account or organization",
+  "settings.repositories.githubShareHint":
+    "Choose an account to share with {organization}. Members with repository permissions in Studio can use this connection.",
+  "settings.repositories.githubInstallHint":
+    "No accounts are available yet. Install the GitHub App on your account or organization, or ask an organization owner to approve access.",
+  "settings.repositories.installGithubAccount": "Install on another account",
+  "settings.repositories.checkGithubAccess": "Check access",
+  "settings.repositories.switchGithubUser": "Use another GitHub login",
+  "settings.repositories.githubReturnHint":
+    "GitHub opens in a new tab. After saving access, return here to choose the account. If it does not appear, use Check access.",
+  "settings.repositories.githubRefreshFailed":
+    "Could not check GitHub access. Try again without leaving this dialog.",
+  "settings.repositories.githubConnected": "GitHub account connected",
+  "settings.repositories.manageRepositoryAccess": "Manage repository access",
+  "settings.repositories.connectedBy": "Connected by {name}",
+  "settings.repositories.connectedByUnknown":
+    "Connected by an unavailable user",
+  "settings.repositories.dismiss": "Dismiss",
+  "settings.repositories.tryAgain": "Try again",
+  "settings.repositories.oauthNoInstallations":
+    "GitHub authorization succeeded, but no app installations are available to this user. Add a GitHub account or organization to finish setup.",
+  "settings.repositories.oauthDenied":
+    "Authorization was cancelled. Connect again when you are ready.",
+  "settings.repositories.oauthExpired":
+    "This connection attempt expired or belongs to another session. Start again from this page.",
+  "settings.repositories.oauthNotConfigured":
+    "This git provider is not configured. Ask an administrator to enable it.",
+  "settings.repositories.oauthFailed":
+    "Could not connect your git account. Try again. If it keeps failing, contact an administrator.",
+  "settings.repositories.connectGitlab": "Connect GitLab",
+  "settings.repositories.connectGitlabToken": "Connect GitLab with a token",
+  "settings.repositories.authKindGithubApp": "GitHub App",
+  "settings.repositories.authKindOauth": "OAuth",
+  "settings.repositories.authKindToken": "Personal token",
+  "settings.repositories.needsReconnect": "Needs reconnect",
+  "settings.repositories.needsReconnectHint":
+    "This deployment can no longer authenticate as this account. Reconnect it to restore access to its private repositories.",
+  "settings.repositories.disconnect": "Disconnect",
+  "settings.repositories.disconnectTitle": 'Disconnect "{login}"?',
+  "settings.repositories.disconnectDescription":
+    "Repositories linked through this account stay listed, but become anonymous public clones — private ones will stop working.",
+  "settings.repositories.disconnected": "Account disconnected",
+  "settings.repositories.tokenDialogTitle": "Connect GitLab with a token",
+  "settings.repositories.tokenDialogDescription":
+    "Use a personal, project or group access token with the api scope — agents push branches and open merge requests with it. Stored encrypted and never shown again.",
+  "settings.repositories.tokenHostLabel": "Host",
+  "settings.repositories.tokenHostPlaceholder": "gitlab.com",
+  "settings.repositories.tokenLabel": "Access token",
+  "settings.repositories.tokenPlaceholder": "glpat-…",
+  "settings.repositories.connect": "Connect",
+  "settings.repositories.connecting": "Connecting…",
+  "settings.repositories.connected": 'Connected as "{login}"',
+  "settings.repositories.reposTitle": "Repositories",
+  "settings.repositories.reposDescription":
+    "Repositories available to this organization's agents and workflows.",
+  "settings.repositories.reposEmptyTitle": "No repositories yet",
+  "settings.repositories.reposEmptyDescription":
+    "Choose a repository from a connected GitHub or GitLab account.",
+  "settings.repositories.addRepository": "Add repository",
+  "settings.repositories.unlink": "Unlink",
+  "settings.repositories.unlinkTitle": 'Unlink "{path}"?',
+  "settings.repositories.unlinkDescription":
+    "The repository is removed from this organization. Nothing is deleted on the provider.",
+  "settings.repositories.unlinked": "Repository unlinked",
+  "settings.repositories.defaultBranch": "Default branch: {branch}",
+  "settings.repositories.openInProvider": "Open repository",
+  "settings.repositories.visibilityPublic": "Public",
+  "settings.repositories.visibilityPrivate": "Private",
+  "settings.repositories.visibilityInternal": "Internal",
+  "settings.repositories.anonymousClone": "Anonymous clone",
+  "settings.repositories.addDialogTitle": "Add repository",
+  "settings.repositories.cancel": "Cancel",
+  "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",
   "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",

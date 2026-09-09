@@ -12,6 +12,7 @@ export const settings = {
   "settings.nav.billing": "Cobrança e IA",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Repos sincronizados",
+  "settings.nav.repositories": "Repositórios",
   "settings.nav.storage": "Armazenamento",
   "settings.nav.advanced": "Avançado",
   "settings.subnav.ariaLabel": "Seções de configurações",
@@ -81,7 +82,7 @@ export const settings = {
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
   "settings.syncedRepos.pageDescription":
-    "Repositórios do GitHub espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
+    "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
   "settings.syncedRepos.cancel": "Cancelar",
   "settings.syncedRepos.create": "Criar",
@@ -90,7 +91,7 @@ export const settings = {
     'Sincronização criada — sincronizando em "{volume}" em segundo plano',
   "settings.syncedRepos.emptyTitle": "Nenhum repo sincronizado ainda",
   "settings.syncedRepos.emptyDescription":
-    "Escolha um repositório do GitHub e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
+    "Escolha um repositório e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
   "settings.syncedRepos.failed": "Algo deu errado",
   "settings.syncedRepos.nameDialogDescription":
     "{repo} será mantido em sincronia nesta pasta somente leitura da biblioteca.",
@@ -103,6 +104,97 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Parar de sincronizar "{volume}"?',
   "settings.syncedRepos.removed": "Sincronização removida",
   "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
+  "settings.repositories.pageDescription":
+    "Conecte as contas do seu provedor git e vincule os repositórios com os quais esta organização trabalha.",
+  "settings.repositories.accountsTitle": "Contas conectadas",
+  "settings.repositories.accountsDescription":
+    "Contas que o Studio usa para ler seus repositórios e enviar alterações em seu nome.",
+  "settings.repositories.accountsEmptyTitle": "Nenhuma conta conectada",
+  "settings.repositories.accountsEmptyDescription":
+    "Conecte uma conta do GitHub ou GitLab para navegar pelos seus repositórios e vincular os privados.",
+  "settings.repositories.noProvidersTitle": "Nenhum provedor git configurado",
+  "settings.repositories.noProvidersDescription":
+    "Entrar com GitHub ou GitLab depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab com um token de acesso.",
+  "settings.repositories.githubUnavailable":
+    "Peça a um administrador para habilitar o GitHub.",
+  "settings.repositories.browseAccount": "Busque repositórios da sua conta.",
+  "settings.repositories.gitlabTokenHint":
+    "Use um token de acesso pessoal, de projeto ou de grupo.",
+  "settings.repositories.addGithubAccount":
+    "Adicionar conta ou organização do GitHub",
+  "settings.repositories.githubShareHint":
+    "Escolha uma conta para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
+  "settings.repositories.githubInstallHint":
+    "Nenhuma conta disponível ainda. Instale o app do GitHub na sua conta ou organização, ou peça a um administrador da organização para aprovar o acesso.",
+  "settings.repositories.installGithubAccount": "Instalar em outra conta",
+  "settings.repositories.checkGithubAccess": "Verificar acesso",
+  "settings.repositories.switchGithubUser": "Usar outro login do GitHub",
+  "settings.repositories.githubReturnHint":
+    "O GitHub abre em uma nova aba. Depois de salvar o acesso, volte aqui para escolher a conta. Se ela não aparecer, use Verificar acesso.",
+  "settings.repositories.githubRefreshFailed":
+    "Não foi possível verificar o acesso no GitHub. Tente novamente sem sair desta janela.",
+  "settings.repositories.githubConnected": "Conta do GitHub conectada",
+  "settings.repositories.manageRepositoryAccess":
+    "Gerenciar acesso aos repositórios",
+  "settings.repositories.connectedBy": "Conectado por {name}",
+  "settings.repositories.connectedByUnknown":
+    "Conectado por um usuário indisponível",
+  "settings.repositories.dismiss": "Dispensar",
+  "settings.repositories.tryAgain": "Tentar novamente",
+  "settings.repositories.oauthNoInstallations":
+    "A autorização no GitHub foi concluída, mas nenhuma instalação do app está disponível para este usuário. Adicione uma conta ou organização do GitHub para concluir a configuração.",
+  "settings.repositories.oauthDenied":
+    "A autorização foi cancelada. Conecte novamente quando quiser.",
+  "settings.repositories.oauthExpired":
+    "Esta tentativa de conexão expirou ou pertence a outra sessão. Comece novamente por esta página.",
+  "settings.repositories.oauthNotConfigured":
+    "Este provedor git não está configurado. Peça a um administrador para habilitá-lo.",
+  "settings.repositories.oauthFailed":
+    "Não foi possível conectar sua conta git. Tente novamente. Se o erro persistir, entre em contato com um administrador.",
+  "settings.repositories.connectGitlab": "Conectar GitLab",
+  "settings.repositories.connectGitlabToken": "Conectar GitLab com um token",
+  "settings.repositories.authKindGithubApp": "GitHub App",
+  "settings.repositories.authKindOauth": "OAuth",
+  "settings.repositories.authKindToken": "Token pessoal",
+  "settings.repositories.needsReconnect": "Precisa reconectar",
+  "settings.repositories.needsReconnectHint":
+    "Esta instalação não consegue mais se autenticar como esta conta. Reconecte-a para restaurar o acesso aos repositórios privados.",
+  "settings.repositories.disconnect": "Desconectar",
+  "settings.repositories.disconnectTitle": 'Desconectar "{login}"?',
+  "settings.repositories.disconnectDescription":
+    "Os repositórios vinculados por esta conta continuam na lista, mas viram clones públicos anônimos — os privados deixarão de funcionar.",
+  "settings.repositories.disconnected": "Conta desconectada",
+  "settings.repositories.tokenDialogTitle": "Conectar o GitLab com um token",
+  "settings.repositories.tokenDialogDescription":
+    "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api — os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
+  "settings.repositories.tokenHostLabel": "Host",
+  "settings.repositories.tokenHostPlaceholder": "gitlab.com",
+  "settings.repositories.tokenLabel": "Token de acesso",
+  "settings.repositories.tokenPlaceholder": "glpat-…",
+  "settings.repositories.connect": "Conectar",
+  "settings.repositories.connecting": "Conectando…",
+  "settings.repositories.connected": 'Conectado como "{login}"',
+  "settings.repositories.reposTitle": "Repositórios",
+  "settings.repositories.reposDescription":
+    "Repositórios disponíveis para os agentes e automações desta organização.",
+  "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
+  "settings.repositories.reposEmptyDescription":
+    "Escolha um repositório de uma conta conectada do GitHub ou GitLab.",
+  "settings.repositories.addRepository": "Adicionar repositório",
+  "settings.repositories.unlink": "Desvincular",
+  "settings.repositories.unlinkTitle": 'Desvincular "{path}"?',
+  "settings.repositories.unlinkDescription":
+    "O repositório é removido desta organização. Nada é apagado no provedor.",
+  "settings.repositories.unlinked": "Repositório desvinculado",
+  "settings.repositories.defaultBranch": "Branch padrão: {branch}",
+  "settings.repositories.openInProvider": "Abrir repositório",
+  "settings.repositories.visibilityPublic": "Público",
+  "settings.repositories.visibilityPrivate": "Privado",
+  "settings.repositories.visibilityInternal": "Interno",
+  "settings.repositories.anonymousClone": "Clone anônimo",
+  "settings.repositories.addDialogTitle": "Adicionar repositório",
+  "settings.repositories.cancel": "Cancelar",
+  "settings.repositories.failed": "Algo deu errado",
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",

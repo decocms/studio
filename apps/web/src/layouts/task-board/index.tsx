@@ -71,16 +71,9 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
-import {
-  getWellKnownDecopilotVirtualMCP,
-  useConnections,
-  useProjectContext,
-} from "@/sdk";
-import {
-  getRepoScope,
-  listRepoScopeLabels,
-} from "@decocms/shared/github-repo-scope";
-import { GitHubRepoPicker } from "@/components/github-repo-picker";
+import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
+
+import { RepositoryImportPicker } from "@/components/repository-import-picker";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -128,7 +121,7 @@ import {
   toEndOfDayIso,
 } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
-import { ConnectGitHubDialog } from "./connect-github-dialog";
+import { useRepositories } from "@/hooks/use-git-providers";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
@@ -151,14 +144,15 @@ import {
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
-import {
-  taskMatchesScope,
-  useBoardSearch,
-  visibleSelection,
-} from "./filters-search";
-import { useProjectScope } from "@/hooks/use-project-scope";
+import { useBoardSearch, visibleSelection } from "./filters-search";
 import { useProjectIndex } from "@/hooks/use-project-index";
-import { filterAfterCreate } from "@/lib/project-index";
+import {
+  entryForFilter,
+  filterAfterCreate,
+  stampableEntries,
+  type ProjectIndexEntry,
+} from "@/lib/project-index";
+import { ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
@@ -438,23 +432,41 @@ function FooterDueDate({
   );
 }
 
-/** The card's one run action, as a written footer button. Revealed on hover; its collapsed width keeps the resting footer uncluttered. */
-function CardActionGlyph({
+/**
+ * The card's one run action, floating in the title's top-right corner.
+ *
+ * Nothing else on the card can host it. The footer can't: every glyph there
+ * (type, due date, priority, assignee) is a control you reach by hovering, so
+ * covering one on hover removes the very affordance the hover grants. A row of
+ * its own costs every actionable card that height, forever, for a button you
+ * only want while pointing at the card.
+ *
+ * What made the corner unreadable was the hard edge, not the overlap — the
+ * title ran straight into the button mid-word. So the title fades out under it
+ * (`fade-text-end`) and reads as trailing off instead.
+ */
+function CardAction({
   action,
 }: {
   action: { icon: typeof RefreshCw01; label: string; onClick: () => void };
 }) {
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
-      aria-label={action.label}
       onClick={(e) => {
         e.stopPropagation();
         action.onClick();
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      className="-my-1.5 h-7 gap-1.5 px-2 text-xs font-medium pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      // The fade has to end where this button starts, and how wide it is depends on the label — i.e. on the language.
+      ref={(node) =>
+        node?.parentElement?.style.setProperty(
+          "--fade-text-end",
+          `${node.offsetWidth}px`,
+        )
+      }
+      className="absolute -top-0.5 right-0 h-6 gap-1.5 rounded-full px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
       {action.label}
@@ -477,11 +489,9 @@ function CardFooter({
   onPriorityChange,
   onTypeChange,
   onDueDateChange,
-  action,
 }: {
   item: TaskBoardItem;
   checks: { summary: ChecksSummary; enabled: ReviewerKind[] } | null;
-  action?: { icon: typeof RefreshCw01; label: string; onClick: () => void };
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
@@ -508,7 +518,6 @@ function CardFooter({
         )}
       </span>
       <span className="flex shrink-0 items-center gap-2">
-        {action && <CardActionGlyph action={action} />}
         {(item.priority !== "none" || onPriorityChange) && (
           <PriorityIcon priority={item.priority} onChange={onPriorityChange} />
         )}
@@ -813,35 +822,20 @@ export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
-  // Handing a task to the Super Agent makes it open a PR — so it needs at
-  // least one repo imported (a repo-scoped mcp-github connection; the bare
-  // org-level connection has no `repoScope` and isn't loadable). Every path that
-  // assigns to the Super Agent (Auto-fix, the lane assignee picker, the task
-  // dialog) prompts to connect + pick a repo instead of enqueueing a run that
-  // has nothing to load.
-  // Mirrors `load_repo`'s `selectLoadableRepos` (apps/api): the Super Agent's
-  // built-in loads ANY active repo-scoped `mcp-github` connection — org-shared
-  // OR per-agent (e.g. a repo imported by a Code Agent). So an existing
-  // per-agent connection already satisfies this; don't force a fresh connect.
-  const githubConnections = useConnections({ slug: "mcp-github" }) ?? [];
-  const hasRepo = githubConnections.some(
-    (c) => c.status === "active" && getRepoScope(c) !== null,
+  const repositories = useRepositories();
+  const usableRepos = (repositories.data ?? []).filter(
+    (repository) => repository.usable,
   );
-  // Distinct `owner/name` repos the org can reach — enrichment for the project
-  // index, so a repo imported but not yet on any card still gets a bucket.
-  const repos = listRepoScopeLabels(githubConnections);
-  const [connectGithubOpen, setConnectGithubOpen] = useState(false);
-  // Connecting only grants a broad org-level GitHub connection — Auto-fix
-  // still needs a repo imported (see `hasRepo`), so once connected we chain
-  // straight into the repo picker.
+  const hasRepo = usableRepos.length > 0;
+  const repos = usableRepos.map((repository) => repository.path);
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   // Returns true if the assignment was blocked (connect prompt opened) so the
   // caller stops before dispatching.
-  const blockSuperAgentWithoutGithub = (
+  const blockSuperAgentWithoutRepository = (
     assigneeId: string | null | undefined,
   ) => {
     if (assigneeId === SUPER_AGENT_ASSIGNEE_ID && !hasRepo) {
-      setConnectGithubOpen(true);
+      setRepoPickerOpen(true);
       return true;
     }
     return false;
@@ -878,7 +872,7 @@ export function TaskBoardPage() {
   const confirmRerun = () => {
     if (rerunTargets.length === 0) return;
     // Same GitHub precondition as delegating: the run is expected to open a PR.
-    if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) {
+    if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID)) {
       setRerunTargets([]);
       return;
     }
@@ -898,16 +892,18 @@ export function TaskBoardPage() {
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const { filters, setFilters, layout, setLayout } = useBoardSearch();
-  /** Ambient project scope — a filter over the org-wide board, never a
-   *  container. Null repo (or no scope) means the board stays org-wide. */
-  const {
-    repo: scopeRepo,
-    project: scopeProject,
-    setScope,
-  } = useProjectScope();
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
+  /** The projects a card can be stamped for — the same reachability-gated
+   *  subset the task dialog's Project picker offers, reused by the bulk bar. */
+  const projectEntries = stampableEntries(projectIndex);
+  /** The repo a new card inherits: the active Project filter's, so a card made
+   *  while the board is narrowed to a project belongs to it. Null for a
+   *  repo-less project (the card links to it through its thread instead). */
+  const activeProjectRepo = filters.project
+    ? (entryForFilter(filters.project, projectIndex)?.repo ?? null)
+    : null;
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -1039,18 +1035,12 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  /**
-   * Scope first, then filters. The ambient scope keeps unclassified cards; the
-   * board's own project filter does not — two different questions, composed
-   * rather than conflated, exactly as #6801 left them.
-   */
-  const scopedItems = items.filter((item) => taskMatchesScope(item, scopeRepo));
-  const visibleItems = scopedItems.filter((item) =>
+  const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters, projectIndex),
   );
-  /** Bulk actions read the selection reconciled against what is on screen: the
-   *  scope switcher lives outside the board, so a scope change must not leave a
-   *  hidden card's id queued for a move, an assign — or a delete. */
+  /** Bulk actions read the selection reconciled against what is on screen: a
+   *  filter change must not leave a hidden card's id queued for a move, an
+   *  assign — or a delete. */
   const selectedIds = visibleSelection(selection, visibleItems);
   // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
   const visibleListItems = visibleItems.filter(
@@ -1147,36 +1137,9 @@ export function TaskBoardPage() {
       {/* Header — capped + centered to the same width as the board content so
         they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-xl font-medium text-foreground">
-            {t("taskBoard.taskBoard.tasksTitle")}
-          </h1>
-          {scopeProject && (
-            <button
-              type="button"
-              onClick={() => setScope(null)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent/50"
-              aria-label={t("taskBoard.scope.clear", {
-                name: scopeProject.title,
-              })}
-            >
-              <span className="truncate max-w-[16rem]">
-                {scopeProject.title}
-              </span>
-              <X size={12} className="text-muted-foreground" />
-            </button>
-          )}
-        </div>
-        {/* Only the case a person can act on. The counts that used to sit here
-            ("N routed here · N unassigned") narrated the scope filter's
-            fail-open in its own vocabulary — "routed" is the mechanism, and
-            "unassigned" means "no repo" here while it means "no assignee"
-            everywhere else in the product. */}
-        {scopeProject && !scopeRepo && (
-          <p className="-mt-2 text-xs text-muted-foreground">
-            {t("taskBoard.scope.noRepo")}
-          </p>
-        )}
+        <h1 className="text-xl font-medium text-foreground">
+          {t("taskBoard.taskBoard.tasksTitle")}
+        </h1>
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
@@ -1283,7 +1246,7 @@ export function TaskBoardPage() {
             );
           }}
           onAssign={(id, userId) => {
-            if (blockSuperAgentWithoutGithub(userId)) return;
+            if (blockSuperAgentWithoutRepository(userId)) return;
             // `userId` is `null` for "Unassigned" — `?? undefined` used to
             // coalesce that into "field not provided", silently no-opping the
             // unassign since TASK_BOARD_ITEM_UPDATE treats undefined as
@@ -1302,7 +1265,8 @@ export function TaskBoardPage() {
             actions.update.mutate({ id, dueDate })
           }
           onAutoFix={(item) => {
-            if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+            if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID))
+              return;
             actions.update.mutate(
               {
                 id: item.id,
@@ -1364,7 +1328,7 @@ export function TaskBoardPage() {
           onClose={() => closeTask()}
           isSaving={actions.update.isPending}
           onSubmit={(input) => {
-            if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+            if (blockSuperAgentWithoutRepository(input.assigneeId)) {
               closeTask();
               return;
             }
@@ -1410,7 +1374,8 @@ export function TaskBoardPage() {
           }}
           onNewChat={() => void startChatFromTask(openItem)}
           onAutoFix={() => {
-            if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+            if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID))
+              return;
             actions.update.mutate(
               { id: openItem.id, assigneeId: SUPER_AGENT_ASSIGNEE_ID },
               { onError: onDelegateError },
@@ -1441,9 +1406,10 @@ export function TaskBoardPage() {
         open={dialogOpen}
         onClose={closeCreate}
         defaultStatus={createStatus ?? undefined}
+        defaultRepo={activeProjectRepo}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
-          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+          if (blockSuperAgentWithoutRepository(input.assigneeId)) {
             closeCreate();
             return;
           }
@@ -1453,13 +1419,8 @@ export function TaskBoardPage() {
         }}
       />
 
-      <ConnectGitHubDialog
-        open={connectGithubOpen}
-        onOpenChange={setConnectGithubOpen}
-        onConnected={() => setRepoPickerOpen(true)}
-      />
-      <GitHubRepoPicker
-        mode="connection"
+      <RepositoryImportPicker
+        mode="link"
         open={repoPickerOpen}
         onOpenChange={setRepoPickerOpen}
       />
@@ -1482,6 +1443,11 @@ export function TaskBoardPage() {
         <SelectionBar
           count={selectedIds.size}
           members={members}
+          projectEntries={projectEntries}
+          onSetRepo={(repo) => {
+            for (const id of selectedIds) actions.update.mutate({ id, repo });
+            clearSelection();
+          }}
           onMoveTo={(status) => {
             for (const id of selectedIds) actions.update.mutate({ id, status });
             clearSelection();
@@ -1502,7 +1468,7 @@ export function TaskBoardPage() {
             clearSelection();
           }}
           onAssign={(userId) => {
-            if (blockSuperAgentWithoutGithub(userId)) return;
+            if (blockSuperAgentWithoutRepository(userId)) return;
             for (const id of selectedIds)
               actions.update.mutate(
                 { id, assigneeId: userId },
@@ -1527,7 +1493,7 @@ export function TaskBoardPage() {
               );
             })
               ? () => {
-                  if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
+                  if (blockSuperAgentWithoutRepository(SUPER_AGENT_ASSIGNEE_ID))
                     return;
                   for (const id of selectedIds)
                     actions.update.mutate(
@@ -1582,6 +1548,8 @@ export function TaskBoardPage() {
 function SelectionBar({
   count,
   members,
+  projectEntries,
+  onSetRepo,
   onMoveTo,
   onSetPriority,
   onAddTag,
@@ -1594,6 +1562,10 @@ function SelectionBar({
 }: {
   count: number;
   members: Member[];
+  /** The projects a card can be stamped for — same set as the task dialog. */
+  projectEntries: ProjectIndexEntry[];
+  /** Bulk-assign the project (persisted as the underlying repo), or clear it. */
+  onSetRepo: (repo: string | null) => void;
   onMoveTo: (status: TaskBoardItemStatus) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
@@ -1672,6 +1644,27 @@ function SelectionBar({
                 <AssigneePickerContent members={members} onSelect={onAssign} />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            {projectEntries.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  {t("taskBoard.taskBoard.assignProjectButton")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-64">
+                  <DropdownMenuItem onClick={() => onSetRepo(null)}>
+                    {t("taskBoard.taskDialog.noProject")}
+                  </DropdownMenuItem>
+                  {projectEntries.map((entry) => (
+                    <DropdownMenuItem
+                      key={entry.id}
+                      className="gap-2"
+                      onClick={() => onSetRepo(entry.repo)}
+                    >
+                      <ProjectEntryRow entry={entry} />
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 {t("taskBoard.taskBoard.dueDateButton")}
@@ -2540,6 +2533,20 @@ function TaskCard({
     item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
     item.status !== "done";
 
+  const action = showAutoFix
+    ? {
+        icon: Lightning01,
+        label: t("taskBoard.taskBoard.autoFix"),
+        onClick: onAutoFix,
+      }
+    : showRerun
+      ? {
+          icon: RefreshCw01,
+          label: t("taskBoard.taskBoard.rerun"),
+          onClick: onRerun,
+        }
+      : null;
+
   return (
     <button
       type="button"
@@ -2566,9 +2573,17 @@ function TaskCard({
     >
       <div className="flex items-start gap-2">
         {/* 14px: one step over the design system's `text-sm`, which is 13 here, not Tailwind's 14. */}
-        <span className="min-w-0 flex-1 text-[14px] font-[450] leading-snug text-foreground line-clamp-2">
-          {item.title}
-        </span>
+        <div className="relative min-w-0 flex-1 text-[14px] font-[450] leading-snug">
+          <span
+            className={cn(
+              "block text-foreground line-clamp-2",
+              action && "group-hover:fade-text-end",
+            )}
+          >
+            {item.title}
+          </span>
+          {action && <CardAction action={action} />}
+        </div>
         {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
         {runState && <AgentRunIndicator state={runState} />}
       </div>
@@ -2594,21 +2609,6 @@ function TaskCard({
         onPriorityChange={onPriorityChange}
         onTypeChange={onTypeChange}
         onDueDateChange={onDueDateChange}
-        action={
-          showAutoFix
-            ? {
-                icon: Lightning01,
-                label: t("taskBoard.taskBoard.autoFix"),
-                onClick: onAutoFix,
-              }
-            : showRerun
-              ? {
-                  icon: RefreshCw01,
-                  label: t("taskBoard.taskBoard.rerun"),
-                  onClick: onRerun,
-                }
-              : undefined
-        }
       />
     </button>
   );

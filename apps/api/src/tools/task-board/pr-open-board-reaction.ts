@@ -21,7 +21,11 @@ import type { StudioContext } from "@/core/studio-context";
 import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
-import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
+import { changeRequestLabel } from "@decocms/shared/git-providers";
+import {
+  type ChangeRequestRef,
+  findChangeRequestIn,
+} from "./change-request-extract";
 import { invalidatePrCards } from "./prs-get";
 import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
 
@@ -86,7 +90,7 @@ async function decideBoardActionForPr(
   orgId: string,
   openCards: TaskBoardItem[],
   threadTitle: string | null,
-  pr: ExtractedPr,
+  pr: ChangeRequestRef,
 ): Promise<BoardDecision | null> {
   try {
     const tier = await resolveTier(ctx, "fast");
@@ -97,7 +101,7 @@ async function decideBoardActionForPr(
       ? openCards.map((t) => `- [${t.id}] (${t.status}) ${t.title}`).join("\n")
       : "(none)";
     const prompt = `Work summary (chat title): ${threadTitle ?? "(untitled)"}
-Pull request: ${pr.url} (${pr.owner}/${pr.repo}#${pr.number})
+Change request: ${pr.url} (${pr.repo.path}#${pr.number})
 
 Existing open cards:
 ${cardList}`;
@@ -128,7 +132,7 @@ export async function applyBoardDecision(
     orgId: string;
     userId: string;
     threadId: string;
-    pr: ExtractedPr;
+    pr: ChangeRequestRef;
     decision: BoardDecision;
     /** The card set the decision was made against (this org's), for taskId validation. */
     openCards: TaskBoardItem[];
@@ -142,8 +146,7 @@ export async function applyBoardDecision(
       organizationId: orgId,
       url: pr.url,
       prNumber: pr.number,
-      repoOwner: pr.owner,
-      repoName: pr.repo,
+      repo: pr.repo,
       connectionId: null,
     });
 
@@ -185,7 +188,9 @@ export async function applyBoardDecision(
     // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
       organizationId: orgId,
-      title: decision.title?.trim() || `PR #${pr.number}`,
+      title:
+        decision.title?.trim() ||
+        changeRequestLabel(pr.repo.provider, pr.number),
       status: LANES.progress,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
@@ -233,7 +238,7 @@ export async function reactToPrOpenedForBoard(
     const alreadyLinked = await resolveRunTaskTargets(ctx, orgId, threadId);
     if (alreadyLinked.length > 0) return;
 
-    const pr = extractPrFromValue(source);
+    const pr = findChangeRequestIn(source);
     if (!pr) return;
 
     const cards = await ctx.storage.taskBoard.list(orgId);

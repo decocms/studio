@@ -1,12 +1,14 @@
 /**
- * Per-org GitHub repo → volume sync (the user-configured counterpart of the
- * public skill sets, see skill-set-sync.ts).
+ * Per-org repo → volume sync (the user-configured counterpart of the public
+ * skill sets, see skill-set-sync.ts).
  *
- * Configs live in `org_repo_sync` (storage/org-repo-syncs.ts): a repo-scoped
- * `mcp-github` connection + a target volume in the org's own keyspace. Each
- * sync mints a fresh installation token from the connection (tokens live ~1h,
- * so they are minted inside the sync, never persisted in config) and mirrors
- * the repo tarball into the volume — private repos included.
+ * Configs live in `org_repo_sync` (storage/org-repo-syncs.ts): a credential
+ * source + a target volume in the org's own keyspace. The source is either a
+ * first-class `repositories` row — whose provider account mints the token and
+ * serves the archive through `GitProviderClient` (GitHub and GitLab alike) —
+ * or, for configs created before that model, the legacy repo-scoped
+ * `mcp-github` connection. Either way the token is minted inside the sync
+ * (they live ~1h) and never persisted in config, so private repos work.
  *
  * Runs on a DBOS scheduled workflow (dbos-org-repo-sync.ts) and on demand via
  * the ORG_REPO_SYNC_RUN tool.
@@ -14,9 +16,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgRepoSync } from "@/storage/types";
-import { ensureGithubCloneToken } from "@/shared/github-clone-info";
-import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
-import { DownstreamTokenStorage } from "@/storage/downstream-token";
+import { repositoryArchive } from "@/git-providers";
 import { isValidVolume } from "./org-fs-path";
 import { isPublicVolume } from "./public-sets";
 import { syncRepoToVolume } from "./skill-set-sync";
@@ -82,47 +82,26 @@ export async function syncOrgRepoSafe(
   config: OrgRepoSync,
 ): Promise<OrgRepoSyncRunResult> {
   try {
-    const connection = await ctx.storage.connections.findById(
-      config.connectionId,
-      config.organizationId,
-    );
-    if (!connection) {
-      throw new Error("sync connection not found in this organization");
-    }
-    // Same recipe as TASK_ADD_REPO: re-mint when the connection carries a
-    // mint recipe (no-op for source-less refreshable children), then read
-    // the cached/refreshable downstream token. Using ensureRepoScopedToken
-    // alone would reject source-less children before even checking the cache.
-    await ensureGithubCloneToken({
-      ctx,
-      connectionId: connection.id,
-      organizationId: config.organizationId,
-      onLegacyMintError: (error) =>
-        console.warn("[org-repo-sync] repo-scoped mint failed", {
-          configId: config.id,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-    });
-    const tokenResult = await getValidDownstreamAccessToken({
-      connectionId: connection.id,
-      tokenStorage: new DownstreamTokenStorage(ctx.db, ctx.vault),
-    });
-    if (!tokenResult.accessToken) {
+    const repository = config.repositoryId
+      ? await ctx.storage.repositories.get(
+          config.repositoryId,
+          config.organizationId,
+        )
+      : null;
+    if (!repository)
       throw new Error(
-        "No GitHub token for the sync connection — reconnect the mcp-github integration.",
+        "Sync repository no longer exists; select a repository again",
       );
-    }
-    const authToken = tokenResult.accessToken;
     const counts = await syncRepoToVolume(ctx.db, {
       orgId: config.organizationId,
       baseUrl: ctx.baseUrl,
       volume: config.volume,
       source: {
-        repo: `${config.repoOwner}/${config.repoName}`,
+        repo: repository.path,
         ref: config.ref,
         paths: config.paths,
       },
-      authToken,
+      tarball: () => repositoryArchive(ctx, repository, config.ref),
       skipVolumeQuota: false,
     });
     // Best-effort: the sync already succeeded, so a failed status write must not fall into the catch below and report a spurious failure.

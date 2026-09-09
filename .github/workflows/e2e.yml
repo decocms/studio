@@ -105,6 +105,8 @@ jobs:
       # signups per run; without this they get 429s and only pass on retry,
       # which masks real regressions as "flaky".
       DISABLE_RATE_LIMIT: "true"
+      # Both test runs use the same DB; persisted JWKS need the same auth secret.
+      BETTER_AUTH_SECRET: "studio-e2e-synthetic-auth-secret-for-tests"
       # MinIO, started below — makes the app resolve OBJECT_STORAGE to the real
       # S3Service path (not the DevObjectStorage filesystem fallback) so the
       # object-storage e2e exercises production code end-to-end.
@@ -235,6 +237,14 @@ jobs:
         env:
           E2E_SKIP_WEB_BUILD: ${{ steps.cache-web-dist.outputs.cache-hit == 'true' && '1' || '' }}
         run: bun run test:e2e --shard=${{ matrix.shard }}/2
+
+      - name: Run GitHub connect tests
+        if: matrix.shard == 1
+        working-directory: packages/e2e
+        env:
+          # The main suite above has already built the same web source.
+          E2E_SKIP_WEB_BUILD: "1"
+        run: bun run test:e2e:github-connect
 
   # Aggregator carrying the required-check name: branch protection requires a
   # check called "e2e", and matrix jobs report as "e2e-shard (1)"/"(2)" — a

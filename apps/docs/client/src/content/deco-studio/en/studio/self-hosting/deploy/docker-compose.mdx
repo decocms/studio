@@ -33,9 +33,10 @@ The self-host files use a Docker volume for persistence and an automatic `/healt
 git clone https://github.com/decocms/studio.git
 cd studio/deploy/docker-compose
 
-# 2. Create a .env with an auth secret and Postgres credentials
+# 2. Create a .env with an auth secret, a vault key, and Postgres credentials
 cat > .env << EOF
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+ENCRYPTION_KEY=$(openssl rand -base64 32)
 POSTGRES_USER=studio_user
 POSTGRES_PASSWORD=$(openssl rand -base64 24)
 POSTGRES_DB=studio_db
@@ -51,7 +52,7 @@ open http://localhost:3000
 The `docker-compose.postgres.yml` file wires `DATABASE_URL` automatically from the `POSTGRES_*` variables, using the `postgres` service as the host.
 
 <Callout type="tip">
-  `BETTER_AUTH_SECRET` falls back to an insecure dev-only default if unset — always set a real one. The `POSTGRES_*` variables also have defaults, but always set a real password.
+  `BETTER_AUTH_SECRET` and `ENCRYPTION_KEY` both fall back to insecure dev-only defaults if unset — always set real values for anything shared. The `POSTGRES_*` variables also have defaults, but always set a real password.
 </Callout>
 
 ## Environment variables
@@ -61,6 +62,7 @@ Set these in `.env` alongside the compose file:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BETTER_AUTH_SECRET` | `local-dev-better-auth-secret-change-me` (insecure) | Authentication secret — always set a real one. Generate with `openssl rand -base64 32` |
+| `ENCRYPTION_KEY` | deterministic dev-only fallback (insecure) | Credential-vault key for encrypting stored secrets/tokens — must stay stable across restarts. Always set a real one for anything shared. |
 | `IMAGE_REPOSITORY` | `ghcr.io/decocms/studio/studio` | Image repository |
 | `IMAGE_TAG` | `latest` | Image tag |
 | `PORT` | `3000` | Port exposed on the host |
@@ -148,6 +150,6 @@ docker compose -f docker-compose.postgres.yml up -d
 
 ## Security
 
-- Always generate a strong `BETTER_AUTH_SECRET` (`openssl rand -base64 32`) and a real `POSTGRES_PASSWORD`.
+- Always generate strong `BETTER_AUTH_SECRET` and `ENCRYPTION_KEY` values (`openssl rand -base64 32`) and a real `POSTGRES_PASSWORD`.
 - Don't commit `.env` (`echo ".env" >> .gitignore`; `chmod 600 .env`).
 - Don't commit secrets (client secrets, API keys) into `.env` or the compose file.

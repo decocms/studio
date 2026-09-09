@@ -1,12 +1,13 @@
 {
   "name": "@decocms/e2e",
-  "version": "1.65.0",
+  "version": "1.69.2",
   "private": true,
   "description": "Black-box e2e suite (HTTP + DB) for Studio, isolated from app source.",
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
     "test:e2e": "playwright test",
+    "test:e2e:github-connect": "PORT=3001 VITE_PORT=4001 BASE_URL=http://localhost:4001 playwright test --config=playwright.github-connect.config.ts",
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {

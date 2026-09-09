@@ -58,6 +58,13 @@ var takeoverTimeout = 10 * time.Second
 // supersedes — it just does so this much later.
 var supersedeGrace = 5 * time.Second
 
+// How long CancelAll waits for a killed run to actually finish exiting before
+// giving up on it. Bounded: shutdown must not hang forever on a harness whose
+// process refuses to die, but a run that reaps promptly (the common case — a
+// SIGKILL to a process group is fast) is worth waiting for, since what comes
+// right after CancelAll is the shutdown publish committing the same tree.
+var cancelAllWait = 10 * time.Second
+
 // How long a run whose client vanished keeps running, waiting to be reattached.
 //
 // A Studio replica is disposable — a rollout, a KEDA scale-in or a node
@@ -442,9 +449,12 @@ func (reg *Registry) HasActiveRuns() bool {
 	return len(reg.activeRuns) > 0
 }
 
-// CancelAll kills every in-flight run. Used on daemon shutdown: a running
-// harness holds CLIs writing into the tree the shutdown publish is about to
-// commit.
+// CancelAll kills every in-flight run and waits (bounded by cancelAllWait) for
+// each to actually exit. Used on daemon shutdown: a running harness holds CLIs
+// writing into the tree the shutdown publish is about to commit — cancelling
+// the context only asks the process group to die, it does not confirm it has,
+// so returning before `done` closes would let the publish race a CLI that is
+// still mid-write to the same files.
 func (reg *Registry) CancelAll() {
 	reg.mu.Lock()
 	entries := make([]*activeRun, 0, len(reg.activeRuns))
@@ -454,6 +464,18 @@ func (reg *Registry) CancelAll() {
 	reg.mu.Unlock()
 	for _, entry := range entries {
 		entry.cancel()
+	}
+	deadline := time.Now().Add(cancelAllWait)
+	for _, entry := range entries {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return
+		}
+		select {
+		case <-entry.done:
+		case <-time.After(remaining):
+			return
+		}
 	}
 }
 

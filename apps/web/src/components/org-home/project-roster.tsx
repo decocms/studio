@@ -53,7 +53,7 @@ export function ProjectRoster({
   action,
 }: {
   projects: VirtualMCPEntity[];
-  /** The section's own control — today, "Import from GitHub". Passed in rather
+  /** The section's own control — today, "Import repository". Passed in rather
    *  than imported so the roster owns no creation path. */
   action?: ReactNode;
 }) {

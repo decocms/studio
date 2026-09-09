@@ -14,17 +14,23 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { useInSettings } from "@/hooks/use-in-settings";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
 import { OrgProjectPicker } from "./org-project-picker";
 
+const ICON_SIZE = 16;
+
 export function SidebarPickerHeader() {
   const collapsed = useSidebarCollapsed();
+  /** Settings is forced open (see `OrgLayout`), so a collapse toggle there is a
+   *  control with nothing to do — hidden rather than dead. */
+  const inSettings = useInSettings();
 
   return (
     <>
       <OrgProjectPicker collapsed={collapsed} />
-      <CollapseToggle collapsed={collapsed} />
+      {!inSettings && <CollapseToggle />}
     </>
   );
 }
@@ -56,7 +62,7 @@ export function SidebarPickerHeaderMobile({
         onClick={onClose}
         aria-label={t("sidebar.header.closeSidebar")}
       >
-        <LayoutLeft size={16} />
+        <LayoutLeft size={ICON_SIZE} />
       </ToolbarIconButton>
     </>
   );
@@ -65,8 +71,9 @@ export function SidebarPickerHeaderMobile({
 /** Deliberately not `SidebarTriggerButton`: the rail needs a tooltip on this,
  *  and a tooltip needs a ref that the shared toolbar control does not
  *  forward. */
-function CollapseToggle({ collapsed }: { collapsed: boolean }) {
+function CollapseToggle() {
   const t = useT();
+  const collapsed = useSidebarCollapsed();
   const { toggleSidebar } = useSidebar();
   const label = t("sidebar.header.toggleSidebar");
 
@@ -78,7 +85,7 @@ function CollapseToggle({ collapsed }: { collapsed: boolean }) {
           onClick={toggleSidebar}
           className="shrink-0 rounded-lg md:size-[34px] group-data-[state=collapsed]/sidebar:mx-auto"
         >
-          <LayoutLeft size={16} />
+          <LayoutLeft size={ICON_SIZE} />
         </ToolbarIconButton>
       </TooltipTrigger>
       {/* Expanded, this sits next to a picker that already names the place, so

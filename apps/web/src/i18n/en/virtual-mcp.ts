@@ -43,6 +43,7 @@ export const virtualMcp = {
   "virtualMcp.connectionItem.configureResources": "Configure resources",
   "virtualMcp.connectionItem.connectionDisabled": "Connection disabled",
   "virtualMcp.connectionItem.connectionEnabled": "Connection enabled",
+  "virtualMcp.connectionItem.connectionNotFound": "Connection not found",
   "virtualMcp.connectionItem.connectionSettings": "Connection settings",
   "virtualMcp.connectionItem.disable": "Disable",
   "virtualMcp.connectionItem.disableConnection": "Disable connection",
@@ -139,6 +140,7 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.title": "Sub-projects",
   "virtualMcp.virtualMcp.addConnection": "Add connection",
   "virtualMcp.virtualMcp.agentDeleted": 'Deleted "{title}"',
+  "virtualMcp.virtualMcp.agentNameFallback": "Agent",
   "virtualMcp.virtualMcp.agentNamePlaceholder": "Project name",
   "virtualMcp.virtualMcp.authenticationFailed":
     "Authentication failed: {error}",

@@ -46,9 +46,6 @@ export const taskBoard = {
     "Nenhuma tarefa corresponde a estes filtros.",
   "taskBoard.taskBoard.noTasksYet":
     "Nenhuma tarefa ainda. Comece uma com Nova tarefa.",
-  "taskBoard.scope.clear": "Limpar o escopo {name}",
-  "taskBoard.scope.noRepo":
-    "Este projeto não tem repositório, então nenhum card aponta para ele ainda.",
   "taskBoard.taskBoard.tasksTitle": "Tarefas",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
@@ -61,6 +58,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.moveToButton": "Mover para",
   "taskBoard.taskBoard.changePriorityButton": "Mudar prioridade",
   "taskBoard.taskBoard.assignButton": "Atribuir",
+  "taskBoard.taskBoard.assignProjectButton": "Atribuir projeto",
   "taskBoard.taskBoard.dueDateButton": "Data de entrega",
   "taskBoard.taskBoard.addTagButton": "Adicionar tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Excluir",
@@ -119,7 +117,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMergeFailedRateLimited":
     "ainda não deu para fazer o merge — o GitHub está limitando nossas requisições. Isso é tentado de novo automaticamente.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
-    "o GitHub recusou o merge: {detail}",
+    "o provider recusou o merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedConflict":
+    "conflita com a branch base e não pôde ser mesclado",
   "taskBoard.taskDialog.activityMergeFailedError":
     "não conseguiu mesclar o pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",
@@ -228,9 +228,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.setPriorityButton": "Definir prioridade",
   "taskBoard.taskDialog.someoneLabel": "alguém",
   "taskBoard.taskDialog.startedByLabel": "iniciado por",
-  "taskBoard.taskDialog.reviewerLabel": "Reviewer",
-  "taskBoard.taskDialog.qaAgentLabel": "QA Agent",
-  "taskBoard.taskDialog.codeReviewerLabel": "Code Reviewer",
+  "taskBoard.taskDialog.reviewerLabel": "Revisor",
+  "taskBoard.taskDialog.qaAgentLabel": "Agente QA",
+  "taskBoard.taskDialog.codeReviewerLabel": "Revisor de Código",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",
   "taskBoard.taskDialog.superAgentLabel": "Super Agent",
   "taskBoard.taskDialog.taskTitlePlaceholder": "Título da tarefa...",

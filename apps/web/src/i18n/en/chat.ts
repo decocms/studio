@@ -358,6 +358,7 @@ export const chat = {
   "chat.proposePlan.planReady": "Plan ready",
   "chat.proposePlan.rejected": "Rejected",
   "chat.proposePlan.viewPlan": "View plan",
+  "chat.queueTray.cancelFailed": "Failed to cancel",
   "chat.queueTray.queuedMessage": "{count} queued message",
   "chat.queueTray.queuedMessages": "{count} queued messages",
   "chat.queueTray.removeFromQueue": "Remove from queue",

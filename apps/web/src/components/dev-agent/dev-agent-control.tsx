@@ -14,12 +14,14 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useChatNavigation } from "@/components/chat/hooks/use-chat-navigation";
 import { useThreadActions } from "@/components/chat/store/hooks";
 import { findDevPartner } from "@/lib/agent-capabilities";
+import { useT } from "@/i18n/use-t.ts";
 
 export function DevAgentControl({
   virtualMcp,
 }: {
   virtualMcp: VirtualMCPEntity;
 }) {
+  const t = useT();
   const allAgents = useVirtualMCPs();
   const { navigateToTask } = useChatNavigation();
   const { create } = useThreadActions();
@@ -72,8 +74,8 @@ export function DevAgentControl({
 
   return (
     <div className="inline-flex items-center rounded-lg border border-border bg-muted p-0.5 text-xs font-medium">
-      {segment("Develop", isDev, Code01)}
-      {segment("Live", !isDev, Globe01)}
+      {segment(t("devAgent.devAgentControl.develop"), isDev, Code01)}
+      {segment(t("devAgent.devAgentControl.live"), !isDev, Globe01)}
     </div>
   );
 }

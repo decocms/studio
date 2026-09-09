@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
+  cliAuthCommand,
   MAX_SECONDARY_REPOS,
   parseRepoProbe,
   secondaryRepoCapExceeded,
@@ -69,4 +70,26 @@ test("a repo already checked out is let through at the cap, case-insensitively",
   expect(
     secondaryRepoCapExceeded(existing, { owner: "ACME", name: "Repo-0" }),
   ).toBe(false);
+});
+
+describe("cliAuthCommand", () => {
+  /** The primary is the daemon's cwd; a secondary must be entered first, or
+   *  the command reads the primary's remote and configures the wrong CLI. */
+  test("enters the checkout for a secondary and not for the primary", () => {
+    expect(cliAuthCommand(null).startsWith("origin=")).toBe(true);
+    expect(cliAuthCommand("../repos/api").split("\n")[0]).toBe(
+      'cd "../repos/api" || exit 0',
+    );
+  });
+
+  test("writes glab's config for oauth2 and gh's for x-access-token", () => {
+    const script = cliAuthCommand(null);
+    expect(script).toContain('if [ "$user" = "oauth2" ]');
+    expect(script).toContain("glab-cli/config.yml");
+    expect(script).toContain("is_oauth2: true");
+    expect(script).toContain('elif [ "$user" = "x-access-token" ]');
+    expect(script).toContain("gh/hosts.yml");
+    // The host comes from the remote, so a self-hosted instance works too.
+    expect(script).toContain('host=$(printf %s "$origin"');
+  });
 });

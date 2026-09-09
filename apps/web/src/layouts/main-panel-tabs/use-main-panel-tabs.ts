@@ -30,7 +30,7 @@ import {
   agentHasConnectedGithub,
 } from "@/lib/agent-capabilities";
 import { useChatTask } from "@/components/chat/index";
-import { getActiveGithubRepo } from "@/lib/github-repo.ts";
+import { getActiveGithubRepo, repoToolTarget } from "@/lib/github-repo.ts";
 import { usePrByBranch } from "@/components/thread/github/use-pr-data.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -119,7 +119,7 @@ export function useMainPanelTabs(ctx: {
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubRepo ? currentBranch : null,

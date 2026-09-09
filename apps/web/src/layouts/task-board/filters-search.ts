@@ -36,9 +36,7 @@ type BoardSearch = {
 const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
-/** Anything unrecognized in the URL is dropped, not trusted. `filters.project`
- *  is an explicit exact-match choice; the ambient project scope is separate and
- *  inclusive — see `taskMatchesScope`. */
+/** Anything unrecognized in the URL is dropped, not trusted. */
 export function parseBoardSearch(search: BoardSearch): {
   filters: TaskFilters;
   layout: Layout;
@@ -75,19 +73,6 @@ export function boardSearchParams(
     tags: filters.tags.length > 0 ? filters.tags.join(",") : undefined,
     repo: filters.project ?? undefined,
   };
-}
-
-/** Whether a card survives the active project scope. INCLUSIVE: hides other
- *  projects' work, never unclassified work — `repo` is a routing hint, and is
- *  null on every reports-imported and Jira-synced card. Case-insensitive, as
- *  GitHub is. */
-export function taskMatchesScope(
-  item: { repo?: string | null },
-  scopeRepo: string | null,
-): boolean {
-  if (!scopeRepo) return true;
-  if (item.repo == null) return true;
-  return item.repo.toLowerCase() === scopeRepo.toLowerCase();
 }
 
 /**

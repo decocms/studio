@@ -237,10 +237,34 @@ export interface MCPConnectionTable {
   metadata: JsonObject<Record<string, unknown>> | null;
   bindings: JsonArray<string[]> | null; // Detected bindings (CHAT, EMAIL, etc.)
 
+  /**
+   * The repository a VIRTUAL connection (an agent) works in — migration 205.
+   * Null for every other connection type, and for an agent with no repository.
+   *
+   * Preferred over `metadata.githubRepo`, which is still written and read as
+   * the fallback until the expand completes. A GitLab project in subgroups
+   * only fits here: the JSON's `owner`/`name` pair cannot carry a namespace.
+   */
+  repository_id: string | null;
+
   status: "active" | "inactive" | "error";
   pinned: boolean;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/**
+ * A repository checked out into a thread's run, beyond the agent's own.
+ *
+ * `TASK_ADD_REPO` appends here so one run can hold several checkouts. The
+ * primary key is what makes a concurrent double-add a no-op — the reason this
+ * is a table and not the `metadata.githubRepos` array it replaces.
+ */
+export interface ThreadRepositoryTable {
+  thread_id: string;
+  organization_id: string;
+  repository_id: string;
+  added_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 // MCPConnection runtime type is now ConnectionEntity from "../tools/connection/schema"
@@ -1194,7 +1218,7 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
-/** Per-org subsidy gateway key (migration 159) — vault-encrypted; see
+/** Per-org subsidy gateway key (migration 160) — vault-encrypted; see
  *  storage/subsidized-gateway-keys.ts. */
 export interface SubsidizedGatewayKeyTable {
   organization_id: string;
@@ -1202,7 +1226,7 @@ export interface SubsidizedGatewayKeyTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-/** Quota ledger for reports-pushed task executions (migration 158) — one
+/** Quota ledger for reports-pushed task executions (migration 160) — one
  *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
 /** `held` = charged (counts toward the period); `released` = refunded
  *  because the run produced nothing. A union, so a typo in a comparison is a
@@ -1599,8 +1623,13 @@ export interface OrganizationNotice {
 export interface OrgRepoSyncTable {
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
-  /** Repo-scoped `mcp-github` connection the sync mints tokens from. */
-  connection_id: string;
+  /** Repo-scoped `mcp-github` connection the sync mints tokens from; null
+   *  once the sync is backed by a first-class `repository_id` instead. */
+  connection_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   repo_owner: string;
   repo_name: string;
   ref: ColumnType<string, string | undefined, string>;
@@ -1611,6 +1640,12 @@ export interface OrgRepoSyncTable {
     string
   >;
   volume: string;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   enabled: ColumnType<boolean, boolean | undefined, boolean>;
   last_synced_at: ColumnType<Date | null, never, Date | string | null>;
   last_sync_error: ColumnType<string | null, never, string | null>;
@@ -1622,7 +1657,8 @@ export interface OrgRepoSyncTable {
 export interface OrgRepoSync {
   id: string;
   organizationId: string;
-  connectionId: string;
+  connectionId: string | null;
+  repositoryId: string | null;
   repoOwner: string;
   repoName: string;
   ref: string;
@@ -1679,6 +1715,12 @@ export interface TaskBoardItemTable {
   assignee_id: string | null;
   assigned_by: string | null;
   repo: string | null;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1829,6 +1871,8 @@ export interface TaskBoardItemPrTable {
   /** Source GitHub MCP connection, when the PR was opened via MCP. Null for
    *  bash-opened PRs — the live fetcher falls back to the org's shared conn. */
   connection_id: string | null;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -1878,13 +1922,23 @@ export interface TaskBoardItemTagRef {
   createdAt: string;
 }
 
-/** A PR linked to a task — identity only. Title/state are fetched live. */
+/**
+ * A change request linked to a task — identity only. Title/state are fetched
+ * live through a `ChangeRequestClient`.
+ *
+ * `url` is the identity that matters: it names the provider, the host and the
+ * repository path, which is the only shape a GitLab project nested in
+ * subgroups fits. `repoOwner`/`repoName` are the pre-provider split, kept for
+ * the legacy readers; `repositoryId` is the credential, and `connectionId` the
+ * legacy one it replaces.
+ */
 export interface TaskBoardItemPrRef {
   url: string;
   number: number;
   repoOwner: string;
   repoName: string;
   connectionId: string | null;
+  repositoryId: string | null;
   createdAt: string;
 }
 
@@ -2192,11 +2246,91 @@ export interface NotificationTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+// ============================== Git providers ===============================
+
+export type GitProviderKindColumn = "github" | "gitlab";
+export type GitAuthKindColumn = "github_app" | "oauth" | "token";
+export type GitAccountStatusColumn = "active" | "revoked";
+
+export interface GitProviderAccountTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  type: GitProviderKindColumn;
+  host: string;
+  auth_kind: GitAuthKindColumn;
+  external_account_id: string;
+  login: string;
+  avatar_url: string | null;
+  /** bigint: pg returns it as a string. */
+  installation_id: ColumnType<
+    string | number | null,
+    string | number | null | undefined,
+    string | number | null
+  >;
+  /** Legacy `mcp-github` connection whose grant a backfilled account borrows. */
+  credential_connection_id: string | null;
+  status: ColumnType<
+    GitAccountStatusColumn,
+    GitAccountStatusColumn | undefined,
+    GitAccountStatusColumn
+  >;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderAccountCredentialTable {
+  account_id: string;
+  access_token: string; // Encrypted
+  refresh_token: string | null; // Encrypted
+  scope: string | null;
+  expires_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  client_id: string | null;
+  client_secret: string | null; // Encrypted
+  token_endpoint: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderOAuthStateTable {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  provider: GitProviderKindColumn;
+  host: string;
+  return_to: string;
+  expires_at: ColumnType<Date, Date | string, never>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface RepositoryTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  account_id: string | null;
+  provider: GitProviderKindColumn;
+  host: string;
+  path: string;
+  external_id: string | null;
+  default_branch: string | null;
+  web_url: string;
+  visibility: "public" | "private" | "internal" | null;
+  /** Repo-scoped `mcp-github` child whose token still clones this repo. */
+  legacy_connection_id: string | null;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
+  thread_repositories: ThreadRepositoryTable;
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
   api_keys: ApiKeyTable; // Better Auth API keys
@@ -2284,6 +2418,17 @@ export interface Database extends PrivateRegistryDatabase {
   // Deployment-admin billing warning / block pinned on an org
   organization_notices: OrganizationNoticeTable;
   org_repo_sync: OrgRepoSyncTable;
+  git_provider_accounts: GitProviderAccountTable;
+  git_provider_account_credentials: GitProviderAccountCredentialTable;
+  git_provider_oauth_states: GitProviderOAuthStateTable;
+  github_connect_flows: {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    encrypted_access_token: string;
+    expires_at: ColumnType<Date, Date, never>;
+  };
+  repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_prompts: TaskBoardPromptTable;

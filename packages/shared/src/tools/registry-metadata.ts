@@ -37,6 +37,7 @@ export type ToolCategory =
   | "Object Storage"
   | "Registry"
   | "GitHub"
+  | "Git"
   | "VM"
   | "Search"
   | "Task Board"
@@ -245,11 +246,27 @@ const ALL_TOOL_NAMES = [
   "SANDBOX_START",
   "SANDBOX_DELETE",
 
-  // GitHub tools (app-only)
+  // GitHub App installations (app-only)
   "GITHUB_LIST_USER_ORGS",
-  "GITHUB_SEARCH_BRANCHES",
-  "GITHUB_PR_STATE",
-  "GITHUB_LAST_PUBLISHED_PR",
+
+  // Git provider accounts + repositories (app-only)
+  "GIT_PROVIDER_CAPABILITIES",
+  "GIT_ACCOUNT_LIST",
+  "GIT_ACCOUNT_CONNECT_TOKEN",
+  "GIT_ACCOUNT_DELETE",
+  "REPOSITORY_LIST",
+  "REPOSITORY_SEARCH",
+  "REPOSITORY_LINK",
+  "REPOSITORY_DELETE",
+  "REPOSITORY_SEARCH_BRANCHES",
+
+  // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
+  "CHANGE_REQUEST_STATE",
+  "CHANGE_REQUEST_LAST_MERGED",
+  "CHANGE_REQUEST_LIST_OPEN",
+  "CHANGE_REQUEST_CHECK_LOG",
+  "CHANGE_REQUEST_OPEN",
+  "CHANGE_REQUEST_MERGE",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -1182,22 +1199,86 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
+  // Git provider accounts + repositories
   {
-    name: "GITHUB_SEARCH_BRANCHES",
-    description: "Search a repository's branches by name substring",
-    category: "GitHub",
+    name: "GIT_PROVIDER_CAPABILITIES",
+    description:
+      "Which git providers this deployment can connect, with their connect URLs",
+    category: "Git",
   },
   {
-    name: "GITHUB_PR_STATE",
-    description:
-      "Read a branch's pull request with its checks, review state and comments",
-    category: "GitHub",
+    name: "GIT_ACCOUNT_LIST",
+    description: "List the git provider accounts connected to the organization",
+    category: "Git",
   },
   {
-    name: "GITHUB_LAST_PUBLISHED_PR",
+    name: "GIT_ACCOUNT_CONNECT_TOKEN",
+    description: "Connect a git provider account with an access token",
+    category: "Git",
+  },
+  {
+    name: "GIT_ACCOUNT_DELETE",
+    description: "Disconnect a git provider account",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LIST",
+    description: "List the repositories linked to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_SEARCH",
+    description: "Search the repositories an account can reach on its provider",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LINK",
+    description: "Link a repository to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_SEARCH_BRANCHES",
     description:
-      "Read the most recently merged pull request into a base branch",
-    category: "GitHub",
+      "Search a repository's branches by name substring, on either provider",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_STATE",
+    description:
+      "Read a branch's change request with its CI runs, review state and comments",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_LAST_MERGED",
+    description:
+      "Read the most recently merged change request into a base branch",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_LIST_OPEN",
+    description: "List a repository's open change requests",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_CHECK_LOG",
+    description: "Read one CI run's report for a change request",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_OPEN",
+    description:
+      "Propose a branch onto another, reusing the branch's existing change request",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_MERGE",
+    description: "Land a change request, reporting why it could not merge",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_DELETE",
+    description: "Unlink a repository from the organization",
+    category: "Git",
   },
   // Search tools
   {
@@ -1436,10 +1517,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Sandbox previews, and the branch picker that feeds them
       "SANDBOX_START",
       "SANDBOX_DELETE",
-      "GITHUB_SEARCH_BRANCHES",
-      // The PR panel's whole read side, for anyone who can open a preview
-      "GITHUB_PR_STATE",
-      "GITHUB_LAST_PUBLISHED_PR",
+      "REPOSITORY_SEARCH_BRANCHES",
+      // Repo picker reads: which accounts/repos exist and what can be connected
+      "GIT_PROVIDER_CAPABILITIES",
+      "GIT_ACCOUNT_LIST",
+      "REPOSITORY_LIST",
+      "REPOSITORY_SEARCH",
+      // The change-request panel's whole read side, for anyone who can open a preview
+      "CHANGE_REQUEST_STATE",
+      "CHANGE_REQUEST_LAST_MERGED",
+      "CHANGE_REQUEST_LIST_OPEN",
+      "CHANGE_REQUEST_CHECK_LOG",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
       // App-shell essentials (read-only) — every member hits these on first
@@ -1947,6 +2035,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     "Object Storage": [],
     Registry: [],
     GitHub: [],
+    Git: [],
     VM: [],
     Search: [],
     "Task Board": [],

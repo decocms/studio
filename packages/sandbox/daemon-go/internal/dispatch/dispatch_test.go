@@ -302,6 +302,9 @@ func TestTombstoneMarksOnlyAskedForCancels(t *testing.T) {
 	const token = "tkn"
 	reg := NewRegistry()
 	entry, _ := claimForTest(reg, "run-1", func() {})
+	// Simulates the harness having already exited by the time CancelAll waits
+	// on it, so the test doesn't pay cancelAllWait's real timeout.
+	close(entry.done)
 
 	// Shutdown (`CancelAll`) and a dropped connection leave no tombstone: the
 	// run is continuable, so it must NOT be reported as cancelled.
@@ -328,6 +331,43 @@ func TestTombstoneMarksOnlyAskedForCancels(t *testing.T) {
 	// Scoped to the run it named — a sibling run on the same pod is untouched.
 	if reg.tombstoned("run-2") {
 		t.Fatal("a cancel must not tombstone another run")
+	}
+}
+
+// CancelAll's caller (the shutdown publish) needs the harness's writes to have
+// actually stopped, not merely asked to stop — cancelling a context only
+// requests that, the process group takes real time to die. Without waiting on
+// `done`, CancelAll returned the instant it fired the kill signal and the
+// publish could start committing the tree while the CLI was still writing to
+// it.
+func TestCancelAllWaitsForRunsToActuallyExit(t *testing.T) {
+	restore := cancelAllWait
+	cancelAllWait = 200 * time.Millisecond
+	defer func() { cancelAllWait = restore }()
+
+	reg := NewRegistry()
+	claimForTest(reg, "run-1", func() {})
+	// Nobody ever closes the entry's `done` here — simulates a harness process
+	// that does not reap within the shutdown budget.
+	started := time.Now()
+	reg.CancelAll()
+	if elapsed := time.Since(started); elapsed < cancelAllWait {
+		t.Fatalf("CancelAll returned after %s, before its own wait budget of %s — "+
+			"it isn't actually waiting for the run to exit", elapsed, cancelAllWait)
+	}
+
+	// A run that DOES exit in time is not held past its own completion.
+	reg2 := NewRegistry()
+	entry2, _ := claimForTest(reg2, "run-2", func() {})
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		close(entry2.done)
+	}()
+	started = time.Now()
+	reg2.CancelAll()
+	if elapsed := time.Since(started); elapsed >= cancelAllWait {
+		t.Fatalf("CancelAll waited the full budget (%s) for a run that exited "+
+			"promptly", elapsed)
 	}
 }
 

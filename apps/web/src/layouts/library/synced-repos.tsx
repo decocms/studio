@@ -1,5 +1,5 @@
 /**
- * Synced GitHub repos in the Library — one read-only folder card per
+ * Synced repositories in the Library — one read-only folder card per
  * `org_repo_sync` config, rendered at the home root next to the system
  * folders. Navigation only: adding/removing syncs lives in Settings →
  * Synced repos (views/settings/synced-repos.tsx).
@@ -11,7 +11,7 @@
  */
 
 import { useT } from "@/i18n/use-t.ts";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitBranch01 } from "@untitledui/icons";
 import { useOrgRepoSyncs } from "@/hooks/use-org-repo-syncs";
 import { FolderCard, timeAgo } from "./cards";
 
@@ -29,7 +29,7 @@ export function SyncedRepoFolders({
         <FolderCard
           key={c.id}
           name={c.volume}
-          glyph={GitHubIcon}
+          glyph={GitBranch01}
           tone="system"
           readOnly
           meta={`${c.repoOwner}/${c.repoName}`}

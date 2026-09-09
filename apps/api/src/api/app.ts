@@ -114,13 +114,14 @@ import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
-import { githubWebhookRoutes } from "./routes/github-webhook";
+import { createGithubWebhookRoutes } from "./routes/github-webhook";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
   registerJiraTriggerSweepWorkflow,
   setJiraTriggerSweepRuntime,
 } from "@/jira/dbos-jira-trigger-sweep";
+import { gitProviderCallbackRoutes } from "./routes/git-providers";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -1498,7 +1499,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   // GitHub push webhook (tenant warm-pool freshness): HMAC-authed, no session.
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
-  app.route("/api/_github", githubWebhookRoutes);
+  app.route(
+    "/api/_github",
+    createGithubWebhookRoutes({
+      taskBoard: () => projectorTaskBoard,
+      contextFactory: () => automationContextFactory,
+    }),
+  );
+  // Git provider OAuth callbacks: the state, not the URL, carries org+user.
+  app.route("/api/_git", gitProviderCallbackRoutes);
+
   // Jira: the issue-event intake that starts runs, and the attachment grant
   // route those runs download through. Both authenticate by capability
   // (per-org secret, signed token), not by session.

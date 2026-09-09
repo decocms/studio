@@ -100,6 +100,22 @@ export const common = {
   "common.errorBoundary.somethingWentWrong": "Algo deu errado",
   "common.errorBoundary.tryAgain": "Tentar novamente",
   "common.errorBoundary.unexpectedError": "Um erro inesperado ocorreu",
+  "common.repositoryPicker.description":
+    "Escolha uma conta para buscar seus repositórios.",
+  "common.repositoryPicker.searchMore":
+    "Nenhum resultado nos repositórios carregados. Carregue mais para continuar a busca.",
+  "common.repositoryPicker.loadMore": "Carregar mais repositórios",
+  "common.repositoryPicker.linkedSection": "Repositórios vinculados",
+  "common.repositoryPicker.browseSection": "Navegar por uma conta",
+  "common.repositoryPicker.searchPlaceholder": "Buscar repositórios",
+  "common.repositoryPicker.searchEmpty": "Nenhum repositório encontrado",
+  "common.repositoryPicker.searchFailed": "Não foi possível buscar nesta conta",
+  "common.repositoryPicker.linkFailed":
+    "Não foi possível vincular o repositório",
+  "common.repositoryPicker.createAgentFailed":
+    "Não foi possível criar o agente",
+  "common.repositoryPicker.agentDescription": "Importado de {path}",
+  "common.repositoryPicker.back": "Voltar",
   "common.githubRepoPicker.accountNotListed": "Conta não listada?",
   "common.githubRepoPicker.addRepo": "Adicionar repositório",
   "common.githubRepoPicker.addedRepo": "Adicionado {name}",
@@ -123,8 +139,8 @@ export const common = {
     "Falha ao reconectar GitHub: {error}",
   "common.githubRepoPicker.forkBadge": "Fork",
   "common.githubRepoPicker.githubConnected": "GitHub conectado",
-  "common.githubRepoPicker.importFromGitHub": "Importar do GitHub",
-  "common.githubRepoPicker.importedRepo": "Importado {name} do GitHub",
+  "common.githubRepoPicker.importFromGitHub": "Importar reposit\u00f3rio",
+  "common.githubRepoPicker.importedRepo": "Importado {name}",
   "common.githubRepoPicker.installGitHubApp": "Instalar o aplicativo GitHub",
   "common.githubRepoPicker.installingGitHubConnection":
     "Instalando a conexão com GitHub...",
@@ -285,7 +301,7 @@ export const common = {
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
-  "common.createAgentDropdown.importFromGitHub": "Importar do GitHub",
+  "common.createAgentDropdown.importFromGitHub": "Importar reposit\u00f3rio",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
   "common.mainPanelTabs.preview": "Visualização",
   "common.mainPanelTabs.code": "Código",

@@ -1,4 +1,5 @@
 import { useProjectContext } from "@/sdk";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";
 import { CommentsAccordion } from "./comments-accordion.tsx";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
@@ -6,7 +7,7 @@ import { usePrComments, type PrSummary } from "./use-pr-data.ts";
 
 interface Props {
   pr: PrSummary;
-  connectionId: string;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
 }
@@ -15,12 +16,12 @@ interface Props {
  * Description sub-tab: PR title + body (markdown with entity decode) +
  * collapsible comments accordion.
  */
-export function DescriptionTab({ pr, connectionId, owner, repo }: Props) {
+export function DescriptionTab({ pr, target, owner, repo }: Props) {
   const { org } = useProjectContext();
   const commentsQuery = usePrComments({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId,
+    target,
     owner,
     repo,
     branch: pr.head,

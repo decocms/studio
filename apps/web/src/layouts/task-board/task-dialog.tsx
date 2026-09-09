@@ -131,6 +131,8 @@ import {
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { parseChangeRequestUrl } from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
 import { entryForFilter, stampableEntries } from "@/lib/project-index";
@@ -370,6 +372,10 @@ interface TaskEditorProps {
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
+  /** In create mode, the repository to stamp the new task with (e.g. the active
+   * Project filter's repo, so a card made while the board is narrowed to a
+   * project belongs to it). An `owner/name`, matching the {@link repo} field. */
+  defaultRepo?: string | null;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -414,6 +420,7 @@ function TaskBoardItemEditor({
   onClose,
   item,
   defaultStatus,
+  defaultRepo,
   onSubmit,
   onDelete,
   onClone,
@@ -451,7 +458,8 @@ function TaskBoardItemEditor({
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    repo: item?.repo ?? null,
+    // Edit wins with the card's own repo; create seeds from the active project.
+    repo: item?.repo ?? defaultRepo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
@@ -1290,44 +1298,40 @@ function TaskBoardItemEditor({
                       const tag = orgTags.find((ot) => ot.id === tagId);
                       if (!tag) return null;
                       return (
-                        <button
+                        // Two sibling buttons, not one nested in the other — a <button> can't validly contain another interactive element.
+                        <div
                           key={tagId}
-                          type="button"
-                          onClick={() => setTagsOpen(true)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                         >
-                          <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: tagDotColor(tag.color) }}
-                          />
-                          <span className="truncate">{tag.name}</span>
-                          <span
-                            role="button"
-                            tabIndex={0}
+                          <button
+                            type="button"
+                            onClick={() => setTagsOpen(true)}
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: tagDotColor(tag.color),
+                              }}
+                            />
+                            <span className="truncate">{tag.name}</span>
+                          </button>
+                          <button
+                            type="button"
                             aria-label={t(
                               "taskBoard.taskDialog.removeTagAriaLabel",
                               { name: tag.name },
                             )}
                             className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
                               });
                             }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                patch({
-                                  tagIds: tagIds.filter((id) => id !== tagId),
-                                });
-                              }
-                            }}
                           >
                             <X size={10} />
-                          </span>
-                        </button>
+                          </button>
+                        </div>
                       );
                     })}
                     <PopoverTrigger asChild>
@@ -1470,7 +1474,7 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "onSubmit" | "isSaving"
+    "onClose" | "defaultStatus" | "defaultRepo" | "onSubmit" | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;
@@ -1905,7 +1909,11 @@ function PrCard({
       )}
     >
       <div className="flex items-center gap-3">
-        <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        {parseChangeRequestUrl(pr.url)?.repo.provider === "gitlab" ? (
+          <GitLabIcon className="size-4 shrink-0 text-foreground" />
+        ) : (
+          <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        )}
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
           {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
         </span>
@@ -2628,8 +2636,11 @@ function describeActivity(
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
     case "merge_failed": {
-      // `detail` names the repo (no_connection) or carries GitHub's refusal
-      // text — the difference between "it's broken" and "connect this repo".
+      /**
+       * `detail` names the repo (no_connection) or carries the provider's
+       * refusal text — the difference between "it's broken" and "connect this
+       * repo".
+       */
       const detail = typeof d.detail === "string" ? d.detail : "";
       switch (d.reason) {
         case "no_pr":
@@ -2644,6 +2655,9 @@ function describeActivity(
             : t("taskBoard.taskDialog.activityMergeFailed");
         case "rate_limited":
           return t("taskBoard.taskDialog.activityMergeFailedRateLimited");
+        // The one refusal with an automatic answer: the agent can rebase.
+        case "conflict":
+          return t("taskBoard.taskDialog.activityMergeFailedConflict");
         case "refused":
           return detail
             ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })

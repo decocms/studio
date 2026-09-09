@@ -7,6 +7,7 @@
 import { ALL_DECOPILOT_EVENT_TYPES } from "@/sdk";
 import {
   TASK_BOARD_ITEM_DELETED_EVENT,
+  TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { NOTIFICATION_CREATED_EVENT } from "@decocms/shared/notification-types";
@@ -21,6 +22,7 @@ const WATCH_TYPES = [
   ...ALL_DECOPILOT_EVENT_TYPES,
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
+  TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
   NOTIFICATION_CREATED_EVENT,
 ];
 
@@ -54,6 +56,12 @@ export const taskBoardWatchView: SSESubscription = filterEventTypes(watchSSE, [
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
 ]);
+
+/** A task's PR cards, re-read because a GitHub webhook said they changed. */
+export const taskBoardPrsWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [TASK_BOARD_ITEM_PRS_UPDATED_EVENT],
+);
 
 /** Inbox fan-out (`notification.created`). Org-wide — the consumer matches the
  *  event's `subject` against its own user id. */

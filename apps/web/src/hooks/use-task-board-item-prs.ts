@@ -1,8 +1,9 @@
 import { useProjectContext } from "@/sdk";
 import type { TaskBoardItemPr } from "@/layouts/task-board/config";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useTaskBoardItemPrsEvents } from "./use-task-board-item-prs-events";
 import {
   readCachedTaskPrs,
   writeCachedTaskPrs,
@@ -10,10 +11,12 @@ import {
 
 /** Poll interval for a task's PRs while the dialog is open. The tool fetches
  *  live GitHub state — PR/checks status and the checks→QA hand-off it drives —
- *  so a periodic refresh keeps the review lane moving without a webhook. Kept at
- *  one minute to stay well within GitHub's rate limits, since every poll fans
- *  out to live GitHub PR + checks calls. The query is only active while the
- *  dialog (and thus this hook) is mounted. */
+ *  so a periodic refresh keeps the review lane moving. Kept at one minute to
+ *  stay well within GitHub's rate limits, since every poll can fan out to live
+ *  GitHub PR + checks calls — polling a mid-flight PR any faster is what took
+ *  the App's rate limit out. Freshness comes from the webhook push above; this
+ *  is the fallback for repos the App is not installed on. The query is only
+ *  active while the dialog (and thus this hook) is mounted. */
 const PRS_POLL_INTERVAL_MS = 60_000;
 
 /** While a card is still waiting on GitHub the server answers from the database
@@ -21,18 +24,10 @@ const PRS_POLL_INTERVAL_MS = 60_000;
  *  minute. */
 const PRS_UNENRICHED_POLL_INTERVAL_MS = 2_000;
 
-/** Checks that are still running settle on their own, with no webhook to say
- *  when — so while any linked PR reports pending CI, poll faster than the idle
- *  minute. Bounded to a dialog that is open on a PR whose CI is actually
- *  running, and the server answers those from cache while it refreshes. */
-const PRS_PENDING_CHECKS_POLL_INTERVAL_MS = 10_000;
-
 /** A card the server returned before GitHub answered: link fields only. `state`
  *  is null for a PR GitHub could not be read for too, which polls the same way
  *  — the right behavior either way. */
 const isUnenriched = (pr: TaskBoardItemPr) => pr.state === null;
-
-const hasPendingChecks = (pr: TaskBoardItemPr) => pr.checksStatus === "pending";
 
 /**
  * A task's linked PRs, each with live state fetched from GitHub via the
@@ -41,19 +36,31 @@ const hasPendingChecks = (pr: TaskBoardItemPr) => pr.checksStatus === "pending";
  * while the dialog is open, so poll it.
  */
 export function useTaskBoardItemPrs(itemId: string | undefined) {
-  const { locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  // The webhook's push path: fresh cards land here as soon as GitHub reports CI
+  // finished or the deploy bot commented, which is why the poll below can stay
+  // at the idle minute instead of chasing the same states at 10s.
+  useTaskBoardItemPrsEvents({
+    orgSlug: org.slug,
+    itemId,
+    onPrs: (prs) => {
+      queryClient.setQueryData(
+        KEYS.taskBoardItemPrs(locator, itemId ?? ""),
+        prs,
+      );
+    },
+  });
 
   return useQuery({
     queryKey: KEYS.taskBoardItemPrs(locator, itemId ?? ""),
     enabled: !!itemId,
-    refetchInterval: (query) => {
-      const prs = query.state.data;
-      if (prs?.some(isUnenriched)) return PRS_UNENRICHED_POLL_INTERVAL_MS;
-      if (prs?.some(hasPendingChecks))
-        return PRS_PENDING_CHECKS_POLL_INTERVAL_MS;
-      return PRS_POLL_INTERVAL_MS;
-    },
+    refetchInterval: (query) =>
+      query.state.data?.some(isUnenriched)
+        ? PRS_UNENRICHED_POLL_INTERVAL_MS
+        : PRS_POLL_INTERVAL_MS,
     // Seeded from localStorage so a cold page load paints the last known cards
     // instead of a skeleton. `initialDataUpdatedAt` carries the real age, so
     // React Query treats the seed as already stale and refetches on mount — the

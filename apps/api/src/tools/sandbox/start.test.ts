@@ -257,6 +257,12 @@ function makeCtx(overrides: {
         get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
       },
+      // No repository row: these tests cover the legacy `mcp-github` path.
+      repositories: {
+        get: mock(async () => null),
+        findByRef: mock(async () => null),
+      },
+      gitProviderAccounts: { getUnscoped: mock(async () => null) },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -391,6 +397,26 @@ describe("SANDBOX_START", () => {
         branch: synthetic,
       }),
     );
+  });
+
+  it("resolves the thread's bound repo from input.threadId, not just a thread:-prefixed branch", async () => {
+    // Only input.threadId names the thread here — the branch and ctx.metadata don't.
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({
+      virtualMcp,
+      thread: {
+        created_by: USER_ID,
+        metadata: { githubRepo: { owner: "acme", name: "thread-repo" } },
+      },
+    });
+
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH, threadId: "t1" },
+      ctx,
+    );
+
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.displayName).toBe("acme/thread-repo");
   });
 
   it("keys a thread-scoped sandbox by the thread's creator, not the caller", async () => {

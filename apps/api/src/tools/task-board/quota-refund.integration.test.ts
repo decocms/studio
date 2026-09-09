@@ -169,8 +169,11 @@ describe("quota refund on thread finish (wiring)", () => {
       organizationId: ORG,
       url: "https://github.com/acme/repo/pull/7",
       prNumber: 7,
-      repoOwner: "acme",
-      repoName: "repo",
+      repo: {
+        provider: "github",
+        host: "github.com",
+        path: "acme/repo",
+      },
       connectionId: null,
     });
     // Even dragged backwards, a delivered PR keeps the charge.

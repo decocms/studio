@@ -378,8 +378,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -448,8 +448,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -545,8 +545,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -626,6 +626,7 @@ export interface StudioToolIO {
         repoOwner: string;
         repoName: string;
         createdAt: string;
+        updatedAt: string | null;
         title: string | null;
         body: string | null;
         state: "open" | "closed" | null;
@@ -794,11 +795,11 @@ export interface StudioToolIO {
     output: { restored: number };
   };
   TASK_ADD_REPO: {
-    input: { connectionId?: string | undefined };
+    input: { id?: string | undefined; connectionId?: string | undefined };
     output: {
       success: boolean;
       message: string;
-      repositories?: { connectionId: string; repo: string }[] | undefined;
+      repositories?: { id: string; repo: string }[] | undefined;
       repo?: string | undefined;
       cloned?: boolean | undefined;
       files?: string | undefined;
@@ -2168,6 +2169,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -2424,6 +2426,7 @@ export interface StudioToolIO {
                     name: string;
                     installationId?: number | undefined;
                     connectionId?: string | undefined;
+                    repositoryId?: string | undefined;
                   }
                 | null
                 | undefined;
@@ -2619,6 +2622,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -2850,6 +2854,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3072,6 +3077,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3293,6 +3299,7 @@ export interface StudioToolIO {
                     name: string;
                     installationId?: number | undefined;
                     connectionId?: string | undefined;
+                    repositoryId?: string | undefined;
                   }
                 | null
                 | undefined;
@@ -3496,6 +3503,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3716,6 +3724,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -4806,6 +4815,7 @@ export interface StudioToolIO {
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -5285,15 +5295,17 @@ export interface StudioToolIO {
   };
   ORG_REPO_SYNC_CREATE: {
     input: {
-      connectionId: string;
       volume: string;
+      repositoryId?: string | undefined;
+      connectionId?: string | undefined;
       ref?: string | undefined;
       paths?: { from: string; to?: string | undefined }[] | undefined;
     };
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5311,7 +5323,8 @@ export interface StudioToolIO {
     output: {
       configs: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5334,7 +5347,8 @@ export interface StudioToolIO {
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -7551,49 +7565,163 @@ export interface StudioToolIO {
       }[];
     };
   };
-  GITHUB_SEARCH_BRANCHES: {
+  GIT_PROVIDER_CAPABILITIES: {
+    input: { [x: string]: never };
+    output: {
+      github: {
+        configured: boolean;
+        connectPath: string | null;
+        installPath: string | null;
+      };
+      gitlab: { oauthHosts: string[]; connectPath: string | null };
+    };
+  };
+  GIT_ACCOUNT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      accounts: {
+        id: string;
+        organizationId: string;
+        type: "github" | "gitlab";
+        host: string;
+        authKind: "token" | "oauth" | "github_app";
+        externalAccountId: string;
+        login: string;
+        avatarUrl: string | null;
+        installationId: number | null;
+        status: "active" | "revoked";
+        createdAt: string;
+        updatedAt: string;
+        servable: boolean;
+        connectedBy: { name: string } | null;
+      }[];
+    };
+  };
+  GIT_ACCOUNT_CONNECT_TOKEN: {
+    input: { type: "github" | "gitlab"; host: string; token: string };
+    output: {
+      account: {
+        id: string;
+        organizationId: string;
+        type: "github" | "gitlab";
+        host: string;
+        authKind: "token" | "oauth" | "github_app";
+        externalAccountId: string;
+        login: string;
+        avatarUrl: string | null;
+        installationId: number | null;
+        status: "active" | "revoked";
+        createdAt: string;
+        updatedAt: string;
+        servable: boolean;
+        connectedBy: { name: string } | null;
+      };
+    };
+  };
+  GIT_ACCOUNT_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  REPOSITORY_LIST: {
+    input: { accountId?: string | undefined };
+    output: {
+      repositories: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        createdAt: string;
+        updatedAt: string;
+        usable: boolean;
+      }[];
+    };
+  };
+  REPOSITORY_SEARCH: {
     input: {
-      connectionId: string;
-      owner: string;
-      repo: string;
+      accountId: string;
+      query?: string | undefined;
+      page?: number | undefined;
+      perPage?: number | undefined;
+    };
+    output: {
+      repositories: {
+        ref: { provider: "github" | "gitlab"; host: string; path: string };
+        externalId: string;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal";
+        description: string | null;
+        updatedAt: string | null;
+      }[];
+      hasMore: boolean;
+    };
+  };
+  REPOSITORY_LINK: {
+    input: { url: string; accountId?: string | undefined };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  REPOSITORY_SEARCH_BRANCHES: {
+    input: {
       query: string;
       limit?: number | undefined;
+      cursor?: string | null | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
     };
     output: {
       branches: { name: string; author: string | null }[];
       totalCount: number;
+      nextCursor: string | null;
     };
   };
-  GITHUB_PR_STATE: {
+  CHANGE_REQUEST_STATE: {
     input: {
-      connectionId: string;
-      owner: string;
-      repo: string;
       branch: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
     };
     output: {
-      pullRequest: {
+      changeRequest: {
         number: number;
+        url: string;
         title: string;
         body: string;
-        state: "open" | "closed";
-        merged: boolean;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
         mergedAt: string | null;
         base: string;
         head: string;
         headSha: string;
-        headRepoFullName: string | null;
-        htmlUrl: string;
+        headRepoPath: string | null;
         author: string;
-        draft: boolean;
-        mergeableState: "unknown" | "clean" | "dirty" | "blocked";
-        unresolvedConversations: number;
-        missingRequiredApprovals: boolean;
-        changedFiles: number;
-        checks: {
-          id: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+        checkRuns: {
+          id: string | null;
           name: string;
-          status: "in_progress" | "completed" | "queued";
+          state: "completed" | "running" | "queued";
           conclusion:
             | "success"
             | "skipped"
@@ -7603,33 +7731,137 @@ export interface StudioToolIO {
             | "timed_out"
             | "action_required"
             | null;
-          htmlUrl: string;
+          url: string | null;
           durationMs: number | null;
+          summary: string | null;
         }[];
         comments: {
-          id: number;
+          id: string;
           author: string;
           body: string;
           createdAt: string;
-          htmlUrl: string;
+          updatedAt: string;
+          url: string;
         }[];
+        unresolvedConversations: number;
+        reviewBlocked: boolean;
       } | null;
     };
   };
-  GITHUB_LAST_PUBLISHED_PR: {
-    input: { connectionId: string; owner: string; repo: string; base: string };
+  CHANGE_REQUEST_LAST_MERGED: {
+    input: {
+      base: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
     output: {
-      pullRequest: {
+      changeRequest: {
         number: number;
+        url: string;
         title: string;
         body: string;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
         mergedAt: string | null;
         base: string;
         head: string;
         headSha: string;
-        htmlUrl: string;
+        headRepoPath: string | null;
         author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
       } | null;
+    };
+  };
+  CHANGE_REQUEST_LIST_OPEN: {
+    input: {
+      limit?: number | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequests: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+      }[];
+    };
+  };
+  CHANGE_REQUEST_CHECK_LOG: {
+    input: {
+      checkId: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: { report: string | null };
+  };
+  CHANGE_REQUEST_OPEN: {
+    input: {
+      head: string;
+      base: string;
+      title: string;
+      body?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequest: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "merged" | "open" | "closed";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+      };
+      existed: boolean;
+    };
+  };
+  CHANGE_REQUEST_MERGE: {
+    input: {
+      number: number;
+      strategy?: "unknown" | "squash" | undefined;
+      commitTitle?: string | undefined;
+      commitMessage?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      merged: boolean;
+      reason?:
+        | "error"
+        | "not_found"
+        | "conflict"
+        | "blocked"
+        | "rate_limited"
+        | undefined;
+      detail?: string | undefined;
     };
   };
   GLOBAL_SEARCH: {

@@ -47,6 +47,7 @@ export const virtualMcp = {
   "virtualMcp.connectionItem.configureResources": "Configurar recursos",
   "virtualMcp.connectionItem.connectionDisabled": "Conexão desativada",
   "virtualMcp.connectionItem.connectionEnabled": "Conexão ativada",
+  "virtualMcp.connectionItem.connectionNotFound": "Conexão não encontrada",
   "virtualMcp.connectionItem.connectionSettings": "Configurações de conexão",
   "virtualMcp.connectionItem.disable": "Desativar",
   "virtualMcp.connectionItem.disableConnection": "Desativar conexão",
@@ -142,6 +143,7 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.title": "Sub-projetos",
   "virtualMcp.virtualMcp.addConnection": "Adicionar conexão",
   "virtualMcp.virtualMcp.agentDeleted": 'Excluído "{title}"',
+  "virtualMcp.virtualMcp.agentNameFallback": "Agente",
   "virtualMcp.virtualMcp.agentNamePlaceholder": "Nome do projeto",
   "virtualMcp.virtualMcp.authenticationFailed":
     "Falha na autenticação: {error}",

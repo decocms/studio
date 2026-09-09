@@ -1,5 +1,4 @@
-import { formatDistanceToNow } from "date-fns";
-import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
+import { format, formatDistanceToNow } from "date-fns";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   branchUserLabel,
@@ -17,7 +16,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { User } from "@/components/user/user";
 import { useT } from "@/i18n/use-t.ts";
-import { usePreferences } from "@/hooks/use-preferences.ts";
+import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 
 import { authenticateMcp, isConnectionAuthenticated } from "@/lib/mcp-oauth";
 import { KEYS } from "@/lib/query-keys";
@@ -362,8 +361,7 @@ function VirtualMcpDetailViewWithData({
   hideOwnTitle?: boolean;
 }) {
   const t = useT();
-  const [preferences] = usePreferences();
-  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
+  const locale = useDateFnsLocale();
   const { org } = useProjectContext();
   const actions = useVirtualMCPActions();
   const { data: lastUsedMap } = useVirtualMCPsLastUsed([virtualMcp.id]);
@@ -990,7 +988,10 @@ function VirtualMcpDetailViewWithData({
                       });
                       flushAndSave();
                     }}
-                    name={form.watch("title") || "Agent"}
+                    name={
+                      form.watch("title") ||
+                      t("virtualMcp.virtualMcp.agentNameFallback")
+                    }
                     size="md"
                     className="shrink-0"
                     avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
@@ -1090,11 +1091,7 @@ function VirtualMcpDetailViewWithData({
               <span className="text-muted-foreground/50">·</span>
               <span>
                 {t("virtualMcp.virtualMcp.created")}{" "}
-                {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {format(new Date(virtualMcp.created_at), "PP", { locale })}
               </span>
               <span className="text-muted-foreground/50">·</span>
               <span>
@@ -1543,7 +1540,8 @@ export function VirtualMcpDetailView({
 
   return (
     <VirtualMcpDetailViewWithData
-      key={getActiveGithubRepo(virtualMcp)?.connectionId ?? ""}
+      // Re-seed the form on agent switch, not just on GitHub-repo change.
+      key={`${virtualMcp.id}:${getActiveGithubRepo(virtualMcp)?.connectionId ?? ""}`}
       virtualMcp={virtualMcp}
       hideOwnTitle={hideOwnTitle}
     />

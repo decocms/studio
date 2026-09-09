@@ -44,9 +44,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.newTaskInLaneTitle": "New task in {lane}",
   "taskBoard.taskBoard.noTasksMatch": "No tasks match these filters.",
   "taskBoard.taskBoard.noTasksYet": "No tasks yet. Start one with New task.",
-  "taskBoard.scope.clear": "Clear the {name} scope",
-  "taskBoard.scope.noRepo":
-    "This project has no repository, so no cards route to it yet.",
   "taskBoard.taskBoard.tasksTitle": "Tasks",
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
@@ -59,6 +56,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.moveToButton": "Move to",
   "taskBoard.taskBoard.changePriorityButton": "Change priority",
   "taskBoard.taskBoard.assignButton": "Assign",
+  "taskBoard.taskBoard.assignProjectButton": "Assign project",
   "taskBoard.taskBoard.dueDateButton": "Due date",
   "taskBoard.taskBoard.addTagButton": "Add tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Delete",
@@ -114,7 +112,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMergeFailedRateLimited":
     "couldn't merge yet — GitHub is rate-limiting us. This retries automatically.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
-    "GitHub refused the merge: {detail}",
+    "the provider refused the merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedConflict":
+    "it conflicts with the base branch and could not be merged",
   "taskBoard.taskDialog.activityMergeFailedError":
     "couldn't merge the pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",

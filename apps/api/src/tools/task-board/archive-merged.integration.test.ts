@@ -59,8 +59,11 @@ describe("auto-archive sweep", () => {
         organizationId: ORG,
         url: `https://github.com/acme/repo/pull/${item.id}`,
         prNumber: 1,
-        repoOwner: "acme",
-        repoName: "repo",
+        repo: {
+          provider: "github",
+          host: "github.com",
+          path: "acme/repo",
+        },
       });
     }
     return item.id;
@@ -189,8 +192,11 @@ describe("auto-archive sweep", () => {
         organizationId: ORG,
         url: `https://github.com/acme/${repoName}/pull/${prNumber}`,
         prNumber,
-        repoOwner: "acme",
-        repoName,
+        repo: {
+          provider: "github",
+          host: "github.com",
+          path: `acme/${repoName}`,
+        },
       });
 
     const bounced = await seed("done", settled, false);

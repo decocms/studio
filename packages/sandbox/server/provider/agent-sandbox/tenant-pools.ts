@@ -67,12 +67,17 @@ export function parseTenantPools(raw: string | undefined): TenantPool[] {
   return pools;
 }
 
-/** `owner/name` from a clone URL (credentialed or anonymous), lowercased. */
+/**
+ * `owner/name` from a github.com clone URL (credentialed or anonymous),
+ * lowercased. Pools are declared as GitHub `owner/name`, so a clone URL on any
+ * other host yields null — a GitLab `acme/site` must never bind a pool warmed
+ * for the GitHub repo of the same name.
+ */
 export function repoKeyFromCloneUrl(cloneUrl: string): string | null {
   try {
-    const [owner, rest] = new URL(cloneUrl).pathname
-      .replace(/^\/+/, "")
-      .split("/");
+    const url = new URL(cloneUrl);
+    if (url.hostname.toLowerCase() !== "github.com") return null;
+    const [owner, rest] = url.pathname.replace(/^\/+/, "").split("/");
     const name = rest?.replace(/\.git$/, "");
     return owner && name ? `${owner}/${name}`.toLowerCase() : null;
   } catch {

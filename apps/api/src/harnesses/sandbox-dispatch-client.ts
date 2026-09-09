@@ -38,6 +38,7 @@ import {
 import {
   SANDBOX_GONE_TERMINAL_CODE,
   SANDBOX_UNREACHABLE_PREFIX,
+  SUPERSEDED_TERMINAL_CODE,
 } from "@decocms/sandbox/dispatch/error-codes";
 import type { PodTermination } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
@@ -204,9 +205,6 @@ export function isRunSuperseded(err: unknown): boolean {
     (err as Error & { superseded?: boolean }).superseded === true
   );
 }
-
-/** The daemon's terminal code for an attempt displaced by a takeover. */
-const SUPERSEDED_TERMINAL_CODE = "superseded";
 
 /**
  * Is a non-2xx dispatch response the sandbox being gone, or the daemon rejecting

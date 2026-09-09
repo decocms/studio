@@ -12,7 +12,12 @@
 import type { CapabilityId } from "@/hooks/use-capability";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
-export type SettingsGroupKey = "connect" | "members" | "billing" | "storage";
+export type SettingsGroupKey =
+  | "connect"
+  | "members"
+  | "billing"
+  | "storage"
+  | "repositories";
 
 export interface SettingsTabDef {
   /** Stable id for React keys and analytics — never localized. */
@@ -88,6 +93,12 @@ export const SETTINGS_TAB_GROUPS: Record<
         requiresOwnedSites: true,
       },
     ],
+  },
+  repositories: {
+    key: "repositories",
+    titleKey: "settings.nav.repositories",
+    tabs: [],
+    ownedRoutes: ["/$org/settings/repositories"],
   },
   storage: {
     key: "storage",

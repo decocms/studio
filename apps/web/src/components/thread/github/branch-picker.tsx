@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -77,7 +78,7 @@ interface Props {
   orgId: string;
   orgSlug: string;
   userId: string;
-  connectionId: string | null;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
@@ -108,7 +109,7 @@ export function BranchPicker({
   orgId,
   orgSlug,
   userId,
-  connectionId,
+  target,
   owner,
   repo,
   sandboxMap,
@@ -304,7 +305,7 @@ export function BranchPicker({
             orgId={orgId}
             orgSlug={orgSlug}
             userId={userId}
-            connectionId={connectionId}
+            target={target}
             owner={owner}
             repo={repo}
             sandboxMap={sandboxMap}
@@ -547,7 +548,7 @@ function AdvancedPicker({
   orgId,
   orgSlug,
   userId,
-  connectionId,
+  target,
   owner,
   repo,
   sandboxMap,
@@ -558,7 +559,7 @@ function AdvancedPicker({
   orgId: string;
   orgSlug: string;
   userId: string;
-  connectionId: string | null;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
@@ -581,7 +582,7 @@ function AdvancedPicker({
     orgId,
     orgSlug,
     userId,
-    connectionId,
+    target,
     sandboxMap,
     owner,
     repo,
@@ -591,7 +592,7 @@ function AdvancedPicker({
   const { data: prs = [], isLoading: prsLoading } = useOpenPrs({
     orgId,
     orgSlug,
-    connectionId: connectionId ?? "",
+    target,
     owner,
     repo,
     enabled: enabled && tab === "prs",

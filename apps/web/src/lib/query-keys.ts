@@ -228,9 +228,9 @@ export const KEYS = {
   ) => ["github-branches", orgId, orgSlug, connectionId, owner, repo] as const,
 
   /**
-   * The branch's pull request with its checks, review state and comments — ONE
-   * key for all four, so those hooks share a single request (see
-   * GITHUB_PR_STATE).
+   * The branch's change request with its CI runs, review state and comments —
+   * ONE key for all four, so those hooks share a single request (see
+   * CHANGE_REQUEST_STATE).
    */
   githubPrState: (
     orgSlug: string,
@@ -254,6 +254,31 @@ export const KEYS = {
       owner,
       repo,
       base,
+    ] as const,
+
+  /** A repository's open change requests, for the branch picker's list. */
+  githubOpenPrs: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+  ) => ["github-open-prs", orgSlug, connectionId, owner, repo] as const,
+
+  /** One CI run's report, loaded when a Checks row is expanded. */
+  githubCheckRun: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+    checkRunId: string | null,
+  ) =>
+    [
+      "github-check-run",
+      orgSlug,
+      connectionId,
+      owner,
+      repo,
+      checkRunId,
     ] as const,
 
   githubBranchSearch: (
@@ -534,6 +559,23 @@ export const KEYS = {
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
   orgRepoSyncs: (orgId: string) => ["org-repo-syncs", orgId] as const,
 
+  // First-class git repositories (Settings → Repositories)
+  gitProviderCapabilities: (orgId: string) =>
+    ["git-provider-capabilities", orgId] as const,
+  githubConnectFlow: (orgId: string, flowId: string) =>
+    ["github-connect-flow", orgId, flowId] as const,
+  gitAccounts: (orgId: string) => ["git-accounts", orgId] as const,
+  /** Omit `accountId` for the whole org's list — that key is also the prefix a
+   *  mutation invalidates to refresh every per-account listing with it. */
+  repositories: (orgId: string, accountId?: string) =>
+    (accountId
+      ? ["repositories", orgId, accountId]
+      : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Provider-side repo search — hits the provider's API, so the query text is
+   *  part of the key and results are kept while the next page loads. */
+  providerRepoSearch: (orgId: string, accountId: string, query: string) =>
+    ["provider-repo-search-pages", orgId, accountId, query] as const,
+
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
   jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,
@@ -767,22 +809,6 @@ export function invalidateVirtualMcpQueries(
         (!orgId || key[1] === orgId) &&
         key[3] === "collection" &&
         key[4] === "VIRTUAL_MCP"
-      );
-    },
-  });
-}
-
-export function invalidateConnectionQueries(
-  queryClient: import("@tanstack/react-query").QueryClient,
-  orgId?: string,
-) {
-  queryClient.invalidateQueries({
-    predicate: (query) => {
-      const key = query.queryKey;
-      return (
-        (!orgId || key[1] === orgId) &&
-        key[3] === "collection" &&
-        key[4] === "CONNECTIONS"
       );
     },
   });

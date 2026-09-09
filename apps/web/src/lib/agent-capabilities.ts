@@ -74,6 +74,11 @@ export function getDevAgentIds(
  *   the loaded list) — the partner is that dev agent.
  * - `null` when the agent is not part of a dev/live pair.
  * `targetId` is the OTHER agent in the pair — where the toggle navigates.
+ *
+ * Both directions are checked against `agents`: deleting a virtual MCP does
+ * not clear `liveAgentId` on the counterpart it leaves behind, so a dev agent
+ * can carry a `liveAgentId` pointing at an agent that no longer exists. Left
+ * unchecked, the toggle would still render and navigate to a dead id.
  */
 export function findDevPartner(
   agent: VirtualMCPEntity | null | undefined,
@@ -82,7 +87,8 @@ export function findDevPartner(
   if (!agent) return null;
   const liveId = agent.metadata?.liveAgentId;
   if (typeof liveId === "string" && liveId) {
-    return { mode: "dev", targetId: liveId };
+    const liveAgent = (agents ?? []).find((a) => a.id === liveId);
+    return liveAgent ? { mode: "dev", targetId: liveId } : null;
   }
   const devAgent = (agents ?? []).find(
     (a) => a.metadata?.liveAgentId === agent.id,

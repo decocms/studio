@@ -1,3 +1,6 @@
+import * as migration208githubconnectflows from "./208-github-connect-flows";
+import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
+import * as migration206repositoryconsumers from "./206-repository-consumers";
 import { type Migration } from "kysely";
 import * as migration001initialschema from "./001-initial-schema.ts";
 import * as migration002organizationsettings from "./002-organization-settings.ts";
@@ -202,6 +205,8 @@ import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
 import * as migration201organizationnotices from "./201-organization-notices.ts";
 import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
 import * as migration203taskboardpreviewroutes from "./203-task-board-preview-routes.ts";
+import * as migration204gitprovideraccountsandrepositories from "./204-git-provider-accounts-and-repositories.ts";
+import * as migration205repositoryreferences from "./205-repository-references.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -439,6 +444,12 @@ const migrations: Record<string, Migration> = {
   "201-organization-notices": migration201organizationnotices,
   "202-redact-base64-thread-parts": migration202redactbase64threadparts,
   "203-task-board-preview-routes": migration203taskboardpreviewroutes,
+  "204-git-provider-accounts-and-repositories":
+    migration204gitprovideraccountsandrepositories,
+  "205-repository-references": migration205repositoryreferences,
+  "206-repository-consumers": migration206repositoryconsumers,
+  "207-task-board-prs-repo-idx": migration207taskboardprsrepoidx,
+  "208-github-connect-flows": migration208githubconnectflows,
 };
 
 export default migrations;

@@ -10,6 +10,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
+  GitBranch01,
   BarChart10,
   Building02,
   Columns03,
@@ -126,6 +127,13 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
       key: "build",
       label: t("settings.nav.build"),
       items: [
+        {
+          key: "repositories",
+          label: t("settings.nav.repositories"),
+          icon: <GitBranch01 size={14} />,
+          to: "/$org/settings/repositories",
+          requires: "file-configs:manage",
+        },
         {
           key: "connections",
           label: t("settings.nav.connections"),

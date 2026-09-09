@@ -75,6 +75,14 @@ describe("repoKeyFromCloneUrl", () => {
   it("returns null for a non-URL", () => {
     expect(repoKeyFromCloneUrl("git@github.com:acme/site.git")).toBeNull();
   });
+  it("is null for any host other than github.com", () => {
+    expect(
+      repoKeyFromCloneUrl("https://oauth2:tok@gitlab.com/acme/site.git"),
+    ).toBeNull();
+    expect(
+      repoKeyFromCloneUrl("https://gitlab.acme.com/acme/site.git"),
+    ).toBeNull();
+  });
 });
 
 describe("resolveTenantPool", () => {

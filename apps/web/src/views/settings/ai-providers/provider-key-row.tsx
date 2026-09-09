@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { toast } from "sonner";
 import { Edit01, Trash01 } from "@untitledui/icons";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
@@ -23,7 +22,7 @@ import {
   type AiProviderKey,
 } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
-import { usePreferences } from "@/hooks/use-preferences.ts";
+import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 import { KEYS } from "@/lib/query-keys";
 import {
   getPreset,
@@ -45,8 +44,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const t = useT();
-  const [preferences] = usePreferences();
-  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
+  const locale = useDateFnsLocale();
 
   const isOpenAICompatible = provider?.id === "openai-compatible";
 

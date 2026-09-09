@@ -74,7 +74,7 @@ test.describe("org home — the agent roster", () => {
     }
   });
 
-  test("a fresh org lands on the empty state, with GitHub import offered", async ({
+  test("a fresh org lands on the empty state, with repository import offered", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.goto(`/${orgSlug}/home`);
@@ -87,8 +87,10 @@ test.describe("org home — the agent roster", () => {
     await expect(page.getByText("No projects yet")).toBeVisible({
       timeout: SHELL_TIMEOUT_MS,
     });
+    /* Named for the repository, not for GitHub: the same control imports a
+       GitLab project, and the picker behind it lists both. */
     await expect(
-      page.getByRole("button", { name: "Import from GitHub" }),
+      page.getByRole("button", { name: "Import repository" }),
     ).toBeVisible();
   });
 });
