@@ -498,6 +498,40 @@ describe("resolveConfig topup fee percent", () => {
   });
 });
 
+describe("resolveConfig signup grant cents", () => {
+  it("defaults to 2300 (nets ~$25 with the gateway's $2)", () => {
+    expect(resolveConfig(flags, {}).settings.signupGrantCents).toBe(2300);
+  });
+
+  it("honors an override", () => {
+    expect(
+      resolveConfig(flags, { DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS: "5000" })
+        .settings.signupGrantCents,
+    ).toBe(5000);
+  });
+
+  it("allows 0 to disable the signup grant", () => {
+    expect(
+      resolveConfig(flags, { DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS: "0" }).settings
+        .signupGrantCents,
+    ).toBe(0);
+  });
+
+  it("rejects a non-numeric value at boot (fail-fast, not a silent default)", () => {
+    expect(() =>
+      resolveConfig(flags, { DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS: "lots" }),
+    ).toThrow(
+      "DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS must be a non-negative integer",
+    );
+  });
+
+  it("rejects a value above the $1,000 fat-finger cap", () => {
+    expect(() =>
+      resolveConfig(flags, { DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS: "250000" }),
+    ).toThrow("DECO_AI_GATEWAY_SIGNUP_GRANT_CENTS must be at most 100000");
+  });
+});
+
 describe("resolveConfig decopilot max concurrent subagents", () => {
   it("defaults to 4", () => {
     expect(
