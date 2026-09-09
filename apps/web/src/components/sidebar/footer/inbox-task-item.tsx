@@ -1,19 +1,32 @@
-/**
- * One unread task update in the inbox: who did what, on which card, when.
- *
- * Deliberately terser than the task dialog's timeline — the dialog renders
- * chips inside a sentence, this is a scannable row whose only job is to get you
- * to the card.
- */
+/** One inbox row: the card, what changed on it, and when. */
 
-import { ChevronRight } from "@untitledui/icons";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { getInitials } from "@/lib/get-initials";
 import { formatTimeAgo } from "@/lib/format-time";
 import { taskKey } from "@decocms/shared/task-key";
 import { useT } from "@/i18n/use-t.ts";
 import type { InboxTaskUpdate } from "@/hooks/use-inbox-feed";
+
+/**
+ * The few actions worth a color: the two that need you and the one that is
+ * simply good news. Everything else stays muted, or nothing stands out.
+ */
+function tone(action: InboxTaskUpdate["action"]): string {
+  switch (action) {
+    case "mentioned":
+    case "review_requested":
+      return "font-medium text-foreground";
+    case "merge_failed":
+    case "review_changes_requested":
+      return "font-medium text-destructive";
+    case "review_approved":
+      return "font-medium text-success";
+    default:
+      return "";
+  }
+}
 
 /** What changed, in a few words. The card itself carries the detail. */
 function summarize(
@@ -63,33 +76,43 @@ export function InboxTaskItem({
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-0 hover:bg-muted/25"
+      className="flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-0 hover:bg-muted/25"
     >
-      {isAgent ? (
-        <SuperAgentIcon size={24} className="shrink-0" />
-      ) : (
-        <Avatar
-          url={update.actorImage ?? undefined}
-          fallback={getInitials(update.actorName ?? undefined)}
-          shape="circle"
-          // 24px, matching SuperAgentIcon above — `sm` is 32 and read bigger.
-          size="xs"
-          className="shrink-0"
-        />
-      )}
+      <span className="mt-0.5 shrink-0">
+        {isAgent ? (
+          <SuperAgentIcon size={24} />
+        ) : (
+          <Avatar
+            url={update.actorImage ?? undefined}
+            fallback={getInitials(update.actorName ?? undefined)}
+            shape="circle"
+            // 24px, matching SuperAgentIcon above — `sm` is 32 and read bigger.
+            size="xs"
+          />
+        )}
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs text-muted-foreground">
-          {key ? `${key} · ` : ""}
-          {update.taskTitle}
-        </p>
-        <p className="truncate text-sm font-medium text-foreground">
-          {summarize(update, t)}
+        {/* Title and age share a line so the row has a right column to scan. */}
+        <div className="flex items-baseline gap-2">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            {update.taskTitle}
+          </p>
+          <span className="shrink-0 text-xs text-muted-foreground/70">
+            {formatTimeAgo(new Date(update.occurredAt))}
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {key && (
+            <>
+              <span className="font-medium">{key}</span>
+              {" · "}
+            </>
+          )}
+          <span className={cn(tone(update.action))}>
+            {summarize(update, t)}
+          </span>
         </p>
       </div>
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {formatTimeAgo(new Date(update.occurredAt))}
-      </span>
-      <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
     </button>
   );
 }
