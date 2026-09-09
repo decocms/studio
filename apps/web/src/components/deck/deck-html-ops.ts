@@ -15,6 +15,54 @@
 
 import type { DeckOp } from "./deck-messages";
 
+const UNSAFE_TAGS = new Set([
+  "script",
+  "style",
+  "iframe",
+  "object",
+  "embed",
+  "form",
+  "link",
+  "meta",
+  "base",
+]);
+
+const URL_ATTRS = new Set([
+  "href",
+  "src",
+  "xlink:href",
+  "action",
+  "formaction",
+]);
+
+function isSafeUrlAttrValue(value: string): boolean {
+  const trimmed = value.trim();
+  if (/^data:image\//i.test(trimmed)) return true;
+  return !/^(javascript|vbscript|data):/i.test(trimmed);
+}
+
+function isSafeAttr(name: string, value: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower.startsWith("on")) return false;
+  if (URL_ATTRS.has(lower)) return isSafeUrlAttrValue(value);
+  return true;
+}
+
+/** Strips script/embed-style tags and event-handler/URL-scheme attributes
+ *  from untrusted HTML before it's parsed into the deck source. */
+function sanitizeSlideFragment(root: Element): void {
+  for (const el of [
+    ...root.querySelectorAll(`${[...UNSAFE_TAGS].join(",")}`),
+  ]) {
+    el.remove();
+  }
+  for (const el of [root, ...root.querySelectorAll("*")]) {
+    for (const attr of [...el.attributes]) {
+      if (!isSafeAttr(attr.name, attr.value)) el.removeAttribute(attr.name);
+    }
+  }
+}
+
 export class DeckOpError extends Error {
   constructor(
     message: string,
@@ -92,6 +140,9 @@ export function applyDeckOp(source: string, op: DeckOp): string {
       if (!/^[a-zA-Z][\w-]*$/.test(op.name)) {
         throw new DeckOpError(`invalid attribute name: ${op.name}`, "bad-op");
       }
+      if (!isSafeAttr(op.name, op.value)) {
+        throw new DeckOpError(`unsafe attribute: ${op.name}`, "bad-op");
+      }
       slide.setAttribute(op.name, op.value);
       break;
     }
@@ -101,6 +152,7 @@ export function applyDeckOp(source: string, op: DeckOp): string {
     }
     case "replace": {
       const fragment = new DOMParser().parseFromString(op.html, "text/html");
+      sanitizeSlideFragment(fragment.body);
       const replacement = fragment.body.firstElementChild;
       if (!replacement) {
         throw new DeckOpError("replace html has no root element", "bad-op");
