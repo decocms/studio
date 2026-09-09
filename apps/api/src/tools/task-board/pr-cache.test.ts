@@ -87,6 +87,49 @@ describe("JetStreamKVPrCache", () => {
     expect(await read()).toEqual({ ok: true });
   });
 
+  test("a slow background revalidation cannot clobber a fresher write that lands first", async () => {
+    // A webhook refresh() lands while an older, slower background revalidation is still pending.
+    const clock = { now: 0 };
+    const cache = await cacheAt(clock);
+    const key = JSON.stringify({ name: "pull_request_read", number: 7 });
+    let releaseStale: ((v: { n: number }) => void) | undefined;
+
+    await cache.fetch({
+      namespace: "conn_1",
+      key,
+      fetchLive: async () => ({ n: 0 }),
+      onRevalidation: () => {},
+    });
+    clock.now = 60_000;
+    const pending: Promise<void>[] = [];
+    await cache.fetch({
+      namespace: "conn_1",
+      key,
+      fetchLive: () => new Promise((r) => (releaseStale = r)),
+      onRevalidation: (p) => pending.push(p),
+    });
+    expect(pending).toHaveLength(1);
+
+    clock.now = 60_001;
+    await cache.refresh({
+      namespace: "conn_1",
+      key,
+      fetchLive: async () => ({ n: 2 }),
+    });
+
+    releaseStale?.({ n: 1 });
+    await Promise.all(pending);
+
+    expect(
+      await cache.fetch({
+        namespace: "conn_1",
+        key,
+        fetchLive: async () => ({ n: -1 }),
+        onRevalidation: () => {},
+      }),
+    ).toEqual({ n: 2 });
+  });
+
   test("invalidate drops the connection's reads", async () => {
     const clock = { now: 0 };
     const cache = await cacheAt(clock);
@@ -219,8 +262,7 @@ describe("fetchOrPlaceholder", () => {
     expect(first).toEqual({ value: "from-db", live: false });
 
     release("from-github");
-    await Promise.resolve();
-    await Promise.resolve();
+    await Bun.sleep(0);
 
     expect(
       await cache.fetchOrPlaceholder({
