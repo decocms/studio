@@ -18,6 +18,7 @@ import { gunzipSync } from "node:zlib";
 import type { Kysely } from "kysely";
 import { retry, RetryError } from "@decocms/shared/std";
 import type { Database } from "../storage/types";
+import { GitProviderError } from "../git-providers/types";
 import { OrgFsEntryStorage } from "../storage/org-fs";
 import {
   type BoundObjectStorage,
@@ -211,10 +212,18 @@ export class TarballHttpError extends Error {
  * missing repo, expired token) won't resolve either. Everything else —
  * codeload 5xx/429, and whatever `fetch`/the 60s timeout throw for a reset or
  * DNS hiccup — is the transient case this exists for.
+ *
+ * `GitProviderError` covers the first-class-repository path too: both
+ * provider clients (github/http.ts, gitlab/http.ts) fold a network failure
+ * into `status: 0`, so 0/5xx/429 is the same transient set as the raw-fetch
+ * `TarballHttpError` case above.
  */
 export function isRetriableTarballError(err: unknown): boolean {
   if (err instanceof TarballHttpError) {
     return err.status >= 500 || err.status === 429;
+  }
+  if (err instanceof GitProviderError) {
+    return err.status === 0 || err.status >= 500 || err.status === 429;
   }
   if (
     err instanceof Error &&
@@ -285,8 +294,23 @@ async function repoFilesFor(
   if (!opts.tarball) {
     return fetchRepoFiles(source.repo, source.ref, opts.authToken);
   }
+  const tarball = opts.tarball;
   const label = `${source.repo}@${source.ref}`;
-  const stream = await opts.tarball();
+  let stream: ReadableStream<Uint8Array> | null;
+  try {
+    // Same transient-failure policy as the raw-fetch path.
+    stream = await retry(() => tarball(), {
+      maxAttempts: 3,
+      minTimeout: 500,
+      maxTimeout: 4_000,
+      jitter: 0.5,
+      isRetriable: isRetriableTarballError,
+    });
+  } catch (err) {
+    throw err instanceof RetryError && err.cause instanceof Error
+      ? err.cause
+      : err;
+  }
   if (!stream) throw new Error(`tarball not found for ${label}`);
   return filesFromTarball(await readTarballStream(stream, label), label);
 }

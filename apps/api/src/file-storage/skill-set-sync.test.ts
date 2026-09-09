@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { GitProviderError } from "../git-providers/types";
 import {
   isRetriableTarballError,
   isUpToDate,
@@ -205,5 +206,20 @@ describe("isRetriableTarballError", () => {
 
   it("retries an unclassified network error (reset, DNS, timeout)", () => {
     expect(isRetriableTarballError(new TypeError("fetch failed"))).toBe(true);
+  });
+
+  it("retries a first-class repository's GitProviderError for 0/5xx/429", () => {
+    const mk = (status: number) =>
+      new GitProviderError({ provider: "github", status, message: "x" });
+    expect(isRetriableTarballError(mk(0))).toBe(true);
+    expect(isRetriableTarballError(mk(503))).toBe(true);
+    expect(isRetriableTarballError(mk(429))).toBe(true);
+  });
+
+  it("does not retry a first-class repository's 4xx GitProviderError", () => {
+    const mk = (status: number) =>
+      new GitProviderError({ provider: "gitlab", status, message: "x" });
+    expect(isRetriableTarballError(mk(404))).toBe(false);
+    expect(isRetriableTarballError(mk(401))).toBe(false);
   });
 });
