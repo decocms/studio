@@ -19,10 +19,13 @@ type Installation = {
     type: "Organization" | "User";
     avatar_url: string | null;
   };
+  /** What the connecting user sees in the installation, and may install on. */
+  repositories?: Array<{ id: number; permissions?: { admin?: boolean } }>;
 };
 function installation(
   login: string,
   type: "Organization" | "User" = "Organization",
+  repositories?: Installation["repositories"],
 ): Installation {
   return {
     id: Math.floor(Math.random() * 1_000_000_000) + 1,
@@ -33,6 +36,7 @@ function installation(
       type,
       avatar_url: null,
     },
+    ...(repositories && { repositories }),
   };
 }
 async function grantAccess(
@@ -646,15 +650,25 @@ test("access to a collaborator's personal installation does not authorize sharin
   });
 });
 
-test("organization membership is not ownership and the check runs again when connecting", async ({
+test("an organization member shares only the repositories they administer", async ({
   authedPage,
 }) => {
   const { page } = authedPage;
   const owned = installation("owned-organization");
-  const member = installation("member-organization");
-  const pending = installation("pending-owner-organization");
+  // Administering a repository is exactly what GitHub asks for to install the
+  // App on it, so it is enough to hand that repository to Studio — and only it.
+  const member = installation("member-organization", "Organization", [
+    { id: 5001, permissions: { admin: true } },
+    { id: 5002, permissions: { admin: false } },
+    { id: 5003, permissions: { admin: true } },
+  ]);
+  const pending = installation("pending-owner-organization", "Organization", [
+    { id: 5004, permissions: { admin: false } },
+  ]);
   const external = installation("external-organization");
-  const personal = installation("my-personal-account", "User");
+  const personal = installation("my-personal-account", "User", [
+    { id: 5005, permissions: { admin: true } },
+  ]);
   const installations = [owned, member, pending, external, personal];
   const flow = await seedFlow(authedPage, installations);
   const memberships = [
@@ -672,18 +686,22 @@ test("organization membership is not ownership and the check runs again when con
   ];
   await grantAccess(page.request, flow.token, installations, { memberships });
   const listed = await (await page.request.get(flow.path)).json();
-  expect(
-    listed.installations.map((item: { login: string }) => item.login),
-  ).toEqual([owned.account.login, personal.account.login]);
-  for (const installation of [member, pending, external]) {
+  expect(listed.installations).toMatchObject([
+    { login: owned.account.login, repositoryCount: null },
+    { login: member.account.login, repositoryCount: 2 },
+    { login: personal.account.login, repositoryCount: null },
+  ]);
+  for (const forbidden of [pending, external]) {
     expect(
       (
         await page.request.post(flow.path, {
-          data: { installationId: installation.id },
+          data: { installationId: forbidden.id },
         })
       ).status(),
     ).toBe(403);
   }
+  // The check runs again at connect time, against fresh GitHub state: the
+  // organization offered whole a moment ago is now not offered at all.
   await grantAccess(page.request, flow.token, installations, {
     memberships: [],
   });
@@ -692,13 +710,153 @@ test("organization membership is not ownership and the check runs again when con
       await page.request.post(flow.path, { data: { installationId: owned.id } })
     ).status(),
   ).toBe(403);
+  // Losing the membership costs them nothing they administer, though.
   expect(
     (
       await page.request.post(flow.path, {
-        data: { installationId: personal.id },
+        data: { installationId: member.id },
       })
     ).status(),
   ).toBe(200);
+  const db = await connectDevDb();
+  try {
+    const saved = await db.query<{ installation_repository_ids: number[] }>(
+      "SELECT installation_repository_ids FROM git_provider_accounts WHERE organization_id=$1 AND external_account_id=$2",
+      [flow.orgId, String(member.id)],
+    );
+    expect(saved.rows[0]?.installation_repository_ids).toEqual([5001, 5003]);
+  } finally {
+    await db.end();
+  }
+});
+
+test("grants add up between connectors and an owner widens them to the whole installation", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const org = installation("shared-organization", "Organization", [
+    { id: 6001, permissions: { admin: true } },
+    { id: 6002, permissions: { admin: false } },
+  ]);
+  const memberOnly = [
+    { state: "active", role: "member", organization: { id: org.account.id } },
+  ];
+  const first = await seedFlow(authedPage, [org]);
+  await grantAccess(page.request, first.token, [org], {
+    memberships: memberOnly,
+  });
+  expect(
+    (
+      await page.request.post(first.path, { data: { installationId: org.id } })
+    ).status(),
+  ).toBe(200);
+
+  const grant = async () => {
+    const db = await connectDevDb();
+    try {
+      const row = await db.query<{ installation_repository_ids: number[] }>(
+        "SELECT installation_repository_ids FROM git_provider_accounts WHERE organization_id=$1 AND external_account_id=$2",
+        [first.orgId, String(org.id)],
+      );
+      return row.rows[0]?.installation_repository_ids ?? null;
+    } finally {
+      await db.end();
+    }
+  };
+  expect(await grant()).toEqual([6001]);
+
+  // A second person, administering the repository the first one could not.
+  const second = await seedFlow(authedPage, []);
+  await grantAccess(
+    page.request,
+    second.token,
+    [
+      {
+        ...org,
+        repositories: [{ id: 6002, permissions: { admin: true } }],
+      },
+    ],
+    { id: 2002, memberships: memberOnly },
+  );
+  expect(
+    (
+      await page.request.post(second.path, { data: { installationId: org.id } })
+    ).status(),
+  ).toBe(200);
+  expect((await grant())?.slice().sort()).toEqual([6001, 6002]);
+
+  // An owner authorizes the account itself, which is every repository in it.
+  const third = await seedFlow(authedPage, []);
+  await grantAccess(page.request, third.token, [org], {
+    memberships: [
+      { state: "active", role: "admin", organization: { id: org.account.id } },
+    ],
+  });
+  expect(
+    (
+      await page.request.post(third.path, { data: { installationId: org.id } })
+    ).status(),
+  ).toBe(200);
+  expect(await grant()).toBeNull();
+  const accounts = await callSelfMcpTool<{
+    accounts: Array<{ login: string; servable: boolean }>;
+  }>(page.request, orgSlug, "GIT_ACCOUNT_LIST", {});
+  expect(accounts.accounts).toMatchObject([
+    { login: org.account.login, servable: true },
+  ]);
+});
+
+test("a partial grant reaches its repositories and nothing else in the installation", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const inside = { id: 7001, path: "grant-organization/administered" };
+  const outside = { id: 7002, path: "grant-organization/not-administered" };
+  for (const repo of [inside, outside]) {
+    const [owner, name] = repo.path.split("/");
+    const seeded = await page.request.post(`${fixtureOrigin}/__admin/repos`, {
+      data: {
+        owner,
+        repo: name,
+        id: repo.id,
+        branches: { main: { files: { "README.md": repo.path } } },
+      },
+    });
+    expect(seeded.ok()).toBe(true);
+  }
+  // Both repositories are in the installation; only one is theirs to authorize.
+  const org = installation("grant-organization", "Organization", [
+    { id: inside.id, permissions: { admin: true } },
+    { id: outside.id, permissions: { admin: false } },
+  ]);
+  const flow = await seedFlow(authedPage, [org]);
+  await grantAccess(page.request, flow.token, [org], {
+    memberships: [
+      { state: "active", role: "member", organization: { id: org.account.id } },
+    ],
+  });
+  const connected = await page.request.post(flow.path, {
+    data: { installationId: org.id },
+  });
+  expect(connected.status()).toBe(200);
+  const { account } = (await connected.json()) as { account: { id: string } };
+
+  const linked = await callSelfMcpTool<{
+    repository: { path: string; externalId: string | null };
+  }>(page.request, orgSlug, "REPOSITORY_LINK", {
+    accountId: account.id,
+    url: `https://github.com/${inside.path}`,
+  });
+  expect(linked.repository).toMatchObject({
+    path: inside.path,
+    externalId: String(inside.id),
+  });
+  await expect(
+    callSelfMcpTool(page.request, orgSlug, "REPOSITORY_LINK", {
+      accountId: account.id,
+      url: `https://github.com/${outside.path}`,
+    }),
+  ).rejects.toThrow(/was not found|cannot access/);
 });
 
 test("owner lookup handles membership pagination and fails closed on GitHub errors", async ({

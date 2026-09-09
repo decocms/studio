@@ -2253,6 +2253,15 @@ export type GitAuthKindColumn = "github_app" | "oauth" | "token";
 export type GitAccountStatusColumn = "active" | "revoked";
 
 export interface GitProviderAccountTable {
+  /**
+   * The granted repositories of the installation, by id. Null is the whole
+   * installation; an empty list would grant nothing and is never written.
+   */
+  installation_repository_ids: ColumnType<
+    number[] | null,
+    string | null | undefined,
+    string | null
+  >;
   installation_authorized_by: ColumnType<
     string | null,
     string | null | undefined,

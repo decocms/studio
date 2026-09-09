@@ -56,6 +56,7 @@ function toAccountOutput(
   const {
     credentialConnectionId: _bridge,
     installationAuthorizedBy: _authorization,
+    installationRepositoryIds: _repositoryScope,
     ...entity
   } = account;
   return { ...entity, servable: accountIsServable(account) };
