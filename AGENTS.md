@@ -337,6 +337,38 @@ don't — extend the options or ask. The circuit breaker
 (`mcp-clients/circuit-breaker.ts`) is a different pattern (fault isolation) and
 is intentionally separate.
 
+### Push events, don't poll
+
+Never fix staleness by shortening a poll interval — that multiplies a remote
+call by the number of open tabs without making the data arrive sooner. Push the
+change from whatever knows it changed.
+
+**Their state — add a consumer to `/api/_github/webhook`.** A GitHub App has one
+webhook url, so extend that route, never add a second. Subscribe only to the
+transition that changes the answer (a `check_suite` fires on `requested` /
+`rerequested` / `completed`; only the last is news). Route reads through the
+blob cache (`getBlob`/`putBlob`) and `mapBounded` — an unbounded `Promise.all`
+over a tree trips the secondary rate limit — with the memo hoisted OUT of any
+retry loop. Never retry a 429; the retry *is* the burst (see `isRateLimitError`).
+The webhook is only an accelerator: with no `GITHUB_WEBHOOK_SECRET` it answers
+503, so every consumer must still converge on its own slow poll.
+
+**Our state — `sseHub.emit`, don't poll our own routes.** The lane is wired end
+to end, so a new event type costs no new connection and no server change:
+
+1. `sseHub.emit(orgId, event)` behind a named helper next to the code that owns
+   the change (`emitTaskBoardUpdated`, `tools/task-board/run-reactions.ts`).
+   Cross-pod via `NatsSSEBroadcast`.
+2. A shared `*_EVENT` const in `packages/shared` — dotted, past-tense
+   (`TASK_BOARD_ITEM_UPDATED_EVENT`). Both sides key off it.
+3. Add it to `WATCH_TYPES` in `apps/web/src/hooks/watch-sse-pool.ts` + export a
+   `filterEventTypes` view. `GET /api/:org/watch` has no allowlist of its own.
+4. A `useSyncExternalStore` hook on that view (`useEffect` is banned) —
+   `use-task-board-events.ts` is the reference.
+
+Keep the idle poll as the fallback, but never a push path AND a shortened poll
+for the same state.
+
 ### Org-level flags
 
 Org boolean toggles live in the `organization_settings.flags` jsonb bag — never
@@ -629,10 +661,11 @@ them in the **first** PR — they are the difference between "works in the demo"
 2. **Never access HTTP context in tools**—use StudioContext for all state
 3. **Database migrations**: Remember to run both Kysely migrations (`bun run migrate`) and Better Auth migrations (`bun run better-auth:migrate`)
 4. **Event bus**: The worker doesn't poll internally—it relies on NotifyStrategy to trigger processing
-5. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
-6. **Never modify knip configuration** (`knip.json`, `knip.config.ts`, etc.) to silence warnings. Knip warnings indicate dead code, unused exports, or unused dependencies—these are code smells that should be fixed by removing the unused code/export/dependency, not by adding exclusions to the knip config.
-7. **CI errors are always on your branch**. The `main` branch CI always passes. When CI fails, the problem is in the code you changed—do not assume it's a pre-existing issue or a flaky test. Investigate and fix your code.
-8. **Never persist, commit, or paste a real credential — redact at first sight.** Sandbox
+5. **Never fix staleness by shortening a poll**—push the change instead: a `/api/_github/webhook` consumer for their state, `sseHub.emit` for ours. See [Push events, don't poll](#push-events-dont-poll)
+6. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
+7. **Never modify knip configuration** (`knip.json`, `knip.config.ts`, etc.) to silence warnings. Knip warnings indicate dead code, unused exports, or unused dependencies—these are code smells that should be fixed by removing the unused code/export/dependency, not by adding exclusions to the knip config.
+8. **CI errors are always on your branch**. The `main` branch CI always passes. When CI fails, the problem is in the code you changed—do not assume it's a pre-existing issue or a flaky test. Investigate and fix your code.
+9. **Never persist, commit, or paste a real credential — redact at first sight.** Sandbox
    clone URLs carry a live GitHub App token (`https://x-access-token:ghs_...@github.com/...`),
    config payloads carry tenant secrets, and a node's cache is readable by every sandbox on
    that node. So:
@@ -653,7 +686,7 @@ them in the **first** PR — they are the difference between "works in the demo"
      the very first message that mentions it. This entry exists because that step was
      skipped and a customer's token reached a commit and a PR body.
 
-9. **The sandbox daemon is Go** (`packages/sandbox/daemon-go/**`) — one static binary per sandbox pod, the only daemon there is (the TypeScript one is deleted). Write Go there, not TypeScript. Its health probe is unforgiving: Studio polls it and marks the sandbox **dead** on a single miss, tearing the pod down mid-session, so never hold a lock across slow I/O on that path. The daemon's contract is asserted black-box in `packages/sandbox/daemon-e2e/` (swap the binary under test with `DAEMON_E2E_CMD`). Blocking work is still banned in Studio's own Bun processes — see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+10. **The sandbox daemon is Go** (`packages/sandbox/daemon-go/**`) — one static binary per sandbox pod, the only daemon there is (the TypeScript one is deleted). Write Go there, not TypeScript. Its health probe is unforgiving: Studio polls it and marks the sandbox **dead** on a single miss, tearing the pod down mid-session, so never hold a lock across slow I/O on that path. The daemon's contract is asserted black-box in `packages/sandbox/daemon-e2e/` (swap the binary under test with `DAEMON_E2E_CMD`). Blocking work is still banned in Studio's own Bun processes — see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## API Path Convention
 
