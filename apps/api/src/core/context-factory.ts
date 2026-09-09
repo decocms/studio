@@ -173,6 +173,14 @@ interface AuthenticatedUser {
   role?: string;
 }
 
+/** Prefers the JWT-verified connectionId over the client-set x-caller-id header. */
+export function resolveCallerConnectionId(
+  req: Request | undefined,
+  user: Pick<AuthenticatedUser, "connectionId"> | undefined,
+): string | undefined {
+  return user?.connectionId ?? req?.headers.get("x-caller-id") ?? undefined;
+}
+
 /**
  * Extract the canonical organization slug from an org-scoped API path.
  * Header hints are still supported for legacy, unscoped routes, but the URL
@@ -1498,14 +1506,8 @@ export async function createStudioContextFactory(
         )
       : { user: undefined };
 
-    // Resolve caller connection ID: explicit header takes priority, then fall
-    // back to the connectionId embedded in the studio JWT. This ensures that
-    // management tools on _self see the caller's connection ID even when the
-    // runtime doesn't set x-caller-id.
-    const connectionId =
-      req?.headers.get("x-caller-id") ??
-      authResult.user?.connectionId ??
-      undefined;
+    // The signed JWT's connectionId is authoritative; x-caller-id is a client-set header, only a fallback.
+    const connectionId = resolveCallerConnectionId(req, authResult.user);
 
     // Create bound auth client (encapsulates HTTP headers and auth context)
     const boundAuth = createBoundAuthClient({
