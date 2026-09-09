@@ -83,12 +83,19 @@ import { readStudioHeader } from "./studio-headers";
 // Helper Functions
 // ============================================================================
 
+const MAX_PROPERTIES_COUNT = 50;
+const MAX_PROPERTY_STRING_LENGTH = 500;
+
 /**
  * Parse the Studio properties header into a Record<string, string>.
  * The header value should be a JSON object with string values.
  * Returns undefined if the header is missing, empty, or invalid.
+ *
+ * Capped at MAX_PROPERTIES_COUNT entries / MAX_PROPERTY_STRING_LENGTH chars
+ * each — this unsigned, caller-set header lands verbatim in the monitoring
+ * log's `properties` column on every request (see mergeProperties).
  */
-function parsePropertiesHeader(
+export function parsePropertiesHeader(
   headerValue: string | null | undefined,
 ): Record<string, string> | undefined {
   if (!headerValue) return undefined;
@@ -106,7 +113,12 @@ function parsePropertiesHeader(
     // Validate all values are strings
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "string") {
+      if (Object.keys(result).length >= MAX_PROPERTIES_COUNT) break;
+      if (
+        typeof value === "string" &&
+        key.length <= MAX_PROPERTY_STRING_LENGTH &&
+        value.length <= MAX_PROPERTY_STRING_LENGTH
+      ) {
         result[key] = value;
       }
     }
