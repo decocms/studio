@@ -62,14 +62,26 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 		return
 	}
 
+	splice(clientConn, clientBuf, upstream, deps.OnClientData)
+}
+
+// splice pumps bytes bidirectionally between the client and the upstream dev
+// server. A half-close (CloseWrite) lets a well-behaved peer see EOF and close
+// its own side in turn, but a peer that never does — e.g. a client that
+// leaves its WebSocket open without sending anything after the dev server
+// closes — would otherwise leave the other goroutine's Read blocked forever,
+// leaking the goroutine and the hijacked connection for the life of the
+// daemon. So once either side finishes, both connections are closed to force
+// the other Read to return before this function waits for it.
+func splice(clientConn net.Conn, clientBuf io.Reader, upstream net.Conn, onClientData func()) {
 	done := make(chan struct{}, 2)
 	go func() {
 		buf := make([]byte, 32*1024)
 		for {
 			n, rerr := clientBuf.Read(buf)
 			if n > 0 {
-				if deps.OnClientData != nil {
-					deps.OnClientData()
+				if onClientData != nil {
+					onClientData()
 				}
 				if _, werr := upstream.Write(buf[:n]); werr != nil {
 					break
@@ -92,6 +104,8 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 		done <- struct{}{}
 	}()
 	<-done
+	clientConn.Close()
+	upstream.Close()
 	<-done
 }
 
