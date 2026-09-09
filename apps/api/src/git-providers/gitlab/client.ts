@@ -133,7 +133,10 @@ async function gitlabRequest(
   init: { accept?: string; timeoutMs?: number } = {},
 ): Promise<Response | null> {
   const res = await gitlabFetch(url, token, init);
-  if (res.status === 404) return null;
+  if (res.status === 404) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
   if (!res.ok) throw await gitlabFailure(res);
   return res;
 }
@@ -272,7 +275,10 @@ export class GitlabProviderClient implements GitProviderClient {
         timeoutMs: ARCHIVE_TIMEOUT_MS,
       },
     );
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
     if (!res.ok) throw await gitlabFailure(res);
     return res.body;
   }
@@ -296,7 +302,10 @@ export class GitlabProviderClient implements GitProviderClient {
     init?: { accept?: string },
   ): Promise<Response | null> {
     const res = await this.authedFetch(`${this.apiBase}${pathAndQuery}`, init);
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
     if (!res.ok) throw await gitlabFailure(res);
     return res;
   }
