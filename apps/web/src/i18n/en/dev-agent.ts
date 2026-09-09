@@ -9,4 +9,6 @@ export const devAgent = {
     "Or link an existing dev project…",
   "devAgent.devAgentSetup.title": "Development project",
   "devAgent.devAgentSetup.unlinkButton": "Unlink",
+  "devAgent.devAgentControl.develop": "Develop",
+  "devAgent.devAgentControl.live": "Live",
 } as const;
