@@ -7,8 +7,10 @@ import {
 import {
   buildAppJwt,
   installationCacheKey,
+  type InstallationToken,
   mapInstallation,
   nextPermissionSet,
+  pruneExpiredTokens,
   usableAppKey,
 } from "./app-auth";
 
@@ -208,6 +210,35 @@ describe("installationCacheKey", () => {
       }),
     ).not.toBe(base);
     expect(installationCacheKey(1, {})).not.toBe(base);
+  });
+});
+
+describe("pruneExpiredTokens", () => {
+  function tokenExpiringAt(ms: number): InstallationToken {
+    return { token: "t", expiresAt: new Date(ms), permissions: {} };
+  }
+
+  test("removes only entries whose expiry is at or before now", () => {
+    const cache = new Map<string, InstallationToken>([
+      ["expired", tokenExpiringAt(1_000)],
+      ["boundary", tokenExpiringAt(2_000)],
+      ["live", tokenExpiringAt(3_000)],
+    ]);
+
+    pruneExpiredTokens(cache, 2_000);
+
+    expect([...cache.keys()]).toEqual(["live"]);
+  });
+
+  test("leaves the cache untouched when nothing has expired", () => {
+    const cache = new Map<string, InstallationToken>([
+      ["a", tokenExpiringAt(5_000)],
+      ["b", tokenExpiringAt(6_000)],
+    ]);
+
+    pruneExpiredTokens(cache, 1_000);
+
+    expect(cache.size).toBe(2);
   });
 });
 

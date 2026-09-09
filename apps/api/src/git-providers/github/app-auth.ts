@@ -123,6 +123,25 @@ export function installationCacheKey(
   return `${installationId}|${repositories.join(",")}|${permissions.join(",")}`;
 }
 
+/**
+ * Remove every entry in `cache` that has already expired.
+ *
+ * Cache keys are per (installation, repositories, permissions) — a busy
+ * deployment mints one entry per distinct repository an installation ever
+ * touches, and nothing ever removed a stale one, so the map only grew for the
+ * life of the process. Called opportunistically on every mint, which bounds
+ * it to roughly the installations/repos actually touched inside one token
+ * lifetime rather than every one ever seen.
+ */
+export function pruneExpiredTokens(
+  cache: Map<string, InstallationToken>,
+  now: number,
+): void {
+  for (const [key, token] of cache) {
+    if (token.expiresAt.getTime() <= now) cache.delete(key);
+  }
+}
+
 /** Neutral shape of a GitHub App installation, as the account layer stores it. */
 export interface GithubInstallation {
   installationId: number;
@@ -243,6 +262,7 @@ export class GithubAppAuth {
     const mint = this.mint(installationId, opts)
       .then((token) => {
         this.cache.set(key, token);
+        pruneExpiredTokens(this.cache, Date.now());
         return token;
       })
       .finally(() => {
