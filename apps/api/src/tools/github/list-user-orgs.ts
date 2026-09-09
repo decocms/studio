@@ -172,6 +172,8 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       });
 
       if (isGithubRateLimited(res)) {
+        // Drain the unread body before discarding, like github/http.ts.
+        await res.body?.cancel().catch(() => {});
         const kind =
           res.headers.get("retry-after") !== null ? "secondary" : "primary";
         countGithubRateLimited({
@@ -188,6 +190,7 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       }
 
       if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
         throw new Error(`GitHub /user/installations failed: ${res.status}`);
       }
 
