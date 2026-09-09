@@ -1218,7 +1218,7 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
-/** Per-org subsidy gateway key (migration 159) — vault-encrypted; see
+/** Per-org subsidy gateway key (migration 160) — vault-encrypted; see
  *  storage/subsidized-gateway-keys.ts. */
 export interface SubsidizedGatewayKeyTable {
   organization_id: string;
@@ -1226,7 +1226,7 @@ export interface SubsidizedGatewayKeyTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-/** Quota ledger for reports-pushed task executions (migration 158) — one
+/** Quota ledger for reports-pushed task executions (migration 160) — one
  *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
 /** `held` = charged (counts toward the period); `released` = refunded
  *  because the run produced nothing. A union, so a typo in a comparison is a
