@@ -1,9 +1,46 @@
-import type { ProviderAdapter } from "../types";
+import type { PlanEntitlements, ProviderAdapter } from "../types";
 import { openrouterAdapter } from "./openrouter";
 import { getSettings } from "../../settings";
 
 function getBase(): string {
   return getSettings().aiGatewayUrl ?? "https://ai-site.deco.site";
+}
+
+/**
+ * The entitlements payload, exactly as the gateway sends it (snake_case). Two
+ * routes return it — GET /entitlements and PUT /plan — so it is parsed and
+ * mapped in one place; the shapes drifted apart the last time they weren't.
+ */
+interface EntitlementsWire {
+  plan: { id: string; name: string };
+  features: Record<string, boolean>;
+  usage: { percent: number; state: "ok" | "warn" | "exhausted" } | null;
+  credits: { remaining_usd: number } | null;
+  /** Server-only: the gateway sends it only to a caller holding the service
+   *  key, or to an org that owns `model_choice`. */
+  model_pins?: Record<string, string> | null;
+  tasks: {
+    allowed: boolean;
+    remaining: number | null;
+    denyReason: string | null;
+  };
+  period_start: string;
+  period_end: string;
+  /** Emitted by the gateway; not yet used for revalidation. */
+  etag?: string;
+}
+
+function toPlanEntitlements(data: EntitlementsWire): PlanEntitlements {
+  return {
+    plan: data.plan,
+    features: data.features,
+    usage: data.usage,
+    credits: data.credits ? { remainingUsd: data.credits.remaining_usd } : null,
+    modelPins: data.model_pins ?? null,
+    tasks: data.tasks,
+    periodStart: data.period_start,
+    periodEnd: data.period_end,
+  };
 }
 
 export const decoAiGatewayAdapter: ProviderAdapter = {
@@ -51,6 +88,55 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     }
     const data = (await res.json()) as { balance_cents: number };
     return { balanceCents: data.balance_cents };
+  },
+
+  async getEntitlements(studioJwt: string, organizationId: string) {
+    // `X-Provision-Key` identifies mesh's SERVER — the same header the key
+    // provisioning call already uses. It is what makes the gateway include the
+    // org's pinned MODEL: §6 withholds the model's name from the org itself,
+    // and this request is the one caller that is not the org. Absent on a
+    // self-hosted deployment, which then simply gets no pins.
+    const serviceKey = getSettings().studioProvisionSecretKey;
+    const res = await fetch(
+      `${getBase()}/api/teams/${organizationId}/entitlements`,
+      {
+        headers: {
+          Authorization: `Bearer ${studioJwt}`,
+          ...(serviceKey ? { "X-Provision-Key": serviceKey } : {}),
+        },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to fetch plan entitlements: ${res.status}`);
+    }
+    return toPlanEntitlements((await res.json()) as EntitlementsWire);
+  },
+
+  async listPlans(studioJwt: string, organizationId: string) {
+    const res = await fetch(`${getBase()}/api/teams/${organizationId}/plans`, {
+      headers: { Authorization: `Bearer ${studioJwt}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Failed to fetch plans: ${res.status}`);
+    const data = (await res.json()) as {
+      plans: { id: string; name: string; features: Record<string, boolean> }[];
+    };
+    return data.plans;
+  },
+
+  async setPlan(studioJwt: string, organizationId: string, planId: string) {
+    const res = await fetch(`${getBase()}/api/teams/${organizationId}/plan`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${studioJwt}`,
+      },
+      body: JSON.stringify({ planId }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Failed to change plan: ${res.status}`);
+    return toPlanEntitlements((await res.json()) as EntitlementsWire);
   },
 
   async provisionKey(studioJwt: string, organizationId: string) {

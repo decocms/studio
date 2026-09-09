@@ -46,6 +46,12 @@ import {
   buildDurableDispatchInput,
 } from "./dispatch-run";
 import { stringifyError } from "@/harnesses/lib/stream-error";
+import {
+  AiBudgetExhaustedError,
+  FeatureNotInPlanError,
+  assertAiBudget,
+  orgHasFeature,
+} from "@/core/plan-feature-gate";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,
@@ -631,6 +637,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(400, { message: "threadId is required" });
       }
 
+      // The plan gate for chat. `requiresFeature` on defineTool cannot reach
+      // here — a turn is an HTTP POST, not a tool call — so this route
+      // declares it itself. Both checks share one cached entitlements read,
+      // and both fail OPEN when the gateway has no answer (plan-feature-gate).
+      if (!(await orgHasFeature(ctx, input.organizationId, "chat"))) {
+        throw new FeatureNotInPlanError(
+          "This organization's plan does not include chat",
+          "chat",
+        );
+      }
+      // A turn is the largest single AI spend in the product, so it is the
+      // first place the exhausted bar has to mean something. Dormant unless
+      // STUDIO_PLAN_USAGE_ENFORCED.
+      await assertAiBudget(ctx, input.organizationId, "Chat");
+
       // Re-read the canonical row for its pin and message-storage version.
       // Only a real null uses the legacy create-on-send path. A storage error
       // must fail closed: treating it as a missing row could race a native pin
@@ -811,6 +832,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       );
       return c.json({ taskId }, 202);
     } catch (err) {
+      // Expected refusal, not an incident — logged as a warning below rather
+      // than through the error path.
+      if (
+        err instanceof FeatureNotInPlanError ||
+        err instanceof AiBudgetExhaustedError
+      ) {
+        console.warn("[decopilot:messages] refused by plan", {
+          code: err.code,
+        });
+        return c.json({ error: err.message, code: err.code }, 403);
+      }
       console.error("[decopilot:messages] Error", err);
       if (err instanceof TierUnavailableError) {
         return c.json({ error: err.message }, 400);

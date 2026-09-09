@@ -11,3 +11,5 @@ export { AI_PROVIDER_OAUTH_EXCHANGE } from "./oauth-exchange";
 export { AI_PROVIDER_PROVISION_KEY } from "./provision-key";
 export { AI_PROVIDER_TOPUP_URL } from "./topup-url";
 export { AI_PROVIDER_CREDITS } from "./credits";
+export { AI_PLAN_ENTITLEMENTS } from "./entitlements";
+export { AI_PLAN_LIST, AI_PLAN_SET } from "./plan-change";

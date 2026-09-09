@@ -274,6 +274,7 @@ export function resolveConfig(
       15,
       100,
     ),
+    planUsageEnforced: toBool(envVars.STUDIO_PLAN_USAGE_ENFORCED),
     taskQuotaEnforced: toBool(envVars.STUDIO_TASK_QUOTA_ENFORCED),
     freeTaskExecutions: toPositiveIntegerOrDefault(
       "STUDIO_FREE_TASKS",

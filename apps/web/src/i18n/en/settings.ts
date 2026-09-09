@@ -442,6 +442,47 @@ export const settings = {
   "settings.decoCreditsHero.disconnectTitle": "Disconnect Deco AI Gateway",
   "settings.decoCreditsHero.refreshBalance": "Refresh balance",
   "settings.decoCreditsHero.title": "Deco AI Gateway",
+  "settings.planUsage.title": "Plan",
+  "settings.planUsage.loadFailed": "Couldn't read this organization's plan.",
+  "settings.planUsage.retry": "Retry",
+  "settings.planUsage.currentPlan": "Current plan",
+  "settings.planUsage.aiUsage": "AI usage",
+  "settings.planUsage.usageUnavailable": "Unavailable",
+  "settings.planUsage.resetsOn": "Resets on {date}.",
+  "settings.planUsage.periodHint":
+    "Resets at the start of each billing period.",
+  "settings.planUsage.exhaustedHint":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade or top up.",
+  "settings.planUsage.exhausted": "Limit reached",
+  "settings.planUsage.exhaustedHintOn":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade or top up. Resets on {date}.",
+  "settings.planUsage.noAiIncluded":
+    "This plan includes no AI usage — pick a plan to get an AI envelope.",
+  "settings.planUsage.changePlan": "Change plan",
+  "settings.planUsage.changePlanDescription":
+    "Pick the plan for this organization. Everyone in the org shares its AI usage.",
+  "settings.planUsage.current": "Current",
+  "settings.planUsage.changed": "Plan updated",
+  "settings.planUsage.changeFailed": "Couldn't change plan: {message}",
+  "settings.planUsage.credits": "Credits: {amount}",
+  "settings.planUsage.creditsHint":
+    "Your monthly allowance is used up. Work now draws on your credits.",
+  "settings.planUsage.creditsEmpty":
+    "Your monthly allowance is used up and you have no credits left. Top up to keep going.",
+  "settings.planUsage.feature.cms": "CMS",
+  "settings.planUsage.feature.chat": "Superagent chat",
+  "settings.planUsage.feature.monitoring": "Monitoring",
+  "settings.planUsage.feature.kanban": "Kanban",
+  "settings.planUsage.feature.model_choice": "Choose your model",
+  "settings.planUsage.feature.none": "Bring your own key",
+  "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
+  "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
+  "settings.paywall.title": "{feature} is not in your plan",
+  "settings.paywall.description":
+    "This organization's plan doesn't include {feature}. Change the plan to unlock it for everyone in the org.",
+  "settings.paywall.seePlans": "See plans",
+  "settings.paywall.dismiss": "Not now",
+
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
   "settings.decoNudgeCard.connectDeco": "Connect Deco",
   "settings.decoNudgeCard.connecting": "Connecting…",
@@ -827,6 +868,8 @@ export const settings = {
   "settings.secrets.sectionOrganization": "Organization",
   "settings.secrets.sectionPrivate": "Private to me",
   "settings.secrets.valueLabel": "Value",
+  "settings.simpleModeSection.managedByDeco":
+    "Deco picks the models that power your workspace, tuned for speed and cost. Choosing your own models is available on Ultra.",
   "settings.simpleModeSection.defaultModels": "Default models",
   "settings.simpleModeSection.failedToSave": "Failed to save: {error}",
   "settings.simpleModeSection.modelsPowerDescription":

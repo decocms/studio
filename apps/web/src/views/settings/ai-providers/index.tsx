@@ -8,6 +8,7 @@ import {
 } from "@/hooks/collections/use-ai-providers";
 import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
+import { PlanUsageCard } from "./plan-usage-card";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
 import { ClaudeSubscriptionCard } from "./claude-subscription-card";
@@ -40,6 +41,9 @@ function OrgAiProvidersContent() {
   if (!hasHostedProvider) {
     return (
       <>
+        {/* The plan is an org-level fact — it does not depend on which
+            provider keys the org happens to have connected. */}
+        <PlanUsageCard />
         <ProviderGrid
           providers={providers}
           onSelect={setPendingProvider}
@@ -66,6 +70,7 @@ function OrgAiProvidersContent() {
 
   return (
     <>
+      <PlanUsageCard />
       <Suspense fallback={<Skeleton className="h-16 w-full" />}>
         <SimpleModeSection />
       </Suspense>

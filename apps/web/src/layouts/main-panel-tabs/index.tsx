@@ -41,6 +41,10 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useScopeId } from "@/hooks/use-project-scope";
+import { useFeature } from "@/hooks/use-entitlements";
+import { FeaturePaywall } from "@/components/feature-paywall";
+import { usePanelNavigate } from "./use-panel-navigate";
+import { featureForTab } from "./tab-feature";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -94,6 +98,9 @@ function TabBody({
   >["automationTabParsed"];
 }) {
   const controlPlaneViews = useControlPlaneViews();
+  const { closePanel } = usePanelNavigate();
+  const gatedFeature = featureForTab(activeTab);
+  const featureAllowed = useFeature(gatedFeature);
   // Native CDN Monitor tab gate — warehouse wired, independent of the
   // control-plane. Ownership is enforced by the BFF; combined with
   // `controlPlaneViews.monitor` below this guards the deep-link `?main=cdn`
@@ -115,6 +122,12 @@ function TabBody({
       activeTab
   ) {
     throw new Error(`forced tab error: ${activeTab}`);
+  }
+
+  if (gatedFeature && !featureAllowed) {
+    // Closing the panel on dismiss, rather than leaving a blank body behind
+    // the dialog: the view the URL names is one this org cannot open.
+    return <FeaturePaywall feature={gatedFeature} onDismiss={closePanel} />;
   }
 
   if (activeTab === "overview") {

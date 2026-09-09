@@ -10,6 +10,7 @@ import {
   type UsageStats as UsageStatsType,
 } from "@/lib/usage-utils.ts";
 import { formatDuration } from "@/lib/format-time.ts";
+import { useShowThreadCost } from "@/hooks/use-entitlements";
 
 const RING_SIZE = 16;
 const RING_STROKE = 2.5;
@@ -21,8 +22,11 @@ interface UsageStatsProps {
 }
 
 export function MessageUsageStats({ usage }: UsageStatsProps) {
+  const showCost = useShowThreadCost();
   if (!usage) return null;
-  const { totalTokens, inputTokens, outputTokens, cost } = usage;
+  const { totalTokens, inputTokens, outputTokens } = usage;
+  // Below Ultra the label is the token count, always — see useShowThreadCost.
+  const cost = showCost ? usage.cost : 0;
   if (!totalTokens && !inputTokens && !outputTokens) return null;
 
   return (
@@ -74,8 +78,9 @@ interface MessageStatsBarProps {
 }
 
 export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
+  const showCost = useShowThreadCost();
   const hasDuration = duration != null && duration > 0;
-  const hasCost = usage != null && (usage.cost ?? 0) > 0;
+  const hasCost = showCost && usage != null && (usage.cost ?? 0) > 0;
   const hasTokens = usage != null && (usage.totalTokens ?? 0) > 0;
 
   if (!hasDuration && !hasCost && !hasTokens) return null;
@@ -167,9 +172,14 @@ export function SessionStats({
   contextWindow,
   onOpenContextPanel,
 }: SessionStatsProps) {
+  const showCost = useShowThreadCost();
   const pct = Math.min((totalTokens / contextWindow) * 100, 100);
   const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
-  const cost = usage?.cost ?? 0;
+  // Zeroed rather than branched at each site: the pill, the aria-label and the
+  // tooltip row all key off `cost > 0`, so one value covers all three. The
+  // in/out token rows keep their own condition below — they are not money.
+  const cost = showCost ? (usage?.cost ?? 0) : 0;
+  const hasSpend = (usage?.cost ?? 0) > 0;
   const inputTokens = usage?.inputTokens ?? 0;
   const outputTokens = usage?.outputTokens ?? 0;
 
@@ -232,6 +242,10 @@ export function SessionStats({
               <span className="text-right tabular-nums">
                 ${cost.toFixed(4)}
               </span>
+            </>
+          )}
+          {hasSpend && (
+            <>
               <span className="text-muted">in</span>
               <span className="text-right tabular-nums">
                 {inputTokens.toLocaleString()}

@@ -618,6 +618,11 @@ export const KEYS = {
   filePickerObjectsByConfig: (orgId: string, configId: string) =>
     ["file-picker-objects", orgId, configId] as const,
 
+  // Plan, feature flags and the AI usage bar (org-wide, not per user)
+  aiPlanEntitlements: (orgId: string) =>
+    ["ai-plan-entitlements", orgId] as const,
+  aiPlanCatalog: (orgId: string) => ["ai-plan-catalog", orgId] as const,
+
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>
     ["ai-provider-credits", orgId, keyId] as const,

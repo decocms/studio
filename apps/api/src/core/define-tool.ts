@@ -17,6 +17,12 @@ import {
   isToolAllowedWhileBlocked,
   OrgBlockedError,
 } from "./org-notice-gate";
+import {
+  FeatureNotInPlanError,
+  assertAiBudget,
+  orgHasFeature,
+  type PlanFeature,
+} from "./plan-feature-gate";
 
 // ============================================================================
 // Tool Definition Types
@@ -82,6 +88,25 @@ export interface ToolDefinition<
     input: z.infer<TInput>,
     ctx: StudioContext,
   ) => Promise<z.infer<TOutput>>;
+  /**
+   * The plan feature this tool belongs to, if any. Declaring it is the whole
+   * gate — the execute wrapper below refuses the call when the org's plan does
+   * not include it, so no handler has to remember a check.
+   *
+   * The client gates the same keys (`use-entitlements.ts`), but that only stops
+   * a button. This is what stops a request.
+   */
+  requiresFeature?: PlanFeature;
+  /**
+   * Declare on a tool whose execution spends the org's AI allowance. The
+   * execute wrapper refuses it once the usage bar is exhausted — the margin
+   * stop the bar is otherwise only reporting.
+   *
+   * Orthogonal to `requiresFeature` on purpose: `cms` is in the plan and does
+   * not spend, so a full bar must not touch it ("CMS keeps working, chat
+   * pauses"). Dormant unless STUDIO_PLAN_USAGE_ENFORCED.
+   */
+  requiresAiBudget?: boolean;
 }
 
 /**
@@ -180,6 +205,29 @@ export function defineTool<
                   throw new OrgBlockedError(
                     `This organization is blocked: ${definition.name} is unavailable until the block is resolved`,
                   );
+                }
+
+                // The org's plan has to include this tool's feature. Fails
+                // OPEN when the gateway has no answer at all — see
+                // plan-feature-gate.
+                if (
+                  definition.requiresFeature &&
+                  organizationId &&
+                  !(await orgHasFeature(
+                    ctx,
+                    organizationId,
+                    definition.requiresFeature,
+                  ))
+                ) {
+                  throw new FeatureNotInPlanError(
+                    `${definition.name} needs the ${definition.requiresFeature} feature, which this organization's plan does not include`,
+                    definition.requiresFeature,
+                  );
+                }
+
+                // …and it has to have AI allowance left, when it spends it.
+                if (definition.requiresAiBudget && organizationId) {
+                  await assertAiBudget(ctx, organizationId, definition.name);
                 }
 
                 // MCP protocol already validated input against JSON Schema

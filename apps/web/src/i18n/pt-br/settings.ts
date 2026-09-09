@@ -454,6 +454,49 @@ export const settings = {
   "settings.decoCreditsHero.disconnectTitle": "Desconectar Deco AI Gateway",
   "settings.decoCreditsHero.refreshBalance": "Atualizar saldo",
   "settings.decoCreditsHero.title": "Deco AI Gateway",
+  "settings.planUsage.title": "Plano",
+  "settings.planUsage.loadFailed":
+    "Não foi possível ler o plano desta organização.",
+  "settings.planUsage.retry": "Tentar novamente",
+  "settings.planUsage.currentPlan": "Plano atual",
+  "settings.planUsage.aiUsage": "Uso de IA",
+  "settings.planUsage.usageUnavailable": "Indisponível",
+  "settings.planUsage.resetsOn": "Reinicia em {date}.",
+  "settings.planUsage.periodHint":
+    "Reinicia no começo de cada ciclo de cobrança.",
+  "settings.planUsage.exhaustedHint":
+    "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos.",
+  "settings.planUsage.exhausted": "Limite atingido",
+  "settings.planUsage.exhaustedHintOn":
+    "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos. Reinicia em {date}.",
+  "settings.planUsage.noAiIncluded":
+    "Este plano não inclui uso de IA — escolha um plano para ter uma cota.",
+  "settings.planUsage.changePlan": "Trocar plano",
+  "settings.planUsage.changePlanDescription":
+    "Escolha o plano desta organização. Todo mundo na org compartilha o uso de IA.",
+  "settings.planUsage.current": "Atual",
+  "settings.planUsage.changed": "Plano atualizado",
+  "settings.planUsage.changeFailed":
+    "Não foi possível trocar o plano: {message}",
+  "settings.planUsage.credits": "Créditos: {amount}",
+  "settings.planUsage.creditsHint":
+    "Sua franquia mensal acabou. O uso agora consome seus créditos.",
+  "settings.planUsage.creditsEmpty":
+    "Sua franquia mensal acabou e você não tem mais créditos. Adicione créditos para continuar.",
+  "settings.planUsage.feature.cms": "CMS",
+  "settings.planUsage.feature.chat": "Chat superagent",
+  "settings.planUsage.feature.monitoring": "Monitoramento",
+  "settings.planUsage.feature.kanban": "Kanban",
+  "settings.planUsage.feature.model_choice": "Escolher o modelo",
+  "settings.planUsage.feature.none": "Use sua própria chave",
+  "settings.planUsage.feature.diagnostic": "Diagnóstico de commerce",
+  "settings.planUsage.feature.diagnostic_enriched": "Diagnóstico enriquecido",
+  "settings.paywall.title": "{feature} não está no seu plano",
+  "settings.paywall.description":
+    "O plano desta organização não inclui {feature}. Troque de plano para liberar para todo mundo na org.",
+  "settings.paywall.seePlans": "Ver planos",
+  "settings.paywall.dismiss": "Agora não",
+
   "settings.decoCreditsHero.topUpFailed": "Recarga falhou: {message}",
   "settings.decoNudgeCard.connectDeco": "Conectar Deco",
   "settings.decoNudgeCard.connecting": "Conectando\u2026",
@@ -868,6 +911,8 @@ export const settings = {
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",
   "settings.secrets.sectionPrivate": "Privado para mim",
   "settings.secrets.valueLabel": "Valor",
+  "settings.simpleModeSection.managedByDeco":
+    "A Deco escolhe os modelos que movem seu workspace, equilibrando velocidade e custo. Escolher seus próprios modelos está disponível no Ultra.",
   "settings.simpleModeSection.defaultModels": "Modelos padr\u00e3o",
   "settings.simpleModeSection.failedToSave": "Falha ao salvar: {error}",
   "settings.simpleModeSection.modelsPowerDescription":

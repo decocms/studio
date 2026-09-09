@@ -40,6 +40,7 @@ import {
   useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
 import { TierModelOverridePicker } from "./tier-model-override-row";
+import { useFeature } from "@/hooks/use-entitlements";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 
@@ -329,6 +330,11 @@ export function TierTrigger() {
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
+  // Below Ultra the gate covers the model's NAME, not just the picker: the
+  // org's vocabulary is the tier, so there is no cog to open and no model
+  // name in the row's subtitle. Nothing to paywall-popup here — the surface
+  // itself is what the plan withholds.
+  const modelChoice = useFeature("model_choice");
 
   const tierLabels = getTierLabels(t);
 
@@ -336,7 +342,7 @@ export function TierTrigger() {
     {
       key: "decopilot",
       rows: TIER_ORDER.map((tierOption) => {
-        const modelName = tierModelNames[tierOption];
+        const modelName = modelChoice ? tierModelNames[tierOption] : undefined;
         const userSlot = userModelPrefs.tiers[tierOption];
         return {
           key: `decopilot-${tierOption}`,
@@ -345,32 +351,37 @@ export function TierTrigger() {
           subtitle: modelName ?? t(TIER_DESCRIPTION_KEYS[tierOption]),
           active: tier === tierOption,
           onSelect: () => setTier(tierOption),
-          modelOverride: (closeOverride: () => void) => (
-            <>
-              {userModelPrefsError && (
-                <div className="text-xs text-destructive p-3 pb-0">
-                  {t("chat.modelPreferences.loadFailed")}
-                </div>
-              )}
-              <TierModelOverridePicker
-                key={`${tierOption}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
-                tier={tierOption}
-                orgSlot={org.tiers[tierOption]}
-                userSlot={userSlot}
-                autoSlot={autoDefaults.chat[tierOption]}
-                onClose={closeOverride}
-                onPick={(slot) =>
-                  updateUserModelPreferences.mutate({ tier: tierOption, slot })
-                }
-                onReset={() =>
-                  updateUserModelPreferences.mutate({
-                    tier: tierOption,
-                    slot: null,
-                  })
-                }
-              />
-            </>
-          ),
+          modelOverride: !modelChoice
+            ? undefined
+            : (closeOverride: () => void) => (
+                <>
+                  {userModelPrefsError && (
+                    <div className="text-xs text-destructive p-3 pb-0">
+                      {t("chat.modelPreferences.loadFailed")}
+                    </div>
+                  )}
+                  <TierModelOverridePicker
+                    key={`${tierOption}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
+                    tier={tierOption}
+                    orgSlot={org.tiers[tierOption]}
+                    userSlot={userSlot}
+                    autoSlot={autoDefaults.chat[tierOption]}
+                    onClose={closeOverride}
+                    onPick={(slot) =>
+                      updateUserModelPreferences.mutate({
+                        tier: tierOption,
+                        slot,
+                      })
+                    }
+                    onReset={() =>
+                      updateUserModelPreferences.mutate({
+                        tier: tierOption,
+                        slot: null,
+                      })
+                    }
+                  />
+                </>
+              ),
         };
       }),
     },

@@ -160,6 +160,9 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_PROVISION_KEY",
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
+  "AI_PLAN_ENTITLEMENTS",
+  "AI_PLAN_LIST",
+  "AI_PLAN_SET",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   "CLAUDE_SUBSCRIPTION_CONNECT",
@@ -860,6 +863,21 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Get current credit balance for a provider",
     category: "AI Providers",
   },
+  {
+    name: "AI_PLAN_ENTITLEMENTS",
+    description: "Get the org's plan, feature flags and AI usage bar",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_LIST",
+    description: "List the plans an organization can move to",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_SET",
+    description: "Change the organization's plan",
+    category: "AI Providers",
+  },
   // Secrets tools
   {
     name: "SECRET_CREATE",
@@ -1501,6 +1519,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDERS_ACTIVE",
       "AI_PROVIDER_KEY_LIST",
       "AI_PROVIDER_CREDITS",
+      "AI_PLAN_ENTITLEMENTS",
+      "AI_PLAN_LIST",
+      "AI_PLAN_SET",
       "AI_PROVIDER_TOPUP_URL",
       // Object storage access
       "LIST_OBJECTS",
@@ -1751,6 +1772,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
+      "AI_PLAN_ENTITLEMENTS",
+      "AI_PLAN_LIST",
+      "AI_PLAN_SET",
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",

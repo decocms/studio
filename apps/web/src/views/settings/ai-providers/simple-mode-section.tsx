@@ -28,6 +28,7 @@ import { SimpleModeConfigSchema } from "@decocms/shared/organization/schema";
 import { ModelSelector } from "@/components/chat/select-model";
 import { useDebouncedAutosave } from "@/hooks/use-debounced-autosave.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useFeature } from "@/hooks/use-entitlements";
 
 // ── Default Models ───────────────────────────────────────────────────
 
@@ -178,6 +179,19 @@ function AutosaveStatus({
 
 export function SimpleModeSection() {
   const t = useT();
+  // §6 of the pricing doc: model choice is an Ultra feature, and the gate
+  // covers the model's NAME as well as the picker — below Ultra an org is not
+  // told which model ran its work, so this whole table is withheld, not just
+  // disabled. A disabled row still reads the names out.
+  //
+  // Safe to hide because nothing depends on the org writing here: `resolveTier`
+  // resolves pin → user → org slot → default-pick, and below Ultra a deco
+  // admin's pin outranks the slot anyway (see core/plan-feature-gate's
+  // orgPinnedModel). An org that never saved a slot has always worked.
+  //
+  // `useFeature` fails OPEN, so a gateway blip shows the table rather than
+  // hiding a paying Ultra org's own settings.
+  const canChooseModels = useFeature("model_choice");
   const allKeys = useHostedAiProviderKeys();
   const simpleMode = useSimpleMode();
   const hasProvider = allKeys.length > 0;
@@ -332,6 +346,22 @@ export function SimpleModeSection() {
     };
     return descriptions[tierKey] || "";
   };
+
+  // After the hooks above, never before: an early return that skips a hook is
+  // a rules-of-hooks violation, and this component's autosave/default-fill
+  // effects must keep running for an Ultra org.
+  if (!canChooseModels) {
+    return (
+      <SettingsSection
+        title={t("settings.simpleModeSection.defaultModels")}
+        headerClassName="pl-0"
+      >
+        <p className="text-sm text-muted-foreground -mt-2">
+          {t("settings.simpleModeSection.managedByDeco")}
+        </p>
+      </SettingsSection>
+    );
+  }
 
   return (
     <SettingsSection

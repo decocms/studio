@@ -5108,6 +5108,60 @@ export interface StudioToolIO {
     };
     output: { balanceCents: number };
   };
+  AI_PLAN_ENTITLEMENTS: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+    };
+    output: {
+      plan: { id: string; name: string };
+      features: Record<string, boolean>;
+      usage: { percent: number; state: "warn" | "ok" | "exhausted" } | null;
+      credits: { remainingUsd: number } | null;
+      tasks: {
+        allowed: boolean;
+        remaining: number | null;
+        denyReason: string | null;
+      };
+      periodStart: string;
+      periodEnd: string;
+    };
+  };
+  AI_PLAN_LIST: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+    };
+    output: {
+      plans: { id: string; name: string; features: Record<string, boolean> }[];
+    };
+  };
+  AI_PLAN_SET: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+      planId: string;
+    };
+    output: {
+      plan: { id: string; name: string };
+      features: Record<string, boolean>;
+    };
+  };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };
     output: {
