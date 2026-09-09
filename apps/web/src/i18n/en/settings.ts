@@ -77,7 +77,7 @@ export const settings = {
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.syncedRepos.pageDescription":
-    "GitHub repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
+    "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",
   "settings.syncedRepos.cancel": "Cancel",
   "settings.syncedRepos.create": "Create",
@@ -86,7 +86,7 @@ export const settings = {
     'Sync created — syncing into "{volume}" in the background',
   "settings.syncedRepos.emptyTitle": "No synced repos yet",
   "settings.syncedRepos.emptyDescription":
-    "Pick a GitHub repository and it will appear in the library as a read-only folder, kept in sync automatically.",
+    "Pick a repository and it will appear in the library as a read-only folder, kept in sync automatically.",
   "settings.syncedRepos.failed": "Something went wrong",
   "settings.syncedRepos.nameDialogDescription":
     "{repo} will be kept in sync into this read-only library folder.",
@@ -110,10 +110,15 @@ export const settings = {
   "settings.repositories.noProvidersTitle": "No git provider configured",
   "settings.repositories.noProvidersDescription":
     "Signing in with GitHub or GitLab needs provider credentials an administrator configures for this deployment. You can still connect a GitLab account with an access token.",
+  "settings.repositories.githubUnavailable":
+    "Ask an administrator to enable GitHub.",
+  "settings.repositories.browseAccount": "Browse repositories in your account.",
+  "settings.repositories.gitlabTokenHint":
+    "Use a personal, project or group access token.",
   "settings.repositories.connectGithub": "Connect GitHub",
   "settings.repositories.installGithub": "Install on another account",
   "settings.repositories.connectGitlab": "Connect GitLab",
-  "settings.repositories.connectGitlabToken": "Connect with a token",
+  "settings.repositories.connectGitlabToken": "Connect GitLab with a token",
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Personal token",
@@ -140,7 +145,7 @@ export const settings = {
     "Repositories available to this organization's agents and workflows.",
   "settings.repositories.reposEmptyTitle": "No repositories yet",
   "settings.repositories.reposEmptyDescription":
-    "Add a repository from a connected account, or paste the URL of a public one.",
+    "Choose a repository from a connected GitHub or GitLab account.",
   "settings.repositories.addRepository": "Add repository",
   "settings.repositories.unlink": "Unlink",
   "settings.repositories.unlinkTitle": 'Unlink "{path}"?',
@@ -154,23 +159,6 @@ export const settings = {
   "settings.repositories.visibilityInternal": "Internal",
   "settings.repositories.anonymousClone": "Anonymous clone",
   "settings.repositories.addDialogTitle": "Add repository",
-  "settings.repositories.addDialogDescription":
-    "Search the repositories of a connected account, or paste a repository URL.",
-  "settings.repositories.tabSearch": "Search",
-  "settings.repositories.tabUrl": "Paste URL",
-  "settings.repositories.accountLabel": "Account",
-  "settings.repositories.accountPlaceholder": "Select an account",
-  "settings.repositories.accountNone": "No account (public clone)",
-  "settings.repositories.searchPlaceholder": "Search repositories…",
-  "settings.repositories.searchNoAccount":
-    "Connect an account to search its repositories.",
-  "settings.repositories.searchEmpty": "No repositories found",
-  "settings.repositories.searchFailed": "Could not search repositories",
-  "settings.repositories.urlLabel": "Repository URL",
-  "settings.repositories.urlPlaceholder": "https://github.com/owner/repo",
-  "settings.repositories.link": "Add",
-  "settings.repositories.linking": "Adding…",
-  "settings.repositories.linked": 'Added "{path}"',
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",

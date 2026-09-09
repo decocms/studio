@@ -8,7 +8,8 @@
  */
 
 import {
-  keepPreviousData,
+  useInfiniteQuery,
+  type InfiniteData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -25,10 +26,9 @@ export type GitAccount =
   StudioToolIO["GIT_ACCOUNT_LIST"]["output"]["accounts"][number];
 
 export type Repository =
-  StudioToolIO["REPOSITORY_LIST"]["output"]["repositories"][number];
+  StudioToolIO["REPOSITORY_LINK"]["output"]["repository"];
 
-export type ProviderRepository =
-  StudioToolIO["REPOSITORY_SEARCH"]["output"]["repositories"][number];
+type RepositorySearchPage = StudioToolIO["REPOSITORY_SEARCH"]["output"];
 
 /** Capabilities are deployment config — they only change on a redeploy. */
 const CAPABILITIES_STALE_MS = 5 * 60_000;
@@ -67,8 +67,7 @@ export function useRepositories(accountId?: string) {
 
 /**
  * Search an account's repositories on the provider. Disabled until an account
- * is picked; `keepPreviousData` holds the previous page's results on screen
- * while the next query text resolves, so typing doesn't flash an empty list.
+ * is picked; Pages are fetched on demand, with an independent cache per account and query.
  */
 export function useSearchProviderRepositories(
   accountId: string | null,
@@ -76,19 +75,29 @@ export function useSearchProviderRepositories(
 ) {
   const { org } = useProjectContext();
   const studio = useStudioTools();
-  return useQuery({
+  return useInfiniteQuery<
+    RepositorySearchPage,
+    Error,
+    InfiniteData<RepositorySearchPage>,
+    ReturnType<typeof KEYS.providerRepoSearch>,
+    number
+  >({
     queryKey: KEYS.providerRepoSearch(org.id, accountId ?? "", query),
     enabled: accountId !== null,
-    placeholderData: keepPreviousData,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.hasMore ? pages.length + 1 : undefined,
     staleTime: 30_000,
     retry: false,
-    queryFn: async (): Promise<ProviderRepository[]> => {
-      if (accountId === null) return [];
+    queryFn: async ({ pageParam }): Promise<RepositorySearchPage> => {
+      if (accountId === null) return { repositories: [], hasMore: false };
       const res = await studio.call("REPOSITORY_SEARCH", {
         accountId,
+        page: pageParam,
+        perPage: 100,
         ...(query ? { query } : {}),
       });
-      return res.repositories;
+      return res;
     },
   });
 }

@@ -6,7 +6,7 @@ import { useVirtualMCP } from "@/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { GitHubRepoPicker } from "@/components/github-repo-picker";
+import { RepositoryImportPicker } from "@/components/repository-import-picker";
 import { useT } from "@/i18n/use-t.ts";
 import { resolvePreviewSource } from "./preview-source";
 import { useTaskMetadata } from "./use-task-metadata";
@@ -49,7 +49,7 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
             </Button>
           }
         />
-        <GitHubRepoPicker
+        <RepositoryImportPicker
           open={pickerOpen}
           onOpenChange={setPickerOpen}
           mode="agent"

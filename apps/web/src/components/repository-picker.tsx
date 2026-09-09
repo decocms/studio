@@ -1,23 +1,11 @@
-/**
- * Pick a repository from the org's connected git accounts.
- *
- * The counterpart of `GitHubRepoPicker` for the first-class repository model:
- * instead of listing GitHub App installations and provisioning a repo-scoped
- * `mcp-github` connection per repo, it lists the org's git provider accounts
- * (GitHub or GitLab) and links the chosen repository with `REPOSITORY_LINK`.
- * Already-linked repositories are offered first, so picking one costs no
- * provider call at all.
- *
- * `GitHubRepoPicker` renders this whenever the org has a serviceable account;
- * orgs still on the legacy connection keep the old flow untouched.
- */
-
+import { GitAccountConnect } from "@/components/git-account-connect";
 import { useDeferredValue, useState } from "react";
-import { ArrowLeft, SearchLg } from "@untitledui/icons";
+import { ArrowLeft, ChevronRight, GitBranch01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
@@ -58,9 +46,7 @@ function ProviderIcon({
 }
 
 /** An account Studio can actually mint credentials for. */
-export function serviceableAccounts(
-  accounts: GitAccount[] | undefined,
-): GitAccount[] {
+function serviceableAccounts(accounts: GitAccount[] | undefined): GitAccount[] {
   return (accounts ?? []).filter((a) => a.status === "active" && a.servable);
 }
 
@@ -87,18 +73,24 @@ function RepoRow({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/60 transition-colors",
+        "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent",
         disabled && "opacity-60 cursor-not-allowed",
       )}
     >
-      <ProviderIcon provider={provider} className="text-muted-foreground" />
+      <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+        <ProviderIcon provider={provider} className="text-muted-foreground" />
+      </div>
       <span className="flex-1 min-w-0">
-        <span className="block text-sm truncate">{path}</span>
+        <span className="block text-sm font-medium truncate">{path}</span>
         <span className="block text-xs text-muted-foreground truncate">
           {hint ? `${host} · ${hint}` : host}
         </span>
       </span>
-      {busy ? <Spinner className="size-4 text-muted-foreground" /> : null}
+      {busy ? (
+        <Spinner className="size-4 text-muted-foreground" />
+      ) : (
+        <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
+      )}
     </button>
   );
 }
@@ -112,14 +104,35 @@ function LinkedRepositories({
 }) {
   const t = useT();
   const repositories = useRepositories();
+  const [query, setQuery] = useState("");
   if (repositories.isPending) return <Skeleton className="h-24 w-full" />;
-  const rows = repositories.data ?? [];
-  if (rows.length === 0) return null;
+  if (repositories.isError)
+    return (
+      <p role="alert" className="p-4 text-sm text-destructive">
+        {repositories.error.message}
+      </p>
+    );
+  const repositoriesList = repositories.data ?? [];
+  if (repositoriesList.length === 0) return null;
+  const rows = repositoriesList.filter((repo) =>
+    repo.path.toLowerCase().includes(query.trim().toLowerCase()),
+  );
   return (
-    <div>
-      <p className="px-4 py-2 text-xs font-medium text-muted-foreground">
+    <div className="pb-2">
+      <CollectionSearch
+        value={query}
+        onChange={setQuery}
+        placeholder={t("common.repositoryPicker.searchPlaceholder")}
+        disabled={pendingPath !== null}
+      />
+      <p className="px-4 pt-4 pb-2 text-xs font-medium text-muted-foreground">
         {t("common.repositoryPicker.linkedSection")}
       </p>
+      {rows.length === 0 && (
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+          {t("common.repositoryPicker.searchEmpty")}
+        </p>
+      )}
       {rows.map((repo) => (
         <RepoRow
           key={repo.id}
@@ -128,7 +141,7 @@ function LinkedRepositories({
           host={repo.host}
           hint={repo.defaultBranch}
           disabled={pendingPath !== null}
-          busy={pendingPath === repo.path}
+          busy={pendingPath === repo.id}
           onSelect={() => onPick(repo)}
         />
       ))}
@@ -151,9 +164,10 @@ function ProviderSearch({
   const deferred = useDeferredValue(debounced);
   const isStale = query !== deferred;
   const search = useSearchProviderRepositories(account.id, deferred);
+  const results = search.data?.pages.flatMap((page) => page.repositories) ?? [];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="h-80 min-h-0 flex flex-col overflow-hidden">
       <CollectionSearch
         placeholder={t("common.repositoryPicker.searchPlaceholder")}
         value={query}
@@ -176,12 +190,16 @@ function ProviderSearch({
               ? search.error.message
               : t("common.repositoryPicker.searchFailed")}
           </p>
-        ) : (search.data ?? []).length === 0 ? (
+        ) : results.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-            {t("common.repositoryPicker.searchEmpty")}
+            {t(
+              search.hasNextPage
+                ? "common.repositoryPicker.searchMore"
+                : "common.repositoryPicker.searchEmpty",
+            )}
           </p>
         ) : (
-          (search.data ?? []).map((repo) => (
+          results.map((repo) => (
             <RepoRow
               key={`${repo.ref.host}/${repo.ref.path}`}
               provider={repo.ref.provider}
@@ -194,6 +212,16 @@ function ProviderSearch({
             />
           ))
         )}
+        {search.hasNextPage && (
+          <Button
+            variant="ghost"
+            className="w-full"
+            disabled={search.isFetchingNextPage || pendingPath !== null}
+            onClick={() => void search.fetchNextPage()}
+          >
+            {t("common.repositoryPicker.loadMore")}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -202,13 +230,15 @@ function ProviderSearch({
 function AccountList({
   accounts,
   onSelect,
+  disabled,
 }: {
   accounts: GitAccount[];
   onSelect: (account: GitAccount) => void;
+  disabled: boolean;
 }) {
   const t = useT();
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="py-2">
       <p className="px-4 py-2 text-xs font-medium text-muted-foreground">
         {t("common.repositoryPicker.browseSection")}
       </p>
@@ -217,19 +247,24 @@ function AccountList({
           key={account.id}
           type="button"
           onClick={() => onSelect(account)}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/60 transition-colors"
+          disabled={disabled}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50"
         >
-          <ProviderIcon
-            provider={account.type}
-            className="text-muted-foreground"
-          />
+          <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            <ProviderIcon
+              provider={account.type}
+              className="text-muted-foreground"
+            />
+          </div>
           <span className="flex-1 min-w-0">
-            <span className="block text-sm truncate">{account.login}</span>
+            <span className="block text-sm font-medium truncate">
+              {account.login}
+            </span>
             <span className="block text-xs text-muted-foreground truncate">
               {account.host}
             </span>
           </span>
-          <SearchLg size={14} className="text-muted-foreground" />
+          <ChevronRight size={16} className="text-muted-foreground" />
         </button>
       ))}
     </div>
@@ -246,7 +281,7 @@ export function RepositoryPicker({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  onPicked: (payload: RepositoryPickPayload) => void;
+  onPicked: (payload: RepositoryPickPayload) => void | Promise<void>;
   onError?: (message: string) => void;
 }) {
   const t = useT();
@@ -255,55 +290,80 @@ export function RepositoryPicker({
   const [account, setAccount] = useState<GitAccount | null>(null);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
   const usable = serviceableAccounts(accounts.data);
-
-  function pick(repository: Repository) {
-    setPendingPath(repository.path);
-    onPicked({ repository });
-    setPendingPath(null);
+  function reportError(err: unknown) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : t("common.repositoryPicker.linkFailed");
+    setError(message);
+    onError?.(message);
   }
 
-  function linkAndPick(webUrl: string, path: string) {
+  async function pick(repository: Repository) {
+    setPendingPath(repository.id);
+    setError(null);
+    try {
+      await onPicked({ repository });
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setPendingPath(null);
+    }
+  }
+
+  async function linkAndPick(webUrl: string, path: string) {
     if (!account) return;
     setPendingPath(path);
-    link.mutate(
-      { url: webUrl, accountId: account.id },
-      {
-        onSuccess: (repository) => onPicked({ repository }),
-        onError: (err) =>
-          onError?.(
-            err instanceof Error
-              ? err.message
-              : t("common.repositoryPicker.linkFailed"),
-          ),
-        onSettled: () => setPendingPath(null),
-      },
-    );
+    setError(null);
+    try {
+      const repository = await link.mutateAsync({
+        url: webUrl,
+        accountId: account.id,
+      });
+      await onPicked({ repository });
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setPendingPath(null);
+    }
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setAccount(null);
+        if (pendingPath !== null) return;
+        if (!next) {
+          setAccount(null);
+          setError(null);
+        }
         onOpenChange(next);
       }}
     >
-      <DialogContent className="sm:max-w-[560px] h-[85svh] sm:h-[520px] p-0 gap-0 overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-lg max-h-[85svh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {t("common.repositoryPicker.description")}
+          </DialogDescription>
         </DialogHeader>
-        <div className="flex items-center h-12 border-b border-border px-4 gap-3 shrink-0">
+        <div className="flex items-center h-12 border-b border-border px-4 pr-12 gap-3 shrink-0">
           {account ? (
             <Button
               size="icon"
               variant="ghost"
+              className="size-6 -ml-1"
+              disabled={pendingPath !== null}
               onClick={() => setAccount(null)}
               aria-label={t("common.repositoryPicker.back")}
             >
               <ArrowLeft size={16} />
             </Button>
-          ) : null}
+          ) : (
+            <GitBranch01 size={16} className="text-muted-foreground shrink-0" />
+          )}
           <span className="text-sm font-medium truncate">
             {account ? account.login : title}
           </span>
@@ -313,19 +373,42 @@ export function RepositoryPicker({
           <div className="p-4">
             <Skeleton className="h-24 w-full" />
           </div>
+        ) : accounts.isError ? (
+          <p role="alert" className="p-4 text-sm text-destructive">
+            {accounts.error.message}
+          </p>
         ) : account ? (
           <ProviderSearch
+            key={account.id}
             account={account}
-            onLink={linkAndPick}
+            onLink={(url, path) => void linkAndPick(url, path)}
             pendingPath={pendingPath}
           />
         ) : (
           <div className="flex-1 overflow-y-auto">
             <LinkedRepositories onPick={pick} pendingPath={pendingPath} />
-            {usable.length > 0 ? (
-              <AccountList accounts={usable} onSelect={setAccount} />
-            ) : null}
+            {usable.length > 0 && (
+              <AccountList
+                accounts={usable}
+                onSelect={setAccount}
+                disabled={pendingPath !== null}
+              />
+            )}
+            <div className="border-t border-border py-2">
+              <p className="px-4 py-2 text-xs text-muted-foreground leading-relaxed">
+                {t("common.repositoryPicker.description")}
+              </p>
+              <GitAccountConnect
+                layout="picker"
+                disabled={pendingPath !== null}
+              />
+            </div>
           </div>
+        )}
+        {error && (
+          <p role="alert" className="px-4 pb-3 text-sm text-destructive">
+            {error}
+          </p>
         )}
       </DialogContent>
     </Dialog>

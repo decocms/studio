@@ -378,8 +378,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -448,8 +448,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -545,8 +545,8 @@ export interface StudioToolIO {
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
-        previewRoutes: string[];
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -7632,6 +7632,7 @@ export interface StudioToolIO {
         visibility: "public" | "private" | "internal" | null;
         createdAt: string;
         updatedAt: string;
+        usable: boolean;
       }[];
     };
   };
@@ -7652,6 +7653,7 @@ export interface StudioToolIO {
         description: string | null;
         updatedAt: string | null;
       }[];
+      hasMore: boolean;
     };
   };
   REPOSITORY_LINK: {

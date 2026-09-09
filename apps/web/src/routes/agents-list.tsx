@@ -31,7 +31,7 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { FolderClosed, Plus } from "@untitledui/icons";
 import { toast } from "sonner";
-import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
+import { RepositoryImportPicker } from "@/components/repository-import-picker.tsx";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
@@ -223,7 +223,7 @@ export default function AgentsListPage() {
         </Page.Body>
       </Page.Content>
 
-      <GitHubRepoPicker
+      <RepositoryImportPicker
         open={githubPickerOpen}
         onOpenChange={setGithubPickerOpen}
       />

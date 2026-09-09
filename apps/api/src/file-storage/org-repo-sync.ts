@@ -16,17 +16,10 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgRepoSync } from "@/storage/types";
-import {
-  clientForAccount,
-  repositoryUsesStudioCredentials,
-} from "@/git-providers";
-import { repoRefOf } from "@/storage/repositories";
-import { ensureGithubCloneToken } from "@/shared/github-clone-info";
-import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
-import { DownstreamTokenStorage } from "@/storage/downstream-token";
+import { repositoryArchive } from "@/git-providers";
 import { isValidVolume } from "./org-fs-path";
 import { isPublicVolume } from "./public-sets";
-import { syncRepoToVolume, type TarballSource } from "./skill-set-sync";
+import { syncRepoToVolume } from "./skill-set-sync";
 
 /** Volumes with fixed roles that a repo sync must never overwrite. `public`
  *  is reserved too: it would mount at `org/public`, the public sets' dir.
@@ -80,81 +73,6 @@ export type OrgRepoSyncRunResult =
   | { id: string; volume: string; error: string };
 
 /**
- * The provider archive for a repository-backed config, or null when the
- * config still has to go through its legacy `mcp-github` connection (no
- * `repositoryId`, the row is gone, or Studio cannot serve its account — a
- * backfilled GitHub App account on a deployment without the App keys).
- */
-async function providerTarballSource(
-  ctx: StudioContext,
-  config: OrgRepoSync,
-): Promise<TarballSource | null> {
-  if (!config.repositoryId) return null;
-  const repository = await ctx.storage.repositories.get(
-    config.repositoryId,
-    config.organizationId,
-  );
-  if (!repository?.accountId) return null;
-  if (!(await repositoryUsesStudioCredentials(ctx.storage, repository))) {
-    return null;
-  }
-  const account = await ctx.storage.gitProviderAccounts.getUnscoped(
-    repository.accountId,
-  );
-  if (!account) return null;
-  const client = clientForAccount({ db: ctx.db, vault: ctx.vault }, account);
-  const ref = repoRefOf(repository);
-  return () => client.archiveTarball(ref, config.ref);
-}
-
-/**
- * The legacy path: the downstream token of a repo-scoped `mcp-github`
- * connection.
- *
- * Same recipe as TASK_ADD_REPO — re-mint when the connection carries a mint
- * recipe (a no-op for source-less refreshable children), then read the
- * cached/refreshable downstream token. Using `ensureRepoScopedToken` alone
- * would reject source-less children before even checking the cache.
- */
-async function legacyConnectionToken(
-  ctx: StudioContext,
-  config: OrgRepoSync,
-): Promise<string> {
-  if (!config.connectionId) {
-    throw new Error(
-      "This sync has no usable credentials — reconnect the git provider account backing its repository.",
-    );
-  }
-  const connection = await ctx.storage.connections.findById(
-    config.connectionId,
-    config.organizationId,
-  );
-  if (!connection) {
-    throw new Error("sync connection not found in this organization");
-  }
-  await ensureGithubCloneToken({
-    ctx,
-    connectionId: connection.id,
-    organizationId: config.organizationId,
-    onLegacyMintError: (error) =>
-      console.warn("[org-repo-sync] repo-scoped mint failed", {
-        configId: config.id,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-  });
-  const tokenResult = await getValidDownstreamAccessToken({
-    connectionId: connection.id,
-    tokenStorage: new DownstreamTokenStorage(ctx.db, ctx.vault),
-  });
-  if (!tokenResult.accessToken) {
-    throw new Error(
-      "No GitHub token for the sync connection — reconnect the mcp-github integration.",
-    );
-  }
-  return tokenResult.accessToken;
-}
-
-/**
  * Run one sync config to completion, recording the outcome on the row. Never
  * throws — a failed mint or fetch lands in `last_sync_error` so one broken
  * repo never blocks the others (and the DBOS step never wedges).
@@ -164,19 +82,26 @@ export async function syncOrgRepoSafe(
   config: OrgRepoSync,
 ): Promise<OrgRepoSyncRunResult> {
   try {
-    const tarball = await providerTarballSource(ctx, config);
+    const repository = config.repositoryId
+      ? await ctx.storage.repositories.get(
+          config.repositoryId,
+          config.organizationId,
+        )
+      : null;
+    if (!repository)
+      throw new Error(
+        "Sync repository no longer exists; select a repository again",
+      );
     const counts = await syncRepoToVolume(ctx.db, {
       orgId: config.organizationId,
       baseUrl: ctx.baseUrl,
       volume: config.volume,
       source: {
-        repo: `${config.repoOwner}/${config.repoName}`,
+        repo: repository.path,
         ref: config.ref,
         paths: config.paths,
       },
-      ...(tarball
-        ? { tarball }
-        : { authToken: await legacyConnectionToken(ctx, config) }),
+      tarball: () => repositoryArchive(ctx, repository, config.ref),
       skipVolumeQuota: false,
     });
     // Best-effort: the sync already succeeded, so a failed status write must not fall into the catch below and report a spurious failure.

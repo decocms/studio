@@ -22,6 +22,8 @@
  * there would take down the whole read.
  */
 
+import { type RepositoryRecord, repoRefOf } from "@/storage/repositories";
+import { GithubProviderClient } from "./github/client";
 import type { GithubRepo } from "@decocms/shared/sdk/types";
 import {
   parseRepoUrl,
@@ -35,6 +37,8 @@ import { RECONNECT_ERROR } from "@/oauth/token-refresh";
 import type { ChangeRequestClient } from "./change-requests";
 import type { RepoContentClient } from "./content";
 import {
+  clientForAccount,
+  repositoryUsesStudioCredentials,
   type RepoCredential,
   repoCredentialForRepository,
   type RepoTarget,
@@ -169,7 +173,7 @@ export async function contentClientForTarget(
     ctx,
     organizationId,
     resolved.ref,
-    target.connectionId ?? null,
+    target.connectionId ?? resolved.repository?.legacyConnectionId ?? null,
   );
   if (!token) throw noCredential(resolved);
   return contentClientWithToken(resolved.ref, token);
@@ -247,7 +251,7 @@ export async function changeRequestClientForTarget(
     ctx,
     organizationId,
     resolved.ref,
-    target.connectionId ?? null,
+    target.connectionId ?? resolved.repository?.legacyConnectionId ?? null,
   );
   return token
     ? changeRequestClientFor(staticRepoCredential(resolved.ref, token))
@@ -280,4 +284,37 @@ export function principalForToken(
           "GitHub accounts connect through the GitHub App; tokens are accepted for GitLab only",
       });
   }
+}
+
+/** Repository archives use the same credential fallback as contents and changes. */
+export async function repositoryArchive(
+  ctx: StudioContext,
+  repository: RepositoryRecord,
+  ref?: string,
+): Promise<ReadableStream<Uint8Array> | null> {
+  const repo = repoRefOf(repository);
+  if (await repositoryUsesStudioCredentials(ctx.storage, repository)) {
+    const account = repository.accountId
+      ? await ctx.storage.gitProviderAccounts.get(
+          repository.accountId,
+          repository.organizationId,
+        )
+      : null;
+    if (!account) throw new Error("Repository account no longer exists");
+    return clientForAccount(ctx, account).archiveTarball(repo, ref);
+  }
+  const token = await legacyGithubToken(
+    ctx,
+    repository.organizationId,
+    repo,
+    repository.legacyConnectionId,
+  );
+  if (!token)
+    throw new Error(
+      "Connect the repository's provider account before syncing it",
+    );
+  return new GithubProviderClient({
+    host: repo.host,
+    tokenSource: staticRepoCredential(repo, token).tokenSource,
+  }).archiveTarball(repo, ref);
 }

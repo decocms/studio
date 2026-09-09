@@ -115,6 +115,7 @@ async function resolveSyncSource(
   repositoryId?: string;
   repoOwner: string;
   repoName: string;
+  defaultBranch: string | null;
 }> {
   if (input.repositoryId) {
     const repository = await ctx.storage.repositories.get(
@@ -127,7 +128,12 @@ async function resolveSyncSource(
       );
     }
     const { owner, name } = splitOwnerName(repository);
-    return { repositoryId: repository.id, repoOwner: owner, repoName: name };
+    return {
+      repositoryId: repository.id,
+      repoOwner: owner,
+      repoName: name,
+      defaultBranch: repository.defaultBranch,
+    };
   }
   const connection = input.connectionId
     ? await ctx.storage.connections.findById(input.connectionId, organizationId)
@@ -138,10 +144,17 @@ async function resolveSyncSource(
       "connectionId must be a repo-scoped GitHub connection in this organization",
     );
   }
+  const repository = await ctx.storage.repositories.findByRef(organizationId, {
+    host: "github.com",
+    path: `${scope.owner}/${scope.repo}`,
+  });
+  if (!repository)
+    throw new Error("Link this connection's repository before creating a sync");
   return {
-    connectionId: connection.id,
+    repositoryId: repository.id,
     repoOwner: scope.owner,
     repoName: scope.repo,
+    defaultBranch: repository.defaultBranch,
   };
 }
 
@@ -198,7 +211,11 @@ export const ORG_REPO_SYNC_CREATE = defineTool({
       );
     }
 
-    const source = await resolveSyncSource(ctx, organization.id, input);
+    const { defaultBranch, ...source } = await resolveSyncSource(
+      ctx,
+      organization.id,
+      input,
+    );
 
     // The sync mirrors the repo: anything already in the volume would be
     // deleted on the first run. Only adopt empty volumes.
@@ -216,7 +233,7 @@ export const ORG_REPO_SYNC_CREATE = defineTool({
       const config = await ctx.storage.orgRepoSyncs.create({
         organizationId: organization.id,
         ...source,
-        ref: input.ref ?? "main",
+        ref: input.ref ?? defaultBranch ?? "main",
         paths: input.paths ?? [{ from: "" }],
         volume: input.volume,
         createdBy: userId,

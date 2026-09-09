@@ -3,9 +3,9 @@ import type { devAgent as devAgentEn } from "../en/dev-agent.ts";
 export const devAgent = {
   "devAgent.devAgentSetup.importButton": "Importar reposit\u00f3rio",
   "devAgent.devAgentSetup.importDialogTitle":
-    "Importar um projeto de desenvolvimento do GitHub",
+    "Importar um repositório de desenvolvimento",
   "devAgent.devAgentSetup.linkDescription":
-    "Vincule um projeto de desenvolvimento com suporte do GitHub. Seu servidor de sandbox em desenvolvimento alimenta uma alternância Desenvolver/Ao vivo para que você possa desenvolver e testar o aplicativo MCP deste projeto.",
+    "Vincule um projeto de desenvolvimento com um repositório Git. Seu servidor de sandbox em desenvolvimento alimenta uma alternância Desenvolver/Ao vivo para que você possa desenvolver e testar o aplicativo MCP deste projeto.",
   "devAgent.devAgentSetup.linkedDescription":
     "Projeto de desenvolvimento vinculado — seu servidor de sandbox em desenvolvimento alimenta a alternância Desenvolver/Ao vivo no cabeçalho.",
   "devAgent.devAgentSetup.selectPlaceholder":

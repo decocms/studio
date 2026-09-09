@@ -97,6 +97,11 @@ export const common = {
   "common.errorBoundary.somethingWentWrong": "Something went wrong",
   "common.errorBoundary.tryAgain": "Try again",
   "common.errorBoundary.unexpectedError": "An unexpected error occurred",
+  "common.repositoryPicker.description":
+    "Choose an account to browse its repositories.",
+  "common.repositoryPicker.searchMore":
+    "No matches in the loaded repositories. Load more to keep searching.",
+  "common.repositoryPicker.loadMore": "Load more repositories",
   "common.repositoryPicker.linkedSection": "Linked repositories",
   "common.repositoryPicker.browseSection": "Browse an account",
   "common.repositoryPicker.searchPlaceholder": "Search repositories",
@@ -129,7 +134,7 @@ export const common = {
   "common.githubRepoPicker.forkBadge": "Fork",
   "common.githubRepoPicker.githubConnected": "GitHub connected",
   "common.githubRepoPicker.importFromGitHub": "Import repository",
-  "common.githubRepoPicker.importedRepo": "Imported {name} from GitHub",
+  "common.githubRepoPicker.importedRepo": "Imported {name}",
   "common.githubRepoPicker.installGitHubApp": "Install the GitHub App",
   "common.githubRepoPicker.installingGitHubConnection":
     "Installing the GitHub connection...",

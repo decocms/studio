@@ -402,16 +402,20 @@ async function buildExtraRepoOpts(args: {
       );
       const studioRepository =
         repository &&
-        (await repositoryUsesStudioCredentials(args.ctx.storage, repository))
+        ((repository.accountId === null &&
+          !repo.connectionId &&
+          !repository.legacyConnectionId) ||
+          (await repositoryUsesStudioCredentials(args.ctx.storage, repository)))
           ? repository
           : null;
-      if (!studioRepository && !repo.connectionId) continue;
+      const connectionId = repo.connectionId ?? repository?.legacyConnectionId;
+      if (!studioRepository && !connectionId) continue;
       const { cloneUrl } = studioRepository
         ? await cloneInfoForRepository(args.ctx, studioRepository, {
             forceRefresh: true,
           })
         : await buildCloneInfo(
-            repo.connectionId!,
+            connectionId!,
             repo.owner,
             repo.name,
             args.ctx.db,
@@ -421,7 +425,7 @@ async function buildExtraRepoOpts(args: {
         cloneUrl,
         ...(studioRepository
           ? { repositoryId: studioRepository.id }
-          : { connectionId: repo.connectionId! }),
+          : { connectionId: connectionId! }),
         userName: args.gitUserName,
         userEmail: args.gitUserEmail,
         displayName: studioRepository
@@ -504,17 +508,23 @@ async function provisionSandbox(params: StartParams): Promise<{
     );
     const studioRepository =
       repository &&
-      (await repositoryUsesStudioCredentials(ctx.storage, repository))
+      ((repository.accountId === null &&
+        !githubRepo.connectionId &&
+        !repository.legacyConnectionId) ||
+        (await repositoryUsesStudioCredentials(ctx.storage, repository)))
         ? repository
         : null;
+
+    const connectionId =
+      githubRepo.connectionId ?? repository?.legacyConnectionId ?? undefined;
 
     // Legacy repo-scoped children may mint through their source connection here.
     // buildCloneInfo and detectRepoRuntime refresh OAuth-shaped tokens before
     // using them, including refreshable repo-scoped GitHub children.
-    if (!studioRepository && githubRepo.connectionId) {
+    if (!studioRepository && connectionId) {
       await ensureGithubCloneToken({
         ctx,
-        connectionId: githubRepo.connectionId,
+        connectionId,
         organizationId: orgId,
         forceRefresh: true,
         onLegacyMintError: (error) => {
@@ -524,7 +534,7 @@ async function provisionSandbox(params: StartParams): Promise<{
           console.error(
             "[provisionSandbox] repo-scoped legacy token mint failed",
             {
-              connectionId: githubRepo.connectionId,
+              connectionId,
               error: (error as Error).message,
             },
           );
@@ -538,9 +548,9 @@ async function provisionSandbox(params: StartParams): Promise<{
     // trade-off of linking a repo without a GitHub connection.
     const { cloneUrl, gitUserName, gitUserEmail } = studioRepository
       ? await studioCloneInfo(ctx, studioRepository)
-      : githubRepo.connectionId
+      : connectionId
         ? await buildCloneInfo(
-            githubRepo.connectionId,
+            connectionId,
             githubRepo.owner,
             githubRepo.name,
             ctx.db,
@@ -557,9 +567,9 @@ async function provisionSandbox(params: StartParams): Promise<{
     // starts skip the probe.
     // Studio-credentialed repos skip the probe: the daemon reads the lockfile.
     if (!packageManager && !studioRepository) {
-      const detected = githubRepo.connectionId
+      const detected = connectionId
         ? await detectRepoRuntime(
-            githubRepo.connectionId,
+            connectionId,
             githubRepo.owner,
             githubRepo.name,
             ctx.db,
@@ -615,8 +625,8 @@ async function provisionSandbox(params: StartParams): Promise<{
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
       ...(studioRepository
         ? { repositoryId: studioRepository.id }
-        : githubRepo.connectionId
-          ? { connectionId: githubRepo.connectionId }
+        : connectionId
+          ? { connectionId }
           : {}),
       userName: gitUserName,
       userEmail: gitUserEmail,

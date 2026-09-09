@@ -209,7 +209,9 @@ export class GitlabProviderClient implements GitProviderClient {
     return mapGitlabProject(await res.json(), this.host);
   }
 
-  async listRepos(opts: ListReposOptions = {}): Promise<RepoSummary[]> {
+  async listRepos(
+    opts: ListReposOptions = {},
+  ): Promise<{ repositories: RepoSummary[]; hasMore: boolean }> {
     const params = new URLSearchParams({
       membership: "true",
       // The simple representation still carries every field the summary needs.
@@ -225,7 +227,7 @@ export class GitlabProviderClient implements GitProviderClient {
     const query = opts.query?.trim();
     if (query) params.set("search", query);
     const res = await this.get(`/projects?${params}`);
-    if (!res) return [];
+    if (!res) return { repositories: [], hasMore: false };
     const json = await res.json();
     if (!Array.isArray(json)) {
       throw new GitProviderError({
@@ -234,7 +236,10 @@ export class GitlabProviderClient implements GitProviderClient {
         message: "GitLab /projects returned a non-array payload",
       });
     }
-    return json.map((project) => mapGitlabProject(project, this.host));
+    return {
+      repositories: json.map((project) => mapGitlabProject(project, this.host)),
+      hasMore: json.length === Number(params.get("per_page")),
+    };
   }
 
   async readFile(

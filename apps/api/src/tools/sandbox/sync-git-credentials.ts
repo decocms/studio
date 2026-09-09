@@ -73,7 +73,9 @@ export async function refreshSandboxGitCredentials(
     return;
   }
 
-  if (!githubRepo.connectionId) {
+  const connectionId =
+    githubRepo.connectionId ?? repository?.legacyConnectionId;
+  if (!connectionId) {
     throw new GitPushAuthError(
       "Push requires a connected git account. Connect the repository's provider for this project and restart the sandbox.",
     );
@@ -81,7 +83,7 @@ export async function refreshSandboxGitCredentials(
 
   await ensureGithubCloneToken({
     ctx,
-    connectionId: githubRepo.connectionId,
+    connectionId,
     organizationId,
     forceRefresh: true,
     onLegacyMintError: (error) => {
@@ -91,7 +93,7 @@ export async function refreshSandboxGitCredentials(
   });
 
   const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
-    githubRepo.connectionId,
+    connectionId,
     githubRepo.owner,
     githubRepo.name,
     ctx.db,
