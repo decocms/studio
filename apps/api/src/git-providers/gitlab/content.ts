@@ -1146,7 +1146,10 @@ export class GitlabContentClient implements RepoContentClient {
         cause,
       });
     }
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
     if (!res.ok) throw await gitlabFailure(res);
     return res;
   }
