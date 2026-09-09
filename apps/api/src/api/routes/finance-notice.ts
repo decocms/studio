@@ -6,6 +6,7 @@ import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import type { StudioContext } from "@/core/studio-context";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
 import { posthog } from "@/posthog";
+import { getSettings } from "@/settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { bearerToken, safeEqual } from "./credential-vault";
 
@@ -17,9 +18,18 @@ type Variables = {
   studioContext: StudioContext;
 };
 
-/** A dedicated token keeps finance notice access separate from credential vault access. */
+/**
+ * A dedicated token keeps finance notice access separate from credential vault
+ * access.
+ *
+ * Read through `getSettings()` rather than off process.env: this bearer's
+ * holder can pin a `block` notice on any organization, which replaces that
+ * tenant's UI and refuses its control-plane writes, so it gets boot-time
+ * validation (a token too short to be a secret fails the boot) and is visible
+ * in one place alongside every other credential.
+ */
 export function isFinanceServiceToken(token: string): boolean {
-  const expected = process.env.FINANCE_SERVICE_TOKEN;
+  const expected = getSettings().financeServiceToken;
   return !!expected && safeEqual(token, expected);
 }
 

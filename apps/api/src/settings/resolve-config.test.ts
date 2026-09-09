@@ -541,3 +541,25 @@ describe("resolveConfig decopilot max concurrent hosted runs", () => {
     );
   });
 });
+
+describe("resolveConfig finance service token", () => {
+  it("refuses to boot on a token too short to be a secret", () => {
+    expect(() =>
+      resolveConfig(flags, { FINANCE_SERVICE_TOKEN: "short" }),
+    ).toThrow(/FINANCE_SERVICE_TOKEN is too short/);
+  });
+
+  it("accepts a 32-char token — openssl rand -hex 16", () => {
+    const token = "a".repeat(32);
+    expect(
+      resolveConfig(flags, { FINANCE_SERVICE_TOKEN: token }).settings
+        .financeServiceToken,
+    ).toBe(token);
+  });
+
+  it("unset is the feature being off, not an error", () => {
+    expect(
+      resolveConfig(flags, {}).settings.financeServiceToken,
+    ).toBeUndefined();
+  });
+});

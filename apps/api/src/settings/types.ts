@@ -201,6 +201,16 @@ export interface Settings {
   /** Bearer service token for the control-plane REST API. Never leaves the
    *  server — the BFF proxy attaches it and returns only the proxied JSON. */
   controlplaneServiceToken: string | undefined;
+  /**
+   * Bearer for the finance-owned organization-notice API. A SINGLE static
+   * secret whose holder can pin a `block` notice on any organization — which
+   * replaces that tenant's UI and makes the server refuse its control-plane
+   * writes. That is the widest blast radius of any token in this settings
+   * object, so it goes through here rather than being read off process.env at
+   * the call site: it is validated at boot and visible in one place, and
+   * whether the feature is live stops being invisible.
+   */
+  financeServiceToken: string | undefined;
   /** Deployment-wide GA switch for the control-plane views (Hosting · E2E ·
    *  Deco Analytics): true opens them to every org at once. Off by default,
    *  where each view shows only for deco.cx staff, local dev, or an org with

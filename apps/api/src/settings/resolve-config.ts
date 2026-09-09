@@ -159,6 +159,29 @@ export function resolveS3ForcePathStyle(raw: string | undefined): boolean {
 }
 
 /**
+ * A service bearer, or undefined when the feature is off.
+ *
+ * Fails the boot on a value too short to be a secret. A bearer whose holder can
+ * block any organization's control plane must not be guessable, and the failure
+ * mode of a weak one is silent: it authenticates exactly as well as a strong
+ * one until someone guesses it. 32 characters is `openssl rand -hex 16`.
+ */
+const MIN_SERVICE_TOKEN_LENGTH = 32;
+
+function requireStrongServiceToken(
+  name: string,
+  raw: string | undefined,
+): string | undefined {
+  if (!raw) return undefined;
+  if (raw.length < MIN_SERVICE_TOKEN_LENGTH) {
+    throw new Error(
+      `${name} is too short: a service bearer needs at least ${MIN_SERVICE_TOKEN_LENGTH} characters (openssl rand -hex 32). Unset it to turn the feature off.`,
+    );
+  }
+  return raw;
+}
+
+/**
  * Resolve a "new name first, legacy alias second" env var pair. Uses `||`
  * (not `??`) so an env var explicitly set to "" — common when a deployment
  * template renders an unset value as an empty string rather than omitting the
@@ -379,6 +402,10 @@ export function resolveConfig(
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
     controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
     controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
+    financeServiceToken: requireStrongServiceToken(
+      "FINANCE_SERVICE_TOKEN",
+      envVars.FINANCE_SERVICE_TOKEN,
+    ),
     analyticsDataUrl: envVars.ANALYTICS_URL,
     analyticsMasterToken: envVars.ANALYTICS_MASTER_TOKEN,
     clickhouseAnalyticsUrl: envVars.CLICKHOUSE_ANALYTICS_ADDRESS,
