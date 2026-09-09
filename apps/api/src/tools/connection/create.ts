@@ -78,16 +78,17 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
     };
 
     if (connectionData.id) {
-      const existing = await ctx.storage.connections.findById(
-        connectionData.id,
-      );
-      if (existing?.organization_id === organization.id) {
+      // Existence/organization checks only — skip findById()'s secret decryption.
+      const existingOrgId =
+        await ctx.storage.connections.findOrganizationIdById(connectionData.id);
+      if (existingOrgId === organization.id) {
         throw new Error("Connection already exists in organization");
       }
       // Would collide with another connection's DATABASES_RUN_SQL schema/role — see findBySanitizedId.
-      const collision = await ctx.storage.connections.findBySanitizedId(
-        connectionData.id,
-      );
+      const collision =
+        await ctx.storage.connections.sanitizedIdCollisionExists(
+          connectionData.id,
+        );
       if (collision) {
         throw new Error(
           "Connection id conflicts with an existing connection's isolated database schema",

@@ -335,6 +335,31 @@ export class ConnectionStorage implements ConnectionStoragePort {
     return row ? this.deserializeConnection(row as RawConnectionRow) : null;
   }
 
+  /**
+   * Organization id for an existence/ownership check — skips findById()'s
+   * secret decryption, which callers checking only `organization_id` don't need.
+   */
+  async findOrganizationIdById(id: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("connections")
+      .select("organization_id")
+      .where("id", "=", id)
+      .executeTakeFirst();
+    return row?.organization_id ?? null;
+  }
+
+  /** Boolean form of `findBySanitizedId`, for callers that only need the collision check. */
+  async sanitizedIdCollisionExists(id: string): Promise<boolean> {
+    const sanitized = id.replace(/-/g, "_");
+    const row = await this.db
+      .selectFrom("connections")
+      .select("id")
+      .where(sql<string>`replace(id, '-', '_')`, "=", sanitized)
+      .where("id", "!=", id)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
   async list(
     organizationId: string,
     options?: {
