@@ -162,6 +162,17 @@ function filesFromTarball(
   return files;
 }
 
+/** Throws once `length` exceeds `cap` — shared by every tarball size guard. */
+export function assertWithinByteCap(
+  length: number,
+  cap: number,
+  label: string,
+): void {
+  if (length > cap) {
+    throw new Error(`tarball for ${label} exceeds ${cap} bytes`);
+  }
+}
+
 /** Buffer a tarball stream, refusing to grow past the download cap. */
 async function readTarballStream(
   stream: ReadableStream<Uint8Array>,
@@ -175,11 +186,7 @@ async function readTarballStream(
       const { done, value } = await reader.read();
       if (done) break;
       total += value.length;
-      if (total > MAX_TARBALL_BYTES) {
-        throw new Error(
-          `tarball for ${label} exceeds ${MAX_TARBALL_BYTES} bytes`,
-        );
-      }
+      assertWithinByteCap(total, MAX_TARBALL_BYTES, label);
       chunks.push(value);
     }
   } finally {
@@ -254,14 +261,16 @@ async function fetchRepoFiles(
         `tarball fetch failed for ${label}: HTTP ${res.status}`,
       );
     }
-    // Refuse before buffering when the server declares the size; the post-download check backstops chunked responses.
+    // Refuse before buffering when the server declares the size; the post-download check backstops chunked responses (no Content-Length).
     const declared = Number(res.headers.get("content-length") ?? 0);
     if (declared > MAX_TARBALL_BYTES) {
       throw new Error(
         `tarball for ${label} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
       );
     }
-    return new Uint8Array(await res.arrayBuffer());
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    assertWithinByteCap(bytes.length, MAX_TARBALL_BYTES, label);
+    return bytes;
   };
   try {
     const gz = await retry(attempt, {
