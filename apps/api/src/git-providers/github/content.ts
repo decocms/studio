@@ -19,6 +19,7 @@ import {
   isGithubRateLimited,
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
+import { budgetOwnerFor } from "./budget-owner";
 import { githubGraphqlRequest } from "./graphql";
 import { githubApiBaseUrl } from "./http";
 import type { TokenSource } from "../types";
@@ -400,7 +401,12 @@ export class GithubContentClient implements RepoContentClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
-    recordGithubRateLimit(res.headers, { lane: "rest", operation: method });
+    const installation = budgetOwnerFor(accessToken);
+    recordGithubRateLimit(res.headers, {
+      lane: "rest",
+      operation: method,
+      installation,
+    });
 
     if (conditional && res.status === 304) {
       return { status: 200, json: conditional.body as T };
@@ -408,7 +414,12 @@ export class GithubContentClient implements RepoContentClient {
     if (isGithubRateLimited(res)) {
       const kind =
         res.headers.get("retry-after") !== null ? "secondary" : "primary";
-      countGithubRateLimited({ lane: "rest", operation: method, kind });
+      countGithubRateLimited({
+        lane: "rest",
+        operation: method,
+        installation,
+        kind,
+      });
       await res.body?.cancel().catch(() => {});
       throw new GitHubRateLimitError(
         res.status,

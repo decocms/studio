@@ -15,6 +15,7 @@ import {
   isGithubRateLimited,
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
+import { budgetOwnerFor } from "./budget-owner";
 import { GitProviderError } from "../types";
 
 const GITHUB_API_VERSION = "2022-11-28";
@@ -82,9 +83,11 @@ export async function githubFetch(
     });
   }
 
+  const installation = budgetOwnerFor(init.token);
   recordGithubRateLimit(res.headers, {
     lane: "rest",
     operation: init.operation,
+    installation,
   });
 
   if (isGithubRateLimited(res)) {
@@ -92,7 +95,12 @@ export async function githubFetch(
     await res.body?.cancel().catch(() => {});
     const kind =
       res.headers.get("retry-after") !== null ? "secondary" : "primary";
-    countGithubRateLimited({ lane: "rest", operation: init.operation, kind });
+    countGithubRateLimited({
+      lane: "rest",
+      operation: init.operation,
+      installation,
+      kind,
+    });
     const retryAfterMs = githubRetryAfterMs(res.headers);
     throw new GitProviderError({
       provider: "github",

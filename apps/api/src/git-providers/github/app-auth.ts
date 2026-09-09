@@ -16,6 +16,7 @@ import {
   isPermissionRejected,
   OPTIONAL_MINT_PERMISSIONS,
 } from "@decocms/shared/github-repo-scope";
+import { APP_BUDGET_OWNER, rememberBudgetOwner } from "./budget-owner";
 import { type GithubAppConfig, readGithubAppConfig } from "./env";
 import type { GitProviderCapability } from "../types";
 import { GitProviderError } from "../types";
@@ -234,6 +235,11 @@ export class GithubAppAuth {
       nowSeconds: now,
     });
     this.jwt = { value, exp: now + JWT_TTL_SECONDS };
+    rememberBudgetOwner(
+      value,
+      APP_BUDGET_OWNER,
+      (now + JWT_TTL_SECONDS) * 1000,
+    );
     return value;
   }
 
@@ -262,6 +268,11 @@ export class GithubAppAuth {
     const mint = this.mint(installationId, opts)
       .then((token) => {
         this.cache.set(key, token);
+        rememberBudgetOwner(
+          token.token,
+          String(installationId),
+          token.expiresAt.getTime(),
+        );
         pruneExpiredTokens(this.cache, Date.now());
         return token;
       })
