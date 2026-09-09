@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { GitProviderError } from "../git-providers/types";
 import {
+  assertWithinByteCap,
   isRetriableTarballError,
   isUpToDate,
   parseTar,
@@ -160,6 +161,20 @@ describe("isUpToDate", () => {
   it("rewrites on a content change", () => {
     expect(isUpToDate({ ...args, manifestHash: "old" })).toBe(false);
     expect(isUpToDate({ ...args, manifestHash: null })).toBe(false);
+  });
+});
+
+describe("assertWithinByteCap", () => {
+  it("allows a length at or under the cap", () => {
+    expect(() => assertWithinByteCap(100, 100, "x")).not.toThrow();
+    expect(() => assertWithinByteCap(99, 100, "x")).not.toThrow();
+  });
+
+  it("throws once the length exceeds the cap", () => {
+    // Regression: a chunked (no Content-Length) codeload response used to skip this check.
+    expect(() => assertWithinByteCap(101, 100, "x")).toThrow(
+      "tarball for x exceeds 100 bytes",
+    );
   });
 });
 
