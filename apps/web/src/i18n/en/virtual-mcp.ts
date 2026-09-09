@@ -43,6 +43,7 @@ export const virtualMcp = {
   "virtualMcp.connectionItem.configureResources": "Configure resources",
   "virtualMcp.connectionItem.connectionDisabled": "Connection disabled",
   "virtualMcp.connectionItem.connectionEnabled": "Connection enabled",
+  "virtualMcp.connectionItem.connectionNotFound": "Connection not found",
   "virtualMcp.connectionItem.connectionSettings": "Connection settings",
   "virtualMcp.connectionItem.disable": "Disable",
   "virtualMcp.connectionItem.disableConnection": "Disable connection",
