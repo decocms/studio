@@ -46,6 +46,17 @@
   box-shadow: var(--card-shadow);
 }
 
+/* Fades text out over its last `--fade-text-end`, for a control floating in that
+   corner. Masking the text beats painting a gradient over it — a mask needs to
+   know nothing about the background it sits on. */
+@utility fade-text-end {
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - var(--fade-text-end, 6rem) - 5rem),
+    transparent calc(100% - var(--fade-text-end, 6rem))
+  );
+}
+
 /* Recolour a card's ring, keeping the drop shadow under it — the ring IS the card's border, drawn as a shadow. */
 @utility card-ring-destructive {
   --card-shadow:
