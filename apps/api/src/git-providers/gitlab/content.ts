@@ -209,6 +209,22 @@ export function mapMergeRequest(mr: GitlabMergeRequestRow): ChangeRequestInfo {
   };
 }
 
+/**
+ * GitLab's `x-total` header as a count, or `fallback` when the header is
+ * absent (a very large project, where GitLab stops counting) or unparseable.
+ * `Number(null)` is `0`, so a missing header must be distinguished from a
+ * present-and-zero one before falling back — otherwise a listing with no
+ * `x-total` reads as "0 results" even when it returned matches.
+ */
+export function totalCountFromHeader(
+  headerValue: string | null,
+  fallback: number,
+): number {
+  if (headerValue === null) return fallback;
+  const total = Number(headerValue);
+  return Number.isFinite(total) ? total : fallback;
+}
+
 /** Repo-relative directory of `path`; `""` for a file at the repo root. */
 export function directoryOf(path: string): string {
   const normalized = path.replace(/^\/+/, "");
@@ -405,11 +421,13 @@ export class GitlabContentClient implements RepoContentClient {
         ? [{ name: row.name, author: row.commit?.author_name ?? null }]
         : [],
     );
-    const total = Number(res.headers.get("x-total"));
     const nextPage = res.headers.get("x-next-page");
     return {
       branches,
-      totalCount: Number.isFinite(total) ? total : branches.length,
+      totalCount: totalCountFromHeader(
+        res.headers.get("x-total"),
+        branches.length,
+      ),
       nextCursor: nextPage ? nextPage : null,
     };
   }

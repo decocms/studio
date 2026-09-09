@@ -11,6 +11,7 @@ import {
   mapMergeRequest,
   mapMergeRequestState,
   pooledMap,
+  totalCountFromHeader,
   type ResolvedChange,
 } from "./content";
 import { gitlabErrorMessage } from "./http";
@@ -467,5 +468,19 @@ describe("isProtectedBranch", () => {
       isProtectedBranch("The file has changed since you started editing it: a"),
     ).toBe(false);
     expect(isProtectedBranch("404 Project Not Found")).toBe(false);
+  });
+});
+
+describe("totalCountFromHeader", () => {
+  test("uses the header when GitLab sent one", () => {
+    expect(totalCountFromHeader("42", 3)).toBe(42);
+  });
+
+  test("falls back to the page length when the header is absent, not 0", () => {
+    expect(totalCountFromHeader(null, 3)).toBe(3);
+  });
+
+  test("falls back when the header is present but unparseable", () => {
+    expect(totalCountFromHeader("not-a-number", 3)).toBe(3);
   });
 });
