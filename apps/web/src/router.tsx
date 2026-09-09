@@ -536,7 +536,7 @@ const agentsRoute = createRoute({
   beforeLoad: ({ params, search }) => {
     const segment = params.panel;
     if (!segment || isKnownPanelSegment(segment)) return;
-    if ((search as { virtualmcpid?: string }).virtualmcpid) return;
+    if (search.virtualmcpid) return;
     throw redirect({
       to: "/$org/agents/{-$panel}",
       params: { org: params.org, panel: undefined },
