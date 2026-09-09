@@ -214,7 +214,10 @@ export class GithubProviderClient implements GitProviderClient {
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
       { operation },
     );
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
     if (!res.ok) throw await githubFailure(res, operation);
     return mapGithubRepo(
       await githubJson<GithubRepoJson>(res, operation),
@@ -276,7 +279,10 @@ export class GithubProviderClient implements GitProviderClient {
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/contents/${encodePath(path)}${query}`,
       { operation, accept: RAW_CONTENT_ACCEPT },
     );
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
     if (!res.ok) throw await githubFailure(res, operation);
     return res.text();
   }
@@ -302,7 +308,10 @@ export class GithubProviderClient implements GitProviderClient {
         timeoutMs: ARCHIVE_TIMEOUT_MS,
       });
     }
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
     if (!res.ok) throw await githubFailure(res, operation);
     return res.body;
   }
@@ -329,6 +338,7 @@ export class GithubProviderClient implements GitProviderClient {
     const first = await this.accountToken();
     const res = await githubFetch(url, { ...init, token: first.token });
     if (res.status !== 401) return res;
+    await res.body?.cancel().catch(() => {});
     const refreshed = await this.accountToken({ forceRefresh: true });
     return githubFetch(url, { ...init, token: refreshed.token });
   }
