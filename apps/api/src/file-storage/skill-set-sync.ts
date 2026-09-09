@@ -265,6 +265,7 @@ async function fetchRepoFiles(
     // Refuse before buffering when the server declares the size; the post-download check backstops chunked responses (no Content-Length).
     const declared = Number(res.headers.get("content-length") ?? 0);
     if (declared > MAX_TARBALL_BYTES) {
+      await res.body?.cancel().catch(() => {});
       throw new Error(
         `tarball for ${label} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
       );
