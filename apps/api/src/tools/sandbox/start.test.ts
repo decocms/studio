@@ -399,6 +399,26 @@ describe("SANDBOX_START", () => {
     );
   });
 
+  it("resolves the thread's bound repo from input.threadId, not just a thread:-prefixed branch", async () => {
+    // Only input.threadId names the thread here — the branch and ctx.metadata don't.
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({
+      virtualMcp,
+      thread: {
+        created_by: USER_ID,
+        metadata: { githubRepo: { owner: "acme", name: "thread-repo" } },
+      },
+    });
+
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH, threadId: "t1" },
+      ctx,
+    );
+
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.displayName).toBe("acme/thread-repo");
+  });
+
   it("keys a thread-scoped sandbox by the thread's creator, not the caller", async () => {
     // A teammate opening the thread must resume the ONE sandbox that thread has.
     // Keyed by the caller they got a second sandbox on the same git branch —
