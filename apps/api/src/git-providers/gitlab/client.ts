@@ -260,21 +260,22 @@ export class GitlabProviderClient implements GitProviderClient {
     repo: RepoRef,
     ref?: string,
   ): Promise<ReadableStream<Uint8Array> | null> {
-    const { token } = await this.tokenForRepo(repo);
-    const res = await gitlabRequest(
+    const res = await this.authedFetch(
       `${this.apiBase}${gitlabArchivePath(repo, ref)}`,
-      token,
       {
         accept: "application/octet-stream, */*",
         timeoutMs: ARCHIVE_TIMEOUT_MS,
       },
     );
-    return res?.body ?? null;
+    if (res.status === 404) return null;
+    if (!res.ok) throw await gitlabFailure(res);
+    return res.body;
   }
 
   async identity(): Promise<GitIdentity | null> {
-    const { token } = await this.accountToken();
-    const user = await fetchGitlabUser(this.host, token);
+    const res = await this.authedFetch(`${this.apiBase}/user`);
+    if (!res.ok) throw await gitlabFailure(res);
+    const user = GitlabUserSchema.parse(await res.json());
     return {
       name: user.name || user.username,
       email:
@@ -289,7 +290,26 @@ export class GitlabProviderClient implements GitProviderClient {
     pathAndQuery: string,
     init?: { accept?: string },
   ): Promise<Response | null> {
-    const { token } = await this.accountToken();
-    return gitlabRequest(`${this.apiBase}${pathAndQuery}`, token, init);
+    const res = await this.authedFetch(`${this.apiBase}${pathAndQuery}`, init);
+    if (res.status === 404) return null;
+    if (!res.ok) throw await gitlabFailure(res);
+    return res;
+  }
+
+  /**
+   * One authenticated REST call. A 401 means the token died before
+   * `expiresAt` said so (revoked, rotated): re-mint/refresh once and retry,
+   * matching `GithubProviderClient.request`'s behaviour for the same case.
+   */
+  private async authedFetch(
+    url: string,
+    init: { accept?: string; timeoutMs?: number } = {},
+  ): Promise<Response> {
+    const first = await this.accountToken();
+    const res = await gitlabFetch(url, first.token, init);
+    if (res.status !== 401) return res;
+    await res.body?.cancel().catch(() => {});
+    const refreshed = await this.accountToken({ forceRefresh: true });
+    return gitlabFetch(url, refreshed.token, init);
   }
 }
