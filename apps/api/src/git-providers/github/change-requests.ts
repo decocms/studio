@@ -70,6 +70,7 @@ export interface RawPullRequest {
   draft?: boolean | null;
   merged?: boolean | null;
   merged_at?: string | null;
+  updated_at?: string | null;
   mergeable?: boolean | null;
   mergeable_state?: string | null;
   changed_files?: number | null;
@@ -140,6 +141,7 @@ export function mapPullRequest(pr: RawPullRequest): ChangeRequest {
     state: merged ? "merged" : pr.state === "closed" ? "closed" : "open",
     draft: pr.draft === true,
     mergedAt: pr.merged_at ?? null,
+    updatedAt: pr.updated_at ?? null,
     base: pr.base?.ref ?? "main",
     head: pr.head?.ref ?? "",
     headSha: pr.head?.sha ?? "",
@@ -202,6 +204,7 @@ fragment CrDetail on PullRequest {
   state
   merged
   mergedAt
+  updatedAt
   isDraft
   mergeable
   reviewDecision
@@ -323,6 +326,7 @@ export interface RawGraphqlChangeRequest {
   state?: string | null;
   merged?: boolean | null;
   mergedAt?: string | null;
+  updatedAt?: string | null;
   isDraft?: boolean | null;
   mergeable?: string | null;
   reviewDecision?: string | null;
@@ -437,6 +441,7 @@ export function mapDetail(
     state: merged ? "merged" : pr.state === "OPEN" ? "open" : "closed",
     draft: pr.isDraft === true,
     mergedAt: pr.mergedAt ?? null,
+    updatedAt: pr.updatedAt ?? null,
     base: pr.baseRefName ?? "main",
     head: pr.headRefName ?? "",
     headSha: pr.headRefOid ?? "",
@@ -670,6 +675,7 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
       state: "merged",
       draft: false,
       mergedAt: node.mergedAt ?? null,
+      updatedAt: node.mergedAt ?? null,
       base: node.baseRefName ?? base,
       head: node.headRefName ?? "",
       headSha: node.headRefOid ?? "",

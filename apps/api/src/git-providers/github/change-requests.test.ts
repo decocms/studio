@@ -126,6 +126,7 @@ describe("mapPullRequest", () => {
         mergeable: true,
         mergeable_state: "clean",
         changed_files: 3,
+        updated_at: "2026-09-09T10:00:00Z",
         base: { ref: "main" },
         head: {
           ref: "feat/x",
@@ -142,6 +143,7 @@ describe("mapPullRequest", () => {
       state: "open",
       draft: false,
       mergedAt: null,
+      updatedAt: "2026-09-09T10:00:00Z",
       base: "main",
       head: "feat/x",
       headSha: "abc1234",

@@ -1372,6 +1372,28 @@ export class TaskBoardStorage {
       .execute();
   }
 
+  /**
+   * Every card linked to one PR, across all orgs — the GitHub webhook's
+   * reverse lookup, which knows a repo and a number and nothing else. Empty for
+   * the common case: a repo the App is installed on with no card linked to it.
+   */
+  async findPrLinks(pr: {
+    repoOwner: string;
+    repoName: string;
+    number: number;
+  }): Promise<{ taskBoardItemId: string; organizationId: string }[]> {
+    return await this.db
+      .selectFrom("task_board_item_prs")
+      .select([
+        "task_board_item_id as taskBoardItemId",
+        "organization_id as organizationId",
+      ])
+      .where("repo_owner", "=", pr.repoOwner)
+      .where("repo_name", "=", pr.repoName)
+      .where("pr_number", "=", pr.number)
+      .execute();
+  }
+
   /** PRs linked to a task (most-recent first), identity only. */
   async listPrs(
     taskBoardItemId: string,

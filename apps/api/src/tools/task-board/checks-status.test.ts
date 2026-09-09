@@ -13,7 +13,6 @@ import { GitProviderError } from "@/git-providers";
 import {
   asHeadSha,
   cardLifecycle,
-  isAwaitingPreview,
   isRateLimitError,
   isTrustedPreviewHost,
   previewMatchesHead,
@@ -397,28 +396,5 @@ describe("previewMatchesHead", () => {
     };
     expect(previewMatchesHead([closed, merged, pr("passing")])).toBe(true);
     expect(previewMatchesHead([])).toBe(true);
-  });
-});
-
-describe("isAwaitingPreview", () => {
-  it("keeps refreshing while CI runs with no preview yet", () => {
-    expect(
-      isAwaitingPreview({ previewUrl: null, checksStatus: "pending" }),
-    ).toBe(true);
-  });
-
-  it("caches normally once either settles", () => {
-    expect(
-      isAwaitingPreview({
-        previewUrl: "https://x.vtex.app",
-        checksStatus: "pending",
-      }),
-    ).toBe(false);
-    expect(
-      isAwaitingPreview({ previewUrl: null, checksStatus: "passing" }),
-    ).toBe(false);
-    expect(isAwaitingPreview({ previewUrl: null, checksStatus: null })).toBe(
-      false,
-    );
   });
 });

@@ -1,3 +1,4 @@
+import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
 import * as migration206repositoryconsumers from "./206-repository-consumers";
 import { type Migration } from "kysely";
 import * as migration001initialschema from "./001-initial-schema.ts";
@@ -446,6 +447,7 @@ const migrations: Record<string, Migration> = {
     migration204gitprovideraccountsandrepositories,
   "205-repository-references": migration205repositoryreferences,
   "206-repository-consumers": migration206repositoryconsumers,
+  "207-task-board-prs-repo-idx": migration207taskboardprsrepoidx,
 };
 
 export default migrations;
