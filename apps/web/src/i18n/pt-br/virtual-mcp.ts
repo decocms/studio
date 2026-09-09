@@ -142,6 +142,7 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.title": "Sub-projetos",
   "virtualMcp.virtualMcp.addConnection": "Adicionar conexão",
   "virtualMcp.virtualMcp.agentDeleted": 'Excluído "{title}"',
+  "virtualMcp.virtualMcp.agentNameFallback": "Agente",
   "virtualMcp.virtualMcp.agentNamePlaceholder": "Nome do projeto",
   "virtualMcp.virtualMcp.authenticationFailed":
     "Falha na autenticação: {error}",
