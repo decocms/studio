@@ -911,8 +911,6 @@ export const settings = {
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",
   "settings.secrets.sectionPrivate": "Privado para mim",
   "settings.secrets.valueLabel": "Valor",
-  "settings.simpleModeSection.managedByDeco":
-    "A Deco escolhe os modelos que movem seu workspace, equilibrando velocidade e custo. Escolher seus próprios modelos está disponível no Ultra.",
   "settings.simpleModeSection.defaultModels": "Modelos padr\u00e3o",
   "settings.simpleModeSection.failedToSave": "Falha ao salvar: {error}",
   "settings.simpleModeSection.modelsPowerDescription":

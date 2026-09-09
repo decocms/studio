@@ -61,6 +61,8 @@ export const CLAUDE_SUBSCRIPTION_CONNECT = defineTool({
     "Link the caller's Claude subscription with a token from " +
     "`claude setup-token`, so their claude-code runs bill against their own " +
     "Pro/Max plan. Stored encrypted, for the caller only.",
+  // Running on your own Claude plan is a form of choosing your own model.
+  requiresFeature: "model_choice",
   inputSchema: z.object({
     token: z
       .string()

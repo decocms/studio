@@ -16,6 +16,8 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
   name: "AI_PROVIDER_KEY_CREATE",
   description:
     "Store an API key for an AI provider. The key is encrypted at rest in the vault.",
+  // Bringing your own key IS choosing your own models.
+  requiresFeature: "model_choice",
   inputSchema: z.object({
     providerId: z.enum(HOSTED_PROVIDER_IDS),
     label: z.string().min(1).max(100),
