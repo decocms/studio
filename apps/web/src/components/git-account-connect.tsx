@@ -27,9 +27,7 @@ import {
 } from "@/hooks/use-git-providers";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
-}
+import { errorMessage } from "@/utils/error-message";
 export function GitAccountConnect({
   layout = "buttons",
   disabled = false,
