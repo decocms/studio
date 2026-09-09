@@ -533,6 +533,11 @@ export const sandbox = {
   "sandbox.recordEditor.optionPerson": "Person",
   "sandbox.recordEditor.placeholderEmail": "author@example.com",
   "sandbox.recordEditor.titleAuthor": "Author",
+  "sandbox.redirectFormDialog.title": "Create redirect",
+  "sandbox.redirectFormDialog.submit": "Create",
+  "sandbox.redirectFormDialog.pending": "Creating…",
+  "sandbox.redirectFormDialog.cancel": "Cancel",
+  "sandbox.redirectFormDialog.errorRequired": "From and To are required.",
   "sandbox.redirectEditor.discardQueryParameters": "Discard query parameters",
   "sandbox.redirectEditor.fromDescription":
     "The source path to match. Supports URLPattern syntax (e.g. /product/:slug).",
