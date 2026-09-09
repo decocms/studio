@@ -17,6 +17,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { StudioContext } from "../../core/studio-context";
 import { getSettings } from "../../settings";
+import { sanitizeKey } from "../../object-storage/key-utils";
 import { safeEqual } from "./credential-vault";
 
 // Base directory for dev assets (relative to cwd)
@@ -36,18 +37,13 @@ function getOrgAssetsDir(orgId: string): string {
 }
 
 /**
- * Sanitize a file key to prevent directory traversal
+ * Get the full file path for a key within an org's assets.
+ * Uses the same `sanitizeKey` as DevObjectStorage (which mints the signed
+ * URLs this route serves) so a key that reaches the filesystem here has had
+ * percent-encoded traversal sequences decoded and stripped, not just a
+ * literal ".." substring removed.
  */
-function sanitizeKey(key: string): string {
-  // Remove leading slashes and normalize path
-  const normalized = key.replace(/^\/+/, "").replace(/\.\./g, "");
-  return normalized;
-}
-
-/**
- * Get the full file path for a key within an org's assets
- */
-function getFilePath(orgId: string, key: string): string {
+export function getFilePath(orgId: string, key: string): string {
   const baseDir = getOrgAssetsDir(orgId);
   const sanitizedKey = sanitizeKey(key);
   return join(baseDir, sanitizedKey);
