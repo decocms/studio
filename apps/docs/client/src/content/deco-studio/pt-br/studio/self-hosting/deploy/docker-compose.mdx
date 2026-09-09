@@ -33,9 +33,10 @@ Os arquivos de self-host usam um volume Docker para persistência e um health ch
 git clone https://github.com/decocms/studio.git
 cd studio/deploy/docker-compose
 
-# 2. Crie um .env com um auth secret e credenciais do Postgres
+# 2. Crie um .env com um auth secret, uma chave do vault e credenciais do Postgres
 cat > .env << EOF
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+ENCRYPTION_KEY=$(openssl rand -base64 32)
 POSTGRES_USER=studio_user
 POSTGRES_PASSWORD=$(openssl rand -base64 24)
 POSTGRES_DB=studio_db
@@ -51,7 +52,7 @@ open http://localhost:3000
 O arquivo `docker-compose.postgres.yml` monta o `DATABASE_URL` automaticamente a partir das variáveis `POSTGRES_*`, usando o serviço `postgres` como host.
 
 <Callout type="tip">
-  `BETTER_AUTH_SECRET` cai para um valor padrão inseguro (só para dev) se não for definido — sempre defina um de verdade. As variáveis `POSTGRES_*` também têm valores padrão, mas sempre defina uma senha de verdade.
+  `BETTER_AUTH_SECRET` e `ENCRYPTION_KEY` caem para valores padrão inseguros (só para dev) se não forem definidos — sempre defina valores de verdade para qualquer ambiente compartilhado. As variáveis `POSTGRES_*` também têm valores padrão, mas sempre defina uma senha de verdade.
 </Callout>
 
 ## Variáveis de ambiente
@@ -61,6 +62,7 @@ Defina estas no `.env` ao lado do arquivo de compose:
 | Variável | Padrão | Descrição |
 |----------|---------|-------------|
 | `BETTER_AUTH_SECRET` | `local-dev-better-auth-secret-change-me` (inseguro) | Secret de autenticação — sempre defina um de verdade. Gere com `openssl rand -base64 32` |
+| `ENCRYPTION_KEY` | fallback determinístico só para dev (inseguro) | Chave do vault de credenciais para criptografar secrets/tokens armazenados — precisa se manter estável entre reinicializações. Sempre defina um valor de verdade para qualquer ambiente compartilhado. |
 | `IMAGE_REPOSITORY` | `ghcr.io/decocms/studio/studio` | Repositório da imagem |
 | `IMAGE_TAG` | `latest` | Tag da imagem |
 | `PORT` | `3000` | Porta exposta no host |
@@ -148,6 +150,6 @@ docker compose -f docker-compose.postgres.yml up -d
 
 ## Segurança
 
-- Sempre gere um `BETTER_AUTH_SECRET` forte (`openssl rand -base64 32`) e um `POSTGRES_PASSWORD` de verdade.
+- Sempre gere valores fortes para `BETTER_AUTH_SECRET` e `ENCRYPTION_KEY` (`openssl rand -base64 32`) e um `POSTGRES_PASSWORD` de verdade.
 - Não faça commit do `.env` (`echo ".env" >> .gitignore`; `chmod 600 .env`).
 - Não faça commit de secrets (client secrets, API keys) no `.env` ou no arquivo do compose.
