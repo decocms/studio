@@ -3,6 +3,7 @@ import {
   agentHasClonableSource,
   agentHasConnectedGithub,
   agentShowsGithubHeaderActions,
+  findDevPartner,
 } from "./agent-capabilities";
 
 describe("agentHasClonableSource", () => {
@@ -160,5 +161,43 @@ describe("agentShowsGithubHeaderActions", () => {
         },
       } as any),
     ).toBe(true);
+  });
+});
+
+describe("findDevPartner", () => {
+  it("returns null for a null/undefined agent", () => {
+    expect(findDevPartner(null, [])).toBeNull();
+    expect(findDevPartner(undefined, [])).toBeNull();
+  });
+
+  it("resolves the dev agent's live counterpart when it's in the list", () => {
+    const dev = { id: "vir_dev", metadata: { liveAgentId: "vir_live" } } as any;
+    const live = { id: "vir_live", metadata: {} } as any;
+    expect(findDevPartner(dev, [dev, live])).toEqual({
+      mode: "dev",
+      targetId: "vir_live",
+    });
+  });
+
+  it("resolves the live agent's dev counterpart via reverse lookup", () => {
+    const dev = { id: "vir_dev", metadata: { liveAgentId: "vir_live" } } as any;
+    const live = { id: "vir_live", metadata: {} } as any;
+    expect(findDevPartner(live, [dev, live])).toEqual({
+      mode: "live",
+      targetId: "vir_dev",
+    });
+  });
+
+  it("returns null when liveAgentId is dangling (the live agent was deleted)", () => {
+    const dev = {
+      id: "vir_dev",
+      metadata: { liveAgentId: "vir_deleted" },
+    } as any;
+    expect(findDevPartner(dev, [dev])).toBeNull();
+  });
+
+  it("returns null for an agent that isn't part of a dev/live pair", () => {
+    const solo = { id: "vir_solo", metadata: {} } as any;
+    expect(findDevPartner(solo, [solo])).toBeNull();
   });
 });
