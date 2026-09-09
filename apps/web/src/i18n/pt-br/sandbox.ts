@@ -556,6 +556,11 @@ export const sandbox = {
   "sandbox.recordEditor.optionPerson": "Pessoa",
   "sandbox.recordEditor.placeholderEmail": "autor@exemplo.com",
   "sandbox.recordEditor.titleAuthor": "Autor",
+  "sandbox.redirectFormDialog.title": "Criar redirecionamento",
+  "sandbox.redirectFormDialog.submit": "Criar",
+  "sandbox.redirectFormDialog.pending": "Criando…",
+  "sandbox.redirectFormDialog.cancel": "Cancelar",
+  "sandbox.redirectFormDialog.errorRequired": "De e Para são obrigatórios.",
   "sandbox.redirectEditor.discardQueryParameters":
     "Descartar parâmetros de consulta",
   "sandbox.redirectEditor.fromDescription":
