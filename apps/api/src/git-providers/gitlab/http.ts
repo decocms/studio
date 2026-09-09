@@ -68,6 +68,28 @@ export async function gitlabFailure(res: Response): Promise<GitProviderError> {
   });
 }
 
+/**
+ * Parse a response body as JSON, degrading a malformed 2xx body into a
+ * `GitProviderError` instead of letting a raw `SyntaxError` escape — mirrors
+ * `github/http.ts`'s `githubJson`.
+ */
+export async function gitlabJson<T>(
+  res: Response,
+  operation: string,
+): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch (cause) {
+    throw new GitProviderError({
+      provider: "gitlab",
+      status: res.status,
+      message: `GitLab ${operation} returned invalid JSON: ${text.slice(0, 300)}`,
+      cause,
+    });
+  }
+}
+
 export interface GitlabFetchInit {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
