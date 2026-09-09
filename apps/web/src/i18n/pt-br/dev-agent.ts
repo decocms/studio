@@ -12,4 +12,6 @@ export const devAgent = {
     "Ou vincule um projeto de desenvolvimento existente…",
   "devAgent.devAgentSetup.title": "Projeto de desenvolvimento",
   "devAgent.devAgentSetup.unlinkButton": "Desvincular",
+  "devAgent.devAgentControl.develop": "Desenvolver",
+  "devAgent.devAgentControl.live": "Ao vivo",
 } satisfies Record<keyof typeof devAgentEn, string>;
