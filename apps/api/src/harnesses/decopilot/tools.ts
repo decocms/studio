@@ -37,6 +37,7 @@ import {
 } from "./built-in-tools";
 import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
+import { agentSandboxEnabled } from "@/settings";
 import {
   toolsFromMCP,
   type PrOpenedEvent,
@@ -312,7 +313,9 @@ export async function assembleDecopilotTools(
     // derivation and the dispatch path's have to agree exactly, and a pin seen
     // by only one of them would provision a second pod for the same thread.
     const pinnedRef = await getThreadPinnedRef(ctx, extras.threadId);
-    const vmContext: VmContext | null = input.user.id
+    // Without the hosted sandbox, building the file tools throws.
+    const vmEnabled = Boolean(input.user.id) && agentSandboxEnabled();
+    const vmContext: VmContext | null = vmEnabled
       ? {
           virtualMcpId: input.agent.id,
           // Shared with the sandbox-hosted dispatch path — see

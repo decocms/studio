@@ -16,6 +16,7 @@ import {
   orgFlagEnabled,
   type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
+import { agentSandboxEnabled } from "@/settings";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
@@ -341,6 +342,8 @@ async function resolveDefaultHarness(
   organizationId: string,
   agentId: string,
 ): Promise<HostedHarnessId> {
+  // Without a hosted sandbox, claude-code only fails later, at dispatch.
+  if (!agentSandboxEnabled()) return "decopilot";
   try {
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     if (!orgFlagEnabled(settings?.flags, "coding_agents_claude_code")) {
