@@ -24,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 
@@ -103,9 +104,14 @@ function AccountRow({
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
       <div className="flex items-start gap-3 min-w-0">
-        <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
-          <ProviderIcon provider={account.type} />
-        </div>
+        <Avatar
+          url={account.avatarUrl?.trim() || undefined}
+          fallback={<ProviderIcon provider={account.type} />}
+          shape="circle"
+          size="sm"
+          className="size-9"
+          muted
+        />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">

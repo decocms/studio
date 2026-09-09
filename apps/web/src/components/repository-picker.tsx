@@ -1,6 +1,7 @@
 import { GitAccountConnect } from "@/components/git-account-connect";
 import { useDeferredValue, useState } from "react";
 import { ArrowLeft, ChevronRight, GitBranch01 } from "@untitledui/icons";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -250,12 +251,19 @@ function AccountList({
           disabled={disabled}
           className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50"
         >
-          <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-            <ProviderIcon
-              provider={account.type}
-              className="text-muted-foreground"
-            />
-          </div>
+          <Avatar
+            url={account.avatarUrl?.trim() || undefined}
+            fallback={
+              <ProviderIcon
+                provider={account.type}
+                className="text-muted-foreground"
+              />
+            }
+            shape="circle"
+            size="sm"
+            className="size-8"
+            muted
+          />
           <span className="flex-1 min-w-0">
             <span className="block text-sm font-medium truncate">
               {account.login}
@@ -363,6 +371,21 @@ export function RepositoryPicker({
             </Button>
           ) : (
             <GitBranch01 size={16} className="text-muted-foreground shrink-0" />
+          )}
+          {account && (
+            <Avatar
+              url={account.avatarUrl?.trim() || undefined}
+              fallback={
+                <ProviderIcon
+                  provider={account.type}
+                  className="text-muted-foreground"
+                />
+              }
+              shape="circle"
+              size="sm"
+              className="size-6"
+              muted
+            />
           )}
           <span className="text-sm font-medium truncate">
             {account ? account.login : title}
