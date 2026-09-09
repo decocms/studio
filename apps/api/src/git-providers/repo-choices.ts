@@ -26,7 +26,7 @@ import {
   repoWebUrl,
   splitOwnerName,
 } from "@decocms/shared/git-providers";
-import { repositoryUsesStudioCredentials } from "./credentials";
+import { accountIsServable } from "./credentials";
 import {
   type LegacyRepoChoice,
   listLegacyRepoChoices,
@@ -107,17 +107,26 @@ export function mergeRepoChoices(
 }
 
 /** The org's clonable repos, looked up fresh each call (one can be linked
- *  while a run is in flight). */
+ *  while a run is in flight).
+ *
+ * The org's accounts are fetched once and matched in memory rather than
+ * re-querying `git_provider_accounts` per repository — repositories in one
+ * org routinely share an account, and this runs on the dispatch-time "which
+ * repo can I offer" path. */
 export async function listOrgRepoChoices(
   ctx: StudioContext,
   orgId: string,
 ): Promise<RepoChoice[]> {
-  const linked = await ctx.storage.repositories.listByOrg(orgId);
-  const servable: RepositoryRecord[] = [];
-  for (const repository of linked) {
-    if (await repositoryUsesStudioCredentials(ctx.storage, repository)) {
-      servable.push(repository);
-    }
-  }
+  const [linked, accounts] = await Promise.all([
+    ctx.storage.repositories.listByOrg(orgId),
+    ctx.storage.gitProviderAccounts.listByOrg(orgId),
+  ]);
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
+  const servable: RepositoryRecord[] = linked.filter((repository) => {
+    const account = repository.accountId
+      ? accountById.get(repository.accountId)
+      : undefined;
+    return account !== undefined && accountIsServable(account);
+  });
   return mergeRepoChoices(servable, await listLegacyRepoChoices(ctx, orgId));
 }
