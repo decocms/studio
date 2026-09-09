@@ -28,7 +28,7 @@ export function providerForHost(host: string): GitProviderKind | null {
   const h = host.toLowerCase();
   if (h === "github.com" || h === "www.github.com") return "github";
   if (h === "gitlab.com" || h === "www.gitlab.com") return "gitlab";
-  if (/(^|\.)gitlab(\.|$)|(^|\.)gitlab-|gitlab\./.test(h)) return "gitlab";
+  if (/(^|[.-])gitlab([.-]|$)/.test(h)) return "gitlab";
   return null;
 }
 

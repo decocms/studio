@@ -28,6 +28,10 @@ describe("providerForHost", () => {
     expect(providerForHost("git.acme.com")).toBeNull();
     expect(providerForHost("bitbucket.org")).toBeNull();
   });
+  test("does not match gitlab as a mid-label substring", () => {
+    expect(providerForHost("notgitlab.com")).toBeNull();
+    expect(providerForHost("legitlabcorp.com")).toBeNull();
+  });
 });
 
 describe("parseRepoUrl", () => {
