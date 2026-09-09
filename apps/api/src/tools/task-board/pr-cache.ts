@@ -30,7 +30,7 @@ import { meter } from "../../observability";
 
 const cacheCounter = meter.createCounter("pr_read_cache.fetches", {
   description:
-    "Task board PR cache outcomes (hit, stale, miss, placeholder, error, store_rejected)",
+    "Task board PR cache outcomes (hit, stale, miss, placeholder, refresh, error, store_rejected)",
   unit: "{fetches}",
 });
 
@@ -97,6 +97,10 @@ export interface PrCacheFetch {
   /** Receives the background revalidation so the caller can keep its MCP client
    *  open until it settles. */
   onRevalidation: (promise: Promise<void>) => void;
+  /** Ignore whatever is stored and fetch live, then store it — for a caller the
+   *  provider has just told the value changed, where a cached read is precisely
+   *  what the event supersedes. */
+  fresh?: boolean;
 }
 
 export class JetStreamKVPrCache {
@@ -177,7 +181,7 @@ export class JetStreamKVPrCache {
     }
 
     const key = this.storageKey(namespace, rawKey);
-    const stored = await this.read(key);
+    const stored = params.fresh ? null : await this.read(key);
     const age = stored
       ? this.now() - stored.storedAt
       : Number.POSITIVE_INFINITY;
@@ -268,6 +272,26 @@ export class JetStreamKVPrCache {
     return usable
       ? { value: stored!.value as T, live: true }
       : { value: placeholder, live: false };
+  }
+
+  /**
+   * Fetch live and store, ignoring whatever is cached — the webhook's push
+   * path, where the provider has just told us the value changed. Rejects if the
+   * fetch does, so a failed refresh leaves the previous value in place.
+   */
+  async refresh<T>(params: {
+    namespace: string;
+    key: string;
+    fetchLive: () => Promise<T>;
+  }): Promise<T> {
+    const value = await params.fetchLive();
+    await this.write(
+      this.storageKey(params.namespace, params.key),
+      value,
+      this.config.cache,
+    );
+    cacheCounter.add(1, { cache: this.config.cache, outcome: "refresh" });
+    return value;
   }
 
   private async read(key: string): Promise<StoredRead | null> {

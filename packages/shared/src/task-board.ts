@@ -466,8 +466,49 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
 export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";
 
 /**
+ * Org-scoped SSE event pushed on `sseHub` whenever a task's linked PR cards are
+ * re-read from GitHub because a webhook said they changed — CI finished, or a
+ * deploy bot commented. Its `data` is `{ id, prs }` (the task id and the fresh
+ * cards); the open task dialog writes them straight into its react-query cache,
+ * so checks and the preview url land without waiting for the next poll.
+ */
+export const TASK_BOARD_ITEM_PRS_UPDATED_EVENT = "task-board.item.prs.updated";
+
+/**
  * Cap on the org's task system prompt. It rides in the system prompt of EVERY
  * task run, so an unbounded textarea is a per-run token bill. Shared so the
  * settings tool rejects what the textarea already refuses.
  */
 export const TASK_SYSTEM_PROMPT_MAX_LENGTH = 4000;
+
+/** Bound on chasing a preview url that may never arrive, from GitHub's
+ *  `updated_at`. */
+const PREVIEW_CHASE_MS = 10 * 60_000;
+
+/**
+ * A PR card waiting on something that ends by itself: never asked GitHub yet,
+ * CI running, or no preview url yet (time-bounded — a repo may publish none,
+ * ever).
+ *
+ * Shared because both sides key off it and must not drift: the server drops the
+ * card cache's hit window to zero, and the dialog polls faster.
+ */
+export function isCardNotReady(
+  card: {
+    checksStatus: string | null;
+    previewUrl: string | null;
+    state: string | null;
+    updatedAt: string | null;
+  },
+  now: number = Date.now(),
+): boolean {
+  // `null` is the placeholder: we have not asked GitHub yet, so it is the least
+  // ready a card can be. Only a state GitHub actually reported as not-open is
+  // settled.
+  if (card.state !== null && card.state !== "open") return false;
+  if (card.state === null) return true;
+  if (card.checksStatus === "pending") return true;
+  if (card.previewUrl !== null) return false;
+  const activeAt = card.updatedAt ? Date.parse(card.updatedAt) : Number.NaN;
+  return Number.isFinite(activeAt) && now - activeAt < PREVIEW_CHASE_MS;
+}

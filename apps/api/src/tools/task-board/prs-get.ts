@@ -13,6 +13,7 @@ import {
 } from "@/git-providers";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import {
+  isCardNotReady,
   LANES,
   shippedLane,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -20,11 +21,15 @@ import {
 import { repoIdentityKey } from "@decocms/shared/git-providers";
 import { retry, RetryError } from "@decocms/shared/std";
 import { TaskBoardItemPrSchema } from "./schema";
+
+/** One assembled PR card — the tool's output shape, and what the card cache
+ *  stores. */
+export type TaskBoardItemPrCard = z.infer<typeof TaskBoardItemPrSchema>;
 import { cardWorkLanded } from "./archive-merged";
 import { recordTaskActivity } from "./activity";
 import { originOf } from "./change-request-extract";
 import { inReviewPhase, movesForward } from "./lanes";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { emitTaskBoardPrsUpdated, emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { readPrStateThrottled } from "./dbos-github-read";
@@ -88,20 +93,10 @@ const prLabel = (pr: TaskBoardItemPrRef) =>
 export const readNamespace = (pr: TaskBoardItemPrRef) =>
   repoIdentityKey(originOf(pr).repo);
 
-/**
- * A card that should keep refreshing: CI is still running and no preview URL
- * has been found yet. Once either settles the card caches normally.
- */
-export function isAwaitingPreview(card: {
-  previewUrl: string | null;
-  checksStatus: ChecksSummary;
-}): boolean {
-  return card.previewUrl === null && card.checksStatus === "pending";
-}
-
 /** Hit window for a card still waiting on something. Zero, so the next poll
  *  revalidates (detached, off the request path) instead of serving the
- *  not-ready answer for the full window. */
+ *  not-ready answer for the full window. The reads underneath still cache
+ *  normally, so this costs a reassembly, not a provider call. */
 const NOT_READY_MS = 0;
 
 /**
@@ -119,11 +114,15 @@ async function cachedRead<T>(
   key: string,
   describe: string,
   fetchLive: () => Promise<T>,
+  /** Skip the cache and store what comes back — the provider has just told us
+   *  this value changed, so a cached read is exactly what the event supersedes. */
+  fresh = false,
 ): Promise<T | null> {
   try {
     const raw = await getPrReadCache().fetch({
       namespace,
       key,
+      fresh,
       fetchLive: () =>
         retry(fetchLive, {
           maxAttempts: 3,
@@ -217,12 +216,32 @@ export function previewUrlFromChecks(runs: CheckRun[]): string | null {
     const url = `https://${version}-${worker}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`;
     if (isTrustedPreviewHost(url)) return url;
   }
-  // A successful run's own link, preferred over an in-flight one's.
-  const linked = runs.filter(
-    (run) => run.url !== null && isTrustedPreviewHost(run.url),
+  // Then the generic one: a trusted host anywhere in the run's own link or its
+  // report. Reported alongside the stale-card bug — the deploy bot sometimes
+  // posts no comment at all, and only the check knows the url. Successful runs
+  // win, so a retried deploy does not hand back the broken attempt's.
+  const isSuccess = (run: CheckRun) => run.conclusion === "success";
+  for (const run of [
+    ...runs.filter(isSuccess),
+    ...runs.filter((r) => !isSuccess(r)),
+  ]) {
+    const url =
+      (run.url && isTrustedPreviewHost(run.url) ? run.url : null) ??
+      firstTrustedUrl(run.summary);
+    if (url) return url;
+  }
+  return null;
+}
+
+/** The first url in `text` on a trusted preview host. The character class stops
+ *  at `)`/`]` so a markdown link's url does not absorb its syntax. */
+function firstTrustedUrl(text: unknown): string | null {
+  if (typeof text !== "string") return null;
+  return (
+    (text.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find(
+      isTrustedPreviewHost,
+    ) ?? null
   );
-  const success = linked.find((run) => run.conclusion === "success");
-  return success?.url ?? linked[0]?.url ?? null;
 }
 
 /**
@@ -262,9 +281,7 @@ export function previewUrlFromComments(
     // prefer the branch URL, which stays valid as the branch gets new commits.
     const branch = body.match(/href=['"]([^'"]+)['"][^>]*>\s*Branch Preview/i);
     if (branch?.[1] && isTrustedPreviewHost(branch[1])) return branch[1];
-    const url = (body.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find((u) =>
-      isTrustedPreviewHost(u),
-    );
+    const url = firstTrustedUrl(body);
     if (url) return url;
   }
   return null;
@@ -282,6 +299,8 @@ export function asHeadSha(sha: unknown): string | null {
 type PrLiveState = {
   title: string | null;
   body: string | null;
+  /** The provider's last-activity timestamp — bounds the preview chase. */
+  updatedAt: string | null;
   state: "open" | "closed" | null;
   draft: boolean | null;
   merged: boolean | null;
@@ -308,6 +327,7 @@ export type PrCheck = {
 const NO_LIVE_STATE: PrLiveState = {
   title: null,
   body: null,
+  updatedAt: null,
   state: null,
   draft: null,
   merged: null,
@@ -380,6 +400,7 @@ async function fetchPrLiveState(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
+  fresh = false,
 ): Promise<PrLiveState> {
   const client = await clientFor(ctx, orgId, pr);
   if (!client) return NO_LIVE_STATE;
@@ -389,6 +410,7 @@ async function fetchPrLiveState(
     `detail:${pr.number}`,
     prLabel(pr),
     () => client.readDetailed({ number: pr.number }),
+    fresh,
   );
   if (!detail) return NO_LIVE_STATE;
 
@@ -399,6 +421,7 @@ async function fetchPrLiveState(
       ...NO_LIVE_STATE,
       title: detail.title,
       body: detail.body,
+      updatedAt: detail.updatedAt,
       state,
       draft: detail.draft,
       merged,
@@ -430,6 +453,7 @@ async function fetchPrLiveState(
   return {
     title: detail.title,
     body: detail.body,
+    updatedAt: detail.updatedAt,
     state,
     draft: detail.draft,
     merged,
@@ -688,6 +712,66 @@ export async function pickActivePr(
   return prs[pickActivePrIndex(states)];
 }
 
+/** One provider round-trip per linked change request, in parallel, each
+ *  best-effort. */
+function assemblePrCards(
+  ctx: StudioContext,
+  orgId: string,
+  linked: TaskBoardItemPrRef[],
+  fresh = false,
+): Promise<TaskBoardItemPrCard[]> {
+  return Promise.all(
+    linked.map(async (pr) => {
+      const live = await fetchPrLiveState(ctx, orgId, pr, fresh);
+      return {
+        url: pr.url,
+        number: pr.number,
+        repoOwner: pr.repoOwner,
+        repoName: pr.repoName,
+        createdAt: pr.createdAt,
+        ...live,
+      };
+    }),
+  );
+}
+
+/**
+ * Re-read a task's PR cards from the provider and push them out — the GitHub
+ * webhook's entry point, where a delivery has just said CI finished or a
+ * deploy bot commented.
+ *
+ * Reads bypass the read cache (`fresh`), because the event IS the invalidation.
+ * The result is written straight into the card cache, so the dialog's next poll
+ * is a hit, and emitted on the org's SSE stream, so a dialog already open
+ * updates without waiting for that poll.
+ *
+ * Best-effort and never throws: a webhook delivery must not be retried because
+ * one org's provider credential is unreachable.
+ */
+export async function refreshItemPrCards(
+  ctx: StudioContext,
+  orgId: string,
+  taskBoardItemId: string,
+): Promise<TaskBoardItemPrCard[] | null> {
+  try {
+    const linked = await ctx.storage.taskBoard.listPrs(taskBoardItemId, orgId);
+    if (linked.length === 0) return null;
+    const prs = await getPrCardCache().refresh({
+      namespace: orgId,
+      key: taskBoardItemId,
+      fetchLive: () => assemblePrCards(ctx, orgId, linked, true),
+    });
+    emitTaskBoardPrsUpdated(orgId, taskBoardItemId, prs);
+    return prs;
+  } catch (err) {
+    console.error(
+      `[task-board] pr card refresh failed for ${taskBoardItemId}:`,
+      err,
+    );
+    return null;
+  }
+}
+
 export const TASK_BOARD_ITEM_PRS_GET = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:
@@ -725,21 +809,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       taskBoardItemId,
       organizationId,
     );
-    // One provider round-trip per linked change request, in parallel, each best-effort.
-    const assemble = () =>
-      Promise.all(
-        linked.map(async (pr) => {
-          const live = await fetchPrLiveState(ctx, organizationId, pr);
-          return {
-            url: pr.url,
-            number: pr.number,
-            repoOwner: pr.repoOwner,
-            repoName: pr.repoName,
-            createdAt: pr.createdAt,
-            ...live,
-          };
-        }),
-      );
+    const assemble = () => assemblePrCards(ctx, organizationId, linked);
 
     /**
      * Serve the assembled card, not the reads it was built from. And on a cold
@@ -753,14 +823,13 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       key: taskBoardItemId,
       fetchLive: assemble,
       /**
-       * A card whose deploy is still running has no preview yet. At the default
-       * window it is a hit for 30s, so the URL can be a poll or two late even
-       * after the read above refreshes. Go stale immediately instead: the
-       * revalidation is detached, so this costs a background rebuild per poll
-       * on exactly the cards that are still missing something.
+       * A card still waiting on something (CI running, or no preview url yet
+       * and the change request active recently) is never a hit: the
+       * revalidation is detached, so it costs one reassembly per poll from
+       * reads that are themselves cached.
        */
       revalidateAfterMs: (cards) =>
-        cards.some(isAwaitingPreview)
+        cards.some((card) => isCardNotReady(card))
           ? NOT_READY_MS
           : PR_CARDS_CACHE.revalidateAfterMs,
       placeholder: linked.map((pr) => ({

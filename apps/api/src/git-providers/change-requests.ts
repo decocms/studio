@@ -117,6 +117,13 @@ export interface ChangeRequest {
   state: ChangeRequestState;
   draft: boolean;
   mergedAt: string | null;
+  /**
+   * When the provider last saw activity on it — a push, a comment, a review.
+   * Bounds how long a reader keeps waiting for something that may never come
+   * (a deploy preview from a repo that publishes none). Null when the read
+   * does not carry it.
+   */
+  updatedAt: string | null;
   /** Branch it targets. */
   base: string;
   /** Branch it proposes. */

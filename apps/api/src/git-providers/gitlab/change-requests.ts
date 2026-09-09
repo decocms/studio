@@ -56,6 +56,7 @@ export interface RawMergeRequest {
   draft?: boolean | null;
   work_in_progress?: boolean | null;
   merged_at?: string | null;
+  updated_at?: string | null;
   target_branch?: string | null;
   source_branch?: string | null;
   sha?: string | null;
@@ -322,6 +323,7 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
       state: mapState(mr.state),
       draft: mr.draft === true || mr.work_in_progress === true,
       mergedAt: mr.merged_at ?? null,
+      updatedAt: mr.updated_at ?? null,
       base: mr.target_branch ?? "main",
       head: mr.source_branch ?? "",
       headSha: mr.sha ?? "",
