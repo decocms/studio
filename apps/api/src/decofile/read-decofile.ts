@@ -208,6 +208,61 @@ export function primeBlobCache(repo: RepoRef, content: string): Promise<void> {
   return putBlob(...cacheScope(repo), gitBlobSha(content), content);
 }
 
+/** A block source that is either already in hand or still addressed by sha. */
+export type BlockSource = { stem: string } & (
+  | { sha: string }
+  | { content: string }
+);
+
+/**
+ * Resolve every block's text, reading only what the disk cache is missing and
+ * bounding the fetches — the same two protections {@link resolveSnapshot} has.
+ *
+ * The write path needs this as badly as the read path: regenerating the merged
+ * artifact touches EVERY block, so an uncached unbounded fan-out there is a
+ * whole-repo blob read per save. That burst spent an entire installation's
+ * hourly REST budget in production (~850 blocks x an unbounded `Promise.all`),
+ * which is exactly the failure `BLOB_FETCH_CONCURRENCY` documents.
+ *
+ * `memo` is keyed by blob sha, which is immutable, so a caller may thread one
+ * map through a compare-and-swap retry loop and never re-read a blob it has
+ * already resolved on an earlier attempt.
+ */
+export async function resolveBlockContents(
+  client: RepoContentClient,
+  blocks: Iterable<BlockSource>,
+  memo: Map<string, string> = new Map(),
+): Promise<Array<{ stem: string; content: string }>> {
+  const [owner, repo] = cacheScope(client.repo);
+  const all = [...blocks];
+  const missing = [
+    ...new Set(
+      all.flatMap((b) => ("content" in b || memo.has(b.sha) ? [] : [b.sha])),
+    ),
+  ];
+  await mapBounded(missing, BLOB_FETCH_CONCURRENCY, async (sha) => {
+    const hit = await getBlob(owner, repo, sha);
+    if (hit !== null) {
+      memo.set(sha, hit);
+      return;
+    }
+    const content = await client.readBlob(sha);
+    await putBlob(owner, repo, sha, content);
+    memo.set(sha, content);
+  });
+  return all.map((b) => {
+    if ("content" in b) return { stem: b.stem, content: b.content };
+    const content = memo.get(b.sha);
+    // Unreachable: every sha not already memoized was just fetched, and a
+    // fetch failure throws. Explicit so a regression is not a silent empty
+    // block in the merged document.
+    if (content === undefined) {
+      throw new Error(`decofile: unresolved block blob ${b.sha}`);
+    }
+    return { stem: b.stem, content };
+  });
+}
+
 export interface DecofileSnapshot {
   /** Branch head commit sha — the version everywhere (ETag, __draft, response). */
   sha: string;
