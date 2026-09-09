@@ -1540,7 +1540,8 @@ export function VirtualMcpDetailView({
 
   return (
     <VirtualMcpDetailViewWithData
-      key={getActiveGithubRepo(virtualMcp)?.connectionId ?? ""}
+      // Re-seed the form on agent switch, not just on GitHub-repo change.
+      key={`${virtualMcp.id}:${getActiveGithubRepo(virtualMcp)?.connectionId ?? ""}`}
       virtualMcp={virtualMcp}
       hideOwnTitle={hideOwnTitle}
     />
