@@ -721,5 +721,81 @@ export const createHostingRoutes = () => {
     return c.json({ registered: true, siteId, view, range, data: payload });
   });
 
+  /**
+   * --- Experiments (A/B testing) ---
+   *
+   * A fourth peer surface over the same control-plane connection: the native
+   * replacement for the admin-mcp experiments view. The control-plane owns the
+   * experiment definitions (Postgres), the active-config publish to
+   * EXPERIMENTS_KV (it holds the Cloudflare KV:Edit token), and the ramp
+   * lifecycle; Studio is the tenant-scoped BFF + UI. Every write inherits the
+   * guard's admin-role gate in `proxyControlplane`.
+   *
+   * RESULTS are deliberately NOT here — they read from the Analytics surface via
+   * `analytics/data?view=experiments`, like every other dashboard view.
+   * Assignment is not here either: it happens in the storefront runtime
+   * (deco-start reads EXPERIMENTS_KV and sticks the visitor in `deco_segment`).
+   *
+   * Routes (`{key, name, status, targetKind, target, variants, goals,
+   * rampStage, awaitingDecision, startedAt, endedAt}` per experiment):
+   *   GET    experiments            — list the site's experiments
+   *   GET    experiments/:key       — one experiment's full definition
+   *   POST   experiments            — create a DRAFT (weights sum to 100; key +
+   *                                   (targetKind,target) unique)
+   *   PUT    experiments/:key       — edit; does NOT touch the edge
+   *   POST   experiments/:key/publish — write active config to EXPERIMENTS_KV
+   *                                   (idempotent; paused/ended is removed)
+   *   POST   experiments/:key/decide  — human ramp gate {decision:
+   *                                   "rollout"|"abandon"}
+   *   DELETE experiments/:key       — remove + unpublish from EXPERIMENTS_KV
+   */
+  app.get("/:site/experiments", (c) => proxyControlplane(c, "experiments"));
+
+  app.get("/:site/experiments/:key", (c) =>
+    proxyControlplane(
+      c,
+      `experiments/${encodeURIComponent(c.req.param("key"))}`,
+    ),
+  );
+
+  app.post("/:site/experiments", async (c) =>
+    proxyControlplane(c, "experiments", {
+      method: "POST",
+      body: await readJsonBody(c),
+    }),
+  );
+
+  app.put("/:site/experiments/:key", async (c) =>
+    proxyControlplane(
+      c,
+      `experiments/${encodeURIComponent(c.req.param("key"))}`,
+      { method: "PUT", body: await readJsonBody(c) },
+    ),
+  );
+
+  app.post("/:site/experiments/:key/publish", async (c) =>
+    proxyControlplane(
+      c,
+      `experiments/${encodeURIComponent(c.req.param("key"))}/publish`,
+      { method: "POST", body: await readJsonBody(c) },
+    ),
+  );
+
+  app.post("/:site/experiments/:key/decide", async (c) =>
+    proxyControlplane(
+      c,
+      `experiments/${encodeURIComponent(c.req.param("key"))}/decide`,
+      { method: "POST", body: await readJsonBody(c) },
+    ),
+  );
+
+  app.delete("/:site/experiments/:key", (c) =>
+    proxyControlplane(
+      c,
+      `experiments/${encodeURIComponent(c.req.param("key"))}`,
+      { method: "DELETE" },
+    ),
+  );
+
   return app;
 };
