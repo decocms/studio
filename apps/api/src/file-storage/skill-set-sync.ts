@@ -256,6 +256,7 @@ async function fetchRepoFiles(
       signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
       throw new TarballHttpError(
         res.status,
         `tarball fetch failed for ${label}: HTTP ${res.status}`,

@@ -199,6 +199,14 @@ describe("tarballRequestFor", () => {
   });
 });
 
+describe("TarballHttpError", () => {
+  it("captures the HTTP status for classification", () => {
+    const err = new TarballHttpError(404, "not found");
+    expect(err.status).toBe(404);
+    expect(err.message).toBe("not found");
+  });
+});
+
 describe("isRetriableTarballError", () => {
   it("retries codeload 5xx and 429", () => {
     expect(isRetriableTarballError(new TarballHttpError(503, "x"))).toBe(true);
