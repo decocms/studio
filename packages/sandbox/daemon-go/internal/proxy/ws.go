@@ -58,11 +58,26 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 	}
 	defer upstream.Close()
 
+	serveUpstream(clientConn, clientBuf, r, upstream, deps.OnClientData)
+}
+
+// serveUpstream forwards the upgrade request to an already-dialed upstream and
+// splices the two connections together. Split out from ServeWs so the
+// write-failure branch below — the dial succeeded but the upstream dropped
+// before the handshake could be forwarded, e.g. a dev server still restarting
+// — is exercisable with a fake `upstream` in tests, without a real TCP dial.
+func serveUpstream(clientConn net.Conn, clientBuf io.Reader, r *http.Request, upstream net.Conn, onClientData func()) {
+	// Same "connect then close" contract as ServeWs's two failure branches: the
+	// client gets a clean WebSocket close instead of a bare TCP reset it can't
+	// interpret as anything but a broken connection.
 	if err := writeUpgradeRequest(upstream, r); err != nil {
+		if completeHandshake(clientConn, r) == nil {
+			sendClose(clientConn, 1011, "upstream not reachable")
+		}
 		return
 	}
 
-	splice(clientConn, clientBuf, upstream, deps.OnClientData)
+	splice(clientConn, clientBuf, upstream, onClientData)
 }
 
 // splice pumps bytes bidirectionally between the client and the upstream dev
