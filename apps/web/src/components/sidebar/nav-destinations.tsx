@@ -118,7 +118,7 @@ function useNavDestinations(): NavDestination[] {
   const { org } = useProjectContext();
   const leafPath = useLeafRoutePath();
   const scopeId = useScopeId();
-  const { project } = useProjectScope();
+  const { project, repo } = useProjectScope();
   const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
 
   const lacksSource = scopedProjectLacksSource(scopeId, project);
@@ -177,6 +177,15 @@ function useNavDestinations(): NavDestination[] {
                *  card would otherwise keep its segment and this link would go
                *  nowhere. Tasks means the lanes. */
               params: { org: org.slug, taskKey: undefined },
+              /** Entering a project SEEDS the board's Project filter with it — a
+               *  hint on entry, not a lock: clearing the filter stays cleared
+               *  until you enter the project again. The `?repo=` value is a
+               *  bucket id — the repo's `owner/name`, or a repo-less project's
+               *  `vir_…` id — both of which `entryForFilter` resolves. */
+              search: (prev: Record<string, unknown>) => {
+                const seed = repo ?? project?.id;
+                return seed ? { ...prev, repo: seed } : prev;
+              },
             },
           },
     files: routeExistsInScope(DESTINATION_ROUTE.library, scopeId)

@@ -151,14 +151,10 @@ import {
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
-import {
-  taskMatchesScope,
-  useBoardSearch,
-  visibleSelection,
-} from "./filters-search";
-import { useProjectScope } from "@/hooks/use-project-scope";
+import { useBoardSearch, visibleSelection } from "./filters-search";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import {
+  entryForFilter,
   filterAfterCreate,
   stampableEntries,
   type ProjectIndexEntry,
@@ -903,19 +899,18 @@ export function TaskBoardPage() {
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const { filters, setFilters, layout, setLayout } = useBoardSearch();
-  /** Ambient project scope — a filter over the org-wide board, never a
-   *  container. Null repo (or no scope) means the board stays org-wide. */
-  const {
-    repo: scopeRepo,
-    project: scopeProject,
-    setScope,
-  } = useProjectScope();
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
   /** The projects a card can be stamped for — the same reachability-gated
    *  subset the task dialog's Project picker offers, reused by the bulk bar. */
   const projectEntries = stampableEntries(projectIndex);
+  /** The repo a new card inherits: the active Project filter's, so a card made
+   *  while the board is narrowed to a project belongs to it. Null for a
+   *  repo-less project (the card links to it through its thread instead). */
+  const activeProjectRepo = filters.project
+    ? (entryForFilter(filters.project, projectIndex)?.repo ?? null)
+    : null;
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -1047,18 +1042,12 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  /**
-   * Scope first, then filters. The ambient scope keeps unclassified cards; the
-   * board's own project filter does not — two different questions, composed
-   * rather than conflated, exactly as #6801 left them.
-   */
-  const scopedItems = items.filter((item) => taskMatchesScope(item, scopeRepo));
-  const visibleItems = scopedItems.filter((item) =>
+  const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters, projectIndex),
   );
-  /** Bulk actions read the selection reconciled against what is on screen: the
-   *  scope switcher lives outside the board, so a scope change must not leave a
-   *  hidden card's id queued for a move, an assign — or a delete. */
+  /** Bulk actions read the selection reconciled against what is on screen: a
+   *  filter change must not leave a hidden card's id queued for a move, an
+   *  assign — or a delete. */
   const selectedIds = visibleSelection(selection, visibleItems);
   // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
   const visibleListItems = visibleItems.filter(
@@ -1155,36 +1144,9 @@ export function TaskBoardPage() {
       {/* Header — capped + centered to the same width as the board content so
         they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-xl font-medium text-foreground">
-            {t("taskBoard.taskBoard.tasksTitle")}
-          </h1>
-          {scopeProject && (
-            <button
-              type="button"
-              onClick={() => setScope(null)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent/50"
-              aria-label={t("taskBoard.scope.clear", {
-                name: scopeProject.title,
-              })}
-            >
-              <span className="truncate max-w-[16rem]">
-                {scopeProject.title}
-              </span>
-              <X size={12} className="text-muted-foreground" />
-            </button>
-          )}
-        </div>
-        {/* Only the case a person can act on. The counts that used to sit here
-            ("N routed here · N unassigned") narrated the scope filter's
-            fail-open in its own vocabulary — "routed" is the mechanism, and
-            "unassigned" means "no repo" here while it means "no assignee"
-            everywhere else in the product. */}
-        {scopeProject && !scopeRepo && (
-          <p className="-mt-2 text-xs text-muted-foreground">
-            {t("taskBoard.scope.noRepo")}
-          </p>
-        )}
+        <h1 className="text-xl font-medium text-foreground">
+          {t("taskBoard.taskBoard.tasksTitle")}
+        </h1>
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
@@ -1449,6 +1411,7 @@ export function TaskBoardPage() {
         open={dialogOpen}
         onClose={closeCreate}
         defaultStatus={createStatus ?? undefined}
+        defaultRepo={activeProjectRepo}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
           if (blockSuperAgentWithoutGithub(input.assigneeId)) {

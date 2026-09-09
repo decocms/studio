@@ -44,9 +44,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.newTaskInLaneTitle": "New task in {lane}",
   "taskBoard.taskBoard.noTasksMatch": "No tasks match these filters.",
   "taskBoard.taskBoard.noTasksYet": "No tasks yet. Start one with New task.",
-  "taskBoard.scope.clear": "Clear the {name} scope",
-  "taskBoard.scope.noRepo":
-    "This project has no repository, so no cards route to it yet.",
   "taskBoard.taskBoard.tasksTitle": "Tasks",
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
