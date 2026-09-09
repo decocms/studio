@@ -1996,6 +1996,7 @@ function PrCard({
           <button
             type="button"
             disabled={!expandable}
+            aria-expanded={expandable ? checksOpen : undefined}
             onClick={() => setChecksOpen((o) => !o)}
             className="flex w-full items-center gap-1.5 font-medium disabled:cursor-default"
           >
