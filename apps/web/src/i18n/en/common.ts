@@ -97,6 +97,8 @@ export const common = {
   "common.errorBoundary.somethingWentWrong": "Something went wrong",
   "common.errorBoundary.tryAgain": "Try again",
   "common.errorBoundary.unexpectedError": "An unexpected error occurred",
+  "common.repositoryPicker.description":
+    "Choose an account to browse its repositories.",
   "common.repositoryPicker.searchMore":
     "No matches in the loaded repositories. Load more to keep searching.",
   "common.repositoryPicker.loadMore": "Load more repositories",

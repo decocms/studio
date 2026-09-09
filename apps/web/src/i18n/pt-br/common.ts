@@ -100,6 +100,8 @@ export const common = {
   "common.errorBoundary.somethingWentWrong": "Algo deu errado",
   "common.errorBoundary.tryAgain": "Tentar novamente",
   "common.errorBoundary.unexpectedError": "Um erro inesperado ocorreu",
+  "common.repositoryPicker.description":
+    "Escolha uma conta para buscar seus repositórios.",
   "common.repositoryPicker.searchMore":
     "Nenhum resultado nos repositórios carregados. Carregue mais para continuar a busca.",
   "common.repositoryPicker.loadMore": "Carregar mais repositórios",

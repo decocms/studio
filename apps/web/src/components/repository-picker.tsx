@@ -1,19 +1,11 @@
 import { GitAccountConnect } from "@/components/git-account-connect";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
 import { useDeferredValue, useState } from "react";
-import { ArrowLeft, SearchLg } from "@untitledui/icons";
+import { ArrowLeft, ChevronRight, GitBranch01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
@@ -81,18 +73,24 @@ function RepoRow({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/60 transition-colors",
+        "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent",
         disabled && "opacity-60 cursor-not-allowed",
       )}
     >
-      <ProviderIcon provider={provider} className="text-muted-foreground" />
+      <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+        <ProviderIcon provider={provider} className="text-muted-foreground" />
+      </div>
       <span className="flex-1 min-w-0">
-        <span className="block text-sm truncate">{path}</span>
+        <span className="block text-sm font-medium truncate">{path}</span>
         <span className="block text-xs text-muted-foreground truncate">
           {hint ? `${host} · ${hint}` : host}
         </span>
       </span>
-      {busy ? <Spinner className="size-4 text-muted-foreground" /> : null}
+      {busy ? (
+        <Spinner className="size-4 text-muted-foreground" />
+      ) : (
+        <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
+      )}
     </button>
   );
 }
@@ -106,6 +104,7 @@ function LinkedRepositories({
 }) {
   const t = useT();
   const repositories = useRepositories();
+  const [query, setQuery] = useState("");
   if (repositories.isPending) return <Skeleton className="h-24 w-full" />;
   if (repositories.isError)
     return (
@@ -113,13 +112,27 @@ function LinkedRepositories({
         {repositories.error.message}
       </p>
     );
-  const rows = repositories.data ?? [];
-  if (rows.length === 0) return null;
+  const repositoriesList = repositories.data ?? [];
+  if (repositoriesList.length === 0) return null;
+  const rows = repositoriesList.filter((repo) =>
+    repo.path.toLowerCase().includes(query.trim().toLowerCase()),
+  );
   return (
-    <div>
-      <p className="px-4 py-2 text-xs font-medium text-muted-foreground">
+    <div className="pb-2">
+      <CollectionSearch
+        value={query}
+        onChange={setQuery}
+        placeholder={t("common.repositoryPicker.searchPlaceholder")}
+        disabled={pendingPath !== null}
+      />
+      <p className="px-4 pt-4 pb-2 text-xs font-medium text-muted-foreground">
         {t("common.repositoryPicker.linkedSection")}
       </p>
+      {rows.length === 0 && (
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+          {t("common.repositoryPicker.searchEmpty")}
+        </p>
+      )}
       {rows.map((repo) => (
         <RepoRow
           key={repo.id}
@@ -154,7 +167,7 @@ function ProviderSearch({
   const results = search.data?.pages.flatMap((page) => page.repositories) ?? [];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="h-80 min-h-0 flex flex-col overflow-hidden">
       <CollectionSearch
         placeholder={t("common.repositoryPicker.searchPlaceholder")}
         value={query}
@@ -217,13 +230,15 @@ function ProviderSearch({
 function AccountList({
   accounts,
   onSelect,
+  disabled,
 }: {
   accounts: GitAccount[];
   onSelect: (account: GitAccount) => void;
+  disabled: boolean;
 }) {
   const t = useT();
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="py-2">
       <p className="px-4 py-2 text-xs font-medium text-muted-foreground">
         {t("common.repositoryPicker.browseSection")}
       </p>
@@ -232,19 +247,24 @@ function AccountList({
           key={account.id}
           type="button"
           onClick={() => onSelect(account)}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/60 transition-colors"
+          disabled={disabled}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50"
         >
-          <ProviderIcon
-            provider={account.type}
-            className="text-muted-foreground"
-          />
+          <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            <ProviderIcon
+              provider={account.type}
+              className="text-muted-foreground"
+            />
+          </div>
           <span className="flex-1 min-w-0">
-            <span className="block text-sm truncate">{account.login}</span>
+            <span className="block text-sm font-medium truncate">
+              {account.login}
+            </span>
             <span className="block text-xs text-muted-foreground truncate">
               {account.host}
             </span>
           </span>
-          <SearchLg size={14} className="text-muted-foreground" />
+          <ChevronRight size={16} className="text-muted-foreground" />
         </button>
       ))}
     </div>
@@ -270,8 +290,6 @@ export function RepositoryPicker({
   const [account, setAccount] = useState<GitAccount | null>(null);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
 
-  const [url, setUrl] = useState("");
-  const [urlAccountId, setUrlAccountId] = useState("__none__");
   const [error, setError] = useState<string | null>(null);
   const usable = serviceableAccounts(accounts.data);
   function reportError(err: unknown) {
@@ -295,17 +313,14 @@ export function RepositoryPicker({
     }
   }
 
-  async function linkAndPick(
-    webUrl: string,
-    path: string,
-    accountId = account?.id,
-  ) {
+  async function linkAndPick(webUrl: string, path: string) {
+    if (!account) return;
     setPendingPath(path);
     setError(null);
     try {
       const repository = await link.mutateAsync({
         url: webUrl,
-        ...(accountId ? { accountId } : {}),
+        accountId: account.id,
       });
       await onPicked({ repository });
     } catch (err) {
@@ -323,26 +338,32 @@ export function RepositoryPicker({
         if (!next) {
           setAccount(null);
           setError(null);
-          setUrl("");
         }
         onOpenChange(next);
       }}
     >
-      <DialogContent className="sm:max-w-[560px] max-h-[85svh] p-0 gap-0 overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-lg max-h-[85svh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {t("common.repositoryPicker.description")}
+          </DialogDescription>
         </DialogHeader>
-        <div className="flex items-center h-12 border-b border-border px-4 gap-3 shrink-0">
+        <div className="flex items-center h-12 border-b border-border px-4 pr-12 gap-3 shrink-0">
           {account ? (
             <Button
               size="icon"
               variant="ghost"
+              className="size-6 -ml-1"
+              disabled={pendingPath !== null}
               onClick={() => setAccount(null)}
               aria-label={t("common.repositoryPicker.back")}
             >
               <ArrowLeft size={16} />
             </Button>
-          ) : null}
+          ) : (
+            <GitBranch01 size={16} className="text-muted-foreground shrink-0" />
+          )}
           <span className="text-sm font-medium truncate">
             {account ? account.login : title}
           </span>
@@ -366,61 +387,21 @@ export function RepositoryPicker({
         ) : (
           <div className="flex-1 overflow-y-auto">
             <LinkedRepositories onPick={pick} pendingPath={pendingPath} />
-            {usable.length > 0 ? (
-              <AccountList accounts={usable} onSelect={setAccount} />
-            ) : null}
-            <div className="p-4 border-t border-border flex flex-col gap-3">
-              <GitAccountConnect />
-              <form
-                className="flex flex-col gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (url.trim() && pendingPath === null)
-                    void linkAndPick(
-                      url.trim(),
-                      url.trim(),
-                      urlAccountId === "__none__" ? undefined : urlAccountId,
-                    );
-                }}
-              >
-                <Label htmlFor="repository-url">
-                  {t("settings.repositories.urlLabel")}
-                </Label>
-                <Input
-                  id="repository-url"
-                  value={url}
-                  onChange={(event) => setUrl(event.target.value)}
-                  disabled={pendingPath !== null}
-                  placeholder={t("settings.repositories.urlPlaceholder")}
-                />
-                <Select
-                  value={urlAccountId}
-                  onValueChange={setUrlAccountId}
-                  disabled={pendingPath !== null}
-                >
-                  <SelectTrigger
-                    aria-label={t("settings.repositories.accountLabel")}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">
-                      {t("settings.repositories.accountNone")}
-                    </SelectItem>
-                    {usable.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.login} · {a.host}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="submit"
-                  disabled={!url.trim() || pendingPath !== null}
-                >
-                  {t("settings.repositories.link")}
-                </Button>
-              </form>
+            {usable.length > 0 && (
+              <AccountList
+                accounts={usable}
+                onSelect={setAccount}
+                disabled={pendingPath !== null}
+              />
+            )}
+            <div className="border-t border-border py-2">
+              <p className="px-4 py-2 text-xs text-muted-foreground leading-relaxed">
+                {t("common.repositoryPicker.description")}
+              </p>
+              <GitAccountConnect
+                layout="picker"
+                disabled={pendingPath !== null}
+              />
             </div>
           </div>
         )}

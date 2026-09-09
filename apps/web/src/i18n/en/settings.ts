@@ -111,7 +111,10 @@ export const settings = {
   "settings.repositories.noProvidersDescription":
     "Signing in with GitHub or GitLab needs provider credentials an administrator configures for this deployment. You can still connect a GitLab account with an access token.",
   "settings.repositories.githubUnavailable":
-    "GitHub is not configured on this deployment. Contact an administrator.",
+    "Ask an administrator to enable GitHub.",
+  "settings.repositories.browseAccount": "Browse repositories in your account.",
+  "settings.repositories.gitlabTokenHint":
+    "Use a personal, project or group access token.",
   "settings.repositories.connectGithub": "Connect GitHub",
   "settings.repositories.installGithub": "Install on another account",
   "settings.repositories.connectGitlab": "Connect GitLab",
@@ -142,7 +145,7 @@ export const settings = {
     "Repositories available to this organization's agents and workflows.",
   "settings.repositories.reposEmptyTitle": "No repositories yet",
   "settings.repositories.reposEmptyDescription":
-    "Add a repository from a connected account, or paste the URL of a public one.",
+    "Choose a repository from a connected GitHub or GitLab account.",
   "settings.repositories.addRepository": "Add repository",
   "settings.repositories.unlink": "Unlink",
   "settings.repositories.unlinkTitle": 'Unlink "{path}"?',
@@ -156,23 +159,6 @@ export const settings = {
   "settings.repositories.visibilityInternal": "Internal",
   "settings.repositories.anonymousClone": "Anonymous clone",
   "settings.repositories.addDialogTitle": "Add repository",
-  "settings.repositories.addDialogDescription":
-    "Search the repositories of a connected account, or paste a repository URL.",
-  "settings.repositories.tabSearch": "Search",
-  "settings.repositories.tabUrl": "Paste URL",
-  "settings.repositories.accountLabel": "Account",
-  "settings.repositories.accountPlaceholder": "Select an account",
-  "settings.repositories.accountNone": "No account (public clone)",
-  "settings.repositories.searchPlaceholder": "Search repositories…",
-  "settings.repositories.searchNoAccount":
-    "Connect an account to search its repositories.",
-  "settings.repositories.searchEmpty": "No repositories found",
-  "settings.repositories.searchFailed": "Could not search repositories",
-  "settings.repositories.urlLabel": "Repository URL",
-  "settings.repositories.urlPlaceholder": "Paste a GitHub or GitLab URL",
-  "settings.repositories.link": "Add",
-  "settings.repositories.linking": "Adding…",
-  "settings.repositories.linked": 'Added "{path}"',
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",

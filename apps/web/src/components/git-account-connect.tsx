@@ -1,5 +1,12 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { ChevronRight } from "@untitledui/icons";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -24,12 +31,20 @@ import { useT } from "@/i18n/use-t.ts";
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
-export function GitAccountConnect() {
+export function GitAccountConnect({
+  layout = "buttons",
+  disabled = false,
+}: {
+  layout?: "buttons" | "picker";
+  disabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const accounts = useGitAccounts();
   return (
     <>
       <ConnectActions
+        layout={layout}
+        disabled={disabled}
         onTokenDialog={() => setOpen(true)}
         hasGithubAccount={(accounts.data ?? []).some(
           (a) => a.type === "github",
@@ -128,10 +143,83 @@ function TokenConnectDialog({
   );
 }
 
+function ConnectAction({
+  layout,
+  label,
+  description,
+  icon,
+  href,
+  onClick,
+  disabled,
+}: {
+  layout: "buttons" | "picker";
+  label: string;
+  description: string;
+  icon: ReactNode;
+  href?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  const content =
+    layout === "picker" ? (
+      <>
+        <span className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+          {icon}
+        </span>
+        <span className="flex-1 min-w-0 text-left">
+          <span className="block text-sm font-medium">{label}</span>
+          <span className="block text-xs font-normal text-muted-foreground whitespace-normal">
+            {description}
+          </span>
+        </span>
+        {!disabled && (
+          <span className="shrink-0 text-muted-foreground">
+            <ChevronRight size={16} />
+          </span>
+        )}
+      </>
+    ) : (
+      <>
+        {icon}
+        {label}
+      </>
+    );
+  const button = (
+    <Button
+      size="sm"
+      variant={layout === "picker" ? "ghost" : "outline"}
+      className={cn(
+        layout === "picker" &&
+          "w-full h-auto justify-start gap-3 rounded-none px-4 py-3 hover:bg-accent",
+      )}
+      aria-label={label}
+      disabled={disabled}
+      asChild={!!href && !disabled}
+      onClick={onClick}
+    >
+      {href && !disabled ? <a href={href}>{content}</a> : content}
+    </Button>
+  );
+  return layout === "buttons" && disabled ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0}>{button}</span>
+      </TooltipTrigger>
+      <TooltipContent>{description}</TooltipContent>
+    </Tooltip>
+  ) : (
+    button
+  );
+}
+
 function ConnectActions({
+  layout,
+  disabled,
   onTokenDialog,
   hasGithubAccount,
 }: {
+  layout: "buttons" | "picker";
+  disabled: boolean;
   onTokenDialog: () => void;
   hasGithubAccount: boolean;
 }) {
@@ -158,45 +246,52 @@ function ConnectActions({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {!githubConfigured && (
-        <div className="flex flex-col gap-1">
-          <Button size="sm" variant="outline" disabled>
-            <GitHubIcon size={14} />
-            {t("settings.repositories.connectGithub")}
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            {t("settings.repositories.githubUnavailable")}
-          </p>
-        </div>
+    <div
+      className={cn(
+        "flex",
+        layout === "picker" ? "flex-col" : "flex-wrap items-center gap-2",
       )}
-      {githubConfigured && github?.connectPath && (
-        <Button size="sm" asChild>
-          <a href={connectUrl(github.connectPath)}>
-            <GitHubIcon size={14} />
-            {t("settings.repositories.connectGithub")}
-          </a>
-        </Button>
-      )}
+    >
+      <ConnectAction
+        layout={layout}
+        label={t("settings.repositories.connectGithub")}
+        description={t(
+          githubConfigured
+            ? "settings.repositories.browseAccount"
+            : "settings.repositories.githubUnavailable",
+        )}
+        icon={<GitHubIcon size={16} />}
+        href={github?.connectPath ? connectUrl(github.connectPath) : undefined}
+        disabled={disabled || !githubConfigured || !github?.connectPath}
+      />
       {githubConfigured && hasGithubAccount && github?.installPath && (
-        <Button size="sm" variant="outline" asChild>
-          <a href={connectUrl(github.installPath)}>
-            {t("settings.repositories.installGithub")}
-          </a>
-        </Button>
+        <ConnectAction
+          layout={layout}
+          label={t("settings.repositories.installGithub")}
+          description={t("settings.repositories.browseAccount")}
+          icon={<GitHubIcon size={16} />}
+          href={connectUrl(github.installPath)}
+          disabled={disabled}
+        />
       )}
       {gitlabConfigured && gitlab?.connectPath && (
-        <Button size="sm" variant="outline" asChild>
-          <a href={connectUrl(gitlab.connectPath)}>
-            <GitLabIcon size={14} />
-            {t("settings.repositories.connectGitlab")}
-          </a>
-        </Button>
+        <ConnectAction
+          layout={layout}
+          label={t("settings.repositories.connectGitlab")}
+          description={t("settings.repositories.browseAccount")}
+          icon={<GitLabIcon size={16} />}
+          href={connectUrl(gitlab.connectPath)}
+          disabled={disabled}
+        />
       )}
-      <Button size="sm" variant="outline" onClick={onTokenDialog}>
-        <GitLabIcon size={14} />
-        {t("settings.repositories.connectGitlabToken")}
-      </Button>
+      <ConnectAction
+        layout={layout}
+        label={t("settings.repositories.connectGitlabToken")}
+        description={t("settings.repositories.gitlabTokenHint")}
+        icon={<GitLabIcon size={16} />}
+        onClick={onTokenDialog}
+        disabled={disabled}
+      />
     </div>
   );
 }

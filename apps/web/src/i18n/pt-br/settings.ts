@@ -116,7 +116,10 @@ export const settings = {
   "settings.repositories.noProvidersDescription":
     "Entrar com GitHub ou GitLab depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab com um token de acesso.",
   "settings.repositories.githubUnavailable":
-    "GitHub não está configurado neste ambiente. Entre em contato com um administrador.",
+    "Peça a um administrador para habilitar o GitHub.",
+  "settings.repositories.browseAccount": "Busque repositórios da sua conta.",
+  "settings.repositories.gitlabTokenHint":
+    "Use um token de acesso pessoal, de projeto ou de grupo.",
   "settings.repositories.connectGithub": "Conectar GitHub",
   "settings.repositories.installGithub": "Instalar em outra conta",
   "settings.repositories.connectGitlab": "Conectar GitLab",
@@ -147,7 +150,7 @@ export const settings = {
     "Repositórios disponíveis para os agentes e automações desta organização.",
   "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
   "settings.repositories.reposEmptyDescription":
-    "Adicione um repositório de uma conta conectada ou cole a URL de um repositório público.",
+    "Escolha um repositório de uma conta conectada do GitHub ou GitLab.",
   "settings.repositories.addRepository": "Adicionar repositório",
   "settings.repositories.unlink": "Desvincular",
   "settings.repositories.unlinkTitle": 'Desvincular "{path}"?',
@@ -161,24 +164,6 @@ export const settings = {
   "settings.repositories.visibilityInternal": "Interno",
   "settings.repositories.anonymousClone": "Clone anônimo",
   "settings.repositories.addDialogTitle": "Adicionar repositório",
-  "settings.repositories.addDialogDescription":
-    "Busque nos repositórios de uma conta conectada ou cole a URL de um repositório.",
-  "settings.repositories.tabSearch": "Buscar",
-  "settings.repositories.tabUrl": "Colar URL",
-  "settings.repositories.accountLabel": "Conta",
-  "settings.repositories.accountPlaceholder": "Selecione uma conta",
-  "settings.repositories.accountNone": "Sem conta (clone público)",
-  "settings.repositories.searchPlaceholder": "Buscar repositórios…",
-  "settings.repositories.searchNoAccount":
-    "Conecte uma conta para buscar nos repositórios dela.",
-  "settings.repositories.searchEmpty": "Nenhum repositório encontrado",
-  "settings.repositories.searchFailed":
-    "Não foi possível buscar os repositórios",
-  "settings.repositories.urlLabel": "URL do repositório",
-  "settings.repositories.urlPlaceholder": "Cole uma URL do GitHub ou GitLab",
-  "settings.repositories.link": "Adicionar",
-  "settings.repositories.linking": "Adicionando…",
-  "settings.repositories.linked": 'Adicionado "{path}"',
   "settings.repositories.cancel": "Cancelar",
   "settings.repositories.failed": "Algo deu errado",
   "settings.nav.connections": "Conexões",
