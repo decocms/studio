@@ -15,6 +15,7 @@ import {
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
 import { USER_BUDGET_OWNER } from "@/git-providers/github/budget-owner";
+import { githubFailure } from "@/git-providers/github/http";
 
 const GITHUB_API = "https://api.github.com";
 /** Matches the content client's per-attempt timeout in `git-providers/content/github.ts`. */
@@ -193,8 +194,7 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       }
 
       if (!res.ok) {
-        await res.body?.cancel().catch(() => {});
-        throw new Error(`GitHub /user/installations failed: ${res.status}`);
+        throw await githubFailure(res, "list_user_installations");
       }
 
       const data = parseInstallationsBody(await res.text());
