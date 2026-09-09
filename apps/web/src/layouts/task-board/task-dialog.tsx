@@ -372,6 +372,10 @@ interface TaskEditorProps {
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
+  /** In create mode, the repository to stamp the new task with (e.g. the active
+   * Project filter's repo, so a card made while the board is narrowed to a
+   * project belongs to it). An `owner/name`, matching the {@link repo} field. */
+  defaultRepo?: string | null;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -416,6 +420,7 @@ function TaskBoardItemEditor({
   onClose,
   item,
   defaultStatus,
+  defaultRepo,
   onSubmit,
   onDelete,
   onClone,
@@ -453,7 +458,8 @@ function TaskBoardItemEditor({
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    repo: item?.repo ?? null,
+    // Edit wins with the card's own repo; create seeds from the active project.
+    repo: item?.repo ?? defaultRepo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
@@ -1472,7 +1478,7 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "onSubmit" | "isSaving"
+    "onClose" | "defaultStatus" | "defaultRepo" | "onSubmit" | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;

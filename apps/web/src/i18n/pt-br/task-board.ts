@@ -46,9 +46,6 @@ export const taskBoard = {
     "Nenhuma tarefa corresponde a estes filtros.",
   "taskBoard.taskBoard.noTasksYet":
     "Nenhuma tarefa ainda. Comece uma com Nova tarefa.",
-  "taskBoard.scope.clear": "Limpar o escopo {name}",
-  "taskBoard.scope.noRepo":
-    "Este projeto não tem repositório, então nenhum card aponta para ele ainda.",
   "taskBoard.taskBoard.tasksTitle": "Tarefas",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",

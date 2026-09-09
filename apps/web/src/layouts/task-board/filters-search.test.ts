@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   boardSearchParams,
   parseBoardSearch,
-  taskMatchesScope,
   visibleSelection,
 } from "./filters-search";
 import { EMPTY_FILTERS, type TaskFilters } from "./task-filters";
@@ -91,32 +90,6 @@ describe("the ?repo= param carries a bucket id", () => {
     expect(
       boardSearchParams({ ...EMPTY_FILTERS, project: "vir_x" }, "board").repo,
     ).toBe("vir_x");
-  });
-});
-
-describe("taskMatchesScope", () => {
-  test("no scope keeps everything", () => {
-    expect(taskMatchesScope({ repo: "acme/site" }, null)).toBe(true);
-    expect(taskMatchesScope({ repo: null }, null)).toBe(true);
-  });
-
-  test("a scope keeps its own repo's cards", () => {
-    expect(taskMatchesScope({ repo: "acme/site" }, "acme/site")).toBe(true);
-  });
-
-  test("a scope drops another repo's cards", () => {
-    expect(taskMatchesScope({ repo: "acme/other" }, "acme/site")).toBe(false);
-  });
-
-  /** The load-bearing one. Reports imports and the Jira sync both write no
-   *  repo at all, so hiding unassigned cards would empty most boards. */
-  test("a scope KEEPS cards with no repo", () => {
-    expect(taskMatchesScope({ repo: null }, "acme/site")).toBe(true);
-    expect(taskMatchesScope({}, "acme/site")).toBe(true);
-  });
-
-  test("matching is case-insensitive, as GitHub is", () => {
-    expect(taskMatchesScope({ repo: "Acme/Site" }, "acme/site")).toBe(true);
   });
 });
 
