@@ -1,5 +1,4 @@
 import { format, formatDistanceToNow } from "date-fns";
-import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   branchUserLabel,
@@ -17,7 +16,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { User } from "@/components/user/user";
 import { useT } from "@/i18n/use-t.ts";
-import { usePreferences } from "@/hooks/use-preferences.ts";
+import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 
 import { authenticateMcp, isConnectionAuthenticated } from "@/lib/mcp-oauth";
 import { KEYS } from "@/lib/query-keys";
@@ -362,8 +361,7 @@ function VirtualMcpDetailViewWithData({
   hideOwnTitle?: boolean;
 }) {
   const t = useT();
-  const [preferences] = usePreferences();
-  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
+  const locale = useDateFnsLocale();
   const { org } = useProjectContext();
   const actions = useVirtualMCPActions();
   const { data: lastUsedMap } = useVirtualMCPsLastUsed([virtualMcp.id]);

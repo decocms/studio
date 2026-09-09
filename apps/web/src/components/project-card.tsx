@@ -1,11 +1,10 @@
 import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
-import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
+import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
-import { usePreferences } from "@/hooks/use-preferences.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import {
@@ -29,8 +28,7 @@ export function ProjectCard({
 }: ProjectCardProps) {
   const navigateToAgent = useNavigateToAgent();
   const t = useT();
-  const [preferences] = usePreferences();
-  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
+  const locale = useDateFnsLocale();
   // The main agent is org-wide config written via ORGANIZATION_SETTINGS_UPDATE,
   // which the backend gates on `org:manage` — not `agents:manage`. Match it so
   // the action isn't shown to users whose click would fail server-side.
