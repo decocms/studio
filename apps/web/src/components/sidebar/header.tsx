@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { useInSettings } from "@/hooks/use-in-settings";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
 import { OrgProjectPicker } from "./org-project-picker";
@@ -22,11 +23,14 @@ const ICON_SIZE = 16;
 
 export function SidebarPickerHeader() {
   const collapsed = useSidebarCollapsed();
+  /** Settings is forced open (see `OrgLayout`), so a collapse toggle there is a
+   *  control with nothing to do — hidden rather than dead. */
+  const inSettings = useInSettings();
 
   return (
     <>
       <OrgProjectPicker collapsed={collapsed} />
-      <CollapseToggle />
+      {!inSettings && <CollapseToggle />}
     </>
   );
 }

@@ -22,6 +22,7 @@ import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { OrgNoticeBanner } from "@/components/org-notice-banner";
 import { StudioSidebar } from "@/components/sidebar";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
+import { useInSettings } from "@/hooks/use-in-settings";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -40,9 +41,18 @@ export default function OrgLayout() {
     true,
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
+  /** Settings has no icon rail: its group headings ("Organização", "Código"…)
+   *  are plain text, not the row `span:last-child` the collapsed rail hides, so
+   *  a collapsed sidebar there paints them truncated to "O…/C…/G…". The tree is
+   *  a labelled nav that only reads open, so it stays open regardless of the
+   *  persisted preference — which is preserved and restored on the way out. */
+  const inSettings = useInSettings();
 
   return (
-    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+    <SidebarProvider
+      open={inSettings || sidebarOpen}
+      onOpenChange={setSidebarOpen}
+    >
       <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
         <OrgNoticeBanner />
         <SidebarLayout
