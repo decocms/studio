@@ -61,13 +61,6 @@ func decodeBody(r *http.Request, out any) error {
 	return nil
 }
 
-func resolveReadPath(appRoot, repoDir, userPath string) (string, bool) {
-	if filepath.IsAbs(userPath) {
-		return userPath, true
-	}
-	return paths.SafePath(appRoot, repoDir, userPath)
-}
-
 // sniffImageMediaType reports the media type only for the formats /read is
 // willing to return inline; anything else reads as text or binary.
 func sniffImageMediaType(probe []byte) string {
@@ -91,9 +84,9 @@ func Read(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, err.Error())
 			return
 		}
-		filePath, ok := resolveReadPath(deps.AppRoot, deps.RepoDir, body.Path)
+		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes project root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		stat, err := os.Stat(filePath)
@@ -106,10 +99,9 @@ func Read(deps FsDeps) http.HandlerFunc {
 			// the decofile is consumed as one blob and the client's line-number
 			// strip is a no-op on content that lacks the `^\d+\t` prefix.
 			//
-			// Only for relative paths: those are SafePath-confined to appRoot by
-			// resolveReadPath, so the sibling `blocks` dir can't escape the
-			// project. An absolute `body.Path` bypasses SafePath, so refuse to
-			// turn it into a directory glob (the CMS only ever sends relative).
+			// Only for relative paths: an absolute `body.Path` that reaches here
+			// is already SafePath-confined to appRoot, but still refuse to turn
+			// it into a directory glob (the CMS only ever sends relative).
 			if !filepath.IsAbs(body.Path) && filepath.Base(filePath) == decofile.GenBasename {
 				blocksDir := filepath.Join(filepath.Dir(filePath), decofile.BlocksDirname)
 				if merged, ok := decofile.GenerateFromBlocksDeduped(blocksDir); ok {
