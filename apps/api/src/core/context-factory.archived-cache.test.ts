@@ -4,7 +4,10 @@
  * ever overwritten on its own next lookup, never dropped otherwise).
  */
 import { describe, expect, it } from "bun:test";
-import { evictExpiredOrgArchivedEntries } from "./context-factory";
+import {
+  evictExpiredOrgArchivedEntries,
+  refreshOrgArchivedCacheEntry,
+} from "./context-factory";
 
 describe("evictExpiredOrgArchivedEntries", () => {
   it("leaves the cache untouched when under the cap", () => {
@@ -33,6 +36,23 @@ describe("evictExpiredOrgArchivedEntries", () => {
     ]);
     evictExpiredOrgArchivedEntries(cache, 1, 60_000);
     expect(cache.size).toBe(1);
+    expect(cache.has("org_c")).toBe(true);
+  });
+});
+
+describe("refreshOrgArchivedCacheEntry", () => {
+  it("moves a re-looked-up org past older untouched ones, so a hot org isn't the first evicted", () => {
+    const cache = new Map<string, { archived: boolean; at: number }>();
+    refreshOrgArchivedCacheEntry(cache, "org_a", false);
+    refreshOrgArchivedCacheEntry(cache, "org_b", false);
+    refreshOrgArchivedCacheEntry(cache, "org_c", false);
+    // org_a is looked up again — same key, but it's the hot one now.
+    refreshOrgArchivedCacheEntry(cache, "org_a", false);
+
+    evictExpiredOrgArchivedEntries(cache, 2, 60_000);
+
+    expect(cache.has("org_b")).toBe(false);
+    expect(cache.has("org_a")).toBe(true);
     expect(cache.has("org_c")).toBe(true);
   });
 });

@@ -604,6 +604,22 @@ const ARCHIVED_CACHE_TTL_MS = 60_000;
 const ARCHIVED_CACHE_MAX_SIZE = 10_000;
 const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
 
+/** Write (or refresh) a cache entry, moving it to the most-recently-set
+ *  position. `Map.set` on an existing key updates the value in place but
+ *  keeps its original iteration position, so a hot org that's refreshed on
+ *  every lookup would otherwise sit at the "oldest" end forever and be the
+ *  first thing `evictExpiredOrgArchivedEntries` trims once the cache is
+ *  full — evicting the entry the cache most needs to keep. Exported for
+ *  unit testing. */
+export function refreshOrgArchivedCacheEntry(
+  cache: Map<string, { archived: boolean; at: number }>,
+  organizationId: string,
+  archived: boolean,
+): void {
+  cache.delete(organizationId);
+  cache.set(organizationId, { archived, at: Date.now() });
+}
+
 /** Exported for unit testing. */
 export function evictExpiredOrgArchivedEntries(
   cache: Map<string, { archived: boolean; at: number }>,
@@ -643,7 +659,7 @@ async function isOrgArchivedCached(
       .executeTakeFirst(),
   );
   const archived = isOrgArchived(orgRow);
-  orgArchivedCache.set(organizationId, { archived, at: Date.now() });
+  refreshOrgArchivedCacheEntry(orgArchivedCache, organizationId, archived);
   evictExpiredOrgArchivedEntries(
     orgArchivedCache,
     ARCHIVED_CACHE_MAX_SIZE,
