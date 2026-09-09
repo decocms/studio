@@ -70,18 +70,12 @@ mock.module("../../sandbox/lifecycle", () => ({
 // Two unrelated files were already failing on it outright
 // ("http://localhost:undefined" cannot be parsed as a URL).
 //
-// All this file ever needed was `nodeEnv: "test"`, so it installs REAL settings
-// through the real accessor. Nothing to leak.
-const { setGlobalSettings } = await import("../../settings");
-const { resolveConfig } = await import("../../settings/resolve-config");
-setGlobalSettings({
-  ...resolveConfig(
-    { port: "", home: "", localMode: false, skipMigrations: true },
-    { NODE_ENV: "test" },
-  ).settings,
-  databaseUrl: "postgres://test/test",
-  natsUrls: [],
-});
+// All this file ever needed was `nodeEnv: "test"`, and `bun test` already sets
+// NODE_ENV=test, so the real module's own auto-init produces exactly that. It
+// installs nothing: touching the global settings from a test file is the same
+// cross-file coupling as mocking the module, one step milder — it made
+// settings/index.test.ts fail, because that file's subject is the auto-init
+// this one would have pre-empted.
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
   "../../storage/downstream-token"
