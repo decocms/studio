@@ -21,18 +21,10 @@ const PRS_POLL_INTERVAL_MS = 60_000;
  *  minute. */
 const PRS_UNENRICHED_POLL_INTERVAL_MS = 2_000;
 
-/** Checks that are still running settle on their own, with no webhook to say
- *  when — so while any linked PR reports pending CI, poll faster than the idle
- *  minute. Bounded to a dialog that is open on a PR whose CI is actually
- *  running, and the server answers those from cache while it refreshes. */
-const PRS_PENDING_CHECKS_POLL_INTERVAL_MS = 10_000;
-
 /** A card the server returned before GitHub answered: link fields only. `state`
  *  is null for a PR GitHub could not be read for too, which polls the same way
  *  — the right behavior either way. */
 const isUnenriched = (pr: TaskBoardItemPr) => pr.state === null;
-
-const hasPendingChecks = (pr: TaskBoardItemPr) => pr.checksStatus === "pending";
 
 /**
  * A task's linked PRs, each with live state fetched from GitHub via the
@@ -47,13 +39,10 @@ export function useTaskBoardItemPrs(itemId: string | undefined) {
   return useQuery({
     queryKey: KEYS.taskBoardItemPrs(locator, itemId ?? ""),
     enabled: !!itemId,
-    refetchInterval: (query) => {
-      const prs = query.state.data;
-      if (prs?.some(isUnenriched)) return PRS_UNENRICHED_POLL_INTERVAL_MS;
-      if (prs?.some(hasPendingChecks))
-        return PRS_PENDING_CHECKS_POLL_INTERVAL_MS;
-      return PRS_POLL_INTERVAL_MS;
-    },
+    refetchInterval: (query) =>
+      query.state.data?.some(isUnenriched)
+        ? PRS_UNENRICHED_POLL_INTERVAL_MS
+        : PRS_POLL_INTERVAL_MS,
     // Seeded from localStorage so a cold page load paints the last known cards
     // instead of a skeleton. `initialDataUpdatedAt` carries the real age, so
     // React Query treats the seed as already stale and refetches on mount — the

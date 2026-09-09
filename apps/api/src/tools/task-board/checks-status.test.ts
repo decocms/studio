@@ -13,7 +13,7 @@ import { GitProviderError } from "@/git-providers";
 import {
   asHeadSha,
   cardLifecycle,
-  isAwaitingCi,
+  isAwaitingPreview,
   isRateLimitError,
   isTrustedPreviewHost,
   previewMatchesHead,
@@ -400,30 +400,25 @@ describe("previewMatchesHead", () => {
   });
 });
 
-describe("isAwaitingCi", () => {
-  it("keeps refreshing while CI runs", () => {
-    // Was false whenever a preview URL had already been found, so that card got
-    // the full hit window and showed "Checks pending" long after they passed.
-    expect(isAwaitingCi({ checksStatus: "pending" })).toBe(true);
+describe("isAwaitingPreview", () => {
+  it("keeps refreshing while CI runs with no preview yet", () => {
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "pending" }),
+    ).toBe(true);
   });
 
-  it("caches normally once CI settles", () => {
-    expect(isAwaitingCi({ checksStatus: "passing" })).toBe(false);
-    expect(isAwaitingCi({ checksStatus: "failing" })).toBe(false);
-    expect(isAwaitingCi({ checksStatus: null })).toBe(false);
-  });
-});
-
-describe("isAwaitingCi", () => {
-  it("keeps refreshing while CI runs", () => {
-    // Was false whenever a preview URL had already been found, so that card got
-    // the full hit window and showed "Checks pending" long after they passed.
-    expect(isAwaitingCi({ checksStatus: "pending" })).toBe(true);
-  });
-
-  it("caches normally once CI settles", () => {
-    expect(isAwaitingCi({ checksStatus: "passing" })).toBe(false);
-    expect(isAwaitingCi({ checksStatus: "failing" })).toBe(false);
-    expect(isAwaitingCi({ checksStatus: null })).toBe(false);
+  it("caches normally once either settles", () => {
+    expect(
+      isAwaitingPreview({
+        previewUrl: "https://x.vtex.app",
+        checksStatus: "pending",
+      }),
+    ).toBe(false);
+    expect(
+      isAwaitingPreview({ previewUrl: null, checksStatus: "passing" }),
+    ).toBe(false);
+    expect(isAwaitingPreview({ previewUrl: null, checksStatus: null })).toBe(
+      false,
+    );
   });
 });
