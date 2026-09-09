@@ -187,17 +187,19 @@ export class JetStreamKVPrCache {
       : Number.POSITIVE_INFINITY;
     if (!stored || age > maxStaleMs) {
       cacheCounter.add(1, { cache, outcome: "miss" });
+      const fetchStartedAt = this.now();
       const value = await fetchLive();
-      await this.write(key, value, cache);
+      await this.write(key, value, cache, fetchStartedAt);
       return value;
     }
 
     if (age > revalidateAfterMs && !this.revalidating.has(key)) {
       cacheCounter.add(1, { cache, outcome: "stale" });
       this.revalidating.add(key);
+      const fetchStartedAt = this.now();
       onRevalidation(
         fetchLive()
-          .then((value) => this.write(key, value, cache))
+          .then((value) => this.write(key, value, cache, fetchStartedAt))
           .catch(() => {
             // Best-effort: keep serving the stored value until maxStaleMs.
             cacheCounter.add(1, { cache, outcome: "error" });
@@ -259,10 +261,11 @@ export class JetStreamKVPrCache {
     });
     if (!this.revalidating.has(key)) {
       this.revalidating.add(key);
+      const fetchStartedAt = this.now();
       // Detached: the wait is the thing being removed. The result lands in KV
       // for the next poll, which is seconds away while the card is unenriched.
       void fetchLive()
-        .then((value) => this.write(key, value, cache))
+        .then((value) => this.write(key, value, cache, fetchStartedAt))
         .catch(() => {
           cacheCounter.add(1, { cache, outcome: "error" });
         })
@@ -284,11 +287,13 @@ export class JetStreamKVPrCache {
     key: string;
     fetchLive: () => Promise<T>;
   }): Promise<T> {
+    const fetchStartedAt = this.now();
     const value = await params.fetchLive();
     await this.write(
       this.storageKey(params.namespace, params.key),
       value,
       this.config.cache,
+      fetchStartedAt,
     );
     cacheCounter.add(1, { cache: this.config.cache, outcome: "refresh" });
     return value;
@@ -306,11 +311,23 @@ export class JetStreamKVPrCache {
     }
   }
 
+  /**
+   * @param notBefore The fetch's own start time. If a fresher write (its own
+   *   fetch started later) already landed by the time this one is ready to
+   *   store, this write is dropped instead of clobbering it — otherwise a
+   *   slow background revalidation that started before a webhook push can
+   *   still finish after it and overwrite the fresher card with stale data.
+   */
   private async write(
     key: string,
     value: unknown,
     cache: string,
+    notBefore?: number,
   ): Promise<void> {
+    if (notBefore !== undefined) {
+      const current = await this.read(key);
+      if (current && current.storedAt > notBefore) return;
+    }
     if (!this.kv) {
       // Evict the oldest entry (insertion order) once past the cap.
       if (
