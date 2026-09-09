@@ -32,22 +32,20 @@ describe("isFeatureAllowed", () => {
 });
 
 describe("isUsageBlocked", () => {
-  it("stops an exhausted bar when enforcement is on", () => {
-    expect(isUsageBlocked("exhausted", true)).toBe(true);
-  });
-
-  it("does nothing while dormant — deployed must not mean enabled", () => {
-    expect(isUsageBlocked("exhausted", false)).toBe(false);
+  it("stops an exhausted bar", () => {
+    expect(isUsageBlocked("exhausted")).toBe(true);
   });
 
   it("lets ok and warn through", () => {
-    expect(isUsageBlocked("ok", true)).toBe(false);
-    expect(isUsageBlocked("warn", true)).toBe(false);
+    expect(isUsageBlocked("ok")).toBe(false);
+    expect(isUsageBlocked("warn")).toBe(false);
   });
 
   it("treats an unread bar as unknown, never as exhausted", () => {
     // `usage: null` means the gateway could not read consumption. Stopping a
-    // paying org's chat on a failed read is the worse bug.
-    expect(isUsageBlocked(null, true)).toBe(false);
+    // paying org's chat on a failed read is the worse bug. It is also what a
+    // plans-disabled deployment produces, which is why there is no second
+    // enforcement flag to check here.
+    expect(isUsageBlocked(null)).toBe(false);
   });
 });

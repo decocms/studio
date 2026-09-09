@@ -22,7 +22,11 @@ import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
-import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
+import {
+  useEntitlements,
+  useFeature,
+  usePlansEnabled,
+} from "@/hooks/use-entitlements";
 
 /**
  * The org's plan and its AI usage bar.
@@ -117,6 +121,16 @@ function ChangePlanDialog({
                 const included = HIGHLIGHT_FEATURES.filter(
                   (f) => plan.features[f],
                 );
+                // A plan without `credits` is capped at its allowance and
+                // cannot buy past it (Free). Listing "Chat" alongside the paid
+                // tiers reads as the same chat they get, so say what it is.
+                const subtitle = !plan.features.credits
+                  ? t("settings.planUsage.feature.trialChat")
+                  : included.length > 0
+                    ? included
+                        .map((f) => t(`settings.planUsage.feature.${f}`))
+                        .join(" \u00b7 ")
+                    : t("settings.planUsage.feature.none");
                 return (
                   <button
                     key={plan.id}
@@ -134,11 +148,7 @@ function ChangePlanDialog({
                     <div className="flex flex-col gap-0.5 min-w-0">
                       <span className="text-sm font-medium">{plan.name}</span>
                       <span className="text-xs text-muted-foreground truncate">
-                        {included.length > 0
-                          ? included
-                              .map((f) => t(`settings.planUsage.feature.${f}`))
-                              .join(" · ")
-                          : t("settings.planUsage.feature.none")}
+                        {subtitle}
                       </span>
                     </div>
                     {isCurrent && (
@@ -161,6 +171,9 @@ export function PlanUsageCard() {
   const [changeOpen, setChangeOpen] = useState(false);
 
   const plansEnabled = usePlansEnabled();
+  // Free cannot top up: its allowance is a ceiling and the only way past it is
+  // a plan. That changes both the copy and whether a credits row belongs here.
+  const canBuyCredits = useFeature("credits");
   const { data, isLoading, isError, refetch } = useEntitlements();
 
   // The "no plan surface here" case the error branch below excuses itself for:
@@ -268,11 +281,17 @@ export function PlanUsageCard() {
               />
               <p className="text-xs text-muted-foreground">
                 {state === "exhausted"
-                  ? resetsOn
-                    ? t("settings.planUsage.exhaustedHintOn", {
-                        date: resetsOn,
-                      })
-                    : t("settings.planUsage.exhaustedHint")
+                  ? canBuyCredits
+                    ? resetsOn
+                      ? t("settings.planUsage.exhaustedHintOn", {
+                          date: resetsOn,
+                        })
+                      : t("settings.planUsage.exhaustedHint")
+                    : resetsOn
+                      ? t("settings.planUsage.exhaustedUpgradeOnlyOn", {
+                          date: resetsOn,
+                        })
+                      : t("settings.planUsage.exhaustedUpgradeOnly")
                   : resetsOn
                     ? t("settings.planUsage.resetsOn", { date: resetsOn })
                     : t("settings.planUsage.periodHint")}
@@ -282,7 +301,7 @@ export function PlanUsageCard() {
                   moment credits are what the org is spending — showing a
                   balance alongside a half-empty bar is what made the two read
                   as one number. */}
-              {state === "exhausted" && creditsUsd !== null && (
+              {state === "exhausted" && canBuyCredits && creditsUsd !== null && (
                 <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-border mt-1">
                   <span className="text-xs text-muted-foreground">
                     {creditsUsd > 0

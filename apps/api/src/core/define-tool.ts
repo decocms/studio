@@ -104,7 +104,7 @@ export interface ToolDefinition<
    *
    * Orthogonal to `requiresFeature` on purpose: `cms` is in the plan and does
    * not spend, so a full bar must not touch it ("CMS keeps working, chat
-   * pauses"). Dormant unless STUDIO_PLAN_USAGE_ENFORCED.
+   * pauses"). Inert unless STUDIO_PLANS_ENABLED, like every other gate.
    */
   requiresAiBudget?: boolean;
 }

@@ -1078,6 +1078,13 @@ export function ActiveTaskProvider({
       },
       onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;
+        // The turn just spent AI budget, and the usage bar is the one surface
+        // that shows it. Its query has a 60s staleTime, so without this the
+        // bar sits at its old percentage after a message and looks broken —
+        // the gateway's own number is live, only this cache was stale.
+        void cb.queryClient.invalidateQueries({
+          queryKey: KEYS.aiPlanEntitlements(cb.orgId),
+        });
         // Terminal event: the gate advanced — re-sync the queue so the
         // dequeued message drops and the next one surfaces.
         if (cb.taskId) void refreshMessageQueue(cb.orgSlug, cb.taskId);

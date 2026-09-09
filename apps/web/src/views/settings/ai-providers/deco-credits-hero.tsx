@@ -28,7 +28,7 @@ import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { usePlansEnabled } from "@/hooks/use-entitlements";
+import { useFeature, usePlansEnabled } from "@/hooks/use-entitlements";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 
@@ -235,6 +235,7 @@ export function DecoCreditsHero() {
   const decoKey = allKeys.find((k) => k.providerId === "deco");
   // With plans on, the balance lives on PlanUsageCard instead.
   const plansEnabled = usePlansEnabled();
+  const canBuyCredits = useFeature("credits");
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const { mutate: disconnect, isPending: isDisconnecting } = useMutation({
@@ -269,11 +270,6 @@ export function DecoCreditsHero() {
                 alt={t("settings.decoCreditsHero.decoAiGatewayAlt")}
                 className="size-9 rounded-lg object-contain dark:bg-white dark:p-0.5"
               />
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {t("settings.decoCreditsHero.accessModels")}
-                </p>
-              </div>
             </div>
             <Button
               variant="ghost"
@@ -315,13 +311,17 @@ export function DecoCreditsHero() {
 
           <CreditsBalance enabled={!plansEnabled} />
 
-          {/* Quick top-up */}
-          <div className="pt-4 border-t border-border/60">
-            <p className="text-xs font-medium text-muted-foreground mb-2.5">
-              {t("settings.decoCreditsHero.addCredits")}
-            </p>
-            <QuickTopUp />
-          </div>
+          {/* Quick top-up. Withheld from a plan without `credits` (Free): its
+              allowance is a ceiling, and the way past it is a plan. Fails OPEN
+              like every other gate, so a gateway blip still lets an org pay. */}
+          {canBuyCredits ? (
+            <div className="pt-4 border-t border-border/60">
+              <p className="text-xs font-medium text-muted-foreground mb-2.5">
+                {t("settings.decoCreditsHero.addCredits")}
+              </p>
+              <QuickTopUp />
+            </div>
+          ) : null}
         </div>
       </SettingsCard>
     </SettingsSection>

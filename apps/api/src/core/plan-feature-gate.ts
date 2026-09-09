@@ -25,7 +25,10 @@ export type PlanFeature =
   | "monitoring"
   | "model_choice"
   | "diagnostic"
-  | "diagnostic_enriched";
+  | "diagnostic_enriched"
+  /** May buy AI credits on top of the allowance. Free cannot: its $2 trial is
+   *  a hard ceiling and the way past it is a plan, not a top-up. */
+  | "credits";
 
 /** Thrown when the org's plan does not include the feature. Serialized as 403. */
 export class FeatureNotInPlanError extends ForbiddenError {
@@ -172,25 +175,22 @@ export class AiBudgetExhaustedError extends ForbiddenError {
 /**
  * Whether an exhausted bar should stop AI work right now.
  *
- * Two conditions, both required:
+ * Only one condition: a usage state the gateway actually READ. `null` means it
+ * could not read consumption, and the same reasoning as `isFeatureAllowed`
+ * applies — a gateway blip must not stop a paying org's work, and the spend is
+ * metered by the gateway regardless of what this returns.
  *
- * 1. `STUDIO_PLAN_USAGE_ENFORCED`. A hard stop on the chat and task dispatch
- *    paths is exactly the kind of change that must ship dormant — "deployed"
- *    must not mean "enabled", and a self-hosted deployment never wants it.
- * 2. A usage state the gateway actually READ. `null` means it could not read
- *    consumption, and the same reasoning as `isFeatureAllowed` applies: a
- *    gateway blip must not stop a paying org's work, and the spend is metered
- *    by the gateway regardless of what this returns.
+ * There is deliberately no separate enforcement flag. `STUDIO_PLANS_ENABLED`
+ * already governs the whole feature: with it off `getOrgPlanState` answers
+ * null, so `usageState` is null and this is false anyway. A second switch for
+ * the same feature only creates a state where the bar fills and nothing
+ * happens, which is the confusing half-on configuration.
  *
  * Note this stops only the surfaces that declare it (`requiresAiBudget`, plus
  * the chat route). CMS and monitoring keep working on a full bar — that is the
  * promise the billing card makes: "CMS keeps working, chat pauses".
  */
-export function isUsageBlocked(
-  usageState: BarState | null,
-  enforced: boolean,
-): boolean {
-  if (!enforced) return false;
+export function isUsageBlocked(usageState: BarState | null): boolean {
   return usageState === "exhausted";
 }
 
@@ -204,11 +204,7 @@ export async function assertAiBudget(
   what: string,
 ): Promise<void> {
   const state = await getOrgPlanState(ctx, organizationId);
-  if (
-    !isUsageBlocked(state?.usageState ?? null, getSettings().planUsageEnforced)
-  ) {
-    return;
-  }
+  if (!isUsageBlocked(state?.usageState ?? null)) return;
   throw new AiBudgetExhaustedError(
     `${what} is paused: this organization has used its monthly AI allowance`,
   );

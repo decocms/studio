@@ -40,7 +40,7 @@ import {
   useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
 import { TierModelOverridePicker } from "./tier-model-override-row";
-import { useFeature } from "@/hooks/use-entitlements";
+import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 
@@ -332,9 +332,12 @@ export function TierTrigger() {
   const updateUserModelPreferences = useUpdateUserModelPreferences();
   // Below Ultra the whole picker is withheld, not just the model names.
   const modelChoice = useFeature("model_choice");
+  // Withheld entirely below Ultra, so rendering it before the answer lands
+  // shows a picker that then vanishes. Wait instead.
+  const settled = useFeaturesSettled();
 
   // After every hook, never before (rules of hooks).
-  if (!modelChoice) return null;
+  if (!settled || !modelChoice) return null;
 
   const tierLabels = getTierLabels(t);
 

@@ -424,7 +424,6 @@ export const settings = {
     "Generate a token on your own machine with",
   "settings.claudeSubscription.title": "Your Claude subscription",
   "settings.claudeSubscription.tokenPlaceholder": "Paste your token",
-  "settings.decoCreditsHero.accessModels": "Access to 100+ models",
   "settings.decoCreditsHero.add": "Add",
   "settings.decoCreditsHero.addCredits": "Add credits",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -456,6 +455,10 @@ export const settings = {
   "settings.planUsage.exhausted": "Limit reached",
   "settings.planUsage.exhaustedHintOn":
     "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade or top up. Resets on {date}.",
+  "settings.planUsage.exhaustedUpgradeOnly":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade. This plan's allowance can't be topped up.",
+  "settings.planUsage.exhaustedUpgradeOnlyOn":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade. This plan's allowance can't be topped up. Resets on {date}.",
   "settings.planUsage.noAiIncluded":
     "This plan includes no AI usage — pick a plan to get an AI envelope.",
   "settings.planUsage.changePlan": "Change plan",
@@ -474,7 +477,9 @@ export const settings = {
   "settings.planUsage.feature.monitoring": "Monitoring",
   "settings.planUsage.feature.kanban": "Kanban",
   "settings.planUsage.feature.model_choice": "Choose your model",
+  "settings.planUsage.feature.trialChat": "Limited access to chat",
   "settings.planUsage.feature.none": "Bring your own key",
+  "settings.planUsage.feature.credits": "Buy extra AI credits",
   "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
   "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
   "settings.paywall.title": "{feature} is not in your plan",

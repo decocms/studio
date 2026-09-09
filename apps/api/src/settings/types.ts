@@ -92,12 +92,6 @@ export interface Settings {
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
 
-  /**
-   * The exhausted-bar stop (core/plan-feature-gate.ts). Dormant unless set: a
-   * hard refusal on the chat and dispatch paths must not arrive with a deploy.
-   * Off → a full bar only turns red; on → it also stops the spend.
-   */
-  planUsageEnforced: boolean;
 
   /**
    * Master switch for tiered plans (STUDIO_PLANS_ENABLED, default off). Off →

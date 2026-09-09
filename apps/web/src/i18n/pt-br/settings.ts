@@ -435,7 +435,6 @@ export const settings = {
     "Gere um token na sua pr\u00f3pria m\u00e1quina com",
   "settings.claudeSubscription.title": "Sua assinatura Claude",
   "settings.claudeSubscription.tokenPlaceholder": "Cole seu token",
-  "settings.decoCreditsHero.accessModels": "Acesso a 100+ modelos",
   "settings.decoCreditsHero.add": "Adicionar",
   "settings.decoCreditsHero.addCredits": "Adicionar cr\u00e9ditos",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -469,6 +468,10 @@ export const settings = {
   "settings.planUsage.exhausted": "Limite atingido",
   "settings.planUsage.exhaustedHintOn":
     "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos. Reinicia em {date}.",
+  "settings.planUsage.exhaustedUpgradeOnly":
+    "O uso de IA acabou \u2014 o CMS continua funcionando, chat e tarefas pausam at\u00e9 voc\u00ea fazer upgrade. A cota deste plano n\u00e3o pode ser recarregada.",
+  "settings.planUsage.exhaustedUpgradeOnlyOn":
+    "O uso de IA acabou \u2014 o CMS continua funcionando, chat e tarefas pausam at\u00e9 voc\u00ea fazer upgrade. A cota deste plano n\u00e3o pode ser recarregada. Renova em {date}.",
   "settings.planUsage.noAiIncluded":
     "Este plano não inclui uso de IA — escolha um plano para ter uma cota.",
   "settings.planUsage.changePlan": "Trocar plano",
@@ -488,7 +491,9 @@ export const settings = {
   "settings.planUsage.feature.monitoring": "Monitoramento",
   "settings.planUsage.feature.kanban": "Kanban",
   "settings.planUsage.feature.model_choice": "Escolher o modelo",
+  "settings.planUsage.feature.trialChat": "Acesso limitado ao chat",
   "settings.planUsage.feature.none": "Use sua própria chave",
+  "settings.planUsage.feature.credits": "Comprar cr\u00e9ditos extras de IA",
   "settings.planUsage.feature.diagnostic": "Diagnóstico de commerce",
   "settings.planUsage.feature.diagnostic_enriched": "Diagnóstico enriquecido",
   "settings.paywall.title": "{feature} não está no seu plano",

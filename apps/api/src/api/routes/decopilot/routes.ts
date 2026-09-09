@@ -652,7 +652,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
       // A turn is the largest single AI spend in the product, so it is the
       // first place the exhausted bar has to mean something. Dormant unless
-      // STUDIO_PLAN_USAGE_ENFORCED.
+      // STUDIO_PLANS_ENABLED.
       await assertAiBudget(ctx, input.organizationId, "Chat");
 
       // Re-read the canonical row for its pin and message-storage version.

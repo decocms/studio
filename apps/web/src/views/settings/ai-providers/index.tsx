@@ -15,7 +15,7 @@ import { ClaudeSubscriptionCard } from "./claude-subscription-card";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
-import { useFeature } from "@/hooks/use-entitlements";
+import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -39,11 +39,19 @@ function OrgAiProvidersContent() {
   const aiProviders = useAiProviders();
   // Fails OPEN, so a gateway blip shows the BYO surfaces rather than hiding them.
   const canChooseModels = useFeature("model_choice");
+  // ...but on a COLD cache that same fail-open paints the BYO surfaces for a
+  // frame before the answer arrives and removes them. This page is mostly
+  // plan-gated, so hold the whole body rather than let it rearrange itself.
+  const settled = useFeaturesSettled();
   const allProviders = aiProviders?.providers ?? [];
   // Every tile but Deco is a bring-your-own key.
   const providers = canChooseModels
     ? allProviders
     : allProviders.filter((p) => p.id === "deco");
+
+  if (!settled) {
+    return <Skeleton className="h-64 w-full" />;
+  }
 
   if (!hasHostedProvider) {
     return (

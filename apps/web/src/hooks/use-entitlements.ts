@@ -31,7 +31,9 @@ export type Feature =
   | "monitoring"
   | "model_choice"
   | "diagnostic"
-  | "diagnostic_enriched";
+  | "diagnostic_enriched"
+  /** May buy AI credits on top of the allowance — see the gateway's plans. */
+  | "credits";
 
 export function useEntitlements() {
   // Optional on purpose: the gates below are read by leaf components (a
@@ -46,6 +48,11 @@ export function useEntitlements() {
     // allows — so the flag needs no second check at any call site.
     enabled: !!orgSlug && plansEnabled,
     staleTime: 60_000,
+    // No retries. Every gate fails OPEN, so a failed read costs nothing but a
+    // moment of ungated UI — while RETRYING costs seconds of `isPending`, and
+    // `useFeaturesSettled` holds a render on that. Three backed-off retries of
+    // a 403 turned Billing & AI into a hanging page. Fail open, fast.
+    retry: false,
     // `callStudioTool` rather than `useStudioTools()`: that hook requires the
     // project context this one deliberately treats as optional.
     // Deliberately NOT swallowed into `null`: a failure has to stay a failure
@@ -72,6 +79,29 @@ export function useFeature(feature: Feature | null): boolean {
   const { data } = useEntitlements();
   if (!feature || !data) return true;
   return data.features[feature] === true;
+}
+
+/**
+ * Whether the plan answer has SETTLED — i.e. `useFeature` below is returning a
+ * real decision rather than its fail-open default.
+ *
+ * The gates fail open while the query is in flight, which is right for
+ * correctness (a slow gateway must not lock anyone out) and wrong for
+ * rendering: the ungated UI paints for a frame and then swaps, which reads as
+ * a flicker. A surface the plan can REMOVE should wait for this; a surface the
+ * plan only annotates should not, and should keep failing open.
+ *
+ * True when there is nothing to wait for at all — plans off, or no org — so a
+ * self-hosted deployment never holds a render on a query it will not run.
+ */
+export function useFeaturesSettled(): boolean {
+  const plansEnabled = usePlansEnabled();
+  const { isPending, fetchStatus } = useEntitlements();
+  if (!plansEnabled) return true;
+  // A disabled query is `pending` forever with fetchStatus "idle" — that is
+  // "nothing to wait for", not "still loading".
+  if (fetchStatus === "idle") return true;
+  return !isPending;
 }
 
 /**
