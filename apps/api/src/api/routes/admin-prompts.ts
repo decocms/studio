@@ -65,6 +65,10 @@ const PROMPTS = [
 
 type PromptId = (typeof PROMPTS)[number]["id"];
 
+/** A generous ceiling, not a real limit — just enough to reject a runaway body. */
+const MAX_TITLE_LENGTH = 200;
+const MAX_PROMPT_LENGTH = 20_000;
+
 export class PromptEditorError extends Error {
   constructor(
     message: string,
@@ -234,6 +238,12 @@ export function createAdminPromptRoutes(): Hono<Env> {
       typeof body.title === "string" && body.title.trim()
         ? body.title.trim()
         : "chore(prompts): edit agent prompts";
+    if (title.length > MAX_TITLE_LENGTH) {
+      return c.json(
+        { error: `Title must be at most ${MAX_TITLE_LENGTH} characters` },
+        400,
+      );
+    }
     const known = new Set<string>(PROMPTS.map((p) => p.id));
     const edits = (Array.isArray(body.edits) ? body.edits : [])
       .filter(
@@ -248,6 +258,15 @@ export function createAdminPromptRoutes(): Hono<Env> {
       .map((e) => ({ id: e.id, content: e.content }));
     if (edits.length === 0) {
       return c.json({ error: "No prompt edits to commit" }, 400);
+    }
+    const oversized = edits.find((e) => e.content.length > MAX_PROMPT_LENGTH);
+    if (oversized) {
+      return c.json(
+        {
+          error: `Prompt "${oversized.id}" must be at most ${MAX_PROMPT_LENGTH} characters`,
+        },
+        400,
+      );
     }
 
     const { gh } = await clientForActor(c.get("studioContext"));
