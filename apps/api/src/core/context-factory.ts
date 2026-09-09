@@ -600,7 +600,32 @@ export async function fetchRolePermissions(
 // request, so caching keeps the lookup off the hot path. Archiving is a
 // one-way soft-delete, so a short TTL is plenty.
 const ARCHIVED_CACHE_TTL_MS = 60_000;
+// Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
+const ARCHIVED_CACHE_MAX_SIZE = 10_000;
 const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+
+/** Exported for unit testing. */
+export function evictExpiredOrgArchivedEntries(
+  cache: Map<string, { archived: boolean; at: number }>,
+  maxSize: number,
+  ttlMs: number,
+): void {
+  if (cache.size <= maxSize) return;
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now - entry.at >= ttlMs) cache.delete(key);
+  }
+  // Trims oldest first (Map iteration order = insertion order).
+  if (cache.size > maxSize) {
+    const excess = cache.size - maxSize;
+    let removed = 0;
+    for (const key of cache.keys()) {
+      if (removed >= excess) break;
+      cache.delete(key);
+      removed++;
+    }
+  }
+}
 
 async function isOrgArchivedCached(
   db: Kysely<Database>,
@@ -619,6 +644,11 @@ async function isOrgArchivedCached(
   );
   const archived = isOrgArchived(orgRow);
   orgArchivedCache.set(organizationId, { archived, at: Date.now() });
+  evictExpiredOrgArchivedEntries(
+    orgArchivedCache,
+    ARCHIVED_CACHE_MAX_SIZE,
+    ARCHIVED_CACHE_TTL_MS,
+  );
   return archived;
 }
 
