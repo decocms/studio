@@ -158,7 +158,10 @@ export async function githubGraphqlRequest<T>(
     if (!refreshed) throw new Error(args.missingTokenMessage);
     res = await postWithRetry(refreshed);
     spentToken = refreshed;
-    if (res.status === 401) throw new Error(args.missingTokenMessage);
+    if (res.status === 401) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error(args.missingTokenMessage);
+    }
   }
 
   const installation = budgetOwnerFor(spentToken);
@@ -179,6 +182,7 @@ export async function githubGraphqlRequest<T>(
       kind,
     });
     const waitMs = githubRetryAfterMs(res.headers);
+    await res.body?.cancel().catch(() => {});
     throw new Error(
       `GitHub ${kind} rate limit reached${
         waitMs === null ? "" : `; retry in ${Math.ceil(waitMs / 1000)}s`
@@ -187,6 +191,7 @@ export async function githubGraphqlRequest<T>(
   }
 
   if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
     throw new Error(`GitHub GraphQL ${args.label} failed: ${res.status}`);
   }
 
