@@ -389,6 +389,13 @@ configMap:
     BASE_URL: "http://localhost:8080"
     DATA_DIR: "/app/data"
     # NATS_URL: ""  # Optional: overrides auto-derived URL when nats.enabled=true (e.g. nats://my-nats:4222)
+    # Per API PROCESS, and each pod runs two of them plus a worker replica, so
+    # the cluster's demand on Postgres is
+    #   DATABASE_POOL_MAX x (replicas x 2 + workerReplicas)
+    # At this default that is 100 connections at two replicas — exactly
+    # postgres's own default max_connections, and a burst past it surfaces as
+    # HTTP 500 "sorry, too many clients already", not as a queue. Size
+    # max_connections from the formula, or lower this, before scaling up.
     DATABASE_POOL_MAX: "20"
     DECO_AI_GATEWAY_ENABLED: "false"
     # DECO_AI_GATEWAY_URL: ""      # the gateway's base url
