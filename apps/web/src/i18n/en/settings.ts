@@ -76,6 +76,21 @@ export const settings = {
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
+  "settings.jira.testRunLabel": "Try it on one issue",
+  "settings.jira.testRunDescription":
+    "Run the agent on a single issue now, without a rule and without enabling the integration \u2014 so you can see what a prompt does before it runs on every issue entering a status.",
+  "settings.jira.testRunIssuePlaceholder": "ABC-123 or a link",
+  "settings.jira.testRunIssueAriaLabel": "Jira issue key or link",
+  "settings.jira.testRunPromptAriaLabel": "Instruction for this test run",
+  "settings.jira.testRun": "Run agent",
+  "settings.jira.testRunRunning": "Starting\u2026",
+  "settings.jira.testRunStarted": "Agent started on {issueKey}",
+  "settings.jira.testRunTookOver":
+    "Agent restarted on {issueKey} \u2014 the run already working it was stopped",
+  "settings.jira.testRunFailed": "Could not start the run",
+  "settings.jira.testRunHelp":
+    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Leave the instruction empty to use the agent's own.",
+  "settings.jira.testRunWatch": "Watch runs in Monitor",
   "settings.syncedRepos.pageDescription":
     "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",

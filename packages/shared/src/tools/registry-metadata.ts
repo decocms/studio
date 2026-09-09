@@ -197,6 +197,7 @@ const ALL_TOOL_NAMES = [
   "JIRA_AUTOMATION_LIST",
   "JIRA_AUTOMATION_UPSERT",
   "JIRA_AUTOMATION_DELETE",
+  "JIRA_RUN_START",
   "JIRA_ISSUE_GET",
   "JIRA_COMMENT_ADD",
   "JIRA_ISSUE_TRANSITION",
@@ -955,6 +956,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
+    name: "JIRA_RUN_START",
+    description: "Run the agent on one Jira issue now, to try a rule out",
+    category: "Jira",
+  },
+  {
     name: "JIRA_ISSUE_GET",
     description: "Re-read the Jira issue a run is working on",
     category: "Jira",
@@ -1613,6 +1619,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_AUTOMATION_LIST",
       "JIRA_AUTOMATION_UPSERT",
       "JIRA_AUTOMATION_DELETE",
+      "JIRA_RUN_START",
     ],
   },
   {

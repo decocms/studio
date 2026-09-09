@@ -1,11 +1,12 @@
 /**
  * Settings → Tasks → "Jira integration" section — connect a Jira Cloud site
  * (email + API token), pick the board Studio watches, choose which statuses
- * start an agent run, and wire the webhook that tells it the moment an issue
- * moves.
+ * start an agent run, try a rule on a single issue before switching it on, and
+ * wire the webhook that tells it the moment an issue moves.
  */
 
 import { type ReactNode, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -13,6 +14,7 @@ import {
   ArrowUpRight,
   Check,
   ChevronSelectorVertical,
+  Play,
   Plus,
   Trash01,
 } from "@untitledui/icons";
@@ -58,8 +60,10 @@ import {
   useJiraBoards,
   useJiraIntegration,
   useSetJiraAutomation,
+  useStartJiraRun,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
+import { useProjectContext } from "@/sdk";
 import { TaskSystemPromptSettings } from "./task-system-prompt";
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -453,6 +457,102 @@ function StatusAutomationCard({
   );
 }
 
+/**
+ * Run the agent on one issue, by hand — the answer to "will this prompt do the
+ * right thing?" without turning a rule on for every card that lands in a
+ * column.
+ *
+ * Deliberately independent of the rules above: no rule has to exist, the
+ * integration can be off, and the same issue can be re-run while the prompt is
+ * reworded, none of which is true of waiting for a real transition. It is a
+ * real run on the real issue, which is why the copy says so.
+ */
+function TestRunRow() {
+  const t = useT();
+  const { org } = useProjectContext();
+  const start = useStartJiraRun();
+  const [issueKey, setIssueKey] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const canRun = issueKey.trim() !== "" && !start.isPending;
+
+  const run = () => {
+    if (!canRun) return;
+    start.mutate(
+      {
+        issueKey: issueKey.trim(),
+        prompt: prompt.trim() === "" ? null : prompt.trim(),
+      },
+      {
+        onSuccess: (result) =>
+          toast.success(
+            result.supersededThreadIds.length > 0
+              ? t("settings.jira.testRunTookOver", {
+                  issueKey: result.issueKey,
+                })
+              : t("settings.jira.testRunStarted", {
+                  issueKey: result.issueKey,
+                }),
+          ),
+        onError: (err) =>
+          toast.error(errorMessage(err, t("settings.jira.testRunFailed"))),
+      },
+    );
+  };
+
+  return (
+    <SettingsCardItem
+      title={t("settings.jira.testRunLabel")}
+      description={t("settings.jira.testRunDescription")}
+    >
+      <div className="mt-3 flex w-full flex-col gap-3">
+        <div className="flex items-start gap-2">
+          <Input
+            value={issueKey}
+            onChange={(e) => setIssueKey(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") run();
+            }}
+            placeholder={t("settings.jira.testRunIssuePlaceholder")}
+            aria-label={t("settings.jira.testRunIssueAriaLabel")}
+            className="max-w-56 font-mono text-xs"
+            autoComplete="off"
+          />
+          <Button
+            size="sm"
+            className="shrink-0"
+            disabled={!canRun}
+            onClick={run}
+          >
+            <Play size={14} />
+            {start.isPending
+              ? t("settings.jira.testRunRunning")
+              : t("settings.jira.testRun")}
+          </Button>
+        </div>
+        <Textarea
+          value={prompt}
+          rows={2}
+          placeholder={t("settings.jira.promptPlaceholder")}
+          aria-label={t("settings.jira.testRunPromptAriaLabel")}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("settings.jira.testRunHelp")}
+        </p>
+        <Link
+          to="/$org/settings/monitor"
+          params={{ org: org.slug }}
+          search={{ tab: "threads" }}
+          className="flex w-fit items-center gap-1 text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          {t("settings.jira.testRunWatch")}
+          <ArrowUpRight size={12} />
+        </Link>
+      </div>
+    </SettingsCardItem>
+  );
+}
+
 function EnabledRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -555,6 +655,7 @@ function JiraContent() {
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
       {data.boardId && <AutomationsRow boardId={data.boardId} />}
+      <TestRunRow />
       <EnabledRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>

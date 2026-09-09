@@ -235,6 +235,7 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_AUTOMATION_LIST,
   JiraTools.JIRA_AUTOMATION_UPSERT,
   JiraTools.JIRA_AUTOMATION_DELETE,
+  JiraTools.JIRA_RUN_START,
   // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
   JiraTools.JIRA_ISSUE_GET,
   JiraTools.JIRA_COMMENT_ADD,
