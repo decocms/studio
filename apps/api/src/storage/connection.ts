@@ -713,32 +713,25 @@ export class ConnectionStorage implements ConnectionStoragePort {
       decryptedOAuthConfig = row.oauth_config;
     }
 
-    if (decryptErrors.length > 0) {
-      await this.handleDecryptFailures(row, decryptErrors);
-    } else if (
-      row.connection_token ||
-      row.configuration_state ||
-      row.oauth_config
-    ) {
-      recordDecryptSuccess(row.id);
-    }
-
     // Parse and decrypt connection_headers
     let connectionParameters: ConnectionParameters | null = null;
+    let hasEnvVars = false;
     if (row.connection_headers) {
       try {
         const parsed = JSON.parse(row.connection_headers);
         // For STDIO, decrypt envVars
         if (isStdioParameters(parsed) && parsed.envVars) {
+          hasEnvVars = true;
           const decryptedEnvVars: Record<string, string> = {};
           for (const [envKey, envValue] of Object.entries(parsed.envVars)) {
             try {
               decryptedEnvVars[envKey] = await this.vault.decrypt(
                 envValue as string,
               );
-            } catch {
-              // If decryption fails, keep encrypted value (migration case)
-              decryptedEnvVars[envKey] = envValue as string;
+            } catch (error) {
+              // Don't hand the spawned process raw ciphertext as its env var value.
+              decryptedEnvVars[envKey] = "";
+              decryptErrors.push({ label: `env var "${envKey}"`, error });
             }
           }
           connectionParameters = {
@@ -754,6 +747,17 @@ export class ConnectionStorage implements ConnectionStoragePort {
           error,
         );
       }
+    }
+
+    if (decryptErrors.length > 0) {
+      await this.handleDecryptFailures(row, decryptErrors);
+    } else if (
+      row.connection_token ||
+      row.configuration_state ||
+      row.oauth_config ||
+      hasEnvVars
+    ) {
+      recordDecryptSuccess(row.id);
     }
 
     const parseJson = <T>(value: string | T | null): T | null => {

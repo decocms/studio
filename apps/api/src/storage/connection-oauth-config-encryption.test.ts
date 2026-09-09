@@ -99,4 +99,32 @@ describe("ConnectionStorage oauth_config encryption", () => {
       before + 2,
     );
   });
+
+  it("feeds an undecryptable STDIO envVar into the same failure tracker as connection_token", async () => {
+    const connectionId = "conn_corrupt_envvar";
+    const before = recordDecryptFailure(connectionId).consecutiveFailures;
+
+    const deserialized = await (
+      storage as unknown as {
+        deserializeConnection: (row: Record<string, unknown>) => Promise<{
+          connection_headers: { envVars?: Record<string, string> } | null;
+        }>;
+      }
+    ).deserializeConnection({
+      id: connectionId,
+      organization_id: "org_test",
+      connection_type: "STDIO",
+      status: "active",
+      connection_headers: JSON.stringify({
+        command: "npx",
+        envVars: { API_KEY: "not-ciphertext" },
+      }),
+    });
+
+    expect(deserialized.connection_headers?.envVars?.API_KEY).toBe("");
+    // Never leak ciphertext into the spawned process's env.
+    expect(recordDecryptFailure(connectionId).consecutiveFailures).toBe(
+      before + 2,
+    );
+  });
 });
