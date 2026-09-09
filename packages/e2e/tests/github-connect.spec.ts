@@ -8,6 +8,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { expect, test, newApiContext, type AuthedPage } from "../fixtures/test";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { connectDevDb } from "../fixtures/db";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 
 const fixtureOrigin = `http://localhost:${process.env.GITHUB_STUB_PORT ?? "4102"}`;
 type Installation = {
@@ -26,7 +27,8 @@ function installation(
   return {
     id: Math.floor(Math.random() * 1_000_000_000) + 1,
     account: {
-      id: Math.floor(Math.random() * 1_000_000_000) + 1,
+      id:
+        type === "User" ? 1001 : Math.floor(Math.random() * 1_000_000_000) + 1,
       login,
       type,
       avatar_url: null,
@@ -37,9 +39,34 @@ async function grantAccess(
   request: APIRequestContext,
   token: string,
   installations: Installation[],
+  identity?: {
+    id?: number;
+    memberships?: Array<{
+      state: string;
+      role: string;
+      organization: { id: number };
+    }>;
+    identityStatus?: number;
+    membershipsStatus?: number;
+  },
 ) {
   const result = await request.post(`${fixtureOrigin}/__admin/github-users`, {
-    data: { token, installations },
+    data: {
+      token,
+      installations,
+      user: { id: identity?.id ?? 1001, login: "connecting-user" },
+      memberships:
+        identity?.memberships ??
+        installations
+          .filter((item) => item.account.type === "Organization")
+          .map((item) => ({
+            state: "active",
+            role: "admin",
+            organization: { id: item.account.id },
+          })),
+      identityStatus: identity?.identityStatus,
+      membershipsStatus: identity?.membershipsStatus,
+    },
   });
   expect(result.ok()).toBe(true);
 }
@@ -578,4 +605,223 @@ test("returning focus discovers new installation access without a callback or an
     page.getByRole("button", { name: account.account.login, exact: true }),
   ).toBeVisible();
   await githubTab.close();
+});
+
+test("access to a collaborator's personal installation does not authorize sharing that entire account", async ({
+  authedPage,
+}, testInfo) => {
+  const ownOrg = installation("my-organization");
+  // GitHub may list a personal installation because the user collaborates on
+  // one repository. That is not authority over its owner's other repositories.
+  const collaborator = installation("another-person", "User");
+  collaborator.account.id = 2002;
+  const flow = await seedFlow(authedPage, [ownOrg, collaborator]);
+  const response = await authedPage.page.request.get(flow.path);
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(
+    body.installations.map((item: { login: string }) => item.login),
+  ).not.toContain(collaborator.account.login);
+  const connected = await authedPage.page.request.post(flow.path, {
+    data: { installationId: collaborator.id },
+  });
+  expect(connected.status()).toBe(403);
+  await authedPage.page.addInitScript(() =>
+    localStorage.setItem(
+      "studio:user:preferences",
+      JSON.stringify({ language: "pt-BR" }),
+    ),
+  );
+  await authedPage.page.goto(flow.url);
+  const dialog = authedPage.page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("button", { name: ownOrg.account.login, exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText(collaborator.account.login, { exact: true }),
+  ).toHaveCount(0);
+  await authedPage.page.screenshot({
+    path: testInfo.outputPath("github-owner-chooser.png"),
+    animations: "disabled",
+  });
+});
+
+test("organization membership is not ownership and the check runs again when connecting", async ({
+  authedPage,
+}) => {
+  const { page } = authedPage;
+  const owned = installation("owned-organization");
+  const member = installation("member-organization");
+  const pending = installation("pending-owner-organization");
+  const external = installation("external-organization");
+  const personal = installation("my-personal-account", "User");
+  const installations = [owned, member, pending, external, personal];
+  const flow = await seedFlow(authedPage, installations);
+  const memberships = [
+    { state: "active", role: "admin", organization: { id: owned.account.id } },
+    {
+      state: "active",
+      role: "member",
+      organization: { id: member.account.id },
+    },
+    {
+      state: "pending",
+      role: "admin",
+      organization: { id: pending.account.id },
+    },
+  ];
+  await grantAccess(page.request, flow.token, installations, { memberships });
+  const listed = await (await page.request.get(flow.path)).json();
+  expect(
+    listed.installations.map((item: { login: string }) => item.login),
+  ).toEqual([owned.account.login, personal.account.login]);
+  for (const installation of [member, pending, external]) {
+    expect(
+      (
+        await page.request.post(flow.path, {
+          data: { installationId: installation.id },
+        })
+      ).status(),
+    ).toBe(403);
+  }
+  await grantAccess(page.request, flow.token, installations, {
+    memberships: [],
+  });
+  expect(
+    (
+      await page.request.post(flow.path, { data: { installationId: owned.id } })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await page.request.post(flow.path, {
+        data: { installationId: personal.id },
+      })
+    ).status(),
+  ).toBe(200);
+});
+
+test("owner lookup handles membership pagination and fails closed on GitHub errors", async ({
+  authedPage,
+}) => {
+  const { page } = authedPage;
+  const owned = installation("organization-after-page-one");
+  const flow = await seedFlow(authedPage, [owned]);
+  const memberships = Array.from({ length: 100 }, (_, i) => ({
+    state: "active",
+    role: "member",
+    organization: { id: i + 1 },
+  }));
+  memberships.push({
+    state: "active",
+    role: "admin",
+    organization: { id: owned.account.id },
+  });
+  await grantAccess(page.request, flow.token, [owned], { memberships });
+  expect(
+    (await (await page.request.get(flow.path)).json()).installations,
+  ).toHaveLength(1);
+  for (const failure of [{ identityStatus: 403 }, { membershipsStatus: 403 }]) {
+    await grantAccess(page.request, flow.token, [owned], failure);
+    expect((await page.request.get(flow.path)).status()).toBe(502);
+    expect(
+      (
+        await page.request.post(flow.path, {
+          data: { installationId: owned.id },
+        })
+      ).status(),
+    ).toBe(502);
+  }
+  const accounts = await callSelfMcpTool<{ accounts: unknown[] }>(
+    page.request,
+    authedPage.orgSlug,
+    "GIT_ACCOUNT_LIST",
+    {},
+  );
+  expect(accounts.accounts).toEqual([]);
+});
+
+test("historical accounts cannot mint credentials until an owner reconnects, and revoked accounts stay blocked", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug, user } = authedPage;
+  const owned = installation("previously-connected");
+  const flow = await seedFlow(authedPage, [owned]);
+  const db = await connectDevDb();
+  try {
+    const saved = await db.query<{ id: string }>(
+      `INSERT INTO git_provider_accounts (organization_id,type,host,auth_kind,external_account_id,login,installation_id,created_by) VALUES ($1,'github','github.com','github_app',$2,$3,$4,$5) RETURNING id`,
+      [
+        flow.orgId,
+        String(owned.id),
+        owned.account.login,
+        owned.id,
+        user.userId,
+      ],
+    );
+    const accountId = saved.rows[0]!.id;
+    const list = () =>
+      callSelfMcpTool<{ accounts: Array<{ id: string; servable: boolean }> }>(
+        page.request,
+        orgSlug,
+        "GIT_ACCOUNT_LIST",
+        {},
+      );
+    expect((await list()).accounts[0]?.servable).toBe(false);
+    const linked = await db.query<{ id: string }>(
+      `INSERT INTO repositories (organization_id,account_id,provider,host,path,web_url,visibility) VALUES ($1,$2,'github','github.com','previously-connected/private-project','https://github.com/previously-connected/private-project','private') RETURNING id`,
+      [flow.orgId, accountId],
+    );
+    const repositoryId = linked.rows[0]!.id;
+    const repositories = await callSelfMcpTool<{
+      repositories: Array<{ id: string; usable: boolean }>;
+    }>(page.request, orgSlug, "REPOSITORY_LIST", {});
+    expect(repositories.repositories).toMatchObject([
+      { id: repositoryId, usable: false },
+    ]);
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, "REPOSITORY_SEARCH_BRANCHES", {
+        repositoryId,
+        query: "",
+      }),
+    ).rejects.toThrow(/reconnect/i);
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, "REPOSITORY_SEARCH", {
+        accountId,
+      }),
+    ).rejects.toThrow("Reconnect this git account");
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, "REPOSITORY_LINK", {
+        accountId,
+        url: "https://github.com/previously-connected/private-project",
+      }),
+    ).rejects.toThrow("Reconnect this git account");
+    expect(
+      (
+        await page.request.post(flow.path, {
+          data: { installationId: owned.id },
+        })
+      ).status(),
+    ).toBe(200);
+    expect((await list()).accounts).toMatchObject([
+      { id: accountId, servable: true },
+    ]);
+    const proof = await db.query(
+      "SELECT installation_authorized_by FROM git_provider_accounts WHERE id=$1 AND organization_id=$2",
+      [accountId, flow.orgId],
+    );
+    expect(proof.rows[0].installation_authorized_by).toBe("1001");
+    await db.query(
+      "UPDATE git_provider_accounts SET status='revoked' WHERE id=$1 AND organization_id=$2",
+      [accountId, flow.orgId],
+    );
+    expect((await list()).accounts[0]?.servable).toBe(false);
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, "REPOSITORY_SEARCH", {
+        accountId,
+      }),
+    ).rejects.toThrow("revoked");
+  } finally {
+    await db.end();
+  }
 });
