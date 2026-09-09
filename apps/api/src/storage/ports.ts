@@ -308,6 +308,10 @@ export interface ConnectionStoragePort {
   findById(id: string): Promise<ConnectionEntity | null>;
   /** See `ConnectionStorage.findBySanitizedId`. */
   findBySanitizedId(id: string): Promise<ConnectionEntity | null>;
+  /** See `ConnectionStorage.findOrganizationIdById`. */
+  findOrganizationIdById(id: string): Promise<string | null>;
+  /** See `ConnectionStorage.sanitizedIdCollisionExists`. */
+  sanitizedIdCollisionExists(id: string): Promise<boolean>;
   list(
     organizationId: string,
     options?: {
