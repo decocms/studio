@@ -1,6 +1,8 @@
 import { useProjectContext, useVirtualMCP, useVirtualMCPActions } from "@/sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { runSerializedTask } from "@/lib/serial-task-queue";
+import { addRelease, removeRelease, renameReleaseIn } from "./release-edits";
 
 /**
  * Dot colors a named release can take, in assignment order. `success` (green) is
@@ -60,43 +62,66 @@ export function useReleases(virtualMcpId: string) {
     queryKey[4] === "VIRTUAL_MCP" &&
     queryKey[5] === virtualMcpId;
 
-  const write = (next: Release[]) => {
-    queryClient.setQueriesData<ItemData>(
-      { predicate: (q) => isItemQuery(q.queryKey) },
-      (old) =>
-        old?.item
-          ? {
-              item: {
-                ...old.item,
-                metadata: { ...old.item.metadata, releases: next },
-              },
-            }
-          : old,
-    );
-    return actions.update
-      .mutateAsync({
-        id: virtualMcpId,
-        data: {
-          metadata: { releases: next } as unknown as NonNullable<
-            VirtualMCPEntity["metadata"]
-          >,
-        },
-      })
-      .catch((err) => {
+  /** Freshest committed list, so a queued edit sees the previous one's result —
+   *  not a stale render snapshot. Falls back to the render value pre-hydration. */
+  const readCacheReleases = (): Release[] => {
+    for (const [, data] of queryClient.getQueriesData<ItemData>({
+      predicate: (q) => isItemQuery(q.queryKey),
+    })) {
+      if (data?.item) return data.item.metadata?.releases ?? [];
+    }
+    return releases;
+  };
+
+  /**
+   * Read-modify-write of the whole `metadata.releases` array. Two writers race
+   * here — the shell auto-names a fresh draft while publish discards the merged
+   * one — and each sends the full array (last write wins), so a naive write
+   * resurrects the just-discarded draft. Serializing per VM (and re-reading the
+   * cache inside the task) makes each edit compose on the previous one's result.
+   */
+  const write = (reduce: (current: Release[]) => Release[]) =>
+    runSerializedTask(`vm-releases:${virtualMcpId}`, async () => {
+      const current = readCacheReleases();
+      const next = reduce(current);
+      if (next === current) return;
+      queryClient.setQueriesData<ItemData>(
+        { predicate: (q) => isItemQuery(q.queryKey) },
+        (old) =>
+          old?.item
+            ? {
+                item: {
+                  ...old.item,
+                  metadata: { ...old.item.metadata, releases: next },
+                },
+              }
+            : old,
+      );
+      try {
+        await actions.update.mutateAsync({
+          id: virtualMcpId,
+          data: {
+            metadata: { releases: next } as unknown as NonNullable<
+              VirtualMCPEntity["metadata"]
+            >,
+          },
+        });
+      } catch (err) {
         queryClient.invalidateQueries({
           predicate: (q) => isItemQuery(q.queryKey),
         });
         throw err;
-      });
-  };
+      }
+    });
 
-  const createRelease = (release: Release) => write([...releases, release]);
+  const createRelease = (release: Release) =>
+    write((current) => addRelease(current, release));
 
   const renameRelease = (branch: string, name: string) =>
-    write(releases.map((r) => (r.branch === branch ? { ...r, name } : r)));
+    write((current) => renameReleaseIn(current, branch, name));
 
   const deleteRelease = (branch: string) =>
-    write(releases.filter((r) => r.branch !== branch));
+    write((current) => removeRelease(current, branch));
 
   return { releases, createRelease, renameRelease, deleteRelease };
 }
