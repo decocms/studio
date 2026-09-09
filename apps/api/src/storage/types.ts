@@ -2421,6 +2421,13 @@ export interface Database extends PrivateRegistryDatabase {
   git_provider_accounts: GitProviderAccountTable;
   git_provider_account_credentials: GitProviderAccountCredentialTable;
   git_provider_oauth_states: GitProviderOAuthStateTable;
+  github_connect_flows: {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    encrypted_access_token: string;
+    expires_at: ColumnType<Date, Date, never>;
+  };
   repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;

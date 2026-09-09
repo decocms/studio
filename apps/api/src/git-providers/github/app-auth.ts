@@ -21,6 +21,7 @@ import { type GithubAppConfig, readGithubAppConfig } from "./env";
 import type { GitProviderCapability } from "../types";
 import { GitProviderError } from "../types";
 import {
+  githubApiBaseUrl,
   githubErrorMessage,
   githubFailure,
   githubFailureFromBody,
@@ -416,7 +417,11 @@ export function getGithubAppAuth(): GithubAppAuth | null {
   if (appAuthSingleton === undefined) {
     const config = readGithubAppConfig();
     appAuthSingleton =
-      config && usableAppKey(config) ? new GithubAppAuth(config) : null;
+      config && usableAppKey(config)
+        ? new GithubAppAuth(config, {
+            apiBaseUrl: githubApiBaseUrl("github.com"),
+          })
+        : null;
   }
   return appAuthSingleton;
 }

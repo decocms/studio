@@ -900,12 +900,85 @@ async function handleRepos(
   notFound(res);
 }
 
+interface UserInstallation {
+  id: number;
+  account: {
+    id: number;
+    login: string;
+    avatar_url: string | null;
+    type: "Organization" | "User";
+  };
+}
+
 export function createGithubStubServer(): Server {
+  const users = new Map<string, UserInstallation[]>();
+  const codes = new Map<string, string>();
   return createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const dispatch = async (): Promise<void> => {
       if (req.method === "GET" && url.pathname === "/health") {
         json(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/__admin/github-users") {
+        const body = JSON.parse(await readBody(req)) as {
+          token: string;
+          installations: UserInstallation[];
+        };
+        users.set(body.token, body.installations);
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/__admin/github-codes") {
+        const body = JSON.parse(await readBody(req)) as {
+          code: string;
+          token: string;
+        };
+        codes.set(body.code, body.token);
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (
+        req.method === "POST" &&
+        url.pathname === "/login/oauth/access_token"
+      ) {
+        const body = JSON.parse(await readBody(req)) as { code: string };
+        const token = codes.get(body.code);
+        codes.delete(body.code);
+        json(
+          res,
+          200,
+          token
+            ? { access_token: token, token_type: "bearer", expires_in: 28800 }
+            : { error: "bad_verification_code" },
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/user/installations") {
+        const installations = users.get(
+          req.headers.authorization?.replace(/^Bearer /, "") ?? "",
+        );
+        if (!installations) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
+        }
+        const page = Number(url.searchParams.get("page") ?? 1);
+        json(res, 200, {
+          installations: installations.slice((page - 1) * 100, page * 100),
+          total_count: installations.length,
+        });
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/app/installations/")
+      ) {
+        const id = Number(url.pathname.split("/").at(-1));
+        const installation = [...users.values()]
+          .flat()
+          .find((item) => item.id === id);
+        if (installation) json(res, 200, installation);
+        else notFound(res);
         return;
       }
       if (url.pathname.startsWith("/__admin/")) {

@@ -562,6 +562,8 @@ export const KEYS = {
   // First-class git repositories (Settings → Repositories)
   gitProviderCapabilities: (orgId: string) =>
     ["git-provider-capabilities", orgId] as const,
+  githubConnectFlow: (orgId: string, flowId: string) =>
+    ["github-connect-flow", orgId, flowId] as const,
   gitAccounts: (orgId: string) => ["git-accounts", orgId] as const,
   /** Omit `accountId` for the whole org's list — that key is also the prefix a
    *  mutation invalidates to refresh every per-account listing with it. */

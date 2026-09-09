@@ -26,5 +26,8 @@ describe("sanitizeReturnTo", () => {
     expect(sanitizeReturnTo("\\\\evil.example")).toBe("/");
     expect(sanitizeReturnTo("javascript:alert(1)")).toBe("/");
     expect(sanitizeReturnTo("acme/settings")).toBe("/");
+    for (const control of ["\r", "\n", "\t"]) {
+      expect(sanitizeReturnTo(`/${control}/evil.example/steal`)).toBe("/");
+    }
   });
 });

@@ -309,6 +309,7 @@ import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import type { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import type { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
 import type { RepositoryStorage } from "@/storage/repositories";
+import type { GithubConnectFlowStorage } from "@/storage/github-connect-flows";
 import type { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-states";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
@@ -359,6 +360,7 @@ export interface StudioStorage {
   gitProviderAccounts: GitProviderAccountStorage;
   gitProviderAccountCredentials: GitProviderAccountCredentialStorage;
   gitProviderOAuthStates: GitProviderOAuthStateStorage;
+  githubConnectFlows: GithubConnectFlowStorage;
   repositories: RepositoryStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
