@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Kysely } from "kysely";
 import { CredentialVault } from "../encryption/credential-vault";
 import { ConnectionStorage } from "./connection";
+import { recordDecryptFailure } from "./decrypt-failure-tracker";
 import type { Database } from "./types";
 
 describe("ConnectionStorage oauth_config encryption", () => {
@@ -72,5 +73,30 @@ describe("ConnectionStorage oauth_config encryption", () => {
     });
 
     expect(deserialized.oauth_config).toEqual(oauthConfig);
+  });
+
+  it("feeds an undecryptable, non-JSON oauth_config into the same failure tracker as connection_token", async () => {
+    const connectionId = "conn_corrupt_oauth";
+    const before = recordDecryptFailure(connectionId).consecutiveFailures;
+
+    const deserialized = await (
+      storage as unknown as {
+        deserializeConnection: (
+          row: Record<string, unknown>,
+        ) => Promise<{ oauth_config: unknown }>;
+      }
+    ).deserializeConnection({
+      id: connectionId,
+      organization_id: "org_test",
+      connection_type: "HTTP",
+      status: "active",
+      oauth_config: "not-ciphertext-and-not-json",
+    });
+
+    expect(deserialized.oauth_config).toBeNull();
+    // A real decrypt failure must reach the same tracker as connection_token.
+    expect(recordDecryptFailure(connectionId).consecutiveFailures).toBe(
+      before + 2,
+    );
   });
 });

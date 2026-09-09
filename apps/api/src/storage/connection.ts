@@ -706,10 +706,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
         try {
           decryptedOAuthConfig = JSON.parse(row.oauth_config);
         } catch (error) {
-          console.error(
-            `Failed to parse oauth_config for connection ${row.id}:`,
-            error,
-          );
+          decryptErrors.push({ label: "oauth config", error });
         }
       }
     } else {
@@ -718,7 +715,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
 
     if (decryptErrors.length > 0) {
       await this.handleDecryptFailures(row, decryptErrors);
-    } else if (row.connection_token || row.configuration_state) {
+    } else if (
+      row.connection_token ||
+      row.configuration_state ||
+      row.oauth_config
+    ) {
       recordDecryptSuccess(row.id);
     }
 
