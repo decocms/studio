@@ -28,12 +28,7 @@ import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { readPrStateThrottled } from "./dbos-github-read";
-import {
-  getPrCardCache,
-  getPrReadCache,
-  PR_CARDS_CACHE,
-  PR_READS_CACHE,
-} from "./pr-cache";
+import { getPrCardCache, getPrReadCache, PR_CARDS_CACHE } from "./pr-cache";
 
 export type { ChecksSummary as ChecksStatus };
 
@@ -94,47 +89,20 @@ export const readNamespace = (pr: TaskBoardItemPrRef) =>
   repoIdentityKey(originOf(pr).repo);
 
 /**
- * A card whose CI is still running never gets a cache hit window.
- *
- * Waiting is the one state whose whole point is that it ends: served from
- * cache it left a card on "Checks pending" minutes after the checks went
- * green, because nothing about the change request had changed and the entry
- * was a hit for the full window.
- *
- * Bounded — a settled card (passing, failing, no CI at all) caches normally,
- * so the per-poll rebuild only costs anything while CI is actually running.
+ * A card that should keep refreshing: CI is still running and no preview URL
+ * has been found yet. Once either settles the card caches normally.
  */
-export function isAwaitingCi(card: { checksStatus: ChecksSummary }): boolean {
-  return card.checksStatus === "pending";
+export function isAwaitingPreview(card: {
+  previewUrl: string | null;
+  checksStatus: ChecksSummary;
+}): boolean {
+  return card.previewUrl === null && card.checksStatus === "pending";
 }
 
-/** Zero. Named because it appears as both a hit window and a stale ceiling. */
+/** Hit window for a card still waiting on something. Zero, so the next poll
+ *  revalidates (detached, off the request path) instead of serving the
+ *  not-ready answer for the full window. */
 const NOT_READY_MS = 0;
-
-/**
- * The two cache windows for a read whose answer carries a CI verdict.
- *
- * A zero HIT window alone is not enough: it only starts a background refresh,
- * so the poll still serves the previous read and a fresh result needs a second
- * poll to appear — and never appears at all if that one background write
- * fails. The zero STALE CEILING is what makes a pending read a MISS that asks
- * the provider on the spot.
- *
- * One predicate pair, where the MCP path needed two: its CI verdict was split
- * across a combined-status read and a check-runs read, and this interface
- * answers both in one.
- */
-function ciWindows(checks: ChecksSummary): {
-  revalidateAfterMs: number;
-  maxStaleMs: number;
-} {
-  return checks === "pending"
-    ? { revalidateAfterMs: NOT_READY_MS, maxStaleMs: NOT_READY_MS }
-    : {
-        revalidateAfterMs: PR_READS_CACHE.revalidateAfterMs,
-        maxStaleMs: PR_READS_CACHE.maxStaleMs,
-      };
-}
 
 /**
  * One cached, best-effort provider read. Best-effort in the same sense as the
@@ -151,19 +119,11 @@ async function cachedRead<T>(
   key: string,
   describe: string,
   fetchLive: () => Promise<T>,
-  /** Per-entry windows, computed from the stored value — see {@link ciWindows}. */
-  windows?: (stored: T) => { revalidateAfterMs: number; maxStaleMs: number },
 ): Promise<T | null> {
   try {
     const raw = await getPrReadCache().fetch({
       namespace,
       key,
-      revalidateAfterMs: windows
-        ? (stored) => windows(stored as T).revalidateAfterMs
-        : undefined,
-      maxStaleMs: windows
-        ? (stored) => windows(stored as T).maxStaleMs
-        : undefined,
       fetchLive: () =>
         retry(fetchLive, {
           maxAttempts: 3,
@@ -429,7 +389,6 @@ async function fetchPrLiveState(
     `detail:${pr.number}`,
     prLabel(pr),
     () => client.readDetailed({ number: pr.number }),
-    (stored) => ciWindows(stored?.checks ?? null),
   );
   if (!detail) return NO_LIVE_STATE;
 
@@ -504,7 +463,6 @@ async function readChangeRequest(
     `read:${pr.number}`,
     `${prLabel(pr)} (${label})`,
     () => client.read(pr.number),
-    (stored) => ciWindows(stored?.checks ?? null),
   );
 }
 
@@ -523,7 +481,6 @@ export async function fetchPrChecksStatus(
     `detail:${pr.number}`,
     prLabel(pr),
     () => client.readDetailed({ number: pr.number }),
-    (stored) => ciWindows(stored?.checks ?? null),
   );
   return detail?.checks ?? null;
 }
@@ -803,7 +760,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
        * on exactly the cards that are still missing something.
        */
       revalidateAfterMs: (cards) =>
-        cards.some(isAwaitingCi)
+        cards.some(isAwaitingPreview)
           ? NOT_READY_MS
           : PR_CARDS_CACHE.revalidateAfterMs,
       placeholder: linked.map((pr) => ({
