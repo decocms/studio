@@ -130,7 +130,10 @@ async function fetchGithubFile(
       headers,
       signal: AbortSignal.timeout(5_000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
     const body = (await res.json()) as {
       content?: string;
       encoding?: string;
