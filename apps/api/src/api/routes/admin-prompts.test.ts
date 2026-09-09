@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { applyPromptEdits, PromptEditorError } from "./admin-prompts";
+import {
+  applyPromptEdits,
+  createAdminPromptRoutes,
+  PromptEditorError,
+} from "./admin-prompts";
 
 const REVIEWER_PATH = "apps/api/src/tools/task-board/enqueue-reviewer.ts";
 const SUPER_AGENT_PATH = "apps/api/src/tools/task-board/enqueue-super-agent.ts";
@@ -61,5 +65,35 @@ describe("applyPromptEdits", () => {
     ]);
     expect(sources.get(REVIEWER_PATH)).toContain('reviewer: "be lenient"');
     expect(sources.get(SUPER_AGENT_PATH)).toContain('hosted: "be slow"');
+  });
+});
+
+// Bounds reject before the route reads `studioContext`, so no fake DB is needed.
+describe("POST /prompts/pull-request input bounds", () => {
+  const app = createAdminPromptRoutes();
+
+  it("rejects a title longer than the cap", async () => {
+    const res = await app.request("/prompts/pull-request", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "x".repeat(201),
+        edits: [{ id: "reviewer", content: "be picky" }],
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("Title");
+  });
+
+  it("rejects prompt content longer than the cap", async () => {
+    const res = await app.request("/prompts/pull-request", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        edits: [{ id: "reviewer", content: "x".repeat(20_001) }],
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("reviewer");
   });
 });
