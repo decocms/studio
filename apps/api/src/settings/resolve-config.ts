@@ -296,6 +296,7 @@ export function resolveConfig(
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
     hostingControlPlaneGa: toBool(envVars.HOSTING_CONTROL_PLANE_GA),
     monitorGa: toBool(envVars.MONITOR_GA),
+    plansEnabled: toBool(envVars.STUDIO_PLANS_ENABLED),
     // MCP caching is on by default in production, off in development. Set
     // MCP_CACHE_ENABLED=false to disable in prod, =true to enable in dev.
     mcpCacheEnabled: toBoolWithDefault(

@@ -90,6 +90,10 @@ async function getOrgPlanState(
   ctx: StudioContext,
   organizationId: string,
 ): Promise<OrgPlanState | null> {
+  // The whole feature is dormant unless switched on. Deco prod HAS a gateway,
+  // so "no gateway configured" is not the off switch this needs — see
+  // Settings.plansEnabled.
+  if (!getSettings().plansEnabled) return null;
   if (!getSettings().aiGatewayEnabled) return null;
 
   const hit = planStateCache.get(organizationId);

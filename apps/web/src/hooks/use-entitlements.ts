@@ -10,6 +10,18 @@ import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { callStudioTool } from "@/lib/studio-tools";
 import { useProjectContextOptional } from "@/sdk";
+import { usePublicConfigOptional } from "@/hooks/use-public-config";
+
+/**
+ * Whether this deployment has tiered plans switched on at all
+ * (STUDIO_PLANS_ENABLED). Off is the default and off means "behave exactly as
+ * before": no entitlements query, so every `useFeature` below fails open, and
+ * no plan card. Self-hosting and local dev never see the feature unless they
+ * ask for it.
+ */
+export function usePlansEnabled(): boolean {
+  return usePublicConfigOptional()?.plansEnabled === true;
+}
 
 /** The gate-able surfaces. Mirrors FEATURE_KEYS in the gateway's plans-shape. */
 export type Feature =
@@ -27,9 +39,12 @@ export function useEntitlements() {
   // more form of "no answer", which `useFeature` already allows.
   const ctx = useProjectContextOptional();
   const orgSlug = ctx?.org.slug;
+  const plansEnabled = usePlansEnabled();
   return useQuery({
     queryKey: KEYS.aiPlanEntitlements(ctx?.org.id ?? "none"),
-    enabled: !!orgSlug,
+    // Disabled is one more form of "no answer", which every gate below already
+    // allows — so the flag needs no second check at any call site.
+    enabled: !!orgSlug && plansEnabled,
     staleTime: 60_000,
     // `callStudioTool` rather than `useStudioTools()`: that hook requires the
     // project context this one deliberately treats as optional.

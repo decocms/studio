@@ -99,6 +99,16 @@ export interface Settings {
    */
   planUsageEnforced: boolean;
 
+  /**
+   * Master switch for tiered plans (STUDIO_PLANS_ENABLED, default off). Off →
+   * `getOrgPlanState` answers nothing, so every feature gate is open, no model
+   * pin is honoured and no budget is enforced; the browser is told too (via
+   * /api/config) so it stops asking. Separate from `aiGatewayEnabled` on
+   * purpose: deco prod has a gateway and must keep behaving as it does today
+   * until this is set.
+   */
+  plansEnabled: boolean;
+
   // Task-execution quota (billing/task-quota.ts). Dormant unless enforced —
   // self-hosted deployments never turn it on.
   taskQuotaEnforced: boolean;
