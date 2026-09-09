@@ -364,6 +364,28 @@ type StartParams = {
 };
 
 /**
+ * The `repository` row to clone through Studio-owned credentials, or null to
+ * fall back to the legacy connection path — either because it's a bare
+ * credentialless legacy binding (no account, no connection at all) or because
+ * its account is actually servable by Studio.
+ */
+async function resolveStudioRepository(
+  ctx: StudioContext,
+  repository: RepositoryRecord | null,
+  rawConnectionId: string | undefined,
+): Promise<RepositoryRecord | null> {
+  if (!repository) return null;
+  const credentialless =
+    repository.accountId === null &&
+    !rawConnectionId &&
+    !repository.legacyConnectionId;
+  if (credentialless) return repository;
+  return (await repositoryUsesStudioCredentials(ctx.storage, repository))
+    ? repository
+    : null;
+}
+
+/**
  * `EnsureRepo` entries for a thread's secondary checkouts.
  *
  * Skips the primary when it turns up in the list, so a repo cannot be cloned
@@ -400,14 +422,11 @@ async function buildExtraRepoOpts(args: {
         args.orgId,
         repo,
       );
-      const studioRepository =
-        repository &&
-        ((repository.accountId === null &&
-          !repo.connectionId &&
-          !repository.legacyConnectionId) ||
-          (await repositoryUsesStudioCredentials(args.ctx.storage, repository)))
-          ? repository
-          : null;
+      const studioRepository = await resolveStudioRepository(
+        args.ctx,
+        repository,
+        repo.connectionId,
+      );
       const connectionId = repo.connectionId ?? repository?.legacyConnectionId;
       if (!studioRepository && !connectionId) continue;
       const { cloneUrl } = studioRepository
@@ -506,14 +525,11 @@ async function provisionSandbox(params: StartParams): Promise<{
       orgId,
       githubRepo,
     );
-    const studioRepository =
-      repository &&
-      ((repository.accountId === null &&
-        !githubRepo.connectionId &&
-        !repository.legacyConnectionId) ||
-        (await repositoryUsesStudioCredentials(ctx.storage, repository)))
-        ? repository
-        : null;
+    const studioRepository = await resolveStudioRepository(
+      ctx,
+      repository,
+      githubRepo.connectionId,
+    );
 
     const connectionId =
       githubRepo.connectionId ?? repository?.legacyConnectionId ?? undefined;
