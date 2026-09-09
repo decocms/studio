@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { EntitlementsFetchError } from "../ai-providers/adapters/deco-ai-gateway";
 import {
   evictExpiredPlanStateEntries,
   isFeatureAllowed,
@@ -111,5 +112,19 @@ describe("planStateCache bounds", () => {
     // Plain Map.set would have kept org_0 first in line and dropped it.
     expect(c.has("org_0")).toBe(true);
     expect(c.has("org_1")).toBe(false);
+  });
+});
+
+describe("EntitlementsFetchError.isDefinitive", () => {
+  it("treats a 4xx as definitive — a reachable gateway that refused", () => {
+    for (const status of [400, 401, 403, 404, 422, 499]) {
+      expect(new EntitlementsFetchError(status).isDefinitive).toBe(true);
+    }
+  });
+
+  it("treats a 5xx as an outage, which is a different incident", () => {
+    for (const status of [500, 502, 503, 504]) {
+      expect(new EntitlementsFetchError(status).isDefinitive).toBe(false);
+    }
   });
 });

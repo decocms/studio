@@ -14,6 +14,7 @@
 import { ForbiddenError } from "./access-control";
 import type { StudioContext } from "./studio-context";
 import { getProviders } from "../ai-providers/registry";
+import { EntitlementsFetchError } from "../ai-providers/adapters/deco-ai-gateway";
 import { mintGatewayJwt } from "../auth/jwt";
 import { getSettings } from "../settings";
 
@@ -174,16 +175,32 @@ async function getOrgPlanState(
     );
     return state;
   } catch (err) {
-    // Deliberately still fails open (see the docblock) — but never SILENTLY.
-    // A wrong service key or a bad base URL makes every org look like it owns
-    // every feature, and swallowing that made it indistinguishable from a
-    // healthy free org. One warn line is what turns it into an alertable
-    // misconfiguration instead of a permanent invisible one.
-    console.warn("[Plans] entitlements lookup failed — gates fail OPEN", {
+    // Deliberately still fails open (see the docblock) — but never SILENTLY,
+    // and no longer indistinguishably. A 4xx is a DEFINITIVE answer from a
+    // reachable gateway: a wrong service key, a wrong JWT secret, an identity
+    // it will not accept. Retrying cannot fix it, it does not pass on its own,
+    // and its blast radius is every org at once — so it is an error, not a
+    // warning, and it says so. A 5xx or a network error is an outage: the same
+    // fail-open, but the incident to page for is a different one.
+    const definitive =
+      err instanceof EntitlementsFetchError && err.isDefinitive;
+    const detail = {
       organizationId,
       servedStale: !!hit,
+      status: err instanceof EntitlementsFetchError ? err.status : null,
       error: err instanceof Error ? err.message : String(err),
-    });
+    };
+    if (definitive) {
+      console.error(
+        "[Plans] entitlements REFUSED by the gateway — gates fail OPEN for every org until this is fixed (check STUDIO_JWT_SECRET and STUDIO_PROVISION_SECRET_KEY against the gateway's MESH_JWT_SECRET and STUDIO_PROVISION_KEY)",
+        detail,
+      );
+    } else {
+      console.warn(
+        "[Plans] entitlements lookup failed (gateway unreachable) — gates fail OPEN",
+        detail,
+      );
+    }
     return hit?.state ?? null;
   }
 }

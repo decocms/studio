@@ -30,6 +30,29 @@ interface EntitlementsWire {
   etag?: string;
 }
 
+/**
+ * A failed entitlements read, carrying the status so the gate can tell a
+ * DEFINITIVE refusal from an outage.
+ *
+ * They are different incidents with the same consequence (the gate has no
+ * answer and opens): a 4xx is a misconfiguration or a rejected identity —
+ * retrying will not fix it and it needs a human — while a 5xx or a network
+ * error is a blip that will pass. Collapsing both into one thrown string made
+ * a fleet-wide "the paid product is free for everyone" indistinguishable from a
+ * momentary hiccup.
+ */
+export class EntitlementsFetchError extends Error {
+  constructor(readonly status: number) {
+    super(`Failed to fetch plan entitlements: ${status}`);
+    this.name = "EntitlementsFetchError";
+  }
+
+  /** A definitive answer from a reachable gateway — not an outage. */
+  get isDefinitive(): boolean {
+    return this.status >= 400 && this.status < 500;
+  }
+}
+
 function toPlanEntitlements(data: EntitlementsWire): PlanEntitlements {
   return {
     plan: data.plan,
@@ -108,7 +131,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       },
     );
     if (!res.ok) {
-      throw new Error(`Failed to fetch plan entitlements: ${res.status}`);
+      throw new EntitlementsFetchError(res.status);
     }
     return toPlanEntitlements((await res.json()) as EntitlementsWire);
   },

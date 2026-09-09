@@ -101,6 +101,8 @@ Don't do any of these:
 - **Shared global state across tests.** No `beforeAll` that seeds rows other tests depend on.
 - **Hard-coded slugs/emails.** They collide under parallel workers. Use randomized values.
 - **`test.afterAll` SQL cleanup as the default.** Rely on per-test unique orgs/users so cleanup isn't needed.
+- **`mock.module` without a way back.** Bun keeps module mocks alive for the whole shard, and a top-level `afterAll` runs at the end of the PROCESS, not the end of the file — so a module mock at file scope leaks into every later file, and there is no hook that can undo it. Three separate failures came from this: a settings stub left two unrelated files failing on `"http://localhost:undefined"`, and it also made the two flags the plan feature gate reads `undefined`, which the gate treats as "no answer" and OPENS — so a test written for those gates would have passed whether or not the gate worked. `apps/api/src/settings/settings-not-mocked.test.ts` is a canary for exactly that. Install real state through the real accessor (`setGlobalSettings(resolveConfig(...).settings)`), or expose a narrow named test hook on the module that owns the state (`__armRefreshBackoffForTesting`), rather than replacing the module.
+- **Flags `bun test` does not have.** It silently swallows unknown ones — `bun test --definitely-not-a-flag <file>` exits 0 — so a flag that does nothing looks like a flag that works. The root `test` script carried `--parallel` for months (a `bun run` flag, not a `bun test` one): the whole unit tier ran in one process the entire time. Check `bun test --help` before adding one; the real names are `--concurrent`, `--max-concurrency`, `--randomize`, `--isolate`.
 
 ## When developing a feature
 
