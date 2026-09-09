@@ -1521,7 +1521,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_CREDITS",
       "AI_PLAN_ENTITLEMENTS",
       "AI_PLAN_LIST",
-      "AI_PLAN_SET",
+      // NOT AI_PLAN_SET — it lives in `ai-providers:manage` only. It changes
+      // the org's plan and takes no payment, so granting it to every member
+      // let any member hand its org every feature (including `ai_service`)
+      // for free. Reading the plan and the catalog stays basic-usage: the
+      // billing card and the plan picker need both.
       "AI_PROVIDER_TOPUP_URL",
       // Object storage access
       "LIST_OBJECTS",

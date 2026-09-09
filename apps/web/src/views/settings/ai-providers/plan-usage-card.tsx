@@ -301,23 +301,28 @@ export function PlanUsageCard() {
                   moment credits are what the org is spending — showing a
                   balance alongside a half-empty bar is what made the two read
                   as one number. */}
-              {state === "exhausted" && canBuyCredits && creditsUsd !== null && (
-                <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-border mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    {creditsUsd > 0
-                      ? t("settings.planUsage.creditsHint")
-                      : t("settings.planUsage.creditsEmpty")}
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums shrink-0">
-                    {t("settings.planUsage.credits", {
-                      amount: creditsUsd.toLocaleString(preferences.language, {
-                        style: "currency",
-                        currency: "USD",
-                      }),
-                    })}
-                  </span>
-                </div>
-              )}
+              {state === "exhausted" &&
+                canBuyCredits &&
+                creditsUsd !== null && (
+                  <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-border mt-1">
+                    <span className="text-xs text-muted-foreground">
+                      {creditsUsd > 0
+                        ? t("settings.planUsage.creditsHint")
+                        : t("settings.planUsage.creditsEmpty")}
+                    </span>
+                    <span className="text-sm font-semibold tabular-nums shrink-0">
+                      {t("settings.planUsage.credits", {
+                        amount: creditsUsd.toLocaleString(
+                          preferences.language,
+                          {
+                            style: "currency",
+                            currency: "USD",
+                          },
+                        ),
+                      })}
+                    </span>
+                  </div>
+                )}
             </div>
           ) : (
             <p className="text-xs text-muted-foreground pt-1">

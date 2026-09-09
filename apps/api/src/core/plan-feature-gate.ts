@@ -69,11 +69,59 @@ interface OrgPlanState {
    * `isUsageBlocked`.
    */
   usageState: BarState | null;
+  /**
+   * Wallet dollars the org can still spend, or null when the gateway did not
+   * say. Separate pool from the bar on purpose — money cannot move the bar —
+   * but it IS spendable, so an exhausted bar with credits behind it must not
+   * stop work. See `isUsageBlocked`.
+   */
+  creditsUsd: number | null;
 }
 
 type BarState = "ok" | "warn" | "exhausted";
 
 const planStateCache = new Map<string, { state: OrgPlanState; at: number }>();
+
+/** Cap: entries are only ever overwritten on their own next lookup, never
+ *  dropped otherwise, and this is read on every gated tool call. Same bug and
+ *  same bound as ARCHIVED_CACHE_MAX_SIZE in context-factory.ts. */
+const PLAN_STATE_CACHE_MAX_SIZE = 10_000;
+
+/** Write (or refresh) an entry, moving it to the most-recently-set position.
+ *  `Map.set` on an existing key keeps its original iteration position, so a
+ *  hot org refreshed on every lookup would otherwise sit at the "oldest" end
+ *  and be evicted first. Exported for unit testing. */
+export function refreshPlanStateCacheEntry(
+  cache: Map<string, { state: OrgPlanState; at: number }>,
+  organizationId: string,
+  state: OrgPlanState,
+): void {
+  cache.delete(organizationId);
+  cache.set(organizationId, { state, at: Date.now() });
+}
+
+/** Exported for unit testing. */
+export function evictExpiredPlanStateEntries(
+  cache: Map<string, { state: OrgPlanState; at: number }>,
+  maxSize: number,
+  ttlMs: number,
+): void {
+  if (cache.size <= maxSize) return;
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now - entry.at >= ttlMs) cache.delete(key);
+  }
+  // Trims oldest first (Map iteration order = insertion order).
+  if (cache.size > maxSize) {
+    const excess = cache.size - maxSize;
+    let removed = 0;
+    for (const key of cache.keys()) {
+      if (removed >= excess) break;
+      cache.delete(key);
+      removed++;
+    }
+  }
+}
 
 /** Drop one org's cached plan, so a plan change lands on this instance now. */
 export function invalidateOrgFeaturesCache(organizationId: string): void {
@@ -110,18 +158,32 @@ async function getOrgPlanState(
 
   try {
     const jwt = await mintGatewayJwt(userId);
-    const { features, usage, modelPins } = await adapter.getEntitlements(
-      jwt,
-      organizationId,
-    );
+    const { features, usage, modelPins, credits } =
+      await adapter.getEntitlements(jwt, organizationId);
     const state: OrgPlanState = {
       features,
       modelPins,
       usageState: usage?.state ?? null,
+      creditsUsd: credits?.remainingUsd ?? null,
     };
-    planStateCache.set(organizationId, { state, at: Date.now() });
+    refreshPlanStateCacheEntry(planStateCache, organizationId, state);
+    evictExpiredPlanStateEntries(
+      planStateCache,
+      PLAN_STATE_CACHE_MAX_SIZE,
+      FEATURES_CACHE_TTL_MS,
+    );
     return state;
-  } catch {
+  } catch (err) {
+    // Deliberately still fails open (see the docblock) — but never SILENTLY.
+    // A wrong service key or a bad base URL makes every org look like it owns
+    // every feature, and swallowing that made it indistinguishable from a
+    // healthy free org. One warn line is what turns it into an alertable
+    // misconfiguration instead of a permanent invisible one.
+    console.warn("[Plans] entitlements lookup failed — gates fail OPEN", {
+      organizationId,
+      servedStale: !!hit,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return hit?.state ?? null;
   }
 }
@@ -175,10 +237,19 @@ export class AiBudgetExhaustedError extends ForbiddenError {
 /**
  * Whether an exhausted bar should stop AI work right now.
  *
- * Only one condition: a usage state the gateway actually READ. `null` means it
- * could not read consumption, and the same reasoning as `isFeatureAllowed`
- * applies — a gateway blip must not stop a paying org's work, and the spend is
- * metered by the gateway regardless of what this returns.
+ * Two conditions, and the second is what keeps the promise the UI makes.
+ *
+ * 1. A usage state the gateway actually READ. `null` means it could not read
+ *    consumption, and the same reasoning as `isFeatureAllowed` applies — a
+ *    gateway blip must not stop a paying org's work, and the spend is metered
+ *    by the gateway regardless of what this returns.
+ * 2. No wallet credit left. The bar is the plan's monthly envelope and money
+ *    cannot move it — but credits are still SPENDABLE, and they fund the
+ *    provider key directly (`keyFundingMicros` = baseline + allowance + net
+ *    granted). Blocking an org that just topped up would refuse work the
+ *    gateway would happily meter, while the exhausted copy tells that same
+ *    org it may "upgrade or top up". `credits: null` is "the gateway didn't
+ *    say", which is unknown, not zero — so it does not manufacture a block.
  *
  * There is deliberately no separate enforcement flag. `STUDIO_PLANS_ENABLED`
  * already governs the whole feature: with it off `getOrgPlanState` answers
@@ -190,8 +261,12 @@ export class AiBudgetExhaustedError extends ForbiddenError {
  * the chat route). CMS and monitoring keep working on a full bar — that is the
  * promise the billing card makes: "CMS keeps working, chat pauses".
  */
-export function isUsageBlocked(usageState: BarState | null): boolean {
-  return usageState === "exhausted";
+export function isUsageBlocked(
+  usageState: BarState | null,
+  creditsUsd: number | null,
+): boolean {
+  if (usageState !== "exhausted") return false;
+  return !(creditsUsd !== null && creditsUsd > 0);
 }
 
 /**
@@ -204,7 +279,9 @@ export async function assertAiBudget(
   what: string,
 ): Promise<void> {
   const state = await getOrgPlanState(ctx, organizationId);
-  if (!isUsageBlocked(state?.usageState ?? null)) return;
+  if (!isUsageBlocked(state?.usageState ?? null, state?.creditsUsd ?? null)) {
+    return;
+  }
   throw new AiBudgetExhaustedError(
     `${what} is paused: this organization has used its monthly AI allowance`,
   );

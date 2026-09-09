@@ -126,11 +126,20 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
   },
 
   async setPlan(studioJwt: string, organizationId: string, planId: string) {
+    // SERVICE-ONLY on the gateway: a plan change takes no payment and asks for
+    // no confirmation, so the gateway refuses anyone who cannot prove they are
+    // mesh's server. Mesh is the side that owns the role check and the charge.
+    // Without this header the gateway answers 403 `service_key_required`.
+    const serviceKey = getSettings().studioProvisionSecretKey;
+    if (!serviceKey) {
+      throw new Error("STUDIO_PROVISION_SECRET_KEY is not set");
+    }
     const res = await fetch(`${getBase()}/api/teams/${organizationId}/plan`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${studioJwt}`,
+        "X-Provision-Key": serviceKey,
       },
       body: JSON.stringify({ planId }),
       signal: AbortSignal.timeout(10_000),

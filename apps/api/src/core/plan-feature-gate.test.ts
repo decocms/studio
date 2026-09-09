@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { isFeatureAllowed, isUsageBlocked } from "./plan-feature-gate";
+import {
+  evictExpiredPlanStateEntries,
+  isFeatureAllowed,
+  isUsageBlocked,
+  refreshPlanStateCacheEntry,
+} from "./plan-feature-gate";
 
 describe("isFeatureAllowed", () => {
   it("denies an absent key — absent means denied, not unknown", () => {
@@ -32,13 +37,14 @@ describe("isFeatureAllowed", () => {
 });
 
 describe("isUsageBlocked", () => {
-  it("stops an exhausted bar", () => {
-    expect(isUsageBlocked("exhausted")).toBe(true);
+  it("stops an exhausted bar with an empty wallet", () => {
+    expect(isUsageBlocked("exhausted", 0)).toBe(true);
+    expect(isUsageBlocked("exhausted", null)).toBe(true);
   });
 
   it("lets ok and warn through", () => {
-    expect(isUsageBlocked("ok")).toBe(false);
-    expect(isUsageBlocked("warn")).toBe(false);
+    expect(isUsageBlocked("ok", 0)).toBe(false);
+    expect(isUsageBlocked("warn", 0)).toBe(false);
   });
 
   it("treats an unread bar as unknown, never as exhausted", () => {
@@ -46,6 +52,64 @@ describe("isUsageBlocked", () => {
     // paying org's chat on a failed read is the worse bug. It is also what a
     // plans-disabled deployment produces, which is why there is no second
     // enforcement flag to check here.
-    expect(isUsageBlocked(null)).toBe(false);
+    expect(isUsageBlocked(null, 0)).toBe(false);
+  });
+
+  it("does NOT stop an exhausted bar that still has wallet credit", () => {
+    // The bar is the plan's envelope and money cannot move it — but credits
+    // are spendable and fund the provider key, so refusing here would deny
+    // work the gateway would meter, right after telling the org to top up.
+    expect(isUsageBlocked("exhausted", 25)).toBe(false);
+    expect(isUsageBlocked("exhausted", 0.01)).toBe(false);
+  });
+
+  it("does not treat negative credit (debt) as spendable", () => {
+    expect(isUsageBlocked("exhausted", -5)).toBe(true);
+  });
+});
+
+describe("planStateCache bounds", () => {
+  const state = {
+    features: {},
+    modelPins: null,
+    usageState: null,
+    creditsUsd: null,
+  };
+  const mk = (n: number, at = Date.now()) => {
+    const c = new Map<string, { state: typeof state; at: number }>();
+    for (let i = 0; i < n; i++) c.set(`org_${i}`, { state, at });
+    return c;
+  };
+
+  it("leaves a cache at or under the cap alone", () => {
+    const c = mk(10);
+    evictExpiredPlanStateEntries(c, 10, 60_000);
+    expect(c.size).toBe(10);
+  });
+
+  it("drops expired entries first once over the cap", () => {
+    const c = mk(12, Date.now() - 120_000); // all stale
+    evictExpiredPlanStateEntries(c, 10, 60_000);
+    expect(c.size).toBe(0);
+  });
+
+  it("trims oldest-first down to the cap when nothing is expired", () => {
+    const c = mk(13);
+    evictExpiredPlanStateEntries(c, 10, 60_000);
+    expect(c.size).toBe(10);
+    // org_0..org_2 were the oldest three inserted.
+    expect(c.has("org_0")).toBe(false);
+    expect(c.has("org_2")).toBe(false);
+    expect(c.has("org_3")).toBe(true);
+    expect(c.has("org_12")).toBe(true);
+  });
+
+  it("a refreshed hot org moves to the newest position, so it is not evicted first", () => {
+    const c = mk(11);
+    refreshPlanStateCacheEntry(c, "org_0", state); // org_0 is hot
+    evictExpiredPlanStateEntries(c, 10, 60_000);
+    // Plain Map.set would have kept org_0 first in line and dropped it.
+    expect(c.has("org_0")).toBe(true);
+    expect(c.has("org_1")).toBe(false);
   });
 });

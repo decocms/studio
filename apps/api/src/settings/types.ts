@@ -92,7 +92,6 @@ export interface Settings {
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
 
-
   /**
    * Master switch for tiered plans (STUDIO_PLANS_ENABLED, default off). Off →
    * `getOrgPlanState` answers nothing, so every feature gate is open, no model
