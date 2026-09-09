@@ -29,6 +29,7 @@ type Row = {
   credential_connection_id: string | null;
   status: "active" | "revoked";
   created_by: string | null;
+  connected_by_name?: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -36,6 +37,7 @@ type Row = {
 /** Entity plus the server-only bridge to a legacy `mcp-github` connection. */
 export interface GitProviderAccountRecord extends GitProviderAccount {
   credentialConnectionId: string | null;
+  connectedBy: { name: string } | null;
 }
 
 function toEntity(row: Row): GitProviderAccountRecord {
@@ -55,6 +57,7 @@ function toEntity(row: Row): GitProviderAccountRecord {
     installationId: Number.isFinite(installationId) ? installationId : null,
     status: row.status,
     credentialConnectionId: row.credential_connection_id,
+    connectedBy: row.connected_by_name ? { name: row.connected_by_name } : null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -145,11 +148,17 @@ export class GitProviderAccountStorage {
   async listByOrg(organizationId: string): Promise<GitProviderAccountRecord[]> {
     const rows = await this.db
       .selectFrom("git_provider_accounts")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .orderBy("created_at", "asc")
+      .leftJoin(
+        "user as connector",
+        "connector.id",
+        "git_provider_accounts.created_by",
+      )
+      .selectAll("git_provider_accounts")
+      .select("connector.name as connected_by_name")
+      .where("git_provider_accounts.organization_id", "=", organizationId)
+      .orderBy("git_provider_accounts.created_at", "asc")
       .execute();
-    return (rows as Row[]).map(toEntity);
+    return rows.map(toEntity);
   }
 
   async findByExternalId(params: {

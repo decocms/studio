@@ -7593,6 +7593,7 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        connectedBy: { name: string } | null;
       }[];
     };
   };
@@ -7613,6 +7614,7 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        connectedBy: { name: string } | null;
       };
     };
   };

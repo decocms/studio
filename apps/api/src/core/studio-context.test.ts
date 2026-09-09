@@ -26,6 +26,7 @@ const createMockContext = (
     gitProviderAccounts: null as never,
     gitProviderAccountCredentials: null as never,
     gitProviderOAuthStates: null as never,
+    githubConnectFlows: null as never,
     repositories: null as never,
     userModelPreferences: null as never,
     monitoring: null as never,

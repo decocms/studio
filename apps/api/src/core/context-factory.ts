@@ -532,6 +532,7 @@ import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
 import { RepositoryStorage } from "@/storage/repositories";
+import { GithubConnectFlowStorage } from "@/storage/github-connect-flows";
 import { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-states";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
@@ -1479,6 +1480,7 @@ export async function createStudioContextFactory(
       vault,
     ),
     gitProviderOAuthStates: new GitProviderOAuthStateStorage(config.db),
+    githubConnectFlows: new GithubConnectFlowStorage(config.db),
     repositories: new RepositoryStorage(config.db),
     jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
     taskBoard: new TaskBoardStorage(config.db),

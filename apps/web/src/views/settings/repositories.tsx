@@ -9,10 +9,14 @@
  */
 
 import { GitAccountConnect } from "@/components/git-account-connect";
+import { GithubConnectDialog } from "@/components/github-connect-dialog";
+import { useProjectContext } from "@/sdk";
 import { RepositoryPicker } from "@/components/repository-picker";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys";
 import { useState } from "react";
-import { useSearch } from "@tanstack/react-router";
+import { useSearch, useNavigate } from "@tanstack/react-router";
 import { GitBranch01, LinkExternal01, Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -102,9 +106,11 @@ function AccountRow({
   onDisconnect: () => void;
 }) {
   const t = useT();
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const needsReconnect = account.status === "revoked" || !account.servable;
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
+    <div className="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
       <div className="flex items-start gap-3 min-w-0">
         <Avatar
           url={account.avatarUrl?.trim() || undefined}
@@ -128,6 +134,13 @@ function AccountRow({
           <p className="text-xs text-muted-foreground mt-0.5 truncate">
             {account.host} · {authKindLabel(account, t)}
           </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {account.connectedBy
+              ? t("settings.repositories.connectedBy", {
+                  name: account.connectedBy.name,
+                })
+              : t("settings.repositories.connectedByUnknown")}
+          </p>
           {needsReconnect && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {t("settings.repositories.needsReconnectHint")}
@@ -135,9 +148,35 @@ function AccountRow({
           )}
         </div>
       </div>
-      <Button variant="outline" size="sm" onClick={onDisconnect}>
-        {t("settings.repositories.disconnect")}
-      </Button>
+      <div className="flex flex-wrap justify-end gap-2 max-w-full">
+        {account.type === "github" &&
+          account.installationId &&
+          account.servable && (
+            <Button variant="outline" size="sm" asChild>
+              <a
+                href={`/api/${encodeURIComponent(org.slug)}/git-providers/github/accounts/${encodeURIComponent(account.id)}/manage`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  void queryClient.invalidateQueries({
+                    queryKey: KEYS.providerRepoSearch(
+                      org.id,
+                      account.id,
+                      "",
+                    ).slice(0, 3),
+                    refetchType: "none",
+                  });
+                }}
+              >
+                <LinkExternal01 size={14} />
+                {t("settings.repositories.manageRepositoryAccess")}
+              </a>
+            </Button>
+          )}
+        <Button variant="outline" size="sm" onClick={onDisconnect}>
+          {t("settings.repositories.disconnect")}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -221,6 +260,7 @@ function AccountsSection({
   return (
     <SettingsSection
       title={t("settings.repositories.accountsTitle")}
+      headerClassName="flex-col items-start 2xl:flex-row 2xl:items-center [&>div]:max-w-full"
       description={t("settings.repositories.accountsDescription")}
       actions={rows.length > 0 ? <GitAccountConnect /> : null}
     >
@@ -340,11 +380,18 @@ function RepositoriesSection({
 
 function ConnectError() {
   const t = useT();
+  const navigate = useNavigate();
+  const accounts = useGitAccounts();
   const error = useSearch({
     strict: false,
     select: (search) => search.git_error,
   });
-  if (!error) return null;
+  if (
+    !error ||
+    (error === "no_installations" &&
+      accounts.data?.some((account) => account.type === "github"))
+  )
+    return null;
 
   let message: string;
   switch (error) {
@@ -368,13 +415,28 @@ function ConnectError() {
   }
   return (
     <Alert variant={error === "no_installations" ? "info" : "destructive"}>
-      <AlertDescription>{message}</AlertDescription>
+      <AlertDescription className="flex-1">{message}</AlertDescription>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() =>
+          void navigate({
+            to: ".",
+            search: (prev) => ({ ...prev, git_error: undefined }),
+            replace: true,
+          })
+        }
+      >
+        {t("settings.repositories.dismiss")}
+      </Button>
     </Alert>
   );
 }
 
 function RepositoriesContent() {
   const t = useT();
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false });
   const deleteAccount = useDeleteGitAccount();
   const deleteRepository = useDeleteRepository();
 
@@ -410,7 +472,25 @@ function RepositoriesContent() {
         {t("settings.repositories.pageDescription")}
       </p>
 
-      <ConnectError />
+      {!search.git_flow && <ConnectError />}
+      {search.git_flow && (
+        <GithubConnectDialog
+          flowId={search.git_flow}
+          returning={search.git_return === true}
+          onClose={() =>
+            void navigate({
+              to: ".",
+              search: (prev) => ({
+                ...prev,
+                git_flow: undefined,
+                git_return: undefined,
+                git_error: undefined,
+              }),
+              replace: true,
+            })
+          }
+        />
+      )}
 
       <AccountsSection onDisconnect={setPendingAccount} />
 

@@ -115,12 +115,28 @@ export const settings = {
   "settings.repositories.browseAccount": "Browse repositories in your account.",
   "settings.repositories.gitlabTokenHint":
     "Use a personal, project or group access token.",
-  "settings.repositories.connectGithub": "Connect GitHub",
-  "settings.repositories.manageGithub": "Manage GitHub access",
-  "settings.repositories.manageGithubHint":
-    "Install or configure the app on your GitHub accounts and organizations.",
+  "settings.repositories.addGithubAccount":
+    "Add GitHub account or organization",
+  "settings.repositories.githubShareHint":
+    "Choose an account to share with {organization}. Members with repository permissions in Studio can use this connection.",
+  "settings.repositories.githubInstallHint":
+    "No accounts are available yet. Install the GitHub App on your account or organization, or ask an organization owner to approve access.",
+  "settings.repositories.installGithubAccount": "Install on another account",
+  "settings.repositories.checkGithubAccess": "Check access",
+  "settings.repositories.switchGithubUser": "Use another GitHub login",
+  "settings.repositories.githubReturnHint":
+    "GitHub opens in a new tab. After saving access, return here to choose the account. If it does not appear, use Check access.",
+  "settings.repositories.githubRefreshFailed":
+    "Could not check GitHub access. Try again without leaving this dialog.",
+  "settings.repositories.githubConnected": "GitHub account connected",
+  "settings.repositories.manageRepositoryAccess": "Manage repository access",
+  "settings.repositories.connectedBy": "Connected by {name}",
+  "settings.repositories.connectedByUnknown":
+    "Connected by an unavailable user",
+  "settings.repositories.dismiss": "Dismiss",
+  "settings.repositories.tryAgain": "Try again",
   "settings.repositories.oauthNoInstallations":
-    "GitHub authorization succeeded, but no app installations are available to this user. Use Manage GitHub access to install the app or request access from an organization owner, then connect again.",
+    "GitHub authorization succeeded, but no app installations are available to this user. Add a GitHub account or organization to finish setup.",
   "settings.repositories.oauthDenied":
     "Authorization was cancelled. Connect again when you are ready.",
   "settings.repositories.oauthExpired":

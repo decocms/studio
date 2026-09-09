@@ -47,6 +47,7 @@ const RepoSummarySchema = z.object({
 const AccountOutputSchema = GitProviderAccountSchema.extend({
   /** False for a backfilled GitHub account this deployment cannot mint for yet. */
   servable: z.boolean(),
+  connectedBy: z.object({ name: z.string() }).nullable(),
 });
 
 function toAccountOutput(

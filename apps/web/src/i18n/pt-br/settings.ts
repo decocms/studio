@@ -120,12 +120,29 @@ export const settings = {
   "settings.repositories.browseAccount": "Busque repositórios da sua conta.",
   "settings.repositories.gitlabTokenHint":
     "Use um token de acesso pessoal, de projeto ou de grupo.",
-  "settings.repositories.connectGithub": "Conectar GitHub",
-  "settings.repositories.manageGithub": "Gerenciar acesso no GitHub",
-  "settings.repositories.manageGithubHint":
-    "Instale ou configure o app nas suas contas e organizações do GitHub.",
+  "settings.repositories.addGithubAccount":
+    "Adicionar conta ou organização do GitHub",
+  "settings.repositories.githubShareHint":
+    "Escolha uma conta para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
+  "settings.repositories.githubInstallHint":
+    "Nenhuma conta disponível ainda. Instale o app do GitHub na sua conta ou organização, ou peça a um administrador da organização para aprovar o acesso.",
+  "settings.repositories.installGithubAccount": "Instalar em outra conta",
+  "settings.repositories.checkGithubAccess": "Verificar acesso",
+  "settings.repositories.switchGithubUser": "Usar outro login do GitHub",
+  "settings.repositories.githubReturnHint":
+    "O GitHub abre em uma nova aba. Depois de salvar o acesso, volte aqui para escolher a conta. Se ela não aparecer, use Verificar acesso.",
+  "settings.repositories.githubRefreshFailed":
+    "Não foi possível verificar o acesso no GitHub. Tente novamente sem sair desta janela.",
+  "settings.repositories.githubConnected": "Conta do GitHub conectada",
+  "settings.repositories.manageRepositoryAccess":
+    "Gerenciar acesso aos repositórios",
+  "settings.repositories.connectedBy": "Conectado por {name}",
+  "settings.repositories.connectedByUnknown":
+    "Conectado por um usuário indisponível",
+  "settings.repositories.dismiss": "Dispensar",
+  "settings.repositories.tryAgain": "Tentar novamente",
   "settings.repositories.oauthNoInstallations":
-    "A autorização no GitHub foi concluída, mas nenhuma instalação do app está disponível para este usuário. Use Gerenciar acesso no GitHub para instalar o app ou solicitar acesso a um administrador da organização. Depois, conecte novamente.",
+    "A autorização no GitHub foi concluída, mas nenhuma instalação do app está disponível para este usuário. Adicione uma conta ou organização do GitHub para concluir a configuração.",
   "settings.repositories.oauthDenied":
     "A autorização foi cancelada. Conecte novamente quando quiser.",
   "settings.repositories.oauthExpired":

@@ -247,7 +247,7 @@ function ConnectActions({
     >
       <ConnectAction
         layout={layout}
-        label={t("settings.repositories.connectGithub")}
+        label={t("settings.repositories.addGithubAccount")}
         description={t(
           githubConfigured
             ? "settings.repositories.browseAccount"
@@ -257,16 +257,6 @@ function ConnectActions({
         href={github?.connectPath ? connectUrl(github.connectPath) : undefined}
         disabled={disabled || !githubConfigured || !github?.connectPath}
       />
-      {githubConfigured && github?.installPath && (
-        <ConnectAction
-          layout={layout}
-          label={t("settings.repositories.manageGithub")}
-          description={t("settings.repositories.manageGithubHint")}
-          icon={<GitHubIcon size={16} />}
-          href={connectUrl(github.installPath)}
-          disabled={disabled}
-        />
-      )}
       {gitlabConfigured && gitlab?.connectPath && (
         <ConnectAction
           layout={layout}
