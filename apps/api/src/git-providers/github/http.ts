@@ -88,6 +88,8 @@ export async function githubFetch(
   });
 
   if (isGithubRateLimited(res)) {
+    // Drain the unread body, same as every other discard-and-throw call site here.
+    await res.body?.cancel().catch(() => {});
     const kind =
       res.headers.get("retry-after") !== null ? "secondary" : "primary";
     countGithubRateLimited({ lane: "rest", operation: init.operation, kind });
