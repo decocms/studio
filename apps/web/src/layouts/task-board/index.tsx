@@ -432,23 +432,41 @@ function FooterDueDate({
   );
 }
 
-/** The card's one run action, as a written footer button. Revealed on hover; its collapsed width keeps the resting footer uncluttered. */
-function CardActionGlyph({
+/**
+ * The card's one run action, floating in the title's top-right corner.
+ *
+ * Nothing else on the card can host it. The footer can't: every glyph there
+ * (type, due date, priority, assignee) is a control you reach by hovering, so
+ * covering one on hover removes the very affordance the hover grants. A row of
+ * its own costs every actionable card that height, forever, for a button you
+ * only want while pointing at the card.
+ *
+ * What made the corner unreadable was the hard edge, not the overlap — the
+ * title ran straight into the button mid-word. So the title fades out under it
+ * (`fade-text-end`) and reads as trailing off instead.
+ */
+function CardAction({
   action,
 }: {
   action: { icon: typeof RefreshCw01; label: string; onClick: () => void };
 }) {
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
-      aria-label={action.label}
       onClick={(e) => {
         e.stopPropagation();
         action.onClick();
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      className="-my-1.5 h-7 gap-1.5 px-2 text-xs font-medium pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      // The fade has to end where this button starts, and how wide it is depends on the label — i.e. on the language.
+      ref={(node) =>
+        node?.parentElement?.style.setProperty(
+          "--fade-text-end",
+          `${node.offsetWidth}px`,
+        )
+      }
+      className="absolute -top-0.5 right-0 h-6 gap-1.5 rounded-full px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
       {action.label}
@@ -471,11 +489,9 @@ function CardFooter({
   onPriorityChange,
   onTypeChange,
   onDueDateChange,
-  action,
 }: {
   item: TaskBoardItem;
   checks: { summary: ChecksSummary; enabled: ReviewerKind[] } | null;
-  action?: { icon: typeof RefreshCw01; label: string; onClick: () => void };
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
@@ -502,7 +518,6 @@ function CardFooter({
         )}
       </span>
       <span className="flex shrink-0 items-center gap-2">
-        {action && <CardActionGlyph action={action} />}
         {(item.priority !== "none" || onPriorityChange) && (
           <PriorityIcon priority={item.priority} onChange={onPriorityChange} />
         )}
@@ -2518,6 +2533,20 @@ function TaskCard({
     item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
     item.status !== "done";
 
+  const action = showAutoFix
+    ? {
+        icon: Lightning01,
+        label: t("taskBoard.taskBoard.autoFix"),
+        onClick: onAutoFix,
+      }
+    : showRerun
+      ? {
+          icon: RefreshCw01,
+          label: t("taskBoard.taskBoard.rerun"),
+          onClick: onRerun,
+        }
+      : null;
+
   return (
     <button
       type="button"
@@ -2544,9 +2573,17 @@ function TaskCard({
     >
       <div className="flex items-start gap-2">
         {/* 14px: one step over the design system's `text-sm`, which is 13 here, not Tailwind's 14. */}
-        <span className="min-w-0 flex-1 text-[14px] font-[450] leading-snug text-foreground line-clamp-2">
-          {item.title}
-        </span>
+        <div className="relative min-w-0 flex-1 text-[14px] font-[450] leading-snug">
+          <span
+            className={cn(
+              "block text-foreground line-clamp-2",
+              action && "group-hover:fade-text-end",
+            )}
+          >
+            {item.title}
+          </span>
+          {action && <CardAction action={action} />}
+        </div>
         {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
         {runState && <AgentRunIndicator state={runState} />}
       </div>
@@ -2572,21 +2609,6 @@ function TaskCard({
         onPriorityChange={onPriorityChange}
         onTypeChange={onTypeChange}
         onDueDateChange={onDueDateChange}
-        action={
-          showAutoFix
-            ? {
-                icon: Lightning01,
-                label: t("taskBoard.taskBoard.autoFix"),
-                onClick: onAutoFix,
-              }
-            : showRerun
-              ? {
-                  icon: RefreshCw01,
-                  label: t("taskBoard.taskBoard.rerun"),
-                  onClick: onRerun,
-                }
-              : undefined
-        }
       />
     </button>
   );
