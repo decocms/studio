@@ -1,6 +1,12 @@
 import { Suspense } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { setCollectionToastTranslations } from "@/sdk";
+import { PLAN_REFUSAL_CODES, planRefusalOf } from "@/lib/studio-tools";
 
 import { AuthConfigProvider } from "@/providers/auth-config-provider";
 import { BetterAuthUIProvider } from "@/providers/better-auth-ui-provider";
@@ -13,10 +19,42 @@ import {
   persistHtmlResourceCache,
   restoreHtmlResourceCache,
 } from "@/lib/html-resource-persist";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { useT } from "@/i18n/use-t";
 
+/**
+ * Say what a plan refusal is, wherever it lands.
+ *
+ * The server returns two precise codes on a 403 — `feature_not_in_plan` and
+ * `ai_budget_exhausted` — and nothing in the client read either one, so every
+ * window in which the client's gate fails open (first paint, an org switch, an
+ * error state, a cross-pod skew right after an upgrade) ended in a generic
+ * error the user could not tell from a bug. Handled centrally because the
+ * refusal can arrive from any surface, and `sonner` is already global.
+ *
+ * Deliberately a toast and not a dialog: this fires from arbitrary queries,
+ * including background refetches, and a modal on a background refetch would be
+ * worse than the generic error it replaces. The paywall dialog stays where the
+ * user actively reached for the feature.
+ */
+function notifyPlanRefusal(error: unknown): void {
+  const refusal = planRefusalOf(error);
+  if (!refusal) return;
+  const message =
+    refusal === PLAN_REFUSAL_CODES.aiBudgetExhausted
+      ? planRefusalCopy.budget
+      : planRefusalCopy.feature;
+  // Deduped by id: one refusal per kind on screen, not one per failed query in
+  // a prefetch batch.
+  toast.error(message, { id: `plan-refusal:${refusal}` });
+}
+
+/** Filled in by SdkTranslationInitializer — the caches outlive any component. */
+const planRefusalCopy = { feature: "", budget: "" };
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: notifyPlanRefusal }),
+  mutationCache: new MutationCache({ onError: notifyPlanRefusal }),
   defaultOptions: {
     queries: {
       // Data is fresh for 1 minute by default
@@ -25,8 +63,11 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: true,
       // Don't refetch on mount if data is still fresh
       refetchOnMount: true,
-      // Retry failed requests (but not too aggressively)
-      retry: 1,
+      // Retry failed requests (but not too aggressively) — but never retry a
+      // plan refusal: it is a decision about this org, not a blip, so a retry
+      // only doubles the load and delays the message.
+      retry: (failureCount, error) =>
+        planRefusalOf(error) === null && failureCount < 1,
       // Keep unused data in cache for 5 minutes
       gcTime: 5 * 60 * 1000,
     },
@@ -46,6 +87,9 @@ function SdkTranslationInitializer({
   children: React.ReactNode;
 }) {
   const t = useT();
+
+  planRefusalCopy.feature = t("settings.paywall.serverRefusedFeature");
+  planRefusalCopy.budget = t("settings.paywall.serverRefusedBudget");
 
   setCollectionToastTranslations({
     itemCreatedSuccessfully: t("collections.mutations.itemCreatedSuccessfully"),

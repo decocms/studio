@@ -8,7 +8,8 @@
  * Tab sources and grammar are documented in `tab-id.ts`.
  */
 
-import { lazy, useState } from "react";
+import { lazy } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
@@ -99,8 +100,15 @@ function TabBody({
 }) {
   const controlPlaneViews = useControlPlaneViews();
   const { closePanel } = usePanelNavigate();
-  // A collapsed main panel stays mounted, so closePanel alone never hides this.
-  const [dismissedFeature, setDismissedFeature] = useState<string | null>(null);
+  // Dismissal is the URL's own `?mainpanel=false`, which is what closePanel
+  // writes — it used to be component state, and TabBody is mounted once for
+  // the life of the panel, so a dismissed feature stayed dismissed: every
+  // later click on that tab rendered an EMPTY panel with no content, no
+  // paywall and no way back to the upsell. openPanel clears the param, so
+  // asking for the view again asks for the paywall again.
+  const { mainpanel } = useSearch({ strict: false }) as {
+    mainpanel?: boolean;
+  };
   const gatedFeature = featureForTab(activeTab);
   const featureAllowed = useFeature(gatedFeature);
   // Native CDN Monitor tab gate — warehouse wired, independent of the
@@ -127,16 +135,16 @@ function TabBody({
   }
 
   if (gatedFeature && !featureAllowed) {
-    if (dismissedFeature === gatedFeature) return null;
+    if (mainpanel === false) return null;
     // Closing the panel on dismiss, rather than leaving a blank body behind
-    // the dialog: the view the URL names is one this org cannot open.
+    // the dialog: the view the URL names is one this org cannot open. "See
+    // plans" must NOT close it — that second navigation is what used to eat
+    // the CTA.
     return (
       <FeaturePaywall
         feature={gatedFeature}
-        onDismiss={() => {
-          setDismissedFeature(gatedFeature);
-          closePanel();
-        }}
+        onDismiss={() => closePanel()}
+        onSeePlans={() => {}}
       />
     );
   }

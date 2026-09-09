@@ -25,10 +25,21 @@ import type { Feature } from "@/hooks/use-entitlements";
 export function FeaturePaywall({
   feature,
   onDismiss,
+  onSeePlans,
 }: {
   feature: Feature;
-  /** Called on both buttons and on an outside click / Esc. */
+  /** "Not now", an outside click, Esc. */
   onDismiss?: () => void;
+  /**
+   * "See plans", AFTER the navigation to the plan card. Separate from
+   * `onDismiss` because the two intents need different handling: one caller's
+   * dismiss also closes the main panel, and firing that on "See plans" ran a
+   * second, route-relative `replace: true` navigation in the same tick, which
+   * won — so the primary upsell CTA closed the panel and never reached the
+   * plans. Defaults to `onDismiss` for callers where closing IS the right
+   * follow-up.
+   */
+  onSeePlans?: () => void;
 }) {
   const t = useT();
   const navigate = useNavigate();
@@ -61,7 +72,7 @@ export function FeaturePaywall({
                 to: "/$org/settings/ai-providers",
                 params: { org: org.slug },
               });
-              onDismiss?.();
+              (onSeePlans ?? onDismiss)?.();
             }}
           >
             {t("settings.paywall.seePlans")}

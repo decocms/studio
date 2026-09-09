@@ -501,6 +501,10 @@ export const settings = {
     "O plano desta organização não inclui {feature}. Troque de plano para liberar para todo mundo na org.",
   "settings.paywall.seePlans": "Ver planos",
   "settings.paywall.dismiss": "Agora não",
+  "settings.paywall.serverRefusedFeature":
+    "Seu plano não inclui este recurso. Peça a um owner para fazer upgrade, ou veja os planos.",
+  "settings.paywall.serverRefusedBudget":
+    "Esta organização usou todo o limite mensal de IA. O chat e as tarefas ficam pausados até fazer upgrade ou adicionar créditos.",
 
   "settings.decoCreditsHero.topUpFailed": "Recarga falhou: {message}",
   "settings.decoNudgeCard.connectDeco": "Conectar Deco",

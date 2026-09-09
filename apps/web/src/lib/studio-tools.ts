@@ -14,15 +14,50 @@ import type {
   StudioToolName,
 } from "@decocms/shared/tools/tool-io";
 
+/**
+ * The server's machine-readable refusal codes, as sent on a 403 body's `code`.
+ *
+ * They existed and reached nobody: this client parsed only `{ error }`, so the
+ * codes could not be distinguished from any other failure and every fail-open
+ * window — first paint, an org switch, a post-upgrade cross-pod skew — ended in
+ * a generic error where a paywall belonged.
+ */
+export const PLAN_REFUSAL_CODES = {
+  /** The org's plan does not include the feature. Show the paywall. */
+  featureNotInPlan: "feature_not_in_plan",
+  /** The org's AI envelope is spent, and its wallet is empty. */
+  aiBudgetExhausted: "ai_budget_exhausted",
+} as const;
+
+export type PlanRefusalCode =
+  (typeof PLAN_REFUSAL_CODES)[keyof typeof PLAN_REFUSAL_CODES];
+
 /** Thrown when a tool REST call returns a non-2xx status. `status` is the HTTP code. */
-class StudioToolError extends Error {
+export class StudioToolError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The server's `code`, when it sent one. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "StudioToolError";
   }
+}
+
+/**
+ * The plan refusal this error carries, or null.
+ *
+ * Use it to route a server 403 into the paywall the client already has, rather
+ * than a toast. Accepts `unknown` so a React Query `error` can be passed
+ * straight in.
+ */
+export function planRefusalOf(error: unknown): PlanRefusalCode | null {
+  if (!(error instanceof StudioToolError)) return null;
+  const codes: readonly string[] = Object.values(PLAN_REFUSAL_CODES);
+  return codes.includes(error.code ?? "")
+    ? (error.code as PlanRefusalCode)
+    : null;
 }
 
 /**
@@ -50,13 +85,16 @@ export async function callStudioTool<N extends StudioToolName>(
 
   if (!res.ok) {
     let message = `${name} failed (${res.status})`;
+    let code: string | undefined;
     try {
-      const body = (await res.json()) as { error?: string };
+      const body = (await res.json()) as { error?: string; code?: string };
       if (body?.error) message = body.error;
+      // `code` is what makes a plan refusal actionable — see planRefusalOf.
+      if (typeof body?.code === "string") code = body.code;
     } catch {
       // non-JSON error body — keep the default message
     }
-    throw new StudioToolError(message, res.status);
+    throw new StudioToolError(message, res.status, code);
   }
 
   try {

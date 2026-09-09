@@ -487,6 +487,14 @@ export const settings = {
     "This organization's plan doesn't include {feature}. Change the plan to unlock it for everyone in the org.",
   "settings.paywall.seePlans": "See plans",
   "settings.paywall.dismiss": "Not now",
+  // Shown when the SERVER refuses, which is what happens in every window the
+  // client's gate fails open — first paint, an org switch, a cross-pod skew
+  // right after an upgrade. Without these the refusal arrived as a generic
+  // error, indistinguishable from a bug.
+  "settings.paywall.serverRefusedFeature":
+    "Your plan does not include this. Ask an owner to upgrade, or see plans.",
+  "settings.paywall.serverRefusedBudget":
+    "This organization has used its monthly AI allowance. Chat and tasks pause until you upgrade or top up.",
 
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
   "settings.decoNudgeCard.connectDeco": "Connect Deco",
