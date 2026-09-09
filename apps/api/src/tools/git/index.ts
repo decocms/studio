@@ -53,7 +53,11 @@ const AccountOutputSchema = GitProviderAccountSchema.extend({
 function toAccountOutput(
   account: GitProviderAccountRecord,
 ): z.infer<typeof AccountOutputSchema> {
-  const { credentialConnectionId: _bridge, ...entity } = account;
+  const {
+    credentialConnectionId: _bridge,
+    installationAuthorizedBy: _authorization,
+    ...entity
+  } = account;
   return { ...entity, servable: accountIsServable(account) };
 }
 

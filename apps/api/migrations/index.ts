@@ -1,3 +1,4 @@
+import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
 import * as migration208githubconnectflows from "./208-github-connect-flows";
 import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
 import * as migration206repositoryconsumers from "./206-repository-consumers";
@@ -450,6 +451,8 @@ const migrations: Record<string, Migration> = {
   "206-repository-consumers": migration206repositoryconsumers,
   "207-task-board-prs-repo-idx": migration207taskboardprsrepoidx,
   "208-github-connect-flows": migration208githubconnectflows,
+  "209-github-installation-authorization":
+    migration209githubinstallationauthorization,
 };
 
 export default migrations;

@@ -26,6 +26,7 @@ type Row = {
   login: string;
   avatar_url: string | null;
   installation_id: string | number | null;
+  installation_authorized_by: string | null;
   credential_connection_id: string | null;
   status: "active" | "revoked";
   created_by: string | null;
@@ -38,6 +39,7 @@ type Row = {
 export interface GitProviderAccountRecord extends GitProviderAccount {
   credentialConnectionId: string | null;
   connectedBy: { name: string } | null;
+  installationAuthorizedBy: string | null;
 }
 
 function toEntity(row: Row): GitProviderAccountRecord {
@@ -56,6 +58,7 @@ function toEntity(row: Row): GitProviderAccountRecord {
     avatarUrl: row.avatar_url,
     installationId: Number.isFinite(installationId) ? installationId : null,
     status: row.status,
+    installationAuthorizedBy: row.installation_authorized_by ?? null,
     credentialConnectionId: row.credential_connection_id,
     connectedBy: row.connected_by_name ? { name: row.connected_by_name } : null,
     createdAt: toIso(row.created_at),
@@ -72,6 +75,7 @@ export interface UpsertGitProviderAccountParams {
   login: string;
   avatarUrl?: string | null;
   installationId?: number | null;
+  installationAuthorizedBy?: string | null;
   createdBy?: string | null;
 }
 
@@ -99,6 +103,7 @@ export class GitProviderAccountStorage {
         login: params.login,
         avatar_url: params.avatarUrl ?? null,
         installation_id: params.installationId ?? null,
+        installation_authorized_by: params.installationAuthorizedBy ?? null,
         credential_connection_id: null,
         status: "active",
         created_by: params.createdBy ?? null,
@@ -112,6 +117,7 @@ export class GitProviderAccountStorage {
             login: params.login,
             avatar_url: params.avatarUrl ?? null,
             installation_id: params.installationId ?? null,
+            installation_authorized_by: params.installationAuthorizedBy ?? null,
             credential_connection_id: null,
             status: "active",
             updated_at: now,

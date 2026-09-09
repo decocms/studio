@@ -12,7 +12,8 @@
  *   and the callback insists the session user is the state's user.
  *
  * GitHub: user-to-server OAuth is used ONLY to prove which App installations
- * the user can see (`GET /user/installations`). An encrypted, ten-minute grant
+ * the user owns or administers. Repository collaborators cannot share an
+ * installation. An encrypted, ten-minute grant
  * lets the user select an installation or install the App in another tab. The
  * grant is deleted after selection; saved accounts use the App private key.
  *
@@ -157,7 +158,7 @@ export const createGitProviderRoutes = () => {
     const appAuth = getGithubAppAuth();
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
     try {
-      const installations = await appAuth.listUserInstallations(
+      const { installations } = await appAuth.listOwnedInstallations(
         await ctx.vault.decrypt(flow.encrypted_access_token),
       );
       return c.json({ installations, expiresAt: flow.expires_at });
@@ -189,15 +190,15 @@ export const createGitProviderRoutes = () => {
     if (!flow) return c.json({ error: "flow_expired" }, 410);
     const appAuth = getGithubAppAuth();
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
-    let installations;
+    let access;
     try {
-      installations = await appAuth.listUserInstallations(
+      access = await appAuth.listOwnedInstallations(
         await ctx.vault.decrypt(flow.encrypted_access_token),
       );
     } catch {
       return c.json({ error: "github_unavailable" }, 502);
     }
-    const installation = installations.find(
+    const installation = access.installations.find(
       (item) => item.installationId === input.data.installationId,
     );
     if (!installation) return c.json({ error: "installation_forbidden" }, 403);
@@ -213,6 +214,7 @@ export const createGitProviderRoutes = () => {
         login: installation.login,
         avatarUrl: installation.avatarUrl,
         installationId: installation.installationId,
+        installationAuthorizedBy: access.userId,
       },
     );
     if (!account) return c.json({ error: "flow_expired" }, 410);

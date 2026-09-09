@@ -86,14 +86,17 @@ function grantKind(
 }
 
 /**
- * Whether Studio itself can produce credentials for this account. False only
- * for a backfilled GitHub App account on a deployment without the App keys —
- * those still clone through their legacy `mcp-github` connection.
+ * Whether Studio itself can produce credentials for this account. A GitHub installation
+ * must have an owner authorization recorded before Studio can mint for it.
  */
 export function accountIsServable(account: GitProviderAccountRecord): boolean {
   if (account.status !== "active") return false;
   if (account.type === "github" && account.authKind === "github_app") {
-    return getGithubAppAuth() !== null && account.installationId !== null;
+    return (
+      getGithubAppAuth() !== null &&
+      account.installationId !== null &&
+      !!account.installationAuthorizedBy
+    );
   }
   return true;
 }
@@ -102,6 +105,22 @@ export function clientForAccount(
   deps: GitProviderDeps,
   account: GitProviderAccountRecord,
 ): GitProviderClient {
+  if (account.status !== "active") {
+    throw new GitProviderError({
+      provider: account.type,
+      status: 403,
+      message:
+        "This git account was revoked. Reconnect it before accessing repositories.",
+    });
+  }
+  if (account.authKind === "github_app" && !account.installationAuthorizedBy) {
+    throw new GitProviderError({
+      provider: account.type,
+      status: 403,
+      message:
+        "Reconnect this git account. A GitHub installation must be authorized by its personal account owner or an organization owner.",
+    });
+  }
   const credentials = new GitProviderAccountCredentialStorage(
     deps.db,
     deps.vault,

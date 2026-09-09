@@ -12,6 +12,7 @@
  */
 
 import { createPrivateKey, sign } from "node:crypto";
+import { z } from "zod";
 import {
   isPermissionRejected,
   OPTIONAL_MINT_PERMISSIONS,
@@ -370,11 +371,73 @@ export class GithubAppAuth {
     return mapped;
   }
 
+  /** Repository collaboration does not authorize sharing an entire installation. */
+  async listOwnedInstallations(userToken: string): Promise<{
+    userId: string;
+    installations: GithubInstallation[];
+  }> {
+    const user = z
+      .object({ id: z.number().int().positive().safe() })
+      .parse(await this.userGet("/user", userToken, "get_connecting_user"));
+    const installations = await this.listUserInstallations(userToken);
+    const ownedOrganizations = new Set<string>();
+    if (installations.some((item) => item.accountType === "Organization")) {
+      for (let page = 1; ; page++) {
+        // Unlike the per-org membership endpoint, this requires no extra App permissions.
+        const memberships = z
+          .array(
+            z.object({
+              state: z.string(),
+              role: z.string(),
+              organization: z.object({
+                id: z.number().int().positive().safe(),
+              }),
+            }),
+          )
+          .parse(
+            await this.userGet(
+              `/user/memberships/orgs?state=active&per_page=100&page=${page}`,
+              userToken,
+              "list_connecting_user_memberships",
+            ),
+          );
+        for (const membership of memberships) {
+          if (membership.state === "active" && membership.role === "admin") {
+            ownedOrganizations.add(String(membership.organization.id));
+          }
+        }
+        if (memberships.length < 100) break;
+      }
+    }
+    return {
+      userId: String(user.id),
+      installations: installations.filter((item) =>
+        item.accountType === "User"
+          ? item.externalAccountId === String(user.id)
+          : item.accountType === "Organization" &&
+            ownedOrganizations.has(item.externalAccountId),
+      ),
+    };
+  }
+
+  private async userGet(
+    path: string,
+    token: string,
+    operation: string,
+  ): Promise<unknown> {
+    const response = await githubFetch(`${this.apiBaseUrl}${path}`, {
+      token,
+      operation,
+    });
+    if (!response.ok) throw await githubFailure(response, operation);
+    return githubJson<unknown>(response, operation);
+  }
+
   /**
    * Every installation of this App the user can access, via their
    * user-to-server token: `GET /user/installations`, paginated.
    */
-  async listUserInstallations(
+  private async listUserInstallations(
     userToken: string,
   ): Promise<GithubInstallation[]> {
     const operation = "list_user_installations";

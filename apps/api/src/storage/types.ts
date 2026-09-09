@@ -2253,6 +2253,11 @@ export type GitAuthKindColumn = "github_app" | "oauth" | "token";
 export type GitAccountStatusColumn = "active" | "revoked";
 
 export interface GitProviderAccountTable {
+  installation_authorized_by: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
   type: GitProviderKindColumn;
