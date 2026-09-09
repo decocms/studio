@@ -391,11 +391,30 @@ configMap:
     # NATS_URL: ""  # Optional: overrides auto-derived URL when nats.enabled=true (e.g. nats://my-nats:4222)
     DATABASE_POOL_MAX: "20"
     DECO_AI_GATEWAY_ENABLED: "false"
+    # DECO_AI_GATEWAY_URL: ""      # the gateway's base url
+    # Tiered plans. OFF by default, and turning it on is a fleet-wide
+    # entitlement cutover, not a progressive rollout: with plans on, an org with
+    # no org_plans row at the gateway is FREE, which excludes CMS, Kanban and
+    # monitoring. Backfill the gateway's org_plans first (its
+    # scripts/backfill-org-plans.ts) and set secret.STUDIO_JWT_SECRET below —
+    # Studio refuses to boot with plans on and no explicit gateway JWT secret,
+    # because the old fallback made every gate silently fail OPEN.
+    # STUDIO_PLANS_ENABLED: "false"
 
 secret:
   # secretName: ""  # If defined, uses this existing secret (does not create new secret)
   # Generate secret with the following command: openssl rand -base64 32
   BETTER_AUTH_SECRET: "define_your_secret_with_command_above"
+  # Tiered plans — one shared secret each, under two names across the repos:
+  #   STUDIO_JWT_SECRET          == the gateway's MESH_JWT_SECRET
+  #   STUDIO_PROVISION_SECRET_KEY == the gateway's STUDIO_PROVISION_KEY
+  # A mismatch 401s every entitlements call, which every feature gate reads as
+  # "no answer" and fails OPEN — so Studio refuses to boot with
+  # STUDIO_PLANS_ENABLED set and no STUDIO_JWT_SECRET.
+  # STUDIO_JWT_SECRET: ""
+  # STUDIO_PROVISION_SECRET_KEY: ""
+  # Bearer for the gateway's /api/admin/* (credit top-ups).
+  # DECO_AI_GATEWAY_ADMIN_TOKEN: ""
   # ENCRYPTION_KEY for CredentialVault (AES-256-GCM).
   # Empty string "" is valid — derives key via SHA-256("").
   # If omitted, the server auto-generates a random key on each boot (breaks across restarts).
