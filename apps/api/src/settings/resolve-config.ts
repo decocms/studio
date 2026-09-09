@@ -415,6 +415,23 @@ export function resolveConfig(
       envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
   };
 
+  // A feature gate is only as trustworthy as this secret. `mintGatewayJwt`
+  // falls back to BETTER_AUTH_SECRET, which has no reason to equal the
+  // gateway's MESH_JWT_SECRET — and when it doesn't, every /entitlements call
+  // 401s, the gate reads that as "no answer" and OPENS, so the paid product is
+  // free for everyone with nothing in the request path saying so. It is the
+  // single most likely misconfiguration of this feature. Refuse to boot: a
+  // misconfigured gate must not start, and must certainly not start open.
+  if (settings.plansEnabled && !settings.studioJwtSecret) {
+    throw new Error(
+      "STUDIO_PLANS_ENABLED requires an explicit gateway JWT secret. Set " +
+        "STUDIO_JWT_SECRET (or its legacy alias MESH_JWT_SECRET) to the same " +
+        "value as the gateway's MESH_JWT_SECRET. Refusing to fall back to " +
+        "BETTER_AUTH_SECRET: that mismatch 401s every entitlements call, which " +
+        "every feature gate reads as 'no answer' and fails OPEN.",
+    );
+  }
+
   return {
     settings,
     externalDatabaseUrl: externalUrlOrNull(envVars.DATABASE_URL),

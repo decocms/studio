@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+} from "bun:test";
 import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
 import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
@@ -60,16 +67,28 @@ mock.module("../../sandbox/lifecycle", () => ({
   __resetSharedLifecyclesForTesting: () => {},
 }));
 
-let mockSettings: Record<string, unknown> = { nodeEnv: "test" };
-mock.module("../../settings", () => ({
-  getSettings: () => mockSettings,
-  // Bun keeps module mocks alive across test files in one shard. Preserve the
-  // real module's complete runtime surface so later settings-backed tests can
-  // replace and restore their configuration normally.
-  setGlobalSettings: (settings: Record<string, unknown>) => {
-    mockSettings = settings;
-  },
-}));
+// The settings module is NOT mocked. It used to be, and the mock escaped the
+// file — Bun keeps module mocks alive for the whole shard, and a top-level
+// `afterAll` runs at the end of the process, not the end of the file, so there
+// is no way to put it back. Every later file then saw a getSettings() returning
+// only `{ nodeEnv: "test" }`, so anything reading a flag read `undefined`, and
+// `undefined` at the plan feature gate means "no answer", which OPENS the gate:
+// a test written for those gates would pass whether or not the gate worked.
+// Two unrelated files were already failing on it outright
+// ("http://localhost:undefined" cannot be parsed as a URL).
+//
+// All this file ever needed was `nodeEnv: "test"`, so it installs REAL settings
+// through the real accessor. Nothing to leak.
+const { setGlobalSettings } = await import("../../settings");
+const { resolveConfig } = await import("../../settings/resolve-config");
+setGlobalSettings({
+  ...resolveConfig(
+    { port: "", home: "", localMode: false, skipMigrations: true },
+    { NODE_ENV: "test" },
+  ).settings,
+  databaseUrl: "postgres://test/test",
+  natsUrls: [],
+});
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
   "../../storage/downstream-token"

@@ -1,8 +1,9 @@
 import { describe, expect, it, mock } from "bun:test";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import {
+  __armRefreshBackoffForTesting,
   clearRefreshBackoff,
-  refreshAndStore,
+  isRefreshBackedOff,
 } from "../../oauth/token-refresh";
 import { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 
@@ -88,51 +89,24 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
   it("clears the oauth refresh backoff tracker on delete", async () => {
     // Regression: an unbounded tracker entry lingered past delete, suppressing a reconnect's first refresh.
     const { ctx } = makeCtx({ referencedByThread: false });
-    const tokenStorage = {
-      get: async () => null,
-      delete: async () => {},
-      isExpired: () => false,
-      upsert: async () => ({}) as never,
-    };
-    const unrefreshableToken = {
-      id: "dtok_1",
-      connectionId: "conn_repo",
-      accessToken: "old",
-      refreshToken: null,
-      scope: null,
-      expiresAt: null,
-      createdAt: "",
-      updatedAt: "",
-      clientId: null,
-      clientSecret: null,
-      tokenEndpoint: null,
-    };
-    // Arms the backoff window without a network call (no refresh_token to try).
-    await refreshAndStore(unrefreshableToken, tokenStorage);
+    // Armed through the test hook, not by provoking a real refresh failure:
+    // provoking one means depending on `refreshAccessToken`, which two other
+    // test files mock.module and never restore, so whether the window armed
+    // depended on which file ran first.
+    __armRefreshBackoffForTesting("conn_repo");
+    expect(isRefreshBackedOff("conn_repo")).toBe(true);
 
     await COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx);
 
-    const originalFetch = global.fetch;
-    let fetchCalled = false;
-    global.fetch = mock(async () => {
-      fetchCalled = true;
-      return new Response(JSON.stringify({ access_token: "new" }));
-    }) as unknown as typeof fetch;
     try {
-      await refreshAndStore(
-        {
-          ...unrefreshableToken,
-          refreshToken: "rt",
-          clientId: "cid",
-          tokenEndpoint: "https://example.com/token",
-        },
-        tokenStorage,
-      );
+      // Asserted on the window itself, not on whether a later refresh reached
+      // the network. The fetch-based version passed alone and failed in the
+      // full suite: another file leaks a mock.module for
+      // @/oauth/refresh-access-token, so no fetch happens either way.
+      expect(isRefreshBackedOff("conn_repo")).toBe(false);
     } finally {
-      global.fetch = originalFetch;
       clearRefreshBackoff("conn_repo");
     }
-    expect(fetchCalled).toBe(true);
   });
 
   it("revokes the connection's trigger callback token on delete", async () => {

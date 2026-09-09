@@ -102,6 +102,39 @@ export function clearRefreshBackoff(connectionId?: string): void {
   else refreshBackoff.clear();
 }
 
+/**
+ * Arm a suppression window directly. Test hook, mirroring
+ * `__resetSharedLifecyclesForTesting` in sandbox/lifecycle.
+ *
+ * A test that wants an armed window would otherwise have to produce a real
+ * refresh FAILURE to get one, which means depending on `refreshAccessToken` —
+ * and that module is `mock.module`'d by two other test files whose mocks
+ * outlive them (Bun keeps module mocks alive for the whole shard). Whether the
+ * window armed then depended on which file ran first.
+ */
+export function __armRefreshBackoffForTesting(connectionId: string): void {
+  refreshBackoff.set(connectionId, {
+    attempt: 1,
+    nextAttemptAt: Date.now() + REFRESH_BACKOFF_CAP_MS,
+  });
+}
+
+/**
+ * Whether a connection is currently inside its suppression window — the exact
+ * condition `refreshAndStore` short-circuits on.
+ *
+ * Exported so a test can assert the window directly instead of inferring it
+ * from whether a network call happened. That inference is what made
+ * `delete.test.ts`'s backoff assertion fail in the full suite while passing
+ * alone: another file leaks a `mock.module` for `@/oauth/refresh-access-token`,
+ * so no fetch occurs either way and the test read a mocked dependency as a
+ * still-armed backoff.
+ */
+export function isRefreshBackedOff(connectionId: string): boolean {
+  const backoff = refreshBackoff.get(connectionId);
+  return !!backoff && Date.now() < backoff.nextAttemptAt;
+}
+
 async function refreshAndStoreOnce(
   token: DownstreamToken,
   tokenStorage: OAuthGrantStore,

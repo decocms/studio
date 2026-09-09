@@ -541,3 +541,40 @@ describe("resolveConfig decopilot max concurrent hosted runs", () => {
     );
   });
 });
+
+describe("resolveConfig plans gateway JWT secret", () => {
+  it("refuses to boot with plans on and no explicit gateway JWT secret", () => {
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        BETTER_AUTH_SECRET: "some-unrelated-session-secret",
+      }),
+    ).toThrow(/STUDIO_PLANS_ENABLED requires an explicit gateway JWT secret/);
+  });
+
+  it.each(["STUDIO_JWT_SECRET", "MESH_JWT_SECRET"])(
+    "boots with plans on when %s is set",
+    (name) => {
+      const result = resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        [name]: "shared-with-the-gateway",
+      });
+
+      expect(result.settings.studioJwtSecret).toBe("shared-with-the-gateway");
+    },
+  );
+
+  it("does not require it while plans are off — that path 401s loudly, it does not open a gate", () => {
+    expect(() => resolveConfig(flags, {})).not.toThrow();
+  });
+
+  it("treats an empty string as unset, so a rendered-but-blank template still fails the boot", () => {
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        STUDIO_JWT_SECRET: "",
+        MESH_JWT_SECRET: "",
+      }),
+    ).toThrow(/STUDIO_PLANS_ENABLED requires an explicit gateway JWT secret/);
+  });
+});
