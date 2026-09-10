@@ -53,6 +53,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { sleep } from "@decocms/shared/std";
 import {
   createServer,
   type IncomingMessage,
@@ -952,6 +953,10 @@ interface UserInstallation {
 }
 
 export function createGithubStubServer(): Server {
+  const userRequests = new Map<
+    string,
+    { paths: string[]; active: number; peak: number }
+  >();
   const users = new Map<
     string,
     {
@@ -964,12 +969,40 @@ export function createGithubStubServer(): Server {
       }>;
       identityStatus?: number;
       membershipsStatus?: number;
+      repositoryDelayMs?: number;
     }
   >();
   const codes = new Map<string, string>();
   return createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const dispatch = async (): Promise<void> => {
+      const userToken =
+        req.headers.authorization?.replace(/^Bearer /, "") ?? "";
+      if (
+        req.method === "GET" &&
+        url.pathname === "/__admin/github-user-requests"
+      ) {
+        json(
+          res,
+          200,
+          userRequests.get(userToken) ?? { paths: [], active: 0, peak: 0 },
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/user")) {
+        let requests = userRequests.get(userToken);
+        if (!requests) {
+          requests = { paths: [], active: 0, peak: 0 };
+          userRequests.set(userToken, requests);
+        }
+        requests.paths.push(url.pathname + url.search);
+        if (/^\/user\/installations\/\d+\/repositories$/.test(url.pathname)) {
+          requests.active++;
+          requests.peak = Math.max(requests.peak, requests.active);
+          await sleep(users.get(userToken)?.repositoryDelayMs ?? 0);
+          requests.active--;
+        }
+      }
       if (req.method === "GET" && url.pathname === "/health") {
         json(res, 200, { ok: true });
         return;

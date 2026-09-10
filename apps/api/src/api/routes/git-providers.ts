@@ -204,6 +204,7 @@ export const createGitProviderRoutes = () => {
     try {
       access = await appAuth.listAuthorizedInstallations(
         await ctx.vault.decrypt(flow.encrypted_access_token),
+        input.data.installationId,
       );
     } catch {
       return c.json({ error: "github_unavailable" }, 502);

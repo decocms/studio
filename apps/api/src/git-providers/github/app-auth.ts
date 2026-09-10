@@ -13,6 +13,7 @@
 
 import { createPrivateKey, sign } from "node:crypto";
 import { z } from "zod";
+import { mapBounded } from "@decocms/shared/std";
 import {
   isPermissionRejected,
   OPTIONAL_MINT_PERMISSIONS,
@@ -462,14 +463,21 @@ export class GithubAppAuth {
    *
    * An installation where none of that holds is left out entirely.
    */
-  async listAuthorizedInstallations(userToken: string): Promise<{
+  async listAuthorizedInstallations(
+    userToken: string,
+    installationId?: number,
+  ): Promise<{
     userId: string;
     installations: AuthorizedInstallation[];
   }> {
     const user = z
       .object({ id: z.number().int().positive().safe() })
       .parse(await this.userGet("/user", userToken, "get_connecting_user"));
-    const installations = await this.listUserInstallations(userToken);
+    // A connect revalidates only the selected installation, using fresh user access.
+    const installations = (await this.listUserInstallations(userToken)).filter(
+      (item) =>
+        installationId === undefined || item.installationId === installationId,
+    );
     const ownedOrganizations = new Set<string>();
     if (installations.some((item) => item.accountType === "Organization")) {
       for (let page = 1; ; page++) {
@@ -499,25 +507,29 @@ export class GithubAppAuth {
         if (memberships.length < 100) break;
       }
     }
-    const authorized: AuthorizedInstallation[] = [];
-    for (const item of installations) {
-      if (item.accountType === "User") {
-        if (item.externalAccountId === String(user.id)) {
-          authorized.push({ ...item, repositoryIds: null });
+    const authorized = await mapBounded(
+      installations,
+      4,
+      async (item): Promise<AuthorizedInstallation | null> => {
+        if (item.accountType === "User") {
+          return item.externalAccountId === String(user.id)
+            ? { ...item, repositoryIds: null }
+            : null;
         }
-        continue;
-      }
-      if (ownedOrganizations.has(item.externalAccountId)) {
-        authorized.push({ ...item, repositoryIds: null });
-        continue;
-      }
-      const repositoryIds = await this.administeredRepositories(
-        userToken,
-        item.installationId,
-      );
-      if (repositoryIds.length > 0) authorized.push({ ...item, repositoryIds });
-    }
-    return { userId: String(user.id), installations: authorized };
+        if (ownedOrganizations.has(item.externalAccountId)) {
+          return { ...item, repositoryIds: null };
+        }
+        const repositoryIds = await this.administeredRepositories(
+          userToken,
+          item.installationId,
+        );
+        return repositoryIds.length > 0 ? { ...item, repositoryIds } : null;
+      },
+    );
+    return {
+      userId: String(user.id),
+      installations: authorized.filter((item) => item !== null),
+    };
   }
 
   /**
