@@ -41,6 +41,7 @@ import {
 } from "@/components/monitoring/hooks.ts";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useT } from "@/i18n/use-t.ts";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 import {
   buildFilledStatsData,
   computeHeatmapView,
@@ -201,6 +202,12 @@ function ModelLeaderboardTable({
   models: ModelMetric[];
   mode?: "calls" | "tokens" | "cost";
 }) {
+  // §6: below Ultra neither the model's NAME nor a dollar figure is the org's
+  // to see. `monitoring` is a Pro feature but `model_choice` is Ultra-only, so
+  // this table was showing both to every Pro org. Gated INSIDE the component,
+  // not at its six call sites, so a seventh cannot forget.
+  const showModels = useModelDisclosure();
+  if (!showModels) return null;
   if (models.length === 0) return null;
 
   const valueOf = (m: ModelMetric) =>

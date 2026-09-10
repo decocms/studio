@@ -7,6 +7,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { Image01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 import { useOrg } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { ToolCallShell } from "./common.tsx";
@@ -111,7 +112,12 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
   const result = part.output as GenerateImageResult | undefined;
   const images = getGeneratedImages(result);
   const usage = extractUsage(result);
-  const modelLabel = result?.model;
+  // §6: below Ultra the model's NAME is not this org's to see, and a tool
+  // result carries it in its payload. Same rule and same fail-CLOSED gate as
+  // the cost figures in usage-stats / context-panel — the card keeps its
+  // prompt, token count and latency, and simply drops the model line.
+  const showModel = useModelDisclosure();
+  const modelLabel = showModel ? result?.model : undefined;
   const refImages = Array.isArray(input?.referenceImages)
     ? input.referenceImages.filter((r) => r.uri ?? r.url)
     : undefined;
