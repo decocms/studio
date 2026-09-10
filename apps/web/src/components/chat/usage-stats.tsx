@@ -10,7 +10,7 @@ import {
   type UsageStats as UsageStatsType,
 } from "@/lib/usage-utils.ts";
 import { formatDuration } from "@/lib/format-time.ts";
-import { useShowThreadCost } from "@/hooks/use-entitlements";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 
 const RING_SIZE = 16;
 const RING_STROKE = 2.5;
@@ -22,10 +22,10 @@ interface UsageStatsProps {
 }
 
 export function MessageUsageStats({ usage }: UsageStatsProps) {
-  const showCost = useShowThreadCost();
+  const showCost = useModelDisclosure();
   if (!usage) return null;
   const { totalTokens, inputTokens, outputTokens } = usage;
-  // Below Ultra the label is the token count, always — see useShowThreadCost.
+  // Below Ultra the label is the token count, always — see useModelDisclosure.
   const cost = showCost ? usage.cost : 0;
   if (!totalTokens && !inputTokens && !outputTokens) return null;
 
@@ -78,7 +78,7 @@ interface MessageStatsBarProps {
 }
 
 export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
-  const showCost = useShowThreadCost();
+  const showCost = useModelDisclosure();
   const hasDuration = duration != null && duration > 0;
   const hasCost = showCost && usage != null && (usage.cost ?? 0) > 0;
   const hasTokens = usage != null && (usage.totalTokens ?? 0) > 0;
@@ -172,7 +172,7 @@ export function SessionStats({
   contextWindow,
   onOpenContextPanel,
 }: SessionStatsProps) {
-  const showCost = useShowThreadCost();
+  const showCost = useModelDisclosure();
   const pct = Math.min((totalTokens / contextWindow) * 100, 100);
   const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
   // Zeroed rather than branched at each site: the pill, the aria-label and the

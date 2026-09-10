@@ -14,7 +14,7 @@ import { useChatStream, useChatTask, useChatPrefs } from "./context";
 import type { ChatMessage, SubtaskToolPart } from "./types";
 import { Suspense, useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
-import { useShowThreadCost } from "@/hooks/use-entitlements";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 
 // ============================================================================
 // Helpers
@@ -353,7 +353,7 @@ export function ChatContextPanel({
   // to see (§6 of the pricing model): the tier is the vocabulary, and money
   // appears only at a top-up. Both rows drop out rather than showing a
   // placeholder — a greyed "cost —" still tells you a cost exists.
-  const showCost = useShowThreadCost();
+  const showCost = useModelDisclosure();
 
   const allStats: StatItem[] = [
     {

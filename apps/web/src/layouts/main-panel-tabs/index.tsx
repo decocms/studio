@@ -42,7 +42,8 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useScopeId } from "@/hooks/use-project-scope";
-import { useFeature } from "@/hooks/use-entitlements";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
 import { FeaturePaywall } from "@/components/feature-paywall";
 import { usePanelNavigate } from "./use-panel-navigate";
 import { featureForTab } from "./tab-feature";
@@ -111,6 +112,14 @@ function TabBody({
   };
   const gatedFeature = featureForTab(activeTab);
   const featureAllowed = useFeature(gatedFeature);
+  // The third state, kept as its own state instead of collapsed into either.
+  // `useFeature` fails OPEN while the answer is in flight, which is right for
+  // access and wrong here: the gated view mounted, fired its own queries
+  // against BFF routes that now answer 403, and was then replaced by the
+  // paywall — a layout thrash plus a lazy chunk downloaded for a view the org
+  // cannot open. True when there is nothing to wait for (plans off, no org),
+  // so a self-hosted deployment never holds a frame on this.
+  const featuresSettled = useFeaturesSettled();
   // Native CDN Monitor tab gate — warehouse wired, independent of the
   // control-plane. Ownership is enforced by the BFF; combined with
   // `controlPlaneViews.monitor` below this guards the deep-link `?main=cdn`
@@ -132,6 +141,18 @@ function TabBody({
       activeTab
   ) {
     throw new Error(`forced tab error: ${activeTab}`);
+  }
+
+  // Withhold the body without showing the paywall: this org may well own the
+  // feature, and a paywall that flashes at a paying customer is worse than a
+  // skeleton.
+  if (gatedFeature && !featuresSettled) {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-3 p-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="min-h-0 flex-1 w-full" />
+      </div>
+    );
   }
 
   if (gatedFeature && !featureAllowed) {

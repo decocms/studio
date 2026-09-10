@@ -40,7 +40,7 @@ import {
   useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
 import { TierModelOverridePicker } from "./tier-model-override-row";
-import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 
@@ -330,14 +330,14 @@ export function TierTrigger() {
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
-  // Below Ultra the whole picker is withheld, not just the model names.
-  const modelChoice = useFeature("model_choice");
-  // Withheld entirely below Ultra, so rendering it before the answer lands
-  // shows a picker that then vanishes. Wait instead.
-  const settled = useFeaturesSettled();
+  // Below Ultra the whole picker is withheld, not just the model names — so
+  // this is the DISCLOSURE gate, which fails closed: it withholds while the
+  // answer is in flight and, unlike the access gates, also when the read
+  // failed. A picker that appears for a frame has already shown the names.
+  const canSeeModels = useModelDisclosure();
 
   // After every hook, never before (rules of hooks).
-  if (!settled || !modelChoice) return null;
+  if (!canSeeModels) return null;
 
   const tierLabels = getTierLabels(t);
 

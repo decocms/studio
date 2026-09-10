@@ -105,16 +105,41 @@ export function useFeaturesSettled(): boolean {
 }
 
 /**
- * Whether to show per-thread dollar amounts.
+ * Whether this org may be told which model ran its work, and what it cost.
  *
- * §1 of the pricing model: consumption is a PERCENT, and the one place money
- * appears is a top-up. Below Ultra an org is never told what a message cost —
- * the same gate that withholds the model's NAME (`model_choice`), because the
- * tier is the org's vocabulary, not the model or its price.
+ * §1 and §6 of the pricing model: consumption is a PERCENT, the one place money
+ * appears is a top-up, and below Ultra the org is never told the model's NAME
+ * either — the tier is its vocabulary, not the model or its price.
  *
- * Named rather than inlined because the reason a *cost* label reads a
- * *model-choice* flag is not guessable at the call site.
+ * The one gate here that fails CLOSED, and deliberately not `useFeature`.
+ * Fail-open is right for ACCESS — locking a paying org out of its CMS over one
+ * blipped fetch is the worse bug — and wrong for DISCLOSURE: "never told" and
+ * "told for the first frame of every mount, every org switch, and for the whole
+ * session whenever the read fails" are different promises, and it was the
+ * second one. So this wants a real success, not the absence of an answer.
+ *
+ * Plans off is still "exactly as before": nothing is withheld.
  */
-export function useShowThreadCost(): boolean {
-  return useFeature("model_choice");
+export function useModelDisclosure(): boolean {
+  const plansEnabled = usePlansEnabled();
+  const { isSuccess, data } = useEntitlements();
+  return modelDisclosureAllowed({
+    plansEnabled,
+    isSuccess,
+    modelChoice: data?.features?.model_choice,
+  });
+}
+
+/** The rule itself, so it can be tested without a query client. */
+export function modelDisclosureAllowed({
+  plansEnabled,
+  isSuccess,
+  modelChoice,
+}: {
+  plansEnabled: boolean;
+  isSuccess: boolean;
+  modelChoice: boolean | undefined;
+}): boolean {
+  if (!plansEnabled) return true;
+  return isSuccess && modelChoice === true;
 }
