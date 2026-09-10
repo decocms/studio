@@ -1,4 +1,5 @@
 import { withDraftPointer } from "@/components/sections-editor/section-preview-url";
+import { extractPathParams } from "@/components/sections-editor/page-path-utils";
 
 const str = (value: unknown): string =>
   typeof value === "string" ? value : "";
@@ -30,16 +31,81 @@ function readBlogAppProp(
   return null;
 }
 
+/**
+ * The blog app's `pageSlug`/`categorySlug` props are optional and most sites
+ * (blog-manager-generated ones included) never set them — the actual post and
+ * category routes live in decofile Page blocks instead (a
+ * `website/pages/Page.tsx` / `$live/pages/LivePage.tsx` with a `path`). When
+ * the app block omits the prop we recover the template from that Page block so
+ * "See preview" still works. A Page is the blog post/category page when its
+ * section tree includes the well-known full-page section (`BlogPostPage` /
+ * `BlogCategoryPage`); we pick the fewest-param match so a paginated variant
+ * (`…/page/:page`) never shadows the canonical route.
+ */
+const PAGE_RESOLVE_TYPES = new Set([
+  "website/pages/Page.tsx",
+  "$live/pages/LivePage.tsx",
+]);
+
+/** The `path` of a decofile Page block, or `null` for any other block shape. */
+function pageBlockPath(block: unknown): string | null {
+  if (!block || typeof block !== "object" || Array.isArray(block)) return null;
+  const obj = block as Record<string, unknown>;
+  if (typeof obj.__resolveType !== "string") return null;
+  if (!PAGE_RESOLVE_TYPES.has(obj.__resolveType)) return null;
+  return typeof obj.path === "string" ? obj.path : null;
+}
+
+/** Count the dynamic params in a path template, ignoring the `*` catch-all. */
+function paramCount(path: string): number {
+  return extractPathParams(path).filter((name) => name !== "*").length;
+}
+
+/**
+ * Finds the path template of the Page block whose section tree references the
+ * given full-page section marker (e.g. `BlogPostPage`), preferring the
+ * fewest-param candidate. Returns `null` when no Page matches.
+ */
+function findBlogPageTemplateByMarker(
+  decofile: Record<string, unknown>,
+  marker: RegExp,
+): string | null {
+  let best: string | null = null;
+  let bestParams = Number.POSITIVE_INFINITY;
+  for (const block of Object.values(decofile)) {
+    const path = pageBlockPath(block);
+    if (!path) continue;
+    if (!marker.test(JSON.stringify(block))) continue;
+    const params = paramCount(path);
+    if (params < bestParams) {
+      best = path;
+      bestParams = params;
+    }
+  }
+  return best;
+}
+
+/** Full-page section markers — never the `BlogPost*`/`BlogCategory*` body
+ * sections — so the post and category pages can't cross-match. */
+const BLOG_POST_PAGE_MARKER = /blogpostpage/i;
+const BLOG_CATEGORY_PAGE_MARKER = /blogcategorypage/i;
+
 export function findBlogPageSlug(
   decofile: Record<string, unknown>,
 ): string | null {
-  return readBlogAppProp(decofile, "pageSlug");
+  return (
+    readBlogAppProp(decofile, "pageSlug") ??
+    findBlogPageTemplateByMarker(decofile, BLOG_POST_PAGE_MARKER)
+  );
 }
 
 export function findBlogCategorySlug(
   decofile: Record<string, unknown>,
 ): string | null {
-  return readBlogAppProp(decofile, "categorySlug");
+  return (
+    readBlogAppProp(decofile, "categorySlug") ??
+    findBlogPageTemplateByMarker(decofile, BLOG_CATEGORY_PAGE_MARKER)
+  );
 }
 
 export function firstCategorySlug(post: Record<string, unknown>): string {
@@ -70,10 +136,9 @@ export function applyBlogPageSlug(
   return path;
 }
 
-// The `categorySlug` template's dynamic segment for the category slug — deco
-// has used `:category`, `:slug` and `:categorySlug` across versions.
-const HAS_CATEGORY_PARAM = /:(?:categorySlug|category|slug)\??/;
-const ALL_CATEGORY_PARAMS = /:(?:categorySlug|category|slug)\??/g;
+// Category route param names deco has used (`categoria` before `category` so the longer pt-BR match wins).
+const HAS_CATEGORY_PARAM = /:(?:categorySlug|categoria|category|slug)\??/;
+const ALL_CATEGORY_PARAMS = /:(?:categorySlug|categoria|category|slug)\??/g;
 
 /**
  * Substitutes the category slug into the blog app's `categorySlug` route
