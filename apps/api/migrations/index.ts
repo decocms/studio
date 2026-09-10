@@ -1,3 +1,4 @@
+import * as migration211userfsorg from "./211-user-fs-org";
 import * as migration210githubrepositoryauthorization from "./210-github-repository-authorization";
 import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
 import * as migration208githubconnectflows from "./208-github-connect-flows";
@@ -456,6 +457,7 @@ const migrations: Record<string, Migration> = {
     migration209githubinstallationauthorization,
   "210-github-repository-authorization":
     migration210githubrepositoryauthorization,
+  "211-user-fs-org": migration211userfsorg,
 };
 
 export default migrations;
