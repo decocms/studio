@@ -12,6 +12,11 @@ export const home = {
   "home.orgHome.greetingAfternoonBare": "Boa tarde!",
   "home.orgHome.greetingEveningBare": "Boa noite!",
   "home.orgHome.searchPlaceholder": "Buscar projetos, chats e tarefas\u2026",
+  "home.orgHome.trainingEyebrow": "Treinamento do CMS",
+  "home.orgHome.trainingTitle": "Aprenda a usar o Editor de Site",
+  "home.orgHome.trainingDescription":
+    "Uma playlist r\u00e1pida em v\u00eddeo pra voc\u00ea e seu time tirarem o m\u00e1ximo do CMS.",
+  "home.orgHome.trainingThumbnailAlt": "Playlist de treinamento do CMS da deco",
   "home.projects.heading": "Projetos",
   "home.projects.seeAll": "Ver todos",
   "home.projectFeed.heading": "Feed",

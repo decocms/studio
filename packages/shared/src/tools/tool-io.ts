@@ -293,6 +293,10 @@ export interface StudioToolIO {
         | undefined;
     };
   };
+  ORGANIZATION_HAS_SITE: {
+    input: { [x: string]: never };
+    output: { hasSite: boolean };
+  };
   NOTIFICATION_LIST: {
     input: { cursor?: string | undefined; limit?: number | undefined };
     output: {

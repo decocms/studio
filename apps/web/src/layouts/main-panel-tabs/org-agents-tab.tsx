@@ -25,6 +25,7 @@ import {
   useOrgTasksSuspense,
 } from "@/components/org-home/project-feed";
 import { ProjectRoster } from "@/components/org-home/project-roster";
+import { TrainingCard } from "@/components/org-home/training-card";
 import { buildProjectIndex } from "@/lib/project-index";
 import { useCapability } from "@/hooks/use-capability";
 import { scopableProjects } from "@/hooks/use-project-scope";
@@ -210,6 +211,9 @@ export function OrgAgentsTab() {
         >
           <div className="flex flex-col items-center gap-12 text-center">
             <ConnectPill />
+            {/* Shown only for orgs that own a legacy site — the training is about
+                that CMS. Self-hides via useOrgHasSite, so it costs nothing here. */}
+            <TrainingCard />
             {/* Greeting and search are one unit; the pill is a separate offer,
                 so the space between them is larger than the space within. */}
             <div className="flex w-full flex-col items-center gap-5">
