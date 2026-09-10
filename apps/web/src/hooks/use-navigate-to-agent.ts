@@ -19,10 +19,7 @@ import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { getActiveGithubRepo } from "@/lib/github-repo";
-import {
-  draftsModeEnabled,
-  useBaseBranch,
-} from "@/components/thread/github/use-version-gate";
+import { useBaseBranch } from "@/components/thread/github/use-version-gate";
 import {
   defaultThreadRuntime,
   type ThreadRuntime,
@@ -92,14 +89,7 @@ export function useNavigateToAgent() {
           wantedRuntime ??
             (target ? defaultThreadRuntime(target.metadata) : undefined),
           hasBranch,
-          {
-            knownBranches: new Set<string>([
-              baseBranch,
-              ...(target?.metadata?.releases ?? []).map((r) => r.branch),
-            ]),
-            draftsMode: draftsModeEnabled(target),
-            baseBranch,
-          },
+          { baseBranch },
         );
     const taskId = delegateEntryToShell
       ? undefined

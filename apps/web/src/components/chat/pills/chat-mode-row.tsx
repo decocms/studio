@@ -2,10 +2,7 @@ import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
-import {
-  draftsModeEnabled,
-  useBaseBranch,
-} from "../../thread/github/use-version-gate";
+import { useBaseBranch } from "../../thread/github/use-version-gate";
 import {
   getActiveGithubRepo,
   hasRepoCredential,
@@ -77,7 +74,6 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   // Production branch shown as "Produção"; one shared source with the gate.
   const baseBranch = useBaseBranch(virtualMcp, currentBranch);
-  const draftsMode = draftsModeEnabled(virtualMcp);
 
   // Locked chat's branch is fixed: open a new chat on the picked branch.
   const onChange = (next: string) => {
@@ -96,7 +92,6 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       <BranchPill
         // Remount per repo so the previous project's switcher state can't leak.
         key={`${repoTargetKey(repoTarget)}:${githubRepo.owner}/${githubRepo.name}`}
-        draftsMode={draftsMode}
         userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
         value={currentBranch}

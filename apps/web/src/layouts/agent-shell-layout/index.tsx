@@ -62,10 +62,7 @@ import {
 } from "@/hooks/use-layout-state";
 import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
 import { getActiveGithubRepo } from "@/lib/github-repo";
-import {
-  draftsModeEnabled,
-  useBaseBranch,
-} from "@/components/thread/github/use-version-gate";
+import { useBaseBranch } from "@/components/thread/github/use-version-gate";
 import {
   nextDraftName,
   nextReleaseColor,
@@ -347,7 +344,6 @@ function VmEventsBridge({
     useReleases(virtualMcpId);
   const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
   const currentIsUnnamedDraft =
-    draftsModeEnabled(draftsVm) &&
     isOwnDraftThread &&
     !!currentBranch &&
     currentBranch !== draftsBase &&
@@ -641,13 +637,7 @@ function AgentInsetProvider() {
   const entity = useVirtualMCP(virtualMcpId);
 
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
-  const isDraftsMode = draftsModeEnabled(entity);
   const baseBranch = useBaseBranch(entity, null);
-  // Legacy resume set; drafts mode resumes any non-base draft (see findAgentEntryThread).
-  const namedVersionBranches = new Set<string>([
-    baseBranch,
-    ...(entity?.metadata?.releases ?? []).map((r) => r.branch),
-  ]);
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
@@ -656,8 +646,8 @@ function AgentInsetProvider() {
   const ensureState = useEnsureTask(
     routeThreadId,
     virtualMcpId,
-    // Drafts mode: a freshly minted thread lands on an editable draft, never production.
-    isDraftsMode ? generatedDraftBranch : undefined,
+    // A freshly minted thread lands on an editable draft, never production.
+    generatedDraftBranch,
   );
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
@@ -719,11 +709,7 @@ function AgentInsetProvider() {
       session?.user?.id,
       defaultThreadRuntime(entity.metadata),
       hasActiveGithubRepo,
-      {
-        knownBranches: namedVersionBranches,
-        draftsMode: isDraftsMode,
-        baseBranch,
-      },
+      { baseBranch },
     );
     const threadId =
       entry?.id ?? (hasActiveGithubRepo ? generatedThreadId : null);

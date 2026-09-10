@@ -1,15 +1,10 @@
 import { format, formatDistanceToNow } from "date-fns";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
 import type {
   VirtualMCPEntity,
   VirtualMcpSidebarView,
 } from "@decocms/shared/sdk/types";
-import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
-import { authClient } from "@/lib/auth-client";
+import { useChatStream } from "@/components/chat/context";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -93,7 +88,6 @@ import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview
 import { InPlaceRenderField } from "@/components/sandbox/runtime-card/in-place-render-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
-import { DraftsModeField } from "./drafts-mode-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import {
   initialProjectSidebarFormFields,
@@ -432,9 +426,6 @@ function VirtualMcpDetailViewWithData({
   const [isImproving, setIsImproving] = useState(false);
   const { createNewTask, openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
-  // Enabling Draft & Releases mode moves the thread onto a fresh editable draft.
-  const draftsTaskCtx = useOptionalChatTask();
-  const { data: draftsSession } = authClient.useSession();
 
   const handleImprovePrompt = async () => {
     if (isImproving) return;
@@ -1288,17 +1279,6 @@ function VirtualMcpDetailViewWithData({
                       <ContentEditingField
                         control={form.control}
                         onCommit={flushAndSave}
-                      />
-                      <DraftsModeField
-                        control={form.control}
-                        onCommit={flushAndSave}
-                        onEnable={() =>
-                          draftsTaskCtx?.setCurrentTaskBranch(
-                            generateBranchName(
-                              branchUserLabel(draftsSession?.user),
-                            ),
-                          )
-                        }
                       />
                       {/* Blocks-form preference — nothing to tune with the CMS off. */}
                       {!cmsOff && (

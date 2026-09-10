@@ -30,7 +30,6 @@ import {
   squashMergeChangeRequest,
 } from "./github-pr-api.ts";
 import { useReleases } from "./use-releases";
-import { draftsModeEnabled } from "./use-version-gate";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
   isPrStateActivelyLoading,
@@ -334,7 +333,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const switchToFreshBranch = async () => {
     // Always land on a fresh editable draft, never on read-only production.
-    const published = draftsModeEnabled(vm) ? branch : null;
+    const published = branch;
     const nextBranch = generateBranchName(branchUserLabel(session?.user));
     await setCurrentTaskBranch(nextBranch);
     if (published && published !== baseBranch) {
