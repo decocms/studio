@@ -25,6 +25,13 @@ export function fsByteResponse(
   const contentType = detectContentType(path);
   const headers: Record<string, string> = {
     "Content-Type": contentType,
+    /**
+     * The type is inferred from the file extension, not from the bytes, and
+     * these routes serve user-authored content — one of them without any
+     * session at all. Forbid sniffing so a mislabelled upload can never be
+     * re-interpreted as something executable on our origin.
+     */
+    "X-Content-Type-Options": "nosniff",
     "Cache-Control": isPublic
       ? "public, max-age=0, must-revalidate"
       : "private, max-age=0",

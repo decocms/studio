@@ -27,12 +27,15 @@ import {
   OrgFsValidationError,
 } from "@/file-storage/org-fs";
 import {
-  avatarExtension,
   buildUserFs,
+  deleteUserAvatar,
   isValidUserVolume,
+  listUserAvatars,
   MAX_AVATAR_BYTES,
   pruneAvatars,
   putUserAvatar,
+  setCurrentAvatar,
+  sniffAvatarType,
   userFsReadUrl,
 } from "@/file-storage/user-fs";
 import { fsByteResponse } from "../utils/fs-bytes";
@@ -51,6 +54,20 @@ function fsErrorResponse(c: Context, err: unknown): Response {
   }
   console.error("[user-fs] request failed", err);
   return c.json({ error: "Internal error" }, 500);
+}
+
+/** The signed-in owner, or a response explaining why there isn't one. */
+function requireOwner(
+  c: Context,
+): { ok: true; userId: string } | { ok: false; res: Response } {
+  const ctx = c.get("studioContext") as StudioContext;
+  const userId = ctx.auth?.user?.id;
+  if (!userId)
+    return { ok: false, res: c.json({ error: "Unauthorized" }, 401) };
+  if (!isValidUserVolume(userId)) {
+    return { ok: false, res: c.json({ error: "Unsupported user id" }, 400) };
+  }
+  return { ok: true, userId };
 }
 
 export const createUserFsRoutes = () => {
@@ -102,33 +119,30 @@ export const createUserFsRoutes = () => {
       onError: (c) => c.json({ error: "Avatar exceeds the size limit" }, 413),
     }),
     async (c) => {
+      const owner = requireOwner(c);
+      if (!owner.ok) return owner.res;
+      const { userId } = owner;
       const ctx = c.get("studioContext");
-      const userId = ctx.auth?.user?.id;
-      if (!userId) return c.json({ error: "Unauthorized" }, 401);
-      if (!isValidUserVolume(userId)) {
-        return c.json({ error: "Unsupported user id" }, 400);
-      }
-
-      const contentType = c.req.header("content-type");
-      const ext = avatarExtension(contentType);
-      if (!ext) {
-        return c.json(
-          { error: "Avatar must be a PNG, JPEG, GIF or WebP image" },
-          415,
-        );
-      }
 
       const bytes = new Uint8Array(await c.req.arrayBuffer());
       if (bytes.byteLength === 0) {
         return c.json({ error: "Empty request body" }, 400);
       }
 
+      const type = sniffAvatarType(bytes);
+      if (!type) {
+        return c.json(
+          { error: "Avatar must be a PNG, JPEG, GIF or WebP image" },
+          415,
+        );
+      }
+
       try {
         const path = await putUserAvatar(buildUserFs(ctx), {
           userId,
           bytes,
-          contentType: contentType!.split(";")[0]!.trim().toLowerCase(),
-          ext,
+          contentType: type.mime,
+          ext: type.ext,
         });
         return c.json({ url: userFsReadUrl(ctx.baseUrl, userId, path) });
       } catch (err) {
@@ -138,20 +152,71 @@ export const createUserFsRoutes = () => {
   );
 
   /**
-   * Drop the caller's stored avatar files. Clearing `user.image` is a separate
-   * Better Auth call the client makes first, so a failure here leaves an
-   * unreferenced file rather than a dangling URL.
+   * The caller's stored pictures, newest first. Only the current one is
+   * world-readable; the rest are served to their owner alone, which is exactly
+   * who is asking here.
    */
-  app.delete("/avatar", async (c) => {
+  app.get("/avatars", async (c) => {
+    const owner = requireOwner(c);
+    if (!owner.ok) return owner.res;
     const ctx = c.get("studioContext");
-    const userId = ctx.auth?.user?.id;
-    if (!userId) return c.json({ error: "Unauthorized" }, 401);
-    if (!isValidUserVolume(userId)) {
-      return c.json({ error: "Unsupported user id" }, 400);
+
+    const avatars = await listUserAvatars(buildUserFs(ctx), owner.userId);
+    return c.json({
+      avatars: avatars.map((a) => ({
+        ...a,
+        url: userFsReadUrl(ctx.baseUrl, owner.userId, a.path),
+      })),
+    });
+  });
+
+  /** Re-pick a picture already in the history; answers with its URL. */
+  app.post("/avatar/select", async (c) => {
+    const owner = requireOwner(c);
+    if (!owner.ok) return owner.res;
+    const ctx = c.get("studioContext");
+
+    const body = (await c.req.json().catch(() => null)) as {
+      path?: unknown;
+    } | null;
+    if (typeof body?.path !== "string" || !body.path) {
+      return c.json({ error: "Body must be { path: string }" }, 400);
     }
 
-    await pruneAvatars(buildUserFs(ctx), userId);
-    return c.json({ ok: true });
+    try {
+      await setCurrentAvatar(buildUserFs(ctx), owner.userId, body.path);
+      return c.json({
+        url: userFsReadUrl(ctx.baseUrl, owner.userId, body.path),
+      });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
+  /**
+   * With `?path=`, drop that one picture; without it, drop the whole history.
+   * Clearing `user.image` is a separate Better Auth call the client makes
+   * first, so a failure here leaves an unreferenced file rather than a
+   * dangling URL.
+   */
+  app.delete("/avatar", async (c) => {
+    const owner = requireOwner(c);
+    if (!owner.ok) return owner.res;
+    const ctx = c.get("studioContext");
+    const fs = buildUserFs(ctx);
+
+    const path = c.req.query("path");
+    if (!path) {
+      await pruneAvatars(fs, owner.userId);
+      return c.json({ ok: true });
+    }
+
+    try {
+      await deleteUserAvatar(fs, owner.userId, path);
+      return c.json({ ok: true });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
   });
 
   return app;

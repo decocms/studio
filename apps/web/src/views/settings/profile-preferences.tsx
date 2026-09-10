@@ -1,8 +1,14 @@
-import { useRef } from "react";
+import { useState } from "react";
 import { Page } from "@/components/page";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { AVATAR_ACCEPT, useAvatarUpload } from "@/hooks/use-avatar-upload.ts";
+import {
+  AVATAR_ACCEPT,
+  MAX_AVATAR_BYTES,
+  useAvatarActions,
+  useAvatarHistory,
+} from "@/hooks/use-avatar-upload.ts";
+import { ImageUploadDialog } from "@/components/image-upload/image-upload-dialog";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Select,
@@ -48,47 +54,49 @@ const LANGUAGE_OPTIONS: { value: Locale; label: string }[] = [
 ];
 
 /**
- * Clickable avatar that replaces the stored picture. The bytes land in the
+ * Clickable avatar that opens the crop-and-pick dialog. The bytes land in the
  * user's own filesystem and `user.image` holds only the URL — see
  * `use-avatar-upload.ts` for why an inline data URL is not an option.
  */
 function AvatarUpload({ url, fallback }: { url?: string; fallback: string }) {
   const t = useT();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { uploadAvatar, removeAvatar, isUploading } = useAvatarUpload();
+  const [open, setOpen] = useState(false);
+  const { uploadAvatar, selectAvatar, deleteStoredAvatar, removeAvatar } =
+    useAvatarActions();
+  // Only fetched while the dialog is open: the thumbnails are worthless until
+  // someone is actually looking at the picker.
+  const history = useAvatarHistory(open);
 
   return (
     <div className="flex items-center gap-2">
       {url ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={isUploading}
-          onClick={() => void removeAvatar()}
-        >
+        <Button variant="ghost" size="sm" onClick={() => void removeAvatar()}>
           {t("settings.profile.avatarRemove")}
         </Button>
       ) : null}
       <button
         type="button"
-        disabled={isUploading}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => setOpen(true)}
         aria-label={t("settings.profile.avatarUpload")}
         title={t("settings.profile.avatarUpload")}
-        className="rounded-full transition-opacity hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Avatar url={url} fallback={fallback} shape="circle" size="base" />
       </button>
-      <input
-        ref={inputRef}
-        type="file"
+
+      <ImageUploadDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t("settings.profile.avatarDialogTitle")}
+        description={t("settings.profile.avatarDialogDescription")}
+        shape="circle"
         accept={AVATAR_ACCEPT}
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          // Reset first: picking the same file twice must fire onChange again.
-          e.target.value = "";
-          if (file) void uploadAvatar(file);
+        maxBytes={MAX_AVATAR_BYTES}
+        onUpload={uploadAvatar}
+        gallery={{
+          items: history.data ?? [],
+          onSelect: selectAvatar,
+          onDelete: deleteStoredAvatar,
         }}
       />
     </div>

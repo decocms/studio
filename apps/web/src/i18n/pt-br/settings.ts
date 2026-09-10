@@ -229,13 +229,14 @@ export const settings = {
   "settings.profile.displayName": "Nome de exibição",
   "settings.profile.displayNamePlaceholder": "Seu nome",
   "settings.profile.email": "E-mail",
-  "settings.profile.avatarUpload": "Enviar uma nova foto",
+  "settings.profile.avatarUpload": "Trocar sua foto",
+  "settings.profile.avatarDialogTitle": "Foto de perfil",
+  "settings.profile.avatarDialogDescription":
+    "Arraste para reposicionar e role para dar zoom. Só a foto em uso fica visível para outras pessoas.",
+  "settings.profile.avatarDeleted": "Foto excluída",
   "settings.profile.avatarRemove": "Remover",
   "settings.profile.avatarRemoved": "Foto removida",
   "settings.profile.avatarUpdated": "Foto atualizada",
-  "settings.profile.avatarTooLarge": "Escolha uma imagem menor que 2 MB",
-  "settings.profile.avatarUnsupportedType":
-    "Escolha uma imagem PNG, JPEG, GIF ou WebP",
   "settings.profile.avatarUploadError": "Falha ao atualizar a foto",
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",

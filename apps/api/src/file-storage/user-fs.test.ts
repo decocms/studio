@@ -1,36 +1,65 @@
 import { describe, expect, it } from "bun:test";
 import {
   AVATAR_DIR,
-  avatarExtension,
   avatarPath,
   isValidUserVolume,
+  sniffAvatarType,
   USER_FS_API_PREFIX,
   userFsReadUrl,
 } from "./user-fs";
 
-describe("avatarExtension", () => {
-  it("maps the allowed raster types", () => {
-    expect(avatarExtension("image/png")).toBe("png");
-    expect(avatarExtension("image/jpeg")).toBe("jpg");
-    expect(avatarExtension("image/gif")).toBe("gif");
-    expect(avatarExtension("image/webp")).toBe("webp");
+const png = (extra: number[] = []) =>
+  new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...extra]);
+
+describe("sniffAvatarType", () => {
+  it("recognizes the four raster formats from their leading bytes", () => {
+    expect(sniffAvatarType(png())).toEqual({ mime: "image/png", ext: "png" });
+    expect(sniffAvatarType(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toEqual({
+      mime: "image/jpeg",
+      ext: "jpg",
+    });
+    expect(
+      sniffAvatarType(new Uint8Array([...Buffer.from("GIF89a"), 0x01])),
+    ).toEqual({ mime: "image/gif", ext: "gif" });
+    expect(
+      sniffAvatarType(
+        new Uint8Array([...Buffer.from("RIFF????WEBPVP8 ", "binary")]),
+      ),
+    ).toEqual({ mime: "image/webp", ext: "webp" });
   });
 
-  it("tolerates parameters and casing on the header", () => {
-    expect(avatarExtension("image/PNG")).toBe("png");
-    expect(avatarExtension("image/jpeg; charset=binary")).toBe("jpg");
-    expect(avatarExtension(" image/webp ")).toBe("webp");
+  it("accepts the older GIF87a signature", () => {
+    expect(
+      sniffAvatarType(new Uint8Array([...Buffer.from("GIF87a"), 0x01])),
+    ).toEqual({ mime: "image/gif", ext: "gif" });
   });
 
   it("refuses SVG — it can carry script and is served to anyone", () => {
-    expect(avatarExtension("image/svg+xml")).toBeNull();
+    expect(
+      sniffAvatarType(new Uint8Array(Buffer.from("<svg></svg>"))),
+    ).toBeNull();
   });
 
-  it("refuses non-images and missing types", () => {
-    expect(avatarExtension("text/html")).toBeNull();
-    expect(avatarExtension("application/octet-stream")).toBeNull();
-    expect(avatarExtension(undefined)).toBeNull();
-    expect(avatarExtension("")).toBeNull();
+  it("refuses HTML dressed up as an image, whatever the caller claims", () => {
+    expect(
+      sniffAvatarType(new Uint8Array(Buffer.from("<!doctype html><script>"))),
+    ).toBeNull();
+  });
+
+  it("refuses a RIFF container that is not WebP", () => {
+    expect(
+      sniffAvatarType(
+        new Uint8Array(Buffer.from("RIFF????WAVEfmt ", "binary")),
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses empty and truncated input without reading past the end", () => {
+    expect(sniffAvatarType(new Uint8Array())).toBeNull();
+    expect(sniffAvatarType(new Uint8Array([0x89, 0x50]))).toBeNull();
+    expect(
+      sniffAvatarType(new Uint8Array([0x47, 0x49, 0x46, 0x38])),
+    ).toBeNull();
   });
 });
 

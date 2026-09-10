@@ -17,6 +17,7 @@ import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
 import { layouts } from "./layouts.ts";
 import { layoutTour } from "./layout-tour.ts";
+import { imageUpload } from "./image-upload.ts";
 import { home } from "./home.ts";
 import { header } from "./header.ts";
 import { filePicker } from "./file-picker.ts";
@@ -61,6 +62,7 @@ export const ptBR = {
   ...library,
   ...layouts,
   ...layoutTour,
+  ...imageUpload,
   ...home,
   ...header,
   ...filePicker,

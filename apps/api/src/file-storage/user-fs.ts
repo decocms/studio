@@ -23,7 +23,7 @@ import { createBoundObjectStorage } from "../object-storage/bound-object-storage
 import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import { getObjectStorageS3Service } from "../object-storage/factory";
 import type { StudioContext } from "../core/studio-context";
-import { OrgFs, type OrgFsLimits } from "./org-fs";
+import { OrgFs, OrgFsNotFoundError, type OrgFsLimits } from "./org-fs";
 import { isValidVolume } from "./org-fs-path";
 
 /** System organization owning every user volume (migration 211). */
@@ -48,25 +48,57 @@ const USER_FS_LIMITS: OrgFsLimits = {
 export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 /**
- * Raster image types only, mapped to the extension the read route infers the
- * content-type back from. SVG is deliberately absent: it can carry script, and
- * an avatar is served to anyone with the link — hoisting it would turn a
- * profile picture into stored XSS on our own origin.
+ * How many pictures a user keeps, current one included. Past avatars are worth
+ * keeping — re-picking one is the common case — but the list is a convenience,
+ * not an archive, so the oldest falls off rather than growing into the volume
+ * quota and failing a later upload with a confusing error.
  */
-const AVATAR_EXT_BY_MIME: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-};
+const MAX_AVATAR_HISTORY = 5;
 
-/** The upload's extension, or null when the type is not an allowed image. */
-export function avatarExtension(
-  contentType: string | undefined,
-): string | null {
-  if (!contentType) return null;
-  const mime = contentType.split(";")[0]!.trim().toLowerCase();
-  return AVATAR_EXT_BY_MIME[mime] ?? null;
+/** A recognized raster image: its media type and the extension we store it under. */
+export interface AvatarType {
+  mime: string;
+  ext: string;
+}
+
+function startsWith(bytes: Uint8Array, signature: number[], at = 0): boolean {
+  return signature.every((byte, i) => bytes[at + i] === byte);
+}
+
+/**
+ * Identify an avatar from its leading bytes, or null if it is not one of the
+ * four raster formats we accept.
+ *
+ * Deliberately ignores the request's `Content-Type`: the stored file's
+ * extension decides the type the public read route later serves it as, so
+ * trusting a client header would let anyone publish arbitrary bytes under an
+ * image label. SVG is absent by design — it can carry script, and these bytes
+ * are readable by anyone with the link, so accepting it would turn a profile
+ * picture into stored XSS on our own origin.
+ */
+export function sniffAvatarType(bytes: Uint8Array): AvatarType | null {
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return { mime: "image/png", ext: "png" };
+  }
+  if (startsWith(bytes, [0xff, 0xd8, 0xff])) {
+    return { mime: "image/jpeg", ext: "jpg" };
+  }
+  // "GIF87a" / "GIF89a"
+  if (
+    startsWith(bytes, [0x47, 0x49, 0x46, 0x38]) &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+    bytes[5] === 0x61
+  ) {
+    return { mime: "image/gif", ext: "gif" };
+  }
+  // "RIFF" .... "WEBP"
+  if (
+    startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+    startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)
+  ) {
+    return { mime: "image/webp", ext: "webp" };
+  }
+  return null;
 }
 
 /**
@@ -115,13 +147,101 @@ export function buildUserFs(ctx: StudioContext): OrgFs {
   );
 }
 
+/** A stored avatar: `current` is the one `user.image` points at. */
+export interface StoredAvatar {
+  path: string;
+  current: boolean;
+  updatedAt: string;
+}
+
+/** Avatar files newest-first. Directories and the deleted are already out. */
+async function listAvatarFiles(fs: OrgFs, userId: string) {
+  const entries = await fs.listDir(userId, AVATAR_DIR).catch(() => []);
+  return entries
+    .filter((e) => e.kind === "file")
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** The user's pictures, newest first. */
+export async function listUserAvatars(
+  fs: OrgFs,
+  userId: string,
+): Promise<StoredAvatar[]> {
+  const files = await listAvatarFiles(fs, userId);
+  return files.map((e) => ({
+    path: e.path,
+    current: e.readPublic,
+    updatedAt: e.updatedAt,
+  }));
+}
+
 /**
- * Store `bytes` as the user's avatar and return its path.
+ * Only the picture in use is world-readable; the rest of the history stays
+ * private and is visible to its owner alone (the read route already serves an
+ * owner their own private files). Publishing the whole directory instead would
+ * leave every avatar a person ever picked permanently fetchable by anyone who
+ * kept the link.
+ */
+async function ensureHistoryPrivate(fs: OrgFs, userId: string): Promise<void> {
+  const dir = await fs.stat(userId, AVATAR_DIR);
+  if (dir?.readPublic) {
+    await fs.setReadPublic(userId, AVATAR_DIR, false, { actor: userId });
+  }
+}
+
+/**
+ * Point `user.image`'s target at `path`. Publishes before un-publishing, so
+ * there is never an instant with no readable avatar; the reverse order would
+ * show a broken image to anyone loading the page right then.
+ */
+export async function setCurrentAvatar(
+  fs: OrgFs,
+  userId: string,
+  path: string,
+): Promise<void> {
+  const files = await listAvatarFiles(fs, userId);
+  if (!files.some((e) => e.path === path)) {
+    throw new OrgFsNotFoundError(`No such avatar: ${path}`);
+  }
+
+  await ensureHistoryPrivate(fs, userId);
+  await fs.setReadPublic(userId, path, true, { actor: userId });
+  await Promise.all(
+    files
+      .filter((e) => e.path !== path && e.readPublic)
+      .map((e) => fs.setReadPublic(userId, e.path, false, { actor: userId })),
+  );
+}
+
+/**
+ * Drop the oldest pictures past the cap, never the one in use — after a pick
+ * from history the current avatar is not the newest file.
+ */
+async function evictBeyondCap(
+  fs: OrgFs,
+  userId: string,
+  keepPath: string,
+): Promise<void> {
+  try {
+    const files = await listAvatarFiles(fs, userId);
+    const excess = files
+      .filter((e) => e.path !== keepPath)
+      .slice(MAX_AVATAR_HISTORY - 1);
+    await Promise.all(
+      excess.map((e) => fs.delete(userId, e.path, { actor: userId })),
+    );
+  } catch (err) {
+    console.warn("[user-fs] failed to evict old avatars", err);
+  }
+}
+
+/**
+ * Store `bytes` as the user's current avatar and return its path.
  *
- * Ordering is failure-shaped: write, publish, then prune. A crash after the
- * write leaves an unreferenced file (reclaimed by the next upload's prune); a
- * crash before the prune leaves the *old* avatar behind, which still renders.
- * Pruning first would risk a window with no avatar at all.
+ * Ordering is failure-shaped: write, publish, then evict. A crash after the
+ * write leaves an unreferenced file (reclaimed by the next upload's eviction);
+ * a crash before the evict leaves an extra picture in the history, which is
+ * harmless. Evicting first could delete the only avatar there is.
  */
 export async function putUserAvatar(
   fs: OrgFs,
@@ -131,30 +251,36 @@ export async function putUserAvatar(
   const path = avatarPath(bytes, ext);
 
   await fs.write(userId, path, bytes, { actor: userId, contentType });
-  await fs.setReadPublic(userId, AVATAR_DIR, true, { actor: userId });
-  await pruneAvatars(fs, userId, path);
+  await setCurrentAvatar(fs, userId, path);
+  await evictBeyondCap(fs, userId, path);
 
   return path;
 }
 
-/**
- * Drop every avatar file except `keepPath` (pass none to clear them all).
- * Best-effort: a stale file is invisible to users and costs a few KB, so a
- * failure here must not fail the upload that just succeeded.
- */
-export async function pruneAvatars(
+/** Delete one stored picture. */
+export async function deleteUserAvatar(
   fs: OrgFs,
   userId: string,
-  keepPath?: string,
+  path: string,
 ): Promise<void> {
+  const files = await listAvatarFiles(fs, userId);
+  if (!files.some((e) => e.path === path)) {
+    throw new OrgFsNotFoundError(`No such avatar: ${path}`);
+  }
+  await fs.delete(userId, path, { actor: userId });
+}
+
+/**
+ * Delete every stored picture. Best-effort: a leftover file is invisible to
+ * users and costs a few KB, so a failure here must not fail the caller.
+ */
+export async function pruneAvatars(fs: OrgFs, userId: string): Promise<void> {
   try {
-    const entries = await fs.listDir(userId, AVATAR_DIR);
+    const files = await listAvatarFiles(fs, userId);
     await Promise.all(
-      entries
-        .filter((e) => e.kind === "file" && e.path !== keepPath)
-        .map((e) => fs.delete(userId, e.path, { actor: userId })),
+      files.map((e) => fs.delete(userId, e.path, { actor: userId })),
     );
   } catch (err) {
-    console.warn("[user-fs] failed to prune old avatars", err);
+    console.warn("[user-fs] failed to clear avatars", err);
   }
 }
