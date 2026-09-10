@@ -16,6 +16,9 @@ import {
 } from "./client";
 
 export interface IssueForPrompt {
+  /** Jira's own issue id. The stable identity a link is keyed by — an issue's
+   *  KEY changes when it moves project, its id does not. */
+  id: string;
   key: string;
   url: string;
   summary: string;
@@ -33,15 +36,20 @@ export function issueUrl(siteUrl: string, key: string): string {
   return `${siteUrl.replace(/\/+$/, "")}/browse/${encodeURIComponent(key)}`;
 }
 
-/** Read everything the prompt shows, resolving mentions to names once. */
+/**
+ * Read everything the prompt shows, resolving mentions to names once.
+ *
+ * `issueIdOrKey` is either, as Jira's own endpoint takes either: the trigger
+ * knows the id from the changelog, a person firing a run by hand knows the key.
+ */
 export async function loadIssueForPrompt(
   client: JiraClient,
   siteUrl: string,
-  issueId: string,
+  issueIdOrKey: string,
 ): Promise<IssueForPrompt> {
   const [issue, comments] = await Promise.all([
-    client.getIssue(issueId),
-    client.listComments(issueId),
+    client.getIssue(issueIdOrKey),
+    client.listComments(issueIdOrKey),
   ]);
   const users = new JiraUserDirectory(client);
   const names = await users.resolve([
@@ -49,6 +57,7 @@ export async function loadIssueForPrompt(
     ...comments.flatMap((c) => collectMentionAccountIds(c.body)),
   ]);
   return {
+    id: issue.id,
     key: issue.key,
     url: issueUrl(siteUrl, issue.key),
     summary: issue.fields.summary,

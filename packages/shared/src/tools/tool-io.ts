@@ -5445,6 +5445,15 @@ export interface StudioToolIO {
     input: { jiraStatus: string };
     output: { removed: boolean };
   };
+  JIRA_RUN_START: {
+    input: { issueKey: string; prompt?: string | null | undefined };
+    output: {
+      issueKey: string;
+      issueUrl: string;
+      itemId: string;
+      supersededThreadIds: string[];
+    };
+  };
   JIRA_ISSUE_GET: {
     input: { [x: string]: never };
     output: { key: string; url: string; status: string; markdown: string };

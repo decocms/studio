@@ -25,6 +25,8 @@ const flowSchema = z.object({
       installationId: z.number(),
       login: z.string(),
       avatarUrl: z.string().nullable(),
+      /** Null when the whole account is on offer, a count when only part is. */
+      repositoryCount: z.number().nullable(),
     }),
   ),
 });
@@ -194,8 +196,18 @@ export function GithubConnectDialog({
                   shape="circle"
                   muted
                 />
-                <span className="flex-1 text-left truncate">
-                  {installation.login}
+                <span className="flex-1 min-w-0 text-left">
+                  <span className="block truncate">{installation.login}</span>
+                  {installation.repositoryCount !== null && (
+                    <span className="block truncate text-xs text-muted-foreground font-normal">
+                      {t(
+                        installation.repositoryCount === 1
+                          ? "settings.repositories.githubAdministeredOne"
+                          : "settings.repositories.githubAdministered",
+                        { count: String(installation.repositoryCount) },
+                      )}
+                    </span>
+                  )}
                 </span>
                 <ArrowRight size={16} />
               </Button>

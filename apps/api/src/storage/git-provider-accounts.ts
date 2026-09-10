@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type {
   GitAuthKind,
   GitProviderAccount,
@@ -26,6 +26,8 @@ type Row = {
   login: string;
   avatar_url: string | null;
   installation_id: string | number | null;
+  installation_authorized_by: string | null;
+  installation_repository_ids: number[] | null;
   credential_connection_id: string | null;
   status: "active" | "revoked";
   created_by: string | null;
@@ -38,6 +40,9 @@ type Row = {
 export interface GitProviderAccountRecord extends GitProviderAccount {
   credentialConnectionId: string | null;
   connectedBy: { name: string } | null;
+  installationAuthorizedBy: string | null;
+  /** Null grants the whole installation; a list grants only those repositories. */
+  installationRepositoryIds: number[] | null;
 }
 
 function toEntity(row: Row): GitProviderAccountRecord {
@@ -56,6 +61,8 @@ function toEntity(row: Row): GitProviderAccountRecord {
     avatarUrl: row.avatar_url,
     installationId: Number.isFinite(installationId) ? installationId : null,
     status: row.status,
+    installationAuthorizedBy: row.installation_authorized_by ?? null,
+    installationRepositoryIds: row.installation_repository_ids ?? null,
     credentialConnectionId: row.credential_connection_id,
     connectedBy: row.connected_by_name ? { name: row.connected_by_name } : null,
     createdAt: toIso(row.created_at),
@@ -72,6 +79,8 @@ export interface UpsertGitProviderAccountParams {
   login: string;
   avatarUrl?: string | null;
   installationId?: number | null;
+  installationAuthorizedBy?: string | null;
+  installationRepositoryIds?: number[] | null;
   createdBy?: string | null;
 }
 
@@ -99,6 +108,10 @@ export class GitProviderAccountStorage {
         login: params.login,
         avatar_url: params.avatarUrl ?? null,
         installation_id: params.installationId ?? null,
+        installation_authorized_by: params.installationAuthorizedBy ?? null,
+        installation_repository_ids: params.installationRepositoryIds
+          ? JSON.stringify(params.installationRepositoryIds)
+          : null,
         credential_connection_id: null,
         status: "active",
         created_by: params.createdBy ?? null,
@@ -112,6 +125,21 @@ export class GitProviderAccountStorage {
             login: params.login,
             avatar_url: params.avatarUrl ?? null,
             installation_id: params.installationId ?? null,
+            installation_authorized_by: params.installationAuthorizedBy ?? null,
+            // Grants add up: a second person who administers other
+            // repositories widens what this organization can reach, and an
+            // owner connecting the account widens it to everything. A row
+            // that was revoked or never authorized starts over from the
+            // incoming grant instead of reviving the old one.
+            installation_repository_ids: sql<string | null>`CASE
+              WHEN git_provider_accounts.status != 'active'
+                OR git_provider_accounts.installation_authorized_by IS NULL
+                THEN excluded.installation_repository_ids
+              WHEN excluded.installation_repository_ids IS NULL
+                OR git_provider_accounts.installation_repository_ids IS NULL THEN NULL
+              ELSE (SELECT jsonb_agg(DISTINCT value) FROM jsonb_array_elements(
+                git_provider_accounts.installation_repository_ids || excluded.installation_repository_ids
+              )) END`,
             credential_connection_id: null,
             status: "active",
             updated_at: now,

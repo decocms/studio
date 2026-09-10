@@ -81,6 +81,21 @@ export const settings = {
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
+  "settings.jira.testRunLabel": "Testar em uma issue",
+  "settings.jira.testRunDescription":
+    "Rode o agente em uma única issue agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
+  "settings.jira.testRunIssuePlaceholder": "ABC-123 ou um link",
+  "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
+  "settings.jira.testRunPromptAriaLabel": "Instrução para este teste",
+  "settings.jira.testRun": "Rodar agente",
+  "settings.jira.testRunRunning": "Iniciando\u2026",
+  "settings.jira.testRunStarted": "Agente iniciado em {issueKey}",
+  "settings.jira.testRunTookOver":
+    "Agente reiniciado em {issueKey} \u2014 o run que já estava nela foi interrompido",
+  "settings.jira.testRunFailed": "Não foi possível iniciar o run",
+  "settings.jira.testRunHelp":
+    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Deixe a instrução vazia para usar a do próprio agente.",
+  "settings.jira.testRunWatch": "Ver os runs no Monitor",
   "settings.syncedRepos.pageDescription":
     "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
@@ -123,9 +138,13 @@ export const settings = {
   "settings.repositories.addGithubAccount":
     "Adicionar conta ou organização do GitHub",
   "settings.repositories.githubShareHint":
-    "Escolha uma conta para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
+    "Escolha sua conta pessoal do GitHub, ou uma organização onde você administra repositórios, para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
   "settings.repositories.githubInstallHint":
-    "Nenhuma conta disponível ainda. Instale o app do GitHub na sua conta ou organização, ou peça a um administrador da organização para aprovar o acesso.",
+    "Ainda não há nada seu para compartilhar. Instale o app do GitHub na sua conta pessoal ou nos repositórios que você administra, ou peça ao dono da conta para conectá-la ao Studio. Um repositório em que você só colabora não é seu para compartilhar.",
+  "settings.repositories.githubAdministered":
+    "{count} repositórios que você administra",
+  "settings.repositories.githubAdministeredOne":
+    "1 repositório que você administra",
   "settings.repositories.installGithubAccount": "Instalar em outra conta",
   "settings.repositories.checkGithubAccess": "Verificar acesso",
   "settings.repositories.switchGithubUser": "Usar outro login do GitHub",

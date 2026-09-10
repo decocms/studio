@@ -86,14 +86,20 @@ function grantKind(
 }
 
 /**
- * Whether Studio itself can produce credentials for this account. False only
- * for a backfilled GitHub App account on a deployment without the App keys —
- * those still clone through their legacy `mcp-github` connection.
+ * Whether Studio itself can produce credentials for this account. A GitHub
+ * installation must carry an authorization before Studio can mint for it, and
+ * that authorization must still cover something: a partial grant emptied of
+ * every repository is an account nobody may use.
  */
 export function accountIsServable(account: GitProviderAccountRecord): boolean {
   if (account.status !== "active") return false;
   if (account.type === "github" && account.authKind === "github_app") {
-    return getGithubAppAuth() !== null && account.installationId !== null;
+    return (
+      getGithubAppAuth() !== null &&
+      account.installationId !== null &&
+      !!account.installationAuthorizedBy &&
+      account.installationRepositoryIds?.length !== 0
+    );
   }
   return true;
 }
@@ -102,6 +108,26 @@ export function clientForAccount(
   deps: GitProviderDeps,
   account: GitProviderAccountRecord,
 ): GitProviderClient {
+  if (account.status !== "active") {
+    throw new GitProviderError({
+      provider: account.type,
+      status: 403,
+      message:
+        "This git account was revoked. Reconnect it before accessing repositories.",
+    });
+  }
+  if (
+    account.authKind === "github_app" &&
+    (!account.installationAuthorizedBy ||
+      account.installationRepositoryIds?.length === 0)
+  ) {
+    throw new GitProviderError({
+      provider: account.type,
+      status: 403,
+      message:
+        "Reconnect this git account. A GitHub installation must be authorized by its account owner or by someone who administers repositories in it.",
+    });
+  }
   const credentials = new GitProviderAccountCredentialStorage(
     deps.db,
     deps.vault,
@@ -121,6 +147,7 @@ export function clientForAccount(
         return new GithubProviderClient({
           host: account.host,
           installationId: account.installationId,
+          repositoryIds: account.installationRepositoryIds,
           appAuth,
         });
       }
