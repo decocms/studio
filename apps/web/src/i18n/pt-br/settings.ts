@@ -653,6 +653,16 @@ export const settings = {
     "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
   "settings.agentTools.orgMcpsDescription":
     "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
+  "settings.agentTools.orgMcpsPickTitle":
+    "Conex\u00f5es que os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickDescription":
+    "Desligue uma para mant\u00ea-la fora dos runs de coding agent. \u00datil para uma conex\u00e3o que duplica uma ferramenta que o run j\u00e1 tem \u2014 um MCP do mesmo tracker em que o run reporta, por exemplo. Um MCP conectado depois come\u00e7a ligado.",
+  "settings.agentTools.orgMcpsPickAriaLabel":
+    "Deixar os runs alcan\u00e7arem {name}",
+  "settings.agentTools.orgMcpsPickEmpty":
+    "Esta organiza\u00e7\u00e3o ainda n\u00e3o tem conex\u00f5es MCP",
+  "settings.agentTools.orgMcpsPickFailed":
+    "N\u00e3o foi poss\u00edvel salvar quais conex\u00f5es os runs alcan\u00e7am",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

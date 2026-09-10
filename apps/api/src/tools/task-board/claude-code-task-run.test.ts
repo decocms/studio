@@ -79,12 +79,47 @@ describe("buildClaudeCodeTaskPrompt", () => {
       expect(prompt).toContain("open a pull request");
       expect(prompt).toContain("from the branch you were given");
     });
+
+    // Inverted from the board rule. A Jira run's reviewer writes its verdict to
+    // the hidden anchor card, so "a reviewer checks the preview after you hand
+    // over" reports to nobody — this run is the only one that can check it.
+    test("is told to verify on the deploy preview, not only locally", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).toContain("DEPLOY PREVIEW");
+      expect(prompt).not.toContain("Do NOT wait for, or verify against");
+    });
+
+    test("is told how to get evidence onto the issue", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).toContain("org/output/");
+      expect(prompt).toContain("mcp__studio__JIRA_REMOTE_LINK_ADD");
+      expect(prompt).toContain("qa-screenshot");
+    });
+
+    // With no rule prompt the board's "you've been assigned this task" lead is
+    // wrong: there is no task, there is an issue.
+    test("leads with the Jira default when the rule has no prompt", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt.startsWith("A Jira issue was moved into a column")).toBe(
+        true,
+      );
+    });
+
+    test("a rule's own prompt still wins over that default", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+        ...jira,
+        instruction: "Only review, do not change code.",
+      });
+      expect(prompt.startsWith("Only review, do not change code.")).toBe(true);
+    });
   });
 
-  test("a board run keeps its board tools", () => {
+  test("a board run keeps its board tools and its local-only verification", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("mcp__studio__TASK_BOARD_COMMENT_CREATE");
     expect(prompt).not.toContain("JIRA_");
+    expect(prompt).toContain("Do NOT wait for, or verify against");
+    expect(prompt).not.toContain("DEPLOY PREVIEW");
   });
 
   test("omits the description block when there is none", () => {

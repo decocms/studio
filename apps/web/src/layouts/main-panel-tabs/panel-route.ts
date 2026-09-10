@@ -58,6 +58,8 @@ export interface PanelPayload {
   /** `site-editor` — {@link CONTENT_MAIN} while the surface is on Content;
    *  absent for the plain preview. */
   main?: string;
+  /** `settings` — the open settings section (absent = its index). */
+  section?: string;
 }
 
 /** Every payload key, so a writer can clear the ones it does not use. */
@@ -70,6 +72,7 @@ export const PANEL_PAYLOAD_KEYS = [
   "tool",
   "automation",
   "main",
+  "section",
 ] as const satisfies ReadonlyArray<keyof PanelPayload>;
 
 /**

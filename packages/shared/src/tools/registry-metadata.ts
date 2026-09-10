@@ -203,6 +203,7 @@ const ALL_TOOL_NAMES = [
   "JIRA_COMMENT_ADD",
   "JIRA_ISSUE_TRANSITION",
   "JIRA_ATTACHMENT_DOWNLOAD",
+  "JIRA_REMOTE_LINK_ADD",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -980,6 +981,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
       "Get a short-lived download URL for an attachment of the run's Jira issue",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_REMOTE_LINK_ADD",
+    description:
+      "Link a pull request or deploy preview on the run's Jira issue",
     category: "Jira",
   },
   {

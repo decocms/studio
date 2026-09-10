@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { User } from "@/components/user/user";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 
 import { authenticateMcp, isConnectionAuthenticated } from "@/lib/mcp-oauth";
@@ -33,7 +33,6 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Card, CardContent } from "@decocms/ui/components/card.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -53,8 +52,18 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Maximize01, Play, Plus, Stars01, Trash01 } from "@untitledui/icons";
+import {
+  Cube01,
+  Maximize01,
+  MessageTextSquare01,
+  Play,
+  PuzzlePiece01,
+  Plus,
+  Stars01,
+  Trash01,
+} from "@untitledui/icons";
 import { Suspense, useEffect, useReducer, useState } from "react";
+import type { ReactNode } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useDebouncedAutosave } from "@/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
@@ -66,7 +75,23 @@ import { SubAgentsSection } from "./sub-agents-section";
 import { track } from "@/lib/posthog-client";
 import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ConnectionItem, ConnectionItemSkeleton } from "./connection-item";
-import { LayoutTabContent } from "./layout-tab-content";
+import { ProjectViewsSection } from "./settings/views-section";
+import { useProjectViews } from "./settings/use-project-views";
+import {
+  ProjectSettingsIndex,
+  type ProjectSettingsGroupDef,
+} from "./settings/settings-index";
+import { ProjectSettingsDetail } from "./settings/settings-detail";
+import {
+  PROJECT_SETTINGS_SECTIONS,
+  type ProjectSettingsSectionKey,
+} from "./settings/sections";
+import {
+  SettingsCard,
+  SettingsCardRow,
+  SettingsSection,
+} from "@/components/settings/settings-section";
+import { useProjectSettingsSection } from "./settings/use-settings-section";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
@@ -909,6 +934,12 @@ function VirtualMcpDetailViewWithData({
   };
 
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
+  const { section, openSection } = useProjectSettingsSection();
+  const views = useProjectViews({
+    virtualMcpId: virtualMcp.id,
+    form,
+    flushAndSave,
+  });
   const navigate = useNavigate();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -928,6 +959,101 @@ function VirtualMcpDetailViewWithData({
       // Error toast handled by mutation
     }
   };
+
+  /** Right-hand summaries: what each row currently answers. */
+  const countValue = (
+    count: number,
+    one: TranslationKey,
+    many: TranslationKey,
+  ) => (count === 1 ? t(one) : t(many, { count: String(count) }));
+  const settingsGroups: ProjectSettingsGroupDef[] = [
+    {
+      key: "project",
+      rows: [
+        {
+          key: "general",
+          icon: <MessageTextSquare01 size={16} />,
+          title: t(PROJECT_SETTINGS_SECTIONS.general.titleKey),
+          description: t(PROJECT_SETTINGS_SECTIONS.general.descriptionKey),
+          onClick: () => openSection("general"),
+        },
+        {
+          key: "connections",
+          icon: <PuzzlePiece01 size={16} />,
+          title: t(PROJECT_SETTINGS_SECTIONS.connections.titleKey),
+          description: t(PROJECT_SETTINGS_SECTIONS.connections.descriptionKey),
+          value: countValue(
+            connections.length,
+            "virtualMcp.settings.value.connectionOne",
+            "virtualMcp.settings.value.connectionMany",
+          ),
+          onClick: () => openSection("connections"),
+        },
+        {
+          key: "site",
+          icon: <Cube01 size={16} />,
+          title: t(PROJECT_SETTINGS_SECTIONS.site.titleKey),
+          description: t(PROJECT_SETTINGS_SECTIONS.site.descriptionKey),
+          value: runtimeCardRepo
+            ? `${runtimeCardRepo.owner}/${runtimeCardRepo.name}`
+            : t("virtualMcp.settings.value.notLinked"),
+          onClick: () => openSection("site"),
+        },
+      ],
+    },
+    {
+      /** The views are the index's own list: opening one is the point, and a
+       *  drill-in would have hidden ten destinations behind one row. */
+      key: "views",
+      content: <ProjectViewsSection views={views} />,
+    },
+    {
+      key: "danger",
+      title: t("virtualMcp.settings.groups.advanced"),
+      rows: [
+        {
+          key: "delete",
+          icon: <Trash01 size={16} />,
+          title: t("virtualMcp.virtualMcp.deleteAgent"),
+          description: t("virtualMcp.virtualMcp.deleteAgentDescription"),
+          destructive: true,
+          onClick: () => setDeleteDialogOpen(true),
+        },
+      ],
+    },
+  ];
+
+  /** Connections owns its whole page, so its action rides in the page header;
+   *  the instructions buttons sit beside their own heading inside General. */
+  const sectionActions: Partial<Record<ProjectSettingsSectionKey, ReactNode>> =
+    {
+      connections:
+        connections.length > 0 ? (
+          <Button variant="outline" size="sm" onClick={handleOpenAddDialog}>
+            <Plus size={14} />
+            {t("virtualMcp.virtualMcp.addConnection")}
+          </Button>
+        ) : undefined,
+    };
+
+  const sectionInstructionsActions = (
+    <div className="flex items-center gap-2">
+      {!form.watch("metadata.instructions")?.trim() && (
+        <Button variant="outline" size="sm" onClick={handleInsertTemplate}>
+          {t("virtualMcp.virtualMcp.promptTemplate")}
+        </Button>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={isImproving || !form.watch("metadata.instructions")?.trim()}
+        onClick={handleImprovePrompt}
+      >
+        <Stars01 size={13} />
+        {t("virtualMcp.virtualMcp.improve")}
+      </Button>
+    </div>
+  );
 
   return (
     <Page>
@@ -961,423 +1087,376 @@ function VirtualMcpDetailViewWithData({
               </Page.Title>
             )}
 
-            {/* Agent identity header */}
-            <div className="flex items-center gap-3">
-              <Controller
-                name="icon"
-                control={form.control}
-                render={({ field }) => (
-                  <IconPicker
-                    value={field.value ?? null}
-                    onChange={(icon) => {
-                      field.onChange(icon);
-                      flushAndSave();
-                    }}
-                    onColorChange={(color) => {
-                      form.setValue("metadata.ui.themeColor", color, {
-                        shouldDirty: true,
-                      });
-                      flushAndSave();
-                    }}
-                    name={
-                      form.watch("title") ||
-                      t("virtualMcp.virtualMcp.agentNameFallback")
-                    }
-                    size="md"
-                    className="shrink-0"
-                    avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
+            {section === null ? (
+              <>
+                {/* Agent identity header */}
+                <div className="flex items-center gap-3">
+                  <Controller
+                    name="icon"
+                    control={form.control}
+                    render={({ field }) => (
+                      <IconPicker
+                        value={field.value ?? null}
+                        onChange={(icon) => {
+                          field.onChange(icon);
+                          flushAndSave();
+                        }}
+                        onColorChange={(color) => {
+                          form.setValue("metadata.ui.themeColor", color, {
+                            shouldDirty: true,
+                          });
+                          flushAndSave();
+                        }}
+                        name={
+                          form.watch("title") ||
+                          t("virtualMcp.virtualMcp.agentNameFallback")
+                        }
+                        size="md"
+                        className="shrink-0"
+                        avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
+                      />
+                    )}
                   />
-                )}
-              />
-              <div className="flex flex-col flex-1 min-w-0">
-                <Controller
-                  name="title"
-                  control={form.control}
-                  render={({ field }) => (
-                    <input
-                      {...field}
-                      type="text"
-                      value={field.value ?? ""}
-                      onChange={(e) => {
-                        field.onChange(e);
-                      }}
-                      onBlur={() => {
-                        field.onBlur();
-                        flushAndSave();
-                      }}
-                      placeholder={t(
-                        "virtualMcp.virtualMcp.agentNamePlaceholder",
-                      )}
-                      className="text-lg font-medium leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
-                    />
-                  )}
-                />
-                <Controller
-                  name="description"
-                  control={form.control}
-                  render={({ field }) => (
-                    <input
-                      {...field}
-                      type="text"
-                      value={field.value ?? ""}
-                      onChange={(e) => {
-                        field.onChange(e);
-                      }}
-                      onBlur={() => {
-                        field.onBlur();
-                        flushAndSave();
-                      }}
-                      placeholder={t(
-                        "virtualMcp.virtualMcp.descriptionPlaceholder",
-                      )}
-                      className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
-                    />
-                  )}
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => {
-                  track("agent_connect_modal_opened", {
-                    agent_id: virtualMcp.id,
-                  });
-                  dispatch({
-                    type: "SET_SHARE_DIALOG_OPEN",
-                    payload: true,
-                  });
-                }}
-              >
-                <span className="flex items-center -space-x-1.5 mr-0.5">
-                  <span className="inline-flex items-center justify-center size-4 rounded-full bg-black ring-1 ring-white/20 shrink-0">
-                    <img
-                      src="/logos/cursor.svg"
-                      alt="Cursor"
-                      className="size-2.5 brightness-0 invert"
-                    />
-                  </span>
-                  <span
-                    className="relative z-10 inline-flex items-center justify-center size-4 rounded-full ring-1 ring-background shrink-0"
-                    style={{ backgroundColor: "#D97757" }}
-                  >
-                    <img
-                      src="/logos/Claude Code.svg"
-                      alt="Claude"
-                      className="size-2.5 brightness-0 invert"
-                    />
-                  </span>
-                </span>
-                {t("virtualMcp.virtualMcp.connect")}
-              </Button>
-            </div>
-
-            {/* Creator metadata */}
-            <div className="flex items-center gap-2 -mt-6 text-sm text-muted-foreground">
-              <User
-                id={virtualMcp.created_by}
-                size="2xs"
-                className="text-sm text-muted-foreground"
-              />
-              <span className="text-muted-foreground/50">·</span>
-              <span>
-                {t("virtualMcp.virtualMcp.created")}{" "}
-                {format(new Date(virtualMcp.created_at), "PP", { locale })}
-              </span>
-              <span className="text-muted-foreground/50">·</span>
-              <span>
-                {lastUsedAt
-                  ? t("virtualMcp.virtualMcp.lastUsed", {
-                      time: formatDistanceToNow(new Date(lastUsedAt), {
-                        addSuffix: true,
-                        locale,
-                      }),
-                    })
-                  : t("virtualMcp.virtualMcp.neverUsed")}
-              </span>
-            </div>
-
-            {/* Connections section */}
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-foreground">
-                  {t("virtualMcp.virtualMcp.connections")}
-                </h2>
-                {connections.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleOpenAddDialog}
-                  >
-                    <Plus size={14} />
-                    {t("virtualMcp.virtualMcp.addConnection")}
-                  </Button>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                {connections.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenAddDialog}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer"
-                  >
-                    <div className="flex items-center justify-center size-8 rounded-md text-muted-foreground/75 border border-dashed border-border shrink-0">
-                      <Plus size={16} />
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {t("virtualMcp.virtualMcp.noConnectionsYet")}
-                    </span>
-                  </button>
-                ) : (
-                  connections.map((conn) => (
-                    <ErrorBoundary
-                      key={conn.connection_id}
-                      fallback={() => null}
-                    >
-                      <Suspense fallback={<ConnectionItemSkeleton />}>
-                        <ConnectionItem
-                          connection_id={conn.connection_id}
-                          usedConnectionIds={addedConnectionIds}
-                          onOpenSettings={() =>
-                            handleOpenSettings(conn.connection_id)
-                          }
-                          onRemove={() =>
-                            handleRemoveConnection(conn.connection_id)
-                          }
-                          onAuthenticate={handleAuthenticate}
-                          onSwitchInstance={handleSwitchInstance}
-                          onNewInstance={() =>
-                            handleNewInstance(conn.connection_id)
-                          }
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <Controller
+                      name="title"
+                      control={form.control}
+                      render={({ field }) => (
+                        <input
+                          {...field}
+                          type="text"
+                          value={field.value ?? ""}
+                          onChange={(e) => {
+                            field.onChange(e);
+                          }}
+                          onBlur={() => {
+                            field.onBlur();
+                            flushAndSave();
+                          }}
+                          placeholder={t(
+                            "virtualMcp.virtualMcp.agentNamePlaceholder",
+                          )}
+                          className="text-lg font-medium leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
                         />
-                      </Suspense>
-                    </ErrorBoundary>
-                  ))
-                )}
-              </div>
-            </section>
-
-            {/* Instructions section */}
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-foreground">
-                  {t("virtualMcp.virtualMcp.instructions")}
-                </h2>
-                <div className="flex items-center gap-2">
-                  {!form.watch("metadata.instructions")?.trim() && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleInsertTemplate}
-                    >
-                      {t("virtualMcp.virtualMcp.promptTemplate")}
-                    </Button>
-                  )}
+                      )}
+                    />
+                    <Controller
+                      name="description"
+                      control={form.control}
+                      render={({ field }) => (
+                        <input
+                          {...field}
+                          type="text"
+                          value={field.value ?? ""}
+                          onChange={(e) => {
+                            field.onChange(e);
+                          }}
+                          onBlur={() => {
+                            field.onBlur();
+                            flushAndSave();
+                          }}
+                          placeholder={t(
+                            "virtualMcp.virtualMcp.descriptionPlaceholder",
+                          )}
+                          className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
+                        />
+                      )}
+                    />
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={
-                      isImproving ||
-                      !form.watch("metadata.instructions")?.trim()
-                    }
-                    onClick={handleImprovePrompt}
+                    className="shrink-0"
+                    onClick={() => {
+                      track("agent_connect_modal_opened", {
+                        agent_id: virtualMcp.id,
+                      });
+                      dispatch({
+                        type: "SET_SHARE_DIALOG_OPEN",
+                        payload: true,
+                      });
+                    }}
                   >
-                    <Stars01 size={13} />
-                    {t("virtualMcp.virtualMcp.improve")}
+                    <span className="flex items-center -space-x-1.5 mr-0.5">
+                      <span className="inline-flex items-center justify-center size-4 rounded-full bg-black ring-1 ring-white/20 shrink-0">
+                        <img
+                          src="/logos/cursor.svg"
+                          alt="Cursor"
+                          className="size-2.5 brightness-0 invert"
+                        />
+                      </span>
+                      <span
+                        className="relative z-10 inline-flex items-center justify-center size-4 rounded-full ring-1 ring-background shrink-0"
+                        style={{ backgroundColor: "#D97757" }}
+                      >
+                        <img
+                          src="/logos/Claude Code.svg"
+                          alt="Claude"
+                          className="size-2.5 brightness-0 invert"
+                        />
+                      </span>
+                    </span>
+                    {t("virtualMcp.virtualMcp.connect")}
                   </Button>
                 </div>
-              </div>
-              <Controller
-                name="metadata.instructions"
-                control={form.control}
-                render={({ field }) => (
-                  <div className="relative rounded-xl card-shadow bg-card focus-within:ring-1 focus-within:ring-ring">
-                    <Textarea
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) => {
-                        field.onChange(e);
-                      }}
-                      onBlur={() => {
-                        field.onBlur();
-                        flushAndSave();
-                      }}
-                      placeholder={t(
-                        "virtualMcp.virtualMcp.instructionsPlaceholder",
-                      )}
-                      className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
-                      style={{ boxShadow: "none" }}
-                    />
-                    <Tooltip delayDuration={0}>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute top-2 right-2 h-7 w-7 text-muted-foreground"
-                          onClick={() => setInstructionsFullscreen(true)}
-                          aria-label={t(
-                            "virtualMcp.virtualMcp.openFullscreenEditor",
-                          )}
-                        >
-                          <Maximize01 size={14} />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="left">
-                        {t("virtualMcp.virtualMcp.fullscreen")}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                )}
-              />
-            </section>
 
-            {/* Files section — files attached to the agent as reference */}
-            <FilesSection form={form} />
+                {/* Creator metadata */}
+                <div className="flex items-center gap-2 -mt-6 text-sm text-muted-foreground">
+                  <User
+                    id={virtualMcp.created_by}
+                    size="2xs"
+                    className="text-sm text-muted-foreground"
+                  />
+                  <span className="text-muted-foreground/50">·</span>
+                  <span>
+                    {t("virtualMcp.virtualMcp.created")}{" "}
+                    {format(new Date(virtualMcp.created_at), "PP", { locale })}
+                  </span>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span>
+                    {lastUsedAt
+                      ? t("virtualMcp.virtualMcp.lastUsed", {
+                          time: formatDistanceToNow(new Date(lastUsedAt), {
+                            addSuffix: true,
+                            locale,
+                          }),
+                        })
+                      : t("virtualMcp.virtualMcp.neverUsed")}
+                  </span>
+                </div>
 
-            {/* Sub-agents section — delegation allowlist for the subtask tool */}
-            <ErrorBoundary fallback={() => null}>
-              <Suspense
-                fallback={
-                  <section className="flex flex-col gap-3">
-                    <h2 className="text-sm font-medium text-foreground">
-                      {t("virtualMcp.virtualMcp.subAgents")}
-                    </h2>
-                    <div className="h-16 rounded-lg border border-dashed border-border animate-pulse" />
-                  </section>
-                }
+                <ProjectSettingsIndex groups={settingsGroups} />
+              </>
+            ) : (
+              <ProjectSettingsDetail
+                title={t(PROJECT_SETTINGS_SECTIONS[section].titleKey)}
+                backLabel={t("virtualMcp.settings.backToSettings")}
+                onBack={() => openSection(null)}
+                actions={sectionActions[section]}
               >
-                <SubAgentsSection form={form} currentAgentId={virtualMcp.id} />
-              </Suspense>
-            </ErrorBoundary>
-
-            {/* Layout section */}
-            <LayoutTabContent
-              virtualMcpId={virtualMcp.id}
-              form={form}
-              flushAndSave={flushAndSave}
-            />
-
-            {/* Development agent section (link a dev counterpart) */}
-            <DevAgentSetup virtualMcp={virtualMcp} />
-
-            {/* CMS section — Fast Preview + Publishing (how CMS/code changes
-                reach the live site). Publishing is code-agent only. */}
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-foreground">
-                  {t("sandbox.cmsSettings.title")}
-                </h2>
-              </div>
-              <Card className="p-6 gap-5">
-                {/* Content editing — whether this agent has a CMS at all, and
-                    where the preview lands when it does. Reads first: the rest
-                    of the card configures what this turns on. */}
-                {hasClonableSource && (
-                  <>
-                    <CardContent className="p-0 space-y-5">
-                      <ContentEditingField
-                        control={form.control}
-                        onCommit={flushAndSave}
-                      />
-                      {/* Blocks-form preference — nothing to tune with the CMS off. */}
-                      {!cmsOff && (
-                        <FieldDescriptionTooltipsField control={form.control} />
+                {section === "connections" && (
+                  <section className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2">
+                      {connections.length === 0 ? (
+                        <button
+                          type="button"
+                          onClick={handleOpenAddDialog}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer"
+                        >
+                          <div className="flex items-center justify-center size-8 rounded-md text-muted-foreground/75 border border-dashed border-border shrink-0">
+                            <Plus size={16} />
+                          </div>
+                          <span className="text-sm text-muted-foreground">
+                            {t("virtualMcp.virtualMcp.noConnectionsYet")}
+                          </span>
+                        </button>
+                      ) : (
+                        connections.map((conn) => (
+                          <ErrorBoundary
+                            key={conn.connection_id}
+                            fallback={() => null}
+                          >
+                            <Suspense fallback={<ConnectionItemSkeleton />}>
+                              <ConnectionItem
+                                connection_id={conn.connection_id}
+                                usedConnectionIds={addedConnectionIds}
+                                onOpenSettings={() =>
+                                  handleOpenSettings(conn.connection_id)
+                                }
+                                onRemove={() =>
+                                  handleRemoveConnection(conn.connection_id)
+                                }
+                                onAuthenticate={handleAuthenticate}
+                                onSwitchInstance={handleSwitchInstance}
+                                onNewInstance={() =>
+                                  handleNewInstance(conn.connection_id)
+                                }
+                              />
+                            </Suspense>
+                          </ErrorBoundary>
+                        ))
                       )}
-                    </CardContent>
-                    {!cmsOff && (
-                      <div className="border-t border-border -mx-6" />
-                    )}
-                  </>
+                    </div>
+                  </section>
                 )}
-                {!cmsOff && (
-                  <>
-                    {/* Preview — preview URL + the Fast Preview switch it gates
-                        (a URL is required for Fast Preview to take effect). */}
-                    <CardContent className="p-0 space-y-5">
-                      <div className="flex flex-col gap-1">
-                        <h3 className="text-sm font-medium text-foreground">
-                          {t("sandbox.cmsSettings.preview.title")}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          {t("sandbox.cmsSettings.preview.description")}
-                        </p>
-                      </div>
-                      <PreviewServerUrlField control={form.control} />
-                      <FastPreviewField
-                        control={form.control}
-                        previewServerUrl={form.watch(
-                          "metadata.previewServerUrl",
-                        )}
-                      />
-                      <InPlaceRenderField
-                        control={form.control}
-                        fastPreview={form.watch("metadata.fastPreview")}
-                      />
-                    </CardContent>
 
-                    {hasGithubRepo && (
-                      <>
-                        <div className="border-t border-border -mx-6" />
-                        <CardContent className="p-0 space-y-5">
+                {/* Instructions section */}
+                {section === "general" && (
+                  <section className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-medium text-foreground">
+                        {t("virtualMcp.virtualMcp.instructions")}
+                      </h2>
+                      {sectionInstructionsActions}
+                    </div>
+                    <Controller
+                      name="metadata.instructions"
+                      control={form.control}
+                      render={({ field }) => (
+                        <div className="relative rounded-xl card-shadow bg-card focus-within:ring-1 focus-within:ring-ring">
+                          <Textarea
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                            }}
+                            onBlur={() => {
+                              field.onBlur();
+                              flushAndSave();
+                            }}
+                            placeholder={t(
+                              "virtualMcp.virtualMcp.instructionsPlaceholder",
+                            )}
+                            className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
+                            style={{ boxShadow: "none" }}
+                          />
+                          <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-2 right-2 h-7 w-7 text-muted-foreground"
+                                onClick={() => setInstructionsFullscreen(true)}
+                                aria-label={t(
+                                  "virtualMcp.virtualMcp.openFullscreenEditor",
+                                )}
+                              >
+                                <Maximize01 size={14} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">
+                              {t("virtualMcp.virtualMcp.fullscreen")}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      )}
+                    />
+                  </section>
+                )}
+
+                {/* Files section — files attached to the agent as reference */}
+                {section === "general" && <FilesSection form={form} />}
+
+                {/* Sub-agents section — delegation allowlist for the subtask tool */}
+                {section === "general" && (
+                  <ErrorBoundary fallback={() => null}>
+                    <Suspense
+                      fallback={
+                        <section className="flex flex-col gap-3">
+                          <h2 className="text-sm font-medium text-foreground">
+                            {t("virtualMcp.virtualMcp.subAgents")}
+                          </h2>
+                          <div className="h-16 rounded-lg border border-dashed border-border animate-pulse" />
+                        </section>
+                      }
+                    >
+                      <SubAgentsSection
+                        form={form}
+                        currentAgentId={virtualMcp.id}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+                )}
+
+                {/* Layout section */}
+                {/* Development agent section (link a dev counterpart) */}
+                {section === "site" && (
+                  <DevAgentSetup virtualMcp={virtualMcp} />
+                )}
+
+                {/* CMS — content editing, then how changes reach the live
+                site. Publishing is code-agent only. */}
+                {section === "site" && hasClonableSource && (
+                  <SettingsSection title={t("sandbox.cmsSettings.title")}>
+                    <SettingsCard>
+                      <SettingsCardRow>
+                        <ContentEditingField
+                          control={form.control}
+                          onCommit={flushAndSave}
+                        />
+                      </SettingsCardRow>
+                      {/* Nothing to tune in the blocks form with the CMS off. */}
+                      {!cmsOff && (
+                        <SettingsCardRow>
+                          <FieldDescriptionTooltipsField
+                            control={form.control}
+                          />
+                        </SettingsCardRow>
+                      )}
+                      {!cmsOff && hasGithubRepo && (
+                        <SettingsCardRow>
                           <PublishPolicyField
                             control={form.control}
                             onCommit={flushAndSave}
                           />
-                        </CardContent>
-                      </>
-                    )}
-                  </>
+                        </SettingsCardRow>
+                      )}
+                    </SettingsCard>
+                  </SettingsSection>
                 )}
-              </Card>
-            </div>
 
-            {/* Sandbox section */}
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-foreground">
-                  {t("virtualMcp.virtualMcp.sandbox")}
-                </h2>
-              </div>
-              <Card className="p-6 gap-5">
-                <CardContent className="p-0 space-y-5">
-                  <RepoRow repo={runtimeCardRepo} />
-                  <RuntimeFields control={form.control} />
-                  <EnvVarsField
-                    control={form.control}
-                    form={form}
-                    virtualMcpId={virtualMcp.id}
-                    orgSlug={org.slug}
-                    sandboxMap={virtualMcp.metadata.sandboxMap}
-                  />
-                  <SubmoduleCredentialsField
-                    control={form.control}
-                    form={form}
-                  />
-                </CardContent>
-              </Card>
-            </div>
+                {/* Preview — the URL, and the Fast Preview switch it gates
+                (Fast Preview renders against that URL, so it needs one). */}
+                {section === "site" && !cmsOff && (
+                  <SettingsSection
+                    title={t("sandbox.cmsSettings.preview.title")}
+                    description={t("sandbox.cmsSettings.preview.description")}
+                  >
+                    <SettingsCard>
+                      <SettingsCardRow>
+                        <PreviewServerUrlField control={form.control} />
+                      </SettingsCardRow>
+                      <SettingsCardRow>
+                        <FastPreviewField
+                          control={form.control}
+                          previewServerUrl={form.watch(
+                            "metadata.previewServerUrl",
+                          )}
+                        />
+                      </SettingsCardRow>
+                      {form.watch("metadata.fastPreview") && (
+                        <SettingsCardRow>
+                          <InPlaceRenderField
+                            control={form.control}
+                            fastPreview={form.watch("metadata.fastPreview")}
+                          />
+                        </SettingsCardRow>
+                      )}
+                    </SettingsCard>
+                  </SettingsSection>
+                )}
 
-            {/* Danger zone */}
-            <section className="flex items-center justify-between border-t border-border pt-6">
-              <div>
-                <p className="text-sm font-medium">
-                  {t("virtualMcp.virtualMcp.deleteAgent")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("virtualMcp.virtualMcp.deleteAgentDescription")}
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive shrink-0"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <Trash01 size={14} />
-                {t("virtualMcp.virtualMcp.deleteAgent")}
-              </Button>
-            </section>
+                {/* Sandbox — the repo it clones and what it runs there. */}
+                {section === "site" && (
+                  <SettingsSection title={t("virtualMcp.virtualMcp.sandbox")}>
+                    <SettingsCard>
+                      <SettingsCardRow>
+                        <RepoRow repo={runtimeCardRepo} />
+                      </SettingsCardRow>
+                      <SettingsCardRow>
+                        <RuntimeFields control={form.control} />
+                      </SettingsCardRow>
+                      <SettingsCardRow>
+                        <EnvVarsField
+                          control={form.control}
+                          form={form}
+                          virtualMcpId={virtualMcp.id}
+                          orgSlug={org.slug}
+                          sandboxMap={virtualMcp.metadata.sandboxMap}
+                        />
+                      </SettingsCardRow>
+                      <SettingsCardRow>
+                        <SubmoduleCredentialsField
+                          control={form.control}
+                          form={form}
+                        />
+                      </SettingsCardRow>
+                    </SettingsCard>
+                  </SettingsSection>
+                )}
+              </ProjectSettingsDetail>
+            )}
           </div>
         </Page.Body>
       </Page.Content>

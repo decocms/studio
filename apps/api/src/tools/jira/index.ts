@@ -248,4 +248,5 @@ export {
   JIRA_COMMENT_ADD,
   JIRA_ISSUE_GET,
   JIRA_ISSUE_TRANSITION,
+  JIRA_REMOTE_LINK_ADD,
 } from "./run-tools";
