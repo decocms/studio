@@ -72,6 +72,8 @@ import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
 import desktopAuthRoutes from "./routes/desktop-auth";
 import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
+import { createUserFsRoutes } from "./routes/user-fs";
+import { USER_FS_API_PREFIX } from "@/file-storage/user-fs";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
@@ -333,7 +335,8 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
  * routes, the OAuth proxy (legacy `/oauth-proxy/...` and canonical
  * `/api/:org/oauth-proxy/...` — both must stay reachable so a browser
  * session mid-connect to a downstream MCP isn't 403'd before it can
- * establish an SSO session), and the instance-level admin surface.
+ * establish an SSO session), and the instance-level admin and user-filesystem
+ * surfaces.
  */
 export function isSsoExemptPath(path: string): boolean {
   return (
@@ -347,7 +350,11 @@ export function isSsoExemptPath(path: string): boolean {
     // Instance-level operator surface — not governed by any single org's SSO
     // policy. Without this, an admin whose active org enforces SSO gets 403'd
     // off the whole dashboard, and the UI reads that as "not an admin".
-    path.startsWith(`${ADMIN_API_PREFIX}/`)
+    path.startsWith(`${ADMIN_API_PREFIX}/`) ||
+    // A person's own filesystem belongs to them, not to a tenant, so no single
+    // org's SSO policy governs it — and published files must serve with no
+    // session at all.
+    path.startsWith(`${USER_FS_API_PREFIX}/`)
   );
 }
 
@@ -2341,6 +2348,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // the same reason as the two above: `/api/:org` would bind the request to one
   // tenant, which is exactly what these routes must not do.
   app.route(ME_API_PREFIX, createMeRoutes());
+
+  // Per-user filesystems (avatars today). Instance-level for the same reason
+  // as the routes above, plus one of its own: published files here serve
+  // without a session, which no `/api/:org` route may do.
+  app.route(USER_FS_API_PREFIX, createUserFsRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup

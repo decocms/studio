@@ -446,13 +446,6 @@ export function getTrustedOrigins(): string[] {
 
 const settings = getSettings();
 
-// Hard cap on inline base64 avatars stored in `user.image`. Avatar upload is
-// disabled in the UI, so `image` should only ever be a short OAuth provider
-// URL; this cap is a backstop against direct API callers. Oversized data: URLs
-// bloat every /get-session response and previously broke login via the
-// set-auth-jwt header.
-const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
-
 // Falling back to a fixed string baked into this open-source repo would let
 // anyone who forgets to set BETTER_AUTH_SECRET run with a publicly-known
 // session/cookie signing secret. Generate a random one instead (same
@@ -666,19 +659,21 @@ export const auth = betterAuth({
         },
       },
       update: {
-        // Defense in depth: never persist an oversized base64 avatar. Upload
-        // is disabled in the UI, but a direct API caller could still send a
-        // multi-megabyte data: URL. See MAX_INLINE_AVATAR_LENGTH.
+        /**
+         * `user.image` rides inline in every /get-session response, and an
+         * oversized data: URL previously broke login through the set-auth-jwt
+         * header. Avatars now live in the uploader's filesystem (POST
+         * /api/_users/avatar) and `image` carries that URL, so an inline
+         * data: URL has no legitimate producer left — reject it outright
+         * rather than cap it. Provider logins supply an https URL, never a
+         * data: one.
+         */
         before: async (data) => {
           const image = (data as { image?: unknown }).image;
-          if (
-            typeof image === "string" &&
-            image.startsWith("data:") &&
-            image.length > MAX_INLINE_AVATAR_LENGTH
-          ) {
-            throw new APIError("PAYLOAD_TOO_LARGE", {
+          if (typeof image === "string" && image.startsWith("data:")) {
+            throw new APIError("BAD_REQUEST", {
               message:
-                "Avatar image is too large. Upload an image smaller than 5MB.",
+                "Inline image data is not accepted. Upload the avatar to /api/_users/avatar and set `image` to the returned URL.",
             });
           }
         },
