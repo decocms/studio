@@ -186,10 +186,8 @@ describe("findAgentEntryThread", () => {
     branch: "tavano-unnamed",
     updated_at: "2026-03-01T00:00:00Z",
   });
-  const known = new Set(["main", "tavano-teste"]);
-
-  // Guards against re-entry landing on a newer unnamed draft (phantom "Rascunho") instead of the named release being edited.
-  it("prefers the last thread on a named version over a newer unnamed draft", () => {
+  // Resumes the most recently edited draft, named release or unnamed alike.
+  it("resumes the most recently edited draft, named or unnamed", () => {
     expect(
       findAgentEntryThread(
         [onRelease, newerUnnamedDraft],
@@ -197,12 +195,12 @@ describe("findAgentEntryThread", () => {
         USER,
         undefined,
         true,
-        { knownBranches: known },
+        { baseBranch: "main" },
       )?.id,
-    ).toBe("release");
+    ).toBe("draft");
   });
 
-  it("falls back to the raw last thread when none sits on a named version", () => {
+  it("resumes an unnamed draft instead of minting on production", () => {
     expect(
       findAgentEntryThread(
         [newerUnnamedDraft],
@@ -210,41 +208,12 @@ describe("findAgentEntryThread", () => {
         USER,
         undefined,
         true,
-        {
-          knownBranches: known,
-        },
+        { baseBranch: "main" },
       )?.id,
     ).toBe("draft");
   });
 
-  // Drafts mode resumes the most recently edited draft, named or not.
-  it("drafts mode resumes the most recently edited draft, named or unnamed", () => {
-    expect(
-      findAgentEntryThread(
-        [onRelease, newerUnnamedDraft],
-        "agent-1",
-        USER,
-        undefined,
-        true,
-        { knownBranches: known, draftsMode: true, baseBranch: "main" },
-      )?.id,
-    ).toBe("draft");
-  });
-
-  it("drafts mode resumes an unnamed draft instead of minting on production", () => {
-    expect(
-      findAgentEntryThread(
-        [newerUnnamedDraft],
-        "agent-1",
-        USER,
-        undefined,
-        true,
-        { knownBranches: known, draftsMode: true, baseBranch: "main" },
-      )?.id,
-    ).toBe("draft");
-  });
-
-  it("drafts mode never resumes a production thread (caller mints a fresh draft)", () => {
+  it("never resumes a production thread (caller mints a fresh draft)", () => {
     const onProduction = task({
       id: "prod",
       title: "Live",
@@ -254,8 +223,6 @@ describe("findAgentEntryThread", () => {
     });
     expect(
       findAgentEntryThread([onProduction], "agent-1", USER, undefined, true, {
-        knownBranches: known,
-        draftsMode: true,
         baseBranch: "main",
       }),
     ).toBeUndefined();
