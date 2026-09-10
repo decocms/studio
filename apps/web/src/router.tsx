@@ -557,6 +557,8 @@ const agentsRoute = createRoute({
     connection: z.string().optional(),
     tool: z.string().optional(),
     automation: z.string().optional(),
+    /** Settings' open section (see `views/virtual-mcp/settings/sections.ts`). */
+    section: z.string().optional(),
     /** Library file-preview overlay ("<volume>/<path…>"), set by org-file refs. */
     preview: z.string().optional(),
     autosend: z.string().optional(),
