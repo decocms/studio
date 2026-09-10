@@ -187,6 +187,33 @@ func TestReadDecofileFallbackRefusesAbsolute(t *testing.T) {
 	}
 }
 
+// /read must reject an absolute path outside AppRoot with the same
+// containment SafePath already gives Write/Mkdir/etc — an agent-controlled
+// path crossing the daemon's HTTP boundary must not be able to read arbitrary
+// files on the pod (e.g. `/etc/passwd`, another repo's secrets) just by
+// spelling an absolute path.
+func TestReadRefusesAbsolutePathOutsideRoot(t *testing.T) {
+	deps := seedBlocks(t)
+	// os.MkdirTemp (not t.TempDir) so this lands in its own OS-level temp root,
+	// not nested under deps.AppRoot the way a second t.TempDir() call would be.
+	secretDir, err := os.MkdirTemp("", "fs-read-escape")
+	if err != nil {
+		t.Fatalf("mkdir temp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(secretDir) })
+	secret := filepath.Join(secretDir, "secret.txt")
+	if err := os.WriteFile(secret, []byte("top-secret"), 0o644); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+	rec := readReq(t, deps, secret)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (path escapes root); body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "top-secret") {
+		t.Fatalf("response leaked file content outside AppRoot: %s", rec.Body.String())
+	}
+}
+
 // The 400 an out-of-root write returns must name the root it wants. A model
 // that guessed `/tmp` (writable from its own bash tool, not from here) has to
 // be able to correct itself from the message alone — prod thread 38147122
