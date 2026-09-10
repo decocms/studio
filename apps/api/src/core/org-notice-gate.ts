@@ -27,11 +27,49 @@ import type { Database, OrganizationNotice } from "../storage/types";
  * window matter only for other pods in a multi-instance deployment.
  */
 const ORG_NOTICE_CACHE_TTL_MS = 5 * 60_000;
+// Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
+const ORG_NOTICE_CACHE_MAX_SIZE = 10_000;
 
 const orgNoticeCache = new Map<
   string,
   { notice: OrganizationNotice | null; at: number }
 >();
+
+/** Write (or refresh) a cache entry, moving it to the most-recently-set
+ *  position — `Map.set` on an existing key keeps its original iteration
+ *  order, which would leave a hot org first in line for eviction. Exported
+ *  for unit testing. */
+export function refreshOrgNoticeCacheEntry(
+  cache: Map<string, { notice: OrganizationNotice | null; at: number }>,
+  organizationId: string,
+  notice: OrganizationNotice | null,
+): void {
+  cache.delete(organizationId);
+  cache.set(organizationId, { notice, at: Date.now() });
+}
+
+/** Exported for unit testing. */
+export function evictExpiredOrgNoticeEntries(
+  cache: Map<string, { notice: OrganizationNotice | null; at: number }>,
+  maxSize: number,
+  ttlMs: number,
+): void {
+  if (cache.size <= maxSize) return;
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now - entry.at >= ttlMs) cache.delete(key);
+  }
+  // Trims oldest first (Map iteration order = insertion order).
+  if (cache.size > maxSize) {
+    const excess = cache.size - maxSize;
+    let removed = 0;
+    for (const key of cache.keys()) {
+      if (removed >= excess) break;
+      cache.delete(key);
+      removed++;
+    }
+  }
+}
 
 /** Thrown when a blocked org's control plane is touched. Serialized as 403. */
 export class OrgBlockedError extends ForbiddenError {
@@ -56,7 +94,12 @@ export async function getActiveOrgNoticeCached(
   const notice = await new OrganizationNoticeStorage(db).getActive(
     organizationId,
   );
-  orgNoticeCache.set(organizationId, { notice, at: Date.now() });
+  refreshOrgNoticeCacheEntry(orgNoticeCache, organizationId, notice);
+  evictExpiredOrgNoticeEntries(
+    orgNoticeCache,
+    ORG_NOTICE_CACHE_MAX_SIZE,
+    ORG_NOTICE_CACHE_TTL_MS,
+  );
   return notice;
 }
 
