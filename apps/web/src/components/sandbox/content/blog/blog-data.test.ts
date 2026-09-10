@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  addCategoryToPost,
   blockComponentName,
   blocksPostStatus,
   buildBlogBlock,
@@ -14,7 +13,6 @@ import {
   relationPickerState,
   removeCategoryFromPost,
   renameCategoryOnPost,
-  replaceCategoryOnPost,
   extractBlockProse,
   filledBrandRules,
   normalizeBrandRules,
@@ -22,9 +20,22 @@ import {
   setPostStatus,
   stampPostModified,
   dedupeSuggestedThemes,
-  newThemeKey,
-  scanThemes,
-  THEME_KEY_PREFIX,
+  newIdeaKey,
+  scanIdeas,
+  IDEA_KEY_PREFIX,
+  scanPillars,
+  newPillarKey,
+  PILLAR_KEY_PREFIX,
+  PLANNING_POST_KEY_PREFIX,
+  emptyDraftPostPayload,
+  planningMeta,
+  buildPlanningPostBlock,
+  listPlanningPosts,
+  listAllPostsWithMeta,
+  movePostToStatus,
+  planningPostKey,
+  livePostKey,
+  postIdOfKey,
   buildGeneratedPostPayload,
   buildPostSections,
   citedSections,
@@ -282,6 +293,7 @@ describe("listPostsWithMeta", () => {
         missing: ["Excerpt", "Cover image"],
         // no `status` on this fixture — posts predating the field are published
         status: "published",
+        form: "live",
       },
     ]);
   });
@@ -413,19 +425,29 @@ describe("blocksPostStatus", () => {
     expect(blocksPostStatus({ status: "draft" }, "published")).toBe(true);
   });
 
-  test("never blocks scheduling — a schedule is a plan, not a release", () => {
-    expect(blocksPostStatus({ status: "draft" }, "scheduled")).toBe(false);
-    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(false);
+  test("blocks scheduling an incomplete post — a live date needs a live post", () => {
+    expect(blocksPostStatus({ status: "awaiting_review" }, "scheduled")).toBe(
+      true,
+    );
+    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(true);
   });
 
-  test("lets an incomplete post be re-scheduled after scheduling was turned off", () => {
-    const off = setPostStatus({ title: "Untitled post" }, "draft", new Date());
-    expect(blocksPostStatus(off, "scheduled")).toBe(false);
+  test("lets a complete post be scheduled", () => {
+    expect(blocksPostStatus({ ...COMPLETE_POST }, "scheduled")).toBe(false);
   });
 
-  test("never blocks dropping to draft", () => {
-    expect(blocksPostStatus({ status: "published" }, "draft")).toBe(false);
-    expect(blocksPostStatus({ status: "scheduled" }, "draft")).toBe(false);
+  test("never blocks pulling a post back to review", () => {
+    expect(blocksPostStatus({ status: "published" }, "awaiting_review")).toBe(
+      false,
+    );
+    expect(blocksPostStatus({ status: "scheduled" }, "awaiting_review")).toBe(
+      false,
+    );
+  });
+
+  test("never blocks archiving — archived is not a live state", () => {
+    expect(blocksPostStatus({ status: "published" }, "archived")).toBe(false);
+    expect(blocksPostStatus({ status: "draft" }, "archived")).toBe(false);
   });
 
   test("does not block the state the post is already in", () => {
@@ -447,21 +469,29 @@ describe("postStatus", () => {
     expect(postStatus({ status: 1 })).toBe("published");
   });
 
-  test("is case- and whitespace-sensitive: only exact values match", () => {
-    expect(postStatus({ status: "Published" })).toBe("draft");
-    expect(postStatus({ status: " published " })).toBe("draft");
-    expect(postStatus({ status: " scheduled " })).toBe("draft");
+  test("is case- and whitespace-sensitive: an inexact value is unrecognized", () => {
+    expect(postStatus({ status: "Published" })).toBe("awaiting_review");
+    expect(postStatus({ status: " published " })).toBe("awaiting_review");
+    expect(postStatus({ status: " scheduled " })).toBe("awaiting_review");
   });
 
-  test("reads the three editable states", () => {
-    expect(postStatus({ status: "published" })).toBe("published");
-    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+  // Every value must round-trip: this is the blog app's own PostStatus union.
+  test("reads the six lifecycle states", () => {
     expect(postStatus({ status: "draft" })).toBe("draft");
+    expect(postStatus({ status: "generating" })).toBe("generating");
+    expect(postStatus({ status: "awaiting_review" })).toBe("awaiting_review");
+    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+    expect(postStatus({ status: "published" })).toBe("published");
+    expect(postStatus({ status: "archived" })).toBe("archived");
   });
 
-  test("reads states the CMS doesn't edit as draft", () => {
-    expect(postStatus({ status: "generating" })).toBe("draft");
-    expect(postStatus({ status: "awaiting_review" })).toBe("draft");
+  test("reads the legacy Studio-only names as their app equivalents", () => {
+    expect(postStatus({ status: "idea" })).toBe("draft");
+    expect(postStatus({ status: "in_review" })).toBe("awaiting_review");
+  });
+
+  test("reads an unrecognized status as awaiting_review, never live", () => {
+    expect(postStatus({ status: "nonsense" })).toBe("awaiting_review");
   });
 
   test("reads scheduled from the status alone, with no datetime", () => {
@@ -514,13 +544,13 @@ describe("setPostStatus", () => {
     expect(new Date(next.scheduledDatetime as string).getDate()).toBe(22);
   });
 
-  test("clears the instant when leaving scheduled for draft", () => {
+  test("clears the instant when leaving scheduled for review", () => {
     const next = setPostStatus(
       { status: "scheduled", scheduledDatetime: new Date().toISOString() },
-      "draft",
+      "awaiting_review",
       now,
     );
-    expect(next.status).toBe("draft");
+    expect(next.status).toBe("awaiting_review");
     expect(next.scheduledDatetime).toBe("");
   });
 
@@ -538,6 +568,177 @@ describe("setPostStatus", () => {
     const payload = { status: "draft", title: "Hello" };
     setPostStatus(payload, "scheduled", now);
     expect(payload).toEqual({ status: "draft", title: "Hello" });
+  });
+});
+
+describe("scanPillars", () => {
+  test("reads pillars newest-first with their formats", () => {
+    const pillars = scanPillars({
+      [`${PILLAR_KEY_PREFIX}a`]: {
+        title: "Product updates",
+        body: "What shipped.",
+        createdAt: "2026-01-01",
+        formats: ["Changelog", "Deep dive"],
+      },
+      [`${PILLAR_KEY_PREFIX}b`]: {
+        title: "Customer cases",
+        body: "How they win.",
+        createdAt: "2026-02-01",
+        formats: [],
+      },
+    });
+    expect(pillars.map((p) => p.title)).toEqual([
+      "Customer cases",
+      "Product updates",
+    ]);
+    expect(pillars[1]?.formats).toEqual(["Changelog", "Deep dive"]);
+  });
+
+  test("leaves the ideas queue alone — those blocks were always ideas", () => {
+    const pillars = scanPillars({
+      [`${PILLAR_KEY_PREFIX}a`]: { title: "New pillar", createdAt: "2026-02" },
+      [`${IDEA_KEY_PREFIX}b`]: { title: "An idea", createdAt: "2026-01" },
+    });
+    expect(pillars.map((p) => p.title)).toEqual(["New pillar"]);
+  });
+
+  test("ignores non-object and unrelated blocks", () => {
+    expect(scanPillars({ [`${PILLAR_KEY_PREFIX}x`]: "corrupt" })).toEqual([]);
+    expect(scanPillars({ "blog-manager-brand": { title: "nope" } })).toEqual(
+      [],
+    );
+  });
+});
+
+describe("newPillarKey", () => {
+  test("is under the pillars prefix and unique", () => {
+    const a = newPillarKey();
+    const b = newPillarKey();
+    expect(a.startsWith(PILLAR_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("emptyDraftPostPayload / planningMeta", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+
+  test("starts a post as a briefing with no body", () => {
+    const payload = emptyDraftPostPayload({
+      title: "How to read a label",
+      planning: { pillarKey: "p1", brief: "Angle." },
+      now,
+    });
+    expect(payload.status).toBe("draft");
+    expect(payload.sections).toEqual([]);
+    expect(postStatus(payload)).toBe("draft");
+    expect(planningMeta(payload).brief).toBe("Angle.");
+    expect(planningMeta(payload).pillarKey).toBe("p1");
+  });
+
+  test("planningMeta tolerates a missing planning object", () => {
+    expect(planningMeta({})).toEqual({});
+  });
+});
+
+describe("listPlanningPosts / listAllPostsWithMeta", () => {
+  test("planning posts are read by prefix and excluded from the live list", () => {
+    const decofile = {
+      [`${PLANNING_POST_KEY_PREFIX}1`]: buildPlanningPostBlock(
+        `${PLANNING_POST_KEY_PREFIX}1`,
+        { title: "An idea", status: "draft" },
+      ),
+      ...decofileWithPosts({
+        "collections/blog/posts/2": { title: "Live", status: "published" },
+      }),
+    };
+    expect(listPlanningPosts(decofile).map((p) => p.payload.title)).toEqual([
+      "An idea",
+    ]);
+    // The live-only list never sees planning posts.
+    expect(listPostsWithMeta(decofile).map((p) => p.title)).toEqual(["Live"]);
+    const all = listAllPostsWithMeta(decofile);
+    expect(
+      Object.fromEntries(all.map((p) => [p.title, [p.status, p.form]])),
+    ).toEqual({
+      "An idea": ["draft", "planning"],
+      Live: ["published", "live"],
+    });
+  });
+});
+
+describe("movePostToStatus", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+  const complete = {
+    title: "Hello",
+    slug: "hello",
+    categories: ["news"],
+    excerpt: "A short summary.",
+    image: "https://cdn/cover.jpg",
+  };
+
+  test("promotes a planning post to a live block, preserving id and slug", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "awaiting_review" } },
+      "scheduled",
+      now,
+    );
+    const targetKey = livePostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect(block.__resolveType).toBe("blog/loaders/Blogpost.ts");
+    const post = block.post as Record<string, unknown>;
+    expect(post.slug).toBe("hello");
+    expect(post.status).toBe("scheduled");
+    expect(typeof post.scheduledDatetime).toBe("string");
+  });
+
+  test("demotes a live post back to a planning block with no resolveType", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "scheduled" } },
+      "awaiting_review",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    const post = block.post as Record<string, unknown>;
+    expect(post.status).toBe("awaiting_review");
+    expect(post.scheduledDatetime).toBe("");
+  });
+
+  test("a within-planning move rewrites in place with nothing to delete", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { title: "T", status: "draft" } },
+      "awaiting_review",
+      now,
+    );
+    expect(move.deletes).toEqual([]);
+    expect(Object.keys(move.writes)).toEqual([key]);
+  });
+
+  test("archiving a live post demotes it, so the site stops rendering it", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "published" } },
+      "archived",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    expect((block.post as Record<string, unknown>).status).toBe("archived");
+  });
+});
+
+describe("postIdOfKey", () => {
+  test("reads the shared id from either form's key", () => {
+    expect(postIdOfKey(planningPostKey("xyz"))).toBe("xyz");
+    expect(postIdOfKey(livePostKey("xyz"))).toBe("xyz");
   });
 });
 
@@ -675,68 +876,6 @@ describe("stampPostModified", () => {
 describe("emptyBlogPayload", () => {
   test("new authors default to type Person", () => {
     expect(emptyBlogPayload("authors").type).toBe("Person");
-  });
-});
-
-describe("addCategoryToPost", () => {
-  test("appends a new category and keeps existing ones", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(next.categories).toEqual([
-      { name: "News", slug: "news" },
-      { name: "Tips", slug: "tips" },
-    ]);
-  });
-
-  test("initializes categories when the post has none", () => {
-    const next = addCategoryToPost(
-      { title: "P" },
-      { name: "News", slug: "news" },
-    );
-    expect(next).toEqual({
-      title: "P",
-      categories: [{ name: "News", slug: "news" }],
-    });
-  });
-
-  test("is idempotent — adding a present slug does not duplicate", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("does not mutate the input payload", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(payload.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-});
-
-describe("replaceCategoryOnPost", () => {
-  test("replaces all categories with the chosen one", () => {
-    const payload = {
-      categories: [
-        { name: "News", slug: "news" },
-        { name: "Tips", slug: "tips" },
-      ],
-    };
-    const next = replaceCategoryOnPost(payload, {
-      name: "Guides",
-      slug: "guides",
-    });
-    expect(next.categories).toEqual([{ name: "Guides", slug: "guides" }]);
-  });
-
-  test("sets the category when the post had none", () => {
-    const next = replaceCategoryOnPost({}, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("is a no-op when it already has exactly that category", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    expect(replaceCategoryOnPost(payload, { name: "News", slug: "news" })).toBe(
-      payload,
-    );
   });
 });
 
@@ -1020,15 +1159,15 @@ describe("selectBrandEvidenceBlocks", () => {
   });
 });
 
-describe("scanThemes", () => {
+describe("scanIdeas", () => {
   test("reads only theme blocks, newest first", () => {
-    const themes = scanThemes({
-      [`${THEME_KEY_PREFIX}b`]: {
+    const ideas = scanIdeas({
+      [`${IDEA_KEY_PREFIX}b`]: {
         title: "Segundo",
         body: "briefing b",
         createdAt: "2026-02-01T00:00:00.000Z",
       },
-      [`${THEME_KEY_PREFIX}a`]: {
+      [`${IDEA_KEY_PREFIX}a`]: {
         title: "Primeiro",
         body: "briefing a",
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -1040,42 +1179,52 @@ describe("scanThemes", () => {
       },
     });
 
-    expect(themes.map((t) => t.title)).toEqual(["Segundo", "Primeiro"]);
-    expect(themes[0]?.key).toBe(`${THEME_KEY_PREFIX}b`);
-    expect(themes[1]?.body).toBe("briefing a");
+    expect(ideas.map((idea) => idea.title)).toEqual(["Segundo", "Primeiro"]);
+    expect(ideas[0]?.key).toBe(`${IDEA_KEY_PREFIX}b`);
+    expect(ideas[1]?.body).toBe("briefing a");
   });
 
-  test("a theme still being written has empty fields, not missing ones", () => {
-    const themes = scanThemes({ [`${THEME_KEY_PREFIX}new`]: {} });
-    expect(themes).toEqual([
-      { key: `${THEME_KEY_PREFIX}new`, title: "", body: "", createdAt: "" },
+  test("an idea still being written has empty fields, not missing ones", () => {
+    const ideas = scanIdeas({ [`${IDEA_KEY_PREFIX}new`]: {} });
+    expect(ideas).toEqual([
+      {
+        key: `${IDEA_KEY_PREFIX}new`,
+        title: "",
+        body: "",
+        pillarKey: undefined,
+        createdAt: "",
+      },
     ]);
   });
 
-  test("themes without a date sort last, and ties break by title", () => {
+  test("ideas without a date sort last, and ties break by title", () => {
     const dated = "2026-01-01T00:00:00.000Z";
-    const themes = scanThemes({
-      [`${THEME_KEY_PREFIX}1`]: { title: "Sem data" },
-      [`${THEME_KEY_PREFIX}2`]: { title: "Bravo", createdAt: dated },
-      [`${THEME_KEY_PREFIX}3`]: { title: "Alfa", createdAt: dated },
+    const ideas = scanIdeas({
+      [`${IDEA_KEY_PREFIX}1`]: { title: "Sem data" },
+      [`${IDEA_KEY_PREFIX}2`]: { title: "Bravo", createdAt: dated },
+      [`${IDEA_KEY_PREFIX}3`]: { title: "Alfa", createdAt: dated },
     });
-    expect(themes.map((t) => t.title)).toEqual(["Alfa", "Bravo", "Sem data"]);
+    expect(ideas.map((idea) => idea.title)).toEqual([
+      "Alfa",
+      "Bravo",
+      "Sem data",
+    ]);
   });
 
-  test("ignores a non-object at a theme key", () => {
-    expect(scanThemes({ [`${THEME_KEY_PREFIX}x`]: "corrupted" })).toEqual([]);
+  test("ignores a non-object at an idea key", () => {
+    expect(scanIdeas({ [`${IDEA_KEY_PREFIX}x`]: "corrupted" })).toEqual([]);
   });
 
-  test("returns nothing for a site with no themes", () => {
-    expect(scanThemes({})).toEqual([]);
+  test("returns nothing for a site with no ideas", () => {
+    expect(scanIdeas({})).toEqual([]);
   });
 });
 
-describe("newThemeKey", () => {
+describe("newIdeaKey", () => {
   test("is prefixed and unique", () => {
-    const a = newThemeKey();
-    expect(a.startsWith(THEME_KEY_PREFIX)).toBe(true);
-    expect(a).not.toBe(newThemeKey());
+    const a = newIdeaKey();
+    expect(a.startsWith(IDEA_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(newIdeaKey());
   });
 });
 
@@ -1447,6 +1596,7 @@ describe("buildGeneratedPostPayload", () => {
       excerpt: "E o que isso diz sobre a peça.",
       seo: { title: "Por que o linho amassa", description: "Entenda a fibra." },
       categorySlugs: ["tecidos"],
+      authorEmails: ["ana@marca.com"],
       sections: [{ type: "Paragraph" as const, html: "corpo" }],
     },
     resolveTypes: { Paragraph: "blog/sections/blocks/Paragraph.tsx" },
@@ -1454,25 +1604,50 @@ describe("buildGeneratedPostPayload", () => {
       { name: "Tecidos", slug: "tecidos" },
       { name: "Outra", slug: "outra" },
     ],
-    scheduledFor: new Date("2026-09-01T11:00:00.000Z"),
+    authors: [
+      { name: "Ana", email: "ana@marca.com" },
+      { name: "Bruno", email: "bruno@marca.com" },
+    ],
     takenSlugs: [],
     now: new Date("2026-08-21T12:00:00.000Z"),
   };
 
-  test("is scheduled at the chosen instant, never published", () => {
+  test("lands in review, never scheduled or published", () => {
     const payload = buildGeneratedPostPayload(args);
-    expect(payload.status).toBe("scheduled");
-    expect(payload.scheduledDatetime).toBe("2026-09-01T11:00:00.000Z");
+    expect(payload.status).toBe("awaiting_review");
+    expect(payload.scheduledDatetime).toBe("");
   });
 
-  test("the editorial date follows the scheduled day", () => {
-    expect(buildGeneratedPostPayload(args).date).toBe("2026-09-01");
+  test("the editorial date is the day it was generated", () => {
+    expect(buildGeneratedPostPayload(args).date).toBe("2026-08-21");
   });
 
   test("resolves only the chosen categories into stored refs", () => {
     expect(buildGeneratedPostPayload(args).categories).toEqual([
       { name: "Tecidos", slug: "tecidos" },
     ]);
+  });
+
+  test("resolves only the chosen authors into stored refs", () => {
+    expect(buildGeneratedPostPayload(args).authors).toEqual([
+      { name: "Ana", email: "ana@marca.com" },
+    ]);
+  });
+
+  test("an unmatched pick attributes nobody rather than inventing an author", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      draft: { ...args.draft, authorEmails: ["ghost@marca.com"] },
+    });
+    expect(payload.authors).toEqual([]);
+  });
+
+  test("keeps the briefing, so the card still shows its pillar and format", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      planning: { pillarTitle: "Casos de clientes", brief: "Angle." },
+    });
+    expect(planningMeta(payload).pillarTitle).toBe("Casos de clientes");
   });
 
   test("leaves the cover image empty, so the reviewer is told", () => {

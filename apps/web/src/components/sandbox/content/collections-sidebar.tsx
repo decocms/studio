@@ -10,9 +10,7 @@ import {
   LayoutAlt01,
   Settings01,
   Stars02,
-  Tag01,
   CreditCardSearch,
-  Users01,
   Zap,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -115,6 +113,13 @@ export function CollectionsSidebar({
               {t("sandbox.collectionsSidebar.blog")}
             </div>
             <CollectionRow
+              id="context"
+              icon={Stars02}
+              label={t("sandbox.collectionsSidebar.context")}
+              active={active === "context"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
               id="posts"
               icon={File02}
               label={t("sandbox.collectionsSidebar.posts")}
@@ -123,33 +128,10 @@ export function CollectionsSidebar({
               onSelect={onSelect}
             />
             <CollectionRow
-              id="authors"
-              icon={Users01}
-              label={t("sandbox.collectionsSidebar.authors")}
-              count={counts.authors}
-              active={active === "authors"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="categories"
-              icon={Tag01}
-              label={t("sandbox.collectionsSidebar.categories")}
-              count={counts.categories}
-              active={active === "categories"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
               id="post-schedule"
               icon={CalendarDate}
               label={t("sandbox.collectionsSidebar.postSchedule")}
               active={active === "post-schedule"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="autonomous"
-              icon={Stars02}
-              label={t("sandbox.collectionsSidebar.autonomous")}
-              active={active === "autonomous"}
               onSelect={onSelect}
             />
           </>

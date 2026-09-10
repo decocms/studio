@@ -70,12 +70,15 @@ const MAX_NAME_CHARS = 200;
 const MAX_BODY_CHARS = 8_000;
 const MAX_SECTIONS = 40;
 const MAX_CATEGORIES = 100;
+const MAX_AUTHORS = 100;
 
 const SYSTEM = `You write one blog post for a brand, from a theme (what it is about) and a format (how this brand builds a post of that kind).
 
 WRITE THE WHOLE POST IN THE BRAND'S OWN LANGUAGE — the one reported as \`language\` in its profile. These instructions are in English because they are instructions; the post is content, and content follows the brand.
 
 THE BRAND PROFILE IS BINDING, NOT BACKGROUND. Its \`tone\` says how to sound, and you reproduce it rather than approximating it — pronoun, sentence length, formality, casing. Its \`dos\` are instructions you follow. Its \`avoid\` entries are prohibitions: a post that breaks one is a failure however well written. Where the brand renames an ordinary thing, use the brand's word.
+
+THE PILLAR IS THE GROUND, THE THEME IS THE ANGLE. A pillar is a territory this brand returns to across many posts; the theme is the one angle this post takes within it. Write the angle, not the territory — a post that restates the pillar is the article the brand already published.
 
 THE THEME IS THE BRIEF, THE FORMAT IS THE SHAPE. The theme's body says the angle, who it is for and what to cover — cover it. The format describes how a post like this usually opens, develops and closes, and cites sections as \`@Name\`; treat those citations as what this brand reaches for, not as a fixed running order. You choose the actual sequence and how many of each, because that depends on this theme.
 
@@ -85,7 +88,9 @@ WRITE SOMETHING WORTH READING. Open on the reader's problem or curiosity, never 
 
 NEVER INVENT A VERIFIABLE FACT. No statistics, prices, dates, product names, awards or quotes from real people unless they came from the brand profile or the theme. Say less rather than fabricate: a human reviews this and can add a number, but cannot tell which of your numbers you made up.
 
-The excerpt is what a reader sees in a list — a sentence that earns the click, not the first line of the post repeated. The SEO title and description are for search results: the title carries the searched phrase and stays under about 60 characters, the description states the payoff in under about 155.`;
+The excerpt is what a reader sees in a list — a sentence that earns the click, not the first line of the post repeated. The SEO title and description are for search results: the title carries the searched phrase and stays under about 60 characters, the description states the payoff in under about 155.
+
+FILE AND ATTRIBUTE THE POST. Pick the categories it belongs in and the author it most sounds like, from the lists you are given — usually one of each. Choose only from those lists: anything else is dropped, and the post lands unfiled or unattributed. Given an empty list, return an empty list.`;
 
 function renderRules(
   label: string,
@@ -112,6 +117,15 @@ export const BLOG_POST_DRAFT = defineTool({
     brand: BlogBrandSchema.partial().describe(
       "The site's editorial brand context. companyName, language, description, tone, targetAudience, dos and avoid are all required here — a post written without them is generic.",
     ),
+    pillar: z
+      .object({
+        title: z.string().max(MAX_NAME_CHARS),
+        body: z.string().max(MAX_BODY_CHARS),
+      })
+      .optional()
+      .describe(
+        "The recurring territory this post belongs to — the ground the brand keeps returning to, which the theme is one angle within.",
+      ),
     theme: z
       .object({
         title: z.string().max(MAX_NAME_CHARS),
@@ -145,6 +159,19 @@ export const BLOG_POST_DRAFT = defineTool({
       .max(MAX_CATEGORIES)
       .default([])
       .describe("The blog's categories, to file this post under."),
+    authors: z
+      .array(
+        z.object({
+          name: z.string().max(MAX_NAME_CHARS),
+          email: z.string().max(MAX_NAME_CHARS),
+          bio: z.string().max(MAX_BODY_CHARS).optional(),
+        }),
+      )
+      .max(MAX_AUTHORS)
+      .default([])
+      .describe(
+        "The blog's authors, to attribute this post to. Pick whoever this post most sounds like it came from.",
+      ),
     extraInstructions: z
       .string()
       .max(MAX_BODY_CHARS)
@@ -166,6 +193,9 @@ export const BLOG_POST_DRAFT = defineTool({
     categorySlugs: z
       .array(z.string())
       .describe("Slugs chosen from the given categories — usually one"),
+    authorEmails: z
+      .array(z.string())
+      .describe("Emails chosen from the given authors — usually one"),
     sections: z
       .array(SectionSchema)
       .max(MAX_SECTIONS)
@@ -173,7 +203,7 @@ export const BLOG_POST_DRAFT = defineTool({
   }),
 
   modelSummary: (r) =>
-    `Drafted "${r.title}" — ${r.sections.length} section(s), ${r.categorySlugs.length} category(ies). Not yet saved.`,
+    `Drafted "${r.title}" — ${r.sections.length} section(s), ${r.categorySlugs.length} category(ies), ${r.authorEmails.length} author(s). Not yet saved.`,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -217,6 +247,9 @@ export const BLOG_POST_DRAFT = defineTool({
       renderRules("Values", brand.values),
       renderRules("Editorial instructions — follow these", brand.dos),
       renderRules("Guardrails — never do these", brand.avoid),
+      input.pillar
+        ? `## Pillar: ${input.pillar.title}\n${input.pillar.body}`
+        : null,
       `## Theme: ${input.theme.title}\n${input.theme.body}`,
       `## Format: ${input.format.name}\n${input.format.value}`,
       `## Section kinds available\n${input.sections
@@ -224,6 +257,11 @@ export const BLOG_POST_DRAFT = defineTool({
         .join("\n")}`,
       input.categories.length > 0
         ? `## Categories\n${input.categories.map((c) => `- ${c.name} (${c.slug})`).join("\n")}`
+        : null,
+      input.authors.length > 0
+        ? `## Authors\n${input.authors
+            .map((a) => `- ${a.name} (${a.email})${a.bio ? ` — ${a.bio}` : ""}`)
+            .join("\n")}`
         : null,
       input.extraInstructions
         ? `## What the operator asked for\n${input.extraInstructions}`
@@ -240,6 +278,7 @@ export const BLOG_POST_DRAFT = defineTool({
         excerpt: z.string(),
         seo: z.object({ title: z.string(), description: z.string() }),
         categorySlugs: z.array(z.string()),
+        authorEmails: z.array(z.string()),
         sections: z.array(SectionSchema),
       }),
       system: SYSTEM,
@@ -249,6 +288,7 @@ export const BLOG_POST_DRAFT = defineTool({
 
     const allowed = new Set(input.sections.map((s) => s.type));
     const allowedSlugs = new Set(input.categories.map((c) => c.slug));
+    const allowedEmails = new Set(input.authors.map((a) => a.email));
     return {
       ...object,
       // The prompt says so, but the list is what the caller renders.
@@ -257,6 +297,9 @@ export const BLOG_POST_DRAFT = defineTool({
         .slice(0, MAX_SECTIONS),
       categorySlugs: object.categorySlugs.filter((slug) =>
         allowedSlugs.has(slug),
+      ),
+      authorEmails: object.authorEmails.filter((email) =>
+        allowedEmails.has(email),
       ),
     };
   },

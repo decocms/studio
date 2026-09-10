@@ -36,4 +36,6 @@ export const LOCALSTORAGE_KEYS = {
     `sidebar.group-order.${orgId}.${userId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
+  cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,
+  blogBoardCollapsedLanes: () => `studio:blog-board:collapsed-lanes`,
 } as const;

@@ -279,6 +279,12 @@ export interface CategoryRef {
   slug: string;
 }
 
+/** A single author reference, denormalized on a post payload. */
+export interface AuthorRef {
+  name: string;
+  email: string;
+}
+
 /** Compact metadata for a post, used by the posts list filters/sort. */
 export interface PostMeta {
   /** Decofile key (block id). */
@@ -302,7 +308,21 @@ export interface PostMeta {
   missing: string[];
   /** Publication state — see `postStatus`. */
   status: PostStatus;
+  /** Which physical block backs this post — see {@link PostForm}. */
+  form: PostForm;
 }
+
+/**
+ * The two physical forms one lifecycle post takes. A `planning` post is a
+ * block with no `__resolveType` under {@link PLANNING_POST_KEY_PREFIX}, so the
+ * site never renders it (draft / generating / awaiting_review / archived). A
+ * `live` post is the
+ * classic `collections/blog/posts/<id>` block with a `__resolveType`
+ * (scheduled / published). One stable `<id>` is shared across both forms; a
+ * status change that crosses the boundary promotes/demotes the block — see
+ * {@link movePostToStatus}.
+ */
+export type PostForm = "planning" | "live";
 
 function toArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -344,26 +364,85 @@ export function missingPostFields(payload: Record<string, unknown>): string[] {
   return missing;
 }
 
-/** The three publication states the CMS edits. */
-export type PostStatus = "draft" | "scheduled" | "published";
+/**
+ * The lifecycle a post travels, in board order.
+ *
+ * These values are the blog app's own `PostStatus` union — Studio writes them
+ * into `payload.status`, the app reads them, so the vocabulary has to be the
+ * app's, not one invented here. Do not add a state the app cannot read.
+ *
+ * `draft` / `generating` / `awaiting_review` / `archived` are stored as
+ * planning-only blocks the site never resolves (see
+ * {@link PLANNING_POST_KEY_PREFIX}); `scheduled` / `published` are the live
+ * states the site renders.
+ */
+export type PostStatus =
+  | "draft"
+  | "generating"
+  | "awaiting_review"
+  | "scheduled"
+  | "published"
+  | "archived";
+
+/** The board lanes, left → right — the order the lifecycle advances. */
+export const POST_STATUSES: readonly PostStatus[] = [
+  "draft",
+  "generating",
+  "awaiting_review",
+  "scheduled",
+  "published",
+  "archived",
+];
 
 /** Local hour of day a newly scheduled post goes live. */
 export const DEFAULT_SCHEDULE_HOUR = 8;
 
-/** Publication state from `status` alone — unset means published, so adding the field unpublished nothing. */
+/**
+ * Publication state from `status` alone. Planning posts always carry an
+ * explicit non-live state; on a live post an unset/blank status still means
+ * published (legacy: adding the field unpublished nothing).
+ *
+ * `idea` and `in_review` are read as `draft` / `awaiting_review`: a short-lived
+ * Studio-only vocabulary that predates aligning on the blog app's union.
+ */
 export function postStatus(payload: Record<string, unknown>): PostStatus {
-  const status = str(payload.status);
-  if (status === "" || status === "published") return "published";
-  if (status === "scheduled") return "scheduled";
-  return "draft";
+  switch (str(payload.status)) {
+    case "draft":
+    // Legacy Studio-only name for the first lane.
+    case "idea":
+      return "draft";
+    case "generating":
+      return "generating";
+    case "awaiting_review":
+    // Legacy Studio-only name for the review lane.
+    case "in_review":
+      return "awaiting_review";
+    case "scheduled":
+      return "scheduled";
+    case "published":
+      return "published";
+    case "archived":
+      return "archived";
+    // Legacy: an unset status field means published (adding it unpublishes nothing).
+    case "":
+      return "published";
+    // Any other value is unrecognized — the safest non-live state, not a live post.
+    default:
+      return "awaiting_review";
+  }
 }
 
-/** Whether missing required fields bar this post from *becoming* published — the only gated move. */
+/**
+ * Whether missing required fields bar this post from *becoming* live — the
+ * gated forward moves are Scheduled and Published. Pulling a post back to
+ * review or an earlier planning state is never blocked.
+ */
 export function blocksPostStatus(
   payload: Record<string, unknown>,
   next: PostStatus,
 ): boolean {
-  if (next !== "published" || postStatus(payload) === "published") return false;
+  if (next !== "published" && next !== "scheduled") return false;
+  if (postStatus(payload) === next) return false;
   return missingPostFields(payload).length > 0;
 }
 
@@ -417,44 +496,191 @@ export function listPostsWithMeta(
     authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
     missing: missingPostFields(payload),
     status: postStatus(payload),
+    form: "live",
   }));
 }
 
+// ------------------ Lifecycle posts (idea → published) -----------------------
+
 /**
- * Append a category to a post payload, keyed by slug. Idempotent — a slug
- * already present yields an equivalent payload (no duplicate). Pure: returns
- * a new payload, never mutates the input.
+ * Planning posts (draft / generating / awaiting_review / archived) live one
+ * block each under this
+ * prefix, carrying NO `__resolveType` — exactly like themes, so the site's blog
+ * app never resolves an unfinished draft. Only when a post is scheduled is it
+ * promoted to a real `collections/blog/posts/<id>` block the site renders.
  */
-export function addCategoryToPost(
-  payload: Record<string, unknown>,
-  category: CategoryRef,
-): Record<string, unknown> {
-  const categories = toArray(payload.categories);
-  if (categories.some((c) => categorySlugOf(c) === category.slug)) {
-    return payload;
-  }
-  return {
-    ...payload,
-    categories: [...categories, { name: category.name, slug: category.slug }],
-  };
+export const PLANNING_POST_KEY_PREFIX = "blog-manager/posts/";
+
+/** True when a key points at a planning post — anything but scheduled/published. */
+function isPlanningPostKey(key: string): boolean {
+  return key.startsWith(PLANNING_POST_KEY_PREFIX);
+}
+
+/** The `<id>` shared by a post's planning and live forms — the last path segment. */
+export function postIdOfKey(key: string): string {
+  return key.split("/").pop() ?? key;
+}
+
+export function planningPostKey(id: string): string {
+  return `${PLANNING_POST_KEY_PREFIX}${id}`;
+}
+
+export function livePostKey(id: string): string {
+  return `collections/blog/posts/${id}`;
+}
+
+/** A fresh id for a new lifecycle post, unique enough for a per-site decofile. */
+export function newPostId(): string {
+  return randomHex(12);
 }
 
 /**
- * Replace a post's categories with exactly the given one. Pure: returns a new
- * payload, never mutates the input. Used by the bulk "replace" mode to migrate
- * posts to a single category in one step.
+ * The planning brief a card carries before (and after) generation: which pillar
+ * it belongs to, the format it should follow, and the free-text angle. Stored
+ * under `payload.planning`; consumed by generation and shown on the card.
  */
-export function replaceCategoryOnPost(
-  payload: Record<string, unknown>,
-  category: CategoryRef,
-): Record<string, unknown> {
-  const current = toArray(payload.categories);
-  if (current.length === 1 && categorySlugOf(current[0]) === category.slug) {
-    return payload;
-  }
+export interface PlanningMeta {
+  /** The idea this post was written from, when it was written from one. */
+  ideaKey?: string;
+  pillarKey?: string;
+  pillarTitle?: string;
+  format?: BrandRule;
+  brief?: string;
+}
+
+/** Read the planning brief off a post payload, tolerating a missing/legacy shape. */
+export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
+  const record = asRecord(payload.planning) ?? {};
+  const format = asRecord(record.format);
   return {
-    ...payload,
-    categories: [{ name: category.name, slug: category.slug }],
+    ideaKey: str(record.ideaKey) || undefined,
+    pillarKey: str(record.pillarKey) || undefined,
+    pillarTitle: str(record.pillarTitle) || undefined,
+    format: format
+      ? { name: str(format.name), value: str(format.value) }
+      : undefined,
+    brief: str(record.brief) || undefined,
+  };
+}
+
+/** Payload for a post started by hand: a briefing, no body yet. */
+export function emptyDraftPostPayload(args: {
+  title: string;
+  planning?: PlanningMeta;
+  now: Date;
+}): Record<string, unknown> {
+  return {
+    title: args.title,
+    slug: "",
+    excerpt: "",
+    date: args.now.toISOString().slice(0, 10),
+    image: "",
+    alt: "",
+    authors: [],
+    categories: [],
+    sections: [],
+    status: "draft",
+    planning: (args.planning ?? {}) as Record<string, unknown>,
+  };
+}
+
+/** Rebuild a planning-post block (no `__resolveType`, so the site ignores it). */
+export function buildPlanningPostBlock(
+  key: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return { name: key, [WRAPPER_KEY.posts]: payload };
+}
+
+/**
+ * Rebuild a post block in the form its key implies — planning (no
+ * `__resolveType`) or live — so a content edit never accidentally promotes an
+ * unpublished post to a site-rendered block. Crossing the boundary is a
+ * status change, handled by {@link movePostToStatus}, not a content save.
+ */
+export function buildPostBlock(
+  key: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return isPlanningPostKey(key)
+    ? buildPlanningPostBlock(key, payload)
+    : buildBlogBlock(key, "posts", payload);
+}
+
+/** All planning posts (everything but scheduled/published) with their payload. */
+export function listPlanningPosts(
+  decofile: Record<string, unknown>,
+): Array<{ key: string; payload: Record<string, unknown> }> {
+  const out: Array<{ key: string; payload: Record<string, unknown> }> = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!isPlanningPostKey(key)) continue;
+    const block = asRecord(value);
+    if (!block) continue;
+    out.push({ key, payload: getBlogPayload(block, "posts") });
+  }
+  return out;
+}
+
+/**
+ * Every post the board shows: planning posts first, then live posts. `form`
+ * distinguishes them so the board can pick the right key on a lane move.
+ */
+export function listAllPostsWithMeta(
+  decofile: Record<string, unknown>,
+): PostMeta[] {
+  const planning: PostMeta[] = listPlanningPosts(decofile).map(
+    ({ key, payload }) => ({
+      key,
+      title: str(payload.title) || "Untitled post",
+      slug: str(payload.slug),
+      date: str(payload.date),
+      scheduledDatetime: str(payload.scheduledDatetime),
+      categorySlugs: toArray(payload.categories)
+        .map(categorySlugOf)
+        .filter(Boolean),
+      authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
+      missing: missingPostFields(payload),
+      status: postStatus(payload),
+      form: "planning",
+    }),
+  );
+  return [...planning, ...listPostsWithMeta(decofile)];
+}
+
+/** A promote/demote plan: blocks to write, keys to delete, applied atomically. */
+export interface PostMove {
+  writes: Record<string, unknown>;
+  deletes: string[];
+}
+
+/**
+ * Move a post to `next`, crossing the planning↔live boundary when the target
+ * state requires it. draft/generating/awaiting_review/archived live as
+ * planning blocks;
+ * scheduled/published as live `collections/blog/posts/<id>` blocks. The `<id>`
+ * and `slug` are preserved across a promote/demote, so links stay stable.
+ *
+ * Returns the write/delete set rather than performing it, so the caller can
+ * apply it as one atomic `patchDecofile({ set, delete })`.
+ */
+export function movePostToStatus(
+  entry: { key: string; payload: Record<string, unknown> },
+  next: PostStatus,
+  now: Date,
+): PostMove {
+  const nextPayload = setPostStatus(entry.payload, next, now);
+  const id = postIdOfKey(entry.key);
+  const targetForm: PostForm =
+    next === "scheduled" || next === "published" ? "live" : "planning";
+  const targetKey =
+    targetForm === "live" ? livePostKey(id) : planningPostKey(id);
+  const block =
+    targetForm === "live"
+      ? buildBlogBlock(targetKey, "posts", nextPayload)
+      : buildPlanningPostBlock(targetKey, nextPayload);
+  return {
+    writes: { [targetKey]: block },
+    deletes: targetKey === entry.key ? [] : [entry.key],
   };
 }
 
@@ -525,7 +751,13 @@ export function removeCategoryFromPost(
 export function stampPostModified(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { ...payload, dateModified: new Date().toISOString() };
+  // Only the legacy names: an absent status already means published.
+  const stored = str(payload.status);
+  const normalized =
+    stored === "idea" || stored === "in_review"
+      ? { status: postStatus(payload) }
+      : {};
+  return { ...payload, ...normalized, dateModified: new Date().toISOString() };
 }
 
 function randomHex(length: number): string {
@@ -991,43 +1223,104 @@ export function selectBrandEvidenceBlocks(
   return selected;
 }
 
-// ------------------ Themes (the editorial planning queue) --------------------
+// ------------------ Ideas (the editorial planning queue) ---------------------
+
+/** One block per idea. The prefix says `themes` — this queue's old name. */
+export const IDEA_KEY_PREFIX = "blog-manager/themes/";
+
+/** One angle, worth several posts. Not a post, and has no status. */
+export interface IdeaEntry {
+  key: string;
+  title: string;
+  /** The brief: the angle, who it is for, what it must cover. */
+  body: string;
+  /** The pillar this idea sits in, when it sits in one. */
+  pillarKey?: string;
+  createdAt: string;
+}
+
+export function newIdeaKey(): string {
+  return `${IDEA_KEY_PREFIX}${crypto.randomUUID()}`;
+}
+
+/** Rebuild an idea block — a planning block, so no `__resolveType`. */
+export function buildIdeaBlock(
+  key: string,
+  idea: Omit<IdeaEntry, "key">,
+): Record<string, unknown> {
+  return {
+    name: key,
+    title: idea.title,
+    body: idea.body,
+    pillarKey: idea.pillarKey ?? "",
+    createdAt: idea.createdAt,
+  };
+}
+
+/** Newest first, so a fresh suggestion lands at the top of the tray. */
+export function scanIdeas(decofile: Record<string, unknown>): IdeaEntry[] {
+  const ideas: IdeaEntry[] = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!key.startsWith(IDEA_KEY_PREFIX)) continue;
+    const record = asRecord(value);
+    if (!record) continue;
+    ideas.push({
+      key,
+      title: str(record.title),
+      body: str(record.body),
+      pillarKey: str(record.pillarKey) || undefined,
+      createdAt: str(record.createdAt),
+    });
+  }
+  return ideas.sort(
+    (a, b) =>
+      b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
+  );
+}
+
+// ------------------ Content pillars (recurring territories) ------------------
 
 /**
- * Themes live one per block under this prefix, and carry no `__resolveType` —
- * they are planning state for Studio, so the site must never resolve them. One
- * block each (rather than an array in one block) keeps a write surgical: a
- * suggestion appending five themes cannot clobber the one being edited.
+ * Pillars are the reconceived themes: broad, durable communication territories
+ * ("Product updates", "Customer cases") a blog returns to, each usable by
+ * several formats. Like themes, they are Studio-only planning blocks (no
+ * `__resolveType`), one per block under this prefix so a suggestion appending
+ * several never clobbers the one being edited.
  */
-export const THEME_KEY_PREFIX = "blog-manager/themes/";
+export const PILLAR_KEY_PREFIX = "blog-manager/pillars/";
 
-/** A theme: a title and a markdown brief. `key` is its block key. */
-export interface ThemeEntry {
+/** A pillar: a title, a markdown brief, and the formats it tends to use. */
+export interface PillarEntry {
   key: string;
   title: string;
   body: string;
   createdAt: string;
+  /** Names of the formats this pillar tends to use (optional). */
+  formats: string[];
 }
 
-export function newThemeKey(): string {
-  return `${THEME_KEY_PREFIX}${crypto.randomUUID()}`;
+export function newPillarKey(): string {
+  return `${PILLAR_KEY_PREFIX}${crypto.randomUUID()}`;
 }
 
-/** Newest first, so a fresh suggestion lands at the top of the list. */
-export function scanThemes(decofile: Record<string, unknown>): ThemeEntry[] {
-  const themes: ThemeEntry[] = [];
+/** Every pillar, newest first. */
+export function scanPillars(decofile: Record<string, unknown>): PillarEntry[] {
+  const pillars: PillarEntry[] = [];
   for (const [key, value] of Object.entries(decofile)) {
-    if (!key.startsWith(THEME_KEY_PREFIX)) continue;
+    if (!key.startsWith(PILLAR_KEY_PREFIX)) continue;
     const record = asRecord(value);
     if (!record) continue;
-    themes.push({
+    pillars.push({
       key,
       title: str(record.title),
       body: str(record.body),
       createdAt: str(record.createdAt),
+      formats: toArray(record.formats)
+        .map((f) => str(f))
+        .filter(Boolean),
     });
   }
-  return themes.sort(
+  return pillars.sort(
     (a, b) =>
       b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
   );
@@ -1329,22 +1622,13 @@ export function uniquePostSlug(title: string, taken: string[]): string {
   return `${base}-${randomHex(4)}`;
 }
 
-/**
- * The post payload for a generated draft, always scheduled.
- *
- * Generated posts are never published on save: a human reviews them, and the
- * schedule is the promise they opt into. `setPostStatus` keeps a valid
- * `scheduledDatetime`, so seeding it first is what pins the chosen instant.
- *
- * `image` is left empty — nothing here generates one, and a fabricated URL
- * would render a broken post. `missingPostFields` reports it, which is the
- * honest signal for the reviewer.
- */
+/** A freshly generated post: lands in Awaiting review, with no cover image. */
 export function buildGeneratedPostPayload({
   draft,
   resolveTypes,
   categories,
-  scheduledFor,
+  authors,
+  planning,
   takenSlugs,
   now,
 }: {
@@ -1352,27 +1636,31 @@ export function buildGeneratedPostPayload({
   resolveTypes: Record<string, string>;
   /** The site's categories, to resolve the chosen slugs into stored refs. */
   categories: CategoryRef[];
-  scheduledFor: Date;
+  /** The site's authors, to resolve the chosen emails into stored refs. */
+  authors: AuthorRef[];
+  /** The briefing the card was generated from, kept for the board card. */
+  planning?: PlanningMeta;
   takenSlugs: string[];
   now: Date;
 }): Record<string, unknown> {
-  const chosen = new Set(draft.categorySlugs);
+  const chosenCategories = new Set(draft.categorySlugs);
+  const chosenAuthors = new Set(draft.authorEmails);
   const payload: Record<string, unknown> = {
     title: draft.title,
     slug: uniquePostSlug(draft.title, takenSlugs),
-    date: scheduledFor.toISOString().slice(0, 10),
+    date: now.toISOString().slice(0, 10),
     excerpt: draft.excerpt,
     image: "",
     alt: "",
-    authors: [],
-    categories: categories.filter((category) => chosen.has(category.slug)),
+    authors: authors.filter((author) => chosenAuthors.has(author.email)),
+    categories: categories.filter((c) => chosenCategories.has(c.slug)),
     seo: {
       title: draft.seo.title,
       description: draft.seo.description,
       image: "",
     },
     sections: buildPostSections(draft.sections, resolveTypes),
-    scheduledDatetime: scheduledFor.toISOString(),
+    planning: (planning ?? {}) as Record<string, unknown>,
   };
-  return setPostStatus(payload, "scheduled", now);
+  return setPostStatus(payload, "awaiting_review", now);
 }
